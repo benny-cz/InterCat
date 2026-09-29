@@ -70,6 +70,19 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             scope,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// What each mechanism lane's records sent and received in each column of an interval, for the timeline to plot under a
+    /// byte ranking (<see cref="SessionIntervalByteQuery.MeasureByMechanism"/>).
+    /// </summary>
+    public Task<SessionMechanismByteMeasures> LaneBytesAsync(
+        TimeRange interval, int columns, IReadOnlyList<Mechanism> mechanisms, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionIntervalByteQuery.MeasureByMechanism(
+            Store(),
+            interval,
+            columns,
+            mechanisms,
+            cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

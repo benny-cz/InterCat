@@ -96,8 +96,9 @@ public sealed record ScopeCarry(
     SessionPeerMeasures? IntervalPeers = null);
 
 /// <summary>
-/// What one publication's timeline drew beyond the overview: its zoomed detail and the counts of the focus it was drawn
-/// for, by that focus's key. The next publication of the same session shows them until its own counts arrive.
+/// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
+/// by that focus's key, and the bytes its lanes plotted under a byte ranking. The next publication of the same session
+/// shows them until its own arrive.
 /// </summary>
 public sealed record TimelineCarry(
     SessionTimelineDetail? Detail,
@@ -109,7 +110,9 @@ public sealed record TimelineCarry(
     IReadOnlyList<ChannelEndTimelineLane>? ChannelEndLanes = null,
     string? HighlightKey = null,
     IReadOnlyList<TimelineBucket>? Highlight = null,
-    IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null);
+    IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null,
+    SessionMechanismByteMeasures? LaneBytes = null,
+    SessionMechanismByteMeasures? ZoomedLaneBytes = null);
 
 public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -465,6 +468,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         drawnTimeline = (viewport, columns);
         RequestHighlight();
         RequestRpcSpans(viewport);
+        FollowLaneBytes();
         TimeRange extent = wholeSnapshot.Extent;
         bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
         if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
@@ -923,7 +927,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
-        highlight?.Key, highlightBuckets, highlightLanes);
+        highlight?.Key, highlightBuckets, highlightLanes, overviewLaneBytes.Measures, zoomedLaneBytes.Measures);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -945,6 +949,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             SetHighlight(carry.Highlight, carry.HighlightLanes);
         }
 
+        // The lanes' bytes stand in the same way, so a live refresh under a byte ranking does not blink back to records.
+        AdoptLaneBytes(carry.LaneBytes, carry.ZoomedLaneBytes);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 
@@ -1158,10 +1164,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool TimelineShowsFocus => timelineFocus is not null && timelineFocusProblem is null;
 
     /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
-    public string TimelineCaption => RungCaption + HighlightCaption;
+    public string TimelineCaption => RungCaption + LaneRecordsNote + HighlightCaption;
 
-    /// <summary>What the selection's highlight adds to the caption: what it marks, or that it is still being counted.</summary>
+    /// <summary>
+    /// What the selection's highlight adds to the caption: what it marks, or that it is still being counted. Its share is
+    /// a count of records, so lanes plotting bytes do not draw it on their scale.
+    /// </summary>
     private string HighlightCaption => highlight is null ? string.Empty
+        : timelineBytes is not null ? $" · {highlightName} selected, highlighted while the lanes plot records"
         : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
         : $" · selection highlighted: {highlightName}";
 
@@ -1174,7 +1184,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + "faint · machine context above · click a call to select its row"
         : timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
-            ? "Observed records by mechanism · " + Counted(wholeSnapshot.MechanismLanes.Count, "lane", "lanes")
+            ? (timelineBytes is { } plotted
+                    ? $"{Capitalized(Phrase(plotted.Metric))} per second by mechanism · "
+                    : "Observed records by mechanism · " + (LaneBytesNote is { } reading ? reading + " · " : string.Empty))
+                + Counted(wholeSnapshot.MechanismLanes.Count, "lane", "lanes")
+                + (timelineDrawsUnmeasured ? " · cross-hatched where no size was recorded" : string.Empty)
                 + (SelectedTimelineMechanism is { } mechanism
                     ? $" · {EvidenceRowText.MechanismName(mechanism)} table/step focus"
                     : " · click a lane name or choose one in tables (T)")
@@ -2444,6 +2458,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         peerReads.Cancel();
         selectionBytes.Cancel();
         CancelIntervalBytes();
+        CancelLaneBytes();
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
@@ -3365,6 +3380,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return DescribeChannelEndHover(bucket, peakPerSecond, endLane);
         }
 
+        if (lane is { } byteLane && timelineBytes is { } plotted && ownerLane is null && directionLane is null)
+        {
+            // The lanes plot bytes, so the card states what a bar plots and the byte rate its height reads against.
+            return DescribeLaneBytesHover(bucket, peakPerSecond, byteLane, plotted);
+        }
+
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
             || detail.MechanismLanes.Any(candidate => candidate.Mechanism == lane && candidate.Buckets.Contains(bucket))
             || ownerLane is not null && processLaneDisplay.Any(candidate =>
@@ -3486,13 +3507,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// What every timeline card closes with: the unmeasured part, bytes, coverage, resolution and the click. A real
-    /// session's bucket states its bytes where the interval table has read them for the same records and interval.
+    /// session's bucket states its bytes where the lanes plot them, or where the interval table has read them for the same
+    /// records and interval.
     /// </summary>
     private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope,
-        string? resolution = null)
+        string? resolution = null, string? unmeasured = null, TransportBytes? plotted = null)
     {
-        lines.Add("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
+        lines.Add(unmeasured ?? "Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
         lines.Add(bucket.KnownBytes is { } bytes ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
+            : plotted is not null ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(plotted)
             : ReadBytesOf(scope, bucket.Interval) is { } read ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(read)
             : ReadsBytes ? "Bytes: not summed by the timeline · the interval table (T) reads those of what it lists"
             : "Bytes: unknown · this timeline counts records");
@@ -4146,6 +4169,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         UpdateTimelineFocus();
         UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
+
+        // Only the machine rung's lanes plot bytes; another rung's count records, and its caption says so.
+        FollowLaneBytes();
         SyncEvidence();
         SyncRpc();
         SyncHttp();
@@ -5399,8 +5425,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         PropertyChanged?.Invoke(this, new(propertyName));
         if (propertyName == nameof(GraphDisplay))
         {
-            // The legend keys the unmeasured value only while the graph draws one (§6.6).
+            // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
+            PropertyChanged?.Invoke(this, new(nameof(DrawsUnmeasured)));
         }
     }
 }

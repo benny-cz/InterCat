@@ -389,10 +389,11 @@
           <TextBlock x:Name="CoverageLegendText" Text="Coverage gap or unknown"
                      Classes="muted" FontSize="11" VerticalAlignment="Center" />
         </StackPanel>
-        <!-- §6.6's unmeasured value, keyed by a sample of itself while the graph draws one: under a byte ranking, a
-             relationship whose sends recorded no size is an open cross-hatched band, unknown rather than zero. -->
+        <!-- §6.6's unmeasured value, keyed by a sample of itself while a pane draws one: under a byte ranking, a
+             relationship whose sends recorded no size is an open cross-hatched band, and a timeline column of them an
+             open cross-hatched cell, unknown rather than zero. -->
         <StackPanel x:Name="UnmeasuredLegend" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
-                    IsVisible="{Binding GraphDrawsUnmeasured}"
+                    IsVisible="{Binding DrawsUnmeasured}"
                     AutomationProperties.Name="Open cross-hatch: a size its records did not measure, unknown rather than zero">
           <local:UnmeasuredKeySample x:Name="UnmeasuredKeySwatch" VerticalAlignment="Center" />
           <TextBlock x:Name="UnmeasuredLegendText" Text="Size not measured"

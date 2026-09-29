@@ -84,6 +84,32 @@ public sealed record SessionIntervalByteMeasures(
 }
 
 /// <summary>
+/// Several mechanisms' transport bytes in each column of one interval, from one leased generation: for each mechanism,
+/// exactly what <see cref="SessionIntervalByteQuery.Measure"/> answers over its lane's records, all measured in one pass
+/// (R18). The timeline's mechanism lanes plot them when the ranking is by bytes (§6.2).
+/// </summary>
+public sealed record SessionMechanismByteMeasures(
+    Guid SessionId,
+    long Generation,
+    TimeRange Interval,
+    IReadOnlyList<SessionIntervalByteMeasures> Lanes)
+{
+    /// <summary>The columns of <paramref name="mechanism"/>'s lane, or null when it was not measured.</summary>
+    public SessionIntervalByteMeasures? Of(Mechanism mechanism)
+    {
+        for (int index = 0; index < Lanes.Count; index++)
+        {
+            if (Lanes[index].Scope.Mechanism == mechanism)
+            {
+                return Lanes[index];
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
 /// Measures the transport bytes of one scope's records in each column of an interval: what `icat metric --metric
 /// bytes-sent --byte-domain transport-observed --side send` and its received counterpart answer for each column's own
 /// interval, in one pass (R18). A record declaring a size it did not record is unmeasured and counted apart, never summed
@@ -91,6 +117,94 @@ public sealed record SessionIntervalByteMeasures(
 /// </summary>
 public static class SessionIntervalByteQuery
 {
+    /// <summary>
+    /// Measures each of <paramref name="mechanisms"/>' records in each column of an interval, in one pass: for each, what
+    /// <see cref="Measure"/> answers for that mechanism's lane. A record of a mechanism not named is measured in no lane.
+    /// </summary>
+    public static SessionMechanismByteMeasures MeasureByMechanism(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        IReadOnlyList<Mechanism> mechanisms,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(mechanisms);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, SessionTimelineQuery.MaximumColumns);
+        if (mechanisms.Count == 0 || mechanisms.Any(mechanism => !Enum.IsDefined(mechanism))
+            || mechanisms.Distinct().Count() != mechanisms.Count)
+        {
+            throw new ArgumentException("Name at least one mechanism §23 defines, each once.", nameof(mechanisms));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        _ = SessionSegments.SourceClock(store.Root, manifest)
+            ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
+        int count = layout.Counts.Count;
+        int lanes = mechanisms.Count;
+
+        // A mechanism code's lane, or -1 for a code no lane measures; a row's code indexes it without hashing (R11).
+        int[] laneOfCode = [.. Enumerable.Repeat(-1, Math.Max(TimelineColumns.MechanismCodes, mechanisms.Max(code => (int)code) + 1))];
+        for (int lane = 0; lane < lanes; lane++)
+        {
+            laneOfCode[(int)mechanisms[lane]] = lane;
+        }
+
+        // One slot per column and lane, column by column, then one for every row outside them.
+        int slots = (count * lanes) + 1;
+        var total = new TransportByteTally(slots);
+        SegmentPasses.Run(
+            segments,
+            () => new TransportByteTally(slots),
+            (segment, tally) => MeasureLanes(segment, layout, laneOfCode, lanes, tally, cancellationToken),
+            total.Add,
+            cancellationToken);
+        return new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly([.. mechanisms.Select((mechanism, lane) =>
+            new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
+                new IntervalByteScope { Mechanism = mechanism },
+                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(column => total.Of((column * lanes) + lane))])))]));
+    }
+
+    /// <summary>Places each of one segment's rows in its column's slot for its mechanism's lane, or outside, and measures them.</summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void MeasureLanes(
+        SegmentReaderV1 segment,
+        TimelineColumns layout,
+        int[] laneOfCode,
+        int lanes,
+        TransportByteTally tally,
+        CancellationToken cancellationToken)
+    {
+        TimeRange interval = layout.Interval;
+        SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+        if (tiles.First is not { } first || tiles.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return;
+        }
+
+        int outside = layout.Counts.Count * lanes;
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice codes = segment.Slice(SegmentColumnId.Mechanism);
+        using RentedRows<int> groups = RentedRows<int>.For(segment);
+        Span<int> slotOf = groups.Span;
+        for (int row = 0; row < slotOf.Length; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            slotOf[row] = times.SignedAt(row) is { } nanoseconds && layout.ColumnOf(nanoseconds / 100) is { } column
+                && codes.UnsignedAt(row) is { } code && code < (ulong)laneOfCode.Length && laneOfCode[(int)code] is >= 0 and int lane
+                ? (column * lanes) + lane
+                : outside;
+        }
+
+        var spec = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved };
+        tally.Add(SegmentMeasurement.MeasureDomainByGroup(segment, spec, slotOf, outside + 1));
+    }
+
     public static SessionIntervalByteMeasures Measure(
         SessionStore store,
         TimeRange interval,

@@ -282,8 +282,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
     }
 
-    /// <summary>§6.6's cross-hatch: both diagonals across a rectangle, clipped to it - the pattern of a value not measured.</summary>
-    private static void CrossHatch(DrawingContext context, Pen pen, Rect area)
+    /// <summary>
+    /// §6.6's cross-hatch: both diagonals across a rectangle, clipped to it - the pattern of a value not measured, which the
+    /// timeline's byte lanes draw too.
+    /// </summary>
+    internal static void CrossHatch(DrawingContext context, Pen pen, Rect area)
     {
         const double Spacing = 5;
         using (context.PushClip(area))

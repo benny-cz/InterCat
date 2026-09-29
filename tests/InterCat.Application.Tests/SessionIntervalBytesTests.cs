@@ -45,6 +45,50 @@ public sealed class SessionIntervalBytesTests
         }
     }
 
+    [Fact(DisplayName = "R18: lanes measured together in one pass each hold what the byte measure answers over their mechanism's records")]
+    public void LanesMeasuredTogetherEachHoldTheirMechanismsMeasure()
+    {
+        for (int seed = 0; seed < 20; seed++)
+        {
+            var random = new Random(seed);
+            List<ObservationRowV1> rows = [.. RandomTraffic(random).Select(row =>
+                row.Mechanism == Mechanism.Tcp && random.Next(3) == 0 ? row with { Mechanism = Mechanism.Udp } : row)];
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long start = random.Next(0, (int)end);
+            var interval = new TimeRange(start, start + random.Next(1, (int)end + 1));
+            int columns = random.Next(1, 12);
+
+            // Any lanes, in any order: one with no records of its mechanism measures none.
+            Mechanism[] lanes = [.. new[] { Mechanism.Tcp, Mechanism.Udp, Mechanism.ProcessLifecycle, Mechanism.NamedPipe }
+                .Where(_ => random.Next(3) > 0).DefaultIfEmpty(Mechanism.Tcp).OrderBy(_ => random.Next())];
+            SessionMechanismByteMeasures measured = SessionIntervalByteQuery.MeasureByMechanism(
+                session.Store, interval, columns, lanes);
+            Assert.Equal(lanes, measured.Lanes.Select(lane => lane.Scope.Mechanism!.Value));
+            foreach (Mechanism mechanism in lanes)
+            {
+                SessionIntervalByteMeasures expected = SessionIntervalByteQuery.Measure(
+                    session.Store, interval, columns, new() { Mechanism = mechanism });
+                SessionIntervalByteMeasures lane = measured.Of(mechanism)!;
+                Assert.Equal((expected.SessionId, expected.Generation, expected.Interval, expected.Scope),
+                    (lane.SessionId, lane.Generation, lane.Interval, lane.Scope));
+                Assert.True(expected.Columns.SequenceEqual(lane.Columns), $"seed {seed}, {mechanism}");
+            }
+
+            Assert.Null(measured.Of(Mechanism.Alpc));
+        }
+
+        // Each lane is named once, and only a mechanism §23 defines names one.
+        using var refused = new TemporarySession();
+        Publish(refused.Store, TwoConnections());
+        foreach (Mechanism[] lanes in new Mechanism[][] { [], [Mechanism.Tcp, Mechanism.Tcp], [(Mechanism)77] })
+        {
+            Assert.Throws<ArgumentException>(() =>
+                SessionIntervalByteQuery.MeasureByMechanism(refused.Store, new TimeRange(1, 40), 8, lanes));
+        }
+    }
+
     [Fact(DisplayName = "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's")]
     public void ALanesBytesAreItsOwnRecords()
     {

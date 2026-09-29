@@ -9,6 +9,7 @@ using Avalonia.Threading;
 using Avalonia.VisualTree;
 using InterCat.Analysis;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
 
@@ -74,6 +75,22 @@ public sealed class TimelineView : Control, IHoverCardSource
         private readonly ThemeMode mode;
         private readonly Dictionary<Mechanism, SolidColorBrush> liveBrushes = [];
         private readonly Dictionary<Mechanism, SolidColorBrush> fillBrushes = [];
+        private readonly Dictionary<Mechanism, Pen> hatchPens = [];
+
+        /// <summary>
+        /// §6.6's unmeasured cell: its sides and cross-hatch in the mechanism's hue at a pixel, as the graph draws its
+        /// unmeasured band, built once per mode (R11).
+        /// </summary>
+        public Pen HatchPen(Mechanism mechanism)
+        {
+            if (!hatchPens.TryGetValue(mechanism, out Pen? pen))
+            {
+                pen = new Pen(FillBrush(mechanism), 1);
+                hatchPens[mechanism] = pen;
+            }
+
+            return pen;
+        }
 
         /// <summary>A mechanism's fill, built once per mode and reused for every bar (R11).</summary>
         public SolidColorBrush FillBrush(Mechanism mechanism)
@@ -137,10 +154,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     private readonly List<TimelineBucket> coarseBuckets = [];
     private readonly List<TimelineBucket> fineBuckets = [];
     private readonly Memo<long> generationNote = new();
+    private readonly Memo<long> byteGenerationNote = new();
     private readonly Memo<(long, long)> startLabel = new();
     private readonly Memo<(long, long)> endLabel = new();
     private readonly Memo<double> rateLabel = new();
-    private readonly Memo<(LiveEdge, IReadOnlyList<MechanismTimelineLane>)> liveLabel = new();
+    private readonly Memo<double> byteRateLabel = new();
+    private readonly Memo<(LiveEdge, IReadOnlyList<MechanismTimelineLane>, bool)> liveLabel = new();
 
     /// <summary>A row's labels by the row they name; rows are immutable, so a label is formatted once per row.</summary>
     private static readonly Dictionary<(object Row, int Part), string> RowLabels = new(RowKeyComparer.Instance);
@@ -603,7 +622,12 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         FocusRowSet? rows = FocusRows;
-        double maximumRate = ShowingMechanismLanes
+
+        // Under a byte ranking the machine rung's lanes plot bytes per tick, on a scale of their own (§6.2).
+        TimelineByteLayer? bytes = ShowingMechanismLanes ? viewModel.TimelineBytes : null;
+        double maximumRate = bytes is not null
+            ? LaneBytePeak(viewModel.Snapshot.MechanismLanes, bytes, visible)
+            : ShowingMechanismLanes
             ? MechanismLanePeak(viewModel.Snapshot.MechanismLanes, detail, visible)
             : rows is not null
                 ? FocusRowPeak(viewModel, rows, visible)
@@ -619,7 +643,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             switch (rows?.Kind)
             {
                 case null:
-                    DrawMechanismLanes(context, viewModel, detail, scale);
+                    DrawMechanismLanes(context, viewModel, detail, scale, bytes);
                     break;
                 case FocusRowKind.Owners:
                     DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale);
@@ -635,7 +659,21 @@ public sealed class TimelineView : Control, IHoverCardSource
                     break;
             }
 
-            if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
+            if (bytes is not null)
+            {
+                // The bars are bytes: what they were read from is what the note names, a paused view's newer generation
+                // or an earlier publication's standing in until this one's arrive.
+                long? generation = bytes.Overview.Generation != viewModel.DisplayedGeneration ? (long?)bytes.Overview.Generation
+                    : bytes.Zoomed is { } zoomed && zoomed.Generation != viewModel.DisplayedGeneration ? zoomed.Generation
+                    : null;
+                if (generation is { } read)
+                {
+                    string note = byteGenerationNote.Get(read, static generation =>
+                        string.Create(CultureInfo.CurrentCulture, $"bytes from generation {generation:N0}"));
+                    DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
+                }
+            }
+            else if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
             {
                 string note = generationNote.Get(detail.Generation, static generation =>
                     string.Create(CultureInfo.CurrentCulture, $"zoomed detail from generation {generation:N0}"));
@@ -686,7 +724,8 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         if (LiveEdgePlacement is { } live)
         {
-            DrawLiveEdge(context, viewModel, live, rows, top, bottom, maximumRate);
+            // A preview counts records, so beside byte lanes it is drawn on its own records scale, never the bytes'.
+            DrawLiveEdge(context, viewModel, live, rows, top, bottom, bytes is null ? maximumRate : 0, bytes is not null);
         }
 
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
@@ -704,7 +743,10 @@ public sealed class TimelineView : Control, IHoverCardSource
             string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
                 WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-            DrawText(context, rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate)),
+            DrawText(context, bytes is not null
+                    ? byteRateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond,
+                        static rate => WorkspaceRowBuilder.DescribeByteRate(rate))
+                    : rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate)),
                 new(4, top - 4));
         }
 
@@ -1305,9 +1347,13 @@ public sealed class TimelineView : Control, IHoverCardSource
         return new Rect(0, top + (index * height), 1, height);
     }
 
-    /// <summary>One L0 row per observed mechanism, all on the same visible rate scale and time columns.</summary>
+    /// <summary>
+    /// One L0 row per observed mechanism, all on the same visible rate scale and time columns: records per tick, or under a
+    /// byte ranking the bytes it measures per tick, over the counted columns' coverage.
+    /// </summary>
     private static void DrawMechanismLanes(
-        DrawingContext context, WorkspaceViewModel viewModel, SessionTimelineDetail? detail, BarScale scale)
+        DrawingContext context, WorkspaceViewModel viewModel, SessionTimelineDetail? detail, BarScale scale,
+        TimelineByteLayer? bytes)
     {
         IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
         for (int index = 0; index < lanes.Count; index++)
@@ -1324,15 +1370,33 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
             context.DrawRectangle(BrushFor(lane.Mechanism), null, new Rect(8, row.Center.Y - 3, 6, 6));
             DrawText(context, EvidenceRowText.MechanismName(lane.Mechanism), new(19, row.Center.Y - 7));
+            if (bytes?.Overview.Of(lane.Mechanism) is { } measured && !PlotsAnything(measured, bytes.Metric))
+            {
+                // A lane none of whose records in the session carries the ranking's size is empty for that reason, which
+                // its name says beneath it, in the ranked table's words, rather than leaving it to look quiet.
+                DrawText(context, NothingToPlot(bytes.Metric), new(19, row.Center.Y + 4));
+            }
             var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
                 row.Top + 3, baseline, scale.MaximumRate, Focused: false);
+
+            // Byte bars come first, so a coverage hatch crosses them as it crosses a record bar. The selection's share is
+            // a count of records, which has no height on a byte scale, so bytes draw none.
+            bool coverageOnly = bytes is not null;
+            if (bytes is not null)
+            {
+                DrawLaneBytes(context, viewModel, lane.Mechanism, bytes, laneScale, row);
+            }
 
             IReadOnlyList<TimelineBucket> coarse = lane.Buckets;
             MechanismTimelineLane? detailLane = LaneOf(detail?.MechanismLanes, lane.Mechanism);
             if (detail is null || detailLane is null)
             {
-                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
-                DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row, coverageOnly: coverageOnly);
+                if (!coverageOnly)
+                {
+                    DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+                }
+
                 continue;
             }
 
@@ -1340,20 +1404,136 @@ public sealed class TimelineView : Control, IHoverCardSource
             double x2 = laneScale.X(Math.Min(detail.Interval.EndTicks, scale.Visible.EndTicks));
             using (context.PushClip(new Rect(scale.Left, row.Top, Math.Max(0, x1 - scale.Left), row.Height)))
             {
-                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row, coverageOnly: coverageOnly);
             }
 
             using (context.PushClip(new Rect(x2, row.Top, Math.Max(0, scale.Left + scale.PlotWidth - x2), row.Height)))
             {
-                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row);
+                DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row, coverageOnly: coverageOnly);
             }
 
             using (context.PushClip(new Rect(x1, row.Top, Math.Max(0, x2 - x1), row.Height)))
             {
-                DrawLaneSeries(context, viewModel, lane.Mechanism, detailLane.Buckets, laneScale, row);
+                DrawLaneSeries(context, viewModel, lane.Mechanism, detailLane.Buckets, laneScale, row, coverageOnly: coverageOnly);
             }
 
-            DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+            if (!coverageOnly)
+            {
+                DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+            }
+        }
+    }
+
+    /// <summary>Whether any of a lane's columns holds a record the metric takes, measured or not.</summary>
+    private static bool PlotsAnything(SessionIntervalByteMeasures lane, RankingMetric metric)
+    {
+        for (int column = 0; column < lane.Columns.Count; column++)
+        {
+            if (lane.Columns[column].ValueOf(metric) is not (null, _, 0))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>What a lane with no record the metric takes says beneath its name: the ranked table's words for it.</summary>
+    private static string NothingToPlot(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "no sends",
+        RankingMetric.BytesReceived => "no receives",
+        _ => "no transfers",
+    };
+
+    /// <summary>
+    /// A mechanism lane's bars under a byte ranking: one per byte column the viewport shows, the zoomed view's own columns
+    /// where they were read and the overview's elsewhere, as a lane's counted columns are drawn.
+    /// </summary>
+    private static void DrawLaneBytes(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism,
+        TimelineByteLayer bytes, BarScale scale, Rect row)
+    {
+        SessionIntervalByteMeasures? coarse = bytes.Overview.Of(mechanism);
+        SessionIntervalByteMeasures? fine = bytes.Zoomed?.Of(mechanism);
+        if (fine is null || !Intersects(fine.Interval, scale.Visible))
+        {
+            if (coarse is not null)
+            {
+                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+            }
+
+            return;
+        }
+
+        double x1 = scale.X(Math.Max(fine.Interval.StartTicks, scale.Visible.StartTicks));
+        double x2 = scale.X(Math.Min(fine.Interval.EndTicks, scale.Visible.EndTicks));
+        if (coarse is not null)
+        {
+            using (context.PushClip(new Rect(scale.Left, row.Top, Math.Max(0, x1 - scale.Left), row.Height)))
+            {
+                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+            }
+
+            using (context.PushClip(new Rect(x2, row.Top, Math.Max(0, scale.Left + scale.PlotWidth - x2), row.Height)))
+            {
+                DrawByteColumns(context, viewModel, mechanism, coarse, bytes.Metric, scale);
+            }
+        }
+
+        using (context.PushClip(new Rect(x1, row.Top, Math.Max(0, x2 - x1), row.Height)))
+        {
+            DrawByteColumns(context, viewModel, mechanism, fine, bytes.Metric, scale);
+        }
+    }
+
+    /// <summary>
+    /// One lane's byte columns in the viewport. A measured sum is a bar of its rate on the shared scale, never under the
+    /// lane's occupied floor, so a small transfer stays visible and pointable. A column whose records declared sizes none of
+    /// them recorded is §6.6's open cross-hatched cell at that floor: unknown, never a bar of zero (R3). A column with
+    /// nothing measured to plot draws nothing.
+    /// </summary>
+    private static void DrawByteColumns(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism,
+        SessionIntervalByteMeasures lane, RankingMetric metric, BarScale scale)
+    {
+        double plot = scale.Bottom - scale.Top;
+        double floor = plot * OccupiedFloor;
+        for (int column = 0; column < lane.Columns.Count; column++)
+        {
+            TimeRange interval = lane.IntervalOf(column);
+            if (!Intersects(interval, scale.Visible))
+            {
+                continue;
+            }
+
+            (long? value, _, long unmeasured) = lane.Columns[column].ValueOf(metric);
+            if (value is not > 0 && (value is not null || unmeasured == 0))
+            {
+                continue;
+            }
+
+            double x1 = scale.X(Math.Max(interval.StartTicks, scale.Visible.StartTicks));
+            double x2 = scale.X(Math.Min(interval.EndTicks, scale.Visible.EndTicks));
+            double width = Math.Max(1, x2 - x1 - 2);
+            Rect bar;
+            if (value is { } sum)
+            {
+                double height = Math.Max(floor,
+                    plot * ((double)sum / interval.SpanTicks) / Math.Max(double.Epsilon, scale.MaximumRate));
+                bar = new(x1, scale.Bottom - height, width, height);
+                context.DrawRectangle(BrushFor(mechanism), null, bar);
+            }
+            else
+            {
+                bar = new(x1, scale.Bottom - floor, width, floor);
+                Pen pen = Current.HatchPen(mechanism);
+                context.DrawRectangle(null, pen, bar);
+                GraphView.CrossHatch(context, pen, bar);
+            }
+
+            if (viewModel.SelectedInterval == interval)
+            {
+                context.DrawRectangle(Brushes.Transparent, SelectionPen, bar.Inflate(1));
+            }
         }
     }
 
@@ -1446,7 +1626,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// the published timeline every quarter second.
     /// </summary>
     private void DrawLiveEdge(DrawingContext context, WorkspaceViewModel viewModel, LiveEdgeArea live,
-        FocusRowSet? rows, double top, double bottom, double maximumRate)
+        FocusRowSet? rows, double top, double bottom, double maximumRate, bool besideBytes = false)
     {
         double scaleRate = maximumRate > 0 ? maximumRate : LivePeak(live.Edge.Bins);
         double ruleX = live.Left - (LiveEdgeGap / 2);
@@ -1454,9 +1634,11 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (ShowingMechanismLanes)
         {
             // A mechanism first seen after the last publication has no lane until it publishes; the label names it, and
-            // hovering the edge on any lane lists it, so no previewed record is silently undrawn.
+            // hovering the edge on any lane lists it, so no previewed record is silently undrawn. Beside byte lanes it
+            // says it counts records.
             IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
-            DrawText(context, liveLabel.Get((live.Edge, lanes), static key => LiveLabel(key.Item1, key.Item2)),
+            DrawText(context, liveLabel.Get((live.Edge, lanes, besideBytes),
+                    static key => LiveLabel(key.Item1, key.Item2, key.Item3)),
                 new(live.Left, top - 16));
             for (int index = 0; index < lanes.Count; index++)
             {
@@ -1481,15 +1663,16 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// The live edge's label at L0: it names a mechanism first seen after the last publication, which has no lane until it
     /// publishes, so no previewed record is silently undrawn. Formatted only when the preview or the lanes change.
     /// </summary>
-    private static string LiveLabel(LiveEdge edge, IReadOnlyList<MechanismTimelineLane> lanes)
+    private static string LiveLabel(LiveEdge edge, IReadOnlyList<MechanismTimelineLane> lanes, bool records)
     {
         Mechanism[] unlaned = [.. edge.Bins.SelectMany(bin => bin.Counts.Select(count => count.Mechanism)).Distinct()
             .Where(mechanism => lanes.All(lane => lane.Mechanism != mechanism)).Order()];
+        string live = records ? "live records" : "live";
         return unlaned.Length switch
         {
-            0 => "live",
-            1 => $"live · +{EvidenceRowText.MechanismName(unlaned[0])}",
-            _ => $"live · +{unlaned.Length} mechanisms",
+            0 => live,
+            1 => $"{live} · +{EvidenceRowText.MechanismName(unlaned[0])}",
+            _ => $"{live} · +{unlaned.Length} mechanisms",
         };
     }
 
@@ -1644,10 +1827,13 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
-    /// <summary>One row's bars and coverage for the buckets of <paramref name="buckets"/> that the viewport shows.</summary>
+    /// <summary>
+    /// One row's bars and coverage for the buckets of <paramref name="buckets"/> that the viewport shows; with
+    /// <paramref name="coverageOnly"/>, only their coverage, beneath bars that plot something other than their records.
+    /// </summary>
     private static void DrawLaneSeries(DrawingContext context, WorkspaceViewModel viewModel,
         Mechanism? mechanism, IReadOnlyList<TimelineBucket> buckets, BarScale scale, Rect row,
-        bool contextRow = false)
+        bool contextRow = false, bool coverageOnly = false)
     {
         for (int index = 0; index < buckets.Count; index++)
         {
@@ -1660,7 +1846,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
             double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
             double width = Math.Max(1, x2 - x1 - 2);
-            if (bucket.ObservationCount > 0)
+            if (bucket.ObservationCount > 0 && !coverageOnly)
             {
                 Rect measured = scale.Bar(bucket);
                 double height = Math.Max(measured.Height, (scale.Bottom - scale.Top) * OccupiedFloor);
@@ -2393,6 +2579,49 @@ public sealed class TimelineView : Control, IHoverCardSource
             if (Intersects(bucket.Interval, visible) && (except is not { } skipped || !Inside(bucket.Interval, skipped)))
             {
                 peak = Math.Max(peak, Rate(bucket));
+            }
+        }
+
+        return peak;
+    }
+
+    /// <summary>
+    /// The byte lanes' shared scale: the highest rate any lane's byte columns in the viewport plot, the overview's outside
+    /// the zoomed view's own columns and those inside them, in bytes per tick.
+    /// </summary>
+    private static double LaneBytePeak(IReadOnlyList<MechanismTimelineLane> lanes, TimelineByteLayer bytes, TimeRange visible)
+    {
+        SessionMechanismByteMeasures? zoomed = bytes.Zoomed is { } fine && Intersects(fine.Interval, visible) ? fine : null;
+        double peak = 0;
+        for (int index = 0; index < lanes.Count; index++)
+        {
+            Mechanism mechanism = lanes[index].Mechanism;
+            SessionIntervalByteMeasures? fineLane = zoomed?.Of(mechanism);
+            if (bytes.Overview.Of(mechanism) is { } coarse)
+            {
+                peak = Math.Max(peak, BytePeak(coarse, bytes.Metric, visible, fineLane?.Interval));
+            }
+
+            if (fineLane is not null)
+            {
+                peak = Math.Max(peak, BytePeak(fineLane, bytes.Metric, visible, null));
+            }
+        }
+
+        return peak;
+    }
+
+    /// <summary>The highest measured byte rate among one lane's columns in view, leaving out any inside <paramref name="except"/>.</summary>
+    private static double BytePeak(SessionIntervalByteMeasures lane, RankingMetric metric, TimeRange visible, TimeRange? except)
+    {
+        double peak = 0;
+        for (int column = 0; column < lane.Columns.Count; column++)
+        {
+            TimeRange interval = lane.IntervalOf(column);
+            if (Intersects(interval, visible) && (except is not { } skipped || !Inside(interval, skipped))
+                && lane.Columns[column].ValueOf(metric).Value is > 0 and long sum)
+            {
+                peak = Math.Max(peak, (double)sum / interval.SpanTicks);
             }
         }
 

@@ -34,15 +34,25 @@ public sealed record TransportBytes(
     /// <summary>The value a ranking reads, with the measured and unmeasured contributions behind it.</summary>
     public RankedValue Of(RankingMetric metric)
     {
+        (long? value, long measured, long unmeasured) = ValueOf(metric);
+        return new(metric, value, measured, unmeasured);
+    }
+
+    /// <summary>
+    /// What <see cref="Of"/> reads, without allocating, for a drawing that reads it per column: the value, null when no
+    /// record measured it, and the records that measured it and that declared a size they did not record.
+    /// </summary>
+    public (long? Value, long Measured, long Unmeasured) ValueOf(RankingMetric metric)
+    {
         switch (metric)
         {
             case RankingMetric.BytesSent:
-                return new(metric, SentMeasured > 0 ? SentBytes : null, SentMeasured, SentUnmeasured);
+                return (SentMeasured > 0 ? SentBytes : null, SentMeasured, SentUnmeasured);
             case RankingMetric.BytesReceived:
-                return new(metric, ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured);
+                return (ReceivedMeasured > 0 ? ReceivedBytes : null, ReceivedMeasured, ReceivedUnmeasured);
             case RankingMetric.EndpointBytes:
                 long measured = SentMeasured + ReceivedMeasured + OtherMeasured;
-                return new(metric, measured > 0 ? checked(SentBytes + ReceivedBytes + OtherBytes) : null, measured,
+                return (measured > 0 ? checked(SentBytes + ReceivedBytes + OtherBytes) : null, measured,
                     SentUnmeasured + ReceivedUnmeasured + OtherUnmeasured);
             default:
                 throw new ArgumentOutOfRangeException(nameof(metric), metric, "Only a byte ranking reads a process's bytes.");

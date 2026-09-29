@@ -56,6 +56,17 @@ public sealed class PaintAllocationTests
         Measure(window, "machine, a node hovered", report);
         window.MouseMove(new Point(1, 1));
 
+        // Ranked by bytes sent, whose lanes plot each column's bytes and cross-hatch the sends that recorded no size.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+        await Settle(window, workspace);
+        Assert.NotNull(workspace.TimelineBytes);
+        Assert.True(workspace.TimelineDrawsUnmeasured);
+        Measure(window, "machine, plotting bytes sent", report);
+        workspace.RankBy = RankingMetric.Records;
+        await workspace.RankingReady;
+
         // Down the ladder: a group's owner rows, a process's direction rows, a channel's end lanes.
         foreach (string rung in new[] { "group", "process", "channel" })
         {
@@ -141,7 +152,7 @@ public sealed class PaintAllocationTests
         Dispatch();
     }
 
-    /// <summary>A client sending and a server receiving, <paramref name="count"/> times.</summary>
+    /// <summary>A client sending and a server receiving, <paramref name="count"/> times, then sending once with no size.</summary>
     private static ObservationRowV1[] Exchange(int count) =>
     [
         .. Enumerable.Range(0, count).SelectMany(index => new[]
@@ -152,6 +163,8 @@ public sealed class PaintAllocationTests
                 (ulong)(101 + (2 * index))).Between("127.0.0.1:8080", "127.0.0.1:50000")
                 with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
         }),
+        Transfer(10 + (2 * count), ObservationKind.Send, AccountingSide.SendSide, null, 100, (ulong)(100 + (2 * count)))
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = (10 + (2 * count)) * 100L },
     ];
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
