@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 282 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 283 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 283 — `icat session` states the recording a whole session's rates divide by (`metrics-v1` §7):**
+  - Beside its clock calibration, in the reader's culture, and in its JSON as native bounds and seconds; a capture that
+    recorded no stop states none.
 
 - **Revision 282 — `icat workspace show` states each session's layout (§26.3):**
   - Its text listed only what its JSON held of the pins an investigation keeps; it now says how many nodes each
@@ -600,6 +604,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 283 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
+  passed, 4 skipped**, zero failures. Live, on a 2-second scratch capture, deleted after: "Recording 2,203468 s, from
+  capture start to its stop"; first "2.203468", beside "0,0 ppm", until the text took the reader's culture. Also live,
+  revision 277's texts in the Release app's investigation window, on two captures of one boot: the candidates read
+  "Compared session afc4d716 at generation 2, session ef5bfab6 at generation 2", and each lane "Read at its
+  generation 2".
 - Revision 282 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,474 tests: 1,470
   passed, 4 skipped**, zero failures. Live, a scratch investigation of a 2-second capture with a layout written by hand,
   as the contract allows, deleted after: `show` read "Session 454c14cc: 2 nodes pinned on its graph, put back when it

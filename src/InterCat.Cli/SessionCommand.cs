@@ -9,6 +9,14 @@ using InterCat.Storage;
 
 namespace InterCat.Cli;
 
+/// <summary>A capture's recording in native ticks of its clock, and how long it is.</summary>
+internal sealed record SessionRecordingDocument
+{
+    public required long StartNativeTicks { get; init; }
+    public required long EndNativeTicks { get; init; }
+    public required string Seconds { get; init; }
+}
+
 /// <summary>What opening a session found, as a document a tool can read without this CLI.</summary>
 internal sealed record SessionDocument
 {
@@ -34,6 +42,12 @@ internal sealed record SessionDocument
 
     /// <summary>How fast the wall clock ran against the source clock between the first and last sample; null when unknown.</summary>
     public required WallClockRate? WallClockRate { get; init; }
+
+    /// <summary>
+    /// The capture's recording, which a whole session's rates divide by (`metrics-v1` §7): native bounds and seconds; null
+    /// when its capture recorded no stop.
+    /// </summary>
+    public required SessionRecordingDocument? Recording { get; init; }
 
     public required IReadOnlyList<string> Notes { get; init; }
 }
@@ -228,7 +242,7 @@ internal static class SessionCommand
         ConsoleUi.Progress($"Acquiring the current generation of {full} and verifying every dependency.");
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         Dictionary<string, SegmentReaderV1> opened = [];
-        SessionDocument document = Describe(store, full, opened);
+        SessionDocument document = Describe(store, full, opened, cancellationToken);
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
         if (json)
         {
@@ -254,7 +268,8 @@ internal static class SessionCommand
     private static SessionDocument Describe(
         SessionStore store,
         string path,
-        Dictionary<string, SegmentReaderV1> opened)
+        Dictionary<string, SegmentReaderV1> opened,
+        CancellationToken cancellationToken)
     {
         SessionManifestV1? visible = store.Current;
         using EvidenceLease? lease = visible is null ? null : store.AcquireLease();
@@ -266,6 +281,7 @@ internal static class SessionCommand
         SessionLedgerDocument? ledger = null;
         ClockCalibrationV1? calibration = null;
         WallClockRate? rate = null;
+        SessionRecordingDocument? recording = null;
         SessionRedaction? redaction = manifest is null ? null : SessionRedaction.Read(store.Root, manifest);
 
         // What the session holds that no export carries: its chunks are read and checked, and no message byte is kept.
@@ -363,6 +379,15 @@ internal static class SessionCommand
             if (calibration is not null && SessionSegments.SourceClock(store.Root, manifest) is { } clock)
             {
                 rate = ClockCalibrationFacts.Rate(calibration, clock.TicksPerSecond);
+                if (SessionRecording.NativeInterval(store, manifest, clock, cancellationToken) is { } interval)
+                {
+                    recording = new()
+                    {
+                        StartNativeTicks = interval.StartTicks,
+                        EndNativeTicks = interval.EndTicks,
+                        Seconds = (interval.SpanTicks / (double)clock.TicksPerSecond).ToString("0.000000", CultureInfo.InvariantCulture),
+                    };
+                }
             }
             else if (calibration is null && manifest.Boundary.IsDeclared)
             {
@@ -473,6 +498,7 @@ internal static class SessionCommand
             CoverageLedger = ledger,
             ClockCalibration = calibration,
             WallClockRate = rate,
+            Recording = recording,
             Redaction = redaction,
             Content = content,
             Notes = notes,
@@ -635,7 +661,7 @@ internal static class SessionCommand
 
         if (document.ClockCalibration is { } calibration)
         {
-            RenderCalibration(calibration, document.WallClockRate);
+            RenderCalibration(calibration, document.WallClockRate, document.Recording);
         }
 
         if (document.FieldSegments.Count > 0)
@@ -741,7 +767,7 @@ internal static class SessionCommand
             + "original evidence package discloses it. icat raw states what each record kept.");
     }
 
-    private static void RenderCalibration(ClockCalibrationV1 calibration, WallClockRate? rate)
+    private static void RenderCalibration(ClockCalibrationV1 calibration, WallClockRate? rate, SessionRecordingDocument? recording)
     {
         ConsoleUi.Heading("Clock calibration");
         ConsoleUi.Field("Wall clock", calibration.WallClock);
@@ -769,6 +795,13 @@ internal static class SessionCommand
         {
             ConsoleUi.Field("Wall clock rate", string.Create(CultureInfo.CurrentCulture,
                 $"{rate.PartsPerMillion:+0.0;-0.0;0.0} ppm ±{rate.UncertaintyPartsPerMillion:0.0##} against the source clock between the samples"));
+        }
+
+        if (recording is not null)
+        {
+            // The document's seconds are invariant, for a tool; the text reads them in the reader's own culture.
+            string seconds = double.Parse(recording.Seconds, CultureInfo.InvariantCulture).ToString("0.000000", CultureInfo.CurrentCulture);
+            ConsoleUi.Field("Recording", $"{seconds} s, from capture start to its stop: a whole session's rates divide by it");
         }
 
         ConsoleUi.Note("A sample bounds only how far apart its two readings were taken; how right the wall clock was is not known "
