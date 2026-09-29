@@ -225,7 +225,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         string[] refused =
         [
-            text.Replace("\"workspace-v4\"", "\"workspace-v9\"", StringComparison.Ordinal),
+            text.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v9\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\"", "\"notes\": [],\n  \"hostAliases\"", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": null", StringComparison.Ordinal),
             text.Replace("\"hostAliases\": []", "\"hostAliases\": [{ \"hostId\": \"" + Guid.NewGuid() + "\", \"alias\": \" \" }]", StringComparison.Ordinal),
@@ -316,7 +316,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(1_500_000, InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(1)).Result.Uncertainty!.Value.HalfWidthNanoseconds);
         WorkspaceComparison drifting = InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(3));
         Assert.Equal(new TimeComparison(TimeOrder.Unknown, null, null), drifting.Result);
-        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"No order is stated: the second instant's session's drift from the time reference is not stated, so {2.0m:N1} s from its anchor its uncertainty is unknown."),
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"No order is stated: the second instant's session's drift from the time reference is not stated, so {2.0m:N1} s from the nearest instant it was aligned at, its uncertainty is unknown."),
             drifting.Statement(CultureInfo.CurrentCulture));
         Assert.Equal("No order is stated: the second instant's session is not aligned to the workspace's time.",
             InvestigationWorkspace.Compare(read, a, Seconds(1), d, Seconds(1)).Statement(CultureInfo.CurrentCulture));
@@ -347,19 +347,19 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string aligned = File.ReadAllText(workspace);
 
         // Revision 253's files, which hold no time, are read, and written as the current version.
-        File.WriteAllText(workspace, members.Replace("\"workspace-v4\"", "\"workspace-v1\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, members.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v1\"", StringComparison.Ordinal));
         Assert.Equal(3, InvestigationWorkspace.Read(workspace).Members.Count);
         InvestigationWorkspace.Alias(workspace, InvestigationWorkspace.Read(workspace).Members[0].HostId, "lab", Now);
         Assert.Equal(InvestigationWorkspace.Contract, InvestigationWorkspace.Read(workspace).Contract);
 
         // Revision 254's files hold manual alignments, and are read.
-        File.WriteAllText(workspace, aligned.Replace("\"workspace-v4\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, aligned.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v2\"", StringComparison.Ordinal));
         Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
 
         // A file whose time contradicts itself is refused whole.
         string[] refused =
         [
-            aligned.Replace("\"workspace-v4\"", "\"workspace-v1\"", StringComparison.Ordinal),
+            aligned.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v1\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{c}\"", StringComparison.Ordinal),
             aligned.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{Guid.NewGuid()}\"", StringComparison.Ordinal),
             aligned.Replace("\"withinNanoseconds\": 1000", "\"withinNanoseconds\": -1", StringComparison.Ordinal),
@@ -406,7 +406,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // A version 2 file holds manual alignments only.
         string text = File.ReadAllText(workspace);
-        File.WriteAllText(workspace, text.Replace("\"workspace-v4\"", "\"workspace-v2\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v2\"", StringComparison.Ordinal));
         Assert.Contains("holds only manual alignments", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
 
@@ -446,6 +446,62 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(3) + 2_000_000, b, Seconds(2)).Result.Order);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, -1, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, b, a, 1_000, double.NaN, null, Now));
+    }
+
+    [Fact(DisplayName = "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them")]
+    public void TwoInstantsMeasureTheClocksRate()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        SessionStore beta = NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New());
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, beta.Root.Path, Now).SessionId;
+
+        // Beta's 1 s is alpha's 3 s, and its 11 s alpha's 13.0001 s: beta's clock runs 10 ppm slow against alpha's.
+        WorkspaceAlignment alignment = InvestigationWorkspace.Align(
+            workspace, b, Seconds(1), a, Seconds(3), 1_000, 0.5, "two consoles", Now, (Seconds(11), Seconds(13) + 100_000));
+        Assert.Equal((Seconds(11), Seconds(13) + 100_000), (alignment.SecondSessionNanoseconds!.Value, alignment.SecondReferenceNanoseconds!.Value));
+        Assert.Equal(10, InvestigationWorkspace.MeasuredPartsPerMillion(alignment), 6);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, alignment), (read.Contract, Assert.Single(read.Alignments)));
+
+        // At either instant the person's bound holds, and a nanosecond for rounding; midway, a rate wandering 0.5 ppm moves an
+        // instant by up to 2 × 0.5 ppm × 5 s = 5 µs; 2 s beyond the second, the bound grows along the rate's own uncertainty,
+        // 2 × 1 µs over 10 s, by 0.4 µs, and the wander by 2 µs.
+        Assert.Equal(((long?)(Seconds(13) + 100_000), (TimeUncertainty?)new TimeUncertainty(1_001, 0)), Placed(InvestigationWorkspace.Place(read, b, Seconds(11))));
+        Assert.Equal(((long?)8_000_050_000, (TimeUncertainty?)new TimeUncertainty(6_001, 0)), Placed(InvestigationWorkspace.Place(read, b, Seconds(6))));
+        WorkspaceInstant beyond = InvestigationWorkspace.Place(read, b, Seconds(13));
+        Assert.Equal((15_000_120_000L, Seconds(2)), (beyond.WorkspaceNanoseconds!.Value, beyond.FromAnchorNanoseconds!.Value));
+        Assert.Equal(3_401, beyond.Uncertainty!.Value.HalfWidthNanoseconds, 3);
+
+        // An order is stated only beyond that: 6.002 µs after beta's 6 s is after it, 6.001 µs is not.
+        Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, 8_000_050_000 + 6_002, b, Seconds(6)).Result.Order);
+        Assert.Equal(TimeOrder.Ambiguous, InvestigationWorkspace.Compare(read, a, 8_000_050_000 + 6_001, b, Seconds(6)).Result.Order);
+
+        // With no bound on the wander, only the two instants themselves are placed with a known uncertainty.
+        InvestigationWorkspace.Align(workspace, b, Seconds(1), a, Seconds(3), 1_000, null, null, Now, (Seconds(11), Seconds(13) + 100_000));
+        read = InvestigationWorkspace.Read(workspace);
+        Assert.Equal(new TimeUncertainty(1_001, 0), InvestigationWorkspace.Place(read, b, Seconds(1)).Uncertainty);
+        WorkspaceInstant between = InvestigationWorkspace.Place(read, b, Seconds(4));
+        Assert.Equal((WorkspaceTimeGap.DriftUnknown, (TimeUncertainty?)null, (long?)Seconds(3)), (between.Gap, between.Uncertainty, between.FromAnchorNanoseconds));
+
+        // One instant twice measures nothing, and a rate no working clock runs at says an instant was misread.
+        Assert.Contains("is the first one again", Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(
+            workspace, b, Seconds(1), a, Seconds(3), 1_000, null, null, Now, (Seconds(1), Seconds(5)))).Message, StringComparison.Ordinal);
+        Assert.Contains("ppm any working clock stays within", Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(
+            workspace, b, Seconds(1), a, Seconds(3), 1_000, null, null, Now, (Seconds(11), Seconds(13) + 20_000_000))).Message, StringComparison.Ordinal);
+
+        // An earlier version's file holds no second anchor, and is refused whole when it seems to; its join decisions still read.
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FourthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("holds no alignment with a second anchor", Assert.Throws<InvalidDataException>(() =>
+            InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        string decided = Path.Combine(root, "decided" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(decided, Now);
+        InvestigationWorkspace.Add(decided, alpha.Root.Path, Now);
+        InvestigationWorkspace.Add(decided, beta.Root.Path, Now);
+        InvestigationWorkspace.Decide(decided, new(a, "connection:first"), new(b, "connection:second"), WorkspaceJoinDecision.Accepted, null, Now);
+        File.WriteAllText(decided, File.ReadAllText(decided).Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FourthContract}\"", StringComparison.Ordinal));
+        Assert.Single(InvestigationWorkspace.Read(decided).Joins);
     }
 
     /// <summary>

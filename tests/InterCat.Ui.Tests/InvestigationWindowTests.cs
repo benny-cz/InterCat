@@ -179,6 +179,59 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window aligns a session at two instants, and says the rate they measure")]
+    public async Task TheWindowAlignsAtTwoInstants()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed);
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            dialog.Choose(WorkspaceAlignmentMode.Manual);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "1";
+            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "3";
+            Named<TextBox>(dialog, "A second instant in this session, in seconds, to measure the clocks' rate; optional").Text = "11";
+
+            // Half of a second instant is refused, in words; both measure the clocks' rate, and the drift bounds its wander.
+            Assert.False(await dialog.AlignAsync());
+            Assert.Equal("Write both second instants in seconds of their own session's time, or leave both empty.",
+                Named<TextBlock>(dialog, "Alignment status").Text);
+            Named<TextBox>(dialog, "The same second instant in the reference session, in seconds").Text = 13.0001m.ToString(culture);
+            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = 0.5m.ToString(culture);
+            Save(dialog, "investigation-align-two.png");
+            Assert.True(await dialog.AlignAsync());
+            WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
+            Assert.Equal((1_000_000_000L, 3_000_000_000L, 11_000_000_000L, 13_000_100_000L, (double?)0.5),
+                (made.SessionNanoseconds!.Value, made.ReferenceNanoseconds!.Value, made.SecondSessionNanoseconds!.Value,
+                    made.SecondReferenceNanoseconds!.Value, made.DriftPartsPerMillion));
+
+            // The window says both instants, the rate they measure and its wander.
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members[1].IsAligned);
+            string time = window.View!.Members[1].Time;
+            Assert.StartsWith($"Aligned by a person at two instants: its {1m.ToString("0.000", culture)} s and {11m.ToString("0.000", culture)} s "
+                + $"are the reference's {3m.ToString("0.000", culture)} s and {13.0001m.ToString("0.000######", culture)} s, within ±",
+                time, StringComparison.Ordinal);
+            Assert.EndsWith($", so its clock runs +10 ppm against the reference's, its rate wandering at most {0.5m.ToString("0.###", culture)} ppm",
+                time, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

@@ -41,11 +41,61 @@ public sealed class ClockAlignmentTests
         Assert.Null((mapping with { Contributions = [UncertaintyContribution.Unknown("synchronization", UncertaintyCombination.Random)] })
             .UncertaintyAt(1_000_000_000));
 
-        // The reference is exact, and a rate other than one is applied before the offset.
+        // The reference is exact, and a rate other than one pivots on the anchor, which stays where the offset puts it.
         Assert.Equal(TimeUncertainty.Exact, ClockMapping.Reference.UncertaintyAt(123));
-        Assert.Equal(1_999_900_000, (mapping with { Scale = 1.0001 }).ToWorkspace(-1_000_000_000));
+        Assert.Equal(4_000_000_000, (mapping with { Scale = 1.0001 }).ToWorkspace(1_000_000_000));
+        Assert.Equal(1_999_800_000, (mapping with { Scale = 1.0001 }).ToWorkspace(-1_000_000_000));
+        Assert.Equal(-1_000_000_000, (mapping with { Scale = 1.0001 }).FromWorkspace(1_999_800_000));
         Assert.Throws<ArgumentOutOfRangeException>(() => UncertaintyContribution.Fixed("negative", UncertaintyCombination.Bound, -1));
         Assert.Throws<ArgumentOutOfRangeException>(() => UncertaintyContribution.Rate("not a rate", UncertaintyCombination.Bound, double.NaN));
+    }
+
+    [Fact(DisplayName = "R3: two anchors measure a rate: their bound holds between them and grows beyond, and a wander grows from the nearer")]
+    public void TwoAnchorsMeasureARate()
+    {
+        // Anchored at 1 s and 11 s of the session, which are 3 s and 13.0001 s of the workspace: a rate of +10 ppm.
+        var mapping = new ClockMapping
+        {
+            Scale = 10_000_100_000 / 10_000_000_000d,
+            OffsetNanoseconds = 2_000_000_000,
+            AnchorNanoseconds = 1_000_000_000,
+            SecondAnchorNanoseconds = 11_000_000_000,
+            Contributions =
+            [
+                UncertaintyContribution.Fixed("the anchors", UncertaintyCombination.Bound, 1_000),
+                UncertaintyContribution.Beyond("the anchors' bound beyond them", UncertaintyCombination.Bound, 0.25),
+                UncertaintyContribution.Rate("the rate's wander, twice", UncertaintyCombination.Bound, 1),
+            ],
+        };
+        Assert.Equal((3_000_000_000L, 8_000_050_000L, 13_000_100_000L),
+            (mapping.ToWorkspace(1_000_000_000), mapping.ToWorkspace(6_000_000_000), mapping.ToWorkspace(11_000_000_000)));
+        Assert.Equal(6_000_000_000, mapping.FromWorkspace(8_000_050_000));
+
+        // At an anchor, the anchors' bound alone; midway, a wander of 1 ppm over 5 s adds 5 µs; 2 s beyond the second anchor,
+        // 0.25 ppm of it adds 0.5 µs and the wander 2 µs; 1 s before the first, 0.25 µs and 1 µs.
+        Assert.Equal(new TimeUncertainty(1_000, 0), mapping.UncertaintyAt(11_000_000_000));
+        Assert.Equal(new TimeUncertainty(6_000, 0), mapping.UncertaintyAt(6_000_000_000));
+        Assert.Equal(new TimeUncertainty(3_500, 0), mapping.UncertaintyAt(13_000_000_000));
+        Assert.Equal(new TimeUncertainty(2_250, 0), mapping.UncertaintyAt(0));
+        Assert.Equal((5_000_000_000L, 2_000_000_000L, -1_000_000_000L), (mapping.FromNearerAnchor(6_000_000_000),
+            mapping.FromNearerAnchor(13_000_000_000), mapping.FromNearerAnchor(0)));
+        Assert.Equal((0L, 2_000_000_000L, 1_000_000_000L), (mapping.BeyondAnchors(6_000_000_000),
+            mapping.BeyondAnchors(13_000_000_000), mapping.BeyondAnchors(0)));
+
+        // Over a span its uncertainty is widest at an end or midway between the anchors; with one anchor, at an end.
+        Assert.Equal(new TimeUncertainty(6_000, 0), mapping.WidestUncertainty(0, 12_000_000_000));
+        Assert.Equal(new TimeUncertainty(3_000, 0), mapping.WidestUncertainty(0, 3_000_000_000));
+        Assert.Equal(new TimeUncertainty(3_500, 0), (mapping with { SecondAnchorNanoseconds = null }).WidestUncertainty(0, 3_000_000_000));
+
+        // A wander no one bounded leaves only the anchors themselves placed with a known uncertainty.
+        ClockMapping unbounded = mapping with
+        {
+            Contributions = [mapping.Contributions[0], mapping.Contributions[1], UncertaintyContribution.UnknownRate("wander", UncertaintyCombination.Bound)],
+        };
+        Assert.Equal(new TimeUncertainty(1_000, 0), unbounded.UncertaintyAt(1_000_000_000));
+        Assert.Equal(new TimeUncertainty(1_000, 0), unbounded.UncertaintyAt(11_000_000_000));
+        Assert.Null(unbounded.UncertaintyAt(6_000_000_000));
+        Assert.Null(unbounded.WidestUncertainty(1_000_000_000, 11_000_000_000));
     }
 
     [Fact(DisplayName = "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown")]

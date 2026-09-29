@@ -1446,6 +1446,7 @@
         "R21: a refused state rundown degrades the capture instead of hiding the gap",
         "R21: a report covers the whole budget table, so an absent budget cannot read as met",
         "R21: a selection's bytes are read and stated for its scope, and a relationship's are what was sent across it",
+        "R21: a session aligned at two instants is placed at the rate they measure, its lane uncertain by its wander",
         "R21: a variant with no queue reports no utilization rather than zero",
         "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview",
         "R21: a workspace orders instants across members only as far as their alignments allow",
@@ -1468,6 +1469,7 @@
         "R21: overhead stays unmeasured until something measures it",
         "R21: per-peer channel ranking keeps unresolved peers and channels visible beside its lower bound",
         "R21: source loss and undecodable records make coverage partial; policy omissions do not",
+        "R21: the investigation window aligns a session at two instants, and says the rate they measure",
         "R21: the investigation window aligns a session by an instant read in both, says what is missing, and withdraws it",
         "R21: the investigation window's timeline places each session on the investigation's time, and says it in words",
         "R21: the minimap counts every timed record and shows a capture gap even where nothing was observed",
@@ -1477,6 +1479,7 @@
         "R21: the timeline counts an exchange's buffers apart, the same records its evidence reads",
         "R21: total-machine processor time is readable or explicitly unavailable",
         "R21: two clocks' instants are ordered only beyond their combined uncertainty, and never when it is unknown",
+        "R21: two instants read in both measure the clocks' rate, and its wander bounds the time between and beyond them",
         "R21: when the capture did not collect RPC, no call ranks the rows, and the export says why"
       ],
       "R22": [
@@ -1580,6 +1583,7 @@
         "R3: the graph draws an unmeasured relationship with the unmeasured key only while a byte ranking sizes it",
         "R3: the impact workload is paced and long enough to measure separately",
         "R3: total-machine CPU subtracts idle from kernel time exactly once",
+        "R3: two anchors measure a rate: their bound holds between them and grows beyond, and a wander grows from the nearer",
         "R3: under a byte ranking a relationship whose sends recorded no size is drawn unmeasured, never as zero",
         "R3: unknown and observed zero remain distinct"
       ],

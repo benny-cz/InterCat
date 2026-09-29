@@ -1,8 +1,8 @@
 # ADR-039: An alignment is a bounded statement, and an unknown bound orders nothing
 
-- Status: accepted; revision 254, recorded evidence revision 256
+- Status: accepted; revision 254, recorded evidence revision 256, a rate from two anchors revision 264
 - Date: 2026-09-28
-- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v4.md`
+- Relates to: §8.1, §8.2, M4, I9, R3, R21, ADR-038, `contracts/workspace-v5.md`
 
 ## Context
 
@@ -42,6 +42,13 @@ fall on, and for what happens when the rate is not known.
    align through their recorded wall-clock samples, anchored on the pair taken closest in wall-clock time: its bound
    adds the samples' acquisition, which they measured, the wall clocks' agreement, which no sample can measure and a
    person must state, and a stated drift over the time between the samples and away from the anchor.
+8. **Two separated anchors measure a rate** (revision 264, `workspace-v5`). A person may state a second instant of both
+   clocks, well apart from the first; the line through the two anchors is the mapping, at the rate it measures. Each
+   anchor may be off by the stated bound, so the line is off by that bound between them and, beyond them, by the bound
+   carried along the rate's own uncertainty. A stated drift then bounds how far the rate may wander from a constant,
+   which moves an instant by up to twice the wander times its distance from the nearer anchor; with none stated, only
+   the anchors themselves have a known uncertainty. A rate more than 1,000 ppm from 1, which no working clock runs at,
+   says an instant was misread, and is refused.
 
 ## Consequences
 
@@ -50,6 +57,7 @@ fall on, and for what happens when the rate is not known.
 - §8.2's pair formula is restated in the plan with each side's random and bound parts.
 - Alignment from recorded wall clocks needed captures to record paired monotonic and wall-clock samples; revision 255
   records them (ADR-040), and revision 256 aligns by them and by one boot's counter (`workspace-v3`, decision 7).
-  Alignment from shared markers needs cross-host correlation; it and a rate from two separated anchors follow. Revision
+  Alignment from shared markers needs cross-host correlation, and follows; revision 264 measures a rate from two
+  separated anchors (decision 8), placing a member's lane on the merged time through it. Revision
   261 draws the merged time in the Desktop: each session a lane on the investigation's axis where its alignment places
   it, its placement's uncertainty stated beside it.

@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v4.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v5.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -73,7 +73,7 @@ internal sealed record WorkspaceMemberDocument
     public required int? Alignment { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v4.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v5.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -105,7 +105,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v4.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v5.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -177,7 +177,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v5";
+    public const string ResolutionContract = "workspace-resolution-v6";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -238,7 +238,8 @@ internal static partial class WorkspaceCommand
             "align" when sameBoot => (2, 2, "icat workspace align <workspace> <session> <reference> --same-boot"),
             "align" when wallClock => (2, 2,
                 "icat workspace align <workspace> <session> <reference> --wall-clock --sync <duration> --drift-ppm <rate>"),
-            "align" => (2, 2, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>"),
+            "align" => (2, 4, "icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> "
+                + "[<session>@<seconds> <reference>@<seconds>] --within <duration>"),
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
@@ -258,7 +259,7 @@ internal static partial class WorkspaceCommand
             || (note is not null && !(verb == "align" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
             || (verb == "package" && output is null && !check);
-        if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || misplaced)
+        if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
                 ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join or package"
@@ -302,7 +303,7 @@ internal static partial class WorkspaceCommand
                 "align" when withdraw => Withdraw(path, operands[0]),
                 "align" when sameBoot => AlignSameBoot(path, operands[0], operands[1], note),
                 "align" when wallClock => AlignByWallClock(path, operands[0], operands[1], sync!, drift!, note),
-                "align" => Align(path, operands[0], operands[1], within!, drift, note),
+                "align" => Align(path, operands, within!, drift, note),
                 _ => InterCatExitCode.Success,
             };
             WorkspaceDocument document = Describe(path, cancellationToken);
@@ -374,11 +375,25 @@ internal static partial class WorkspaceCommand
         return InterCatExitCode.Success;
     }
 
-    private static InterCatExitCode Align(string path, string instant, string referenceInstant, string within, string? drift, string? note)
+    private static InterCatExitCode Align(string path, List<string> instants, string within, string? drift, string? note)
     {
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
-        (WorkspaceMember member, long at) = Instant(workspace, instant);
-        (WorkspaceMember reference, long referenceAt) = Instant(workspace, referenceInstant);
+        (WorkspaceMember member, long at) = Instant(workspace, instants[0]);
+        (WorkspaceMember reference, long referenceAt) = Instant(workspace, instants[1]);
+        (long, long)? second = null;
+        if (instants.Count == 4)
+        {
+            (WorkspaceMember secondMember, long secondAt) = Instant(workspace, instants[2]);
+            (WorkspaceMember secondReference, long secondReferenceAt) = Instant(workspace, instants[3]);
+            if (secondMember.SessionId != member.SessionId || secondReference.SessionId != reference.SessionId)
+            {
+                throw new InvalidOperationException("A second instant names the same two sessions as the first, in the same order: "
+                    + $"{Short(member.SessionId)}@<seconds> {Short(reference.SessionId)}@<seconds>.");
+            }
+
+            second = (secondAt, secondReferenceAt);
+        }
+
         long bound = InvestigationInput.Duration(within)
             ?? throw new InvalidOperationException($"--within expects a duration with its unit, such as 500us, 2ms or 1s; '{within}' is not one.");
         double? rate = drift is null
@@ -387,14 +402,25 @@ internal static partial class WorkspaceCommand
                 ?? throw new InvalidOperationException($"--drift-ppm expects a non-negative rate in parts per million; '{drift}' is not one.");
 
         WorkspaceAlignment alignment = InvestigationWorkspace.Align(
-            path, member.SessionId, at, reference.SessionId, referenceAt, bound, rate, note, DateTimeOffset.UtcNow);
+            path, member.SessionId, at, reference.SessionId, referenceAt, bound, rate, note, DateTimeOffset.UtcNow, second);
         ConsoleUi.Success($"Session {Short(member.SessionId)} at {Seconds(at)} is session {Short(reference.SessionId)} at "
-            + $"{Seconds(referenceAt)}, within ±{OperationText.Duration(bound, CultureInfo.CurrentCulture)} "
+            + $"{Seconds(referenceAt)}"
+            + (second is { } other ? $", and at {Seconds(other.Item1)} its {Seconds(other.Item2)}," : string.Empty)
+            + $" within ±{OperationText.Duration(bound, CultureInfo.CurrentCulture)} "
             + string.Create(CultureInfo.InvariantCulture, $"(alignment revision {alignment.Revision})."));
+        if (second is not null)
+        {
+            ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
+                $"The two instants measure its clock running {Rate(InvestigationWorkspace.MeasuredPartsPerMillion(alignment))} against the reference's."));
+        }
+
         if (rate is null)
         {
-            ConsoleUi.Warn("No drift bound was stated, so away from the anchor this member's uncertainty is unknown and no order "
-                + "is stated there. --drift-ppm bounds how fast the two clocks drift apart.");
+            ConsoleUi.Warn(second is null
+                ? "No drift bound was stated, so away from the anchor this member's uncertainty is unknown and no order is stated "
+                    + "there. --drift-ppm bounds how fast the two clocks drift apart."
+                : "No bound on the rate's wander was stated, so away from the two instants this member's uncertainty is unknown "
+                    + "and no order is stated there. --drift-ppm bounds how far the rate may wander from the one they measure.");
         }
 
         return InterCatExitCode.Success;
@@ -777,12 +803,19 @@ internal static partial class WorkspaceCommand
                         WorkspaceAlignmentMode.WallClock => "wall clocks",
                         _ => "a person",
                     },
-                    Seconds(alignment.SessionNanoseconds!.Value),
-                    Seconds(alignment.ReferenceNanoseconds!.Value),
+                    Seconds(alignment.SessionNanoseconds!.Value)
+                        + (alignment.SecondSessionNanoseconds is { } second ? ", " + Seconds(second) : string.Empty),
+                    Seconds(alignment.ReferenceNanoseconds!.Value)
+                        + (alignment.SecondReferenceNanoseconds is { } secondReference ? ", " + Seconds(secondReference) : string.Empty),
                     alignment.WithinNanoseconds == 0
                         ? "exact"
                         : "±" + OperationText.DurationAtLeast(alignment.WithinNanoseconds!.Value, CultureInfo.CurrentCulture),
                     alignment.Mode == WorkspaceAlignmentMode.SameBoot ? "none: one counter"
+                        : alignment.SecondSessionNanoseconds is not null
+                            ? $"rate {Rate(InvestigationWorkspace.MeasuredPartsPerMillion(alignment))}, wander "
+                                + (alignment.DriftPartsPerMillion is { } wander
+                                    ? string.Create(CultureInfo.CurrentCulture, $"≤ {wander:0.###} ppm")
+                                    : "not stated")
                         : alignment.DriftPartsPerMillion is { } drift ? string.Create(CultureInfo.CurrentCulture, $"≤ {drift:0.###} ppm")
                         : "not stated",
                     ConsoleUi.Count(alignment.Revision),
@@ -835,6 +868,10 @@ internal static partial class WorkspaceCommand
                 $"An instant is written <session>@<seconds>, its session time in seconds, such as 3f2a9c1b@12.5; '{text}' is not one.");
     }
 
+    /// <summary>A measured rate against the reference, signed, as a person reads it: "+12.5 ppm".</summary>
+    private static string Rate(double partsPerMillion) =>
+        (partsPerMillion >= 0 ? "+" : "−") + Math.Abs(partsPerMillion).ToString("0.###", CultureInfo.CurrentCulture) + " ppm";
+
     /// <summary>A session instant in seconds, to the nanosecond, as a person reads it.</summary>
     private static string Seconds(long nanoseconds) =>
         (nanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
@@ -852,7 +889,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace show <workspace> [--json]");
         ConsoleUi.Line("icat workspace relink <workspace> <session> <session-dir> [--json]");
         ConsoleUi.Line("icat workspace alias <workspace> <host> (<name> | --remove) [--json]");
-        ConsoleUi.Line("icat workspace align <workspace> <session>@<seconds> <reference>@<seconds> --within <duration>");
+        ConsoleUi.Line("icat workspace align <workspace> <session>@<seconds> <reference>@<seconds>");
+        ConsoleUi.Line("                     [<session>@<seconds> <reference>@<seconds>] --within <duration>");
         ConsoleUi.Line("                     [--drift-ppm <rate>] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace align <workspace> <session> <reference> --same-boot [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace align <workspace> <session> <reference> --wall-clock --sync <duration>");
@@ -878,7 +916,9 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  align    states that an instant of one member is an instant of another, within a bound: the");
         ConsoleUi.Line("           first alignment makes the other member's clock the workspace's time. --drift-ppm");
         ConsoleUi.Line("           bounds how fast the clocks drift apart; without it the uncertainty away from the");
-        ConsoleUi.Line("           anchor is unknown. Seconds are session time; a duration takes ns, us, ms or s.");
+        ConsoleUi.Line("           anchor is unknown. Seconds are session time; a duration takes ns, us, ms or s. A second");
+        ConsoleUi.Line("           pair of instants, well apart from the first, measures the clocks' rate; --drift-ppm then");
+        ConsoleUi.Line("           bounds how far that rate may wander, and without it only the two instants are placed.");
         ConsoleUi.Line("           --same-boot aligns two captures that recorded one boot exactly: they read one counter.");
         ConsoleUi.Line("           --wall-clock anchors on the two captures' recorded wall-clock samples; --sync states how");
         ConsoleUi.Line("           closely their wall clocks agreed, which no sample can measure, and --drift-ppm bounds");

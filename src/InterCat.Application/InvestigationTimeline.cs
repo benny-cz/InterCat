@@ -102,7 +102,7 @@ public static class InvestigationTimeline
         foreach (Placement placement in placements)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (placement is not { Extent: { } extent, Store: { } store })
+            if (placement is not { Extent: { } extent, Store: { } store, Mapping: { } mapping })
             {
                 lanes.Add(new(placement.SessionId, null, [], null, placement.Gap, placement.Unread));
                 continue;
@@ -111,12 +111,13 @@ public static class InvestigationTimeline
             IReadOnlyList<TimelineBucket> buckets = [];
             if (whole is { } axis)
             {
-                long offset = placement.OffsetTicks;
+                // A mapping is affine, so the axis's uniform grid is a uniform grid of the session's own time: its columns
+                // are read there and placed back through the mapping.
                 SessionTimelineDetail detail = SessionTimelineQuery.Detail(
-                    store, new TimeRange(checked(axis.StartTicks - offset), checked(axis.EndTicks - offset)), columns, cancellationToken);
+                    store, new TimeRange(Back(mapping, axis.StartTicks), Back(mapping, axis.EndTicks)), columns, cancellationToken);
                 buckets = [.. detail.Buckets.Select(bucket => bucket with
                 {
-                    Interval = new TimeRange(checked(bucket.Interval.StartTicks + offset), checked(bucket.Interval.EndTicks + offset)),
+                    Interval = new TimeRange(Forward(mapping, bucket.Interval.StartTicks), Forward(mapping, bucket.Interval.EndTicks)),
                 })];
             }
 
@@ -129,7 +130,7 @@ public static class InvestigationTimeline
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
-    /// or cannot be compared (§8.4, `contracts/workspace-v4.md` §5). Pairs of two hosts are never compared: their records
+    /// or cannot be compared (§8.4, `contracts/workspace-v5.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default)
@@ -180,8 +181,8 @@ public static class InvestigationTimeline
     }
 
     /// <summary>
-    /// Where each member falls in the investigation's time: its session's record extent shifted by its alignment, with the
-    /// widest uncertainty at its ends and the boot its capture recorded; or why it has no place.
+    /// Where each member falls in the investigation's time: its session's record extent placed by its alignment, with the
+    /// widest uncertainty over it and the boot its capture recorded; or why it has no place.
     /// </summary>
     private static List<Placement> Placements(
         string workspacePath,
@@ -194,7 +195,7 @@ public static class InvestigationTimeline
         foreach (WorkspaceMemberResolution resolution in InvestigationWorkspace.Resolve(full, workspace, cancellationToken))
         {
             WorkspaceMember member = resolution.Member;
-            var none = new Placement(member.SessionId, member.HostId, null, null, 0, null, null, WorkspaceTimeGap.None, null);
+            var none = new Placement(member.SessionId, member.HostId, null, null, null, null, null, WorkspaceTimeGap.None, null);
             if (!resolution.HoldsItsCapture)
             {
                 placements.Add(none with { Unread = $"it is {resolution.State.ToString().ToLowerInvariant()}: {resolution.Reason}" });
@@ -220,14 +221,11 @@ public static class InvestigationTimeline
                     continue;
                 }
 
-                // Alignments are offsets with no rate, so one uniform grid of the investigation's time is one uniform grid of
-                // the session's own; the offset is placed to the presentation tick, finer than any column.
-                long offset = (long)Math.Round(mapping.OffsetNanoseconds / (double)NanosecondsPerTick, MidpointRounding.ToEven);
-                TimeUncertainty? start = mapping.UncertaintyAt(checked(own.StartTicks * NanosecondsPerTick));
-                TimeUncertainty? end = mapping.UncertaintyAt(checked(own.EndTicks * NanosecondsPerTick));
-                TimeUncertainty? widest = start is { } a && end is { } b ? (a.HalfWidthNanoseconds >= b.HalfWidthNanoseconds ? a : b) : null;
+                // The extent is placed through the mapping to the presentation tick, finer than any column.
+                TimeUncertainty? widest = mapping.WidestUncertainty(
+                    checked(own.StartTicks * NanosecondsPerTick), checked(own.EndTicks * NanosecondsPerTick));
                 placements.Add(new(member.SessionId, member.HostId, store,
-                    new TimeRange(checked(own.StartTicks + offset), checked(own.EndTicks + offset)), offset, widest, boot,
+                    new TimeRange(Forward(mapping, own.StartTicks), Forward(mapping, own.EndTicks)), mapping, widest, boot,
                     widest is null ? WorkspaceTimeGap.DriftUnknown : WorkspaceTimeGap.None, null));
             }
             catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -239,12 +237,24 @@ public static class InvestigationTimeline
         return placements;
     }
 
+    /// <summary>A session tick placed in the investigation's time; an offset alone moves it by whole ticks, as it always did.</summary>
+    private static long Forward(ClockMapping mapping, long ticks) => mapping.Scale == 1
+        ? checked(ticks + Ticks(mapping.OffsetNanoseconds))
+        : Ticks(mapping.ToWorkspace(checked(ticks * NanosecondsPerTick)));
+
+    /// <summary>The session tick an investigation tick maps from.</summary>
+    private static long Back(ClockMapping mapping, long ticks) => mapping.Scale == 1
+        ? checked(ticks - Ticks(mapping.OffsetNanoseconds))
+        : Ticks(mapping.FromWorkspace(checked(ticks * NanosecondsPerTick)));
+
+    private static long Ticks(long nanoseconds) => (long)Math.Round(nanoseconds / (double)NanosecondsPerTick, MidpointRounding.ToEven);
+
     private sealed record Placement(
         Guid SessionId,
         Guid HostId,
         SessionStore? Store,
         TimeRange? Extent,
-        long OffsetTicks,
+        ClockMapping? Mapping,
         TimeUncertainty? Uncertainty,
         Guid? BootToken,
         WorkspaceTimeGap Gap,

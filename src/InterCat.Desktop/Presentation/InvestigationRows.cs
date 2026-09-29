@@ -235,6 +235,18 @@ public static class InvestigationRows
         string drift = alignment.DriftPartsPerMillion is { } rate
             ? string.Create(culture, $", drifting at most {rate:0.###} ppm")
             : ", its drift not stated, so unknown away from that instant";
+        if (alignment is { SecondSessionNanoseconds: { } second, SecondReferenceNanoseconds: { } secondReference })
+        {
+            double measured = InvestigationWorkspace.MeasuredPartsPerMillion(alignment);
+            string wander = alignment.DriftPartsPerMillion is { } bound
+                ? string.Create(culture, $", its rate wandering at most {bound:0.###} ppm")
+                : ", its rate's wander not stated, so unknown away from those instants";
+            return $"Aligned by a person at two instants: its {Seconds(alignment.SessionNanoseconds!.Value, culture)} and "
+                + $"{Seconds(second, culture)} are the reference's {Seconds(alignment.ReferenceNanoseconds!.Value, culture)} and "
+                + $"{Seconds(secondReference, culture)}, {within}, so its clock runs "
+                + (measured >= 0 ? "+" : "−") + Math.Abs(measured).ToString("0.###", culture) + $" ppm against the reference's{wander}";
+        }
+
         return alignment.Mode switch
         {
             WorkspaceAlignmentMode.SameBoot => $"Aligned by one boot's counter: {at}, {within}",

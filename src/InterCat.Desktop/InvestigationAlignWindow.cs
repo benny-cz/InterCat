@@ -27,13 +27,15 @@ internal sealed class InvestigationAlignWindow : Window
     private readonly ComboBox reference = new() { MinWidth = 320 };
     private readonly RadioButton byBoot = new() { Content = "By their boot: exact, when both captures recorded one boot", GroupName = "alignment" };
     private readonly RadioButton byWallClock = new() { Content = "By their wall clocks", GroupName = "alignment" };
-    private readonly RadioButton byInstant = new() { Content = "By an instant I read in both", GroupName = "alignment" };
+    private readonly RadioButton byInstant = new() { Content = "By one or two instants I read in both", GroupName = "alignment" };
     private readonly TextBox agreement = new() { Text = "10 ms", Width = 120 };
     private readonly TextBox wallDrift = new() { Text = "50", Width = 120 };
     private readonly TextBox memberAt = new() { Watermark = "seconds", Width = 160 };
     private readonly TextBox referenceAt = new() { Watermark = "seconds", Width = 160 };
     private readonly TextBox within = new() { Text = "1 ms", Width = 120 };
     private readonly TextBox instantDrift = new() { Watermark = "not stated", Width = 120 };
+    private readonly TextBox secondMemberAt = new() { Watermark = "optional", Width = 160 };
+    private readonly TextBox secondReferenceAt = new() { Watermark = "optional", Width = 160 };
     private readonly TextBox note = new() { Watermark = "optional" };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly StackPanel wallClockFields;
@@ -62,13 +64,15 @@ internal sealed class InvestigationAlignWindow : Window
         AutomationProperties.SetName(reference, "The session whose clock is the investigation's time");
         AutomationProperties.SetName(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetName(byWallClock, "Align by the two captures' wall clocks");
-        AutomationProperties.SetName(byInstant, "Align by an instant read in both sessions");
+        AutomationProperties.SetName(byInstant, "Align by one or two instants read in both sessions");
         AutomationProperties.SetName(agreement, "How closely the two wall clocks agreed, with its unit");
         AutomationProperties.SetName(wallDrift, "How fast the two clocks drift apart at most, in parts per million");
         AutomationProperties.SetName(memberAt, "The instant in this session, in seconds");
         AutomationProperties.SetName(referenceAt, "The same instant in the reference session, in seconds");
         AutomationProperties.SetName(within, "How sure the instant is, as a duration with its unit");
         AutomationProperties.SetName(instantDrift, "How fast the two clocks drift apart at most, in parts per million, if known");
+        AutomationProperties.SetName(secondMemberAt, "A second instant in this session, in seconds, to measure the clocks' rate; optional");
+        AutomationProperties.SetName(secondReferenceAt, "The same second instant in the reference session, in seconds");
         AutomationProperties.SetName(note, "A note about this alignment");
         AutomationProperties.SetName(status, "Alignment status");
         AutomationProperties.SetName(align, "Align this session");
@@ -79,8 +83,10 @@ internal sealed class InvestigationAlignWindow : Window
         instantFields = Fields(
             ($"Its instant ({name}), in seconds", memberAt, "Read it in this session, such as the moment a connection opened."),
             ("is the reference's instant, in seconds", referenceAt, "The same moment, read in the reference session."),
-            ("within", within, "How sure you are that the two are one instant."),
-            ("The clocks drift at most (ppm)", instantDrift, "Leave it empty if unknown: away from that instant, nothing is then ordered."));
+            ("within", within, "How sure you are that each pair is one instant."),
+            ("A second instant of it, in seconds", secondMemberAt, "Optional. Well apart from the first, it measures how fast the two clocks run against each other."),
+            ("is the reference's second, in seconds", secondReferenceAt, "The same second moment, read in the reference session."),
+            ("The clocks drift at most (ppm)", instantDrift, "With a second instant, how far their rate may wander. Leave it empty if unknown: away from the instants, nothing is then ordered."));
         void ShowFields()
         {
             wallClockFields.IsVisible = byWallClock.IsChecked == true;
@@ -195,6 +201,20 @@ internal sealed class InvestigationAlignWindow : Window
                 return false;
             }
 
+            (long, long)? second = null;
+            bool secondGiven = !string.IsNullOrWhiteSpace(secondMemberAt.Text);
+            if (secondGiven || !string.IsNullOrWhiteSpace(secondReferenceAt.Text))
+            {
+                if (!secondGiven || InvestigationInput.Seconds(secondMemberAt.Text) is not { } secondAt
+                    || InvestigationInput.Seconds(secondReferenceAt.Text) is not { } secondReference)
+                {
+                    status.Text = "Write both second instants in seconds of their own session's time, or leave both empty.";
+                    return false;
+                }
+
+                second = (secondAt, secondReference);
+            }
+
             double? drift = null;
             if (!string.IsNullOrWhiteSpace(instantDrift.Text))
             {
@@ -206,7 +226,8 @@ internal sealed class InvestigationAlignWindow : Window
                 }
             }
 
-            operation = () => InvestigationWorkspace.Align(path, sessionId, at, to.SessionId, referenceTime, bound, drift, remark, DateTimeOffset.UtcNow);
+            operation = () => InvestigationWorkspace.Align(
+                path, sessionId, at, to.SessionId, referenceTime, bound, drift, remark, DateTimeOffset.UtcNow, second);
         }
 
         aligning = true;

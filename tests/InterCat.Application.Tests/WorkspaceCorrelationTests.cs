@@ -137,7 +137,7 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         // Nothing else is a join: one session's own connections, a key that names none, or a join in an earlier version.
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Decide(workspace, first, first with { Key = TransportConnection.KeyPrefix + "x" }, WorkspaceJoinDecision.Accepted, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Decide(workspace, first with { Key = "channel:1" }, second, WorkspaceJoinDecision.Accepted, null, Now));
-        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace("\"workspace-v4\"", "\"workspace-v3\"", StringComparison.Ordinal));
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"", "\"workspace-v3\"", StringComparison.Ordinal));
         Assert.Contains("holds no join decision", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
             StringComparison.Ordinal);
     }

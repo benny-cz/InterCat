@@ -59,6 +59,29 @@ public sealed class InvestigationTimelineTests : IDisposable
         Assert.Equal((false, WorkspaceTimeGap.NotAligned), (third.Placed, third.Gap));
     }
 
+    [Fact(DisplayName = "R21: a session aligned at two instants is placed at the rate they measure, its lane uncertain by its wander")]
+    public void ASessionAlignedAtTwoInstantsIsPlacedAtTheirRate()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Now);
+        Guid a = InvestigationWorkspace.Add(workspace, Session("a", "lab-1", 4), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("b", "lab-2", 6), Now).SessionId;
+
+        // B's -100 s is A's 0 s and its -90 s A's 10.01 s: B's clock runs 1,000 ppm slow, so its records, 100 µs into its
+        // capture, fall at A's 100.1001001 s - a tenth of a second later than an offset alone would put them.
+        InvestigationWorkspace.Align(workspace, b, -100_000_000_000, a, 0, 1_000, 0.5, null, Now, (-90_000_000_000, 10_010_000_000));
+        InvestigationTimelineView view = InvestigationTimeline.Read(workspace, 10);
+        InvestigationLane lane = view.Lanes[1];
+        Assert.Equal(1_001_001_001, lane.Extent!.Value.StartTicks);
+        Assert.Equal(1_001_001_052, lane.Extent.Value.EndTicks);
+        Assert.Equal(6, lane.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(view.Interval!.Value.EndTicks, lane.Buckets[^1].Interval.EndTicks);
+
+        // 90 s from the nearer instant and beyond both, a 0.5 ppm wander adds 90 µs and the instants' 1 µs bound, carried
+        // along their rate at 2 µs over 10 s, 18 µs: the lane is placed within about ±109 µs.
+        Assert.InRange(lane.Uncertainty!.Value.HalfWidthNanoseconds, 109_001, 109_002);
+    }
+
     [Fact(DisplayName = "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared")]
     public void CapturesOfOneHostThatRanAtOnceAreFlagged()
     {

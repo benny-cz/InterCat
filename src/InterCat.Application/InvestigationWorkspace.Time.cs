@@ -4,7 +4,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>How an alignment revision was made (`contracts/workspace-v4.md` §5).</summary>
+/// <summary>How an alignment revision was made (`contracts/workspace-v5.md` §5).</summary>
 public enum WorkspaceAlignmentMode
 {
     /// <summary>A person stated that an instant of the member's clock is an instant of the time reference's, within a bound.</summary>
@@ -29,7 +29,9 @@ public enum WorkspaceAlignmentMode
 /// <summary>
 /// One revision of a member's alignment to the workspace's time (§8.2): an annotation, never a rewrite of a timestamp (I9).
 /// A manual one says that the member's <see cref="SessionNanoseconds"/> is the reference's <see cref="ReferenceNanoseconds"/>
-/// within <see cref="WithinNanoseconds"/>, and bounds how far the two clocks drift apart when the person states it.
+/// within <see cref="WithinNanoseconds"/>, and bounds how far the two clocks drift apart when the person states it. With a
+/// second such instant, well apart from the first, it measures the two clocks' rate, and a stated drift then bounds how far
+/// that rate may wander.
 /// </summary>
 public sealed record WorkspaceAlignment
 {
@@ -51,8 +53,17 @@ public sealed record WorkspaceAlignment
     /// <summary>The person's bound on the anchor, a half-width; null for a withdrawal.</summary>
     public long? WithinNanoseconds { get; init; }
 
-    /// <summary>The person's bound on how fast the clocks drift apart; null when not stated, which leaves it unknown.</summary>
+    /// <summary>
+    /// The person's bound on how fast the clocks drift apart - with a second anchor, on how far their rate may wander from
+    /// the one the anchors measure; null when not stated, which leaves it unknown.
+    /// </summary>
     public double? DriftPartsPerMillion { get; init; }
+
+    /// <summary>A manual alignment's second anchor, an instant of the member's session time; null with one anchor.</summary>
+    public long? SecondSessionNanoseconds { get; init; }
+
+    /// <summary>The same instant in the reference's session time; null with one anchor.</summary>
+    public long? SecondReferenceNanoseconds { get; init; }
 
     /// <summary>The boot both captures recorded, for a same-boot alignment; null otherwise.</summary>
     public Guid? BootToken { get; init; }
@@ -86,7 +97,7 @@ public enum WorkspaceTimeGap
     /// <summary>Its member is not aligned to the workspace's time.</summary>
     NotAligned = 2,
 
-    /// <summary>Its member's alignment bounds no drift, and the instant is away from the anchor.</summary>
+    /// <summary>Its member's alignment bounds no drift, and the instant is away from its anchors.</summary>
     DriftUnknown = 3,
 }
 
@@ -107,7 +118,7 @@ public sealed record WorkspaceInstant(
         WorkspaceTimeGap.NotAligned => $"{session} is not aligned to the workspace's time",
         _ => $"{session}'s drift from the time reference is not stated, so "
             + OperationText.Duration(Math.Abs(FromAnchorNanoseconds ?? 0), culture ?? CultureInfo.CurrentCulture)
-            + " from its anchor its uncertainty is unknown",
+            + " from the nearest instant it was aligned at, its uncertainty is unknown",
     };
 }
 
@@ -145,7 +156,9 @@ public static partial class InvestigationWorkspace
     /// Records a person's alignment of <paramref name="sessionId"/> to the workspace's time: its instant
     /// <paramref name="sessionNanoseconds"/> is the reference's <paramref name="referenceNanoseconds"/> within
     /// <paramref name="withinNanoseconds"/>, the clocks drifting apart by at most <paramref name="driftPartsPerMillion"/>
-    /// when stated. The first alignment makes its reference the workspace's time; every later one aligns to it.
+    /// when stated. With <paramref name="second"/>, a second such instant well apart from the first, the two measure the
+    /// clocks' rate, and the drift bounds how far that rate may wander (§8.2). The first alignment makes its reference the
+    /// workspace's time; every later one aligns to it.
     /// </summary>
     public static WorkspaceAlignment Align(
         string workspacePath,
@@ -156,7 +169,8 @@ public static partial class InvestigationWorkspace
         long withinNanoseconds,
         double? driftPartsPerMillion,
         string? note,
-        DateTimeOffset now)
+        DateTimeOffset now,
+        (long SessionNanoseconds, long ReferenceNanoseconds)? second = null)
     {
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
@@ -164,6 +178,12 @@ public static partial class InvestigationWorkspace
         if (withinNanoseconds < 0 || driftPartsPerMillion is { } drift && (!double.IsFinite(drift) || drift < 0))
         {
             throw new InvalidOperationException("An alignment's bound and drift are non-negative: a half-width and a rate.");
+        }
+
+        if (second is { } other && RateProblem(sessionNanoseconds, referenceNanoseconds, other.SessionNanoseconds,
+            other.ReferenceNanoseconds, CultureInfo.CurrentCulture) is { } refused)
+        {
+            throw new InvalidOperationException(refused + " Nothing is aligned.");
         }
 
         var alignment = new WorkspaceAlignment
@@ -176,6 +196,8 @@ public static partial class InvestigationWorkspace
             ReferenceNanoseconds = referenceNanoseconds,
             WithinNanoseconds = withinNanoseconds,
             DriftPartsPerMillion = driftPartsPerMillion,
+            SecondSessionNanoseconds = second?.SessionNanoseconds,
+            SecondReferenceNanoseconds = second?.ReferenceNanoseconds,
             Note = string.IsNullOrWhiteSpace(note) ? null : note.Trim(),
             RecordedUtc = now,
         };
@@ -186,6 +208,38 @@ public static partial class InvestigationWorkspace
             UpdatedUtc = now,
         }, text);
         return alignment;
+    }
+
+    /// <summary>
+    /// The largest rate two anchors may measure between two clocks, in parts per million: well past any working computer
+    /// clock's, so a rate beyond it says an instant was misread, not a clock's behaviour.
+    /// </summary>
+    public const double MostPartsPerMillion = 1_000;
+
+    /// <summary>The rate of the member's clock against the reference's that two anchors measure, as parts per million off 1.</summary>
+    public static double MeasuredPartsPerMillion(WorkspaceAlignment alignment)
+    {
+        ArgumentNullException.ThrowIfNull(alignment);
+        return alignment is { SessionNanoseconds: { } first, ReferenceNanoseconds: { } reference,
+            SecondSessionNanoseconds: { } second, SecondReferenceNanoseconds: { } secondReference }
+            ? (((double)checked(secondReference - reference) / checked(second - first)) - 1) * 1_000_000
+            : throw new InvalidOperationException($"Alignment revision {alignment.Revision} has one anchor, which measures no rate.");
+    }
+
+    /// <summary>Why two anchors measure no rate: one instant twice, or a rate no working clock runs at; null when they do.</summary>
+    private static string? RateProblem(long first, long reference, long second, long secondReference, IFormatProvider culture)
+    {
+        if (second == first || secondReference == reference)
+        {
+            return "The second instant is the first one again, in one session or the other, so the two measure no rate.";
+        }
+
+        double rate = (((double)checked(secondReference - reference) / checked(second - first)) - 1) * 1_000_000;
+        return Math.Abs(rate) > MostPartsPerMillion
+            ? string.Create(culture, $"The two instants say one clock runs {Math.Abs(rate):N0} ppm {(rate > 0 ? "faster" : "slower")} ")
+                + string.Create(culture, $"than the other, more than the {MostPartsPerMillion:N0} ppm any working clock stays within, ")
+                + "so an instant was likely misread."
+            : null;
     }
 
     /// <summary>
@@ -355,7 +409,10 @@ public static partial class InvestigationWorkspace
     /// The mapping of an alignment: an offset from its one anchor, with the bounds its mode names (§8.2). A manual one takes
     /// the person's bound on the anchor and on the drift - or an unknown drift, which leaves the uncertainty unknown away
     /// from the anchor; a same-boot one reads one counter, exactly; a wall-clock one takes the wall clocks' stated agreement,
-    /// the samples' acquisition and the stated drift over the time between them, and the drift away from the anchor.
+    /// the samples' acquisition and the stated drift over the time between them, and the drift away from the anchor. A
+    /// manual one with two anchors has the rate they measure: between them its anchors' bound holds, beyond them it grows
+    /// along the rate's own uncertainty, and a rate that may wander by w moves an instant by up to 2w times its distance from
+    /// the nearer anchor - or by an unknown amount when no one bounded the wander.
     /// </summary>
     public static ClockMapping MappingOf(WorkspaceAlignment alignment)
     {
@@ -364,6 +421,32 @@ public static partial class InvestigationWorkspace
             || alignment.Mode == WorkspaceAlignmentMode.Withdrawn)
         {
             throw new InvalidOperationException($"Alignment revision {alignment.Revision} maps nothing: it withdraws one.");
+        }
+
+        if (alignment is { Mode: WorkspaceAlignmentMode.Manual, SecondSessionNanoseconds: { } second, SecondReferenceNanoseconds: { } secondReference })
+        {
+            // Each anchor may be off by up to the bound; the line through them is then off by the bound between them, and
+            // beyond them by the bound plus twice the bound over their distance for every unit further out.
+            double apart = Math.Abs((double)checked(second - anchor));
+            return new()
+            {
+                Scale = (double)checked(secondReference - reference) / checked(second - anchor),
+                OffsetNanoseconds = checked(reference - anchor),
+                AnchorNanoseconds = anchor,
+                SecondAnchorNanoseconds = second,
+                Contributions =
+                [
+                    UncertaintyContribution.Fixed("the two anchors, as a person stated them", UncertaintyCombination.Bound, within),
+                    UncertaintyContribution.Beyond("the anchors' bound, carried along the rate they measure beyond them",
+                        UncertaintyCombination.Bound, 2 * within / apart * 1_000_000),
+                    alignment.DriftPartsPerMillion is { } wander
+                        ? UncertaintyContribution.Rate("the rate's wander from the one the anchors measure, as a person bounded it",
+                            UncertaintyCombination.Bound, 2 * wander)
+                        : UncertaintyContribution.UnknownRate("the rate's wander from the one the anchors measure, not stated",
+                            UncertaintyCombination.Bound),
+                    UncertaintyContribution.Fixed("the rounding of an instant placed at the measured rate", UncertaintyCombination.Bound, 1),
+                ],
+            };
         }
 
         IReadOnlyList<UncertaintyContribution> contributions = alignment.Mode switch
@@ -431,7 +514,7 @@ public static partial class InvestigationWorkspace
         }
 
         long placed = mapping.ToWorkspace(sessionNanoseconds);
-        long? fromAnchor = sessionId == workspace.TimeReference ? null : checked(sessionNanoseconds - mapping.AnchorNanoseconds);
+        long? fromAnchor = sessionId == workspace.TimeReference ? null : mapping.FromNearerAnchor(sessionNanoseconds);
         return mapping.UncertaintyAt(sessionNanoseconds) is { } uncertainty
             ? new(sessionId, sessionNanoseconds, placed, uncertainty, WorkspaceTimeGap.None, fromAnchor)
             : new(sessionId, sessionNanoseconds, placed, null, WorkspaceTimeGap.DriftUnknown, fromAnchor);
@@ -523,7 +606,7 @@ public static partial class InvestigationWorkspace
     private static int NextRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Alignments.Count == 0 ? 1 : checked(workspace.Alignments.Max(alignment => alignment.Revision) + 1);
 
-    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v4.md` §5).</summary>
+    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v5.md` §5).</summary>
     private static string? TimeProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Contract == FirstContract && (workspace.TimeReference is not null || workspace.Alignments.Count > 0))
@@ -542,6 +625,12 @@ public static partial class InvestigationWorkspace
         if (workspace.Alignments.Any(alignment => alignment is null))
         {
             return "it lists an empty alignment";
+        }
+
+        if (workspace.Contract != Contract && workspace.Alignments.Any(alignment =>
+            alignment.SecondSessionNanoseconds is not null || alignment.SecondReferenceNanoseconds is not null))
+        {
+            return $"a {workspace.Contract} file holds no alignment with a second anchor";
         }
 
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
@@ -567,12 +656,21 @@ public static partial class InvestigationWorkspace
                     || alignment.ReferenceNanoseconds is not null || alignment.WithinNanoseconds is not null
                     || alignment.DriftPartsPerMillion is not null || alignment.BootToken is not null
                     || alignment.SynchronizationNanoseconds is not null || alignment.AcquisitionNanoseconds is not null
-                    || alignment.GapNanoseconds is not null ? "withdraws an alignment and states one" : null)
+                    || alignment.GapNanoseconds is not null || alignment.SecondSessionNanoseconds is not null
+                    || alignment.SecondReferenceNanoseconds is not null ? "withdraws an alignment and states one" : null)
                 : alignment.ReferenceSessionId is not { } other || !members.Contains(other) || other == alignment.SessionId
                     ? "is aligned to no other member"
                 : alignment.SessionNanoseconds is null || alignment.ReferenceNanoseconds is null || alignment.WithinNanoseconds is not >= 0
                     ? "states no anchor or bound"
                 : alignment.DriftPartsPerMillion is { } drift && (!double.IsFinite(drift) || drift < 0) ? "states a drift that is no rate"
+                : (alignment.SecondSessionNanoseconds is null) != (alignment.SecondReferenceNanoseconds is null)
+                    ? "states half of a second anchor"
+                : alignment.SecondSessionNanoseconds is not null && alignment.Mode != WorkspaceAlignmentMode.Manual
+                    ? "states a second anchor, which only a person's alignment has"
+                : alignment is { SecondSessionNanoseconds: { } second, SecondReferenceNanoseconds: { } secondReference }
+                    && RateProblem(alignment.SessionNanoseconds!.Value, alignment.ReferenceNanoseconds!.Value, second,
+                        secondReference, CultureInfo.InvariantCulture) is { } rate
+                    ? "has a second anchor that measures no rate: " + rate
                 : (alignment.Mode == WorkspaceAlignmentMode.SameBoot) != (alignment.BootToken is { } token && token != Guid.Empty)
                     ? "names a boot only when, and exactly when, it aligns one boot's captures"
                 : alignment.Mode == WorkspaceAlignmentMode.SameBoot && alignment.DriftPartsPerMillion is not 0.0

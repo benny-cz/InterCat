@@ -12,8 +12,8 @@ public enum UncertaintyCombination
 
 /// <summary>
 /// One contribution to a clock mapping's uncertainty: a fixed half-width, a rate that grows with the distance from the
-/// mapping's anchor (a drift), or unknown - which makes the whole uncertainty unknown, never zero and never a default
-/// (§8.2, R3, R21).
+/// mapping's nearer anchor (a drift) or only beyond its anchors, or unknown - which makes the whole uncertainty unknown,
+/// never zero and never a default (§8.2, R3, R21).
 /// </summary>
 public sealed record UncertaintyContribution
 {
@@ -30,6 +30,12 @@ public sealed record UncertaintyContribution
     /// <summary>Whether the contribution grows with the distance from the anchor, as a drift does, known or not.</summary>
     public bool GrowsWithDistance { get; init; }
 
+    /// <summary>
+    /// Whether it grows only beyond the mapping's anchors - as their bounds do, carried along the rate two anchors measure -
+    /// rather than from the nearer anchor; with one anchor the two are the same distance.
+    /// </summary>
+    public bool BeyondAnchors { get; init; }
+
     public bool IsUnknown => Nanoseconds is null && PartsPerMillion is null;
 
     public static UncertaintyContribution Fixed(string source, UncertaintyCombination combination, double nanoseconds) =>
@@ -40,6 +46,10 @@ public sealed record UncertaintyContribution
 
     public static UncertaintyContribution Unknown(string source, UncertaintyCombination combination) =>
         new() { Source = source, Combination = combination };
+
+    /// <summary>A rate that grows only beyond a mapping's anchors, and adds nothing between them.</summary>
+    public static UncertaintyContribution Beyond(string source, UncertaintyCombination combination, double partsPerMillion) =>
+        Rate(source, combination, partsPerMillion) with { BeyondAnchors = true };
 
     /// <summary>A rate not known, such as a drift no one bounded: nothing at the anchor itself, and unknown away from it.</summary>
     public static UncertaintyContribution UnknownRate(string source, UncertaintyCombination combination) =>
@@ -75,8 +85,10 @@ public readonly record struct TimeUncertainty(double BoundNanoseconds, double Ra
 }
 
 /// <summary>
-/// An affine mapping of one clock's session time into workspace time, <c>workspace = scale * session + offset</c>, with its
-/// uncertainty budget. A mapping is an annotation: it rewrites no timestamp (I9).
+/// An affine mapping of one clock's session time into workspace time,
+/// <c>workspace = anchor + offset + scale * (session - anchor)</c>, with its uncertainty budget. One anchor supplies an
+/// offset and no rate; two separated anchors measure a rate too (§8.2). A mapping is an annotation: it rewrites no
+/// timestamp (I9).
 /// </summary>
 public sealed record ClockMapping
 {
@@ -86,27 +98,97 @@ public sealed record ClockMapping
     /// <summary>1 when a single anchor set the mapping, which supplies an offset and no rate (§8.2).</summary>
     public double Scale { get; init; } = 1;
 
+    /// <summary>The workspace instant of the anchor, less the anchor: what the mapping adds at its anchor.</summary>
     public required long OffsetNanoseconds { get; init; }
 
     /// <summary>The session instant the mapping was anchored at, from which a drift grows.</summary>
     public required long AnchorNanoseconds { get; init; }
 
+    /// <summary>The second session instant, when two separated anchors measured the mapping's rate; null for one.</summary>
+    public long? SecondAnchorNanoseconds { get; init; }
+
     public required IReadOnlyList<UncertaintyContribution> Contributions { get; init; }
 
-    /// <summary>A session instant in workspace time.</summary>
+    /// <summary>A session instant in workspace time; at a measured rate, rounded to the nearest nanosecond.</summary>
     public long ToWorkspace(long sessionNanoseconds) => Scale == 1
         ? checked(sessionNanoseconds + OffsetNanoseconds)
-        : checked((long)Math.Round(Scale * sessionNanoseconds, MidpointRounding.ToEven) + OffsetNanoseconds);
+        : checked(AnchorNanoseconds + OffsetNanoseconds
+            + (long)Math.Round(Scale * checked(sessionNanoseconds - AnchorNanoseconds), MidpointRounding.ToEven));
+
+    /// <summary>The session instant a workspace instant maps from; at a measured rate, rounded to the nearest nanosecond.</summary>
+    public long FromWorkspace(long workspaceNanoseconds) => Scale == 1
+        ? checked(workspaceNanoseconds - OffsetNanoseconds)
+        : checked(AnchorNanoseconds
+            + (long)Math.Round(checked(workspaceNanoseconds - AnchorNanoseconds - OffsetNanoseconds) / Scale, MidpointRounding.ToEven));
+
+    /// <summary>How far a session instant is from the nearer anchor, signed: negative before it.</summary>
+    public long FromNearerAnchor(long sessionNanoseconds)
+    {
+        long first = checked(sessionNanoseconds - AnchorNanoseconds);
+        if (SecondAnchorNanoseconds is not { } second)
+        {
+            return first;
+        }
+
+        long other = checked(sessionNanoseconds - second);
+        return Math.Abs((double)other) < Math.Abs((double)first) ? other : first;
+    }
+
+    /// <summary>How far a session instant lies beyond the anchors: 0 at or between them.</summary>
+    public long BeyondAnchors(long sessionNanoseconds)
+    {
+        long second = SecondAnchorNanoseconds ?? AnchorNanoseconds;
+        long low = Math.Min(AnchorNanoseconds, second);
+        long high = Math.Max(AnchorNanoseconds, second);
+        return sessionNanoseconds < low ? checked(low - sessionNanoseconds)
+            : sessionNanoseconds > high ? checked(sessionNanoseconds - high)
+            : 0;
+    }
+
+    /// <summary>
+    /// The widest uncertainty of any instant from <paramref name="first"/> to <paramref name="last"/>; null when any is
+    /// unknown. It grows away from the nearer anchor and beyond both, so it is widest at an end or, between two anchors,
+    /// midway between them.
+    /// </summary>
+    public TimeUncertainty? WidestUncertainty(long first, long last)
+    {
+        List<long> instants = [first, last];
+        if (SecondAnchorNanoseconds is { } second)
+        {
+            long middle = checked(AnchorNanoseconds + ((second - AnchorNanoseconds) / 2));
+            if (middle > Math.Min(first, last) && middle < Math.Max(first, last))
+            {
+                instants.Add(middle);
+            }
+        }
+
+        TimeUncertainty? widest = null;
+        foreach (long instant in instants)
+        {
+            if (UncertaintyAt(instant) is not { } uncertainty)
+            {
+                return null;
+            }
+
+            if (widest is not { } known || uncertainty.HalfWidthNanoseconds > known.HalfWidthNanoseconds)
+            {
+                widest = uncertainty;
+            }
+        }
+
+        return widest;
+    }
 
     /// <summary>The uncertainty of <paramref name="sessionNanoseconds"/> in workspace time; null when a contribution is unknown.</summary>
     public TimeUncertainty? UncertaintyAt(long sessionNanoseconds)
     {
-        long distance = checked(sessionNanoseconds - AnchorNanoseconds);
+        long nearer = FromNearerAnchor(sessionNanoseconds);
+        long beyond = BeyondAnchors(sessionNanoseconds);
         double bound = 0;
         double random = 0;
         foreach (UncertaintyContribution contribution in Contributions)
         {
-            if (contribution.At(distance) is not { } halfWidth)
+            if (contribution.At(contribution.BeyondAnchors ? beyond : nearer) is not { } halfWidth)
             {
                 return null;
             }
