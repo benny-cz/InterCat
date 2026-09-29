@@ -724,6 +724,13 @@ public sealed class SessionStore
                 carried = [.. current?.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Index) ?? []];
             }
 
+            // A capture's calibration grows once, from its start sample alone to its start and stop: the one a generation
+            // stages replaces the one it would carry, which holds nothing the new one does not (clock-calibration-v1 §1).
+            if (staged.Any(file => file.Dependency?.Kind == StoreDependencyKind.ClockCalibration))
+            {
+                carried = [.. carried.Where(dependency => dependency.Kind != StoreDependencyKind.ClockCalibration)];
+            }
+
             var names = new HashSet<string>(
                 carried.Select(dependency => dependency.Name),
                 StringComparer.OrdinalIgnoreCase);

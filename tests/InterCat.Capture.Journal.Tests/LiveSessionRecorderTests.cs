@@ -458,6 +458,34 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal(BootToken, ClockCalibrationV1.Read(derived.Root, derived.Current!)!.BootToken);
     }
 
+    [Fact(DisplayName = "R3: a capture names its boot and start from its first publication, so one that ends before its last still has them")]
+    public async Task AnUnfinishedCaptureKeepsItsStartCalibration()
+    {
+        using var evidenceDirectory = new TemporaryDirectory();
+        using var derivedDirectory = new TemporaryDirectory();
+        _ = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2, 3], calibration: Calibration());
+
+        // Finished, it names one calibration, of its start and its stop, which replaced its first publication's.
+        SessionStore finished = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        Assert.Single(finished.Current!.Dependencies, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
+        ClockCalibrationV1 whole = ClockCalibrationV1.Read(finished.Root, finished.Current!)!;
+        Assert.Equal(2, whole.Samples.Count);
+
+        // As a broker killed before its last publication leaves it, the capture still names its boot and its start.
+        _ = RewindToUnfinalized(evidenceDirectory.Path);
+        SessionStore interrupted = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
+        ClockCalibrationV1 start = ClockCalibrationV1.Read(interrupted.Root, interrupted.Current!)!;
+        Assert.Equal(BootToken, start.BootToken);
+        Assert.Equal(whole.Samples[0], Assert.Single(start.Samples));
+
+        // A follower mirrors it before the capture finishes, as it mirrors each chunk.
+        SessionManifestV1 source = interrupted.Current!;
+        SessionStore derived = SessionStore.Open(
+            LocalOwnedDirectory.Open(derivedDirectory.Path), source.SessionId, source.SourceIdentity);
+        Assert.False(LiveSessionFollower.Open(interrupted, derived).CatchUp().Finished);
+        Assert.Equal(start.Samples, ClockCalibrationV1.Read(derived.Root, derived.Current!)!.Samples);
+    }
+
     [Fact(DisplayName = "R16: a follower finishes from finalization evidence even when coverage is unknown")]
     public async Task AFollowerFinishesWithoutCoverageLedger()
     {

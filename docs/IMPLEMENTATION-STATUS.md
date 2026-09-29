@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 275 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 276 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -70,10 +70,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, and since revision 271 (`workspace-v10`) saved views of it | A known two-host exchange (needs a second host), alignment from shared markers. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, and since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by | A known two-host exchange (needs a second host), alignment from shared markers. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 276 — a capture names its boot and start from its first publication (`clock-calibration-v1` §1, M4):**
+  - Its start's calibration is published with its first chunk that is not its last, and its whole one replaces it
+    at the end, so a capture that ends early, as a killed broker's does, can still be aligned by its boot or wall clock.
+  - A follower mirrors each calibration as it appears; `icat session` states a lone sample as the start alone.
 
 - **Revision 275 — a live capture's coverage speaks for its whole recording (`coverage-v2` §2, R21):**
   - A capture that delivered through its stop records its epoch and stop readings in its ledger, and speaks for every
@@ -534,9 +539,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
    (`workspace-v2`). Next, in order:
-   - done in revision 256: one boot's captures aligned exactly and others through their wall clocks; still, a capture
-     that ends before its last publication records no calibration, and alignment from shared markers waits on
-     cross-host correlation;
+   - done in revision 256: one boot's captures aligned exactly and others through their wall clocks; since revision
+     276 a capture that ends before its last publication still records its start's calibration, its boot and wall
+     clock; alignment from shared markers waits on cross-host correlation;
    - done in revisions 264 and 265 (`workspace-v5`, `workspace-v6`): a rate from two separated anchors, and aligning
      through another aligned member, whose alignment two members share and a comparison counts only by its drift;
    - done in revision 266 (`workspace-v7`): a person's confirmation that two host identities are one host, versioned;
@@ -552,6 +557,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 276 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,470 tests: 1,466
+  passed, 4 skipped**, zero failures. The broker qualification passed on real ETW
+  (`bench/results/broker-qualification-20260929T063157Z`): each finished capture published a calibration of one sample
+  with its first generation and of two with its last, which replaced it, and the capture whose broker it killed still
+  holds its start's calibration.
 - Revision 275 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,469 tests: 1,465
   passed, 4 skipped**, zero failures. Live, a 4-second `icat record` into the scratchpad, deleted after, published a
   `coverage-v2` ledger recording from its epoch to its stop; its whole-recording rate states "Process lifecycle

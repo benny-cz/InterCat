@@ -209,7 +209,19 @@ public static class LiveRecorder
             maximumJournalBytes,
             diskFloor,
             quotaStop.Cancel,
-            preview);
+            preview,
+            calibration is null || startSample is null
+                ? null
+                : new()
+                {
+                    Contract = ClockCalibrationV1.ContractName,
+                    CaptureId = plan.Identity.CaptureId.Value,
+                    ClockId = clock.Descriptor.Id.Value,
+                    BootToken = boot.Token,
+                    BootCount = boot.Count,
+                    WallClock = calibration.WallClock,
+                    Samples = [startSample],
+                });
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -357,6 +369,11 @@ public static class LiveRecorder
         private readonly Action onAcquisitionLimit;
         private readonly LivePreviewTally? preview;
         private readonly AdmittedEventEnvelopeMapper mapper;
+
+        // The calibration of the capture's start alone, published with its first chunk that is not its last, so a capture
+        // that ends before its last publication still names its boot and its start; the last replaces it
+        // (clock-calibration-v1 §1).
+        private ClockCalibrationV1? started;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
         private readonly long emptyChunkBytes;
@@ -391,9 +408,11 @@ public static class LiveRecorder
             long? maximumJournalBytes,
             LiveDiskFloor? diskFloor,
             Action onAcquisitionLimit,
-            LivePreviewTally? preview)
+            LivePreviewTally? preview,
+            ClockCalibrationV1? started)
         {
             this.session = session;
+            this.started = started;
             this.preview = preview;
             this.plan = plan;
             this.store = store;
@@ -756,6 +775,12 @@ public static class LiveRecorder
         {
             ThrowIfClockRefused(session);
             StageContent();
+            if (started is { } calibration)
+            {
+                builder.StageClockCalibration(calibration);
+                started = null;
+            }
+
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);

@@ -57,6 +57,9 @@ public sealed class LiveSessionFollower
     private readonly Dictionary<(uint Stream, uint Epoch), ulong> endedAt = [];
     private (CaptureId Capture, SourceClockDescriptor Clock)? recorded;
     private ObservationNormalizerV1? normalizer;
+
+    // The digest of the calibration the derived session holds, which a mirror is byte for byte of the evidence's.
+    private string? mirroredCalibration;
     private ulong journalIndex;
     private int smallUnits;
 
@@ -200,6 +203,8 @@ public sealed class LiveSessionFollower
         }
 
         using EvidenceLease lease = derived.AcquireLease();
+        mirroredCalibration = lease.Manifest.Dependencies
+            .SingleOrDefault(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)?.Digest;
         foreach (StoreDependency chunk in Chunks(lease.Manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -326,16 +331,19 @@ public sealed class LiveSessionFollower
             {
                 builder.StageCaptureFinalization(Read(evidence, finalization));
             }
+        }
 
-            StoreDependency? calibration = source.Dependencies.SingleOrDefault(dependency =>
-                dependency.Kind == StoreDependencyKind.ClockCalibration);
-            if (calibration is not null)
-            {
-                builder.StageClockCalibration(Read(evidence, calibration));
-            }
+        // A capture publishes its start's calibration early and its whole one last, which replaces it; each is mirrored
+        // when first seen, so a capture that ends before its last publication still names its boot and start here.
+        StoreDependency? calibration = source.Dependencies.SingleOrDefault(dependency =>
+            dependency.Kind == StoreDependencyKind.ClockCalibration);
+        if (calibration is not null && !string.Equals(calibration.Digest, mirroredCalibration, StringComparison.Ordinal))
+        {
+            builder.StageClockCalibration(Read(evidence, calibration));
         }
 
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);
+        mirroredCalibration = calibration?.Digest ?? mirroredCalibration;
 
         // Only a published chunk moves the follow on: a refused one leaves it where it was.
         foreach (KeyValuePair<(uint Stream, uint Epoch), ulong> pair in reached)

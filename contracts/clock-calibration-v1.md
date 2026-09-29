@@ -1,6 +1,6 @@
 # clock-calibration-v1
 
-Status: revision 255 (ADR-040)
+Status: revision 255 (ADR-040); the stop sample's moment since revision 272, the start's early publication since 276
 Owner: `InterCat.Storage` (`ClockCalibrationV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`)
 
 A live capture's source clock paired with the wall clock, and the boot it ran in (§8.1, §8.2). A journal names its source
@@ -9,18 +9,25 @@ records both, as evidence about the capture that no journal holds and nothing ca
 
 ## 1. Publication
 
-A live capture publishes one calibration, in the generation that publishes its last journal chunk, as the dependency
+A live capture publishes its calibration in the generation that publishes its last journal chunk, as the dependency
 kind `ClockCalibration` (code 10, `contracts/store-v1.md`) named:
 
 ```text
 clock-calibration-<generation:D10>.json
 ```
 
-Re-derivation, compaction, checkpoints and a follower mirroring a broker's capture carry it unchanged; retention never
-releases it. A redacted package never carries it: its wall-clock readings date the capture and its boot token is shared
-by every capture of that boot, so the package's leak scan looks for both. An original evidence package copies it like
-every other file. An import, a redacted package, a capture that ended before its last publication, and every capture
-before revision 255 carry none, and a reader says so rather than assuming one.
+Since revision 276 it also publishes one earlier, with the first chunk that is not its last: the same file holding its
+start sample alone, which the generations after it carry. A generation carries at most one calibration, so the last
+one, which holds that start sample and the stop's, replaces it rather than joining it. A capture that ends before its
+last publication, as a broker killed mid-capture does, therefore still names its boot and its start's wall clock; a
+reader takes a calibration of one sample as the start alone, whose stop is not recorded.
+
+Re-derivation, compaction, checkpoints and a follower mirroring a broker's capture carry it unchanged, and a follower
+mirrors each calibration when it first appears; retention never releases one. A redacted package never carries it:
+its wall-clock readings date the capture and its boot token is shared by every capture of that boot, so the package's
+leak scan looks for both. An original evidence package copies it like every other file. An import, a redacted package,
+every capture before revision 255, and one before revision 276 that ended before its last publication carry none,
+and a reader says so rather than assuming one.
 
 ## 2. JSON contract
 

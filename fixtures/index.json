@@ -1568,6 +1568,7 @@
         "R3: a budget is met or missed against its own direction, not against a bare number",
         "R3: a byte field the source declares but does not expose stays an unknown in its slot",
         "R3: a capture impact with no elapsed time is unmeasured rather than infinite",
+        "R3: a capture names its boot and start from its first publication, so one that ends before its last still has them",
         "R3: a clock calibration round-trips its samples and boot, and refuses what it cannot hold",
         "R3: a clock reading pairs the counter with the precise wall clock, bracketed within a measured interval",
         "R3: a descriptor with no byte field reports it inapplicable, not zero",

@@ -752,10 +752,17 @@ internal static class SessionCommand
             : "unknown: no boot token could be kept, so no other capture can be shown to share this boot");
         foreach ((ClockCalibrationSampleV1 sample, int index) in calibration.Samples.Select((sample, index) => (sample, index)))
         {
-            string when = calibration.Samples.Count == 2 ? (index == 0 ? "At start" : "At stop") : $"Sample {index + 1}";
+            string when = calibration.Samples.Count <= 2 ? (index == 0 ? "At start" : "At stop") : $"Sample {index + 1}";
             ConsoleUi.Field(when, string.Create(CultureInfo.CurrentCulture,
                 $"{sample.Utc.UtcDateTime:yyyy-MM-dd HH:mm:ss.fffffff} UTC at source tick {sample.NativeTicks:N0}, ")
                 + "±" + OperationText.DurationAtLeast(sample.AcquisitionUncertaintyNanoseconds, CultureInfo.CurrentCulture));
+        }
+
+        if (calibration.Samples.Count == 1)
+        {
+            // Published with the capture's first chunk; its last replaces it with the stop beside the start.
+            ConsoleUi.Field("At stop", "not in this generation: a capture records its stop with its last publication, and one "
+                + "that ended before it never does");
         }
 
         if (rate is not null)
