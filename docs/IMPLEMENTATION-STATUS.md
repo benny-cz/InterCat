@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 277 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 278 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 278 — `icat workspace show`'s overlaps name the generations they read (I16, `workspace-resolution-v12`):**
+  - The last of an investigation's results to name its snapshot vector; one of unplaced sessions reads none, and
+    says only that their overlap is unknown.
 
 - **Revision 277 — an investigation's results name the generations they read (I16, §10.4, M4):**
   - Candidate joins and the merged time state their snapshot vector: each capture's one generation and its manifest's
@@ -558,11 +562,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      (267), zooming it and opening a column's records (268), notes (270) and saved views (271);
    - done in revision 263: an investigation packaged with its sessions (§8.4, ADR-042); a redacted package of a whole
      investigation is not defined, since a redacted package's pseudonyms hold only within it;
-   - done in revision 277: candidate joins and the merged time name their snapshot vector (I16); `icat workspace
-     show`'s overlaps do not yet, and a decision records the alignments it was made under but not the generations.
+   - done in revisions 277 and 278: candidate joins, the merged time and `icat workspace show`'s overlaps name their
+     snapshot vector (I16); a decision records the alignments it was made under, not the generations.
 
 ## Verification and cautions
 
+- Revision 278 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,471 tests: 1,467
+  passed, 4 skipped**, zero failures. Live, two captures of this host in a scratch investigation, deleted after: before
+  an alignment `show` stated their overlap unknown, and printed "Read from ." until that line was made to state only
+  sessions it read; aligned by their one boot, its `--json` names both captures' generations for its overlaps.
 - Revision 277 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,471 tests: 1,467
   passed, 4 skipped**, zero failures. Live, two 2-second `icat record` captures in a scratch investigation, deleted
   after: `icat workspace correlate` reads "44b1ac8e at generation 2; 9c931b72 at generation 2", and its `--json` names

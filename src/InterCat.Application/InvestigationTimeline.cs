@@ -83,6 +83,9 @@ public sealed record WorkspaceOverlap(Guid First, Guid Second, OverlapKind Kind,
 /// </summary>
 public sealed record InvestigationNote(WorkspaceNote Note, int? Lane, long? Ticks, TimeUncertainty? Uncertainty);
 
+/// <summary>An investigation's overlaps (§8.4) and the snapshot vector they answer (I16).</summary>
+public sealed record InvestigationOverlaps(IReadOnlyList<WorkspaceOverlap> Overlaps, IReadOnlyList<SnapshotEntry> Snapshot);
+
 /// <summary>An investigation's merged time (§8.2): each session a lane on one axis, the investigation's own.</summary>
 public sealed record InvestigationTimelineView(TimeRange? Interval, int Columns, IReadOnlyList<InvestigationLane> Lanes)
 {
@@ -216,10 +219,21 @@ public static class InvestigationTimeline
     /// or cannot be compared (§8.4, `contracts/workspace-v10.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
-    public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default)
+    public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default) =>
+        OverlapsRead(workspacePath, cancellationToken).Overlaps;
+
+    /// <summary>
+    /// The overlaps with the snapshot vector they answer (I16): the one generation of each capture whose records were read
+    /// to place it, with its manifest's digest, by capture.
+    /// </summary>
+    public static InvestigationOverlaps OverlapsRead(string workspacePath, CancellationToken cancellationToken = default)
     {
         List<Placement> placements = Placements(workspacePath, cancellationToken);
-        return Overlaps(placements);
+        return new(Overlaps(placements),
+        [
+            .. placements.Select(placement => placement.Read).OfType<SnapshotEntry>()
+                .OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal),
+        ]);
     }
 
     private static WorkspaceOverlap[] Overlaps(List<Placement> placements)

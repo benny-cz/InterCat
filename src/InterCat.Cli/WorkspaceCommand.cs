@@ -41,6 +41,9 @@ internal sealed record WorkspaceDocument
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public required IReadOnlyList<OverlapDocument> Overlaps { get; init; }
 
+    /// <summary>The snapshot vector the overlaps answer (I16): each capture read to place it, at its one generation.</summary>
+    public required IReadOnlyList<SnapshotEntryDocument> OverlapsSnapshotVector { get; init; }
+
     public required IReadOnlyList<string> Caveats { get; init; }
 }
 
@@ -210,7 +213,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v11";
+    public const string ResolutionContract = "workspace-resolution-v12";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -848,6 +851,7 @@ internal static partial class WorkspaceCommand
                     + "the uncertainty its alignment states, and an order across members is stated only beyond it; an "
                     + "alignment is an annotation and changes no timestamp.",
         ];
+        InvestigationOverlaps overlaps = InvestigationTimeline.OverlapsRead(path, cancellationToken);
         return new()
         {
             Contract = ResolutionContract,
@@ -884,7 +888,7 @@ internal static partial class WorkspaceCommand
             AddressTranslations = workspace.AddressTranslations,
             Notes = workspace.Notes,
             Views = workspace.Views,
-            Overlaps = [.. InvestigationTimeline.Overlaps(path, cancellationToken).Select(overlap => new OverlapDocument
+            Overlaps = [.. overlaps.Overlaps.Select(overlap => new OverlapDocument
             {
                 First = overlap.First,
                 Second = overlap.Second,
@@ -892,6 +896,7 @@ internal static partial class WorkspaceCommand
                 Shared = overlap.Shared,
                 Statement = overlap.Statement(CultureInfo.CurrentCulture),
             })],
+            OverlapsSnapshotVector = SnapshotOf(path, overlaps.Snapshot),
             Caveats = caveats,
         };
     }
@@ -1040,6 +1045,13 @@ internal static partial class WorkspaceCommand
             foreach (OverlapDocument overlap in document.Overlaps)
             {
                 ConsoleUi.Note(overlap.Statement);
+            }
+
+            // An overlap of sessions with no place reads none of them: it is unknown, and says so.
+            if (document.OverlapsSnapshotVector.Count > 0)
+            {
+                ConsoleUi.Note("Read from " + string.Join("; ", document.OverlapsSnapshotVector.Select(entry =>
+                    string.Create(CultureInfo.CurrentCulture, $"{Short(entry.SessionId)} at generation {entry.Generation:N0}"))) + ".");
             }
         }
 

@@ -92,10 +92,12 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         ];
         Assert.Equal(expected, WorkspaceCorrelation.Candidates(workspace).Snapshot);
 
-        // The merged time names the sessions it placed: none before an alignment, both after one.
+        // The merged time and its overlaps name the sessions they placed: none before an alignment, both after one.
         Assert.Empty(InvestigationTimeline.Read(workspace, 10).Snapshot);
+        Assert.Empty(InvestigationTimeline.OverlapsRead(workspace).Snapshot);
         InvestigationWorkspace.Align(workspace, b, 500_000, a, 100_000, 1_000, 10, null, Now);
         Assert.Equal(expected, InvestigationTimeline.Read(workspace, 10).Snapshot);
+        Assert.Equal(expected, InvestigationTimeline.OverlapsRead(workspace).Snapshot);
     }
 
     [Fact(DisplayName = "R22: a candidate with another for either connection is ambiguous, and loopback joins only one host's captures")]

@@ -76,12 +76,14 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v11`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v12`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
 reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
 `timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision, the
-overlaps of captures of one host (§5), and caveats. It exits 0 when every member is present and 1 otherwise.
+overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
+read to place them, with its session, the one generation read and its manifest's digest - and caveats. It exits 0 when
+every member is present and 1 otherwise.
 
 ## 4. Hosts
 
