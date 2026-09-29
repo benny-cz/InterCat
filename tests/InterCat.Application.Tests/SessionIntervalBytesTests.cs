@@ -138,6 +138,45 @@ public sealed class SessionIntervalBytesTests
             [new ProcessInstanceId(Guid.Parse("11111111-2222-3333-4444-555555555555"))]));
     }
 
+    [Fact(DisplayName = "R18: a process's direction rows measured together hold what the byte measure answers for each direction and every record")]
+    public void AProcesssDirectionRowsMeasuredTogetherHoldEachDirectionsMeasure()
+    {
+        for (int seed = 0; seed < 20; seed++)
+        {
+            var random = new Random(seed);
+            List<ObservationRowV1> rows = RandomTraffic(random);
+            using var session = new TemporarySession();
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+            long end = rows.Max(row => row.NativeTicks) + 1;
+            long start = random.Next(0, (int)end);
+            var interval = new TimeRange(start, start + random.Next(1, (int)end + 1));
+            int columns = random.Next(1, 12);
+            ProcessInstanceId owner = whole.Processes[random.Next(whole.Processes.Count)].Id;
+
+            SessionDirectionByteMeasures measured = SessionIntervalByteQuery.MeasureByDirection(session.Store, interval, columns, owner);
+            SessionIntervalByteMeasures machine = SessionIntervalByteQuery.Measure(session.Store, interval, columns, IntervalByteScope.Whole);
+            Assert.True(machine.Columns.SequenceEqual(measured.Machine.Columns), $"seed {seed}, the machine row");
+            Assert.Equal(SessionTimelineQuery.LaneDirections, measured.Lanes.Select(lane => lane.Scope.Direction!.Value));
+            foreach (Direction direction in SessionTimelineQuery.LaneDirections)
+            {
+                SessionIntervalByteMeasures expected = SessionIntervalByteQuery.Measure(
+                    session.Store, interval, columns, new() { Owner = owner, Direction = direction });
+                SessionIntervalByteMeasures lane = measured.Of(direction)!;
+                Assert.Equal((expected.Interval, expected.Scope), (lane.Interval, lane.Scope));
+                Assert.True(expected.Columns.SequenceEqual(lane.Columns), $"seed {seed}, {direction}");
+            }
+        }
+
+        // A process this generation does not hold is the evidence rung's refusal, and an empty ID none at all.
+        using var refused = new TemporarySession();
+        Publish(refused.Store, TwoConnections());
+        Assert.Throws<InvalidOperationException>(() => SessionIntervalByteQuery.MeasureByDirection(refused.Store,
+            new TimeRange(1, 40), 8, new ProcessInstanceId(Guid.Parse("11111111-2222-3333-4444-555555555555"))));
+        Assert.Throws<ArgumentException>(() => SessionIntervalByteQuery.MeasureByDirection(refused.Store,
+            new TimeRange(1, 40), 8, new ProcessInstanceId(Guid.Empty)));
+    }
+
     [Fact(DisplayName = "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's")]
     public void ALanesBytesAreItsOwnRecords()
     {

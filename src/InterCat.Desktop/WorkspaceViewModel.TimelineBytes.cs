@@ -33,23 +33,33 @@ public sealed record TimelineByteLayer(
 public sealed record ProcessLaneByteLayer(RankingMetric Metric, SessionOwnerByteMeasures Measures);
 
 /// <summary>
+/// What a process's direction rows and the machine row above them plot under a byte ranking
+/// (<see cref="WorkspaceViewModel.DirectionLaneBytes"/>).
+/// </summary>
+/// <param name="Metric">What each column's bar plots: the bytes the ranking measures - sent, received, or both.</param>
+/// <param name="Measures">Every record's bytes in the machine row's columns, and the process's own by source direction.</param>
+public sealed record DirectionLaneByteLayer(RankingMetric Metric, SessionDirectionByteMeasures Measures);
+
+/// <summary>
 /// The timeline under a byte ranking (§6.2: a density cell carries the selected count or a compatible byte sum). The
 /// overview counts records and sums no bytes (`overview-index-v1` §4), so while a real session is ranked by bytes, the
 /// lanes' bytes are read for the columns they draw: at the machine rung each mechanism lane's, over the overview's columns
-/// and the zoomed view's own once it rests; at a group's rung each process lane's, and every record's in the machine row
-/// above them, over the columns the lanes were counted in. Each lane plots what the ranking measures, per second, and a
-/// column whose records declared sizes none of them recorded is drawn unmeasured, never as zero (R3). Until the bytes
-/// arrive the lanes keep plotting records and the caption says their bytes are being read. A live publication shows the
-/// previous one's bytes until its own arrive, as it does its zoomed counts.
+/// and the zoomed view's own once it rests; at a group's rung each process lane's, and at a process's each direction row's,
+/// with every record's in the machine row above them, over the columns the rows were counted in. Each lane plots what the
+/// ranking measures, per second, and a column whose records declared sizes none of them recorded is drawn unmeasured, never
+/// as zero (R3). Until the bytes arrive the lanes keep plotting records and the caption says their bytes are being read. A
+/// live publication shows the previous one's bytes until its own arrive, as it does its zoomed counts.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
     private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures>? overviewLaneBytes;
     private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures>? zoomedLaneBytes;
     private ByteRead<OwnerBytesRequest, SessionOwnerByteMeasures>? ownerLaneBytes;
+    private ByteRead<DirectionBytesRequest, SessionDirectionByteMeasures>? directionLaneBytes;
     private IReadOnlyList<Mechanism>? laneMechanisms;
     private TimelineByteLayer? timelineBytes;
     private ProcessLaneByteLayer? processLaneBytes;
+    private DirectionLaneByteLayer? directionBytes;
     private bool timelineDrawsUnmeasured;
     private string? timelineBytesNote;
 
@@ -66,6 +76,12 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public ProcessLaneByteLayer? ProcessLaneBytes => processLaneBytes;
 
+    /// <summary>
+    /// What a process's direction rows and their machine row plot under a byte ranking once their bytes are read; null
+    /// while they plot records, as <see cref="TimelineBytes"/> is at the machine rung.
+    /// </summary>
+    public DirectionLaneByteLayer? DirectionLaneBytes => directionBytes;
+
     /// <summary>Whether the byte lanes draw a column in view whose size was not measured (§6.6).</summary>
     public bool TimelineDrawsUnmeasured => timelineDrawsUnmeasured;
 
@@ -73,7 +89,8 @@ public sealed partial class WorkspaceViewModel
     public bool DrawsUnmeasured => GraphDrawsUnmeasured || timelineDrawsUnmeasured;
 
     /// <summary>Completes when the timeline's latest byte reads have applied, been superseded or failed.</summary>
-    public Task TimelineBytesReady => Task.WhenAll(OverviewLaneBytes.Ready, ZoomedLaneBytes.Ready, OwnerLaneBytes.Ready);
+    public Task TimelineBytesReady =>
+        Task.WhenAll(OverviewLaneBytes.Ready, ZoomedLaneBytes.Ready, OwnerLaneBytes.Ready, DirectionLaneBytesRead.Ready);
 
     /// <summary>The columns of one read of mechanism lanes: the interval they divide and how many.</summary>
     private sealed record LaneBytesRequest(TimeRange Interval, int Columns);
@@ -101,6 +118,13 @@ public sealed partial class WorkspaceViewModel
     private ByteRead<OwnerBytesRequest, SessionOwnerByteMeasures> OwnerLaneBytes => ownerLaneBytes ??= new(this,
         (source, request, cancellation) => source.OwnerBytesAsync(
             request.Interval, request.Columns, request.LaneColumns, request.Owners, cancellation),
+        measured => measured.SessionId);
+
+    /// <summary>The columns of one read of a process's direction rows, which share the machine row's, and the process.</summary>
+    private sealed record DirectionBytesRequest(TimeRange Interval, int Columns, ProcessInstanceId Owner);
+
+    private ByteRead<DirectionBytesRequest, SessionDirectionByteMeasures> DirectionLaneBytesRead => directionLaneBytes ??= new(this,
+        (source, request, cancellation) => source.DirectionBytesAsync(request.Interval, request.Columns, request.Owner, cancellation),
         measured => measured.SessionId);
 
     /// <summary>
@@ -213,6 +237,11 @@ public sealed partial class WorkspaceViewModel
     private RankingMetric? ProcessLaneByteMetric => ReadsBytes && !disposed && ShowsProcessLanes && Family == RankingFamily.Bytes
         ? rankBy : null;
 
+    /// <summary>The byte metric a process's direction rows are asked to plot: a byte ranking while they are shown.</summary>
+    private RankingMetric? DirectionLaneByteMetric => ReadsBytes && !disposed && ShowsDirectionLanes
+        && Family == RankingFamily.Bytes && timelineFocus is { ChannelKey: null, OwnerProcesses.Count: 1 }
+        ? rankBy : null;
+
     /// <summary>The mechanisms whose lanes the overview draws, in its order.</summary>
     private IReadOnlyList<Mechanism> LaneMechanisms =>
         laneMechanisms ??= Array.AsReadOnly([.. wholeSnapshot.MechanismLanes.Select(lane => lane.Mechanism)]);
@@ -224,8 +253,8 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Reads the bytes the timeline's lanes are asked to plot and does not have, and cancels a read no longer asked for:
     /// the machine rung's mechanism lanes over the overview's columns and a zoomed view's own, and a group's process lanes
-    /// over the columns they were counted in. Called when the ranking, the rung, the drawn view or the lanes change.
-    /// Leaving the byte ranking forgets a failed read, so choosing it again tries once more.
+    /// or a process's direction rows over the columns they were counted in. Called when the ranking, the rung, the drawn
+    /// view or the lanes change. Leaving the byte ranking forgets a failed read, so choosing it again tries once more.
     /// </summary>
     private void FollowTimelineBytes()
     {
@@ -236,6 +265,7 @@ public sealed partial class WorkspaceViewModel
             OverviewLaneBytes.ForgetFailure();
             ZoomedLaneBytes.ForgetFailure();
             OwnerLaneBytes.ForgetFailure();
+            DirectionLaneBytesRead.ForgetFailure();
         }
 
         OverviewLaneBytes.Follow(plots
@@ -245,8 +275,19 @@ public sealed partial class WorkspaceViewModel
             ? new LaneBytesRequest(drawn.Viewport, drawn.Columns)
             : null);
         OwnerLaneBytes.Follow(ProcessLaneByteMetric is not null ? OwnerRequest() : null);
+        DirectionLaneBytesRead.Follow(DirectionLaneByteMetric is not null ? DirectionRequest() : null);
         UpdateTimelineBytes();
     }
+
+    /// <summary>
+    /// The columns a process's direction rows were counted in, which the machine row above them shares, and the process;
+    /// null without rows to read.
+    /// </summary>
+    private DirectionBytesRequest? DirectionRequest() =>
+        timelineDirectionLanes is { Count: > 0 } lanes && lanes[0].Buckets is { Count: > 0 } row
+        && timelineFocus is { ChannelKey: null, OwnerProcesses: [var owner] }
+            ? new(new TimeRange(row[0].Interval.StartTicks, row[^1].Interval.EndTicks), row.Count, owner)
+            : null;
 
     /// <summary>
     /// The columns a group's lanes were counted in, with the machine row's beside them: the zoomed detail's where it spans
@@ -295,6 +336,11 @@ public sealed partial class WorkspaceViewModel
             OwnerLaneBytes.Measures = carry.ProcessLaneBytes;
         }
 
+        if (sameFocus && carry.DirectionLaneBytes?.SessionId == source.SessionId && DirectionLaneBytesRead.Answered is null)
+        {
+            DirectionLaneBytesRead.Measures = carry.DirectionLaneBytes;
+        }
+
         UpdateTimelineBytes();
     }
 
@@ -303,6 +349,7 @@ public sealed partial class WorkspaceViewModel
         overviewLaneBytes?.Cancel();
         zoomedLaneBytes?.Cancel();
         ownerLaneBytes?.Cancel();
+        directionLaneBytes?.Cancel();
     }
 
     /// <summary>Takes up what the lanes plot now, and says what changed: the bytes, the legend's key, the caption.</summary>
@@ -330,12 +377,25 @@ public sealed partial class WorkspaceViewModel
             OnPropertyChanged(nameof(ProcessLaneBytes));
         }
 
+        DirectionLaneByteLayer? rows = DirectionLaneByteMetric is { } rowMetric && DirectionLaneBytesRead.Measures is { } read
+            ? new(rowMetric, read)
+            : null;
+        if (rows is null ? directionBytes is not null
+            : directionBytes is null || rows.Metric != directionBytes.Metric || !ReferenceEquals(rows.Measures, directionBytes.Measures))
+        {
+            directionBytes = rows;
+            OnPropertyChanged(nameof(DirectionLaneBytes));
+        }
+
         TimeRange view = drawnTimeline?.Viewport ?? wholeSnapshot.Extent;
         bool unmeasured = (timelineBytes is { } plotted
                 && (Unmeasured(plotted.Overview.Lanes, plotted.Metric, view)
                     || (plotted.Zoomed is { } zoomed && Unmeasured(zoomed.Lanes, plotted.Metric, view))))
             || (processLaneBytes is { } group
-                && (Unmeasured([group.Measures.Machine], group.Metric, view) || Unmeasured(group.Measures.Lanes, group.Metric, view)));
+                && (Unmeasured([group.Measures.Machine], group.Metric, view) || Unmeasured(group.Measures.Lanes, group.Metric, view)))
+            || (directionBytes is { } directions
+                && (Unmeasured([directions.Measures.Machine], directions.Metric, view)
+                    || Unmeasured(directions.Measures.Lanes, directions.Metric, view)));
         if (unmeasured != timelineDrawsUnmeasured)
         {
             timelineDrawsUnmeasured = unmeasured;
@@ -343,8 +403,9 @@ public sealed partial class WorkspaceViewModel
             OnPropertyChanged(nameof(DrawsUnmeasured));
         }
 
-        // The caption states what the lanes plot, so a change of either, or of a read under way, restates it.
-        string note = (LaneBytesNote ?? string.Empty) + "|" + ProcessLaneBytesNote + "|" + timelineDrawsUnmeasured;
+        // The caption states what the lanes plot, so a change of any of them, or of a read under way, restates it.
+        string note = (LaneBytesNote ?? string.Empty) + "|" + ProcessLaneBytesNote + "|" + DirectionLaneBytesNote + "|"
+            + timelineDrawsUnmeasured;
         if (note != timelineBytesNote)
         {
             timelineBytesNote = note;
@@ -385,20 +446,28 @@ public sealed partial class WorkspaceViewModel
     /// being read, or why they could not be. Empty under any other ranking, and while the lanes are not shown.
     /// </summary>
     private string ProcessLaneBytesNote =>
-        ProcessLaneByteMetric is not { } metric ? string.Empty
-        : processLaneBytes is { } plotted ? $" · {Phrase(plotted.Metric)} per second"
+        RowBytesNote(ProcessLaneByteMetric, processLaneBytes is not null, OwnerLaneBytes.Failed?.Problem);
+
+    /// <summary>What a process's caption says of its direction rows' bytes under a byte ranking, as a group's does.</summary>
+    private string DirectionLaneBytesNote =>
+        RowBytesNote(DirectionLaneByteMetric, directionBytes is not null, DirectionLaneBytesRead.Failed?.Problem);
+
+    /// <summary>A focused rung's rows' bytes in its caption: plotted per second, being read, or why they could not be.</summary>
+    private string RowBytesNote(RankingMetric? asked, bool plotted, string? problem) =>
+        asked is not { } metric ? string.Empty
+        : plotted ? $" · {Phrase(metric)} per second"
             + (timelineDrawsUnmeasured ? ", cross-hatched where no size was recorded" : string.Empty)
-        : OwnerLaneBytes.Failed is { } failed ? $" · {Phrase(metric)} could not be read: {failed.Problem.TrimEnd('.')}"
+        : problem is not null ? $" · {Phrase(metric)} could not be read: {problem.TrimEnd('.')}"
         : $" · reading {Phrase(metric)}…";
 
     /// <summary>
-    /// What a rung whose lanes count records adds to its caption under a byte ranking: that they count records, and where
-    /// bytes are plotted, so a lane is never read as a byte volume. A group's rung plots bytes in its process lanes, and
-    /// adds it only when they cannot be counted.
+    /// What a rung adds to its caption under a byte ranking while its timeline counts records - its lanes could not be
+    /// counted, or it has none - so what it draws is never read as a byte volume. While its lanes are being counted, the
+    /// caption says that instead.
     /// </summary>
     private string LaneRecordsNote => ReadsBytes && ShowsRankingChoice && Family == RankingFamily.Bytes && !ShowsMechanismLanes
-        && !(ladder.Current.Level == DetailLevel.Group && processLaneProblem is null)
-        ? " · lanes count records; bytes are plotted at the machine and group rungs"
+        && !ShowsProcessLanes && !ShowsDirectionLanes && !timelineFocusLoading
+        ? " · the timeline counts records here, not bytes"
         : string.Empty;
 
     /// <summary>What a mechanism lane's card says under a byte ranking: its bucket's bytes against the busiest lane.</summary>
@@ -451,20 +520,47 @@ public sealed partial class WorkspaceViewModel
             new() { Owner = owner.Id }, selectionShown: false);
     }
 
-    /// <summary>What the machine row's card says above a group's byte lanes: every record's bytes in its bucket.</summary>
-    private HoverCard DescribeMachineBytesHover(TimelineBucket bucket, double peakPerSecond, ProcessLaneByteLayer plotted)
+    /// <summary>
+    /// What a process's direction row's card says under a byte ranking: its bucket's bytes, from the process's own records
+    /// of that source direction, against the busiest row including the machine row.
+    /// </summary>
+    private HoverCard DescribeDirectionBytesHover(TimelineBucket bucket, double peakPerSecond, Direction direction,
+        DirectionLaneByteLayer plotted)
+    {
+        string owner = wholeSnapshot.Processes.FirstOrDefault(process => process.Id == plotted.Measures.Owner)?.NameWithPid
+            ?? "instance " + plotted.Measures.Owner.ToString()[..8];
+        string resolution = string.Create(CultureInfo.CurrentCulture,
+                $"Resolution: the rows' own bytes, {plotted.Measures.Machine.Columns.Count:N0} buckets")
+            + GenerationNote(plotted.Measures.Generation);
+        string records = plotted.Metric switch
+        {
+            RankingMetric.BytesSent => "send records",
+            RankingMetric.BytesReceived => "receive records",
+            _ => "records",
+        };
+        string domain = $"{records} with a session time canonically owned by {owner}, {SourceDirectionDomain(direction)}";
+        return DescribeBytesHover(bucket, plotted.Metric, $"{DirectionLabel(direction)} lane", domain,
+            plotted.Measures.Of(direction)?.For(bucket.Interval), peakPerSecond,
+            "the busiest visible lane including machine context", resolution,
+            new() { Owner = plotted.Measures.Owner, Direction = direction }, selectionShown: false,
+            meaning: DescribeSourceDirection(direction));
+    }
+
+    /// <summary>What the machine row's card says above a focused rung's byte rows: every record's bytes in its bucket.</summary>
+    private HoverCard DescribeMachineBytesHover(TimelineBucket bucket, double peakPerSecond, RankingMetric metric,
+        SessionIntervalByteMeasures machine, long generation)
     {
         string resolution = string.Create(CultureInfo.CurrentCulture,
-                $"Resolution: the machine row's bytes, {plotted.Measures.Machine.Columns.Count:N0} buckets")
-            + GenerationNote(plotted.Measures.Generation);
-        string domain = plotted.Metric switch
+                $"Resolution: the machine row's bytes, {machine.Columns.Count:N0} buckets")
+            + GenerationNote(generation);
+        string domain = metric switch
         {
             RankingMetric.BytesSent => "every send record with a session time",
             RankingMetric.BytesReceived => "every receive record with a session time",
             _ => "every record with a session time, both directions",
         };
-        return DescribeBytesHover(bucket, plotted.Metric, "machine context, not added to the lanes", domain,
-            plotted.Measures.Machine.For(bucket.Interval), peakPerSecond, "the busiest visible lane including machine context",
+        return DescribeBytesHover(bucket, metric, "machine context, not added to the lanes", domain,
+            machine.For(bucket.Interval), peakPerSecond, "the busiest visible lane including machine context",
             resolution, IntervalByteScope.Whole, selectionShown: false);
     }
 
@@ -480,7 +576,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private HoverCard DescribeBytesHover(TimelineBucket bucket, RankingMetric metric, string row, string domain,
         TransportBytes? bytes, double peakPerSecond, string scale, string resolution, IntervalByteScope scope,
-        bool selectionShown)
+        bool selectionShown, string? meaning = null)
     {
         (string verb, string record, string accounting, string none) = metric switch
         {
@@ -497,6 +593,10 @@ public sealed partial class WorkspaceViewModel
                 : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · {row}",
             $"Basis: source observations · unit: bytes · domain: transport-observed bytes of {domain} · accounting: {accounting}",
         };
+        if (meaning is not null)
+        {
+            lines.Add(meaning);
+        }
 
         string unmeasured;
         if (bytes is null)

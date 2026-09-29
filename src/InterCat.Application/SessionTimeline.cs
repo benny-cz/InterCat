@@ -414,7 +414,7 @@ public static class SessionTimelineQuery
     }
 
     /// <summary>A direction's row among <see cref="LaneDirections"/>, which name every direction code.</summary>
-    private static int DirectionSlot(Direction direction)
+    internal static int DirectionSlot(Direction direction)
     {
         for (int slot = 0; slot < LaneDirections.Count; slot++)
         {

@@ -98,6 +98,19 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             owners,
             cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// What a process's records sent and received in each column by source direction, and every record in the machine
+    /// row, for its direction rows to plot under a byte ranking (<see cref="SessionIntervalByteQuery.MeasureByDirection"/>).
+    /// </summary>
+    public Task<SessionDirectionByteMeasures> DirectionBytesAsync(
+        TimeRange interval, int columns, ProcessInstanceId owner, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionIntervalByteQuery.MeasureByDirection(
+            Store(),
+            interval,
+            columns,
+            owner,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
     public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(() => SessionTimelineQuery.Detail(

@@ -12,9 +12,9 @@ namespace InterCat.Desktop.Tests;
 
 /// <summary>
 /// §6.2's density cell carries the selected count or a compatible byte sum: under a byte ranking the machine rung's
-/// mechanism lanes, and a group's process lanes with the machine row above them, plot the bytes the ranking measures, read
-/// for the columns they draw, and a column whose records recorded no size is unmeasured, never zero (R3). Lower rungs keep
-/// counting records and say so.
+/// mechanism lanes, a group's process lanes and a process's direction rows, with the machine row above them, plot the
+/// bytes the ranking measures, read for the columns they draw, and a column whose records recorded no size is unmeasured,
+/// never zero (R3). A rung whose rows cannot be counted says its timeline counts records.
 /// </summary>
 public sealed class TimelineBytesTests
 {
@@ -97,16 +97,10 @@ public sealed class TimelineBytesTests
         workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
         Assert.Null(workspace.TimelineBytes!.Zoomed);
 
-        // A process's rung counts records in its lanes and says so; the machine rung plots its bytes again on return.
+        // Another rung's rows plot bytes of their own; back at the machine rung its lanes plot theirs again, unread.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "big.exe");
         Assert.True(workspace.Descend());
-        workspace.SelectedRung = workspace.RungRows[0];
-        Assert.True(workspace.Descend());
         Assert.Null(workspace.TimelineBytes);
-        Assert.Null(workspace.ProcessLaneBytes);
-        Assert.Contains(" · lanes count records; bytes are plotted at the machine and group rungs", workspace.TimelineCaption,
-            StringComparison.Ordinal);
-        Assert.True(workspace.Ascend());
         Assert.True(workspace.Ascend());
         Assert.Same(plotted.Overview, workspace.TimelineBytes!.Overview);
 
@@ -182,6 +176,63 @@ public sealed class TimelineBytesTests
         await workspace.RankingReady;
     });
 
+    [Fact(DisplayName = "§6.2: under a byte ranking a process's direction rows, and the machine row above them, plot the bytes it measures")]
+    public void AProcesssDirectionRowsPlotItsBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+
+        // Down to big.exe's PID 100, whose rows split its records by the direction their source states.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "big.exe");
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        ProcessNode sender = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == sender.Id.ToString());
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        Assert.True(workspace.ShowsDirectionLanes);
+        Assert.Null(workspace.DirectionLaneBytes);
+        Assert.Contains(" · by source direction · reading bytes sent… · machine context above", workspace.TimelineCaption,
+            StringComparison.Ordinal);
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+        DirectionLaneByteLayer plotted = Assert.IsType<DirectionLaneByteLayer>(workspace.DirectionLaneBytes);
+        Assert.Contains(" · by source direction · bytes sent per second, cross-hatched where no size was recorded · machine "
+            + "context above", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.DoesNotContain("counts records here", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // The outbound row holds the process's sends, the inbound row none of them, and the machine row every record's.
+        TimelineBucket At(Direction direction, long tick) => workspace.TimelineDirectionLanes!
+            .Single(lane => lane.Direction == direction).Buckets.Single(bucket => bucket.Interval.StartTicks == tick);
+        (long? Value, long Measured, long Unmeasured) Sent(SessionIntervalByteMeasures row, TimelineBucket bucket) =>
+            row.For(bucket.Interval)!.ValueOf(RankingMetric.BytesSent);
+        Assert.Equal(((long?)500, 1L, 0L), Sent(plotted.Measures.Of(Direction.Outbound)!, At(Direction.Outbound, 10)));
+        Assert.Equal(((long?)null, 0L, 0L), Sent(plotted.Measures.Of(Direction.Inbound)!, At(Direction.Inbound, 10)));
+        TimelineBucket blind = workspace.WholeSnapshot.Timeline.Single(bucket => bucket.Interval.StartTicks == 14);
+        Assert.Equal(((long?)null, 0L, 1L), Sent(plotted.Measures.Machine, blind));
+
+        // A row's card: the process's own sends of that direction, and what the direction means.
+        List<string> row = [.. workspace.DescribeTimelineHover(At(Direction.Outbound, 10), 2_000, directionLane: Direction.Outbound).Lines];
+        Assert.Contains($"1 observed record · {WorkspaceViewModel.DirectionLabel(Direction.Outbound)} lane", row);
+        Assert.Contains("Basis: source observations · unit: bytes · domain: transport-observed bytes of send records with a "
+            + $"session time canonically owned by {sender.NameWithPid}, marked outbound · accounting: sender-accounted", row);
+        Assert.Contains($"Plotted: {WorkspaceRowBuilder.DescribeSize(500)} sent on 1 measured send", row);
+        Assert.Contains(row, line => line.StartsWith("Direction: outbound, as the source marks sends", StringComparison.Ordinal));
+        Assert.Contains("1 observed record · machine context, not added to the lanes",
+            workspace.DescribeTimelineHover(blind, 2_000).Lines);
+
+        // Records bring the record rows back.
+        workspace.RankBy = RankingMetric.Records;
+        Assert.Null(workspace.DirectionLaneBytes);
+        Assert.DoesNotContain("per second", workspace.TimelineCaption, StringComparison.Ordinal);
+        await workspace.RankingReady;
+    });
+
     [Fact(DisplayName = "§6.2: a later publication keeps plotting the earlier one's lane bytes until its own are read")]
     public void ALaterPublicationKeepsTheEarlierLaneBytes() => SingleThreadedContext.Run(async () =>
     {
@@ -217,6 +268,16 @@ public sealed class TimelineBytesTests
         Assert.Null(elsewhere.TimelineBytes);
         Assert.StartsWith("Observed records by mechanism · bytes sent could not be read: the session on disk is another one · 2 lanes",
             elsewhere.TimelineCaption, StringComparison.Ordinal);
+
+        // Its group's lanes cannot be counted either, so the timeline says it counts records there, not bytes.
+        elsewhere.RequestTimelineDetail(elsewhere.WholeSnapshot.Extent, 64);
+        elsewhere.SelectedRung = elsewhere.RungRows.Single(row => row.Label == "big.exe");
+        Assert.True(elsewhere.Descend());
+        await elsewhere.TimelineDetailReady;
+        Assert.False(elsewhere.ShowsProcessLanes);
+        Assert.EndsWith(" could not be counted: the session on disk is another one. Every observed record is shown. · the "
+            + "timeline counts records here, not bytes", elsewhere.TimelineCaption, StringComparison.Ordinal);
+        await elsewhere.RankingReady;
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

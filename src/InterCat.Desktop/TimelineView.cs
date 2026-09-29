@@ -631,11 +631,14 @@ public sealed class TimelineView : Control, IHoverCardSource
         // tick, on a scale of their own (§6.2).
         TimelineByteLayer? bytes = ShowingMechanismLanes ? viewModel.TimelineBytes : null;
         ProcessLaneByteLayer? groupBytes = rows?.Kind == FocusRowKind.Owners ? viewModel.ProcessLaneBytes : null;
-        bool plotsBytes = bytes is not null || groupBytes is not null;
+        DirectionLaneByteLayer? directionBytes = rows?.Kind == FocusRowKind.Directions ? viewModel.DirectionLaneBytes : null;
+        bool plotsBytes = bytes is not null || groupBytes is not null || directionBytes is not null;
         double maximumRate = bytes is not null
             ? LaneBytePeak(viewModel.Snapshot.MechanismLanes, bytes, visible)
             : groupBytes is not null
-            ? GroupBytePeak(groupBytes, visible)
+            ? RowsBytePeak(groupBytes.Measures.Machine, groupBytes.Measures.Lanes, groupBytes.Metric, visible)
+            : directionBytes is not null
+            ? RowsBytePeak(directionBytes.Measures.Machine, directionBytes.Measures.Lanes, directionBytes.Metric, visible)
             : ShowingMechanismLanes
             ? MechanismLanePeak(viewModel.Snapshot.MechanismLanes, detail, visible)
             : rows is not null
@@ -658,7 +661,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                     DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes);
                     break;
                 case FocusRowKind.Directions:
-                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale);
+                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale, directionBytes);
                     break;
                 case FocusRowKind.ChannelEnds:
                     DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale);
@@ -674,6 +677,9 @@ public sealed class TimelineView : Control, IHoverCardSource
                 // or an earlier publication's standing in until this one's arrive.
                 long? generation = groupBytes is not null
                     ? groupBytes.Measures.Generation != viewModel.DisplayedGeneration ? (long?)groupBytes.Measures.Generation : null
+                    : directionBytes is not null
+                    ? directionBytes.Measures.Generation != viewModel.DisplayedGeneration
+                        ? (long?)directionBytes.Measures.Generation : null
                     : bytes!.Overview.Generation != viewModel.DisplayedGeneration ? (long?)bytes.Overview.Generation
                     : bytes.Zoomed is { } zoomed && zoomed.Generation != viewModel.DisplayedGeneration ? zoomed.Generation
                     : null;
@@ -1657,11 +1663,16 @@ public sealed class TimelineView : Control, IHoverCardSource
         _ => "Machine · all transfers",
     };
 
-    /// <summary>L2's exact source-direction partition; the machine row is context, never added to the owner total.</summary>
+    /// <summary>
+    /// L2's exact source-direction partition; the machine row is context, never added to the owner total. Under a byte
+    /// ranking each row plots the bytes it measures per tick, over the counted rows' coverage.
+    /// </summary>
     private static void DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
-        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<DirectionTimelineLane> lanes, BarScale scale)
+        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<DirectionTimelineLane> lanes, BarScale scale,
+        DirectionLaneByteLayer? bytes)
     {
         int count = lanes.Count + 1;
+        bool coverageOnly = bytes is not null;
         for (int index = 0; index < count; index++)
         {
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
@@ -1671,9 +1682,16 @@ public sealed class TimelineView : Control, IHoverCardSource
                 row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
             if (index == 0)
             {
-                DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
+                DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
+                if (bytes is not null)
+                {
+                    // Byte bars first, so the coverage hatch crosses them as it crosses a record bar.
+                    DrawByteColumns(context, viewModel, bytes.Measures.Machine, bytes.Metric, rowScale,
+                        new ByteHue(null, null, Context: true));
+                }
+
                 DrawLaneSeries(context, viewModel, null,
-                    machine, rowScale, row, contextRow: true);
+                    machine, rowScale, row, contextRow: true, coverageOnly: coverageOnly);
                 continue;
             }
 
@@ -1692,7 +1710,17 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
 
             DrawText(context, label, new(9, row.Center.Y - 7));
-            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row);
+            if (bytes?.Measures.Of(lane.Direction) is { } measured)
+            {
+                DrawByteColumns(context, viewModel, measured, bytes.Metric, rowScale, new ByteHue(null, lane.Buckets, Context: false));
+                if (!none && !PlotsAnything(measured, bytes.Metric))
+                {
+                    // A direction none of whose records here carries the ranking's size is empty for that reason.
+                    DrawText(context, NothingToPlot(bytes.Metric), new(9, row.Center.Y + 4));
+                }
+            }
+
+            DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row, coverageOnly: coverageOnly);
         }
     }
 
@@ -2689,13 +2717,14 @@ public sealed class TimelineView : Control, IHoverCardSource
         return peak;
     }
 
-    /// <summary>A group's byte scale: the highest rate the machine row or any process lane plots in the viewport.</summary>
-    private static double GroupBytePeak(ProcessLaneByteLayer bytes, TimeRange visible)
+    /// <summary>A focused rung's byte scale: the highest rate the machine row or any of its rows plots in the viewport.</summary>
+    private static double RowsBytePeak(SessionIntervalByteMeasures machine, IReadOnlyList<SessionIntervalByteMeasures> rows,
+        RankingMetric metric, TimeRange visible)
     {
-        double peak = BytePeak(bytes.Measures.Machine, bytes.Metric, visible, null);
-        for (int index = 0; index < bytes.Measures.Lanes.Count; index++)
+        double peak = BytePeak(machine, metric, visible, null);
+        for (int index = 0; index < rows.Count; index++)
         {
-            peak = Math.Max(peak, BytePeak(bytes.Measures.Lanes[index], bytes.Metric, visible, null));
+            peak = Math.Max(peak, BytePeak(rows[index], metric, visible, null));
         }
 
         return peak;

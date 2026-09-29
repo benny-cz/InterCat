@@ -74,15 +74,15 @@ public sealed class PaintAllocationTests
             Assert.True(workspace.Descend(), rung);
             await Settle(window, workspace);
             Measure(window, rung, report);
-            if (rung == "group")
+            if (rung is "group" or "process")
             {
-                // The group's process lanes and the machine row above them, plotting bytes sent.
+                // The rung's rows and the machine row above them, plotting bytes sent.
                 workspace.RankBy = RankingMetric.BytesSent;
                 await workspace.TimelineBytesReady;
                 await workspace.RankingReady;
                 await Settle(window, workspace);
-                Assert.NotNull(workspace.ProcessLaneBytes);
-                Measure(window, "group, plotting bytes sent", report);
+                Assert.True(rung == "group" ? workspace.ProcessLaneBytes is not null : workspace.DirectionLaneBytes is not null, rung);
+                Measure(window, $"{rung}, plotting bytes sent", report);
                 workspace.RankBy = RankingMetric.Records;
                 await workspace.RankingReady;
                 await Settle(window, workspace);

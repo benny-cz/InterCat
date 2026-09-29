@@ -138,6 +138,36 @@ public sealed record SessionOwnerByteMeasures(
 }
 
 /// <summary>
+/// A process instance's direction rows' transport bytes over one interval, from one leased generation: every record's bytes
+/// in the machine row's columns, and the instance's own records' by source direction, one row per direction of
+/// <see cref="SessionTimelineQuery.LaneDirections"/>, in the same columns. Each is exactly what
+/// <see cref="SessionIntervalByteQuery.Measure"/> answers for its scope, all measured in one pass (R18). A process's
+/// direction rows plot them when the ranking is by bytes.
+/// </summary>
+public sealed record SessionDirectionByteMeasures(
+    Guid SessionId,
+    long Generation,
+    TimeRange Interval,
+    ProcessInstanceId Owner,
+    SessionIntervalByteMeasures Machine,
+    IReadOnlyList<SessionIntervalByteMeasures> Lanes)
+{
+    /// <summary>The columns of the <paramref name="direction"/> row, or null when it was not measured.</summary>
+    public SessionIntervalByteMeasures? Of(Direction direction)
+    {
+        for (int index = 0; index < Lanes.Count; index++)
+        {
+            if (Lanes[index].Scope.Direction == direction)
+            {
+                return Lanes[index];
+            }
+        }
+
+        return null;
+    }
+}
+
+/// <summary>
 /// Measures the transport bytes of one scope's records in each column of an interval: what `icat metric --metric
 /// bytes-sent --byte-domain transport-observed --side send` and its received counterpart answer for each column's own
 /// interval, in one pass (R18). A record declaring a size it did not record is unmeasured and counted apart, never summed
@@ -145,6 +175,105 @@ public sealed record SessionOwnerByteMeasures(
 /// </summary>
 public static class SessionIntervalByteQuery
 {
+    /// <summary>
+    /// Measures a process's direction rows in one pass: every record in each column of the interval, for the machine row,
+    /// and <paramref name="owner"/>'s own records, under the evidence rung's rules and the policy, in each column by the
+    /// direction their source states. For each, what <see cref="Measure"/> answers for its scope. An owner this generation
+    /// does not hold is refused with the evidence rung's reason, never measured as nothing.
+    /// </summary>
+    public static SessionDirectionByteMeasures MeasureByDirection(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        ProcessInstanceId owner,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(columns);
+        ArgumentOutOfRangeException.ThrowIfGreaterThan(columns, SessionTimelineQuery.MaximumColumns);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (owner.Value == Guid.Empty) throw new ArgumentException("A process's rows need a non-empty instance ID.", nameof(owner));
+
+        using EvidenceLease lease = store.AcquireLease();
+        SessionManifestV1 manifest = lease.Manifest;
+        SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
+            ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+        FocusRows rows = FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(null, [owner]), policy,
+            cancellationToken);
+        var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
+        int count = layout.Counts.Count;
+        int directions = SessionTimelineQuery.LaneDirections.Count;
+
+        // The machine row's columns, and one slot per direction and column, direction by direction, each with one more
+        // for every row outside them.
+        var total = new LaneByteTally(count + 1, (directions * count) + 1);
+        SegmentPasses.Run(
+            segments,
+            () => new LaneByteTally(count + 1, (directions * count) + 1),
+            (segment, tally) => MeasureDirections(segment, layout, rows, tally, cancellationToken),
+            total.Add,
+            cancellationToken);
+        return new(manifest.SessionId, manifest.Generation, interval, owner,
+            new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval, IntervalByteScope.Whole,
+                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(total.Machine.Of)])),
+            Array.AsReadOnly([.. SessionTimelineQuery.LaneDirections.Select((direction, slot) =>
+                new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
+                    new IntervalByteScope { Owner = owner, Direction = direction },
+                    Array.AsReadOnly([.. Enumerable.Range(0, count).Select(column => total.Lanes.Of((slot * count) + column))])))]));
+    }
+
+    /// <summary>
+    /// Places each of one segment's rows in the machine row's column, and the owner's in its direction's row of the same
+    /// column, as a process's direction rows count them, and measures both.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private static void MeasureDirections(
+        SegmentReaderV1 segment,
+        TimelineColumns layout,
+        FocusRows rows,
+        LaneByteTally tally,
+        CancellationToken cancellationToken)
+    {
+        TimeRange interval = layout.Interval;
+        SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
+        if (tiles.First is not { } first || tiles.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return;
+        }
+
+        int count = layout.Counts.Count;
+        int laneOutside = SessionTimelineQuery.LaneDirections.Count * count;
+        SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+        SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
+        using FocusRows.SegmentRows inFocus = rows.Of(segment);
+        using RentedRows<int> machineGroups = RentedRows<int>.For(segment);
+        using RentedRows<int> laneGroups = RentedRows<int>.For(segment);
+        Span<int> columnOf = machineGroups.Span;
+        Span<int> slotOf = laneGroups.Span;
+        for (int row = 0; row < columnOf.Length; row++)
+        {
+            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if (times.SignedAt(row) is not { } nanoseconds || layout.ColumnOf(nanoseconds / 100) is not { } column)
+            {
+                columnOf[row] = count;
+                slotOf[row] = laneOutside;
+                continue;
+            }
+
+            columnOf[row] = column;
+            slotOf[row] = inFocus.Includes(row)
+                ? (SessionTimelineQuery.DirectionSlot(SessionTimelineQuery.DirectionAt(directions, row)) * count) + column
+                : laneOutside;
+        }
+
+        var spec = new DomainMeasurementSpec { Domain = ByteDomain.TransportObserved };
+        tally.Machine.Add(SegmentMeasurement.MeasureDomainByGroup(segment, spec, columnOf, count + 1));
+        tally.Lanes.Add(SegmentMeasurement.MeasureDomainByGroup(segment, spec, slotOf, laneOutside + 1));
+    }
+
     /// <summary>
     /// Measures a group's lanes in one pass: every record in <paramref name="columns"/> columns of the interval, for the
     /// machine row, and each of <paramref name="owners"/>' own records, under the evidence rung's rules and the policy, in
@@ -196,10 +325,10 @@ public static class SessionIntervalByteQuery
 
         // The machine row's columns and one slot per lane and column, lane by lane, each with one more for every row
         // outside them.
-        var total = new OwnerByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
+        var total = new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
         SegmentPasses.Run(
             segments,
-            () => new OwnerByteTally(machineCount + 1, (owners.Count * laneCount) + 1),
+            () => new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1),
             (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
             total.Add,
             cancellationToken);
@@ -213,13 +342,13 @@ public static class SessionIntervalByteQuery
     }
 
     /// <summary>One worker's bytes: the machine row's columns, and every lane's.</summary>
-    private sealed class OwnerByteTally(int machineSlots, int laneSlots)
+    private sealed class LaneByteTally(int machineSlots, int laneSlots)
     {
         public TransportByteTally Machine { get; } = new(machineSlots);
 
         public TransportByteTally Lanes { get; } = new(laneSlots);
 
-        public void Add(OwnerByteTally other)
+        public void Add(LaneByteTally other)
         {
             Machine.Add(other.Machine);
             Lanes.Add(other.Lanes);
@@ -238,7 +367,7 @@ public static class SessionIntervalByteQuery
         FocusRows rows,
         int[] laneOf,
         int laneTotal,
-        OwnerByteTally tally,
+        LaneByteTally tally,
         CancellationToken cancellationToken)
     {
         TimeRange interval = machine.Interval;

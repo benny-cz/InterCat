@@ -97,8 +97,8 @@ public sealed record ScopeCarry(
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
-/// by that focus's key, and the bytes its lanes plotted under a byte ranking, a group's for that focus. The next
-/// publication of the same session shows them until its own arrive.
+/// by that focus's key, and the bytes its lanes plotted under a byte ranking, a group's or a process's for that focus. The
+/// next publication of the same session shows them until its own arrive.
 /// </summary>
 public sealed record TimelineCarry(
     SessionTimelineDetail? Detail,
@@ -113,7 +113,8 @@ public sealed record TimelineCarry(
     IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null,
     SessionMechanismByteMeasures? LaneBytes = null,
     SessionMechanismByteMeasures? ZoomedLaneBytes = null,
-    SessionOwnerByteMeasures? ProcessLaneBytes = null);
+    SessionOwnerByteMeasures? ProcessLaneBytes = null,
+    SessionDirectionByteMeasures? DirectionLaneBytes = null);
 
 public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -932,7 +933,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
         highlight?.Key, highlightBuckets, highlightLanes, overviewLaneBytes?.Measures, zoomedLaneBytes?.Measures,
-        ownerLaneBytes?.Measures);
+        ownerLaneBytes?.Measures, directionLaneBytes?.Measures);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -1207,7 +1208,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + LaneResolutionNote
                     + ProcessLaneBytesNote + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
-                ? $"{focus} · by source direction · machine context above"
+                ? $"{focus} · by source direction" + DirectionLaneBytesNote + " · machine context above"
                     + (SelectedTimelineDirection is { } direction
                         ? $" · {DirectionLabel(direction)} table/step focus"
                         : " · click a lane name or choose one in tables (T)")
@@ -3396,7 +3397,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // A group's lanes and the machine row above them plot bytes too.
             return ownerLane is { } byteOwner
                 ? DescribeOwnerBytesHover(bucket, peakPerSecond, byteOwner, group)
-                : DescribeMachineBytesHover(bucket, peakPerSecond, group);
+                : DescribeMachineBytesHover(bucket, peakPerSecond, group.Metric, group.Measures.Machine, group.Measures.Generation);
+        }
+
+        if (directionBytes is { } rows && lane is null && ownerLane is null && ShowsDirectionLanes)
+        {
+            // So do a process's direction rows and the machine row above them.
+            return directionLane is { } byteDirection
+                ? DescribeDirectionBytesHover(bucket, peakPerSecond, byteDirection, rows)
+                : DescribeMachineBytesHover(bucket, peakPerSecond, rows.Metric, rows.Measures.Machine, rows.Measures.Generation);
         }
 
         bool zoomed = timelineDetail is { } detail && (detail.Buckets.Contains(bucket)
