@@ -104,7 +104,8 @@ public static partial class InvestigationWorkspace
     /// <summary>What makes a file's views contradict themselves, or null (`contracts/workspace-v10.md` §7).</summary>
     private static string? ViewProblem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Views.Count > 0 && workspace.Contract != Contract)
+        // Saved views arrived with the tenth version (revision 271).
+        if (workspace.Views.Count > 0 && VersionOf(workspace) < 10)
         {
             return $"a {workspace.Contract} file holds no saved view";
         }

@@ -15,7 +15,10 @@ any member placed in the workspace's time, not only to its reference (§5). Vers
 two host identities are one host (§4), version 8 their statements of known address translations (§6), version 9 their
 notes (§7), and version 10 their saved views (§7). An earlier version's file is read as one without what later versions
 added - a `workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only,
-and a `workspace-v5` file members each aligned to the reference itself - and each is written as version 10.
+and a `workspace-v5` file members each aligned to the reference itself - and each is written as version 10. A kind of
+fact is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
+version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
+later version appeared.
 
 ## 1. The file
 

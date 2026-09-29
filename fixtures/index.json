@@ -1502,6 +1502,7 @@
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
+        "R22: a file an earlier version wrote keeps reading, with everything that version could hold",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a known address translation lets mirrored endpoints meet through it, and the candidate rests on it",
         "R22: a live capture's host is its installation's, and a name alone never makes two machines one host",

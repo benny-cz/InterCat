@@ -488,6 +488,57 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: a file an earlier version wrote keeps reading, with everything that version could hold")]
+    public void AnEarlierVersionsFileKeepsReading()
+    {
+        // Each version's newest kind of fact, alone in a file of that version: every later version reads it as written.
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace,
+            NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace,
+            NewSession(Path.Combine(root, "gamma"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        IReadOnlyList<WorkspaceMember> members = InvestigationWorkspace.Read(workspace).Members;
+        Guid Host(Guid session) => members.Single(member => member.SessionId == session).HostId;
+        string start = File.ReadAllText(workspace);
+
+        void As(string version, Action write, Func<InvestigationWorkspaceFile, bool> holds)
+        {
+            File.WriteAllText(workspace, start);
+            write();
+            File.WriteAllText(workspace, File.ReadAllText(workspace).Replace(
+                $"\"{InvestigationWorkspace.Contract}\"", $"\"{version}\"", StringComparison.Ordinal));
+            InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+            Assert.Equal(version, read.Contract);
+            Assert.True(holds(read), version);
+        }
+
+        As(InvestigationWorkspace.FifthContract,
+            () => InvestigationWorkspace.Align(workspace, b, 0, a, 1_000, 1_000, null, null, Now, (1_000_000_000, 1_000_001_000)),
+            read => read.Alignments.Single().SecondSessionNanoseconds is not null);
+        As(InvestigationWorkspace.SixthContract,
+            () =>
+            {
+                InvestigationWorkspace.Align(workspace, b, 0, a, 1_000, 1_000, 1, null, Now);
+                InvestigationWorkspace.Align(workspace, c, 0, b, 1_000, 1_000, 1, null, Now);
+            },
+            read => InvestigationWorkspace.ActiveAlignment(read, c)?.ReferenceSessionId == b && InvestigationWorkspace.ChainOf(read, c) is not null);
+        As(InvestigationWorkspace.SeventhContract,
+            () => InvestigationWorkspace.ConfirmOneHost(workspace, Host(a), Host(b), null, Now),
+            read => read.HostEquivalences.Count == 1);
+        As(InvestigationWorkspace.EighthContract,
+            () => InvestigationWorkspace.StateTranslation(workspace, "10.0.0.5:443", "203.0.113.7:443", null, Now),
+            read => read.AddressTranslations.Count == 1);
+        As(InvestigationWorkspace.NinthContract,
+            () => InvestigationWorkspace.AddNote(workspace, "The upload stalls.", null, Now),
+            read => read.Notes.Count == 1);
+
+        // Written again, such a file is the current version, and loses nothing.
+        InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, 2), (rewritten.Contract, rewritten.Notes.Count));
+    }
+
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]
     public void ANoteIsKeptAsRevisions()
     {

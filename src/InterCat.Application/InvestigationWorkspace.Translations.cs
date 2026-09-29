@@ -211,7 +211,8 @@ public static partial class InvestigationWorkspace
     /// <summary>What makes a file's translations contradict themselves, or null (`contracts/workspace-v10.md` §6).</summary>
     private static string? TranslationProblem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.AddressTranslations.Count > 0 && workspace.Contract != Contract)
+        // Known address translations arrived with the eighth version (revision 269).
+        if (workspace.AddressTranslations.Count > 0 && VersionOf(workspace) < 8)
         {
             return $"a {workspace.Contract} file holds no address translation";
         }

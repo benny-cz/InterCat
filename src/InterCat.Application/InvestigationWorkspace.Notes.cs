@@ -104,7 +104,8 @@ public static partial class InvestigationWorkspace
     /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v10.md` §7).</summary>
     private static string? NoteProblem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Notes.Count > 0 && workspace.Contract != Contract)
+        // Notes arrived with the ninth version (revision 270).
+        if (workspace.Notes.Count > 0 && VersionOf(workspace) < 9)
         {
             return $"a {workspace.Contract} file holds no note";
         }

@@ -163,6 +163,14 @@ public static partial class InvestigationWorkspace
     /// <summary>A workspace file's conventional extension, added to a new workspace's name when it has none.</summary>
     public const string Extension = ".icat-workspace";
 
+    /// <summary>
+    /// A known file's version number: 1 for `workspace-v1` up to this one's. A kind of fact is refused only in a file of a
+    /// version before the one that introduced it, so every later version reads what an earlier one wrote.
+    /// </summary>
+    internal static int VersionOf(InvestigationWorkspaceFile workspace) =>
+        int.Parse(workspace.Contract.AsSpan("workspace-v".Length), System.Globalization.NumberStyles.None,
+            System.Globalization.CultureInfo.InvariantCulture);
+
     private const string KeptBeside = "A workspace is kept beside its sessions, never in one: a session keeps only its own files, "
         + "and would count the workspace as an orphan.";
 

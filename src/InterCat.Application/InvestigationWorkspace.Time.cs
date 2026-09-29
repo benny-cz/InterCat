@@ -695,7 +695,8 @@ public static partial class InvestigationWorkspace
             return "it lists an empty alignment";
         }
 
-        if (workspace.Contract != Contract && workspace.Alignments.Any(alignment =>
+        // Two anchors arrived with the fifth version (revision 264).
+        if (VersionOf(workspace) < 5 && workspace.Alignments.Any(alignment =>
             alignment.SecondSessionNanoseconds is not null || alignment.SecondReferenceNanoseconds is not null))
         {
             return $"a {workspace.Contract} file holds no alignment with a second anchor";
@@ -770,7 +771,8 @@ public static partial class InvestigationWorkspace
                     return $"the time reference {time:N} is aligned to another member";
                 }
 
-                if (workspace.Contract != Contract && active.ReferenceSessionId != time)
+                // Aligning through another member arrived with the sixth version (revision 265).
+                if (VersionOf(workspace) < 6 && active.ReferenceSessionId != time)
                 {
                     return $"session {member.SessionId:N} is aligned to a member that is not the workspace's time reference, "
                         + $"which a {workspace.Contract} file does not";

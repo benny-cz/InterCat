@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-09-29 · Plan revision: 278 · Branch: `main`
+Updated: 2026-09-29 · Plan revision: 279 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 279 — an investigation an earlier version wrote keeps reading (`workspace-v10`, R22):**
+  - Each kind of fact was refused in any version before the newest, so a v5 file with two anchors, a v9 file with
+    notes and the like stopped reading once a later version appeared. Each is now refused only before its own version.
 
 - **Revision 278 — `icat workspace show`'s overlaps name the generations they read (I16, `workspace-resolution-v12`):**
   - The last of an investigation's results to name its snapshot vector; one of unplaced sessions reads none, and
@@ -567,6 +571,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 279 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,472 tests: 1,468
+  passed, 4 skipped**, zero failures. Its test failed before the fix with "a workspace-v5 file holds no alignment with
+  a second anchor", for a file as revision 264 wrote it.
 - Revision 278 was built and tested on Windows with the pinned SDK: Debug and Release both ran **1,471 tests: 1,467
   passed, 4 skipped**, zero failures. Live, two captures of this host in a scratch investigation, deleted after: before
   an alignment `show` stated their overlap unknown, and printed "Read from ." until that line was made to state only

@@ -144,7 +144,8 @@ public static partial class InvestigationWorkspace
     /// <summary>What makes a file's host confirmations contradict themselves, or null (`contracts/workspace-v10.md` §4).</summary>
     private static string? HostProblem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.HostEquivalences.Count > 0 && workspace.Contract != Contract)
+        // A person's confirmation that two hosts are one arrived with the seventh version (revision 266).
+        if (workspace.HostEquivalences.Count > 0 && VersionOf(workspace) < 7)
         {
             return $"a {workspace.Contract} file holds no confirmation that two hosts are one";
         }

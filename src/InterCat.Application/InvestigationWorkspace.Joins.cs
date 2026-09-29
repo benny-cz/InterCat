@@ -155,7 +155,8 @@ public static partial class InvestigationWorkspace
     /// <summary>What makes a file's joins contradict themselves, or null (`contracts/workspace-v10.md` §6).</summary>
     private static string? JoinProblem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is FirstContract or SecondContract or ThirdContract && workspace.Joins.Count > 0)
+        // Join decisions arrived with the fourth version (revision 260).
+        if (VersionOf(workspace) < 4 && workspace.Joins.Count > 0)
         {
             return $"a {workspace.Contract} file holds no join decision";
         }
@@ -184,7 +185,7 @@ public static partial class InvestigationWorkspace
                     || join.DecidedUnder.All(under => under.SessionId != join.First.SessionId)
                     || join.DecidedUnder.All(under => under.SessionId != join.Second.SessionId))
                     ? "states the alignments it was decided under other than once each, its own two sessions' among them"
-                : join.DecidedUnder.Count > 2 && workspace.Contract != Contract
+                : join.DecidedUnder.Count > 2 && VersionOf(workspace) < 6
                     ? $"states the alignments of other sessions than its own, which a {workspace.Contract} file does not"
                 : null;
             if (problem is not null)
