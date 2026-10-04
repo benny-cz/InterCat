@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-04 · Plan revision: 290 · Branch: `main`
+Updated: 2026-10-04 · Plan revision: 291 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 291 — the warm aggregates' allocation test runs alone (R11):**
+  - It failed now and then under the whole suite. Tests running beside it pushed its sessions' derivations out of
+    the four the process's derivation cache keeps, and its warm queries then derived them again. It now runs with
+    the cache's other tests, after the parallel ones.
 
 - **Revision 290 — a process's HTTP exchanges in the timeline (§6.2, `http-exchanges-v1`):**
   - At the exchanges' rung each exchange is a bar from its first buffer to its response's end, in the HTTP hue when
@@ -586,8 +591,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
      target, and snapping would take an empty neighbouring interval away from the pointer.
    - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
-     allocation per row. The admission and decode loops keep IC-019's Windows allocation measurements and have no
-     test that runs here. A pan still formats and lays out the ticks it draws, which §19.4 allows.
+     allocation per row, and since revision 291 it runs alone, where no other test can empty the derivation cache.
+     The admission and decode loops keep IC-019's Windows allocation measurements and have no test that runs here. A
+     pan still formats and lays out the ticks it draws, which §19.4 allows.
    - Theme modes (§6.1, §26.2, §26.3): light and dark follow the operating system since revision 138, and its
      high-contrast setting since revision 140; since revision 146 the user can choose one, kept in `app-settings-v1`.
      Revision 147 restated menus, tool tips, scroll bars and list selection in high contrast. Revision 287 draws every
@@ -653,6 +659,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 291 was built and tested in the same Linux container: Debug and Release each ran **1,498 tests**, passing
+  **1,400 with 4 skipped**; the 94 failures are exactly the Windows and font-metric ones revision 287 names. Beside a
+  test that empties the derivation cache for twenty seconds, the warm aggregates' allocation test failed 3 runs of 3
+  as it stood, measuring a focused count's 16.2 B per row and an interval count's 28.2, and passed 3 of 3 once it ran
+  alone; ten runs of its assembly beside three others, as the suite runs them, passed before the change too, as 46 of
+  48 suite runs had. An array the size of a segment allocated in an interval count still fails it, at 4.0 B per row.
 - Revision 290 was built and tested in the same Linux container: Debug and Release each ran **1,498 tests**. Release
   passed **1,400, with 4 skipped**, and its 94 failures are exactly the Windows and font-metric ones revision 287
   names. Debug passed 1,399: beyond those 94, the warm aggregates' allocation test (R11) failed once, its overview

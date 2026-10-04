@@ -12,6 +12,13 @@ namespace InterCat.Application.Tests;
 /// warm at two session sizes, so whatever does not grow with the rows - the answer's own objects, one per bucket or
 /// entity - cancels out, and only a per-row allocation is left.
 /// </summary>
+/// <remarks>
+/// It runs alone, with the other tests of the derivation cache: a query is warm only while its session's derivations stay
+/// among the cache's four, and tests running beside it push them out. A focused count then binds its rows again, 16 bytes
+/// a row, an interval count 28, and a projection whose pooled buffers have gone cold derives its activity anew, 10; the
+/// suite failed it so twice in 48 runs, and a test clearing the cache beside it, three times in three.
+/// </remarks>
+[Collection(SharedDerivationCache.Name)]
 public sealed class AggregateAllocationTests
 {
     private const int SmallRows = 10_000;
@@ -60,8 +67,8 @@ public sealed class AggregateAllocationTests
         foreach ((string name, Action run) in queries)
         {
             // Warm: derivations cached, readers verified, pooled buffers rented once, the code compiled. The least of three
-            // warm runs is the query's own: one run disturbed by the rest of the suite running beside it - the revision 269
-            // worktree check once measured 35.7 B per row that five runs alone and two whole suites never did - is not.
+            // warm runs is the query's own: one run disturbed by what else the machine runs - a collection that trims the
+            // shared pool's buffers, another process's load - is not.
             for (int warm = 0; warm < 3; warm++) run();
             long least = long.MaxValue;
             for (int measured = 0; measured < 3; measured++)
