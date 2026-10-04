@@ -850,6 +850,7 @@
         "I14: a field a later chunk repeats is refused after a checkpoint, as by a derivation of every chunk",
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
+        "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
         "I14: an extension declines, for a full derivation, whatever would change a decision already made",
@@ -870,6 +871,7 @@
         "I14: nothing is published for a session with no generation or no records, and a stale writer is refused",
         "I14: one admitted record cannot satisfy two truth operations",
         "I14: only instances and the relations derived with them are written, and a generation names one checkpoint",
+        "I14: process bytes that name an instance or a channel end the checkpoint does not hold are not used, and the segments are read",
         "I14: relations and peers do not depend on how records were split into segments or delivered",
         "I14: relations of the rule before this one are read as this rule's only when no related record went without an end"
       ],
@@ -1058,6 +1060,7 @@
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",
         "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
+        "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
         "I4: counting segments through their tiles equals counting their rows, for any interval and columns",
         "I4: every eligible point belongs to exactly one bucket",
         "I4: every minimap column is a union of whole tiles of every segment, so the minimap reads no row",

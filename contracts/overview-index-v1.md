@@ -1,11 +1,11 @@
 # InterCat overview index v1
 
-Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289. It is the top level of
-§12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted beside its derivation
-checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens no segment before the
-first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism lanes and minimap from
-these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's rows when a view needs
-them.
+Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289, minor 3 in revision
+292. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
+beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
+no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
+lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
+rows when a view needs them.
 
 Revision 170 renamed this contract from `overview-v1`, which the JSON bundle `icat overview --json` had carried since
 revision 87 and still carries: that bundle is what a view shows, and this is a file a generation publishes. The file
@@ -46,6 +46,25 @@ a size they did not record (`metrics-v1` §4, R3). They are what the machine run
 ranking (§6.2), so those lanes read no segment either; the same columns at any other width, or any other interval, are
 read from the segments. A column and mechanism with no contribution holds no entry, and its bytes are none.
 
+Since minor 3 (plan revision 292) it also holds the **process bytes**: what every record's transport-observed
+measurements came to over the whole session, as the lane bytes count them, held before any evidence policy, which a
+reader applies to them as the projection applies one to relations:
+
+- for each process instance and each strength its records bind at - direct, correlated, candidate or conflicting, the
+  strengths a policy can admit - their bytes;
+- the bytes of records bound to no instance, or at a strength no policy admits;
+- for each end of each TCP channel (`relations-v1`), whatever the channel's own strength, the bytes of the records the
+  instance holding that end raised there, and the one strength they bind at. A process's records other than its
+  lifecycle bind as strongly as its place among its PID's instances allows (`entities-v1` §4), so an end's records share
+  one; a process connected to itself has its records counted at the first end, as a read counts them.
+
+Under a policy, an instance's bytes at the strengths it admits are that process's, and the rest are unattributed; an
+end's bytes are its holder's on that channel when the policy admits both the channel and their strength. That is
+exactly what a read of every segment measures under the policy (`SessionByteRanking`), so the ranked table's
+whole-session byte ranking and the graph sized by bytes read no segment either. An interval is still read. A session
+with more than 20,000 TCP channels, or whose process bytes would take more than 12 MiB, keeps none, as does one where an
+end's records bind at two strengths, which no binding rule gives today; it is then read as before.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -83,10 +102,21 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
                           receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
                           otherBytes i64, otherMeasured i64, otherUnmeasured i64)*]
                   ; every value >= 0; ascending by (column, mechanism)
+             hasProcessBytes u8 (0, 1),                                         ; minor 3 and later
+             [unbound bytes,
+              count u32, (instance guid, strength u8, bytes)*
+                  ; ascending by (instance "N" form, strength)
+              count u32, (channel str8, holder guid, strength u8, bytes)*]
+                  ; ascending by (channel, holder "N" form)
+
+bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
+             receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
+             otherBytes i64, otherMeasured i64, otherUnmeasured i64             ; every value >= 0
 ```
 
 A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; a minor-1 overview
-ends after them and holds no lane bytes. Each is read as before. A link's strength is `EN-RelationStrength`'s
+ends after them and holds no lane bytes; a minor-2 overview ends after those and holds no process bytes. Each is read as
+before. A link's strength is `EN-RelationStrength`'s
 `Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
@@ -104,7 +134,14 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
   strength a link cannot have, holds no record, or there are more than 1,000,000 of them;
 - a lane's bytes lie in a column outside the main columns, or in one that counts no record of their mechanism (an
   overview with no extent has no columns, so it holds none); are out of order; hold a value below zero, or bytes on a
-  side no contribution measured; or hold no contribution at all.
+  side no contribution measured; or hold no contribution at all;
+- a process's or channel end's bytes name no instance, channel or holder, or a strength no policy admits; are out of
+  order or held twice; hold a value below zero, or bytes on a side no contribution measured; or hold no contribution at
+  all. The unbound bytes may hold none, and are otherwise held to the same.
+
+A reader uses the process bytes only for the whole session, and only when the derivations it builds from the
+checkpoint hold every instance they name and every channel end, at one of its channel's two holders; otherwise it reads
+the segments.
 
 A refused overview is not used, and the overview says why in one caveat. A reader uses an overview for a generation
 only when it covers exactly the generation's observation segments, with the same names, lengths and digests. Counts
@@ -116,6 +153,6 @@ from the segments' tiles.
 - Deeper levels. Zoomed detail builds a segment's tiles from its rows when first drawn (revision 158). Persisting
   them, so a zoom into a long session reads only the tiles it draws, is the pyramid's next level.
 - Focused counts, which filter rows by owner or channel and are not what these counts hold (§10.3).
-- Byte sums beyond the main columns' lanes: the minimap's, a process's or a channel's, and a relation's. The ranked
-  table's whole-session bytes per process are still read from the segments when a byte ranking is chosen.
+- Byte sums beyond the main columns' lanes and the whole session's processes and TCP channel ends: the minimap's, a
+  datagram flow's, and any interval's, which are read from the segments.
 - RPC links within an interval. A brush still follows the calls it holds from the segments.

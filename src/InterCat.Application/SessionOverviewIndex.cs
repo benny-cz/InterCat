@@ -28,6 +28,13 @@ internal sealed record OverviewCounts(
     /// (overview-index-v1 minor 2); null when it did not, and then they are read from the segments when a view asks.
     /// </summary>
     public OverviewLaneBytes? LaneBytes { get; init; }
+
+    /// <summary>
+    /// Each process's and TCP channel end's bytes over the whole session, before any evidence policy, which the ranked
+    /// table and the graph read under a byte ranking, when a persisted overview kept them (overview-index-v1 minor 3);
+    /// null when it did not, and then they are read from the segments when a view asks.
+    /// </summary>
+    public OverviewProcessBytes? ProcessBytes { get; init; }
 }
 
 /// <summary>
@@ -58,6 +65,49 @@ internal sealed class OverviewLaneBytes
 }
 
 /// <summary>
+/// What every record's transport-observed measurements came to over the whole session, before any evidence policy
+/// (overview-index-v1 minor 3): for each process instance and each strength its records bind at, their bytes; for each
+/// end of each TCP channel, the bytes of its holder's own records there and the one strength they bind at; and the
+/// bytes of records bound to no instance at a strength a policy could admit. A policy applied to them gives exactly what
+/// <see cref="SessionByteRanking.Measure"/> reads from every segment under it.
+/// </summary>
+internal sealed class OverviewProcessBytes
+{
+    public OverviewProcessBytes(
+        TransportBytes unbound,
+        IEnumerable<(ProcessInstanceId Instance, RelationStrength Strength, TransportBytes Bytes)> processes,
+        IEnumerable<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)> ends)
+    {
+        ArgumentNullException.ThrowIfNull(unbound);
+        ArgumentNullException.ThrowIfNull(processes);
+        ArgumentNullException.ThrowIfNull(ends);
+        Unbound = unbound;
+        Processes = Array.AsReadOnly([.. processes
+            .OrderBy(entry => entry.Instance.ToString(), StringComparer.Ordinal)
+            .ThenBy(entry => (int)entry.Strength)]);
+        Ends = Array.AsReadOnly([.. ends
+            .OrderBy(entry => entry.Channel, StringComparer.Ordinal)
+            .ThenBy(entry => entry.Holder.ToString(), StringComparer.Ordinal)]);
+    }
+
+    /// <summary>The bytes of records bound to no instance, or at a strength no evidence policy admits.</summary>
+    public TransportBytes Unbound { get; }
+
+    /// <summary>Each instance's bytes at each strength its records bind at, by instance and then strength.</summary>
+    public IReadOnlyList<(ProcessInstanceId Instance, RelationStrength Strength, TransportBytes Bytes)> Processes { get; }
+
+    /// <summary>Each TCP channel end's bytes, its holder's own, and the strength they bind at, by channel and then holder.</summary>
+    public IReadOnlyList<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)> Ends { get; }
+
+    /// <summary>How many bytes they take in a persisted overview (overview-index-v1 §3), flag included.</summary>
+    public long EncodedLength =>
+        1 + Bytes + 4 + (Processes.Count * (16L + 1 + Bytes)) + 4
+        + Ends.Sum(end => 1L + System.Text.Encoding.UTF8.GetByteCount(end.Channel) + 16 + 1 + Bytes);
+
+    private const long Bytes = 9 * 8;
+}
+
+/// <summary>
 /// The persisted whole-session overview (`contracts/overview-index-v1.md`), S4's top level: the counts a finished session's
 /// first view draws, so opening it counts no row. It is published beside the derivation checkpoint and read only when
 /// it covers exactly the observation segments its generation names.
@@ -73,10 +123,11 @@ internal static class SessionOverviewIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 1 adds the RPC link totals after the counts, and minor 2 each overview column's bytes per mechanism after them
-    /// (§3); an earlier overview holds neither and is still read.
+    /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them, and
+    /// minor 3 each process's and TCP channel end's bytes after those (§3); an earlier overview holds what its minor did and
+    /// is still read.
     /// </summary>
-    private const ushort Minor = 2;
+    private const ushort Minor = 3;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -215,20 +266,50 @@ internal static class SessionOverviewIndex
             {
                 writer.Count(column);
                 writer.U16((ushort)mechanism);
-                writer.I64(bytes.SentBytes);
-                writer.I64(bytes.SentMeasured);
-                writer.I64(bytes.SentUnmeasured);
-                writer.I64(bytes.ReceivedBytes);
-                writer.I64(bytes.ReceivedMeasured);
-                writer.I64(bytes.ReceivedUnmeasured);
-                writer.I64(bytes.OtherBytes);
-                writer.I64(bytes.OtherMeasured);
-                writer.I64(bytes.OtherUnmeasured);
+                WriteBytes(writer, bytes);
+            }
+        }
+
+        // Minor 3: each process's and TCP channel end's bytes over the whole session, before any evidence policy, kept by a
+        // writer that summed them, in their canonical order.
+        writer.Flag(counts.ProcessBytes is not null);
+        if (counts.ProcessBytes is { } kept)
+        {
+            WriteBytes(writer, kept.Unbound);
+            writer.Count(kept.Processes.Count);
+            foreach ((ProcessInstanceId instance, RelationStrength strength, TransportBytes bytes) in kept.Processes)
+            {
+                writer.Identity(instance.Value);
+                writer.U8((byte)strength);
+                WriteBytes(writer, bytes);
+            }
+
+            writer.Count(kept.Ends.Count);
+            foreach ((string channel, ProcessInstanceId holder, RelationStrength strength, TransportBytes bytes) in kept.Ends)
+            {
+                writer.Str8(channel);
+                writer.Identity(holder.Value);
+                writer.U8((byte)strength);
+                WriteBytes(writer, bytes);
             }
         }
 
         writer.Flush();
         return writer.Written;
+    }
+
+    /// <summary>One set of records' bytes: sent, received and on neither side, each with its measured and unmeasured counts.</summary>
+    private static void WriteBytes(IndexFileWriter writer, TransportBytes bytes)
+    {
+        writer.I64(bytes.SentBytes);
+        writer.I64(bytes.SentMeasured);
+        writer.I64(bytes.SentUnmeasured);
+        writer.I64(bytes.ReceivedBytes);
+        writer.I64(bytes.ReceivedMeasured);
+        writer.I64(bytes.ReceivedUnmeasured);
+        writer.I64(bytes.OtherBytes);
+        writer.I64(bytes.OtherMeasured);
+        writer.I64(bytes.OtherUnmeasured);
     }
 
     /// <summary>
@@ -324,9 +405,11 @@ internal static class SessionOverviewIndex
         {
             IReadOnlyList<RpcPeerLinkTotal>? untimedLinks = minor >= 1 ? ReadLinks(reader) : null;
             OverviewLaneBytes? untimedBytes = minor >= 2 ? ReadLaneBytes(reader, main: null) : null;
+            OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader) : null;
             reader.RequireEnd();
             return rows == withoutTime
-                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes }, segments.AsReadOnly())
+                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes, ProcessBytes = untimedKept },
+                    segments.AsReadOnly())
                 : throw reader.Invalid("it has timed rows and no extent.");
         }
 
@@ -392,9 +475,11 @@ internal static class SessionOverviewIndex
 
         IReadOnlyList<RpcPeerLinkTotal>? links = minor >= 1 ? ReadLinks(reader) : null;
         OverviewLaneBytes? laneBytes = minor >= 2 ? ReadLaneBytes(reader, main) : null;
+        OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader) : null;
         reader.RequireEnd();
         return total == timed && mapped == timed
-            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links, LaneBytes = laneBytes }, segments.AsReadOnly())
+            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links, LaneBytes = laneBytes, ProcessBytes = kept },
+                segments.AsReadOnly())
             : throw reader.Invalid("its columns do not add up to its timed rows.");
     }
 
@@ -417,12 +502,7 @@ internal static class SessionOverviewIndex
         {
             uint column = reader.U32();
             var mechanism = (Mechanism)reader.U16();
-            var bytes = new TransportBytes(reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64())
-            {
-                OtherBytes = reader.I64(),
-                OtherMeasured = reader.I64(),
-                OtherUnmeasured = reader.I64(),
-            };
+            TransportBytes bytes = ReadBytes(reader);
             if (main is null || column >= (uint)main.Counts.Count || !Enum.IsDefined(mechanism)
                 || main.CountOf((int)column, mechanism) == 0
                 || ((int)column, (int)mechanism).CompareTo(previous) <= 0
@@ -438,6 +518,82 @@ internal static class SessionOverviewIndex
 
         return new(cells);
     }
+
+    /// <summary>
+    /// Minor 3's process bytes (§3): none when they were not kept; otherwise the bytes of records bound to no instance, then
+    /// each instance's at each strength a policy can admit, and each TCP channel end's by its holder, each once and in
+    /// order, with no count below zero, no sum without a contribution that measured it, and some contribution.
+    /// </summary>
+    private static OverviewProcessBytes? ReadProcessBytes(IndexFileReader reader)
+    {
+        if (!reader.Flag())
+        {
+            return null;
+        }
+
+        TransportBytes unbound = ReadBytes(reader);
+        if (!Consistent(unbound) && unbound != TransportBytes.None)
+        {
+            throw reader.Invalid("the bytes of records bound to no instance contradict themselves.");
+        }
+
+        int count = reader.Count(16 + 1 + (9 * 8));
+        var processes = new List<(ProcessInstanceId Instance, RelationStrength Strength, TransportBytes Bytes)>(count);
+        for (int index = 0; index < count; index++)
+        {
+            var instance = new ProcessInstanceId(reader.Identity());
+            var strength = (RelationStrength)reader.U8();
+            TransportBytes bytes = ReadBytes(reader);
+            if (instance.Value == Guid.Empty || !Admissible(strength) || !Consistent(bytes)
+                || (processes.Count > 0 && CompareKept(processes[^1].Instance, (int)processes[^1].Strength, instance, (int)strength) >= 0))
+            {
+                throw reader.Invalid("a process's bytes name no instance, a strength no policy admits, are out of order, or "
+                    + "contradict themselves.");
+            }
+
+            processes.Add((instance, strength, bytes));
+        }
+
+        count = reader.Count(1 + 16 + 1 + (9 * 8));
+        var ends = new List<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)>(count);
+        for (int index = 0; index < count; index++)
+        {
+            string channel = reader.Str8();
+            var holder = new ProcessInstanceId(reader.Identity());
+            var strength = (RelationStrength)reader.U8();
+            TransportBytes bytes = ReadBytes(reader);
+            int order = ends.Count == 0 ? -1 : string.CompareOrdinal(ends[^1].Channel, channel);
+            if (channel.Length == 0 || holder.Value == Guid.Empty || !Admissible(strength) || !Consistent(bytes)
+                || order > 0
+                || (order == 0 && string.CompareOrdinal(ends[^1].Holder.ToString(), holder.ToString()) >= 0))
+            {
+                throw reader.Invalid("a channel end's bytes name no channel or holder, a strength no policy admits, are out of "
+                    + "order, or contradict themselves.");
+            }
+
+            ends.Add((channel, holder, strength, bytes));
+        }
+
+        return new(unbound, processes, ends);
+    }
+
+    /// <summary>Whether a binding at <paramref name="strength"/> is one some evidence policy admits.</summary>
+    private static bool Admissible(RelationStrength strength) =>
+        strength is RelationStrength.Direct or RelationStrength.Correlated or RelationStrength.Candidate or RelationStrength.Conflicting;
+
+    private static int CompareKept(ProcessInstanceId before, int beforeStrength, ProcessInstanceId instance, int strength)
+    {
+        int order = string.CompareOrdinal(before.ToString(), instance.ToString());
+        return order != 0 ? order : beforeStrength.CompareTo(strength);
+    }
+
+    private static TransportBytes ReadBytes(IndexFileReader reader) =>
+        new(reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64())
+        {
+            OtherBytes = reader.I64(),
+            OtherMeasured = reader.I64(),
+            OtherUnmeasured = reader.I64(),
+        };
 
     /// <summary>No count is below zero, a side no contribution measured sums nothing, and some contribution is there.</summary>
     private static bool Consistent(TransportBytes bytes) =>

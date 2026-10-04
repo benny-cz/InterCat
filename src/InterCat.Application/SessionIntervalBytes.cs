@@ -479,17 +479,56 @@ public static class SessionIntervalByteQuery
         IReadOnlyList<SegmentReaderV1> segments, TimelineColumns main, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(segments);
-        ArgumentNullException.ThrowIfNull(main);
-        Mechanism[] mechanisms = [.. main.Tallies().Select(tally => tally.Mechanism).Distinct().Order()];
-        if (mechanisms.Length == 0)
+        var plan = new LanePlan(main);
+        if (plan.Mechanisms.Count == 0)
         {
             return new([]);
         }
 
-        var layout = new TimelineColumns(main.Interval, main.Counts.Count, tallyMechanisms: false);
-        TransportByteTally total = TallyLanes(segments, layout, mechanisms, cancellationToken);
-        return new(Enumerable.Range(0, layout.Counts.Count).SelectMany(column => mechanisms.Select((mechanism, lane) =>
-            (column, mechanism, total.Of((column * mechanisms.Length) + lane)))));
+        TransportByteTally total = TallyLanes(segments, plan.Layout, plan.Mechanisms, cancellationToken);
+        return plan.Cells(total);
+    }
+
+    /// <summary>
+    /// The overview's lanes as a pass sums their bytes (overview-index-v1 minor 2): its columns, and every mechanism they
+    /// count records of, each a lane. A publication sums them in the same pass as each process's bytes.
+    /// </summary>
+    internal sealed class LanePlan
+    {
+        private readonly int[] laneOfCode;
+
+        public LanePlan(TimelineColumns main)
+        {
+            ArgumentNullException.ThrowIfNull(main);
+            Mechanisms = [.. main.Tallies().Select(tally => tally.Mechanism).Distinct().Order()];
+            Layout = new TimelineColumns(main.Interval, main.Counts.Count, tallyMechanisms: false);
+            laneOfCode = [.. Enumerable.Repeat(-1, Math.Max(TimelineColumns.MechanismCodes,
+                Mechanisms.Count == 0 ? 0 : Mechanisms.Max(code => (int)code) + 1))];
+            for (int lane = 0; lane < Mechanisms.Count; lane++)
+            {
+                laneOfCode[(int)Mechanisms[lane]] = lane;
+            }
+        }
+
+        public IReadOnlyList<Mechanism> Mechanisms { get; }
+
+        public TimelineColumns Layout { get; }
+
+        /// <summary>An empty tally for one worker: a slot per column and lane, then one for every row outside them.</summary>
+        public TransportByteTally Start() => new((Layout.Counts.Count * Mechanisms.Count) + 1);
+
+        public void Measure(SegmentReaderV1 segment, TransportByteTally tally, CancellationToken cancellationToken)
+        {
+            if (Mechanisms.Count > 0)
+            {
+                MeasureLanes(segment, Layout, laneOfCode, Mechanisms.Count, tally, cancellationToken);
+            }
+        }
+
+        /// <summary>Every column's bytes in every lane, which the overview keeps where a contribution is.</summary>
+        public OverviewLaneBytes Cells(TransportByteTally total) =>
+            new(Enumerable.Range(0, Layout.Counts.Count).SelectMany(column => Mechanisms.Select((mechanism, lane) =>
+                (column, mechanism, total.Of((column * Mechanisms.Count) + lane)))));
     }
 
     /// <summary>Every row's bytes in its column's slot for its mechanism's lane, column by column, then one slot outside.</summary>

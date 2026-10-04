@@ -314,6 +314,29 @@ public sealed class TimelineBytesTests
         Assert.True(workspace.TimelineDrawsUnmeasured);
     });
 
+    [Fact(DisplayName = "§6.1: a finished session's first byte view is answered from what its persisted overview kept: its lanes and ranked rows open no segment")]
+    public void AFinishedSessionsFirstByteViewReadsNoSegment() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        Assert.Equal(CheckpointOutcome.Published,
+            SessionCheckpoints.Publish(session.Store, DateTimeOffset.Parse("2026-10-04T12:00:00Z", CultureInfo.InvariantCulture)).Outcome);
+
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+
+        // The rows rank as a read of every segment ranks them - the unmeasured sends and the process that sent none
+        // included - and the lanes plot the overview's columns, and the window opened no segment for either.
+        Assert.Equal(RankingMetric.BytesSent, workspace.AppliedRanking);
+        Assert.Equal(["big.exe", "zero.exe", "blind.exe", "listen.exe"], workspace.RungRows.Select(row => row.Label));
+        Assert.Equal([WorkspaceRowBuilder.DescribeSize(1_750), "0 B", "unmeasured", "no sends"],
+            workspace.RungRows.Select(row => row.Figure));
+        Assert.True(workspace.TimelineBytes!.Overview.FromPersistedOverview);
+        Assert.Equal(0, SharedSessionStores.Open(session.Path).SegmentReaderCache.Entries);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

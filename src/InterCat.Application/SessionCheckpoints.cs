@@ -94,12 +94,12 @@ public static class SessionCheckpoints
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
             OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
 
-            // Each overview column's bytes per mechanism are kept with the counts, so the first view under a byte ranking
-            // reads no segment either (overview-index-v1 minor 2).
-            if (counts.Main is { } main)
-            {
-                counts = counts with { LaneBytes = SessionIntervalByteQuery.OverviewLanes(segments, main, cancellationToken) };
-            }
+            // What the first view under a byte ranking reads is kept with the counts, so it reads no segment either: each
+            // overview column's bytes per mechanism, for the lanes (overview-index-v1 minor 2), and each process's and TCP
+            // channel end's over the whole session, for the ranked table and the graph (minor 3). One pass sums both.
+            (OverviewLaneBytes? laneBytes, OverviewProcessBytes? processBytes) =
+                SumBytes(segments, counts.Main, processes, relations, cancellationToken);
+            counts = counts with { LaneBytes = laneBytes, ProcessBytes = processBytes };
 
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
             // (overview-index-v1 §3); one that did not keeps none, and reads nothing for them.
@@ -185,6 +185,52 @@ public static class SessionCheckpoints
         {
             // What cannot be read is replaced by what is published now.
             return false;
+        }
+    }
+
+    /// <summary>
+    /// The overview's lane bytes, when it has columns, and every process's and TCP channel end's bytes before any evidence
+    /// policy, when an overview keeps them, summed in one pass over the segments; each null when it is not kept.
+    /// </summary>
+    private static (OverviewLaneBytes? Lanes, OverviewProcessBytes? Processes) SumBytes(
+        IReadOnlyList<SegmentReaderV1> segments,
+        TimelineColumns? main,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        CancellationToken cancellationToken)
+    {
+        SessionIntervalByteQuery.LanePlan? lanes = main is null ? null : new(main);
+        SessionByteRanking.KeptPlan? kept = SessionByteRanking.KeptPlan.For(processes, relations);
+        if (lanes is null && kept is null)
+        {
+            return (null, null);
+        }
+
+        var total = new ByteTallies(lanes?.Start(), kept?.Start());
+        SegmentPasses.Run(
+            segments,
+            () => new ByteTallies(lanes?.Start(), kept?.Start()),
+            (segment, tallies) =>
+            {
+                lanes?.Measure(segment, tallies.Lanes!, cancellationToken);
+                kept?.Measure(segment, tallies.Kept!, cancellationToken);
+            },
+            total.Add,
+            cancellationToken);
+        return (lanes?.Cells(total.Lanes!), kept?.Finish(total.Kept!));
+    }
+
+    /// <summary>One worker's lane and kept bytes, merged once it has no segment left.</summary>
+    private sealed class ByteTallies(TransportByteTally? lanes, SessionByteRanking.KeptTally? kept)
+    {
+        public TransportByteTally? Lanes { get; } = lanes;
+
+        public SessionByteRanking.KeptTally? Kept { get; } = kept;
+
+        public void Add(ByteTallies other)
+        {
+            Lanes?.Add(other.Lanes!);
+            Kept?.Add(other.Kept!);
         }
     }
 

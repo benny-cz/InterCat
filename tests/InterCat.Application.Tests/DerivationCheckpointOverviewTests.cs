@@ -382,8 +382,8 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
 
         // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: this build's ends
-        // with a flag for links and another for lane bytes after it.
-        byte[] minorZero = Written(counts)[..^2];
+        // with a flag for links, another for lane bytes and another for process bytes after it.
+        byte[] minorZero = Written(counts)[..^3];
         minorZero[10] = 0;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorZero, manifest.SessionId).Counts;
         Assert.Null(earlier.RpcLinks);
@@ -492,8 +492,9 @@ public sealed class DerivationCheckpointOverviewTests
         byte[] bytes = Written(counts with { LaneBytes = lanes });
         Assert.Equal(lanes.Cells, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.LaneBytes!.Cells);
 
-        // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes.
-        byte[] minorOne = Written(counts)[..^1];
+        // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes; this build's
+        // keeps no process bytes after them, and says so in its last byte.
+        byte[] minorOne = Written(counts)[..^2];
         minorOne[10] = 1;
         Assert.Null(SessionOverviewIndex.Read(minorOne, manifest.SessionId).Counts.LaneBytes);
 
@@ -502,9 +503,10 @@ public sealed class DerivationCheckpointOverviewTests
         (int column, Mechanism mechanism, TransportBytes first) = lanes.Cells[0];
         Mechanism absent = Enum.GetValues<Mechanism>().First(candidate => counts.Main!.CountOf(column, candidate) == 0);
         const int Cell = 4 + 2 + (9 * 8);
+        int cellsEnd = bytes.Length - 1;
         byte[] swapped = [.. bytes];
-        bytes.AsSpan(bytes.Length - (2 * Cell), Cell).CopyTo(swapped.AsSpan(bytes.Length - Cell));
-        bytes.AsSpan(bytes.Length - Cell, Cell).CopyTo(swapped.AsSpan(bytes.Length - (2 * Cell)));
+        bytes.AsSpan(cellsEnd - (2 * Cell), Cell).CopyTo(swapped.AsSpan(cellsEnd - Cell));
+        bytes.AsSpan(cellsEnd - Cell, Cell).CopyTo(swapped.AsSpan(cellsEnd - (2 * Cell)));
         foreach (byte[] damaged in new[]
         {
             Written(counts with { LaneBytes = new OverviewLaneBytes([(column, absent, first)]) }),
@@ -539,6 +541,229 @@ public sealed class DerivationCheckpointOverviewTests
         // Counts with no extent keep no cell: the writer refuses to write one there.
         _ = Assert.Throws<ArgumentException>(() => Written(new OverviewCounts(1, 1, null, null, null) { LaneBytes = lanes }));
     }
+
+    [Fact(DisplayName = "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy")]
+    public void AFinishedSessionKeepsItsProcessBytes()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, KeptBytesSession());
+        EvidencePolicy[] policies = Enum.GetValues<EvidencePolicy>();
+        Dictionary<EvidencePolicy, SessionByteMeasures> read = policies.ToDictionary(
+            policy => policy, policy => SessionByteRanking.Measure(session.Store, null, policy));
+        Assert.All(read.Values, measures => Assert.False(measures.FromPersistedOverview));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var extent = new TimeRange(overview.Timeline[0].Interval.StartTicks, overview.Timeline[^1].Interval.EndTicks);
+        var half = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        SessionByteMeasures halfRead = SessionByteRanking.Measure(session.Store, half);
+
+        // The session holds what each policy tells apart: a candidate's bytes and channel, attributed only when candidates
+        // are asked for; sends that recorded no size; and a send no policy attributes to a process.
+        Assert.NotEqual(Sorted(read[EvidencePolicy.IncludeCorrelated].ByProcess), Sorted(read[EvidencePolicy.IncludeCandidates].ByProcess));
+        Assert.NotEqual(Sorted(read[EvidencePolicy.IncludeCorrelated].ByChannelEnd), Sorted(read[EvidencePolicy.IncludeCandidates].ByChannelEnd));
+        Assert.Contains(read[EvidencePolicy.IncludeCorrelated].ByProcess.Values, bytes => bytes.SentUnmeasured > 0);
+        Assert.NotEqual(TransportBytes.None, read[EvidencePolicy.AllIncludingConflicting].Unattributed);
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(session.Store.Current!)
+            .Select(name => SessionSegments.Open(session.Store, session.Store.Current!, name))];
+        Assert.Contains(TransportRelationIndex.Derive(segments, ProcessInstanceIndex.Derive(segments,
+            SessionSegments.SourceClock(session.Store.Root, session.Store.Current!)!.Value,
+            [.. SessionSegments.FieldNames(session.Store.Current!).Select(name => SessionSegments.Open(session.Store, session.Store.Current!, name))]))
+            .Relations, relation => relation.Mechanism == Mechanism.Udp);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+
+        // The overview keeps them before any policy: a candidate's at its strength, and one end of a process's channel to
+        // itself, where its records are counted.
+        (OverviewCounts counts, _) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!, SessionOverviewIndex.MaximumBytes),
+            session.Store.Current!.SessionId);
+        OverviewProcessBytes kept = Assert.IsType<OverviewProcessBytes>(counts.ProcessBytes);
+        Assert.Contains(kept.Processes, entry => entry.Strength == RelationStrength.Candidate);
+        Assert.Contains(kept.Ends, entry => entry.Strength == RelationStrength.Candidate);
+        Assert.Equal(read[EvidencePolicy.AllIncludingConflicting].ByChannelEnd.Count, kept.Ends.Count);
+
+        // A fresh viewer answers the whole session under every policy from the overview, and opens no segment.
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        foreach (EvidencePolicy policy in policies)
+        {
+            SessionByteMeasures answered = SessionByteRanking.Measure(reopened, null, policy);
+            Assert.True(answered.FromPersistedOverview, policy.ToString());
+            Assert.Null(answered.Interval);
+            Assert.Equal(Sorted(read[policy].ByProcess), Sorted(answered.ByProcess));
+            Assert.Equal(Sorted(read[policy].ByChannelEnd), Sorted(answered.ByChannelEnd));
+            Assert.Equal(read[policy].Unattributed, answered.Unattributed);
+        }
+
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+
+        // An interval is read from the segments, as before.
+        SessionByteMeasures scoped = SessionByteRanking.Measure(reopened, half);
+        Assert.False(scoped.FromPersistedOverview);
+        Assert.True(reopened.SegmentReaderCache.Entries > 0);
+        Assert.Equal(Sorted(halfRead.ByProcess), Sorted(scoped.ByProcess));
+        Assert.Equal(Sorted(halfRead.ByChannelEnd), Sorted(scoped.ByChannelEnd));
+    }
+
+    [Fact(DisplayName = "I14: process bytes that name an instance or a channel end the checkpoint does not hold are not used, and the segments are read")]
+    public void ProcessBytesTheCheckpointDoesNotHoldAreRead()
+    {
+        var stranger = new ProcessInstanceId(Guid.Parse("0b5e5e5e-0000-4000-8000-000000000001"));
+        var some = new TransportBytes(9, 1, 0, 0, 0, 0);
+        foreach (OverviewProcessBytes foreign in new[]
+        {
+            new OverviewProcessBytes(TransportBytes.None, [(stranger, RelationStrength.Correlated, some)], []),
+            new OverviewProcessBytes(TransportBytes.None, [], [("transport:none", stranger, RelationStrength.Correlated, some)]),
+        })
+        {
+            SessionDerivationCache.Clear();
+            using var session = new TemporarySession();
+            Publish(session.Store, KeptBytesSession());
+            SessionByteMeasures read = SessionByteRanking.Measure(session.Store, null);
+            SessionManifestV1 manifest = session.Store.Current!;
+            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+            using var stream = new MemoryStream();
+            _ = SessionOverviewIndex.Write(stream, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest),
+                SessionOverviewProjector.Count(segments, CancellationToken.None) with { ProcessBytes = foreign });
+            PublishIndexes(session.Store, withCheckpoint: true, stream.ToArray());
+
+            SessionDerivationCache.Clear();
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+            SessionByteMeasures answered = SessionByteRanking.Measure(reopened, null);
+            Assert.False(answered.FromPersistedOverview);
+            Assert.Equal(Sorted(read.ByProcess), Sorted(answered.ByProcess));
+            Assert.Equal(Sorted(read.ByChannelEnd), Sorted(answered.ByChannelEnd));
+            Assert.Equal(read.Unattributed, answered.Unattributed);
+        }
+    }
+
+    [Fact(DisplayName = "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused")]
+    public void PersistedProcessBytesReadBackOrAreRefused()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, KeptBytesSession());
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionManifestV1 manifest = session.Store.Current!;
+        (OverviewCounts counts, IReadOnlyList<StoreDependency> covered) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes),
+            manifest.SessionId);
+        OverviewProcessBytes kept = Assert.IsType<OverviewProcessBytes>(counts.ProcessBytes);
+        Assert.True(kept.Processes.Count >= 2);
+        Assert.True(kept.Ends.Count >= 2);
+        byte[] Written(OverviewCounts written)
+        {
+            using var stream = new MemoryStream();
+            _ = SessionOverviewIndex.Write(stream, manifest.SessionId, 1, [.. covered], written);
+            return stream.ToArray();
+        }
+
+        byte[] bytes = Written(counts);
+        OverviewProcessBytes again = SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.ProcessBytes!;
+        Assert.Equal(kept.Unbound, again.Unbound);
+        Assert.Equal(kept.Processes, again.Processes);
+        Assert.Equal(kept.Ends, again.Ends);
+        Assert.Equal(kept.EncodedLength, bytes.Length - Written(counts with { ProcessBytes = null }).Length + 1);
+
+        // A minor-2 overview, as revision 289 wrote it, ends with its lane bytes and keeps no process bytes.
+        byte[] minorTwo = Written(counts with { ProcessBytes = null })[..^1];
+        minorTwo[10] = 2;
+        OverviewCounts earlier = SessionOverviewIndex.Read(minorTwo, manifest.SessionId).Counts;
+        Assert.Null(earlier.ProcessBytes);
+        Assert.Equal(counts.LaneBytes!.Cells, earlier.LaneBytes!.Cells);
+
+        // An entry naming no instance, channel or holder, at a strength no policy admits, below zero, summing what no
+        // contribution measured, or holding none, is refused; so is one held twice, and the bytes of records bound to no
+        // instance contradicting themselves.
+        (ProcessInstanceId instance, RelationStrength strength, TransportBytes measured) = kept.Processes[0];
+        (string channel, ProcessInstanceId holder, RelationStrength endStrength, TransportBytes endBytes) = kept.Ends[0];
+        var unmeasuredSum = new TransportBytes(64, 0, 1, 0, 0, 0);
+        foreach ((OverviewProcessBytes Damaged, string Says) in new (OverviewProcessBytes, string)[]
+        {
+            (new(kept.Unbound, [(default, strength, measured)], []), "a process's bytes"),
+            (new(kept.Unbound, [(instance, RelationStrength.Unresolved, measured)], []), "a process's bytes"),
+            (new(kept.Unbound, [(instance, strength, measured with { SentBytes = -1 })], []), "a process's bytes"),
+            (new(kept.Unbound, [(instance, strength, unmeasuredSum)], []), "a process's bytes"),
+            (new(kept.Unbound, [(instance, strength, TransportBytes.None)], []), "a process's bytes"),
+            (new(kept.Unbound, [(instance, strength, measured), (instance, strength, measured)], []), "a process's bytes"),
+            (new(kept.Unbound, [], [("", holder, endStrength, endBytes)]), "a channel end's bytes"),
+            (new(kept.Unbound, [], [(channel, default, endStrength, endBytes)]), "a channel end's bytes"),
+            (new(kept.Unbound, [], [(channel, holder, RelationStrength.Unresolved, endBytes)]), "a channel end's bytes"),
+            (new(kept.Unbound, [], [(channel, holder, endStrength, unmeasuredSum)]), "a channel end's bytes"),
+            (new(kept.Unbound, [], [(channel, holder, endStrength, endBytes), (channel, holder, endStrength, endBytes)]), "a channel end's bytes"),
+            (new(unmeasuredSum, [], []), "bound to no instance"),
+        })
+        {
+            Assert.Contains(Says, Assert.Throws<InvalidDataException>(
+                () => SessionOverviewIndex.Read(Written(counts with { ProcessBytes = Damaged }), manifest.SessionId)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // Two entries out of order, which only damage can put them in, are refused.
+        const int Entry = 16 + 1 + (9 * 8);
+        long endsLength = kept.Ends.Sum(end => 1L + end.Channel.Length + 16 + 1 + (9 * 8));
+        int processesStart = bytes.Length - (int)endsLength - 4 - (kept.Processes.Count * Entry);
+        byte[] swapped = [.. bytes];
+        bytes.AsSpan(processesStart, Entry).CopyTo(swapped.AsSpan(processesStart + Entry));
+        bytes.AsSpan(processesStart + Entry, Entry).CopyTo(swapped.AsSpan(processesStart));
+        Assert.Contains("a process's bytes", Assert.Throws<InvalidDataException>(
+            () => SessionOverviewIndex.Read(swapped, manifest.SessionId)).Message, StringComparison.Ordinal);
+
+        // Cut short anywhere it is refused, and a changed byte is refused or reads as some overview: nothing else escapes.
+        for (int length = 0; length < bytes.Length; length++)
+        {
+            _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read(bytes.AsMemory(0, length), manifest.SessionId));
+        }
+
+        for (int index = processesStart - 80; index < bytes.Length; index++)
+        {
+            byte[] changed = [.. bytes];
+            changed[index] ^= 0xFF;
+            try
+            {
+                _ = SessionOverviewIndex.Read(changed, manifest.SessionId);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+    }
+
+    /// <summary>
+    /// A session whose bytes each evidence policy attributes differently: a client sending to a server whose PID was used
+    /// before, so the server's records are a candidate's and so is their channel; two processes in a conversation, which
+    /// no lifecycle record names, and a datagram flow between them, which no channel end the table ranks holds; a process
+    /// connected to itself; sends that recorded no size, or a size of nothing; and a send made before its process was
+    /// created, which binds to no instance.
+    /// </summary>
+    private static ObservationRowV1[] KeptBytesSession() =>
+    [
+        Lifecycle(10, ObservationKind.Create, 200, 1),
+        Lifecycle(20, ObservationKind.Exit, 200, 2),
+        Lifecycle(30, ObservationKind.Create, 200, 3),
+        Timed(Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 4).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        Timed(Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 5).Between("127.0.0.1:8080", "127.0.0.1:50000")),
+        Timed(Transfer(42, ObservationKind.Send, AccountingSide.SendSide, null, 100, 6).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        Timed(Transfer(43, ObservationKind.Send, AccountingSide.SendSide, 0, 200, 7).Between("127.0.0.1:8080", "127.0.0.1:50000")),
+        Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 8).Between("127.0.0.1:51000", "127.0.0.1:9000")),
+        Timed(Transfer(51, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 400, 9).Between("127.0.0.1:9000", "127.0.0.1:51000")),
+        Timed(Transfer(52, ObservationKind.Send, AccountingSide.SendSide, 30, 400, 10).Between("127.0.0.1:9000", "127.0.0.1:51000")),
+        Timed(Transfer(53, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, 300, 11).Between("127.0.0.1:51000", "127.0.0.1:9000")),
+        Timed(Transfer(54, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 16).Between("127.0.0.1:5353", "127.0.0.1:5354")
+            with { Mechanism = Mechanism.Udp }),
+        Timed(Transfer(55, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 400, 17).Between("127.0.0.1:5353", "127.0.0.1:5354")
+            with { Mechanism = Mechanism.Udp }),
+        Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 5, 500, 12).Between("127.0.0.1:52000", "127.0.0.1:52001")),
+        Timed(Transfer(61, ObservationKind.Receive, AccountingSide.ReceiveSide, 5, 500, 13).Between("127.0.0.1:52001", "127.0.0.1:52000")),
+        Timed(Transfer(70, ObservationKind.Send, AccountingSide.SendSide, 9, 600, 14).Between("127.0.0.1:53000", "10.0.0.9:443")),
+        Lifecycle(80, ObservationKind.Create, 600, 15),
+    ];
+
+    private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+
+    /// <summary>A measure's entries by key, in one order, so two measures compare entry for entry.</summary>
+    private static (string Key, TransportBytes Bytes)[] Sorted<TKey>(IReadOnlyDictionary<TKey, TransportBytes> measured)
+        where TKey : notnull =>
+        [.. measured.Select(entry => (entry.Key.ToString()!, entry.Value)).OrderBy(entry => entry.Item1, StringComparer.Ordinal)];
 
     /// <summary>
     /// Publishes, as the next generation, a checkpoint of the current one when asked and an overview holding
