@@ -167,11 +167,18 @@ public sealed record RpcCallDensity(TimeRange Interval, IReadOnlyList<long> Runn
     public int Columns => Running.Count;
 
     /// <summary>The interval one column covers: equal shares of <see cref="Interval"/>, the last one ending with it.</summary>
-    public TimeRange ColumnInterval(int column)
+    public TimeRange ColumnInterval(int column) => ColumnIntervalOf(Interval, Columns, column);
+
+    /// <summary>
+    /// The interval column <paramref name="column"/> of <paramref name="columns"/> covers: equal shares of
+    /// <paramref name="interval"/>, the last one ending with it - any lane's density columns, an RPC channel's or an HTTP
+    /// channel's.
+    /// </summary>
+    public static TimeRange ColumnIntervalOf(TimeRange interval, int columns, int column)
     {
         ArgumentOutOfRangeException.ThrowIfNegative(column);
-        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, Columns);
-        return new(Boundary(Interval, Columns, column), Boundary(Interval, Columns, column + 1));
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(column, columns);
+        return new(Boundary(interval, columns, column), Boundary(interval, columns, column + 1));
     }
 
     /// <summary>The column a tick falls in, clamped to the interval's first and last.</summary>

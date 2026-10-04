@@ -58,6 +58,14 @@ An evidence page scoped by an HTTP key names `http-exchange-v1` in its query ide
 a page counts exactly its records apart - an exchange's buffers, or all of a process's - as it does an RPC channel's or
 call's.
 
+Since revision 290 the timeline at a process's exchanges also draws them as a lane under the machine's records, as an
+RPC channel's calls are drawn. An exchange runs from its first recorded buffer to the one that ended its response; one
+whose response's end was not recorded runs to its last buffer, and one whose first buffer has no session time is not
+placed. A whole exchange is drawn in the HTTP hue, and one any part of which was not recorded whole faint. Past the
+lane's budget of 4,000 exchanges in view, the lane draws density columns instead, each the exchanges running in it with
+the share not recorded whole faint on top; no exchange is dropped. A bar's card states how long the exchange took,
+its number, the bytes of its two messages and how it was recorded; a click selects its row when the row is listed.
+
 ## 5. `icat exchanges --json`
 
 `http-exchanges-v1`: the session and generation, `groupingRule`, `bindingRule`, the evidence policy, the HTTP records
@@ -77,5 +85,4 @@ records name no exchange.
 
 - An exchange's method, target, status or headers: they are content, and reading them is a decoder's work (§11.2's
   `DecodedFields`), which is not defined.
-- Exchanges drawn as marks in the timeline, as an RPC channel's calls are.
 - HTTP/2, compressed responses and asynchronous WinINet (ADR-037).

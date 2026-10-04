@@ -113,6 +113,55 @@ public sealed class SessionHttpExchangesTests
         Assert.Equal(17, SessionTimelineQuery.Focused(session.Store, new TimeRange(0, 400), 40, all).Focus.Sum(bucket => bucket.ObservationCount));
     }
 
+    [Fact(DisplayName = "§6.2: a process's HTTP exchanges in view are spans from their first buffer to their response's end, and density past the budget")]
+    public void ExchangesInViewAreSpansOrDensity()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(out SourceFieldRowV1[] fields), fields: fields);
+        string channel = HttpExchangeKeys.Channel(Client(session.Store));
+        HttpExchangePage listed = SessionHttpExchanges.Exchanges(session.Store, channel);
+
+        // Each exchange runs from its first buffer to the one that ended its response - exchange 1's late request-body
+        // buffer at 31 is not its end - or, where its response's end was not recorded, to its last buffer.
+        HttpExchangeSpanPage page = SessionHttpExchanges.Spans(session.Store, channel, new TimeRange(0, 400));
+        Assert.Null(page.Problem);
+        Assert.Null(page.Density);
+        Assert.Equal(5, page.Total);
+        Assert.Equal(
+            [(10L, 30L, true, true), (15L, 26L, true, true), (40L, 42L, false, false), (100L, 102L, true, true), (200L, 201L, true, false)],
+            page.Exchanges.Select(span => (span.FirstTicks, span.LastTicks, span.Ended, span.Complete)));
+        Assert.Equal(listed.Exchanges.Select(row => row.Key), page.Exchanges.Select(span => span.Key));
+        Assert.Equal((1L, 281L, 1_115L), (page.Exchanges[0].Number, page.Exchanges[0].RequestBytes, page.Exchanges[0].ResponseBytes));
+
+        // An interval holds every exchange that runs in it, however it began or ended.
+        Assert.Equal([10L, 15L, 40L], SessionHttpExchanges.Spans(session.Store, channel, new TimeRange(25, 41)).Exchanges
+            .Select(span => span.FirstTicks));
+
+        // Past the budget no exchange is dropped: each runs in every column from its first buffer's to its end's, and
+        // those not recorded whole are counted apart.
+        HttpExchangeSpanPage dense = SessionHttpExchanges.Spans(session.Store, channel, new TimeRange(0, 400), budget: 2, columns: 40);
+        HttpExchangeDensity density = Assert.IsType<HttpExchangeDensity>(dense.Density);
+        Assert.Empty(dense.Exchanges);
+        Assert.Equal(5, dense.Total);
+        long[] running = new long[40];
+        running[1] = 2;
+        running[2] = 2;
+        running[3] = 1;
+        running[4] = 1;
+        running[10] = 1;
+        running[20] = 1;
+        long[] incomplete = new long[40];
+        incomplete[4] = 1;
+        incomplete[20] = 1;
+        Assert.Equal(running, density.Running);
+        Assert.Equal(incomplete, density.Incomplete);
+        Assert.Equal((2L, new TimeRange(40, 50)), (density.Maximum, density.ColumnInterval(4)));
+
+        // A process that made none has none to draw, which is said rather than drawn empty.
+        ProcessInstanceId other = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.ProcessId == 7).Id;
+        Assert.NotNull(SessionHttpExchanges.Spans(session.Store, HttpExchangeKeys.Channel(other), new TimeRange(0, 400)).Problem);
+    }
+
     private static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 

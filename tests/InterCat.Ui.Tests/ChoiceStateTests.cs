@@ -230,9 +230,10 @@ public sealed class ChoiceStateTests
                 Dispatch();
                 Assert.True(toggle.IsChecked);
 
-                // Off, it is a button: in high contrast its face inside the divider's edge, with body ink.
+                // Off, it is a button: in high contrast its face inside the divider's edge, with body ink. The press shrank it,
+                // and its edge is read once it has eased back to its size, where it once was read part way and blended.
                 toggle.IsChecked = false;
-                frame = Settle(window);
+                frame = await AtRest(window, toggle);
                 if (ThemePalette.IsHighContrast(mode))
                 {
                     // The toggle stretches to its row, whose height is the text's, so its edge may straddle two pixels.
@@ -501,5 +502,21 @@ public sealed class ChoiceStateTests
         _ = window.CaptureRenderedFrame();
         Dispatch();
         return window.CaptureRenderedFrame()!;
+    }
+
+    /// <summary>
+    /// The frame once a pressed control has eased back to its size. The control theme shrinks a pressed button and eases
+    /// it back over real time, which the headless clock keeps too, so a frame taken part way drew its edges between pixels.
+    /// </summary>
+    private static async Task<WriteableBitmap> AtRest(Window window, Visual control)
+    {
+        for (int wait = 0; wait < 200 && control.RenderTransform is { Value.IsIdentity: false }; wait++)
+        {
+            await Task.Delay(10);
+            _ = Settle(window);
+        }
+
+        Assert.False(control.RenderTransform is { Value.IsIdentity: false }, "The pressed control never eased back to its size.");
+        return Settle(window);
     }
 }

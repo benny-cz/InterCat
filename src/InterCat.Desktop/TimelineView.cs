@@ -204,7 +204,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     private long? brushEnd;
     private double pressX;
     private double pressY;
-    private RpcCallSpanView? pressedCall;
+    /// <summary>The call or exchange a press began on, which a click on it selects.</summary>
+    private object? pressedCall;
     private bool brushing;
     private bool moved;
     private TimeRange panOrigin;
@@ -324,6 +325,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 : viewModel.ShowsDirectionLanes ? viewModel.TimelineDirectionLanes
                 : viewModel.ShowsChannelEndLanes ? viewModel.TimelineChannelEndLanes
                 : viewModel.ShowsRpcCallLane ? viewModel.RpcCallSpans
+                : viewModel.ShowsHttpExchangeLane ? viewModel.HttpExchangeSpans
                 : null;
             var key = new FocusRowsKey(viewModel, lanes, viewModel.TimelineDetail, viewModel.Snapshot.Timeline, Viewport);
             if (focusRowsKey != key)
@@ -354,7 +356,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
             : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
             : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
-            : viewModel.ShowsRpcCallLane ? (FocusRowKind.Calls, [MachineBuckets(viewModel, Viewport)])
+            : viewModel.ShowsRpcCallLane || viewModel.ShowsHttpExchangeLane
+                ? (FocusRowKind.Calls, [MachineBuckets(viewModel, Viewport)])
             : null;
         TimeRange visible = Viewport;
         if (found is not { Rows.Length: > 0 } rows || !rows.Rows.All(buckets => buckets.Count > 0
@@ -667,7 +670,15 @@ public sealed class TimelineView : Control, IHoverCardSource
                     DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale);
                     break;
                 default:
-                    DrawRpcCalls(context, viewModel, rows.Context, scale);
+                    if (viewModel.ShowsHttpExchangeLane)
+                    {
+                        DrawHttpExchanges(context, viewModel, rows.Context, scale);
+                    }
+                    else
+                    {
+                        DrawRpcCalls(context, viewModel, rows.Context, scale);
+                    }
+
                     break;
             }
 
@@ -782,7 +793,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
-        if (HoveredRpcCall is { } hoveredCall && CallRect(hoveredCall) is { } callRect)
+        if (HoveredOperation is { } hoveredCall && CallRect(hoveredCall) is { } callRect)
         {
             using (context.PushOpacity(0.7))
             {
@@ -790,8 +801,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
         }
 
-        if (HoveredRpcDensityColumn is { } hoveredColumn && viewModel.RpcCallDensity is { } hoveredDensity
-            && DensityColumnSpan(hoveredDensity, hoveredColumn, scale) is { } columnSpan)
+        if (HoveredDensityColumn is { } hoveredColumn && DensityShape(viewModel) is { } hoveredDensity
+            && DensityColumnSpan(hoveredDensity.Interval, hoveredDensity.Columns, hoveredColumn, scale) is { } columnSpan)
         {
             Rect callRow = LaneRow(1, 2, top, bottom);
             using (context.PushOpacity(0.5))
@@ -918,6 +929,31 @@ public sealed class TimelineView : Control, IHoverCardSource
                 {
                     cardKey = densityKey;
                     card = densityModel.DescribeRpcDensityHover(column);
+                }
+
+                return card;
+            }
+
+            if (HoveredHttpExchange is { } exchange && DataContext is WorkspaceViewModel exchangeModel)
+            {
+                var exchangeKey = new CardKey(exchangeModel, exchange, Mechanism.Http, 1, 0, ThemeResources.CurrentMode);
+                if (cardKey != exchangeKey)
+                {
+                    cardKey = exchangeKey;
+                    card = exchangeModel.DescribeHttpExchangeHover(exchange);
+                }
+
+                return card;
+            }
+
+            if (HoveredHttpDensityColumn is { } httpColumn
+                && DataContext is WorkspaceViewModel { HttpExchangeDensity: { } httpDensity } httpModel)
+            {
+                var httpKey = new CardKey(httpModel, httpDensity, Mechanism.Http, 1, httpColumn, ThemeResources.CurrentMode);
+                if (cardKey != httpKey)
+                {
+                    cardKey = httpKey;
+                    card = httpModel.DescribeHttpDensityHover(httpColumn);
                 }
 
                 return card;
@@ -1153,17 +1189,19 @@ public sealed class TimelineView : Control, IHoverCardSource
             : viewModel.Snapshot.Timeline;
 
     private (object? Spans, TimeRange Visible, Size Size, double Left, double Width)? callLayoutKey;
-    private List<(RpcCallSpanView Span, Rect Rect)> callLayout = [];
+    private List<(object Span, Rect Rect)> callLayout = [];
 
     /// <summary>
-    /// Where each call the lane draws lies: from its start to its stop, at least 2 px, in the first stacked row it does not
-    /// overlap. A call open at capture end runs to the view's edge; a call with only one record is a mark at it. Computed
-    /// once per set of calls, view and size, and read by drawing, hover and clicks alike (R11).
+    /// Where each call or exchange the lane draws lies: from its start to its stop, at least 2 px, in the first stacked row
+    /// it does not overlap. A call open at capture end runs to the view's edge; a call with only one record is a mark at it;
+    /// an exchange runs from its first buffer to its response's end, or its last buffer. Computed once per set of spans,
+    /// view and size, and read by drawing, hover and clicks alike (R11).
     /// </summary>
-    private List<(RpcCallSpanView Span, Rect Rect)> CallLayout(WorkspaceViewModel viewModel)
+    private List<(object Span, Rect Rect)> CallLayout(WorkspaceViewModel viewModel)
     {
         TimeRange visible = Viewport;
-        var key = (Spans: (object?)viewModel.RpcCallSpans, visible, Bounds.Size, PlotLeft, PlotWidth);
+        object? source = viewModel.ShowsHttpExchangeLane ? viewModel.HttpExchangeSpans : viewModel.RpcCallSpans;
+        var key = (Spans: source, visible, Bounds.Size, PlotLeft, PlotWidth);
         if (callLayoutKey is { } known && ReferenceEquals(known.Spans, key.Spans) && known.Visible == visible
             && known.Size == Bounds.Size && known.Left.Equals(PlotLeft) && known.Width.Equals(PlotWidth))
         {
@@ -1172,7 +1210,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         callLayoutKey = key;
         callLayout = [];
-        if (viewModel.RpcCallSpans is not { Count: > 0 } spans)
+        List<(object Span, long First, long Last)> spans = source switch
+        {
+            IReadOnlyList<RpcCallSpanView> calls => [.. calls.Select(call => ((object)call, call.FirstTicks,
+                call.EndTicks ?? (call.State == RpcCallState.OpenAtCaptureEnd ? long.MaxValue : call.FirstTicks)))],
+            IReadOnlyList<HttpExchangeSpanView> exchanges => [.. exchanges.Select(exchange =>
+                ((object)exchange, exchange.FirstTicks, exchange.LastTicks))],
+            _ => [],
+        };
+        if (spans.Count == 0)
         {
             return callLayout;
         }
@@ -1183,12 +1229,10 @@ public sealed class TimelineView : Control, IHoverCardSource
         double laneHeight = Math.Max(4, row.Height - 10);
         // Rows are packed by time, not pixels: a call shorter than a pixel still shares its row with the calls before it,
         // so a stack always means calls that ran at the same time.
-        var placed = new List<(RpcCallSpanView Span, double X1, double X2, int Row)>(spans.Count);
+        var placed = new List<(object Span, double X1, double X2, int Row)>(spans.Count);
         var rowEnds = new List<long>();
-        foreach (RpcCallSpanView span in spans)
+        foreach ((object span, long first, long last) in spans)
         {
-            long first = span.FirstTicks;
-            long last = span.EndTicks ?? (span.State == RpcCallState.OpenAtCaptureEnd ? long.MaxValue : first);
             double x1 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(first, visible.StartTicks, visible.EndTicks), PlotWidth);
             double x2 = PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(last, visible.StartTicks, visible.EndTicks), PlotWidth);
             x2 = Math.Max(x2, x1 + 2);
@@ -1206,7 +1250,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         double pitch = laneHeight / rowEnds.Count;
         // A bar grows with the lane up to 28 px, so a tall window's calls are not specks in an empty band.
         double height = Math.Max(2, Math.Min(28, (pitch * 0.6) - 1));
-        foreach ((RpcCallSpanView span, double x1, double x2, int index) in placed)
+        foreach ((object span, double x1, double x2, int index) in placed)
         {
             callLayout.Add((span, new Rect(x1, laneTop + (index * pitch) + ((pitch - height) / 2), x2 - x1, height)));
         }
@@ -1214,11 +1258,11 @@ public sealed class TimelineView : Control, IHoverCardSource
         return callLayout;
     }
 
-    /// <summary>The call drawn under a point on the call lane, the one drawn last where bars overlap.</summary>
-    private RpcCallSpanView? CallAt(Point point)
+    /// <summary>The call or exchange drawn under a point on the lane, the one drawn last where bars overlap.</summary>
+    private object? CallAt(Point point)
     {
         if (DataContext is not WorkspaceViewModel viewModel) return null;
-        List<(RpcCallSpanView Span, Rect Rect)> layout = CallLayout(viewModel);
+        List<(object Span, Rect Rect)> layout = CallLayout(viewModel);
         for (int index = layout.Count - 1; index >= 0; index--)
         {
             if (layout[index].Rect.Inflate(new Thickness(2, 1)).Contains(point)) return layout[index].Span;
@@ -1227,11 +1271,11 @@ public sealed class TimelineView : Control, IHoverCardSource
         return null;
     }
 
-    /// <summary>Where the lane draws a call, if it draws it.</summary>
-    private Rect? CallRect(RpcCallSpanView span)
+    /// <summary>Where the lane draws a call or an exchange, if it draws it.</summary>
+    private Rect? CallRect(object span)
     {
         if (DataContext is not WorkspaceViewModel viewModel) return null;
-        foreach ((RpcCallSpanView drawn, Rect rect) in CallLayout(viewModel))
+        foreach ((object drawn, Rect rect) in CallLayout(viewModel))
         {
             if (ReferenceEquals(drawn, span)) return rect;
         }
@@ -1242,6 +1286,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>Where on the call lane a call is drawn, in this control's coordinates, for pointing at it.</summary>
     internal Point? PointOf(RpcCallSpanView span) => CallRect(span) is { } rect ? rect.Center : null;
 
+    /// <summary>Where on the exchange lane an exchange is drawn, in this control's coordinates, for pointing at it.</summary>
+    internal Point? PointOf(HttpExchangeSpanView span) => CallRect(span) is { } rect ? rect.Center : null;
+
     /// <summary>The density column under a resting pointer, when the call lane draws its calls as density (§6.2).</summary>
     internal int? HoveredRpcDensityColumn => HoverTick is { } tick && FocusRows is { Kind: FocusRowKind.Calls }
         && HoveredLaneIndex == 1
@@ -1250,16 +1297,34 @@ public sealed class TimelineView : Control, IHoverCardSource
             ? RpcCallDensity.ColumnOf(density.Interval, density.Columns, tick)
             : null;
 
-    /// <summary>Where on the call lane a density column is drawn, in this control's coordinates, for pointing at it.</summary>
+    /// <summary>The density column under a resting pointer, when the exchange lane draws its exchanges as density.</summary>
+    internal int? HoveredHttpDensityColumn => HoverTick is { } tick && FocusRows is { Kind: FocusRowKind.Calls }
+        && HoveredLaneIndex == 1
+        && DataContext is WorkspaceViewModel { HttpExchangeDensity: { } density }
+        && density.Interval.Contains(tick)
+            ? RpcCallDensity.ColumnOf(density.Interval, density.Columns, tick)
+            : null;
+
+    /// <summary>The density column under a resting pointer on whichever lane draws its spans as density.</summary>
+    private int? HoveredDensityColumn => HoveredRpcDensityColumn ?? HoveredHttpDensityColumn;
+
+    /// <summary>The interval and columns of the density the lane draws, an RPC channel's or an HTTP channel's; null when none.</summary>
+    private static (TimeRange Interval, int Columns)? DensityShape(WorkspaceViewModel viewModel) =>
+        viewModel.RpcCallDensity is { } calls ? (calls.Interval, calls.Columns)
+        : viewModel.HttpExchangeDensity is { } exchanges ? (exchanges.Interval, exchanges.Columns)
+        : null;
+
+    /// <summary>Where on the lane a density column is drawn, in this control's coordinates, for pointing at it.</summary>
     internal Point? PointOfDensityColumn(int column)
     {
-        if (DataContext is not WorkspaceViewModel { RpcCallDensity: { } density } || column < 0 || column >= density.Columns)
+        if (DataContext is not WorkspaceViewModel viewModel || DensityShape(viewModel) is not { } density
+            || column < 0 || column >= density.Columns)
         {
             return null;
         }
 
         TimeRange visible = Viewport;
-        TimeRange interval = density.ColumnInterval(column);
+        TimeRange interval = RpcCallDensity.ColumnIntervalOf(density.Interval, density.Columns, column);
         if (!Intersects(interval, visible))
         {
             return null;
@@ -1273,11 +1338,17 @@ public sealed class TimelineView : Control, IHoverCardSource
         return new Point((x1 + x2) / 2, row.Center.Y + (row.Height / 4));
     }
 
-    /// <summary>The call under a resting pointer on the call lane.</summary>
-    internal RpcCallSpanView? HoveredRpcCall => HoverTick is not null && FocusRows is { Kind: FocusRowKind.Calls }
+    /// <summary>The call or exchange under a resting pointer on the lane.</summary>
+    private object? HoveredOperation => HoverTick is not null && FocusRows is { Kind: FocusRowKind.Calls }
         && HoveredLaneIndex == 1
             ? CallAt(HoverPoint)
             : null;
+
+    /// <summary>The call under a resting pointer on the call lane.</summary>
+    internal RpcCallSpanView? HoveredRpcCall => HoveredOperation as RpcCallSpanView;
+
+    /// <summary>The exchange under a resting pointer on the exchange lane.</summary>
+    internal HttpExchangeSpanView? HoveredHttpExchange => HoveredOperation as HttpExchangeSpanView;
 
     /// <summary>
     /// L3 of an RPC channel: the machine's records as grey context, then the channel's calls as bars from start to stop -
@@ -1286,27 +1357,19 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private void DrawRpcCalls(DrawingContext context, WorkspaceViewModel viewModel, IReadOnlyList<TimelineBucket> machine, BarScale scale)
     {
-        Rect machineRow = LaneRow(0, 2, scale.Top, scale.Bottom);
-        context.DrawLine(RulePen, new(scale.Left, machineRow.Bottom), new(scale.Left + scale.PlotWidth, machineRow.Bottom));
-        DrawText(context, "Machine · all records", new(9, machineRow.Center.Y - 7));
-        DrawLaneSeries(context, viewModel, null, machine,
-            new BarScale(scale.Visible, scale.Left, scale.PlotWidth, machineRow.Top + 3, machineRow.Bottom - 5,
-                scale.MaximumRate, Focused: false),
-            machineRow, contextRow: true);
-
-        Rect callRow = LaneRow(1, 2, scale.Top, scale.Bottom);
-        DrawText(context, "Calls", new(9, callRow.Center.Y - 14));
-        DrawText(context, Shortened(viewModel.RpcCallLaneNote, 24), new(9, callRow.Center.Y + 1));
+        Rect callRow = DrawOperationFrame(context, viewModel, machine, scale, "Calls", viewModel.RpcCallLaneNote);
         if (viewModel.RpcCallDensity is { } density)
         {
-            DrawCallDensity(context, density, callRow, scale);
+            DrawCallDensity(context, density.Interval, density.Running, density.Failed, density.Maximum,
+                BrushFor(Mechanism.Rpc), Current.FailedBrush, callRow, scale);
             return;
         }
 
         string? selected = viewModel.SelectedRpcCallKey;
         SolidColorBrush success = BrushFor(Mechanism.Rpc);
-        foreach ((RpcCallSpanView span, Rect rect) in CallLayout(viewModel))
+        foreach ((object drawn, Rect rect) in CallLayout(viewModel))
         {
+            var span = (RpcCallSpanView)drawn;
             IBrush fill = span.Failed ? Current.FailedBrush
                 : span.State == RpcCallState.Completed ? success
                 : span.State == RpcCallState.OpenAtCaptureEnd ? Current.LiveBrush(Mechanism.Rpc)
@@ -1316,42 +1379,106 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>
-    /// A call lane with more calls in view than it draws one by one (§6.2): a column per share of the read interval, its
-    /// height the calls running in it on a log scale above the occupied floor, so a lone call stays visible, and its failed
-    /// share in caution ink on top, so a failure never disappears when the view zooms out.
+    /// L3 of a process's HTTP exchanges: the machine's records as grey context, then each exchange as a bar from its first
+    /// buffer to its response's end - the HTTP hue for one recorded whole, and faint for one any part of which was not, its
+    /// response's end included. The selected exchange is outlined.
     /// </summary>
-    private static void DrawCallDensity(DrawingContext context, RpcCallDensity density, Rect row, BarScale scale)
+    private void DrawHttpExchanges(
+        DrawingContext context, WorkspaceViewModel viewModel, IReadOnlyList<TimelineBucket> machine, BarScale scale)
+    {
+        Rect exchangeRow = DrawOperationFrame(context, viewModel, machine, scale, "Exchanges", viewModel.HttpExchangeLaneNote);
+        if (viewModel.HttpExchangeDensity is { } density)
+        {
+            DrawCallDensity(context, density.Interval, density.Running, density.Incomplete, density.Maximum,
+                BrushFor(Mechanism.Http), Current.LiveBrush(Mechanism.Http), exchangeRow, scale);
+            return;
+        }
+
+        string? selected = viewModel.SelectedHttpExchangeKey;
+        SolidColorBrush whole = BrushFor(Mechanism.Http);
+        foreach ((object drawn, Rect rect) in CallLayout(viewModel))
+        {
+            var exchange = (HttpExchangeSpanView)drawn;
+            context.DrawRectangle(exchange.Complete ? whole : Current.LiveBrush(Mechanism.Http),
+                exchange.Key == selected ? SelectionPen : null, rect);
+        }
+    }
+
+    /// <summary>
+    /// What an operation lane draws around its marks: the machine's records as grey context above, and the lane's name and
+    /// note at its left. Returns the lane's row.
+    /// </summary>
+    private static Rect DrawOperationFrame(
+        DrawingContext context, WorkspaceViewModel viewModel, IReadOnlyList<TimelineBucket> machine, BarScale scale,
+        string name, string note)
+    {
+        Rect machineRow = LaneRow(0, 2, scale.Top, scale.Bottom);
+        context.DrawLine(RulePen, new(scale.Left, machineRow.Bottom), new(scale.Left + scale.PlotWidth, machineRow.Bottom));
+        DrawText(context, "Machine · all records", new(9, machineRow.Center.Y - 7));
+        DrawLaneSeries(context, viewModel, null, machine,
+            new BarScale(scale.Visible, scale.Left, scale.PlotWidth, machineRow.Top + 3, machineRow.Bottom - 5,
+                scale.MaximumRate, Focused: false),
+            machineRow, contextRow: true);
+
+        Rect operationRow = LaneRow(1, 2, scale.Top, scale.Bottom);
+        DrawText(context, name, new(9, operationRow.Center.Y - 14));
+        DrawText(context, Shortened(note, 24), new(9, operationRow.Center.Y + 1));
+        return operationRow;
+    }
+
+    /// <summary>
+    /// An operation lane with more calls or exchanges in view than it draws one by one (§6.2): a column per share of the
+    /// read interval, its height the spans running in it on a log scale above the occupied floor, so a lone one stays
+    /// visible, and its flagged share on top in its own brush - an RPC channel's failures in caution ink, an HTTP channel's
+    /// exchanges not recorded whole faint - so it never disappears when the view zooms out.
+    /// </summary>
+    private static void DrawCallDensity(
+        DrawingContext context,
+        TimeRange interval,
+        IReadOnlyList<long> running,
+        IReadOnlyList<long> flagged,
+        long maximum,
+        IBrush fill,
+        IBrush flaggedFill,
+        Rect row,
+        BarScale scale)
     {
         double laneTop = row.Top + 4;
         double laneHeight = Math.Max(4, row.Height - 10);
         double bottom = laneTop + laneHeight;
-        double peak = Math.Log2(1 + density.Maximum);
-        SolidColorBrush fill = BrushFor(Mechanism.Rpc);
-        for (int column = 0; column < density.Columns; column++)
+        double peak = Math.Log2(1 + maximum);
+        for (int column = 0; column < running.Count; column++)
         {
-            long running = density.Running[column];
-            if (running == 0 || DensityColumnSpan(density, column, scale) is not { } span)
+            long count = running[column];
+            if (count == 0 || DensityColumnSpan(interval, running.Count, column, scale) is not { } span)
             {
                 continue;
             }
 
             double width = Math.Max(1, span.X2 - span.X1 - 1);
-            double intensity = peak <= 0 ? 1 : Math.Log2(1 + running) / peak;
+            double intensity = peak <= 0 ? 1 : Math.Log2(1 + count) / peak;
             double height = laneHeight * (OccupiedFloor + ((1 - OccupiedFloor) * intensity));
-            context.DrawRectangle(fill, null, new Rect(span.X1, bottom - height, width, height));
-            long failed = density.Failed[column];
-            if (failed > 0)
+
+            // The flagged share sits on top, at least 2 px, and the rest beneath it: stacked, never overlaid, so a faint
+            // share is faint over the plot rather than lost over the solid fill.
+            long share = flagged[column];
+            double top = share > 0 ? Math.Min(height, Math.Max(2, height * share / count)) : 0;
+            if (height - top > 0)
             {
-                context.DrawRectangle(Current.FailedBrush, null,
-                    new Rect(span.X1, bottom - height, width, Math.Max(2, height * failed / running)));
+                context.DrawRectangle(fill, null, new Rect(span.X1, bottom - height + top, width, height - top));
+            }
+
+            if (top > 0)
+            {
+                context.DrawRectangle(flaggedFill, null, new Rect(span.X1, bottom - height, width, top));
             }
         }
     }
 
     /// <summary>Where a density column lies on the plot, clipped to the view; null when it is outside it.</summary>
-    private static (double X1, double X2)? DensityColumnSpan(RpcCallDensity density, int column, BarScale scale)
+    private static (double X1, double X2)? DensityColumnSpan(TimeRange density, int columns, int column, BarScale scale)
     {
-        TimeRange interval = density.ColumnInterval(column);
+        TimeRange interval = RpcCallDensity.ColumnIntervalOf(density, columns, column);
         return Intersects(interval, scale.Visible)
             ? (scale.X(Math.Max(interval.StartTicks, scale.Visible.StartTicks)),
                 scale.X(Math.Min(interval.EndTicks, scale.Visible.EndTicks)))
@@ -2269,16 +2396,23 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
         else if (wasClick && pressedCall is { } call)
         {
-            // A call is an operation, not an interval: a click on one selects its row, where its records are one step away.
-            viewModel.SelectRpcCall(call.Key);
+            // A call or an exchange is an operation, not an interval: a click on one selects its row, where its records are
+            // one step away.
+            _ = call switch
+            {
+                RpcCallSpanView rpc => viewModel.SelectRpcCall(rpc.Key),
+                HttpExchangeSpanView http => viewModel.SelectHttpExchange(http.Key),
+                _ => false,
+            };
         }
         else if (wasClick && FocusRows is { Kind: FocusRowKind.Calls } && LaneIndexAt(pressY) == 1)
         {
-            // A density column is an interval, which a click selects as it would a bar's; between drawn calls there is
+            // A density column is an interval, which a click selects as it would a bar's; between drawn spans there is
             // nothing to select.
-            if (viewModel.RpcCallDensity is { } density && density.Interval.Contains(anchor))
+            if (DensityShape(viewModel) is { } density && density.Interval.Contains(anchor))
             {
-                viewModel.SelectInterval(density.ColumnInterval(RpcCallDensity.ColumnOf(density.Interval, density.Columns, anchor)));
+                viewModel.SelectInterval(RpcCallDensity.ColumnIntervalOf(density.Interval, density.Columns,
+                    RpcCallDensity.ColumnOf(density.Interval, density.Columns, anchor)));
             }
         }
         else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)

@@ -22,8 +22,11 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class PaintAllocationTests
 {
-    /// <summary>Averaged over the measured frames, so one lazily grown cache in the drawing stack is not a failure.</summary>
-    private const long ToleratedBytesPerFrame = 32;
+    /// <summary>
+    /// Averaged over the measured frames, so one lazily grown cache in the drawing stack is not a failure, while the least
+    /// object allocated on every other frame is: the smallest an object can be is 24 bytes.
+    /// </summary>
+    private const long ToleratedBytesPerFrame = 8;
 
     private static readonly string[] Panes = ["TimelineSurface", "GraphSurface", "MinimapSurface", "HoverLayer"];
 
@@ -93,6 +96,77 @@ public sealed class PaintAllocationTests
         Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
     }
 
+    [AvaloniaFact(DisplayName = "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not")]
+    public async Task AnOperationLaneRepaintAllocatesNothingOfItsOwn()
+    {
+        var report = new List<string>();
+        foreach (bool dense in new[] { false, true })
+        {
+            string shape = dense ? "density" : "bars";
+
+            // An RPC channel's calls: completed, failing and one open at capture end.
+            using (var session = new TemporarySession())
+            {
+                Publish(session.Store, RpcCalls(dense ? SessionRpcCalls.MaximumSpans + 100 : 12));
+                (MainWindow window, WorkspaceViewModel workspace, TimelineView timeline) = await OpenCalls(session);
+                try
+                {
+                    Assert.True(workspace.ShowsRpcCallLane, workspace.TimelineCaption);
+                    Assert.Equal(dense, workspace.RpcCallDensity is not null);
+                    Point? mark = workspace.RpcCallDensity is { } density
+                        ? timeline.PointOfDensityColumn(Occupied(density.Running))
+                        : timeline.PointOf(workspace.RpcCallSpans!.First(call => call.Failed));
+                    await MeasureLane(window, workspace, timeline, $"RPC calls as {shape}", mark, report);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+
+            // A process's HTTP exchanges, some not recorded whole.
+            using (var session = new TemporarySession())
+            {
+                SourceFieldRowV1[] fields;
+                Publish(session.Store, dense
+                    ? HttpExchangeLaneTests.ManyExchanges(SessionHttpExchanges.MaximumSpans + 100, out fields)
+                    : HttpExchangeLaneTests.FiveExchanges(out fields), fields: fields);
+                (MainWindow window, WorkspaceViewModel workspace, TimelineView timeline) = await HttpExchangeLaneTests.OpenExchanges(session);
+                try
+                {
+                    Assert.True(workspace.ShowsHttpExchangeLane, workspace.TimelineCaption);
+                    Assert.Equal(dense, workspace.HttpExchangeDensity is not null);
+                    Point? mark = workspace.HttpExchangeDensity is { } density
+                        ? timeline.PointOfDensityColumn(Occupied(density.Incomplete))
+                        : timeline.PointOf(workspace.HttpExchangeSpans!.First(exchange => !exchange.Complete));
+                    await MeasureLane(window, workspace, timeline, $"HTTP exchanges as {shape}", mark, report);
+                }
+                finally
+                {
+                    window.Close();
+                }
+            }
+        }
+
+        Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
+    }
+
+    /// <summary>Measures every pane with the lane drawn, then again with one of its marks and that mark's card under the pointer.</summary>
+    private static async Task MeasureLane(
+        Window window, WorkspaceViewModel workspace, TimelineView timeline, string lane, Point? mark, List<string> report)
+    {
+        await Settle(window, workspace);
+        Measure(window, lane, report);
+        window.MouseMove(timeline.TranslatePoint(Assert.NotNull(mark), window)!.Value);
+        await Settle(window, workspace);
+        Assert.NotNull(timeline.HoverCard);
+        Measure(window, $"{lane}, one hovered", report);
+    }
+
+    /// <summary>The first density column that counts something.</summary>
+    private static int Occupied(IReadOnlyList<long> columns) =>
+        Enumerable.Range(0, columns.Count).First(column => columns[column] > 0);
+
     private static void Measure(Window window, string rung, List<string> report)
     {
         foreach (string name in Panes)
@@ -106,8 +180,10 @@ public sealed class PaintAllocationTests
     }
 
     /// <summary>
-    /// What one repaint of <paramref name="control"/> allocates beyond the drawing context's own cost, in the least of up to
-    /// three batches.
+    /// What one repaint of <paramref name="control"/> allocates, in the least of up to three batches. Each batch draws
+    /// every frame into one context, so the context's opacity, clip and transform stacks grow once, in the warm-up, and
+    /// what a counted frame allocates is the pane's own. Drawn into a fresh context per frame, the stacks' growth had to be
+    /// taken off as one estimate for every pane, and a lane's note formatted on every frame once hid inside it.
     /// </summary>
     private static long OwnAllocationPerFrame(Control control)
     {
@@ -116,23 +192,6 @@ public sealed class PaintAllocationTests
         const int frames = 32;
         var target = new RenderTargetBitmap(new PixelSize(
             Math.Max(1, (int)Math.Ceiling(control.Bounds.Width)), Math.Max(1, (int)Math.Ceiling(control.Bounds.Height))));
-        long Frames(Action<DrawingContext> render)
-        {
-            for (int warm = 0; warm < 32; warm++)
-            {
-                using DrawingContext context = target.CreateDrawingContext();
-                render(context);
-            }
-
-            long before = GC.GetAllocatedBytesForCurrentThread();
-            for (int frame = 0; frame < frames; frame++)
-            {
-                using DrawingContext context = target.CreateDrawingContext();
-                render(context);
-            }
-
-            return GC.GetAllocatedBytesForCurrentThread() - before;
-        }
 
         // A batch can include a one-off allocation that no pane code makes. Under full-suite load one batch in a few runs
         // allocated 3.6-5.7 KB with no collection during it, and each of three batches measured right after allocated
@@ -141,16 +200,19 @@ public sealed class PaintAllocationTests
         long least = long.MaxValue;
         for (int batch = 0; batch < 3 && least > ToleratedBytesPerFrame; batch++)
         {
-            // The context grows its opacity and clip stacks on their first use in a frame; that is its cost, not the pane's.
-            long empty = Frames(static context =>
+            using DrawingContext context = target.CreateDrawingContext();
+            for (int warm = 0; warm < 32; warm++)
             {
-                using (context.PushOpacity(0.5))
-                using (context.PushClip(new Rect(0, 0, 1, 1)))
-                {
-                }
-            });
-            long drawn = Frames(control.Render);
-            least = Math.Min(least, Math.Max(0, drawn - empty) / frames);
+                control.Render(context);
+            }
+
+            long before = GC.GetAllocatedBytesForCurrentThread();
+            for (int frame = 0; frame < frames; frame++)
+            {
+                control.Render(context);
+            }
+
+            least = Math.Min(least, (GC.GetAllocatedBytesForCurrentThread() - before) / frames);
         }
 
         return least;
@@ -163,6 +225,62 @@ public sealed class PaintAllocationTests
         Dispatch();
         _ = window.CaptureRenderedFrame();
         Dispatch();
+    }
+
+    /// <summary>Opens the session in a window and descends to process 100's RPC channel, with its call lane read for the view.</summary>
+    private static async Task<(MainWindow Window, WorkspaceViewModel Workspace, TimelineView Timeline)> OpenCalls(TemporarySession session)
+    {
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(new(
+            CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
+            Overview: SessionOverviewProjector.Project(session.Store)));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        timeline.RequestDetailNow();
+        await workspace.RpcSpansReady;
+        Dispatch();
+        return (window, workspace, timeline);
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> calls process 100 made on one interface, one after another, every seventh failing, then one
+    /// still open at capture end; beside a few transfers, so the machine's context lane has records to draw.
+    /// </summary>
+    private static ObservationRowV1[] RpcCalls(int count)
+    {
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        long open = 10 + (3L * count);
+        return
+        [
+            .. Exchange(4),
+            .. Enumerable.Range(0, count).SelectMany(index =>
+            {
+                long start = 10 + (3L * index);
+                var activity = new Guid(index + 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3);
+                return new[]
+                {
+                    RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(100_000 + (2 * index)),
+                        activity, serviceControl) with { SessionRelativeTicks = start * 100 },
+                    RpcCall(start + 1, ObservationKind.RequestEnd, Direction.Outbound, 100, (ulong)(100_001 + (2 * index)),
+                        activity, status: index % 7 == 5 ? 5 : 0) with { SessionRelativeTicks = (start + 1) * 100 },
+                };
+            }),
+            RpcCall(open, ObservationKind.RequestStart, Direction.Outbound, 100, (ulong)(100_000 + (2 * count)),
+                new Guid(count + 1, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3), serviceControl) with { SessionRelativeTicks = open * 100 },
+        ];
     }
 
     /// <summary>A client sending and a server receiving, <paramref name="count"/> times, then sending once with no size.</summary>

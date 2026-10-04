@@ -19,6 +19,9 @@ public sealed partial class WorkspaceViewModel
     private HttpExchangesLoad? httpExchanges;
     private IReadOnlyList<RungRow> httpChannelRows = [];
     private IReadOnlyList<RungRow> httpExchangeRows = [];
+    private HttpExchangeSpanPage? httpSpans;
+    private (string Key, TimeRange Viewport, int Columns)? requestedHttpSpans;
+    private CancellationTokenSource? httpSpanQuery;
 
     /// <summary>Whether the user is at a published session's HTTP channel rung, whose rows are a process's exchanges.</summary>
     public bool IsHttpChannelRung => evidenceSource is not null
@@ -280,6 +283,190 @@ public sealed partial class WorkspaceViewModel
     {
         CancelHttpChannels();
         CancelHttpExchanges();
+        CancelHttpSpans();
+    }
+
+    /// <summary>Completes when the latest read of the exchange lane's exchanges has applied or reported a problem.</summary>
+    public Task HttpSpansReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// The HTTP channel rung's exchanges within the drawn viewport, in reading order; null where no exchange lane is drawn,
+    /// and empty where the view holds more exchanges than the lane draws one by one and <see cref="HttpExchangeDensity"/>
+    /// draws them instead.
+    /// </summary>
+    public IReadOnlyList<HttpExchangeSpanView>? HttpExchangeSpans => ShowsHttpExchangeLane ? httpSpans!.Exchanges : null;
+
+    /// <summary>The exchange lane's density columns (§6.2), when the viewport holds more exchanges than it draws one by one.</summary>
+    public HttpExchangeDensity? HttpExchangeDensity => ShowsHttpExchangeLane ? httpSpans!.Density : null;
+
+    /// <summary>
+    /// Whether the timeline draws the process's HTTP exchanges as a lane of bars under the machine row, each from its first
+    /// buffer to its response's end, as an RPC channel's calls are drawn from their start to their stop.
+    /// </summary>
+    public bool ShowsHttpExchangeLane => IsHttpChannelRung && httpSpans is { Problem: null };
+
+    /// <summary>
+    /// What the exchange lane holds, in one short line: every exchange in view, drawn one by one or as density. Formatted
+    /// once per read of the lane, as the call lane's note is, since the timeline states it on every repaint (R11).
+    /// </summary>
+    public string HttpExchangeLaneNote
+    {
+        get
+        {
+            if (httpSpans is not { Problem: null } spans || !IsHttpChannelRung)
+            {
+                return string.Empty;
+            }
+
+            if (!ReferenceEquals(httpExchangeLaneNote.Page, spans))
+            {
+                httpExchangeLaneNote = (spans, OperationLaneNote(spans.Total, spans.Density is not null));
+            }
+
+            return httpExchangeLaneNote.Text;
+        }
+    }
+
+    private (object? Page, string Text) httpExchangeLaneNote = (null, string.Empty);
+
+    /// <summary>The exchange selected in the HTTP channel rung's table, which the exchange lane outlines.</summary>
+    public string? SelectedHttpExchangeKey => IsHttpChannelRung ? selectedRung?.Key : null;
+
+    /// <summary>Selects an exchange the lane drew, when its row is among those listed; false when it is not.</summary>
+    public bool SelectHttpExchange(string key)
+    {
+        if (!IsHttpChannelRung || RungRows.FirstOrDefault(row => row.Key == key) is not { } row)
+        {
+            return false;
+        }
+
+        SelectedRung = row;
+        return true;
+    }
+
+    /// <summary>What an exchange the lane draws is, for its hover card: how long it took, its messages and how it was recorded.</summary>
+    public HoverCard DescribeHttpExchangeHover(HttpExchangeSpanView span)
+    {
+        ArgumentNullException.ThrowIfNull(span);
+        string title = span.Ended
+            ? "HTTP exchange · " + OperationText.Duration((span.LastTicks - span.FirstTicks) * 100, CultureInfo.CurrentCulture)
+            : "HTTP exchange · its response's end was not recorded";
+        return new(title,
+        [
+            string.Create(CultureInfo.CurrentCulture, $"Exchange {span.Number:N0} of its process"),
+            "Started " + WorkspaceTime.FormatInstant(span.FirstTicks, Math.Max(1, span.LastTicks - span.FirstTicks + 1),
+                CultureInfo.CurrentCulture),
+            string.Create(CultureInfo.CurrentCulture, $"{span.RequestBytes:N0} B sent, {span.ResponseBytes:N0} B received"),
+            span.Complete ? "Recorded whole" : "Not recorded whole; its row says which part",
+            RungRows.Any(row => row.Key == span.Key) ? "Click selects its row" : "Load more exchanges to select its row",
+        ]);
+    }
+
+    /// <summary>What one density column of the exchange lane holds, for its hover card.</summary>
+    public HoverCard DescribeHttpDensityHover(int column)
+    {
+        HttpExchangeDensity density = HttpExchangeDensity ?? throw new InvalidOperationException("The exchange lane draws no density.");
+        TimeRange interval = density.ColumnInterval(column);
+        long running = density.Running[column];
+        long incomplete = density.Incomplete[column];
+        string title = running == 0
+            ? "No exchange running"
+            : string.Create(CultureInfo.CurrentCulture, $"{running:N0} {(running == 1 ? "exchange" : "exchanges")} running");
+        var lines = new List<string>();
+        if (incomplete > 0)
+        {
+            lines.Add(string.Create(CultureInfo.CurrentCulture, $"{incomplete:N0} of them not recorded whole"));
+        }
+
+        lines.Add("From " + WorkspaceTime.FormatInstant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
+            + " for " + WorkspaceTime.FormatDuration(interval.SpanTicks, CultureInfo.CurrentCulture));
+        lines.Add(string.Create(CultureInfo.CurrentCulture,
+            $"The busiest column holds {density.Maximum:N0}; an exchange counts in every column it ran in"));
+        lines.Add("Click selects this interval; zoom in to see each exchange");
+        return new(title, lines);
+    }
+
+    /// <summary>
+    /// Reads the exchanges the lane draws for <paramref name="viewport"/> at an HTTP channel rung, superseding a read still
+    /// under way; any other rung lets the lane go.
+    /// </summary>
+    private void RequestHttpSpans(TimeRange viewport)
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        if (!IsHttpChannelRung || evidenceSource is null)
+        {
+            if (httpSpans is not null || requestedHttpSpans is not null)
+            {
+                CancelHttpSpans();
+                RaiseHttpSpansChanged();
+            }
+
+            return;
+        }
+
+        string key = ladder.Current.Focus?.Key ?? string.Empty;
+        int columns = CallDensityColumns;
+        if (requestedHttpSpans == (key, viewport, columns))
+        {
+            return;
+        }
+
+        requestedHttpSpans = (key, viewport, columns);
+        httpSpanQuery?.Cancel();
+        httpSpanQuery?.Dispose();
+        var query = new CancellationTokenSource();
+        httpSpanQuery = query;
+        HttpSpansReady = LoadHttpSpansAsync(evidenceSource, key, viewport, columns, query);
+    }
+
+    private async Task LoadHttpSpansAsync(
+        SessionEvidenceSource source, string key, TimeRange viewport, int columns, CancellationTokenSource query)
+    {
+        try
+        {
+            HttpExchangeSpanPage page = await source.HttpSpansAsync(key, viewport, columns, query.Token).AnsweredLater();
+            if (disposed || !ReferenceEquals(httpSpanQuery, query)) return;
+            httpSpans = page;
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            return;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException or ArgumentException)
+        {
+            if (disposed || !ReferenceEquals(httpSpanQuery, query)) return;
+            httpSpans = new(Guid.Empty, 0, viewport, [], 0, exception.Message);
+        }
+
+        RaiseHttpSpansChanged();
+    }
+
+    private void CancelHttpSpans()
+    {
+        httpSpanQuery?.Cancel();
+        httpSpanQuery?.Dispose();
+        httpSpanQuery = null;
+        requestedHttpSpans = null;
+        httpSpans = null;
+    }
+
+    private void RaiseHttpSpansChanged()
+    {
+        if (disposed)
+        {
+            return;
+        }
+
+        OnPropertyChanged(nameof(HttpExchangeSpans));
+        OnPropertyChanged(nameof(HttpExchangeDensity));
+        OnPropertyChanged(nameof(ShowsHttpExchangeLane));
+        OnPropertyChanged(nameof(HttpExchangeLaneNote));
+        OnPropertyChanged(nameof(TimelineCaption));
     }
 
     private void CancelHttpChannels()

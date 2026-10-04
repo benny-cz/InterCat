@@ -147,6 +147,55 @@ public sealed record HttpExchangePage(
     string? Problem);
 
 /// <summary>
+/// One exchange as the timeline draws it (§6.2): from its first recorded buffer to the buffer that ended its response, in
+/// workspace ticks, or to its last recorded buffer when its response's end was not recorded. Whether it was recorded whole
+/// (<see cref="HttpExchange.Complete"/>) says how it is drawn; its number and the bytes of its two messages say what it was.
+/// </summary>
+public sealed record HttpExchangeSpanView(
+    string Key,
+    long FirstTicks,
+    long LastTicks,
+    bool Ended,
+    bool Complete,
+    long Number,
+    long RequestBytes,
+    long ResponseBytes);
+
+/// <summary>
+/// A process's HTTP exchanges within one interval as §6.2's density regime draws them, when there are more than a lane draws
+/// one by one: the interval cut into equal columns, and in each the exchanges running in it and how many of those were not
+/// recorded whole. An exchange runs in every column from its first buffer's to its end's, as a call runs from its start to
+/// its stop; it is an overlap count, never a count of records.
+/// </summary>
+public sealed record HttpExchangeDensity(TimeRange Interval, IReadOnlyList<long> Running, IReadOnlyList<long> Incomplete)
+{
+    /// <summary>The most exchanges running in any one column: what the lane's intensity scale reaches.</summary>
+    public long Maximum { get; } = Running.Count == 0 ? 0 : Running.Max();
+
+    public int Columns => Running.Count;
+
+    /// <summary>The interval one column covers, as an RPC channel's density columns divide theirs.</summary>
+    public TimeRange ColumnInterval(int column) => RpcCallDensity.ColumnIntervalOf(Interval, Columns, column);
+}
+
+/// <summary>
+/// A process's HTTP exchanges within one interval, in reading order, when they are no more than a lane draws one by one;
+/// otherwise none of them, and their <see cref="Density"/> instead (§6.2). <see cref="Total"/> counts every exchange the
+/// interval holds; one whose first buffer has no session time is not placed, and is in neither.
+/// </summary>
+public sealed record HttpExchangeSpanPage(
+    Guid SessionId,
+    long Generation,
+    TimeRange Interval,
+    IReadOnlyList<HttpExchangeSpanView> Exchanges,
+    long Total,
+    string? Problem)
+{
+    /// <summary>The exchanges as density columns, when there were more of them than the budget; null otherwise.</summary>
+    public HttpExchangeDensity? Density { get; init; }
+}
+
+/// <summary>
 /// Reads a published session's HTTP exchanges for the ladder (ADR-037, M8): a process's exchanges as one channel, and its
 /// exchanges a page at a time. Each read leases the current generation, whose exchanges are grouped once and shared by
 /// every read of it.
@@ -155,6 +204,115 @@ public static class SessionHttpExchanges
 {
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 500;
+
+    /// <summary>The most exchanges one timeline read returns one by one; a denser interval is read as density columns.</summary>
+    public const int MaximumSpans = SessionRpcCalls.MaximumSpans;
+
+    /// <summary>The most density columns one read cuts an interval into.</summary>
+    public const int MaximumDensityColumns = SessionRpcCalls.MaximumDensityColumns;
+
+    /// <summary>
+    /// The exchanges <paramref name="channelKey"/> names that run within <paramref name="interval"/> (workspace ticks), in
+    /// reading order, when there are at most <paramref name="budget"/> of them; when there are more, none of them and their
+    /// density in <paramref name="columns"/> equal columns instead, as an RPC channel's calls are read for its lane.
+    /// </summary>
+    public static HttpExchangeSpanPage Spans(
+        SessionStore store,
+        string channelKey,
+        TimeRange interval,
+        int budget = MaximumSpans,
+        int columns = 512,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        if (budget is < 1 or > MaximumSpans) throw new ArgumentOutOfRangeException(nameof(budget));
+        if (columns is < 1 or > MaximumDensityColumns) throw new ArgumentOutOfRangeException(nameof(columns));
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!HttpExchangeKeys.TryParseChannel(channelKey, out ProcessInstanceId instance))
+        {
+            throw new ArgumentException("This key names no process's HTTP exchanges.", nameof(channelKey));
+        }
+
+        using EvidenceLease lease = store.AcquireLease();
+        (SessionManifestV1 manifest, HttpExchangeIndex? index) = Derive(store, lease, cancellationToken);
+        if (index?.GroupOf(instance) is not { } group || !group.Process.IsAdmittedUnder(policy))
+        {
+            return new(manifest.SessionId, manifest.Generation, interval, [], 0,
+                "This generation holds no HTTP exchanges of that process under the evidence policy.");
+        }
+
+        // Every exchange in the interval is counted into the columns as it is read, so an interval denser than the budget
+        // costs one pass and never holds more than the budget's exchanges. A column is at least one tick wide.
+        var drawn = new List<HttpExchangeSpanView>(Math.Min(budget, group.Exchanges));
+        long total = 0;
+        int width = (int)Math.Min(columns, interval.SpanTicks);
+        long[] running = new long[width + 1];
+        long[] incomplete = new long[width + 1];
+        foreach (HttpExchange exchange in index.ExchangesOf(group))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (Placed(exchange) is not (long first, long last) || first >= interval.EndTicks || last < interval.StartTicks)
+            {
+                continue;
+            }
+
+            total++;
+            int from = RpcCallDensity.ColumnOf(interval, width, first);
+            int to = RpcCallDensity.ColumnOf(interval, width, last) + 1;
+            running[from]++;
+            running[to]--;
+            if (!exchange.Complete)
+            {
+                incomplete[from]++;
+                incomplete[to]--;
+            }
+
+            if (drawn.Count < budget)
+            {
+                drawn.Add(new(
+                    HttpExchangeKeys.Exchange(channelKey, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal),
+                    first,
+                    last,
+                    exchange.Ended,
+                    exchange.Complete,
+                    exchange.Number,
+                    exchange.RequestBytes,
+                    exchange.ResponseBytes));
+            }
+        }
+
+        if (total <= budget)
+        {
+            return new(manifest.SessionId, manifest.Generation, interval, drawn, total, null);
+        }
+
+        for (int column = 1; column < width; column++)
+        {
+            running[column] += running[column - 1];
+            incomplete[column] += incomplete[column - 1];
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, [], total, null)
+        {
+            Density = new(interval, running[..width], incomplete[..width]),
+        };
+    }
+
+    /// <summary>
+    /// Where an exchange lies in workspace ticks: from its first buffer to the one that ended its response, or to its last
+    /// buffer when its response's end was not recorded. Null when its first buffer has no session time to place it by.
+    /// </summary>
+    private static (long First, long Last)? Placed(HttpExchange exchange)
+    {
+        if (exchange.FirstNanoseconds is not { } firstNanoseconds)
+        {
+            return null;
+        }
+
+        long end = (exchange.Ended ? exchange.ResponseEndNanoseconds : null) ?? exchange.LastNanoseconds ?? firstNanoseconds;
+        return (firstNanoseconds / 100, Math.Max(firstNanoseconds, end) / 100);
+    }
 
     /// <summary>
     /// The HTTP exchanges of <paramref name="instance"/>, as one channel, or none when it made none. Within

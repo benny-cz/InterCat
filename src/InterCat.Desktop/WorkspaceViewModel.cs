@@ -470,6 +470,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         drawnTimeline = (viewport, columns);
         RequestHighlight();
         RequestRpcSpans(viewport);
+        RequestHttpSpans(viewport);
         FollowTimelineBytes();
         TimeRange extent = wholeSnapshot.Extent;
         bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
@@ -1191,6 +1192,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + "failures in caution ink · machine context above · zoom in to see each call, or click a column to select its interval"
             : "This channel's calls, each from its start to its stop: failures in caution ink, calls open at capture end "
                 + "faint · machine context above · click a call to select its row"
+        : ShowsHttpExchangeLane
+        ? HttpExchangeDensity is { } exchanges
+            ? string.Create(CultureInfo.CurrentCulture, $"This process's {httpSpans!.Total:N0} HTTP exchanges in view, as density: ")
+                + string.Create(CultureInfo.CurrentCulture, $"the taller a column, the more exchanges ran in it, up to {exchanges.Maximum:N0}; ")
+                + "the share not recorded whole faint · machine context above · zoom in to see each exchange, or click a column "
+                + "to select its interval"
+            : "This process's HTTP exchanges, each from its first buffer to its response's end: faint where not recorded whole "
+                + "· machine context above · click an exchange to select its row"
         : timelineFocusDescription is not { } focus
         ? ShowsMechanismLanes
             ? (timelineBytes is { } plotted
@@ -4621,12 +4630,34 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Whether the timeline draws the RPC channel's calls as a lane of duration bars under the machine row.</summary>
     public bool ShowsRpcCallLane => IsRpcChannelRung && rpcSpans is { Problem: null };
 
-    /// <summary>What the call lane holds, in one short line: every call in view, drawn one by one or as density.</summary>
-    public string RpcCallLaneNote => rpcSpans is not { Problem: null } spans || !IsRpcChannelRung
-        ? string.Empty
-        : spans.Density is not null
-            ? string.Create(CultureInfo.CurrentCulture, $"{spans.Total:N0} · density")
-            : string.Create(CultureInfo.CurrentCulture, $"{spans.Total:N0} in view");
+    /// <summary>
+    /// What the call lane holds, in one short line: every call in view, drawn one by one or as density. The timeline states
+    /// it on every repaint, so it is formatted once per read of the lane, where it was once formatted on every frame (R11).
+    /// </summary>
+    public string RpcCallLaneNote
+    {
+        get
+        {
+            if (rpcSpans is not { Problem: null } spans || !IsRpcChannelRung)
+            {
+                return string.Empty;
+            }
+
+            if (!ReferenceEquals(rpcCallLaneNote.Page, spans))
+            {
+                rpcCallLaneNote = (spans, OperationLaneNote(spans.Total, spans.Density is not null));
+            }
+
+            return rpcCallLaneNote.Text;
+        }
+    }
+
+    private (object? Page, string Text) rpcCallLaneNote = (null, string.Empty);
+
+    /// <summary>An operation lane's note: how many calls or exchanges are in view, and whether they are drawn as density.</summary>
+    private static string OperationLaneNote(long total, bool density) => density
+        ? string.Create(CultureInfo.CurrentCulture, $"{total:N0} · density")
+        : string.Create(CultureInfo.CurrentCulture, $"{total:N0} in view");
 
     /// <summary>The call selected in the RPC channel rung's table, which the call lane outlines.</summary>
     public string? SelectedRpcCallKey => IsRpcChannelRung ? selectedRung?.Key : null;

@@ -224,10 +224,22 @@ public sealed partial class WorkspaceViewModel
             return cached.Drawn;
         }
 
+        GraphDisplay drawn = WeighedBy(display, bytes);
+        weightedGraph = (display, bytes, drawn);
+        return drawn;
+    }
+
+    /// <summary>
+    /// The graph sized by the bytes shown. Kept out of <see cref="Weighted"/>, which every repaint of the graph reads: a
+    /// lambda's captured locals are allocated where the method begins, whether or not the lambda runs, so that read once
+    /// allocated them on every frame (R11).
+    /// </summary>
+    private GraphDisplay WeighedBy(GraphDisplay display, SessionByteMeasures bytes)
+    {
         // The bytes shown size the graph, an earlier publication's standing in included, as they rank the rows. A mark none
         // of whose sends measured a size, though some recorded none, is unmeasured and drawn so (§6.6), never as zero.
         Dictionary<string, SentAcrossTally> sent = SentAcrossEdges(bytes);
-        GraphDisplay drawn = display.WithMagnitudes(
+        return display.WithMagnitudes(
             edge => edge.Relationships.Aggregate(default(SentAcrossTally), (sum, key) => sum.Plus(sent.GetValueOrDefault(key)))
                 .Magnitude,
             node =>
@@ -238,8 +250,6 @@ public sealed partial class WorkspaceViewModel
                     .Aggregate(default(SentAcrossTally), (sum, edge) => sum.Plus(sent.GetValueOrDefault(edge.Key)))
                     .Magnitude;
             });
-        weightedGraph = (display, bytes, drawn);
-        return drawn;
     }
 
 }

@@ -168,6 +168,15 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     public Task<ConnectionList> ConnectionsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
         Task.Run(() => SessionConnections.OneSided(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
 
+    /// <summary>
+    /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density
+    /// (<see cref="SessionHttpExchanges.Spans"/>).
+    /// </summary>
+    public Task<HttpExchangeSpanPage> HttpSpansAsync(
+        string channelKey, TimeRange viewport, int columns, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHttpExchanges.Spans(Store(), channelKey, viewport, columns: columns,
+            cancellationToken: cancellationToken), cancellationToken);
+
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
     public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(

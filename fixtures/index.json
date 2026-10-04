@@ -1236,6 +1236,7 @@
         "R10: zooming in and back out restores the viewport unless a clamp intervened"
       ],
       "R11": [
+        "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not",
         "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
         "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row"
       ],
