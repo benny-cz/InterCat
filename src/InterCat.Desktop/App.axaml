@@ -34,6 +34,39 @@
       <Setter Property="BorderBrush" Value="{DynamicResource Line.Divider}" />
       <Setter Property="BorderThickness" Value="1" />
     </Style>
+    <!-- A list lies on the surface it is placed in, as the main window's lists always did: the control theme's own grey
+         is no surface the report measures an ink on. -->
+    <Style Selector="ListBox">
+      <Setter Property="Background" Value="Transparent" />
+    </Style>
+    <!-- A row of a list, or of a combo box's open list, in every mode (§6.1). Under the pointer or pressed it lies on
+         the elevated face, where every ink a row carries is measured; selected, it is also ringed in the accent, since
+         no fill both stands apart from the ground and keeps muted ink legible on it. The ring is drawn inside the row,
+         so selecting one moves nothing. The control theme's own tints follow the platform's accent colour. -->
+    <Style Selector=":is(ListBoxItem)">
+      <Setter Property="CornerRadius" Value="4" />
+    </Style>
+    <Style Selector=":is(ListBoxItem):pointerover /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Surface.Elevated}" />
+      <Setter Property="Foreground" Value="{DynamicResource Ink.Body}" />
+    </Style>
+    <Style Selector=":is(ListBoxItem):pressed /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Surface.Elevated}" />
+      <Setter Property="Foreground" Value="{DynamicResource Ink.Body}" />
+    </Style>
+    <Style Selector=":is(ListBoxItem):selected /template/ ContentPresenter#PART_ContentPresenter">
+      <Setter Property="Background" Value="{DynamicResource Surface.Elevated}" />
+      <Setter Property="Foreground" Value="{DynamicResource Ink.Body}" />
+      <Setter Property="BoxShadow" Value="{DynamicResource ListItem.SelectedRing}" />
+    </Style>
+    <!-- Text selected in a text box or a selectable block is the action pair: the ink the report measures on its fill. -->
+    <Style Selector="TextBox">
+      <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Action.Ink}" />
+    </Style>
+    <Style Selector="SelectableTextBlock">
+      <Setter Property="SelectionBrush" Value="{DynamicResource Action.Fill}" />
+      <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Action.Ink}" />
+    </Style>
     <Style Selector="TextBlock.muted">
       <Setter Property="Foreground" Value="{DynamicResource Ink.Muted}" />
     </Style>

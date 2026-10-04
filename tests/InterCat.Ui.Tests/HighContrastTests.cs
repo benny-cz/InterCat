@@ -137,11 +137,11 @@ public sealed class HighContrastTests
                 Assert.Equal(ThemeResources.ToColor(surfaces.Divider), ColorOf((IBrush)resources["ScrollBarPanningThumbBackground"]!));
             }
 
-            // An ordinary mode hands selection back to the control theme: no accent edge is left on the selected row.
+            // An ordinary mode rings the selected row in its own accent: nothing of the high-contrast set is left on it.
             ThemeResources.Apply(Avalonia.Application.Current!, ThemeMode.Dark);
             WriteableBitmap ordinary = Settle(window);
             ListBoxItem selected = Assert.IsType<ListBoxItem>(list.ContainerFromIndex(0));
-            Assert.NotEqual(ThemeResources.ToColor(ThemePalette.Surfaces(ThemeMode.HighContrastDark).Accent),
+            Assert.Equal(ThemeResources.ToColor(ThemePalette.Surfaces(ThemeMode.Dark).Accent),
                 At(ordinary, selected.TranslatePoint(new(0.5, selected.Bounds.Height / 2), window)!.Value));
         }
         finally

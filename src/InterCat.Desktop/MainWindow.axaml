@@ -76,7 +76,7 @@
                  on the selector's own row, since the rail's height is the ranked rows'; a median or a distinct count has
                  no rate, so it steps aside for them. -->
             <ToggleButton x:Name="PerSecondToggle" Grid.Column="2" Content="/s" Margin="6,0,0,0" MinHeight="28" MinWidth="30"
-                          FontSize="11" Padding="6,0" VerticalAlignment="Stretch"
+                          FontSize="11" Padding="6,0" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
                           IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
                           ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
                           AutomationProperties.Name="Per second: state each row's value per second over the interval the rows count" />
@@ -158,15 +158,20 @@
                    DoubleTapped="DescendFromRow"
                    AutomationProperties.Name="Ranked table for the current level">
             <!-- §6.7: a row in the multi-selection carries an accent bar at its edge, a group only partly in it a thinner
-                 one; the code-behind sets the classes and the item status a screen reader hears. -->
+                 one, drawn inside the row as its selection ring is, so neither moves the row's content; the selected
+                 row of either keeps its ring. The code-behind sets the classes and the item status a screen reader hears. -->
             <ListBox.Styles>
-              <Style Selector="ListBoxItem.chosen">
-                <Setter Property="BorderBrush" Value="{DynamicResource Ink.Accent}" />
-                <Setter Property="BorderThickness" Value="4,0,0,0" />
+              <Style Selector="ListBoxItem.chosen /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenBar}" />
               </Style>
-              <Style Selector="ListBoxItem.chosenPart">
-                <Setter Property="BorderBrush" Value="{DynamicResource Ink.Accent}" />
-                <Setter Property="BorderThickness" Value="2,0,0,0" />
+              <Style Selector="ListBoxItem.chosenPart /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenPartBar}" />
+              </Style>
+              <Style Selector="ListBoxItem.chosen:selected /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenSelectedRing}" />
+              </Style>
+              <Style Selector="ListBoxItem.chosenPart:selected /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenPartSelectedRing}" />
               </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>

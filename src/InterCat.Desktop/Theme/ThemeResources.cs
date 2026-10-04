@@ -1,8 +1,7 @@
 using Avalonia;
-using Avalonia.Controls;
-using Avalonia.Controls.Primitives;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.Themes.Fluent;
 using InterCat.Domain;
 
 namespace InterCat.Desktop.Theme;
@@ -51,6 +50,7 @@ public static class ThemeResources
         application.Resources["Action.Ink"] = Brush(status.ActionInk);
 
         ApplyControlChrome(application, mode, surfaces);
+        ApplyChoiceStates(application, mode, surfaces, status);
         application.RequestedThemeVariant = ThemePalette.IsDark(mode) ? ThemeVariant.Dark : ThemeVariant.Light;
         if (CurrentMode != mode)
         {
@@ -60,18 +60,33 @@ public static class ThemeResources
     }
 
     /// <summary>
-    /// The control theme's own keys a high-contrast mode restates: a button's face, edge and label in every state, a
-    /// text box's edge, a menu's face, edge and items, a tool tip, a scroll bar's thumb and track, and a list row under
-    /// the pointer, pressed or selected. The control theme draws them faint against the ground; in high contrast every
-    /// interactive edge and state must be seen, so they are taken from the verified tokens there and left to the control
-    /// theme otherwise.
+    /// The control theme's own keys a high-contrast mode restates: a button's, a toggle button's, a closed combo box's
+    /// and a check box's face, edge and label in every state, a text box's edge, a menu's face, edge and items, a tool
+    /// tip, a scroll bar's thumb and track, and the row of any other list control under the pointer, pressed or selected.
+    /// The control theme draws them faint against the ground; in high contrast every interactive edge and state must be
+    /// seen, so they are taken from the verified tokens there and left to the control theme otherwise.
     /// </summary>
     internal static IReadOnlyList<string> ControlChromeKeys { get; } =
     [
         "ButtonBackground", "ButtonBackgroundPointerOver", "ButtonBackgroundPressed", "ButtonBackgroundDisabled",
         "ButtonForeground", "ButtonForegroundPointerOver", "ButtonForegroundPressed", "ButtonForegroundDisabled",
         "ButtonBorderBrush", "ButtonBorderBrushPointerOver", "ButtonBorderBrushPressed", "ButtonBorderBrushDisabled",
-        "TextControlBorderBrush", "TextControlBorderBrushPointerOver", "TextControlBorderBrushFocused",
+        "ToggleButtonBackground", "ToggleButtonBackgroundPointerOver", "ToggleButtonBackgroundPressed",
+        "ToggleButtonBackgroundDisabled", "ToggleButtonBackgroundCheckedDisabled", "ToggleButtonForeground",
+        "ToggleButtonForegroundPointerOver", "ToggleButtonForegroundPressed", "ToggleButtonForegroundDisabled",
+        "ToggleButtonForegroundCheckedDisabled", "ToggleButtonBorderBrush", "ToggleButtonBorderBrushPointerOver",
+        "ToggleButtonBorderBrushPressed", "ToggleButtonBorderBrushDisabled", "ToggleButtonBorderBrushCheckedDisabled",
+        "ComboBoxBackground", "ComboBoxBackgroundPointerOver", "ComboBoxBackgroundPressed", "ComboBoxBackgroundDisabled",
+        "ComboBoxBorderBrush", "ComboBoxBorderBrushPointerOver", "ComboBoxBorderBrushPressed", "ComboBoxBorderBrushDisabled",
+        "ComboBoxForeground", "ComboBoxForegroundDisabled", "ComboBoxDropDownGlyphForeground",
+        "ComboBoxDropDownGlyphForegroundDisabled", "ComboBoxItemForegroundDisabled",
+        "CheckBoxCheckBackgroundStrokeUnchecked", "CheckBoxCheckBackgroundStrokeUncheckedPointerOver",
+        "CheckBoxCheckBackgroundStrokeUncheckedPressed", "CheckBoxCheckBackgroundStrokeUncheckedDisabled",
+        "CheckBoxCheckBackgroundFillUncheckedPressed", "CheckBoxForegroundUnchecked", "CheckBoxForegroundUncheckedPointerOver",
+        "CheckBoxForegroundUncheckedPressed", "CheckBoxForegroundUncheckedDisabled", "CheckBoxForegroundChecked",
+        "CheckBoxForegroundCheckedPointerOver", "CheckBoxForegroundCheckedPressed", "CheckBoxForegroundCheckedDisabled",
+        "TabItemHeaderForegroundDisabled",
+        "TextControlBorderBrush", "TextControlBorderBrushPointerOver",
         "MenuFlyoutPresenterBackground", "MenuFlyoutPresenterBorderBrush",
         "MenuFlyoutItemBackground", "MenuFlyoutItemBackgroundPointerOver", "MenuFlyoutItemBackgroundPressed",
         "MenuFlyoutItemBackgroundDisabled", "MenuFlyoutItemForeground", "MenuFlyoutItemForegroundPointerOver",
@@ -85,17 +100,8 @@ public static class ThemeResources
         "SystemControlHighlightListAccentHighBrush", "SystemControlHighlightAltBaseHighBrush",
     ];
 
-    /// <summary>The high-contrast styles no resource key reaches, while a high-contrast mode is applied.</summary>
-    private static Styles? highContrastStyles;
-
     private static void ApplyControlChrome(Avalonia.Application application, ThemeMode mode, SurfaceTokens surfaces)
     {
-        if (highContrastStyles is { } applied)
-        {
-            _ = application.Styles.Remove(applied);
-            highContrastStyles = null;
-        }
-
         if (!ThemePalette.IsHighContrast(mode))
         {
             foreach (string key in ControlChromeKeys)
@@ -109,7 +115,7 @@ public static class ThemeResources
         // A button rests as body ink on the elevated face inside a divider edge, takes the accent edge under the
         // pointer, and is pressed as the action pair: the canvas on the accent, which the report measures. Disabled, it
         // sits on the bare ground with its label in the divider's tone, plainly dimmer than any enabled label. A text
-        // box's edge is the divider, and the accent when pointed at or focused.
+        // box's edge is the divider, and the accent when pointed at; focused, it is the accent in every mode.
         SolidColorBrush face = Brush(surfaces.Elevated);
         SolidColorBrush edge = Brush(surfaces.Divider);
         SolidColorBrush label = Brush(surfaces.Ink);
@@ -129,7 +135,56 @@ public static class ThemeResources
         application.Resources["ButtonBorderBrushDisabled"] = edge;
         application.Resources["TextControlBorderBrush"] = edge;
         application.Resources["TextControlBorderBrushPointerOver"] = accent;
-        application.Resources["TextControlBorderBrushFocused"] = accent;
+
+        // A toggle button that is off is a button, in every state; on, it is the action pair in every mode (below).
+        application.Resources["ToggleButtonBackground"] = face;
+        application.Resources["ToggleButtonBackgroundPointerOver"] = face;
+        application.Resources["ToggleButtonBackgroundPressed"] = accent;
+        application.Resources["ToggleButtonBackgroundDisabled"] = ground;
+        application.Resources["ToggleButtonBackgroundCheckedDisabled"] = ground;
+        application.Resources["ToggleButtonForeground"] = label;
+        application.Resources["ToggleButtonForegroundPointerOver"] = label;
+        application.Resources["ToggleButtonForegroundPressed"] = ground;
+        application.Resources["ToggleButtonForegroundDisabled"] = edge;
+        application.Resources["ToggleButtonForegroundCheckedDisabled"] = edge;
+        application.Resources["ToggleButtonBorderBrush"] = edge;
+        application.Resources["ToggleButtonBorderBrushPointerOver"] = accent;
+        application.Resources["ToggleButtonBorderBrushPressed"] = accent;
+        application.Resources["ToggleButtonBorderBrushDisabled"] = edge;
+        application.Resources["ToggleButtonBorderBrushCheckedDisabled"] = edge;
+
+        // A closed combo box is a button too: body ink and its glyph on the elevated face inside a divider edge, the
+        // accent edge when pointed at or pressed, and the bare ground in the divider's tone when it cannot be used.
+        application.Resources["ComboBoxBackground"] = face;
+        application.Resources["ComboBoxBackgroundPointerOver"] = face;
+        application.Resources["ComboBoxBackgroundPressed"] = face;
+        application.Resources["ComboBoxBackgroundDisabled"] = ground;
+        application.Resources["ComboBoxBorderBrush"] = edge;
+        application.Resources["ComboBoxBorderBrushPointerOver"] = accent;
+        application.Resources["ComboBoxBorderBrushPressed"] = accent;
+        application.Resources["ComboBoxBorderBrushDisabled"] = edge;
+        application.Resources["ComboBoxForeground"] = label;
+        application.Resources["ComboBoxForegroundDisabled"] = edge;
+        application.Resources["ComboBoxDropDownGlyphForeground"] = label;
+        application.Resources["ComboBoxDropDownGlyphForegroundDisabled"] = edge;
+        application.Resources["ComboBoxItemForegroundDisabled"] = edge;
+
+        // A check box's empty box is edged in the divider, the accent when pointed at or pressed; its label is body ink,
+        // and the divider's tone when it cannot be used. A ticked box is the action pair in every mode (below).
+        application.Resources["CheckBoxCheckBackgroundStrokeUnchecked"] = edge;
+        application.Resources["CheckBoxCheckBackgroundStrokeUncheckedPointerOver"] = accent;
+        application.Resources["CheckBoxCheckBackgroundStrokeUncheckedPressed"] = accent;
+        application.Resources["CheckBoxCheckBackgroundStrokeUncheckedDisabled"] = edge;
+        application.Resources["CheckBoxCheckBackgroundFillUncheckedPressed"] = face;
+        application.Resources["CheckBoxForegroundUnchecked"] = label;
+        application.Resources["CheckBoxForegroundUncheckedPointerOver"] = label;
+        application.Resources["CheckBoxForegroundUncheckedPressed"] = label;
+        application.Resources["CheckBoxForegroundUncheckedDisabled"] = edge;
+        application.Resources["CheckBoxForegroundChecked"] = label;
+        application.Resources["CheckBoxForegroundCheckedPointerOver"] = label;
+        application.Resources["CheckBoxForegroundCheckedPressed"] = label;
+        application.Resources["CheckBoxForegroundCheckedDisabled"] = edge;
+        application.Resources["TabItemHeaderForegroundDisabled"] = edge;
 
         // A menu is the elevated face inside a divider edge. The item under the pointer, or pressed, is the action pair
         // the report measures, the canvas on the accent; one that cannot be chosen keeps the muted ink, not a faint grey.
@@ -160,38 +215,159 @@ public static class ThemeResources
         application.Resources["ScrollBarTrackStroke"] = edge;
         application.Resources["ScrollBarTrackStrokePointerOver"] = edge;
 
-        // A list row under the pointer, pressed or selected lies on the elevated face, where every ink a row carries,
-        // muted included, is measured. A fill alone could not both stand apart from the ground and keep muted ink
-        // legible, so selection is also an accent edge, drawn by a style no resource key reaches.
+        // A row of any other list control under the pointer, pressed or selected lies on the elevated face, where every
+        // ink a row carries is measured; a list box's and a combo box's rows say so in every mode, by the styles in App.
         application.Resources["SystemControlHighlightListLowBrush"] = face;
         application.Resources["SystemControlHighlightListMediumBrush"] = face;
         application.Resources["SystemControlHighlightListAccentLowBrush"] = face;
         application.Resources["SystemControlHighlightListAccentMediumBrush"] = face;
         application.Resources["SystemControlHighlightListAccentHighBrush"] = face;
         application.Resources["SystemControlHighlightAltBaseHighBrush"] = label;
-        highContrastStyles = SelectionEdges(accent);
-        application.Styles.Add(highContrastStyles);
     }
 
     /// <summary>
-    /// In high contrast every list row keeps a transparent two-pixel edge, so selecting one moves nothing, and the
-    /// selected row draws that edge in the accent.
+    /// The control theme's own keys for a state a person chose or is choosing: a toggle button or a check box that is
+    /// on, a tab, a focused text box or combo box, the text selected in a text box, and a combo box's open list. The
+    /// control theme draws most of them in the platform's accent colour, which Windows lets a person set to any hue and
+    /// no report measures, under a label of the control theme's own; so in every mode they are taken from the tokens,
+    /// each ink on a ground the report measures it on.
     /// </summary>
-    private static Styles SelectionEdges(IBrush accent) =>
+    internal static IReadOnlyList<string> ChoiceKeys { get; } =
     [
-        new Style(selector => selector.OfType<ListBoxItem>())
-        {
-            Setters =
-            {
-                new Setter(TemplatedControl.BorderThicknessProperty, new Thickness(2)),
-                new Setter(TemplatedControl.BorderBrushProperty, Brushes.Transparent),
-            },
-        },
-        new Style(selector => selector.OfType<ListBoxItem>().Class(":selected"))
-        {
-            Setters = { new Setter(TemplatedControl.BorderBrushProperty, accent) },
-        },
+        "ToggleButtonBackgroundChecked", "ToggleButtonBackgroundCheckedPointerOver", "ToggleButtonBackgroundCheckedPressed",
+        "ToggleButtonForegroundChecked", "ToggleButtonForegroundCheckedPointerOver", "ToggleButtonForegroundCheckedPressed",
+        "ToggleButtonBorderBrushChecked", "ToggleButtonBorderBrushCheckedPointerOver", "ToggleButtonBorderBrushCheckedPressed",
+        "CheckBoxCheckBackgroundFillChecked", "CheckBoxCheckBackgroundFillCheckedPointerOver",
+        "CheckBoxCheckBackgroundFillCheckedPressed", "CheckBoxCheckBackgroundStrokeCheckedPointerOver",
+        "CheckBoxCheckBackgroundStrokeCheckedPressed", "CheckBoxCheckGlyphForegroundChecked",
+        "CheckBoxCheckGlyphForegroundCheckedPointerOver", "CheckBoxCheckGlyphForegroundCheckedPressed",
+        "CheckBoxCheckBackgroundFillIndeterminate", "CheckBoxCheckBackgroundFillIndeterminatePointerOver",
+        "CheckBoxCheckBackgroundFillIndeterminatePressed", "CheckBoxCheckBackgroundStrokeIndeterminate",
+        "CheckBoxCheckBackgroundStrokeIndeterminatePointerOver", "CheckBoxCheckBackgroundStrokeIndeterminatePressed",
+        "CheckBoxCheckGlyphForegroundIndeterminate", "CheckBoxCheckGlyphForegroundIndeterminatePointerOver",
+        "CheckBoxCheckGlyphForegroundIndeterminatePressed",
+        "TabItemHeaderSelectedPipeFill", "TabItemHeaderForegroundSelected", "TabItemHeaderForegroundSelectedPointerOver",
+        "TabItemHeaderForegroundSelectedPressed", "TabItemHeaderForegroundUnselected",
+        "TabItemHeaderForegroundUnselectedPointerOver", "TabItemHeaderForegroundUnselectedPressed",
+        "TextControlBorderBrushFocused", "TextControlSelectionHighlightColor",
+        "ComboBoxBackgroundUnfocused", "ComboBoxBackgroundBorderBrushUnfocused", "ComboBoxForegroundFocused",
+        "ComboBoxForegroundFocusedPressed", "ComboBoxDropDownGlyphForegroundFocused",
+        "ComboBoxDropDownGlyphForegroundFocusedPressed", "ComboBoxDropDownBackground", "ComboBoxDropDownBorderBrush",
+        "ComboBoxItemForeground", "ComboBoxItemForegroundPointerOver", "ComboBoxItemForegroundPressed",
+        "ComboBoxItemForegroundSelected", "ComboBoxItemForegroundSelectedPointerOver",
+        "ComboBoxItemForegroundSelectedPressed",
     ];
+
+    /// <summary>How wide a selected row's accent ring is, and a multi-selection's bar at a row's leading edge.</summary>
+    private const double RingWidth = 2;
+
+    private const double ChosenBarWidth = 4;
+
+    private static void ApplyChoiceStates(
+        Avalonia.Application application, ThemeMode mode, SurfaceTokens surfaces, StatusTokens status)
+    {
+        // Whatever a control the window does not restate draws in the accent, it draws in the action fill, never in the
+        // platform's colour: the control theme's palette takes the application's own voice as its accent.
+        PinAccent(application, mode, status);
+
+        SolidColorBrush ground = Brush(surfaces.Canvas);
+        SolidColorBrush face = Brush(surfaces.Elevated);
+        SolidColorBrush ink = Brush(surfaces.Ink);
+        SolidColorBrush muted = Brush(surfaces.MutedInk);
+        SolidColorBrush accent = Brush(surfaces.Accent);
+        SolidColorBrush divider = Brush(surfaces.Divider);
+        SolidColorBrush fill = Brush(status.ActionFill);
+        SolidColorBrush fillHover = Brush(status.ActionFillHover);
+        SolidColorBrush fillPressed = Brush(status.ActionFillPressed);
+        SolidColorBrush actionInk = Brush(status.ActionInk);
+
+        // A toggle button that is on is the action pair in its three states, edged in its own fill, as is a ticked box.
+        application.Resources["ToggleButtonBackgroundChecked"] = fill;
+        application.Resources["ToggleButtonBackgroundCheckedPointerOver"] = fillHover;
+        application.Resources["ToggleButtonBackgroundCheckedPressed"] = fillPressed;
+        application.Resources["ToggleButtonForegroundChecked"] = actionInk;
+        application.Resources["ToggleButtonForegroundCheckedPointerOver"] = actionInk;
+        application.Resources["ToggleButtonForegroundCheckedPressed"] = actionInk;
+        application.Resources["ToggleButtonBorderBrushChecked"] = fill;
+        application.Resources["ToggleButtonBorderBrushCheckedPointerOver"] = fillHover;
+        application.Resources["ToggleButtonBorderBrushCheckedPressed"] = fillPressed;
+        foreach (string state in new[] { "Checked", "Indeterminate" })
+        {
+            application.Resources[$"CheckBoxCheckBackgroundFill{state}"] = fill;
+            application.Resources[$"CheckBoxCheckBackgroundFill{state}PointerOver"] = fillHover;
+            application.Resources[$"CheckBoxCheckBackgroundFill{state}Pressed"] = fillPressed;
+            application.Resources[$"CheckBoxCheckBackgroundStroke{state}PointerOver"] = fillHover;
+            application.Resources[$"CheckBoxCheckBackgroundStroke{state}Pressed"] = fillPressed;
+            application.Resources[$"CheckBoxCheckGlyphForeground{state}"] = actionInk;
+            application.Resources[$"CheckBoxCheckGlyphForeground{state}PointerOver"] = actionInk;
+            application.Resources[$"CheckBoxCheckGlyphForeground{state}Pressed"] = actionInk;
+        }
+
+        application.Resources["CheckBoxCheckBackgroundStrokeIndeterminate"] = fill;
+
+        // The selected tab is underlined in the accent and named in body ink; the others are named in the muted ink.
+        application.Resources["TabItemHeaderSelectedPipeFill"] = accent;
+        application.Resources["TabItemHeaderForegroundSelected"] = ink;
+        application.Resources["TabItemHeaderForegroundSelectedPointerOver"] = ink;
+        application.Resources["TabItemHeaderForegroundSelectedPressed"] = ink;
+        application.Resources["TabItemHeaderForegroundUnselected"] = muted;
+        application.Resources["TabItemHeaderForegroundUnselectedPointerOver"] = ink;
+        application.Resources["TabItemHeaderForegroundUnselectedPressed"] = ink;
+
+        // A focused text box is edged in the accent; text selected in it is the action pair (App draws its ink).
+        application.Resources["TextControlBorderBrushFocused"] = accent;
+        application.Resources["TextControlSelectionHighlightColor"] = fill;
+
+        // A combo box the keyboard rests on lies on the elevated face inside an accent edge, with body ink; its open list
+        // is the canvas inside a divider edge, and its rows are list rows (App), each label in body ink.
+        application.Resources["ComboBoxBackgroundUnfocused"] = face;
+        application.Resources["ComboBoxBackgroundBorderBrushUnfocused"] = accent;
+        application.Resources["ComboBoxForegroundFocused"] = ink;
+        application.Resources["ComboBoxForegroundFocusedPressed"] = ink;
+        application.Resources["ComboBoxDropDownGlyphForegroundFocused"] = ink;
+        application.Resources["ComboBoxDropDownGlyphForegroundFocusedPressed"] = ink;
+        application.Resources["ComboBoxDropDownBackground"] = ground;
+        application.Resources["ComboBoxDropDownBorderBrush"] = divider;
+        foreach (string state in new[] { "", "PointerOver", "Pressed", "Selected", "SelectedPointerOver", "SelectedPressed" })
+        {
+            application.Resources[$"ComboBoxItemForeground{state}"] = ink;
+        }
+
+        // A selected row is ringed in the accent inside its bounds, and a row in a multi-selection carries an accent bar
+        // at its leading edge; both are drawn over the row's face, so neither moves its content (§6.1, §6.7).
+        Color ring = ToColor(surfaces.Accent);
+        BoxShadow selected = new() { IsInset = true, Spread = RingWidth, Color = ring };
+        BoxShadow chosen = new() { IsInset = true, OffsetX = ChosenBarWidth, Color = ring };
+        BoxShadow chosenPart = new() { IsInset = true, OffsetX = ChosenBarWidth / 2, Color = ring };
+        application.Resources["ListItem.SelectedRing"] = new BoxShadows(selected);
+        application.Resources["ListItem.ChosenBar"] = new BoxShadows(chosen);
+        application.Resources["ListItem.ChosenPartBar"] = new BoxShadows(chosenPart);
+        application.Resources["ListItem.ChosenSelectedRing"] = new BoxShadows(selected, [chosen]);
+        application.Resources["ListItem.ChosenPartSelectedRing"] = new BoxShadows(selected, [chosenPart]);
+    }
+
+    /// <summary>
+    /// Sets the control theme's accent, for the variant the mode draws in, to the mode's action fill. Left unset, the
+    /// control theme takes the platform's accent colour, which no report measures.
+    /// </summary>
+    private static void PinAccent(Avalonia.Application application, ThemeMode mode, StatusTokens status)
+    {
+        if (application.Styles.OfType<FluentTheme>().FirstOrDefault() is not { } controlTheme)
+        {
+            return;
+        }
+
+        ThemeVariant variant = ThemePalette.IsDark(mode) ? ThemeVariant.Dark : ThemeVariant.Light;
+        Color accent = ToColor(status.ActionFill);
+        if (controlTheme.Palettes.TryGetValue(variant, out ColorPaletteResources? palette))
+        {
+            palette.Accent = accent;
+        }
+        else
+        {
+            controlTheme.Palettes[variant] = new ColorPaletteResources { Accent = accent };
+        }
+    }
 
     /// <summary>The fill token of a mechanism, resolved through its family so no hue is invented.</summary>
     public static Color FillOf(Mechanism mechanism, ThemeMode mode) =>
