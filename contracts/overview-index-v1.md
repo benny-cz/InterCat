@@ -1,10 +1,11 @@
 # InterCat overview index v1
 
-Status: **implemented** in plan revision 163. It is the top level of §12.1 S4's pyramid: the whole-session overview a
-generation's first view draws, persisted beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`).
-With both, opening a finished session opens no segment before the first view. Its processes and relationships come
-from the checkpoint, and its timeline, mechanism lanes and minimap from these counts. Deeper levels are the per-segment
-tiles of revision 158, built from a segment's rows when a view needs them.
+Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289. It is the top level of
+§12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted beside its derivation
+checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens no segment before the
+first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism lanes and minimap from
+these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's rows when a view needs
+them.
 
 Revision 170 renamed this contract from `overview-v1`, which the JSON bundle `icat overview --json` had carried since
 revision 87 and still carries: that bundle is what a view shows, and this is a file a generation publishes. The file
@@ -38,6 +39,13 @@ They are held before any evidence policy, which the projection applies to them a
 RPC edges come from them and no call is paired or followed before the first view. A generation whose ledger names no
 collected ALPC holds none.
 
+Since minor 2 (plan revision 289) it also holds the **lane bytes**: for each main column and each mechanism it counts
+records of there, what those records' transport-observed measurements sent under sender accounting, received under
+receiver accounting, and stated on neither side, each with the contributions that measured it and those that declared
+a size they did not record (`metrics-v1` §4, R3). They are what the machine rung's mechanism lanes plot under a byte
+ranking (§6.2), so those lanes read no segment either; the same columns at any other width, or any other interval, are
+read from the segments. A column and mechanism with no contribution holds no entry, and its bytes are none.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -66,13 +74,20 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
               count u32, (column u32, mechanism u16, records i32 (> 0))*        ; ascending by (column, mechanism)
               minimapStart i64, minimapEnd i64, minimapColumns u32,
               count u32, (column u32, records i32 (> 0))*],                     ; ascending by column
-             hasRpcLinks u8 (0, 1),                                             ; minor 1 only
+             hasRpcLinks u8 (0, 1),                                             ; minor 1 and later
              [count u32, (first guid, second guid, strength u8, records i64 (> 0))*]
                   ; first before second as their "N" forms order; ascending by (first, second, strength)
+             hasLaneBytes u8 (0, 1),                                            ; minor 2 and later
+             [count u32, (column u32, mechanism u16,
+                          sentBytes i64, sentMeasured i64, sentUnmeasured i64,
+                          receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
+                          otherBytes i64, otherMeasured i64, otherUnmeasured i64)*]
+                  ; every value >= 0; ascending by (column, mechanism)
 ```
 
-A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; it is read as
-before. A link's strength is `EN-RelationStrength`'s `Correlated`, `Candidate` or `Conflicting`.
+A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; a minor-1 overview
+ends after them and holds no lane bytes. Each is read as before. A link's strength is `EN-RelationStrength`'s
+`Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
 
@@ -86,7 +101,10 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
 - the main column count, or the minimap span and column count, are not what this build derives from the extent;
 - the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed;
 - an RPC link names an empty identity or the same instance twice, puts its pair or its links out of order, has a
-  strength a link cannot have, holds no record, or there are more than 1,000,000 of them.
+  strength a link cannot have, holds no record, or there are more than 1,000,000 of them;
+- a lane's bytes lie in a column outside the main columns, or in one that counts no record of their mechanism (an
+  overview with no extent has no columns, so it holds none); are out of order; hold a value below zero, or bytes on a
+  side no contribution measured; or hold no contribution at all.
 
 A refused overview is not used, and the overview says why in one caveat. A reader uses an overview for a generation
 only when it covers exactly the generation's observation segments, with the same names, lengths and digests. Counts
@@ -98,5 +116,6 @@ from the segments' tiles.
 - Deeper levels. Zoomed detail builds a segment's tiles from its rows when first drawn (revision 158). Persisting
   them, so a zoom into a long session reads only the tiles it draws, is the pyramid's next level.
 - Focused counts, which filter rows by owner or channel and are not what these counts hold (§10.3).
-- Byte sums. The overview counts records only, and so does this.
+- Byte sums beyond the main columns' lanes: the minimap's, a process's or a channel's, and a relation's. The ranked
+  table's whole-session bytes per process are still read from the segments when a byte ranking is chosen.
 - RPC links within an interval. A brush still follows the calls it holds from the segments.

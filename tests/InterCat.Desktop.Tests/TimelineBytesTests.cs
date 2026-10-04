@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -278,6 +279,39 @@ public sealed class TimelineBytesTests
         Assert.EndsWith(" could not be counted: the session on disk is another one. Every observed record is shown. · the "
             + "timeline counts records here, not bytes", elsewhere.TimelineCaption, StringComparison.Ordinal);
         await elsewhere.RankingReady;
+    });
+
+    [Fact(DisplayName = "§6.2: a finished session's lanes under a byte ranking plot the bytes its persisted overview kept, read from no segment")]
+    public void AFinishedSessionsLanesPlotItsKeptBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        using (WorkspaceViewModel live = Open(session))
+        {
+            // While no checkpoint is published, the lanes' bytes are read from the segments.
+            live.RankBy = RankingMetric.BytesSent;
+            await live.TimelineBytesReady;
+            Assert.False(live.TimelineBytes!.Overview.FromPersistedOverview);
+        }
+
+        Assert.Equal(CheckpointOutcome.Published,
+            SessionCheckpoints.Publish(session.Store, DateTimeOffset.Parse("2026-10-04T12:00:00Z", CultureInfo.InvariantCulture)).Outcome);
+
+        // The checkpoint is a generation of its own, so this workspace derives nothing the first one held.
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+
+        // The window asks for the overview's own columns, which the finished session kept: the same bytes, and no read.
+        TimelineByteLayer plotted = Assert.IsType<TimelineByteLayer>(workspace.TimelineBytes);
+        Assert.True(plotted.Overview.FromPersistedOverview);
+        TimelineBucket At(long tick) => workspace.WholeSnapshot.MechanismLanes
+            .Single(candidate => candidate.Mechanism == Mechanism.Tcp).Buckets.Single(bucket => bucket.Interval.StartTicks == tick);
+        Assert.Equal(((long?)500, 1L, 0L), plotted.Of(Mechanism.Tcp, At(10).Interval)!.ValueOf(RankingMetric.BytesSent));
+        Assert.Equal(((long?)0, 1L, 0L), plotted.Of(Mechanism.Tcp, At(13).Interval)!.ValueOf(RankingMetric.BytesSent));
+        Assert.Equal(((long?)null, 0L, 1L), plotted.Of(Mechanism.Tcp, At(14).Interval)!.ValueOf(RankingMetric.BytesSent));
+        Assert.True(workspace.TimelineDrawsUnmeasured);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

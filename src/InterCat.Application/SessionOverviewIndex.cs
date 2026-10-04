@@ -22,6 +22,39 @@ internal sealed record OverviewCounts(
     /// overview kept them (overview-index-v1 minor 1); null when they were not kept, and then they are derived when needed.
     /// </summary>
     public IReadOnlyList<RpcPeerLinkTotal>? RpcLinks { get; init; }
+
+    /// <summary>
+    /// Each overview column's bytes per mechanism, which a byte ranking's lanes plot, when a persisted overview kept them
+    /// (overview-index-v1 minor 2); null when it did not, and then they are read from the segments when a view asks.
+    /// </summary>
+    public OverviewLaneBytes? LaneBytes { get; init; }
+}
+
+/// <summary>
+/// What each overview column's records of one mechanism sent, received and stated on neither side, with the contributions
+/// that measured each and those that declared a size they did not record (`TransportBytes`, overview-index-v1 minor 2).
+/// Only a cell with a contribution is held, by column and then mechanism code; any other cell's bytes are none.
+/// </summary>
+internal sealed class OverviewLaneBytes
+{
+    private readonly Dictionary<(int Column, Mechanism Mechanism), TransportBytes> byCell;
+
+    public OverviewLaneBytes(IEnumerable<(int Column, Mechanism Mechanism, TransportBytes Bytes)> cells)
+    {
+        ArgumentNullException.ThrowIfNull(cells);
+        Cells = Array.AsReadOnly([.. cells
+            .Where(cell => cell.Bytes != TransportBytes.None)
+            .OrderBy(cell => cell.Column)
+            .ThenBy(cell => (int)cell.Mechanism)]);
+        byCell = Cells.ToDictionary(cell => (cell.Column, cell.Mechanism), cell => cell.Bytes);
+    }
+
+    /// <summary>Every cell with a contribution, by column and then mechanism code.</summary>
+    public IReadOnlyList<(int Column, Mechanism Mechanism, TransportBytes Bytes)> Cells { get; }
+
+    /// <summary>One column's bytes of one mechanism: none where no record of it contributed any.</summary>
+    public TransportBytes Of(int column, Mechanism mechanism) =>
+        byCell.TryGetValue((column, mechanism), out TransportBytes? bytes) ? bytes : TransportBytes.None;
 }
 
 /// <summary>
@@ -39,8 +72,11 @@ internal static class SessionOverviewIndex
     private const string What = "persisted overview";
     private const ushort Major = 1;
 
-    /// <summary>Minor 1 adds the RPC link totals after the counts (§3); a minor-0 overview holds none and is still read.</summary>
-    private const ushort Minor = 1;
+    /// <summary>
+    /// Minor 1 adds the RPC link totals after the counts, and minor 2 each overview column's bytes per mechanism after them
+    /// (§3); an earlier overview holds neither and is still read.
+    /// </summary>
+    private const ushort Minor = 2;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -104,6 +140,11 @@ internal static class SessionOverviewIndex
         ArgumentNullException.ThrowIfNull(segments);
         ArgumentNullException.ThrowIfNull(counts);
         ArgumentOutOfRangeException.ThrowIfLessThan(derivedGeneration, 1);
+        if (counts is { Main: null, LaneBytes.Cells.Count: > 0 })
+        {
+            throw new ArgumentException("Bytes are kept only in the columns of an extent, and these counts have none.", nameof(counts));
+        }
+
         var writer = new IndexFileWriter(destination, MaximumBytes, What);
         writer.Raw(Magic);
         writer.U16(Major);
@@ -162,6 +203,27 @@ internal static class SessionOverviewIndex
                 writer.Identity(link.Second.Value);
                 writer.U8((byte)link.Strength);
                 writer.I64(link.Records);
+            }
+        }
+
+        // Minor 2: each overview column's bytes per mechanism, kept by a writer that summed them, in their canonical order.
+        writer.Flag(counts.LaneBytes is not null);
+        if (counts.LaneBytes is { } lanes)
+        {
+            writer.Count(lanes.Cells.Count);
+            foreach ((int column, Mechanism mechanism, TransportBytes bytes) in lanes.Cells)
+            {
+                writer.Count(column);
+                writer.U16((ushort)mechanism);
+                writer.I64(bytes.SentBytes);
+                writer.I64(bytes.SentMeasured);
+                writer.I64(bytes.SentUnmeasured);
+                writer.I64(bytes.ReceivedBytes);
+                writer.I64(bytes.ReceivedMeasured);
+                writer.I64(bytes.ReceivedUnmeasured);
+                writer.I64(bytes.OtherBytes);
+                writer.I64(bytes.OtherMeasured);
+                writer.I64(bytes.OtherUnmeasured);
             }
         }
 
@@ -261,9 +323,10 @@ internal static class SessionOverviewIndex
         if (!reader.Flag())
         {
             IReadOnlyList<RpcPeerLinkTotal>? untimedLinks = minor >= 1 ? ReadLinks(reader) : null;
+            OverviewLaneBytes? untimedBytes = minor >= 2 ? ReadLaneBytes(reader, main: null) : null;
             reader.RequireEnd();
             return rows == withoutTime
-                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks }, segments.AsReadOnly())
+                ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes }, segments.AsReadOnly())
                 : throw reader.Invalid("it has timed rows and no extent.");
         }
 
@@ -328,11 +391,66 @@ internal static class SessionOverviewIndex
         }
 
         IReadOnlyList<RpcPeerLinkTotal>? links = minor >= 1 ? ReadLinks(reader) : null;
+        OverviewLaneBytes? laneBytes = minor >= 2 ? ReadLaneBytes(reader, main) : null;
         reader.RequireEnd();
         return total == timed && mapped == timed
-            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links }, segments.AsReadOnly())
+            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links, LaneBytes = laneBytes }, segments.AsReadOnly())
             : throw reader.Invalid("its columns do not add up to its timed rows.");
     }
+
+    /// <summary>
+    /// Minor 2's lane bytes (§3): none when they were not kept; otherwise each cell an overview column counts records of
+    /// a mechanism in, once and in order, with no count below zero, no sum without a contribution that measured it, and
+    /// some contribution. An overview with no extent has no columns, so it keeps no cell.
+    /// </summary>
+    private static OverviewLaneBytes? ReadLaneBytes(IndexFileReader reader, TimelineColumns? main)
+    {
+        if (!reader.Flag())
+        {
+            return null;
+        }
+
+        int count = reader.Count(4 + 2 + (9 * 8));
+        var cells = new List<(int Column, Mechanism Mechanism, TransportBytes Bytes)>(count);
+        (int Column, int Code) previous = (-1, -1);
+        for (int index = 0; index < count; index++)
+        {
+            uint column = reader.U32();
+            var mechanism = (Mechanism)reader.U16();
+            var bytes = new TransportBytes(reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64(), reader.I64())
+            {
+                OtherBytes = reader.I64(),
+                OtherMeasured = reader.I64(),
+                OtherUnmeasured = reader.I64(),
+            };
+            if (main is null || column >= (uint)main.Counts.Count || !Enum.IsDefined(mechanism)
+                || main.CountOf((int)column, mechanism) == 0
+                || ((int)column, (int)mechanism).CompareTo(previous) <= 0
+                || !Consistent(bytes))
+            {
+                throw reader.Invalid("a lane's bytes lie outside the overview's columns or where it counts no record of "
+                    + "their mechanism, are out of order, or contradict themselves.");
+            }
+
+            cells.Add(((int)column, mechanism, bytes));
+            previous = ((int)column, (int)mechanism);
+        }
+
+        return new(cells);
+    }
+
+    /// <summary>No count is below zero, a side no contribution measured sums nothing, and some contribution is there.</summary>
+    private static bool Consistent(TransportBytes bytes) =>
+        bytes is
+        {
+            SentBytes: >= 0, SentMeasured: >= 0, SentUnmeasured: >= 0,
+            ReceivedBytes: >= 0, ReceivedMeasured: >= 0, ReceivedUnmeasured: >= 0,
+            OtherBytes: >= 0, OtherMeasured: >= 0, OtherUnmeasured: >= 0,
+        }
+        && (bytes.SentMeasured > 0 || bytes.SentBytes == 0)
+        && (bytes.ReceivedMeasured > 0 || bytes.ReceivedBytes == 0)
+        && (bytes.OtherMeasured > 0 || bytes.OtherBytes == 0)
+        && bytes != TransportBytes.None;
 
     /// <summary>
     /// Minor 1's RPC links (§3): none when they were not kept; otherwise each pair of distinct instances, the first in

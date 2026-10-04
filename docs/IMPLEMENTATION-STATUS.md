@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-04 · Plan revision: 288 · Branch: `main`
+Updated: 2026-10-04 · Plan revision: 289 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -62,7 +62,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-012 profiles | Metadata Explore, Focused TCP and RPC peers enforceable; a Content request for WinINet's HTTP exchanges (ADR-037), and the content fixture, keep content through `icat record` only, scoped to named processes; other Content requests preview only | A validated content-capable source, its payload-specific scope and impact proof before enabling Content; broader profiles remain. |
 | IC-013 canonical import | ETL import into verified session implemented | Completed-import reuse/catalogue, normalizer-upgrade generations, ETL/journal overlap disclosure. |
 | IC-014 broker | Authenticated pipe, protected root, durable ownership/recovery, live evidence and live preview counts, ordinary CLI/Desktop client implemented; parent-owner parser blocker repaired and CLI/Desktop Explore exercised on the affected host; a crashed client's capture qualified to stop at lease expiry, finalized and leak-free, and its session finished by the next launch from the follow's ticket (`live-follow-v1`, qualified on real ETW), and a crashed `icat capture`'s by `icat follow <session>`; a connection bounded by request rate rather than a total, so an owner keeps it for a 24-hour capture | Installer pre-creation, retail-build matrix and remaining broker release qualification. |
-| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment; since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`); since revision 178 RPC calls are derived as operations (`rpc-call-operation-v1`), and since revision 183 counted on the logical-operations basis (`metrics-v1` §8a) | Canonical transfer owner, operation durations and operations beyond RPC calls (counted since revision 183), resource topology (process parents and children are shown since revision 211), relations beyond TCP and UDP, full coverage epoch publication. |
+| IC-015 metrics/entities | Source-observation metrics, process/executable grouping, TCP/UDP relations, peer/channel lower bounds; since revision 156 the relation index counts records by their other end, and a relation's untimed records, as it derives, so the overview reads no row's relation; since revision 157 a generation's instances and relations extend the previous generation's, exactly, or are derived in full; since revision 162 a finished session publishes their state as a derivation checkpoint, which a reopen builds both from (`derivation-checkpoint-v1`), and since revision 163 its whole-session overview counts beside it (`overview-index-v1`), so a reopen opens no segment, with each overview column's bytes per mechanism since revision 289 (minor 2); since revision 166 each instance's own records per mechanism (`process-activity-v1`, entities-v1 §4a), extended between generations and kept in the checkpoint's format 1.1, rank the ranked table; since revision 173 IPv6 ends relate (`transport-endpoint-relation-v4`); since revision 178 RPC calls are derived as operations (`rpc-call-operation-v1`), and since revision 183 counted on the logical-operations basis (`metrics-v1` §8a) | Canonical transfer owner, operation durations and operations beyond RPC calls (counted since revision 183), resource topology (process parents and children are shown since revision 211), relations beyond TCP and UDP, full coverage epoch publication. |
 | IC-015a segments | Complete observation/source-field tables; since minor 1, every byte a reader interprets has a checksum of its own, and a published segment's reader reads each column when it is first asked for; since revision 161 the reader cache charges what a reader holds and trims readers to session time and mechanism past its budget; since revision 172 `observation-v2` holds IPv6 endpoint addresses, written only for a segment that has one | Compression and derived scale structures are later work. |
 | IC-016 store | Complete M1 commit/recovery/lease/explicit-retention scope; a lease confirms measured dependencies from one directory listing; a viewer opens a session from one listing and hashes its segments, dictionaries and journals after the first view, falling back to the last-known-good, stated, when a file changed; queries share verified immutable segment readers, safe across threads, admitted within 256 MiB of published payload per store, pruned to what the selected generation names; a viewer holds one store per session, a capture's writer included, and keeps readers only for the session it shows; a writer removes superseded manifests as it publishes, and a reader waits out that removal; since revision 162 an index is published as a generation of its own (`CommitIndex`), carried by no additive generation and released with the segments it describes; since revision 234 kept content is a `Content` dependency beside the journal (`content-v1`), carried like a journal and released only with its journal chunk | Rolling retention policy and cross-process pin quota; releasing content alone. |
 | IC-016a checkpoint | Not started; revision 162's derivation checkpoint holds the state it would take a still-live subset of, but is released with the segments a retention releases | Live entity/endpoint state and open-operation censoring at eviction boundary. |
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 289 — the persisted overview keeps each lane's bytes (`overview-index-v1` minor 2, §6.2):**
+  - A finished session's checkpoint publication sums each overview column's bytes per mechanism, and the machine
+    rung's lanes under a byte ranking are answered from them, opening no segment; other columns are read as before.
+  - The ranked table's per-process bytes are still read, so a reopen's first byte view reads once where it read twice.
 
 - **Revision 288 — a background read is answered after the step that asked for it (§6.4):**
   - A read that had finished before it was awaited was applied inside the setter or publication that started it,
@@ -591,8 +596,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      lanes plot what a byte ranking measures, per second (§6.2), read for the columns they draw: the overview's once,
      and a zoomed view's own when it rests. Since revision 285 a group's process lanes do too, and since revision 286 a
      process's direction rows, each with the machine row above them. A channel's end lanes, which no ranking orders,
-     count records. Still open: bytes in the persisted overview itself (overview-index-v1 §4 sums none), so the first
-     view draws volume without a read and edges and channels carry it. Revision 206 reads the interval table's bytes
+     count records. Since revision 289 the persisted overview keeps each column's bytes per mechanism, so a finished
+     session's machine-rung lanes plot bytes without a read (overview-index-v1 minor 2). Still open: each process's
+     whole-session bytes in the derivation checkpoint, which the ranked table reads when a byte ranking is chosen, and a
+     relationship's or channel's, so the first byte view reads nothing and edges and channels carry volume. Revision 206 reads the interval table's bytes
      when it is shown. Each metric is listed under its basis, which stays beside the selector, since revision 201.
    - Done in revision 206: a real session's interval table reads each listed interval's bytes when shown, which revision
      197's live pass found it had none of. (The relationship table's scope, the pass's other finding, is revision 198's.)
@@ -636,6 +643,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 289 was built and tested in the same Linux container: Debug and Release each ran **1,494 tests**, passing
+  **1,396 with 4 skipped** once the fixture index named the 2 new I4 and I14 tests, whose traceability check the
+  first runs failed; the 94 other failures are the Windows and font-metric ones revision 287 names. Its 3 new tests
+  were checked by reverting what they test: an overview published without its lane bytes, kept bytes answering
+  another width, a lane answered from another mechanism's cells, and a reader that admits a cell where nothing is
+  counted, one that contradicts itself, or two out of order each failed them.
 - Revision 288 was built and tested in the same Linux container: Debug and Release each ran **1,491 tests** twice, and
   all four runs passed **1,393, with 4 skipped**; the 94 failures are exactly the Windows and font-metric ones revision
   287 names, and nothing failed beyond them. Under four busy cores, the three tests of a read's state before it arrives

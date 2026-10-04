@@ -94,6 +94,12 @@ public sealed record SessionMechanismByteMeasures(
     TimeRange Interval,
     IReadOnlyList<SessionIntervalByteMeasures> Lanes)
 {
+    /// <summary>
+    /// Whether these are the bytes a persisted overview kept in its own columns (overview-index-v1 minor 2), answered
+    /// without opening a segment, rather than read from the segments.
+    /// </summary>
+    public bool FromPersistedOverview { get; init; }
+
     /// <summary>The columns of <paramref name="mechanism"/>'s lane, or null when it was not measured.</summary>
     public SessionIntervalByteMeasures? Of(Mechanism mechanism)
     {
@@ -412,6 +418,8 @@ public static class SessionIntervalByteQuery
     /// <summary>
     /// Measures each of <paramref name="mechanisms"/>' records in each column of an interval, in one pass: for each, what
     /// <see cref="Measure"/> answers for that mechanism's lane. A record of a mechanism not named is measured in no lane.
+    /// The overview's own columns are answered from the bytes a persisted overview keeps there (overview-index-v1 minor 2),
+    /// so a finished session's first view under a byte ranking opens no segment either; any other columns are read.
     /// </summary>
     public static SessionMechanismByteMeasures MeasureByMechanism(
         SessionStore store,
@@ -434,9 +442,63 @@ public static class SessionIntervalByteQuery
         SessionManifestV1 manifest = lease.Manifest;
         _ = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
-        int count = layout.Counts.Count;
+        Func<int, int, TransportBytes> bytesOf;
+        int count;
+        OverviewCounts? overview = SessionDerivationCache.For(manifest).PersistedOverview(store.Root);
+        bool persisted = overview is { Extent: { } extent, Main: { } main, LaneBytes: not null }
+            && extent == interval && main.Counts.Count == columns;
+        if (persisted)
+        {
+            OverviewLaneBytes kept = overview!.LaneBytes!;
+            count = columns;
+            bytesOf = (column, lane) => kept.Of(column, mechanisms[lane]);
+        }
+        else
+        {
+            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+            var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
+            TransportByteTally total = TallyLanes(segments, layout, mechanisms, cancellationToken);
+            count = layout.Counts.Count;
+            bytesOf = (column, lane) => total.Of((column * mechanisms.Count) + lane);
+        }
+
+        return new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly([.. mechanisms.Select((mechanism, lane) =>
+            new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
+                new IntervalByteScope { Mechanism = mechanism },
+                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(column => bytesOf(column, lane))])))]))
+        {
+            FromPersistedOverview = persisted,
+        };
+    }
+
+    /// <summary>
+    /// Each overview column's bytes per mechanism, for a persisted overview to keep (overview-index-v1 minor 2): every
+    /// mechanism the columns count records of, measured in one pass as <see cref="MeasureByMechanism"/> measures them.
+    /// </summary>
+    internal static OverviewLaneBytes OverviewLanes(
+        IReadOnlyList<SegmentReaderV1> segments, TimelineColumns main, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(main);
+        Mechanism[] mechanisms = [.. main.Tallies().Select(tally => tally.Mechanism).Distinct().Order()];
+        if (mechanisms.Length == 0)
+        {
+            return new([]);
+        }
+
+        var layout = new TimelineColumns(main.Interval, main.Counts.Count, tallyMechanisms: false);
+        TransportByteTally total = TallyLanes(segments, layout, mechanisms, cancellationToken);
+        return new(Enumerable.Range(0, layout.Counts.Count).SelectMany(column => mechanisms.Select((mechanism, lane) =>
+            (column, mechanism, total.Of((column * mechanisms.Length) + lane)))));
+    }
+
+    /// <summary>Every row's bytes in its column's slot for its mechanism's lane, column by column, then one slot outside.</summary>
+    private static TransportByteTally TallyLanes(
+        IReadOnlyList<SegmentReaderV1> segments,
+        TimelineColumns layout,
+        IReadOnlyList<Mechanism> mechanisms,
+        CancellationToken cancellationToken)
+    {
         int lanes = mechanisms.Count;
 
         // A mechanism code's lane, or -1 for a code no lane measures; a row's code indexes it without hashing (R11).
@@ -447,7 +509,7 @@ public static class SessionIntervalByteQuery
         }
 
         // One slot per column and lane, column by column, then one for every row outside them.
-        int slots = (count * lanes) + 1;
+        int slots = (layout.Counts.Count * lanes) + 1;
         var total = new TransportByteTally(slots);
         SegmentPasses.Run(
             segments,
@@ -455,10 +517,7 @@ public static class SessionIntervalByteQuery
             (segment, tally) => MeasureLanes(segment, layout, laneOfCode, lanes, tally, cancellationToken),
             total.Add,
             cancellationToken);
-        return new(manifest.SessionId, manifest.Generation, interval, Array.AsReadOnly([.. mechanisms.Select((mechanism, lane) =>
-            new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
-                new IntervalByteScope { Mechanism = mechanism },
-                Array.AsReadOnly([.. Enumerable.Range(0, count).Select(column => total.Of((column * lanes) + lane))])))]));
+        return total;
     }
 
     /// <summary>Places each of one segment's rows in its column's slot for its mechanism's lane, or outside, and measures them.</summary>

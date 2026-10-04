@@ -842,6 +842,10 @@ internal sealed class TimelineColumns
         }
     }
 
+    /// <summary>How many records of one mechanism a column counts; columns counted without their mechanisms count none.</summary>
+    internal int CountOf(int column, Mechanism mechanism) =>
+        mechanisms is null ? 0 : mechanisms[(column * Slots.Length) + SlotOf(mechanism)];
+
     /// <summary>One more than the largest mechanism code §23 defines: a table indexed by code has this many slots.</summary>
     internal static int MechanismCodes => SlotOfCode.Length;
 

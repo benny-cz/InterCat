@@ -381,8 +381,9 @@ public sealed class DerivationCheckpointOverviewTests
         byte[] bytes = Written(counts with { RpcLinks = links });
         Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
 
-        // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links.
-        byte[] minorZero = Written(counts)[..^1];
+        // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: this build's ends
+        // with a flag for links and another for lane bytes after it.
+        byte[] minorZero = Written(counts)[..^2];
         minorZero[10] = 0;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorZero, manifest.SessionId).Counts;
         Assert.Null(earlier.RpcLinks);
@@ -401,6 +402,142 @@ public sealed class DerivationCheckpointOverviewTests
                 () => SessionOverviewIndex.Read(Written(counts with { RpcLinks = damaged }), manifest.SessionId)).Message,
                 StringComparison.Ordinal);
         }
+    }
+
+    [Fact(DisplayName = "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment")]
+    public void AFinishedSessionKeepsItsLaneBytes()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        // A send that declared a size it did not record, and one of nothing: each is counted, and neither summed as a size.
+        Publish(session.Store,
+        [
+            Transfer(900, ObservationKind.Send, AccountingSide.SendSide, null, 100, 9_001)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 450 },
+            Transfer(901, ObservationKind.Send, AccountingSide.SendSide, 0, 100, 9_002)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 460 },
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var extent = new TimeRange(overview.Timeline[0].Interval.StartTicks, overview.Timeline[^1].Interval.EndTicks);
+        int columns = overview.Timeline.Count;
+        Mechanism[] lanes = [.. overview.MechanismLanes.Select(lane => lane.Mechanism)];
+        SessionMechanismByteMeasures read = SessionIntervalByteQuery.MeasureByMechanism(session.Store, extent, columns, lanes);
+        Assert.Contains(read.Lanes.SelectMany(lane => lane.Columns), bytes => bytes.SentMeasured > 0 && bytes.ReceivedMeasured > 0);
+        Assert.Contains(read.Lanes.SelectMany(lane => lane.Columns), bytes => bytes.SentUnmeasured > 0);
+        Assert.False(read.FromPersistedOverview);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+
+        // The overview keeps, cell by cell, what a read of every segment measures.
+        (OverviewCounts kept, _) = SessionOverviewIndex.Read(
+            SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!, SessionOverviewIndex.MaximumBytes),
+            session.Store.Current!.SessionId);
+        OverviewLaneBytes cells = Assert.IsType<OverviewLaneBytes>(kept.LaneBytes);
+        for (int lane = 0; lane < lanes.Length; lane++)
+        {
+            for (int column = 0; column < columns; column++)
+            {
+                Assert.Equal(read.Lanes[lane].Columns[column], cells.Of(column, lanes[lane]));
+            }
+        }
+
+        // A fresh viewer answers the overview's lanes from it and opens no segment; a zoomed view's columns are read.
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionMechanismByteMeasures answered = SessionIntervalByteQuery.MeasureByMechanism(reopened, extent, columns, lanes);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.True(answered.FromPersistedOverview);
+        Assert.Equal(read.Lanes.SelectMany(lane => lane.Columns), answered.Lanes.SelectMany(lane => lane.Columns));
+        Assert.Equal(lanes, answered.Lanes.Select(lane => lane.Scope.Mechanism!.Value));
+        var half = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        SessionMechanismByteMeasures zoomed = SessionIntervalByteQuery.MeasureByMechanism(reopened, half, 8, lanes);
+        Assert.True(reopened.SegmentReaderCache.Entries > 0);
+        Assert.False(zoomed.FromPersistedOverview);
+        Assert.Equal(SessionIntervalByteQuery.MeasureByMechanism(session.Store, half, 8, lanes).Lanes.SelectMany(lane => lane.Columns),
+            zoomed.Lanes.SelectMany(lane => lane.Columns));
+
+        // The whole session in other columns than the overview's is read too: the kept cells answer only their own.
+        SessionMechanismByteMeasures coarser = SessionIntervalByteQuery.MeasureByMechanism(reopened, extent, columns / 2, lanes);
+        Assert.False(coarser.FromPersistedOverview);
+        Assert.Equal(SessionIntervalByteQuery.MeasureByMechanism(session.Store, extent, columns / 2, lanes).Lanes.SelectMany(lane => lane.Columns),
+            coarser.Lanes.SelectMany(lane => lane.Columns));
+    }
+
+    [Fact(DisplayName = "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused")]
+    public void PersistedLaneBytesReadBackOrAreRefused()
+    {
+        using var session = new TemporarySession();
+        foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
+        {
+            Publish(session.Store, chunk);
+        }
+
+        SessionManifestV1 manifest = session.Store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(session.Store, manifest, name))];
+        OverviewCounts counts = SessionOverviewProjector.Count(segments, CancellationToken.None);
+        OverviewLaneBytes lanes = SessionIntervalByteQuery.OverviewLanes(segments, counts.Main!, CancellationToken.None);
+        Assert.True(lanes.Cells.Count >= 2);
+        StoreDependency[] covered = SessionOverviewIndex.ObservationSegments(manifest);
+        byte[] Written(OverviewCounts written)
+        {
+            using var stream = new MemoryStream();
+            _ = SessionOverviewIndex.Write(stream, manifest.SessionId, manifest.Generation, covered, written);
+            return stream.ToArray();
+        }
+
+        byte[] bytes = Written(counts with { LaneBytes = lanes });
+        Assert.Equal(lanes.Cells, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.LaneBytes!.Cells);
+
+        // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes.
+        byte[] minorOne = Written(counts)[..^1];
+        minorOne[10] = 1;
+        Assert.Null(SessionOverviewIndex.Read(minorOne, manifest.SessionId).Counts.LaneBytes);
+
+        // A cell where the columns count no record of its mechanism, with a count below zero, or summing what no
+        // contribution measured is refused; so are two cells out of order, which only damage can put them in.
+        (int column, Mechanism mechanism, TransportBytes first) = lanes.Cells[0];
+        Mechanism absent = Enum.GetValues<Mechanism>().First(candidate => counts.Main!.CountOf(column, candidate) == 0);
+        const int Cell = 4 + 2 + (9 * 8);
+        byte[] swapped = [.. bytes];
+        bytes.AsSpan(bytes.Length - (2 * Cell), Cell).CopyTo(swapped.AsSpan(bytes.Length - Cell));
+        bytes.AsSpan(bytes.Length - Cell, Cell).CopyTo(swapped.AsSpan(bytes.Length - (2 * Cell)));
+        foreach (byte[] damaged in new[]
+        {
+            Written(counts with { LaneBytes = new OverviewLaneBytes([(column, absent, first)]) }),
+            Written(counts with { LaneBytes = new OverviewLaneBytes([(column, mechanism, first with { SentUnmeasured = -1 })]) }),
+            Written(counts with { LaneBytes = new OverviewLaneBytes([(column, mechanism, new TransportBytes(64, 0, 1, 0, 0, 0))]) }),
+            swapped,
+        })
+        {
+            Assert.Contains("a lane's bytes", Assert.Throws<InvalidDataException>(
+                () => SessionOverviewIndex.Read(damaged, manifest.SessionId)).Message, StringComparison.Ordinal);
+        }
+
+        // Cut short anywhere it is refused, and a changed byte is refused or reads as some overview: nothing else escapes.
+        for (int length = 0; length < bytes.Length; length++)
+        {
+            _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read(bytes.AsMemory(0, length), manifest.SessionId));
+        }
+
+        for (int index = bytes.Length - (lanes.Cells.Count * Cell) - 5; index < bytes.Length; index++)
+        {
+            byte[] changed = [.. bytes];
+            changed[index] ^= 0xFF;
+            try
+            {
+                _ = SessionOverviewIndex.Read(changed, manifest.SessionId);
+            }
+            catch (InvalidDataException)
+            {
+            }
+        }
+
+        // Counts with no extent keep no cell: the writer refuses to write one there.
+        _ = Assert.Throws<ArgumentException>(() => Written(new OverviewCounts(1, 1, null, null, null) { LaneBytes = lanes }));
     }
 
     /// <summary>

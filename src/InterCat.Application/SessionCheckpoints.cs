@@ -94,6 +94,13 @@ public static class SessionCheckpoints
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
             OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
 
+            // Each overview column's bytes per mechanism are kept with the counts, so the first view under a byte ranking
+            // reads no segment either (overview-index-v1 minor 2).
+            if (counts.Main is { } main)
+            {
+                counts = counts with { LaneBytes = SessionIntervalByteQuery.OverviewLanes(segments, main, cancellationToken) };
+            }
+
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
             // (overview-index-v1 §3); one that did not keeps none, and reads nothing for them.
             if (RpcPeerEdges.Collected(SessionSegments.CoverageLedger(store.Root, manifest)))
