@@ -140,7 +140,8 @@ public sealed partial class WorkspaceViewModel
         RaiseRpcChanged();
         try
         {
-            HttpChannelList list = await evidenceSource!.HttpChannelsAsync(load.Instance, load.Scope, load.Cancellation.Token);
+            HttpChannelList list = await evidenceSource!.HttpChannelsAsync(load.Instance, load.Scope, load.Cancellation.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(httpChannels, load)) return;
             load.Channels = list.Channels;
         }
@@ -169,7 +170,8 @@ public sealed partial class WorkspaceViewModel
         int offset = load.ReplaceOnFirstPage ? 0 : load.Exchanges.Count;
         try
         {
-            HttpExchangePage page = await evidenceSource!.HttpExchangesAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token);
+            HttpExchangePage page = await evidenceSource!.HttpExchangesAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(httpExchanges, load)) return;
             if (page.Problem is not null)
             {

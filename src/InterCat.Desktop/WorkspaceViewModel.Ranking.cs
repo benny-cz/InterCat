@@ -658,7 +658,7 @@ public sealed partial class WorkspaceViewModel
         RefreshBytesState<T>();
         try
         {
-            T measured = await read;
+            T measured = await read.AnsweredLater();
             if (disposed)
             {
                 return;
@@ -733,7 +733,7 @@ public sealed partial class WorkspaceViewModel
         Task<T> read = reads.Read(source, interval);
         try
         {
-            T measured = await read;
+            T measured = await read.AnsweredLater();
             reads.Problem = measured.SessionId == source.SessionId ? null : "this directory now holds another session";
             return reads.Problem is null ? measured : null;
         }

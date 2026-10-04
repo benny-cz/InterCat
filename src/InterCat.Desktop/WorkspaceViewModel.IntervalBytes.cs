@@ -84,7 +84,7 @@ public sealed partial class WorkspaceViewModel
         try
         {
             SessionIntervalByteMeasures measured = await source.IntervalBytesAsync(
-                request.Interval, request.Columns, request.Scope, cancellation.Token);
+                request.Interval, request.Columns, request.Scope, cancellation.Token).AnsweredLater();
             if (disposed || intervalBytesRead?.Cancellation != cancellation)
             {
                 return;

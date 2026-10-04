@@ -520,7 +520,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (focus is null)
             {
-                SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token);
+                SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token)
+                    .AnsweredLater();
                 if (!disposed && ReferenceEquals(timelineQuery, query))
                 {
                     SetTimelineDetail(detail.SessionId == source.SessionId ? detail : null, null);
@@ -529,7 +530,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
-            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token);
+            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token)
+                .AnsweredLater();
             if (!disposed && ReferenceEquals(timelineQuery, query))
             {
                 bool sameSession = counted.Whole.SessionId == source.SessionId;
@@ -798,7 +800,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         try
         {
-            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token);
+            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token)
+                .AnsweredLater();
             if (!disposed && ReferenceEquals(highlightQuery, query))
             {
                 bool sameSession = counted.Whole.SessionId == source.SessionId;
@@ -4431,7 +4434,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseEvidenceChanged();
         try
         {
-            SessionEvidencePage page = await source.ReadAsync(list.Scope, cursor, list.Cancellation.Token);
+            SessionEvidencePage page = await source.ReadAsync(list.Scope, cursor, list.Cancellation.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(evidence, list))
             {
                 return;
@@ -4725,7 +4729,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         try
         {
-            RpcCallSpanPage page = await source.RpcSpansAsync(key, viewport, columns, query.Token);
+            RpcCallSpanPage page = await source.RpcSpansAsync(key, viewport, columns, query.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(rpcSpanQuery, query)) return;
             rpcSpans = page;
         }
@@ -4904,7 +4909,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRpcChanged();
         try
         {
-            RpcChannelList list = await evidenceSource!.RpcChannelsAsync(load.Instance, load.Scope, load.Cancellation.Token);
+            RpcChannelList list = await evidenceSource!.RpcChannelsAsync(load.Instance, load.Scope, load.Cancellation.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(rpcChannels, load)) return;
             load.Channels = list.Channels;
         }
@@ -4937,7 +4943,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             RpcCallPage page = reveal is null
                 ? await evidenceSource!.RpcCallsAsync(load.ChannelKey, offset, load.Scope, load.Cancellation.Token)
-                : await evidenceSource!.RpcCallsThroughAsync(reveal, load.Scope, load.Cancellation.Token);
+                    .AnsweredLater()
+                : await evidenceSource!.RpcCallsThroughAsync(reveal, load.Scope, load.Cancellation.Token)
+                    .AnsweredLater();
             if (disposed || !ReferenceEquals(rpcCalls, load)) return;
             if (page.Problem is not null)
             {
@@ -5238,8 +5246,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // A ranking's bytes or calls are read beside the counts and applied with them, so the rows change once.
             RankingFamily family = RankingMetrics.FamilyOf(rankBy);
             Task<IRankingMeasures?> measures = MeasuresBesideCountsAsync(source, interval);
-            SessionIntervalCounts counts = await source.CountAsync(interval, query.Token);
-            IRankingMeasures? measured = await measures;
+            SessionIntervalCounts counts = await source.CountAsync(interval, query.Token).AnsweredLater();
+            IRankingMeasures? measured = await measures.AnsweredLater();
             if (disposed || !ReferenceEquals(intervalQuery, query))
             {
                 return;
@@ -5368,7 +5376,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         if (IsEvidenceRung && evidence is { Problem: null } list && evidenceSource is { } source)
         {
-            SessionEvidencePage read = await source.ReadScopeAsync(list.Scope, SessionExport.DefaultEvidenceLimit, cancellationToken);
+            SessionEvidencePage read = await source.ReadScopeAsync(list.Scope, SessionExport.DefaultEvidenceLimit, cancellationToken)
+                .AnsweredLater();
             ExportContext context = WorkspaceExport.EvidenceContext(read.SessionId, read.Generation, ladder, list.Scope,
                 read.NextCursor is null, workspaceDisclosure,
                 string.Create(CultureInfo.InvariantCulture,

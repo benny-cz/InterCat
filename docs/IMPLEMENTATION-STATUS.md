@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-04 · Plan revision: 287 · Branch: `main`
+Updated: 2026-10-04 · Plan revision: 288 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -74,6 +74,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 288 — a background read is answered after the step that asked for it (§6.4):**
+  - A read that had finished before it was awaited was applied inside the setter or publication that started it,
+    skipping the "reading" or "updating" state it had just published; three tests of that state failed whenever the
+    read won, 8 runs in 8 under load for one. Every evidence read now answers on a later turn; 0 in 8 since.
 
 - **Revision 287 — every chosen state from the tokens, in every mode (§6.1, §6.6):**
   - A selected row, a toggle or box that is on, a tab, a focused field, the text selected in it and a combo box's open
@@ -631,6 +636,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 288 was built and tested in the same Linux container: Debug and Release each ran **1,491 tests** twice, and
+  all four runs passed **1,393, with 4 skipped**; the 94 failures are exactly the Windows and font-metric ones revision
+  287 names, and nothing failed beyond them. Under four busy cores, the three tests of a read's state before it arrives
+  had failed 8 runs in 8 and 6 in 8 before it, and failed none of 8 each after. Its 2 new tests were checked by
+  reverting what they test: removing the forced yield, the asking thread, or the rule at one read each failed them.
 - Revision 287 was built and tested in a Linux container without Windows, on the .NET 10 SDK there: Debug and Release
   each ran **1,489 tests** twice. Release passed **1,391, with 4 skipped**, and its 94 failures are exactly those
   revision 286 has in that container: the 86 CaptureBroker tests and 6 capture tests that call Windows APIs, and 2

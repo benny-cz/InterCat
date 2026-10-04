@@ -82,7 +82,8 @@ public sealed partial class WorkspaceViewModel
         RaiseRpcChanged();
         try
         {
-            ConnectionList list = await evidenceSource!.ConnectionsAsync(load.Instance, load.Scope, load.Cancellation.Token);
+            ConnectionList list = await evidenceSource!.ConnectionsAsync(load.Instance, load.Scope, load.Cancellation.Token)
+                .AnsweredLater();
             if (disposed || !ReferenceEquals(connections, load)) return;
             load.Connections = list.Connections;
         }

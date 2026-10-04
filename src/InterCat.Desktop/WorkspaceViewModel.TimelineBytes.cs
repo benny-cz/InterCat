@@ -188,7 +188,7 @@ public sealed partial class WorkspaceViewModel
         {
             try
             {
-                TMeasures measured = await read(source, request, cancellation.Token);
+                TMeasures measured = await read(source, request, cancellation.Token).AnsweredLater();
                 if (owner.disposed || Running?.Cancellation != cancellation)
                 {
                     return;
