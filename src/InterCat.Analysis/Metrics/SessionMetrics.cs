@@ -261,11 +261,18 @@ public sealed record MetricRequest
 
         if (DurationInterval is not { } interval)
         {
+            // An operation's intervals on the logical-operations basis, a resource's on the resource-topology one.
             return new(
                 "A duration names the interval it measures - a client call, a server execution, an I/O completion, an ALPC "
                 + "send-to-receive, a wait or a mapping lifetime - because intervals of different names are never "
                 + "interchangeable (§5). There is no default.",
-                []);
+                [])
+            {
+                Part = MetricRequestPart.DurationInterval,
+                Accepted = [.. Enum.GetValues<Domain.DurationInterval>()
+                    .Where(named => (named == Domain.DurationInterval.MappingLifetime) == (Basis == AnalysisBasis.ResourceTopology))
+                    .Select(named => named.ToString())],
+            };
         }
 
         if (!Enum.IsDefined(interval)

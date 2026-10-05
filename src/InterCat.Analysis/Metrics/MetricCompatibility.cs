@@ -104,12 +104,36 @@ public sealed record MetricDefinition
     public AccountingSide? FixedSide => SideRule == AccountingSideRule.Fixed ? AllowedSides[0] : null;
 }
 
+/// <summary>
+/// The one part of a metric request a rejection is about, so whoever made the request can point at the control or the
+/// option that sets it rather than leave a person to find it.
+/// </summary>
+public enum MetricRequestPart
+{
+    ByteDomain = 1,
+    AccountingSide = 2,
+    Layer = 3,
+    RateNumerator = 4,
+    DurationInterval = 5,
+}
+
 /// <summary>Why a request is not a valid one, and what would be.</summary>
 public sealed record MetricRejection(string Reason, IReadOnlyList<Metric> CompatibleMetrics)
 {
+    /// <summary>The one part of the request the rejection is about; null when it is about how the parts combine.</summary>
+    public MetricRequestPart? Part { get; init; }
+
+    /// <summary>
+    /// The values <see cref="Part"/> may take in this request, as §23 names them. Empty when the request means something
+    /// only with the part left out, and for a rate's numerator, whose values are <see cref="CompatibleMetrics"/>.
+    /// </summary>
+    public IReadOnlyList<string> Accepted { get; init; } = [];
+
     public override string ToString() => CompatibleMetrics.Count == 0
         ? Reason
-        : $"{Reason} Compatible metrics for this basis: {string.Join(", ", CompatibleMetrics)}.";
+        : Part == MetricRequestPart.RateNumerator
+            ? $"{Reason} Numerators a rate takes on this basis: {string.Join(", ", CompatibleMetrics)}."
+            : $"{Reason} Compatible metrics for this basis: {string.Join(", ", CompatibleMetrics)}.";
 }
 
 /// <summary>
@@ -435,7 +459,7 @@ public static class MetricCompatibility
         {
             return new(
                 $"Only a rate divides by an interval, so a numerator does not apply to {metric}.",
-                []);
+                []) { Part = MetricRequestPart.RateNumerator };
         }
 
         return CheckDomain(definition, byteDomain)
@@ -464,27 +488,32 @@ public static class MetricCompatibility
 
     private static MetricRejection? CheckDomain(MetricDefinition definition, ByteDomain? byteDomain)
     {
+        // A domain the metric fixes, or has none of, is right only left out; one it requires is one it allows.
+        string[] allowed = [.. definition.AllowedDomains.Select(domain => domain.ToString())];
         switch (definition.DomainRule)
         {
             case ByteDomainRule.NotApplicable when byteDomain is not null:
-                return new($"{definition.Metric} measures no bytes, so a byte domain does not apply to it.", []);
+                return new($"{definition.Metric} measures no bytes, so a byte domain does not apply to it.", [])
+                {
+                    Part = MetricRequestPart.ByteDomain,
+                };
             case ByteDomainRule.Required when byteDomain is null:
                 return new(
                     $"{definition.Metric} covers exactly one byte domain and the request names none. Two domains "
                     + "are never summed, so there is no default: name one of "
                     + $"{string.Join(" or ", definition.AllowedDomains)} (I6, P3).",
-                    []);
+                    []) { Part = MetricRequestPart.ByteDomain, Accepted = allowed };
             case ByteDomainRule.Required when !definition.AllowedDomains.Contains(byteDomain!.Value):
                 Metric owner = OwnerOf(byteDomain.Value);
                 return new(
                     $"{byteDomain} bytes are measured by {owner}, not by {definition.Metric}. Reporting them as "
                     + "traffic would relabel one byte domain as another, which is exactly what P3 forbids.",
-                    []);
+                    []) { Part = MetricRequestPart.ByteDomain, Accepted = allowed };
             case ByteDomainRule.Fixed when byteDomain is not null && byteDomain != definition.FixedDomain:
                 return new(
                     $"{definition.Metric} is measured in {definition.FixedDomain} and the request names "
                     + $"{byteDomain}. Relabelling one domain as another is exactly what P3 forbids.",
-                    []);
+                    []) { Part = MetricRequestPart.ByteDomain };
             default:
                 return null;
         }
@@ -492,23 +521,25 @@ public static class MetricCompatibility
 
     private static MetricRejection? CheckSide(MetricDefinition definition, AccountingSide? accountingSide)
     {
+        // A side the metric fixes, or has none of, is right only left out; one it requires is one it allows.
+        string[] allowed = [.. definition.AllowedSides.Select(side => side.ToString())];
         switch (definition.SideRule)
         {
             case AccountingSideRule.NotApplicable when accountingSide is not null:
                 return new(
                     $"{definition.Metric} has no observation side, so an accounting side does not apply to it.",
-                    []);
+                    []) { Part = MetricRequestPart.AccountingSide };
             case AccountingSideRule.Required when accountingSide is null:
                 return new(
                     $"{definition.Metric} is accounted to one side of the exchange and the request names none. A "
                     + "byte total with no stated side is the unexplained volume number §5 exists to prevent. Name "
                     + $"one of {string.Join(", ", definition.AllowedSides)}.",
-                    []);
+                    []) { Part = MetricRequestPart.AccountingSide, Accepted = allowed };
             case AccountingSideRule.Fixed when accountingSide is not null && accountingSide != definition.FixedSide:
                 return new(
                     $"{definition.Metric} is accounted as {definition.FixedSide} by definition, and the request "
                     + $"names {accountingSide}.",
-                    []);
+                    []) { Part = MetricRequestPart.AccountingSide };
             case AccountingSideRule.Required or AccountingSideRule.WhereKnown
                 when accountingSide is { } side && !definition.AllowedSides.Contains(side):
                 return side == AccountingSide.EndpointActivity
@@ -516,11 +547,11 @@ public static class MetricCompatibility
                         $"{definition.Metric} names one direction and endpoint activity counts both, so the request "
                         + $"contradicts itself. Ask for {Metric.EndpointActivityBytes} instead: it is the "
                         + "separately labelled total §5.1 describes (ADR-012).",
-                        [])
+                        []) { Part = MetricRequestPart.AccountingSide, Accepted = allowed }
                     : new(
                         $"{definition.Metric} is not accounted as {side}. Name one of "
                         + $"{string.Join(", ", definition.AllowedSides)}.",
-                        []);
+                        []) { Part = MetricRequestPart.AccountingSide, Accepted = allowed };
             default:
                 return null;
         }
@@ -532,7 +563,7 @@ public static class MetricCompatibility
                 $"{definition.Metric} counts only {required}-layer evidence, and the request projects onto "
                 + $"{named}. Reporting it from another layer would let a transport length be read as an "
                 + "application payload length (§5.3, I11).",
-                MetricsFor(basis))
+                MetricsFor(basis)) { Part = MetricRequestPart.Layer }
             : null;
 
     private static MetricRejection? CheckRate(
@@ -547,17 +578,20 @@ public static class MetricCompatibility
             return new(
                 "A rate divides a named count or byte sum by an interval, so the request names its numerator. "
                 + "A rate with no numerator has no unit (§5).",
-                RateNumeratorsFor(basis));
+                RateNumeratorsFor(basis)) { Part = MetricRequestPart.RateNumerator };
         }
 
         if (!Enum.IsDefined(numerator))
         {
-            return new("A rate's numerator is a metric §23 defines.", RateNumeratorsFor(basis));
+            return new("A rate's numerator is a metric §23 defines.", RateNumeratorsFor(basis))
+            {
+                Part = MetricRequestPart.RateNumerator,
+            };
         }
 
         if (numerator == Metric.Rate)
         {
-            return new("A rate is not its own numerator.", RateNumeratorsFor(basis));
+            return new("A rate is not its own numerator.", RateNumeratorsFor(basis)) { Part = MetricRequestPart.RateNumerator };
         }
 
         MetricDefinition inner = DefinitionOf(numerator);
@@ -566,7 +600,7 @@ public static class MetricCompatibility
             return new(
                 $"{numerator} is not additive over time, so dividing it by an interval produces no rate: a "
                 + "distinct count, a duration or a capacity per second is not a quantity §5 defines.",
-                RateNumeratorsFor(basis));
+                RateNumeratorsFor(basis)) { Part = MetricRequestPart.RateNumerator };
         }
 
         return Check(basis, numerator, byteDomain, accountingSide, layer);

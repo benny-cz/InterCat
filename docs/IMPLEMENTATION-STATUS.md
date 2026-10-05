@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 297 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 298 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 298 — a refused metric request says what would complete it (`metrics-v1` §2):**
+  - `icat metric --metric bytes-sent` was refused for naming no byte domain without saying which option names one.
+    A refusal about one part of a request now names that part and the values it takes there, and `icat metric`
+    says the option: "Name it with --byte-domain: TransportObserved or CompletedIo.", or "Leave out --side." where
+    the metric fixes it or has none.
 
 - **Revision 297 — an interval's length is a tick count (I3, `metrics-v1` §5):**
   - `icat timeline` and `icat metric --metric rate` failed with an overflow over an interval whose end is more than
@@ -694,6 +700,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 298 was built and tested in the same Linux container: Debug and Release each ran **1,509 tests**, passing
+  **1,412 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of fifteen mutations: a domain, side, layer, numerator or duration refusal naming no part, one offering every
+  domain or interval rather than those its request takes, one offering a value where the part is right only left out,
+  one offering none where a value is wanted, and a numerator list headed as metrics. No test covers the command line,
+  so `icat metric` was run against a session through each refusal: a missing domain, side, numerator or duration
+  interval says "Name it with" its option and the values it takes, a wrong domain or side says what the option takes
+  there, and a side, domain, layer or numerator the metric fixes or has none of says to leave it out.
 - Revision 297 was built and tested in the same Linux container: Debug and Release each ran **1,509 tests**, passing
   **1,412 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of fourteen mutations: a range taking any span or `TryCreate` ignoring it; the held part not centred, reaching

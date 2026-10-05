@@ -400,6 +400,17 @@ public sealed class OperationMetricsTests
     {
         MetricRejection unnamed = Assert.IsType<MetricRejection>(Request(Metric.Duration).Check());
         Assert.Contains("There is no default", unnamed.Reason, StringComparison.Ordinal);
+
+        // Unnamed, the interval is the part to name, and the request says which it takes: an operation's on this basis,
+        // a resource's on the resource-topology one.
+        Assert.Equal(MetricRequestPart.DurationInterval, unnamed.Part);
+        Assert.Equal(["ClientCall", "ServerExecution", "IoCompletion", "AlpcSendToReceive", "Wait"], unnamed.Accepted);
+        MetricRejection unnamedResource = Assert.IsType<MetricRejection>((Request(Metric.Duration) with
+        {
+            Basis = AnalysisBasis.ResourceTopology,
+        }).Check());
+        Assert.Equal((MetricRequestPart.DurationInterval, "MappingLifetime"), (unnamedResource.Part, Assert.Single(unnamedResource.Accepted)));
+
         MetricRejection notADuration = Assert.IsType<MetricRejection>((Request(Metric.OperationsStarted) with
         {
             Cohort = OperationCohort.StartedInRange,
@@ -412,6 +423,9 @@ public sealed class OperationMetricsTests
             Basis = AnalysisBasis.ResourceTopology,
         }).Check());
         Assert.Contains("an operation's", onTopology.Reason, StringComparison.Ordinal);
+
+        // How an interval and a basis combine is no one part's to answer.
+        Assert.Equal((null, null, null), (notADuration.Part, lifetime.Part, onTopology.Part));
 
         using var session = new TemporarySession();
         Publish(session.Store, EveryState());

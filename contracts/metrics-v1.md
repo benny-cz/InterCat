@@ -97,6 +97,12 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
   `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
   `sender` and `receiver`, which select those records.
 
+A refusal that is about one part of the request - its byte domain, accounting side, layer, rate numerator or duration
+interval - names that part, and the values it takes in that request by §23's names. It names no value when the request
+means something only with the part left out: a domain or side the metric fixes or has none of, the layer it implies, or
+a numerator on anything but a rate. A rate's numerators are the metrics the refusal lists. `icat metric` says which option
+to give, with those values, or to leave out (plan revision 298). A refusal about how parts combine names no part.
+
 ## 3. A contribution
 
 A contribution is §19.2's unit of accounting, keyed by

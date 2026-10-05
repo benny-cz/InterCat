@@ -38,6 +38,9 @@ public sealed class SessionMetricsTests
             AccountingSide.SendSide);
         Assert.Contains("cannot invent a traffic value", topologyBytes.Reason, StringComparison.Ordinal);
         Assert.Contains(Metric.MappingCapacity, topologyBytes.CompatibleMetrics);
+
+        // A metric and a basis that do not go together are no one part's to answer.
+        Assert.All(new[] { observations, started, duration, capacity, topologyBytes }, rejection => Assert.Null(rejection.Part));
     }
 
     [Fact(DisplayName = "P3: a byte metric names one traffic domain, and another metric's domain is never relabelled")]
@@ -50,6 +53,8 @@ public sealed class SessionMetricsTests
             AccountingSide.SendSide);
         Assert.Contains("there is no default", none.Reason, StringComparison.Ordinal);
         Assert.Contains("TransportObserved or CompletedIo", none.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.ByteDomain, none.Part);
+        Assert.Equal(["TransportObserved", "CompletedIo"], none.Accepted);
 
         // Requested lengths are their own metric. Asking for them as sent bytes would be the relabelling P3 names.
         MetricRejection requestedAsSent = Reject(
@@ -58,6 +63,8 @@ public sealed class SessionMetricsTests
             ByteDomain.RequestedIo,
             AccountingSide.SendSide);
         Assert.Contains("measured by RequestedIoBytes", requestedAsSent.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.ByteDomain, requestedAsSent.Part);
+        Assert.Equal(["TransportObserved", "CompletedIo"], requestedAsSent.Accepted);
 
         MetricRejection capacityAsTraffic = Reject(
             AnalysisBasis.SourceObservations,
@@ -72,6 +79,10 @@ public sealed class SessionMetricsTests
             AccountingSide.SendSide);
         Assert.Contains("exactly what P3 forbids", relabelled.Reason, StringComparison.Ordinal);
 
+        // A domain the metric fixes is right only left out, so no value is offered for it.
+        Assert.Equal(MetricRequestPart.ByteDomain, relabelled.Part);
+        Assert.Empty(relabelled.Accepted);
+
         // A fixed-domain metric that names its own domain, or none, is fine: the metric already says which.
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.RequestedIoBytes, ByteDomain.RequestedIo, AccountingSide.SendSide).Check());
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.RequestedIoBytes, null, AccountingSide.SendSide).Check());
@@ -82,6 +93,8 @@ public sealed class SessionMetricsTests
             Metric.Observations,
             ByteDomain.TransportObserved);
         Assert.Contains("measures no bytes", noBytes.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.ByteDomain, noBytes.Part);
+        Assert.Empty(noBytes.Accepted);
     }
 
     [Fact(DisplayName = "R2: a byte metric names its accounting, and a canonical owner is a request rather than a guess")]
@@ -93,12 +106,16 @@ public sealed class SessionMetricsTests
             ByteDomain.TransportObserved,
             accountingSide: null);
         Assert.Contains("unexplained volume number", none.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.AccountingSide, none.Part);
+        Assert.Equal(["SendSide", "ReceiveSide", "CanonicalOwner"], none.Accepted);
 
         MetricRejection side = Reject(
             AnalysisBasis.SourceObservations,
             Metric.Observations,
             accountingSide: AccountingSide.SendSide);
         Assert.Contains("no observation side", side.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.AccountingSide, side.Part);
+        Assert.Empty(side.Accepted);
 
         // The matrix permits a canonical-owner total. Whether a session can answer it is a different question,
         // asked of the session, and the answer there is "not until a transfer association is proven".
@@ -115,6 +132,8 @@ public sealed class SessionMetricsTests
             AccountingSide.EndpointActivity);
         Assert.Contains("names one direction and endpoint activity counts both", contradiction.Reason, StringComparison.Ordinal);
         Assert.Contains(nameof(Metric.EndpointActivityBytes), contradiction.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.AccountingSide, contradiction.Part);
+        Assert.Equal(["SendSide", "ReceiveSide", "CanonicalOwner"], contradiction.Accepted);
 
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.EndpointActivityBytes, ByteDomain.TransportObserved).Check());
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.EndpointActivityBytes, ByteDomain.TransportObserved, AccountingSide.EndpointActivity).Check());
@@ -125,6 +144,8 @@ public sealed class SessionMetricsTests
             ByteDomain.TransportObserved,
             AccountingSide.SendSide);
         Assert.Contains("accounted as EndpointActivity by definition", oneSided.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.AccountingSide, oneSided.Part);
+        Assert.Empty(oneSided.Accepted);
 
         // A metric whose name states no direction may be accounted as endpoint activity: every requested length at
         // every endpoint is a meaningful total, and it is labelled as counting both ends.
@@ -149,6 +170,8 @@ public sealed class SessionMetricsTests
             AccountingSide.SendSide,
             layer: ObservationLayer.Transport);
         Assert.Contains("transport length be read as an application", transport.Reason, StringComparison.Ordinal);
+        Assert.Equal(MetricRequestPart.Layer, transport.Part);
+        Assert.Empty(transport.Accepted);
     }
 
     [Fact(DisplayName = "R2: a rate names an additive numerator, and nothing else carries one")]
@@ -171,6 +194,13 @@ public sealed class SessionMetricsTests
 
         MetricRejection stray = Reject(AnalysisBasis.SourceObservations, Metric.Observations, rateNumerator: Metric.Observations);
         Assert.Contains("Only a rate divides", stray.Reason, StringComparison.Ordinal);
+
+        // Each is about the numerator, whose values are the compatible metrics, said as numerators; one a basis does not
+        // define is about the metric and its basis, and a numerator only a rate takes is right only left out.
+        Assert.All(new[] { none, itself, distinct, stray }, rejection => Assert.Equal(MetricRequestPart.RateNumerator, rejection.Part));
+        Assert.Null(inherited.Part);
+        Assert.Empty(stray.CompatibleMetrics);
+        Assert.Contains("Numerators a rate takes on this basis: Observations", none.ToString(), StringComparison.Ordinal);
 
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.Rate, rateNumerator: Metric.Observations).Check());
         Assert.Null(Request(AnalysisBasis.SourceObservations, Metric.Rate, ByteDomain.TransportObserved, AccountingSide.SendSide, Metric.BytesSent).Check());

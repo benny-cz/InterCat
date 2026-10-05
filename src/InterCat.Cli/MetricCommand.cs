@@ -515,10 +515,17 @@ internal static class MetricCommand
         if (request.Check() is { } rejection)
         {
             ConsoleUi.Failure(rejection.Reason);
+            if (rejection.Part is { } part)
+            {
+                ConsoleUi.Line(Remedy(part, request, rejection));
+            }
+
             if (rejection.CompatibleMetrics.Count > 0)
             {
                 ConsoleUi.Line();
-                ConsoleUi.Line($"  Metrics defined on a {basis} basis:");
+                ConsoleUi.Line(rejection.Part == MetricRequestPart.RateNumerator
+                    ? $"  Numerators a rate takes on a {basis} basis:"
+                    : $"  Metrics defined on a {basis} basis:");
                 foreach (Metric compatible in rejection.CompatibleMetrics)
                 {
                     ConsoleUi.Bullet($"{compatible} - {MetricCompatibility.DefinitionOf(compatible).Meaning}");
@@ -1630,9 +1637,37 @@ internal static class MetricCommand
     }
 
     /// <summary>
-    /// The accounting sides as a person says them: send, receive, endpoint or canonical, beside §23's full names. The
-    /// short form names the same side, so it is resolved here and the request never sees two spellings.
+    /// What completes or corrects the part of a request a rejection is about, as a person types it: the option that names
+    /// it and the values it takes in this request, or that it is left out where the metric fixes it or has none.
     /// </summary>
+    private static string Remedy(MetricRequestPart part, MetricRequest request, MetricRejection rejection)
+    {
+        (string option, bool named) = part switch
+        {
+            MetricRequestPart.ByteDomain => ("--byte-domain", request.ByteDomain is not null),
+            MetricRequestPart.AccountingSide => ("--side", request.AccountingSide is not null),
+            MetricRequestPart.Layer => ("--layer", request.Layer is not null),
+            MetricRequestPart.RateNumerator => ("--rate-numerator", request.RateNumerator is not null),
+            MetricRequestPart.DurationInterval => ("--duration", request.DurationInterval is not null),
+            _ => throw new ArgumentOutOfRangeException(nameof(part), part, "A request part this command has no option for."),
+        };
+
+        if (part == MetricRequestPart.RateNumerator && rejection.CompatibleMetrics.Count > 0)
+        {
+            return named ? $"  {option} takes one of the numerators below." : $"  Name it with {option}, one of the numerators below.";
+        }
+
+        IReadOnlyList<string> values = rejection.Accepted;
+        return values.Count == 0 ? $"  Leave out {option}."
+            : named ? $"  {option} takes {Either(values)} here."
+            : $"  Name it with {option}: {Either(values)}.";
+    }
+
+    /// <summary>Choices as a sentence names them: "A", "A or B", "A, B or C".</summary>
+    private static string Either(IReadOnlyList<string> choices) => choices.Count == 1
+        ? choices[0]
+        : $"{string.Join(", ", choices.Take(choices.Count - 1))} or {choices[^1]}";
+
     /// <summary>A cohort as a person says it: completed or started, beside §23's full names.</summary>
     private static string? CohortAlias(string? value) => value?.ToLowerInvariant() switch
     {
@@ -1649,6 +1684,10 @@ internal static class MetricCommand
         _ => value,
     };
 
+    /// <summary>
+    /// The accounting sides as a person says them: send, receive, endpoint or canonical, beside §23's full names. The
+    /// short form names the same side, so it is resolved here and the request never sees two spellings.
+    /// </summary>
     private static string? SideAlias(string? value) => value?.ToLowerInvariant() switch
     {
         "send" or "sender" => nameof(AccountingSide.SendSide),
