@@ -1706,6 +1706,7 @@
         "R18: each process's bytes sent and received are what endpoint activity grouped by process answers",
         "R18: each process's calls made and served add up to what the operations metric counts for it, whole or in an interval",
         "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval",
+        "R18: every command's --json answer is one JSON object on stdout naming its contract, whatever its exit code",
         "R18: lanes measured together in one pass each hold what the byte measure answers over their mechanism's records",
         "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"

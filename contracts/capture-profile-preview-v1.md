@@ -6,6 +6,10 @@ Produced by: `icat profiles <profile> --json`, including focused requests such a
 `icat profiles focused-transport --mechanism tcp --pid 4242 --json`
 and bounded request-only previews such as `icat profiles content <scope-and-budget-options> --json`.
 
+`icat profiles --json`, with no profile named, prints the catalog instead: `capture-profile-catalog-v1`, `contract` and
+`profiles`, each capture intent as the catalog describes it. Until plan revision 303 it printed the profiles alone, an
+array that named no contract.
+
 A profile preview is a read-only answer to “what would this exact request enable on this machine?” It
 reads provider schemas but starts no session and enables no provider. Requested and effective settings
 remain separate so an unavailable source or body mode cannot become a silent fallback.

@@ -97,6 +97,11 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
   `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
   `sender` and `receiver`, which select those records.
 
+`icat metric --matrix --json` prints `metric-matrix-v1`: `contract` and `metrics`, one entry per metric with its
+`meaning`, `kind`, `bases`, `byteDomain` rule and `allowedDomains`, `accountingSide` rule and `allowedSides`,
+`impliedLayer` and whether it is a `rateNumerator`. Until plan revision 303 it printed the entries alone, an array that
+named no contract.
+
 A refusal that is about one part of the request - its byte domain, accounting side, layer, rate numerator or duration
 interval - names that part, and the values it takes in that request by §23's names. It names no value when the request
 means something only with the part left out: a domain or side the metric fixes or has none of, the layer it implies, or

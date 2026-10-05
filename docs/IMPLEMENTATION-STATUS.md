@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 302 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 303 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 303 — every machine-readable answer names its contract (§20.4, R18):**
+  - `icat profiles --json` and `icat metric --matrix --json` printed bare arrays that named no contract; they are now
+    `capture-profile-catalog-v1` and `metric-matrix-v1`. A test reads every read command's `--json` and refuses
+    anything but one object naming its contract.
 
 - **Revision 302 — a refused argument says what it was (§20.4):**
   - An operand that starts with a dash, such as a note, was refused as an unknown option with no word of `--`; it now
@@ -723,6 +728,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 303 was built and tested in the same Linux container: Debug and Release each ran **1,517 tests**, passing
+  **1,420 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  each of three mutations: the matrix or the catalog printed as an array again, and the matrix naming no contract.
+  Before the change it failed on the catalog, the first array it read.
 - Revision 302 was built and tested in the same Linux container: Debug and Release each ran **1,516 tests**, passing
   **1,419 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of four mutations: the `--` hint left out, any argument with a dash taken as an option's name, an extra operand

@@ -1553,12 +1553,17 @@ internal static class MetricCommand
         return true;
     }
 
+    /// <summary>`icat metric --matrix --json`'s contract: §5.3's matrix, one entry per metric (`metrics-v1` §2).</summary>
+    public const string MatrixContract = "metric-matrix-v1";
+
     private static void RenderMatrix(bool json)
     {
         if (json)
         {
-            Console.Out.WriteLine(JsonSerializer.Serialize(
-                MetricCompatibility.Definitions.Select(definition => new
+            Console.Out.WriteLine(JsonSerializer.Serialize(new
+            {
+                contract = MatrixContract,
+                metrics = MetricCompatibility.Definitions.Select(definition => new
                 {
                     metric = definition.Metric.ToString(),
                     meaning = definition.Meaning,
@@ -1571,7 +1576,8 @@ internal static class MetricCommand
                     impliedLayer = definition.ImpliedLayer?.ToString(),
                     rateNumerator = definition.IsRateNumerator,
                 }),
-                JsonContracts.Indented));
+            },
+            JsonContracts.Indented));
             return;
         }
 

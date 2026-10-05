@@ -11,6 +11,9 @@ namespace InterCat.Cli;
 /// </summary>
 internal static class ProfilesCommand
 {
+    /// <summary>`icat profiles --json`'s contract: every capture intent the catalog offers.</summary>
+    public const string CatalogContract = "capture-profile-catalog-v1";
+
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -147,7 +150,7 @@ internal static class ProfilesCommand
             }
 
             IReadOnlyList<CaptureProfileDescriptor> profiles = CaptureProfileCatalog.All;
-            string catalogPayload = JsonSerializer.Serialize(profiles, JsonContracts.Indented);
+            string catalogPayload = JsonSerializer.Serialize(new { contract = CatalogContract, profiles }, JsonContracts.Indented);
             if (json)
             {
                 Console.Out.WriteLine(catalogPayload);

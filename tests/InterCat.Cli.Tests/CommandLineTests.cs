@@ -1,3 +1,4 @@
+using System.Text.Json;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
@@ -17,6 +18,9 @@ namespace InterCat.Cli.Tests;
 public sealed class CommandLineTests : IDisposable
 {
     private const string TooWide = "-9223372036854775808:0";
+
+    /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
+    private static readonly string[] VersionNames = ["contract", "schemaVersion", "reportVersion"];
 
     private readonly TemporarySession session = new();
 
@@ -201,6 +205,61 @@ public sealed class CommandLineTests : IDisposable
         {
             File.Delete(workspace);
             Directory.Delete(second, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R18: every command's --json answer is one JSON object on stdout naming its contract, whatever its exit code")]
+    public async Task EveryJsonAnswerIsOneDocument()
+    {
+        string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
+        try
+        {
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, session.Path)).Code);
+            string[][] asked =
+            [
+                ["capabilities"],
+                ["profiles"],
+                ["profiles", "explore"],
+                ["session", session.Path],
+                ["overview", session.Path],
+                ["channels", session.Path],
+                ["evidence", session.Path],
+                ["timeline", session.Path, "--interval", "0:1000", "--bytes"],
+                ["processes", session.Path],
+                ["operations", session.Path],
+                ["exchanges", session.Path],
+                ["metric", session.Path, "--metric", "observations"],
+                ["metric", session.Path, "--metric", "bytes-sent", "--byte-domain", "TransportObserved", "--side", "send", "--group-by", "process"],
+                ["metric", "--matrix"],
+                ["compact", session.Path, "--check"],
+                ["recover", session.Path],
+                ["staging", session.Path],
+                ["workspace", "show", workspace],
+                ["workspace", "correlate", workspace],
+            ];
+            foreach (string[] args in asked)
+            {
+                (InterCatExitCode code, string output, string said) = await Run([.. args, "--json"]);
+                string invocation = "icat " + string.Join(' ', args) + " --json";
+                Assert.True(code is not (InterCatExitCode.InvalidInvocation or InterCatExitCode.CorruptedInput), $"{invocation} exited {code}: {said}");
+                try
+                {
+                    // An object that names its contract, so a reader can refuse a version it does not know.
+                    using JsonDocument answer = JsonDocument.Parse(output);
+                    Assert.True(answer.RootElement.ValueKind == JsonValueKind.Object, $"{invocation} answered {answer.RootElement.ValueKind}.");
+                    Assert.True(VersionNames.Any(name => answer.RootElement.TryGetProperty(name, out _)),
+                        $"{invocation} names no contract.");
+                }
+                catch (JsonException exception)
+                {
+                    Assert.Fail($"{invocation} wrote what is not one JSON document ({exception.Message}):\n{output}");
+                }
+            }
+        }
+        finally
+        {
+            File.Delete(workspace);
         }
     }
 
