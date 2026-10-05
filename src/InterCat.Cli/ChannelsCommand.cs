@@ -40,7 +40,7 @@ internal static class ChannelsCommand
                 : invalidProcess
                     ? "--process must be a process-instance GUID from the overview."
                     : "--page-size must be an integer from 1 to 200.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -155,7 +155,7 @@ internal static class ChannelsCommand
     private static InterCatExitCode Refuse(string reason)
     {
         ConsoleUi.Failure(reason);
-        PrintHelp();
+        ConsoleUi.Explain(PrintHelp);
         return InterCatExitCode.InvalidInvocation;
     }
 

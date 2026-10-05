@@ -53,7 +53,7 @@ internal static class TimelineCommand
                 : invalidColumns ? $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."
                 : interval is null ? tooWide ?? "--interval start:end is required, in 100-nanosecond session-relative ticks, with end > start."
                 : scopeProblem!);
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

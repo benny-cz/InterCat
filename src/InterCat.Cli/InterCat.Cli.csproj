@@ -3,6 +3,9 @@
     <OutputType>Exe</OutputType>
   </PropertyGroup>
   <ItemGroup>
+    <InternalsVisibleTo Include="InterCat.Cli.Tests" />
+  </ItemGroup>
+  <ItemGroup>
     <ProjectReference Include="../InterCat.Benchmarks/InterCat.Benchmarks.csproj" />
     <ProjectReference Include="../InterCat.Domain/InterCat.Domain.csproj" />
     <ProjectReference Include="../InterCat.Analysis/InterCat.Analysis.csproj" />

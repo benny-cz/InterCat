@@ -34,6 +34,26 @@ internal static class ConsoleUi
 
     public static void Failure(string text) => Console.Error.WriteLine(Paint($"x {text}", "31"));
 
+    /// <summary>
+    /// Writes what <paramref name="write"/> prints to stderr. What explains a refusal or a failure - the help an invocation
+    /// was refused against, what would complete it, the sources that kept a capture from starting - goes where the failure
+    /// does, so stdout carries only what a command answers (§20.4) and a reader of `--json` never parses prose.
+    /// </summary>
+    public static void Explain(Action write)
+    {
+        ArgumentNullException.ThrowIfNull(write);
+        TextWriter output = Console.Out;
+        Console.SetOut(Console.Error);
+        try
+        {
+            write();
+        }
+        finally
+        {
+            Console.SetOut(output);
+        }
+    }
+
     public static void Success(string text) => Console.Error.WriteLine(Paint($"+ {text}", "32"));
 
     /// <summary>Renders a fixed-width table. Columns are padded from the widest cell, never truncated.</summary>

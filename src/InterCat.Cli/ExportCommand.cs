@@ -76,7 +76,7 @@ internal static class ExportCommand
         if (problem is not null)
         {
             ConsoleUi.Failure(problem);
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

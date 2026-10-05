@@ -41,7 +41,7 @@ internal static class RawCommand
                 : !validGeneration ? "--generation must be the positive number printed by icat evidence."
                 : string.IsNullOrWhiteSpace(segment) ? "--segment must name an evidence-page segment."
                 : "--row must be a nonnegative evidence-page segment row.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

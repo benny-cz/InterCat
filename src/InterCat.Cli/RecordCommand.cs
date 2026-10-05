@@ -85,14 +85,14 @@ internal static class RecordCommand
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
         if (sessionPath is null)
         {
             ConsoleUi.Failure("A new session directory is required: icat record <directory>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -155,7 +155,7 @@ internal static class RecordCommand
             if (problem is not null)
             {
                 ConsoleUi.Failure(problem);
-                PrintHelp();
+                ConsoleUi.Explain(PrintHelp);
                 return InterCatExitCode.InvalidInvocation;
             }
         }
@@ -217,15 +217,18 @@ internal static class RecordCommand
         if (!effective.CanStart)
         {
             ConsoleUi.Failure("The profile cannot start on this machine, so nothing was recorded:");
-            foreach (ProfileSourceDecision decision in effective.SourceDecisions.Where(decision => decision.State == ProfileSourceDecisionState.Blocking))
+            ConsoleUi.Explain(() =>
             {
-                ConsoleUi.Bullet($"{decision.SourceId}: {decision.Reason}");
-            }
+                foreach (ProfileSourceDecision decision in effective.SourceDecisions.Where(decision => decision.State == ProfileSourceDecisionState.Blocking))
+                {
+                    ConsoleUi.Bullet($"{decision.SourceId}: {decision.Reason}");
+                }
 
-            foreach (string diagnostic in effective.Diagnostics)
-            {
-                ConsoleUi.Bullet(diagnostic);
-            }
+                foreach (string diagnostic in effective.Diagnostics)
+                {
+                    ConsoleUi.Bullet(diagnostic);
+                }
+            });
 
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
@@ -283,10 +286,13 @@ internal static class RecordCommand
         if (!result.Start.Started)
         {
             ConsoleUi.Failure(result.Start.FailureReason ?? "The capture did not start.");
-            foreach (ProviderEnablementResult provider in result.Start.Providers.Where(provider => !provider.Enabled))
+            ConsoleUi.Explain(() =>
             {
-                ConsoleUi.Bullet($"{provider.SourceId}: {provider.FailureReason}");
-            }
+                foreach (ProviderEnablementResult provider in result.Start.Providers.Where(provider => !provider.Enabled))
+                {
+                    ConsoleUi.Bullet($"{provider.SourceId}: {provider.FailureReason}");
+                }
+            });
 
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }

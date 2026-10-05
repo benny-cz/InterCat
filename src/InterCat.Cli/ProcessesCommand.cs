@@ -99,7 +99,7 @@ internal static class ProcessesCommand
         if (sessionPath is null)
         {
             ConsoleUi.Failure("A session directory is required: icat processes <directory>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

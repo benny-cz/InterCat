@@ -57,7 +57,7 @@ internal static class CompactCommand
         if (pathOption is null)
         {
             ConsoleUi.Failure("A published session directory is required: icat compact <directory>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

@@ -135,7 +135,7 @@ internal static class OperationsCommand
         if (sessionPath is null)
         {
             ConsoleUi.Failure("A session directory is required: icat operations <directory>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

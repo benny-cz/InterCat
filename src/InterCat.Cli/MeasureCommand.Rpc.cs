@@ -116,13 +116,13 @@ internal static partial class MeasureCommand
         if (!start.Started)
         {
             ConsoleUi.Failure(start.FailureReason ?? "The capture did not start.");
-            foreach (ProviderEnablementResult provider in start.Providers)
+            ConsoleUi.Explain(() =>
             {
-                if (!provider.Enabled)
+                foreach (ProviderEnablementResult provider in start.Providers.Where(provider => !provider.Enabled))
                 {
                     ConsoleUi.Bullet($"{provider.SourceId}: {provider.FailureReason}");
                 }
-            }
+            });
 
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }

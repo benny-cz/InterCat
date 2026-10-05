@@ -60,7 +60,7 @@ internal static class FollowCommand
         if (evidenceOption is null || sessionOption is null)
         {
             ConsoleUi.Failure("An evidence directory and a session directory are required: icat follow <evidence-dir> <session-dir>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -205,7 +205,7 @@ internal static class FollowCommand
                         + "icat follow <evidence-dir> <session-dir>."
                     : $"There is no session at {sessionPath}, and no unfinished capture recorded beside it. To derive a "
                         + "session from evidence, name both: icat follow <evidence-dir> <session-dir>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

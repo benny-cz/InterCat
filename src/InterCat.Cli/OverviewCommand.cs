@@ -30,7 +30,7 @@ internal static class OverviewCommand
             ConsoleUi.Failure(directory is null
                 ? "A session directory is required: icat overview <directory>."
                 : $"Unknown or incomplete option: {unknown}");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

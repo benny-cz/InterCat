@@ -100,7 +100,7 @@ internal static class RetainCommand
             ConsoleUi.Failure(
                 "A session directory and a boundary are required: "
                 + "icat retain <directory> --release-journal-before-record <n>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

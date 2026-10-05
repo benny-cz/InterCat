@@ -122,7 +122,7 @@ internal static class ProfilesCommand
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -164,7 +164,7 @@ internal static class ProfilesCommand
         if (selected is null)
         {
             ConsoleUi.Failure($"Unknown capture profile: {profileId}");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -180,7 +180,7 @@ internal static class ProfilesCommand
             if (mechanism is null)
             {
                 ConsoleUi.Failure("focused-transport requires --mechanism tcp.");
-                PrintHelp();
+                ConsoleUi.Explain(PrintHelp);
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -209,7 +209,7 @@ internal static class ProfilesCommand
             {
                 ConsoleUi.Failure(
                     "content requires --source, --mechanism, at least one --pid and --channel, both byte limits, --retention, and --inspection.");
-                PrintHelp();
+                ConsoleUi.Explain(PrintHelp);
                 return InterCatExitCode.InvalidInvocation;
             }
 

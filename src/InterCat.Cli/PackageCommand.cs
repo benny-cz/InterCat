@@ -122,7 +122,7 @@ internal static class PackageCommand
         if (problem is not null)
         {
             ConsoleUi.Failure(problem);
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

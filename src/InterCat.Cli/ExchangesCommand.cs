@@ -92,7 +92,7 @@ internal static class ExchangesCommand
         if (sessionPath is null)
         {
             ConsoleUi.Failure("A session directory is required: icat exchanges <directory>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

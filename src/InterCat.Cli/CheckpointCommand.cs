@@ -48,7 +48,7 @@ internal static class CheckpointCommand
         if (pathOption is null)
         {
             ConsoleUi.Failure("A published session directory is required: icat checkpoint <directory>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

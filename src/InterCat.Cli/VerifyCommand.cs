@@ -71,7 +71,7 @@ internal static class VerifyCommand
         if (runOption is null || outputOption is null)
         {
             ConsoleUi.Failure("Both --run <directory> and --output <directory> are required.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

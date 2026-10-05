@@ -118,7 +118,7 @@ internal static class ImportCommand
         if (sourcePath is null)
         {
             ConsoleUi.Failure("An ETL path is required: icat import <source.etl>");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

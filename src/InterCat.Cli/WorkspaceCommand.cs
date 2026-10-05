@@ -312,7 +312,7 @@ internal static partial class WorkspaceCommand
                 ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host, translate, note, view or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

@@ -64,7 +64,7 @@ internal static class RederiveCommand
         if (pathOption is null)
         {
             ConsoleUi.Failure("A published session directory is required: icat rederive <directory>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

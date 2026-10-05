@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 298 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 299 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 299 — a refused invocation keeps stdout for the answer (§20.4):**
+  - Every command printed its help to stdout after refusing an invocation, so `icat ... --json` handed a script
+    usage text as its answer. What explains a refusal or failure now goes to stderr with it; `--help` still
+    answers on stdout.
+  - `InterCat.Cli.Tests` runs `icat` in-process and reads both streams and the exit code: the first tests of the
+    command line itself, covering this and revisions 297–298.
 
 - **Revision 298 — a refused metric request says what would complete it (`metrics-v1` §2):**
   - `icat metric --metric bytes-sent` was refused for naming no byte domain without saying which option names one.
@@ -700,6 +707,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 299 was built and tested in the same Linux container: Debug and Release each ran **1,512 tests**, passing
+  **1,415 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The three new
+  command-line tests caught each of thirteen mutations: help after a refusal on stdout (an unknown command,
+  `timeline`), `icat metric`'s remedy on stdout, `Explain` not redirecting; a tick interval or a metric interval
+  constructed past a tick count, a metric bound past the clock's range refused, `evidence` or `export` refusing one
+  without saying why; and a remedy whose "Name it with" and "takes" were swapped, a numerator remedy said as a
+  value list, choices joined without "or", or no remedy at all. A sweep of every command's refusal, run with stdout
+  and stderr apart, found stdout empty in each, where 27 of 43 had written help or remedies there; `--help` still
+  answers on stdout.
 - Revision 298 was built and tested in the same Linux container: Debug and Release each ran **1,509 tests**, passing
   **1,412 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of fifteen mutations: a domain, side, layer, numerator or duration refusal naming no part, one offering every

@@ -449,7 +449,7 @@ internal static class MetricCommand
             ConsoleUi.Failure(
                 "A session directory and a metric are required: icat metric <directory> --metric <name>. "
                 + "Run icat metric --matrix to see every metric and what it needs.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -515,22 +515,25 @@ internal static class MetricCommand
         if (request.Check() is { } rejection)
         {
             ConsoleUi.Failure(rejection.Reason);
-            if (rejection.Part is { } part)
+            ConsoleUi.Explain(() =>
             {
-                ConsoleUi.Line(Remedy(part, request, rejection));
-            }
-
-            if (rejection.CompatibleMetrics.Count > 0)
-            {
-                ConsoleUi.Line();
-                ConsoleUi.Line(rejection.Part == MetricRequestPart.RateNumerator
-                    ? $"  Numerators a rate takes on a {basis} basis:"
-                    : $"  Metrics defined on a {basis} basis:");
-                foreach (Metric compatible in rejection.CompatibleMetrics)
+                if (rejection.Part is { } part)
                 {
-                    ConsoleUi.Bullet($"{compatible} - {MetricCompatibility.DefinitionOf(compatible).Meaning}");
+                    ConsoleUi.Line(Remedy(part, request, rejection));
                 }
-            }
+
+                if (rejection.CompatibleMetrics.Count > 0)
+                {
+                    ConsoleUi.Line();
+                    ConsoleUi.Line(rejection.Part == MetricRequestPart.RateNumerator
+                        ? $"  Numerators a rate takes on a {basis} basis:"
+                        : $"  Metrics defined on a {basis} basis:");
+                    foreach (Metric compatible in rejection.CompatibleMetrics)
+                    {
+                        ConsoleUi.Bullet($"{compatible} - {MetricCompatibility.DefinitionOf(compatible).Meaning}");
+                    }
+                }
+            });
 
             return InterCatExitCode.InvalidInvocation;
         }

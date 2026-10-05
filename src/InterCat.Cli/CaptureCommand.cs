@@ -68,14 +68,14 @@ internal static class CaptureCommand
         if (command.TryReportUnknown(out string? unknown))
         {
             ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
         if (sessionOption is null)
         {
             ConsoleUi.Failure("A new session directory is required: icat capture <new-session-dir>.");
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

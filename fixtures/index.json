@@ -1051,6 +1051,7 @@
         "I3: a time range's span is a tick count, and a wider interval is held around an instant",
         "I3: an interval scopes every metric half-open, and a rate divides by the whole of it",
         "I3: bucket boundaries are half-open and contiguous",
+        "I3: every command that reads an interval refuses one longer than a tick count, and one past the clock's range answers",
         "I3: histogram buckets are half-open, contiguous and contain their samples",
         "I3: the rows inside an interval are found by search, and both ends are half-open",
         "I3: time ranges are half-open"
@@ -1401,6 +1402,7 @@
         "R2: a grouping this session cannot derive is unavailable with what it needs, and rows need a grouping",
         "R2: a measurement carries its value or null, its unit, its domain and its side",
         "R2: a metric outside its basis is rejected with the compatible alternatives named",
+        "R2: a metric request refused for one part says the option that completes it",
         "R2: a rate names an additive numerator, and nothing else carries one",
         "R2: an invalid request is refused before it is planned, not answered",
         "R2: an owner never takes a cross-side total, and one request names one process focus",
@@ -1688,6 +1690,7 @@
         "R18: a group's lanes measured together hold what the byte measure answers for each process and every record",
         "R18: a headless export descends by row key and names its rung, interval and scope",
         "R18: a process's direction rows measured together hold what the byte measure answers for each direction and every record",
+        "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give",
         "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: an export ranked by bytes names its ranking, and each row carries the value it was ranked by",
         "R18: an export ranked by calls served names its ranking, and each row its calls, failures and unpaired stops",

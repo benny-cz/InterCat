@@ -53,7 +53,7 @@ internal static class ContentCommand
         if (problem is not null)
         {
             ConsoleUi.Failure(problem);
-            PrintHelp();
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 

@@ -35,5 +35,6 @@
     <Project Path="tests/InterCat.Property.Tests/InterCat.Property.Tests.csproj" />
     <Project Path="tests/InterCat.Storage.Tests/InterCat.Storage.Tests.csproj" />
     <Project Path="tests/InterCat.Architecture.Tests/InterCat.Architecture.Tests.csproj" />
+    <Project Path="tests/InterCat.Cli.Tests/InterCat.Cli.Tests.csproj" />
   </Folder>
 </Solution>
