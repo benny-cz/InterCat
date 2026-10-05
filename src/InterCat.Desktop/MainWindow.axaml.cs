@@ -160,6 +160,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
         Opened += (_, _) => StartExploringButton.Focus();
         SizeChanged += (_, change) => FollowRailWidth(change.NewSize.Width);
+        RailGrid.SizeChanged += (_, _) => FitRailActions();
+        RankedTableHeader.SizeChanged += (_, _) => FitRailActions();
         UpdateThemeMenu();
 
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
@@ -1249,10 +1251,29 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateRecentSessionsVisibility();
     }
 
+    /// <summary>The least room the rail's list keeps beside its actions: a row or two of ranked rows or saved sessions.</summary>
+    internal const double RailListRoom = 120;
+
+    /// <summary>The least height the rail's actions keep, however little the list leaves them.</summary>
+    internal const double RailActionsFloor = 200;
+
+    /// <summary>
+    /// How tall the rail's actions may be: what the rail leaves below its heading and ranked table's header, less the list's
+    /// least room, and never less than <see cref="RailActionsFloor"/>. Beyond it they scroll rather than run past the window.
+    /// </summary>
+    internal static double RailActionsHeight(double rail, double above) =>
+        Math.Max(RailActionsFloor, rail - above - RailListRoom);
+
+    private void FitRailActions()
+    {
+        double above = RailGrid.RowDefinitions[0].ActualHeight + RailGrid.RowDefinitions[1].ActualHeight;
+        RailActions.MaxHeight = RailActionsHeight(RailGrid.Bounds.Height, above) - RailActions.Margin.Top;
+    }
+
     /// <summary>The saved sessions show only while no session is open and no capture is running, where the ranked table
     /// will be.</summary>
     private void UpdateRecentSessionsVisibility() =>
-        RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && displayedOverview is null
+        RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && workspace.IsEmptyWorkspace
             && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
 
     private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
@@ -2061,6 +2082,7 @@ public sealed partial class MainWindow : Window, IDisposable
             workspace = new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace");
             workspace.PropertyChanged += OnWorkspaceChanged;
             DataContext = workspace;
+            UpdateRecentSessionsVisibility();
             currentSessionPath = null;
             UpdateEvidenceAction();
             GraphSurface.InvalidateVisual();
@@ -2177,6 +2199,7 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace = replacement;
         workspace.PropertyChanged += OnWorkspaceChanged;
         DataContext = workspace;
+        UpdateRecentSessionsVisibility();
         UpdateLivePreview();
         UpdateHeldBanner();
         UpdateEvidenceAction();

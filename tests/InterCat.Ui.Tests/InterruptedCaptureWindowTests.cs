@@ -72,6 +72,103 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.1: with no session shown the saved sessions stand where the ranked table will be, and the rail's actions scroll in the window")]
+    public async Task TheEmptyRailShowsSavedSessionsAndKeepsItsActionsInTheWindow()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await CrashedFollow(root.Path, unfinalized: false);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Dispatch();
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            Control rail = window.GetControl<Control>("Rail");
+
+            // Nothing is shown, so nothing is ranked or searched: the saved sessions stand where the ranked table will be,
+            // and a row of them is in view beside the unfinished capture's card and the Explore card.
+            Assert.False(window.GetControl<Control>("RankedTableHeader").IsVisible);
+            Assert.False(workspace.ShowsEmptyReason);
+            ListBox saved = window.GetControl<ListBox>("RecentSessionsList");
+            Assert.True(window.GetControl<Control>("RecentSessionsPanel").IsVisible);
+            Control first = Assert.IsAssignableFrom<Control>(saved.ContainerFromIndex(0));
+            Assert.True(first.Bounds.Height > 20, $"The first saved session is {first.Bounds.Height:F0} px tall.");
+            AssertInside(first, rail, window);
+
+            // The actions below scroll within the rail rather than run past the window, and the last is a scroll away.
+            ScrollViewer actions = window.GetControl<ScrollViewer>("RailActions");
+            AssertInside(actions, rail, window);
+            Assert.True(window.GetControl<Border>("UnfinishedCaptureCard").IsVisible);
+            AssertInside(window.GetControl<Button>("StartExploringButton"), rail, window);
+            actions.Offset = new Vector(0, Math.Max(0, actions.Extent.Height - actions.Viewport.Height));
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            AssertInside(window.GetControl<Button>("InvestigationButton"), actions, window);
+
+            // A capture on its way to its first view says so where the ranked rows will come, under its own heading.
+            Assert.Equal("NOTHING RECORDED YET", workspace.EmptyHeading);
+            workspace.SetAwaitingCapture("Starting a capture", "The capture is starting; its first view comes within seconds.");
+            Assert.True(workspace.ShowsEmptyReason);
+            workspace.SetAwaitingCapture(null, null);
+            Assert.False(workspace.ShowsEmptyReason);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a session's ranked rows keep their room beside an unfinished capture's card, whose actions scroll")]
+    public async Task ASessionsRowsKeepTheirRoomBesideTheCards()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await CrashedFollow(root.Path, unfinalized: false);
+        var window = new MainWindow(new WorkspaceViewModel()) { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Dispatch();
+            Control rail = window.GetControl<Control>("Rail");
+
+            // The ranked table, its rows and both cards share the rail: the rows keep a row or two in view, and the cards,
+            // which would take the rest and more, scroll within what is left.
+            Assert.True(window.GetControl<Control>("RankedTableHeader").IsVisible);
+            Assert.True(window.GetControl<Border>("UnfinishedCaptureCard").IsVisible);
+            ListBox rows = window.GetControl<ListBox>("RungList");
+            Assert.True(rows.Bounds.Height >= MainWindow.RailListRoom - 1, $"The ranked rows have {rows.Bounds.Height:F0} px.");
+            ScrollViewer actions = window.GetControl<ScrollViewer>("RailActions");
+            AssertInside(actions, rail, window);
+            Assert.True(actions.Extent.Height > actions.Viewport.Height, "The cards fit, so nothing here needed to scroll.");
+            actions.Offset = new Vector(0, actions.Extent.Height - actions.Viewport.Height);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            AssertInside(window.GetControl<Button>("InvestigationButton"), actions, window);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a session's rail keeps its ranked table, and its actions leave the rows room")]
+    public void ASessionsRailKeepsItsRankedTable()
+    {
+        var workspace = new WorkspaceViewModel();
+        Assert.True(workspace.ShowsRankedHeader);
+        Assert.Equal("NOTHING AT THIS LEVEL", workspace.EmptyHeading);
+        Assert.False(new WorkspaceViewModel(InterCat.Application.OverviewWorkspace.Empty(), "empty-workspace").ShowsRankedHeader);
+
+        // The actions take what the rail leaves below its header, less a row or two for the list, and never too little.
+        Assert.Equal(666 - 180 - MainWindow.RailListRoom, MainWindow.RailActionsHeight(666, 180));
+        Assert.Equal(MainWindow.RailActionsFloor, MainWindow.RailActionsHeight(400, 300));
+    }
+
     [AvaloniaFact(DisplayName = "§3.1: a capture still stopping is waited for, and one forgotten is not offered again")]
     public async Task ACaptureStillStoppingIsWaitedForAndCanBeForgotten()
     {

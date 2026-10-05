@@ -40,7 +40,8 @@ public sealed class HighContrastTests
     [AvaloniaFact(DisplayName = "§6.1: in high contrast a pane's, a button's and a text box's edges are drawn in the visible divider, and an ordinary mode hands the control theme its look back")]
     public void HighContrastEdgesAreSeen()
     {
-        var window = new MainWindow { Width = 1080, Height = 700 };
+        // The search box is the rail's while a session is shown, so the window shows one.
+        var window = new MainWindow(new WorkspaceViewModel()) { Width = 1080, Height = 700 };
         window.Show();
         Border rail = window.GetControl<Border>("Rail");
         Button open = window.GetControl<Button>("OpenSavedSessionButton");

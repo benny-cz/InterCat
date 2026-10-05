@@ -1330,6 +1330,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     internal bool IsEmptyWorkspace => emptyWorkspace;
 
     /// <summary>
+    /// Whether the rail shows the ranked table's heading, summary, hints and search: not while no session is shown, when
+    /// the saved sessions stand where the ranked table will be (§3.1 step 1) and there is nothing to rank or search.
+    /// </summary>
+    public bool ShowsRankedHeader => !emptyWorkspace;
+
+    /// <summary>
     /// What an empty workspace says while a capture starts or records and has published nothing yet (§6.8's designed
     /// states): that it is recording and when the first view comes. Null outside a capture, when it says none is running.
     /// </summary>
@@ -1352,6 +1358,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(Title));
         OnPropertyChanged(nameof(AwaitingCaptureNote));
         OnPropertyChanged(nameof(EmptyReason));
+        OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(WorkspaceDisclosure));
     }
 
@@ -1974,8 +1981,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Whether the rail shows the rung's ranked table: not while a search lists its hits there.</summary>
     public bool ShowsRankedTable => !IsEmptyRung && !IsSearching;
 
-    /// <summary>Whether the rail explains an empty rung: not while a search lists its hits there.</summary>
-    public bool ShowsEmptyReason => IsEmptyRung && !IsSearching;
+    /// <summary>
+    /// Whether the rail explains an empty rung: not while a search lists its hits there, and in a workspace with no session
+    /// only while a capture is on its way to its first view, since otherwise the Explore card says what to do (§3.1).
+    /// </summary>
+    public bool ShowsEmptyReason => IsEmptyRung && !IsSearching && (!emptyWorkspace || awaitingCaptureNote is not null);
+
+    /// <summary>The empty rung's heading: a rung with nothing at it, or a workspace whose capture has published nothing yet.</summary>
+    public string EmptyHeading => emptyWorkspace ? "NOTHING RECORDED YET" : "NOTHING AT THIS LEVEL";
 
     public bool ShowsLoadMoreEvidence => CanLoadMoreEvidence && !IsSearching;
 

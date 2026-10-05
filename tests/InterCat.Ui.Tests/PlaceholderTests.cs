@@ -17,7 +17,8 @@ public sealed class PlaceholderTests
     [AvaloniaFact(DisplayName = "§6.8: a field's placeholder too long for it ends in an ellipsis and is whole in its tooltip, and one that fits is drawn whole")]
     public void APlaceholderTooLongEndsInAnEllipsis()
     {
-        var window = new MainWindow { Width = 1080, Height = 700 };
+        // The search box is the rail's while a session is shown, so the window shows one.
+        var window = new MainWindow(new WorkspaceViewModel()) { Width = 1080, Height = 700 };
         window.Show();
         try
         {

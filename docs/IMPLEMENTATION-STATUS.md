@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 307 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 308 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 308 — the rail's empty state is §3.1's (R15):**
+  - With no session shown, the saved sessions stand where the ranked table will be, under none of its chrome; the
+    empty rung's card shows only while a capture is on its way; and the rail's actions scroll within what the list
+    leaves them, so no card runs past the minimum window and the ranked rows keep a row or two in view.
 
 - **Revision 307 — a deep rung fits the minimum window (R15):**
   - Back names the rung it returns to by its kind, "Back to Channel (Esc)", with the rung in full as its tooltip and
@@ -749,6 +754,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 308 was built and tested in the same Linux container: Debug and Release each ran **1,529 tests**, passing
+  **1,432 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of nine mutations:
+  - the ranked header shown, or flagged, with no session;
+  - the empty rung's card always shown, or never, with no session;
+  - its heading unchanged with no session;
+  - the actions unbounded, or keeping the list no room, or no floor of their own;
+  - the saved sessions shown beside a session.
+
+  The empty-state test alone misses the two bound mutations, since hiding the header already leaves the cards room
+  there; the test of a session beside the cards catches them. Two existing tests opened the empty window to measure
+  its search box, which no longer shows there, and now open a session's.
 - Revision 307 was built and tested in the same Linux container: Debug and Release each ran **1,526 tests**, passing
   **1,429 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of six mutations: Back naming the whole rung again, its tooltip or help left out, the machine rung's help

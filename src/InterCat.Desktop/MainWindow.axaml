@@ -22,8 +22,8 @@
     <!-- Left rail: ranked processes. Every canvas selection is reachable from this list (R15). -->
     <Border x:Name="Rail" Grid.RowSpan="4" Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,1,0">
-      <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
-        <StackPanel Spacing="2">
+      <Grid x:Name="RailGrid" RowDefinitions="Auto,Auto,*,Auto" Margin="18,20,18,14">
+        <StackPanel Spacing="2" Margin="0,0,0,26">
           <StackPanel Orientation="Horizontal" Spacing="9">
             <Border Width="27" Height="27" CornerRadius="8" Background="{DynamicResource Action.Fill}">
               <TextBlock Text="I" FontSize="15" FontWeight="Bold" Foreground="{DynamicResource Action.Ink}"
@@ -34,7 +34,10 @@
           <TextBlock Margin="36,1,0,0" Text="IPC EXPLORER" Classes="eyebrow" />
         </StackPanel>
 
-        <StackPanel Grid.Row="1" Margin="0,26,0,10" Spacing="5">
+        <!-- The ranked table's heading, summary, hints and search, while a session is shown; with none, the saved sessions
+             stand where the ranked table will be (section 3.1 step 1). -->
+        <StackPanel x:Name="RankedTableHeader" Grid.Row="1" Margin="0,0,0,10" Spacing="5"
+                    IsVisible="{Binding ShowsRankedHeader}">
           <!-- The rung's badge follows the heading, and wraps under it where the rail is too narrow for both: a long one,
                L4 · OPERATION, never lies over the heading (R15). -->
           <WrapPanel x:Name="RankedHeading" Orientation="Horizontal" ItemSpacing="10" LineSpacing="2">
@@ -210,7 +213,7 @@
             <Border Classes="card" Padding="11" CornerRadius="8" VerticalAlignment="Top"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="6">
-                <TextBlock Text="NOTHING AT THIS LEVEL" Classes="eyebrow" />
+                <TextBlock Text="{Binding EmptyHeading}" Classes="eyebrow" />
                 <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                            AutomationProperties.Name="Why this level has no rows" />
                 <!-- Evidence is one step from every rung; an empty rung offers that step where the reason is read. -->
@@ -227,7 +230,11 @@
                   AutomationProperties.Name="{Binding LoadMoreName}" />
         </Grid>
 
-        <StackPanel Grid.Row="3" Margin="0,12,0,0" Spacing="8">
+        <!-- The rail's actions scroll within the height its list leaves them, so a card never runs past the window and the
+             ranked rows or saved sessions above keep a row or two in view (R15). -->
+        <ScrollViewer x:Name="RailActions" Grid.Row="3" Margin="0,12,0,0" HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="8">
         <!-- A capture a crashed or interrupted viewer left unfinished: the broker kept its evidence, and the next launch
              offers to finish the session from it (section 3.1 step 6). Hidden unless there is something to offer. -->
         <Border x:Name="UnfinishedCaptureCard" Classes="card" Padding="9" CornerRadius="8" IsVisible="False"
@@ -297,6 +304,7 @@
           </StackPanel>
         </Border>
         </StackPanel>
+        </ScrollViewer>
       </Grid>
     </Border>
     <GridSplitter x:Name="RailSplitter" Grid.RowSpan="4" Width="5" HorizontalAlignment="Right"
