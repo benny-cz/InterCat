@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-04 · Plan revision: 293 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 294 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 294 — a placeholder too long for its field ends in an ellipsis (§6.8):**
+  - Cut at the field's edge, the rail's search box read "Search names or PID (Ctrl+I"; every placeholder is now held
+    to its field. The search box's tooltip says it whole, and Ctrl+F is its accelerator.
 
 - **Revision 293 — the current rung's crumb fits the trail (§3.2):**
   - At the minimum width a channel's crumb was wider than the trail beside the header's actions, so the trail lost
@@ -672,6 +676,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 294 was built and tested in the same Linux container: Debug and Release each ran **1,504 tests**, passing
+  **1,407 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its new test
+  failed without the placeholder held to its field, its text then measured whole at 363 px in a 102 px field, and
+  without the ellipsis.
 - Revision 293 was built and tested in the same Linux container: Debug and Release each ran **1,503 tests**, passing
   **1,406 with 4 skipped**. 93 failed, the Windows and font-metric ones revision 287 names but one: the IPv6
   channel's test of its crumbs, counted among the font-metric failures since revision 287, passes. Its current crumb

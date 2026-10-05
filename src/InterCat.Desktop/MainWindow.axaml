@@ -94,9 +94,12 @@
                   Padding="8,2" HorizontalAlignment="Left" IsVisible="{Binding CanKeepVisibleRange}"
                   AutomationProperties.Name="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
+          <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint" />
+                   ToolTip.Tip="Search names or PID (Ctrl+F)"
+                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint"
+                   AutomationProperties.AcceleratorKey="Ctrl+F" />
           <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding IsSearching}" AutomationProperties.Name="Search result status" />
           <!-- While records are read, the view holds its generation; a newer one is offered, never forced (section 5.2). -->

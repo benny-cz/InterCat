@@ -63,6 +63,13 @@
     <Style Selector="TextBox">
       <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Action.Ink}" />
     </Style>
+    <!-- A placeholder too long for its field ends in an ellipsis. Cut at the field's edge instead, the rail's search box
+         said "Search names or PID (Ctrl+I", naming a shortcut that is not its own. The field scrolls its text sideways, so
+         it lets the placeholder be as wide as its words; the width the field shows holds it. -->
+    <Style Selector="TextBox /template/ TextBlock#PART_Watermark">
+      <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+      <Setter Property="MaxWidth" Value="{Binding $parent[ScrollViewer].Viewport.Width}" />
+    </Style>
     <Style Selector="SelectableTextBlock">
       <Setter Property="SelectionBrush" Value="{DynamicResource Action.Fill}" />
       <Setter Property="SelectionForegroundBrush" Value="{DynamicResource Action.Ink}" />
