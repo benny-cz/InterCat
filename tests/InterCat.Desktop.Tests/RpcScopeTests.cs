@@ -169,6 +169,9 @@ public sealed class RpcScopeTests
         workspace.SelectedProcess = host;
         Assert.Null(workspace.DescribedRow);
         Assert.Equal((host.Name, string.Empty), (workspace.SelectionTitle, workspace.SelectionActions));
+
+        // Its PID is an identity, named as the graph and the rows name it, never written as a quantity ("PID 1,960").
+        Assert.Equal($"PID 1960 · {host.Role}", workspace.SelectionSubtitle);
     });
 
     [Fact(DisplayName = "§3.2: Esc from a call's records lands on that call, however far down its channel's pages, and a brush holding it keeps it")]

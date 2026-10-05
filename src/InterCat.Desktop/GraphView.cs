@@ -868,8 +868,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
             // A process's PID is optional detail; an aggregate's count is part of the compaction disclosure and is kept
             // whenever its name fits (§6.3).
-            TextLayout? detail = node.Kind != GraphNodeKind.Process || detailForProcesses
-                ? Text(DetailOf(node), 10, strong: false, MaximumLabelWidth)
+            TextLayout? detail = (node.Kind != GraphNodeKind.Process || detailForProcesses) && DetailOf(node) is { Length: > 0 } line
+                ? Text(line, 10, strong: false, MaximumLabelWidth)
                 : null;
             double width = Math.Max(name.Width, detail?.Width ?? 0);
             double height = name.Height + (detail?.Height ?? 0);
@@ -1043,12 +1043,17 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static bool Covers(Rect box, Point centre, double radius) =>
         box.Inflate(radius).Contains(centre);
 
-    /// <summary>The secondary line: a process's PID, or how many processes and relationships an aggregate stands for.</summary>
-    private static string Detail(GraphDisplayNode node)
+    /// <summary>
+    /// The secondary line: a process's PID, or how many processes and relationships an aggregate stands for. A process no
+    /// executable names is labelled by its PID already, and has none: its node read "PID 100" over "PID 100".
+    /// </summary>
+    internal static string Detail(GraphDisplayNode node)
     {
+        ArgumentNullException.ThrowIfNull(node);
         if (node.ProcessId is { } pid)
         {
-            return string.Create(CultureInfo.InvariantCulture, $"PID {pid}");
+            string line = string.Create(CultureInfo.InvariantCulture, $"PID {pid}");
+            return string.Equals(node.Label, line, StringComparison.Ordinal) ? string.Empty : line;
         }
 
         string members = string.Create(CultureInfo.CurrentCulture,

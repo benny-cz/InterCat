@@ -3117,7 +3117,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedGroup is { } group ? DescribeGroup(group)
         : selectedProcess is null
             ? "Choose a node, ranked row, or timeline bucket."
-            : $"PID {selectedProcess.ProcessId.ToString("N0", CultureInfo.CurrentCulture)} · {selectedProcess.Role}";
+            : $"PID {selectedProcess.ProcessId.ToString(CultureInfo.InvariantCulture)} · {selectedProcess.Role}";
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
     /// <summary>What a multi-selection holds, by name, and the two gestures that change or apply it (§6.7).</summary>

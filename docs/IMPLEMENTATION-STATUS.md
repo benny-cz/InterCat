@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 294 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 295 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 295 — a PID is written as the identity it is (§6.1, §6.3):**
+  - The inspector wrote "PID 8,204" where every other pane writes "PID 8204", and a nameless process's node read
+    "PID 100" over "PID 100". Both now read as the rest do.
 
 - **Revision 294 — a placeholder too long for its field ends in an ellipsis (§6.8):**
   - Cut at the field's edge, the rail's search box read "Search names or PID (Ctrl+I"; every placeholder is now held
@@ -676,6 +680,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 295 was built and tested in the same Linux container: Debug and Release each ran **1,505 tests**, passing
+  **1,408 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests failed
+  with the PID written as a quantity ("PID 1,960") and with a nameless node's PID drawn twice.
 - Revision 294 was built and tested in the same Linux container: Debug and Release each ran **1,504 tests**, passing
   **1,407 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its new test
   failed without the placeholder held to its field, its text then measured whole at 363 px in a 102 px field, and

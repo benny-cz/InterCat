@@ -9,6 +9,17 @@ namespace InterCat.Desktop.Tests;
 
 public sealed class GraphLayoutIntegrationTests
 {
+    [Fact(DisplayName = "§6.3: a process node no executable names is labelled by its PID once, and a named one has its PID beneath")]
+    public void ANamelessProcessIsLabelledByItsPidOnce()
+    {
+        static GraphDisplayNode Process(string label) =>
+            new("p100", label, GraphNodeKind.Process, null, null, 100, [], 0, 0, 0);
+
+        // Named by its PID, the node has no second line: it once read "PID 100" over "PID 100".
+        Assert.Equal(string.Empty, GraphView.Detail(Process(ProcessNode.PidName(100))));
+        Assert.Equal("PID 100", GraphView.Detail(Process("client.exe")));
+    }
+
     [Fact(DisplayName = "§3.1: a zero-edge graph does not imply the timeline recorded nothing")]
     public async Task ZeroEdgeGraphStillNamesObservedTimelineActivity()
     {
