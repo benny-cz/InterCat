@@ -1151,6 +1151,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <text> [--at <session>@<seconds>] [--json]");
         ConsoleUi.Line("icat workspace note <workspace> <note> (--replace <text> | --remove) [--json]");
+        ConsoleUi.Line("  A note that starts with a dash follows --, as in: icat workspace note <workspace> -- \"-> retry storm\"");
         ConsoleUi.Line("icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove) [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();

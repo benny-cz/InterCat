@@ -117,13 +117,13 @@ internal static class OperationsCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string? pidOption = command.TakeOption("--pid");
         string? interfaceOption = command.TakeOption("--interface");
         string? callsOption = command.TakeOption("--calls");
         string? topOption = command.TakeOption("--top");
         string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
+        string? sessionPath = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

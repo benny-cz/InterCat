@@ -45,7 +45,7 @@ internal static class VerifyCommand
             return InterCatExitCode.Success;
         }
 
-        string mechanism = command.TakePositional() ?? "tcp";
+        string mechanism = command.TakeVerb() ?? "tcp";
         Mechanism? expectedMechanism = mechanism.ToUpperInvariant() switch
         {
             "TCP" => Mechanism.Tcp,

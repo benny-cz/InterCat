@@ -82,10 +82,10 @@ internal static class RetainCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string? beforeOption = command.TakeOption("--release-journal-before-record");
         string? reasonOption = command.TakeOption("--reason");
         string? outputOption = command.TakeOption("--output");
+        string? sessionPath = command.TakePositional();
         bool confirm = command.TryTakeFlag("--confirm");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");

@@ -99,13 +99,13 @@ internal static class ImportCommand
             return InterCatExitCode.Success;
         }
 
-        string? sourcePath = command.TakePositional();
         string? intoOption = command.TakeOption("--into");
         string? rowsOption = command.TakeOption("--rows-per-segment");
         string? batchOption = command.TakeOption("--journal-batch-records");
         string? outputOption = command.TakeOption("--output");
         string? entriesOption = command.TakeOption("--max-entries-in-memory");
         string? spillOption = command.TakeOption("--spill-directory");
+        string? sourcePath = command.TakePositional();
         bool content = command.TryTakeFlag("--retain-content");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");

@@ -20,10 +20,10 @@ internal static class ChannelsCommand
             return InterCatExitCode.Success;
         }
 
-        string? directory = command.TakePositional();
         string? processText = command.TakeOption("--process");
         string? cursor = command.TakeOption("--cursor");
         string? size = command.TakeOption("--page-size");
+        string? directory = command.TakePositional();
         int pageSize = SessionChannelQuery.DefaultPageSize;
         bool invalidSize = size is not null &&
             (!int.TryParse(size, NumberStyles.None, CultureInfo.InvariantCulture, out pageSize)

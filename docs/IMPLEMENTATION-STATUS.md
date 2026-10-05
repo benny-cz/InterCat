@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 299 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 300 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 300 — an option keeps its value wherever it is written (§20.4):**
+  - 22 commands read their directory before their options, so `icat metric --metric observations <session>` looked
+    for a session named "observations". Options are now read first everywhere, and the reader refuses an option
+    read after an operand, so a regression fails at once. A negative number is an operand
+    (`workspace view <ws> early -5 10`), and `--` begins operands that start with a dash.
 
 - **Revision 299 — a refused invocation keeps stdout for the answer (§20.4):**
   - Every command printed its help to stdout after refusing an invocation, so `icat ... --json` handed a script
@@ -707,6 +713,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 300 was built and tested in the same Linux container: Debug and Release each ran **1,515 tests**, passing
+  **1,418 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of eight mutations: the reader's guard against an option read after an operand removed, a negative number
+  read as an option, `--` ignored, a verb taken from anywhere but the front, operands after `--` left unreported,
+  and `metric`, `measure` or `follow` reading an operand before an option. Every command's arguments are now read
+  once by the tests, so a command that reads them out of order fails there. By hand, `channels`, `processes`,
+  `metric`, `session`, `timeline`, `evidence`, `operations` and `exchanges` answered with their options written
+  before the session, where most had looked for a session named after an option's value.
 - Revision 299 was built and tested in the same Linux container: Debug and Release each ran **1,512 tests**, passing
   **1,415 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The three new
   command-line tests caught each of thirteen mutations: help after a refusal on stdout (an unknown command,

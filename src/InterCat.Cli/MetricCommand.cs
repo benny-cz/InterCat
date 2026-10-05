@@ -380,7 +380,6 @@ internal static class MetricCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string? basisOption = command.TakeOption("--basis");
         string? metricOption = command.TakeOption("--metric");
         string? domainOption = command.TakeOption("--byte-domain");
@@ -405,6 +404,7 @@ internal static class MetricCommand
         string? andOption = command.TakeOption("--and");
         string? directionOption = command.TakeOption("--direction");
         string? outputOption = command.TakeOption("--output");
+        string? sessionPath = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool printCanonical = command.TryTakeFlag("--print-canonical");

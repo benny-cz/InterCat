@@ -100,7 +100,7 @@ internal static partial class MeasureCommand
             return InterCatExitCode.Success;
         }
 
-        string mechanism = command.TakePositional() ?? "tcp";
+        string mechanism = command.TakeVerb() ?? "tcp";
         if (string.Equals(mechanism, "pipe", StringComparison.OrdinalIgnoreCase))
         {
             return await RunPipeAsync(command, cancellationToken).ConfigureAwait(false);

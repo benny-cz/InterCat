@@ -55,7 +55,6 @@ internal static class CaptureCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionOption = command.TakePositional();
         string profile = command.TakeOption("--profile") ?? "explore";
         string? mechanismOption = command.TakeOption("--mechanism");
         string? pidsOption = command.TakeOption("--pid");
@@ -64,6 +63,7 @@ internal static class CaptureCommand
         string? journalOption = command.TakeOption("--max-journal-mib");
         string? freeOption = command.TakeOption("--min-free-mib");
         string? brokerOption = command.TakeOption("--broker");
+        string? sessionOption = command.TakePositional();
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {

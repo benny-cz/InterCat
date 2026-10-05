@@ -20,11 +20,11 @@ internal static class RawCommand
             return InterCatExitCode.Success;
         }
 
-        string? directory = command.TakePositional();
         string? sessionText = command.TakeOption("--session-id");
         string? generationText = command.TakeOption("--generation");
         string? segment = command.TakeOption("--segment");
         string? rowText = command.TakeOption("--row");
+        string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal-bytes");
         bool json = command.TryTakeFlag("--json");
         bool hasUnknown = command.TryReportUnknown(out string? unknown);

@@ -66,7 +66,6 @@ internal static class RecordCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string profileOption = command.TakeOption("--profile") ?? "explore";
         string? mechanismOption = command.TakeOption("--mechanism");
         string? durationOption = command.TakeOption("--duration");
@@ -80,6 +79,7 @@ internal static class RecordCommand
         for (string? value; (value = command.TakeOption("--pid")) is not null;) processOptions.Add(value);
         var channelOptions = new List<string>();
         for (string? value; (value = command.TakeOption("--channel")) is not null;) channelOptions.Add(value);
+        string? sessionPath = command.TakePositional();
         bool evidenceOnly = command.TryTakeFlag("--evidence-only");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

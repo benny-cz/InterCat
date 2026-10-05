@@ -37,8 +37,8 @@ internal static class RecoverCommand
             return InterCatExitCode.Success;
         }
 
-        string? path = command.TakePositional();
         string? expectedManifest = command.TakeOption("--expect-manifest");
+        string? path = command.TakePositional();
         bool confirm = command.TryTakeFlag("--confirm");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

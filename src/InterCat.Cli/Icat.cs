@@ -250,6 +250,9 @@ internal static class Icat
         ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
         ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled.");
         ConsoleUi.Line();
+        ConsoleUi.Line("  Options may come before or after a command's directory. An operand that starts with a dash,");
+        ConsoleUi.Line("  such as a note, follows --; a negative number needs no --.");
+        ConsoleUi.Line();
         ConsoleUi.Line("  Machine-readable data goes to stdout; progress, status and what explains a refusal go to stderr.");
     }
 }

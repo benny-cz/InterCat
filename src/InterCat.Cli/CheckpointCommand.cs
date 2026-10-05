@@ -35,8 +35,8 @@ internal static class CheckpointCommand
             return InterCatExitCode.Success;
         }
 
-        string? pathOption = command.TakePositional();
         string? outputOption = command.TakeOption("--output");
+        string? pathOption = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

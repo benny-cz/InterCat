@@ -201,9 +201,9 @@ internal static class SessionCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string? outputOption = command.TakeOption("--output");
         string? rowsOption = command.TakeOption("--rows");
+        string? sessionPath = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

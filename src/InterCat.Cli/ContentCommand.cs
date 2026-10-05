@@ -20,7 +20,6 @@ internal static class ContentCommand
             return InterCatExitCode.Success;
         }
 
-        string? directory = command.TakePositional();
         string? sessionText = command.TakeOption("--session-id");
         string? generationText = command.TakeOption("--generation");
         string? segment = command.TakeOption("--segment");
@@ -28,6 +27,7 @@ internal static class ContentCommand
         string? fromText = command.TakeOption("--from");
         string? toText = command.TakeOption("--to");
         string? saveOption = command.TakeOption("--save");
+        string? directory = command.TakePositional();
         bool reveal = command.TryTakeFlag("--reveal");
         bool wholePart = command.TryTakeFlag("--part");
         bool overwrite = command.TryTakeFlag("--overwrite");

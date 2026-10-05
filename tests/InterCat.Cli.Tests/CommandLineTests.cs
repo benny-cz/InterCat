@@ -1,5 +1,6 @@
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 
@@ -36,6 +37,21 @@ public sealed class CommandLineTests : IDisposable
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]
     public async Task ARefusedInvocationLeavesStdoutToTheAnswer()
     {
+        // Every command reads its arguments before it refuses one it does not know, so each is read here once.
+        string[] commands =
+        [
+            "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
+            "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
+            "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        ];
+        foreach (string command in commands)
+        {
+            (InterCatExitCode code, string output, string error) = await Run(command, "--bogus");
+            Assert.True(code == InterCatExitCode.InvalidInvocation, $"icat {command} --bogus exited {code}.");
+            Assert.True(output.Length == 0, $"icat {command} --bogus wrote to stdout:\n{output}");
+            Assert.StartsWith("x ", error, StringComparison.Ordinal);
+        }
+
         string[][] refused =
         [
             ["frobnicate"],
@@ -127,6 +143,66 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(answered == InterCatExitCode.Success, said);
         Assert.Contains("64 B", sent, StringComparison.Ordinal);
     }
+
+    [Fact(DisplayName = "R18: an option written before the session directory keeps its value, and a view may start before the epoch")]
+    public async Task AnOptionBeforeTheSessionKeepsItsValue()
+    {
+        // Once, an option written first lost its value to the session's place: `--metric observations <session>` looked
+        // for a session named "observations". Before the session or after it, each now answers the same.
+        string[][] written =
+        [
+            ["session", "--rows", "1"],
+            ["channels", "--page-size", "1"],
+            ["evidence", "--page-size", "1"],
+            ["timeline", "--interval", "0:100000", "--columns", "2"],
+            ["processes", "--top", "1"],
+            ["metric", "--metric", "observations"],
+        ];
+        foreach (string[] args in written)
+        {
+            (InterCatExitCode after, string answer, string said) = await Run([args[0], session.Path, .. args[1..], "--json"]);
+            (InterCatExitCode before, string early, string saidEarly) = await Run([args[0], .. args[1..], session.Path, "--json"]);
+            string invocation = "icat " + string.Join(' ', args);
+            Assert.True(after == InterCatExitCode.Success, $"{invocation} <session>: {said}");
+            Assert.True(before == InterCatExitCode.Success, $"{invocation} with the session last: {saidEarly}");
+            Assert.Equal(Comparable(answer), Comparable(early));
+        }
+
+        // A workspace of two sessions, one aligned to the other, has a time of its own, which starts before either's
+        // epoch for whatever was recorded earlier: a view from -5 s is an operand, never an unknown option.
+        string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
+        string second = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        try
+        {
+            Directory.CreateDirectory(second);
+            SessionStore other = SessionStore.Open(LocalOwnedDirectory.Open(second), Guid.NewGuid(), "cli-tests");
+            Publish(other, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 1).Between("127.0.0.1:50001", "127.0.0.1:8081")
+                with { SessionRelativeTicks = 10_000 }], capture: CaptureId.New(), clock: ClockFor(ClockId.New(), "second-host"));
+            other.ReleaseSegmentReaders();
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, session.Path, second)).Code);
+            (InterCatExitCode aligned, _, string alignSaid) = await Run(
+                "workspace", "align", workspace, $"{other.Current!.SessionId:N}@0", $"{TestSessions.Session:N}@0", "--within", "1ms");
+            Assert.True(aligned == InterCatExitCode.Success, alignSaid);
+
+            (InterCatExitCode saved, _, string viewSaid) = await Run("workspace", "view", workspace, "early", "-5", "10");
+            Assert.True(saved == InterCatExitCode.Success, viewSaid);
+            (InterCatExitCode noted, _, string noteSaid) = await Run("workspace", "note", workspace, "--", "-> retry storm here");
+            Assert.True(noted == InterCatExitCode.Success, noteSaid);
+            string shown = (await Run("workspace", "show", workspace, "--json")).Output;
+            Assert.Contains("\"startTicks\": -50000000", shown, StringComparison.Ordinal);
+            Assert.Contains(@"-\u003E retry storm here", shown, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(workspace);
+            Directory.Delete(second, recursive: true);
+        }
+    }
+
+    /// <summary>An answer without what differs between two runs of one query: how long each took.</summary>
+    private static string Comparable(string answer) =>
+        System.Text.RegularExpressions.Regex.Replace(answer, "\"(elapsed|counted|duration)[A-Za-z]*\": [0-9.]+", "\"$1\": 0");
 
     /// <summary>One icat invocation, with what it wrote to stdout and to stderr.</summary>
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

@@ -76,11 +76,11 @@ internal static class ExchangesCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionPath = command.TakePositional();
         string? pidOption = command.TakeOption("--pid");
         string? listOption = command.TakeOption("--exchanges");
         string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
+        string? sessionPath = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

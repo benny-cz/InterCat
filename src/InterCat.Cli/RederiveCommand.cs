@@ -49,9 +49,9 @@ internal static class RederiveCommand
             return InterCatExitCode.Success;
         }
 
-        string? pathOption = command.TakePositional();
         string? rowsOption = command.TakeOption("--rows-per-segment");
         string? outputOption = command.TakeOption("--output");
+        string? pathOption = command.TakePositional();
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
         bool check = command.TryTakeFlag("--check");

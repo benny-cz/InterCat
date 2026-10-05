@@ -28,8 +28,8 @@ internal static class StagingCommand
             return InterCatExitCode.Success;
         }
 
-        string? path = command.TakePositional();
         string? expectedSet = command.TakeOption("--expect-set");
+        string? path = command.TakePositional();
         bool confirm = command.TryTakeFlag("--confirm");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

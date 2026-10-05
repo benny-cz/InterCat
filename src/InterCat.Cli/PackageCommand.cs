@@ -102,9 +102,9 @@ internal static class PackageCommand
             return InterCatExitCode.Success;
         }
 
-        string? sessionOption = command.TakePositional();
         string? outputOption = command.TakeOption("--output");
         string? reportOption = command.TakeOption("--report");
+        string? sessionOption = command.TakePositional();
         bool redacted = command.TryTakeFlag("--redacted");
         bool original = command.TryTakeFlag("--original");
         bool check = command.TryTakeFlag("--check");

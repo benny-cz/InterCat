@@ -41,9 +41,9 @@ internal static class FollowCommand
             return InterCatExitCode.Success;
         }
 
+        string? pollOption = command.TakeOption("--poll");
         string? evidenceOption = command.TakePositional();
         string? sessionOption = command.TakePositional();
-        string? pollOption = command.TakeOption("--poll");
         bool once = command.TryTakeFlag("--once");
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))

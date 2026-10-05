@@ -19,7 +19,6 @@ internal static class ProfilesCommand
             return InterCatExitCode.Success;
         }
 
-        string? profileId = command.TakePositional();
         string? outputPath = command.TakeOption("--output");
         string? mechanismText = command.TakeOption("--mechanism");
         string? contentSourceId = command.TakeOption("--source");
@@ -72,6 +71,8 @@ internal static class ProfilesCommand
 
             channelSelectors.Add(channelSelector);
         }
+
+        string? profileId = command.TakePositional();
 
         if (processIds.Count > 64)
         {
