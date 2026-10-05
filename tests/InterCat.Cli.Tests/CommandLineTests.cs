@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
@@ -18,6 +19,14 @@ namespace InterCat.Cli.Tests;
 public sealed class CommandLineTests : IDisposable
 {
     private const string TooWide = "-9223372036854775808:0";
+
+    /// <summary>Every command icat dispatches.</summary>
+    private static readonly string[] Commands =
+    [
+        "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
+        "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
+        "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+    ];
 
     /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
     private static readonly string[] VersionNames = ["contract", "schemaVersion", "reportVersion"];
@@ -39,17 +48,73 @@ public sealed class CommandLineTests : IDisposable
 
     public void Dispose() => session.Dispose();
 
+    [Fact(DisplayName = "R18: icat's overview names every command and every form of it its own help gives, and capture says what it needs")]
+    public async Task TheOverviewNamesEveryForm()
+    {
+        // The overview's synopses, by command: each command's lines that begin "icat <command>", and the lines that continue
+        // them, indented past the description's six spaces.
+        string overview = (await Run("--help")).Output;
+        var entries = new Dictionary<string, string>(StringComparer.Ordinal);
+        string? current = null;
+        foreach (string line in overview.Split('\n'))
+        {
+            Match synopsis = Regex.Match(line, @"^  icat ([a-z][a-z-]*)");
+            if (synopsis.Success)
+            {
+                current = synopsis.Groups[1].Value;
+            }
+            else if (!Regex.IsMatch(line, @"^ {7,}\S"))
+            {
+                continue;
+            }
+
+            if (current is not null)
+            {
+                entries[current] = entries.GetValueOrDefault(current, string.Empty) + line + "\n";
+            }
+        }
+
+        foreach (string command in Commands)
+        {
+            Assert.True(entries.ContainsKey(command), $"The overview has no entry for icat {command}.");
+
+            // A form is named by the first word its synopsis writes after the command that is neither a placeholder nor
+            // optional: workspace's subcommands, package's --original and --redacted, retain's two releases.
+            string own = (await Run(command, "--help")).Output;
+            foreach (Match synopsis in Regex.Matches(own, @"(?m)^\s*icat " + Regex.Escape(command) + @"\b(.*)$"))
+            {
+                string rest = synopsis.Groups[1].Value;
+                for (string previous = string.Empty; previous != rest;)
+                {
+                    previous = rest;
+                    rest = Regex.Replace(rest, @"<[^<>]*>|\([^()]*\)|\[[^\[\]]*\]", " ");
+                }
+
+                if (rest.Split(' ', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault(word => word != "...") is { } form)
+                {
+                    Assert.True(Regex.IsMatch(entries[command], @"(?<![\w-])" + Regex.Escape(form) + @"(?![\w-])"),
+                        $"icat {command} {form} is in its own help but not in the overview's synopsis of it.");
+                }
+            }
+        }
+
+        Assert.Contains("icat <command> --help lists every option of a command", overview, StringComparison.Ordinal);
+
+        // A capture needs the broker, which runs on Windows alone: elsewhere icat says so, and what it can do instead.
+        if (!OperatingSystem.IsWindows())
+        {
+            (InterCatExitCode code, string output, string said) = await Run("capture", "session");
+            Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
+            Assert.StartsWith("x icat capture needs Windows", said, StringComparison.Ordinal);
+        }
+    }
+
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]
     public async Task ARefusedInvocationLeavesStdoutToTheAnswer()
     {
-        // Every command reads its arguments before it refuses one it does not know, so each is read here once.
-        string[] commands =
-        [
-            "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-            "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
-            "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
-        ];
-        foreach (string command in commands)
+        // Every command reads its arguments before it refuses one it does not know, so each is read here once; capture
+        // runs only on Windows, and elsewhere says so before it reads any argument.
+        foreach (string command in Commands.Where(command => command != "capture" || OperatingSystem.IsWindows()))
         {
             (InterCatExitCode code, string output, string error) = await Run(command, "--bogus");
             Assert.True(code == InterCatExitCode.InvalidInvocation, $"icat {command} --bogus exited {code}.");

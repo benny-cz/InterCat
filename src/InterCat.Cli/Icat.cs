@@ -28,6 +28,7 @@ internal static class Icat
                 "import" => await ImportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "record" => await RecordCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "capture" when OperatingSystem.IsWindows() => await CaptureCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "capture" => CaptureNeedsWindows(),
                 "rederive" => await RederiveCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -79,6 +80,17 @@ internal static class Icat
         }
     }
 
+    /// <summary>
+    /// icat capture starts the capture broker, which records through ETW and runs on Windows alone: elsewhere the command is
+    /// known, and says why it cannot run and what can, rather than calling itself unknown.
+    /// </summary>
+    private static InterCatExitCode CaptureNeedsWindows()
+    {
+        ConsoleUi.Failure("icat capture needs Windows: it starts the capture broker, which records through ETW. Here, a "
+            + "session captured on Windows can be opened, measured, exported and packaged.");
+        return InterCatExitCode.PermissionOrCapabilityFailure;
+    }
+
     private static InterCatExitCode UnknownCommand(string name)
     {
         ConsoleUi.Failure($"Unknown command: {name}");
@@ -88,16 +100,16 @@ internal static class Icat
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("InterCat command line (M1)");
+        ConsoleUi.Line("InterCat command line");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat capabilities [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Read-only source inventory. Starts no capture.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat profiles [profile] [--diagnostic-etl] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("  icat profiles focused-transport --mechanism tcp [--pid <id> ...]");
         ConsoleUi.Line("  icat profiles content --help");
         ConsoleUi.Line("      Lists capture intents or previews requested/effective settings and omissions.");
         ConsoleUi.Line("      Reads schemas only; never enables a provider or starts a capture.");
-        ConsoleUi.Line("      Focused TCP: focused-transport --mechanism tcp [--pid <id> ...]");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat measure <tcp|udp|pipe|rpc> [--output <dir>] [--overwrite] [--json]");
         ConsoleUi.Line("      Runs the named fixture under one owned ETW session and computes its tier.");
@@ -106,17 +118,22 @@ internal static class Icat
         ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Runs the seeded TCP loopback truth workload under an owned ETW session and");
         ConsoleUi.Line("      reports measured coverage against the independent truth log. Needs elevation.");
-        ConsoleUi.Line("      measure udp takes --sockets instead of --connections and runs the UDP workload.");
+        ConsoleUi.Line("  icat measure udp [--output <dir>] [--seed <n>] [--sockets <n>] [--messages <n>]");
+        ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("      The same for the seeded UDP workload, with --sockets where TCP has --connections.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
         ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--broker <exe>] [--json]");
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval) and this process derives the session. Ctrl+C stops early.");
+        ConsoleUi.Line("      Windows only, as the broker is.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport] [--mechanism tcp|udp]");
-        ConsoleUi.Line("              [--duration <seconds>] [--json]");
+        ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");
+        ConsoleUi.Line("              [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>]");
+        ConsoleUi.Line("              [--evidence-only] [--json]");
         ConsoleUi.Line("      Captures live under an owned ETW session straight into a new session, which session,");
         ConsoleUi.Line("      processes and metric read like an imported one. Needs elevation; Ctrl+C stops early.");
+        ConsoleUi.Line("      A content capture names its source, processes and limits (icat record --help).");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat import <source.etl> [--into <session-dir>] [--rows-per-segment <n>]");
         ConsoleUi.Line("             [--output <path>] [--overwrite] [--json]");
@@ -141,9 +158,10 @@ internal static class Icat
         ConsoleUi.Line("      The Desktop's exact leased process graph, paired TCP channels and timeline bundle.");
         ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat channels <directory> [--process <instance-guid>] [--page-size <1-200>]");
+        ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");
-        ConsoleUi.Line("      Bounded paired TCP channel pages, including sessions above the overview cap.");
+        ConsoleUi.Line("      Bounded paired TCP channel pages, including sessions above the overview cap; --one-sided");
+        ConsoleUi.Line("      lists a process's connections whose other end no record holds.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat evidence <directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid>]");
         ConsoleUi.Line("                [--interval <start:end>] [--page-size <1-200>] [--cursor <token>] [--json]");
@@ -158,8 +176,9 @@ internal static class Icat
         ConsoleUi.Line("  icat content <directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
         ConsoleUi.Line("               [--part] [--reveal] [--from <byte>] [--to <byte>] [--save <file> [--overwrite]] [--json]");
         ConsoleUi.Line("      One record's kept content from the same locator: its facts, and its bytes only when asked,");
-        ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036). --part reads an HTTP buffer's whole");
-        ConsoleUi.Line("      head or body instead, only when every buffer of it was kept whole.");
+        ConsoleUi.Line("      shown bounded and inert or saved as they are (ADR-036). --part reads the HTTP head or body");
+        ConsoleUi.Line("      a buffer belongs to instead: whole when every buffer of it was kept whole, else with each");
+        ConsoleUi.Line("      gap in place, chosen by buffer and never saved as one.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat timeline <directory> --interval <start:end> [--columns <1-2000>] [--bytes] [--json]");
         ConsoleUi.Line("              [--mechanism <name> | --process <instance-id> [--direction <name>]");
@@ -182,6 +201,9 @@ internal static class Icat
         ConsoleUi.Line("      A reopenable redacted session for sharing: fresh identities, pseudonymous names, IDs,");
         ConsoleUi.Line("      addresses and ports, synthetic records, and no original journal, payload or locator.");
         ConsoleUi.Line("      It is verified before it is published. --check measures and writes nothing.");
+        ConsoleUi.Line("  icat package <directory> --original --output <new-directory> [--check] [--json]");
+        ConsoleUi.Line("      Copies the session byte for byte - every journal and kept content, unredacted - into a new");
+        ConsoleUi.Line("      directory, where it reopens as the same session; it says what it carries before it copies.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
         ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");
@@ -193,12 +215,15 @@ internal static class Icat
         ConsoleUi.Line();
         ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
-        ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal would give up, and");
-        ConsoleUi.Line("      performs it only with --confirm and a stated reason (ADR-010).");
+        ConsoleUi.Line("  icat retain <directory> --release-content [--confirm --reason <text>] [--json]");
+        ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal, or every message's kept");
+        ConsoleUi.Line("      content, would give up, and performs it only with --confirm and a stated reason (ADR-010).");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--json]");
+        ConsoleUi.Line("  icat follow <session-dir> [--json]");
         ConsoleUi.Line("      Derives a session, in this ordinary process, from what icat record --evidence-only");
-        ConsoleUi.Line("      publishes: chunks copied byte for byte and checked, rows derived here (ADR-027).");
+        ConsoleUi.Line("      publishes: chunks copied byte for byte and checked, rows derived here (ADR-027). Given");
+        ConsoleUi.Line("      a session alone, it finishes a capture that ended early from the ticket beside it.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat compact <directory> [--check] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Coalesces small publications into bounded segments, keeping every row (§20.1).");
@@ -234,9 +259,12 @@ internal static class Icat
         ConsoleUi.Line("      Lists the HTTP exchanges a content capture recorded through WinINet: each client process's");
         ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat workspace <new|add|show|relink|alias> <workspace> ... [--json]");
+        ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|join|same-host|translate");
+        ConsoleUi.Line("                 |note|view|package> <workspace> ... [--json]");
         ConsoleUi.Line("      An investigation over separately captured sessions: one file naming each by identity, one");
-        ConsoleUi.Line("      member per capture, never writing to a session. show says where each member stands.");
+        ConsoleUi.Line("      member per capture, never writing to a session. show says where each member stands;");
+        ConsoleUi.Line("      align, compare and correlate place them in one time; join, same-host and translate keep a");
+        ConsoleUi.Line("      person's decisions; note and view annotate it; package copies it with its sessions.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");
@@ -254,5 +282,7 @@ internal static class Icat
         ConsoleUi.Line("  such as a note, follows --; a negative number needs no --.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Machine-readable data goes to stdout; progress, status and what explains a refusal go to stderr.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat <command> --help lists every option of a command, with what each does.");
     }
 }

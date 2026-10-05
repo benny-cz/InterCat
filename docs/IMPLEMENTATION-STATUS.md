@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 308 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 309 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 309 — `icat --help` names every form of every command (§20.4, R18):**
+  - The summary had fallen behind: `--part`'s old rule, no `retain --release-content` or `package --original`, five
+    of fourteen workspace subcommands. A test now holds it to each command's own help, and `icat capture` says it
+    needs Windows elsewhere rather than calling itself unknown.
 
 - **Revision 308 — the rail's empty state is §3.1's (R15):**
   - With no session shown, the saved sessions stand where the ranked table will be, under none of its chrome; the
@@ -754,6 +759,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 309 was built and tested in the same Linux container: Debug and Release each ran **1,530 tests**, passing
+  **1,433 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  six of seven mutations: a workspace subcommand, `package --original` or `retain --release-content` dropped from the
+  summary, its pointer to each command's help removed, an entry with no synopsis, and `capture` unknown again
+  elsewhere. The seventh left `measure udp` only described, which the summary still names as a form in
+  `<tcp|udp|pipe|rpc>`, so nothing was lost.
 - Revision 308 was built and tested in the same Linux container: Debug and Release each ran **1,529 tests**, passing
   **1,432 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of nine mutations:
