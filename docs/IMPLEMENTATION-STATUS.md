@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-04 · Plan revision: 292 · Branch: `main`
+Updated: 2026-10-04 · Plan revision: 293 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 293 — the current rung's crumb fits the trail (§3.2):**
+  - At the minimum width a channel's crumb was wider than the trail beside the header's actions, so the trail lost
+    its start ("nel: RPC calls to svcctl…"). It is now narrowed to the trail and ends in an ellipsis.
 
 - **Revision 292 — a finished session's first byte view reads no segment (`overview-index-v1` minor 3, §6.1):**
   - Its checkpoint publication keeps each process's and TCP channel end's whole-session bytes before any evidence
@@ -668,6 +672,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 293 was built and tested in the same Linux container: Debug and Release each ran **1,503 tests**, passing
+  **1,406 with 4 skipped**. 93 failed, the Windows and font-metric ones revision 287 names but one: the IPv6
+  channel's test of its crumbs, counted among the font-metric failures since revision 287, passes. Its current crumb
+  had been cut on the left, the defect this revision fixes, which the wider fallback font exposed. The new test
+  failed without the fix, its current crumb starting 49 px left of the trail's edge.
 - Revision 292 was built and tested in the same Linux container: Debug and Release each ran **1,502 tests**, passing
   **1,404 with 4 skipped**; the 94 failures are exactly the Windows and font-metric ones revision 287 names. Its 4 new
   tests were checked by reverting what they test: admitting every strength or drawing every channel end whatever the

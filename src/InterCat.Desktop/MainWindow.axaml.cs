@@ -130,6 +130,8 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (change.ExtentDelta.X != 0 || change.ViewportDelta.X != 0)
             {
+                FitCurrentCrumb();
+
                 // ScrollToEnd means bottom-left in Avalonia; the trail's end is its right edge.
                 CrumbScroller.Offset = new(Math.Max(0, CrumbScroller.Extent.Width - CrumbScroller.Viewport.Width), 0);
             }
@@ -175,6 +177,36 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Keyboard equivalents for the header actions. Every affordance on this window has one, so no
     /// behaviour is reachable by pointer alone (R15, section 6.7).
     /// </summary>
+    /// <summary>The widest a crumb is drawn, as the crumb template states; a wider name ends in an ellipsis.</summary>
+    private const double CrumbWidth = 220;
+
+    /// <summary>The narrowest the current rung's crumb is drawn, however little room the header leaves the trail.</summary>
+    private const double MinimumCrumbWidth = 48;
+
+    /// <summary>
+    /// Narrows the current rung's crumb to the trail when it is wider, so it ends in an ellipsis rather than losing its
+    /// start when the trail scrolls to it: at the minimum width a channel's crumb read "nel: RPC calls to svcctl…"
+    /// (section 3.2). Every other crumb keeps its own width, and the current one regains its own when there is room.
+    /// </summary>
+    private void FitCurrentCrumb()
+    {
+        int last = CrumbList.ItemCount - 1;
+        for (int index = 0; index <= last; index++)
+        {
+            if (CrumbList.ContainerFromIndex(index) is not { } crumb
+                || crumb.GetVisualDescendants().OfType<TextBlock>().FirstOrDefault() is not { } text)
+            {
+                continue;
+            }
+
+            // What the crumb draws around its text - the item's padding - stays; the text gives up the rest.
+            double around = Math.Max(0, crumb.Bounds.Width - text.Bounds.Width);
+            text.MaxWidth = index == last && CrumbScroller.Viewport.Width > 0
+                ? Math.Clamp(CrumbScroller.Viewport.Width - around, MinimumCrumbWidth, CrumbWidth)
+                : CrumbWidth;
+        }
+    }
+
     /// <summary>
     /// Clears a crumb the trail's left edge cuts, so the sliver left of an earlier crumb does not read as a stray character
     /// beside the current position (section 3.2). The crumb keeps its place, its hit target and its accessible name; only

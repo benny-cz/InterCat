@@ -842,6 +842,59 @@ public sealed class EvidenceRungWindowTests
         Save(window.CaptureRenderedFrame()!, "l3-rpc-call-lane-1080x700.png");
     }
 
+    [AvaloniaFact(DisplayName = "§3.2: at the minimum width the current rung's crumb fits the trail, ending in an ellipsis rather than losing its start")]
+    public async Task TheCurrentCrumbFitsTheTrail()
+    {
+        // An RPC channel's crumb names its interface, wider than the trail beside the header's actions at 1080 px: scrolled
+        // to its end, the trail once showed "nel: RPC calls to svcctl…".
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Conversation(4, "127.0.0.1:50000", "127.0.0.1:8080"),
+            RpcCall(10, ObservationKind.RequestStart, Direction.Outbound, 100, 60_000, new Guid(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                serviceControl) with { SessionRelativeTicks = 1_000 },
+            RpcCall(12, ObservationKind.RequestEnd, Direction.Outbound, 100, 60_001, new Guid(1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1),
+                status: 0) with { SessionRelativeTicks = 1_200 },
+        ]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ProcessNode node = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        foreach (string key in new[] { node.GroupKey, node.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Settle(window);
+
+        ScrollViewer trail = window.GetControl<ScrollViewer>("CrumbScroller");
+        ListBox crumbs = window.GetControl<ListBox>("CrumbList");
+        Control current = crumbs.ContainerFromIndex(crumbs.ItemCount - 1)!;
+        TextBlock text = current.GetVisualDescendants().OfType<TextBlock>().First();
+        Assert.StartsWith("Channel: RPC calls to svcctl", workspace.Crumbs[^1].Display, StringComparison.Ordinal);
+        double left = current.TranslatePoint(default, crumbs)!.Value.X;
+        Assert.True(left >= trail.Offset.X - 0.5, $"The current crumb starts at {left:F1}, left of the trail's edge at {trail.Offset.X:F1}.");
+        Assert.True(left + current.Bounds.Width <= trail.Offset.X + trail.Viewport.Width + 0.5,
+            $"The current crumb ends at {left + current.Bounds.Width:F1}, past the trail's edge at {trail.Offset.X + trail.Viewport.Width:F1}.");
+        Assert.True(text.TextLayout.TextLines[0].HasCollapsed, "The narrowed crumb ends in an ellipsis.");
+        Assert.Equal(1, current.Opacity);
+
+        // Given room, it is drawn at a crumb's own width again.
+        window.Width = 1600;
+        Settle(window);
+        Assert.Equal(220, text.MaxWidth);
+        Assert.True(current.TranslatePoint(default, crumbs)!.Value.X >= trail.Offset.X - 0.5);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R21: a call lane with more calls in view than it draws one by one draws them all as density")]
     public async Task ACallLaneDenserThanItsBudgetIsDrawnAsDensity()
     {
