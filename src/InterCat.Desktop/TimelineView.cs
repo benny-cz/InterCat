@@ -175,7 +175,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     private const double LanePlotLeft = 118;
     private const double ProcessPlotLeft = 170;
     private const double PlotRightMargin = 14;
-    private const double PlotTop = 24;
+    internal const double PlotTop = 24;
     private const double PlotBottomMargin = 30;
     private const double MinimumLaneHeight = 30;
 
@@ -771,11 +771,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
                 WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-            DrawText(context, plotsBytes
-                    ? byteRateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond,
-                        static rate => WorkspaceRowBuilder.DescribeByteRate(rate))
-                    : rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate)),
-                new(4, top - 4));
+            string peak = plotsBytes
+                ? byteRateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond,
+                    static rate => WorkspaceRowBuilder.DescribeByteRate(rate))
+                : rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate));
+            DrawText(context, peak, RateLabelBounds(peak).TopLeft);
         }
 
         if (HoveredBucket is { } hovered)
@@ -1084,6 +1084,16 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>Records per presentation tick: what a bar's height states, comparable across bucket widths.</summary>
     private static double Rate(TimelineBucket bucket) => (double)bucket.ObservationCount / bucket.Interval.SpanTicks;
+
+    /// <summary>
+    /// Where the axis's peak rate is written: at the left of the band above the plot, whose notes stand at its right, so
+    /// however wide a rate reads - 10,000,000/s, or a byte rate - it never lies over a bar or a lane's name.
+    /// </summary>
+    internal static Rect RateLabelBounds(string text)
+    {
+        Avalonia.Media.TextFormatting.TextLayout layout = Labels.Get(text, 10, TextBrush);
+        return new(4, PlotTop - 18, layout.Width, layout.Height);
+    }
 
     /// <summary>The axis's top label: the peak rate drawn, in records per second.</summary>
     internal static string RateText(double perSecond) => perSecond switch

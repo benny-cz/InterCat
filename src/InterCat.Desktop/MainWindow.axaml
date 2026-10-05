@@ -35,11 +35,13 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1" Margin="0,26,0,10" Spacing="5">
-          <Grid ColumnDefinitions="*,Auto">
+          <!-- The rung's badge follows the heading, and wraps under it where the rail is too narrow for both: a long one,
+               L4 · OPERATION, never lies over the heading (R15). -->
+          <WrapPanel x:Name="RankedHeading" Orientation="Horizontal" ItemSpacing="10" LineSpacing="2">
             <TextBlock Text="RANKED TABLE" Classes="eyebrow" VerticalAlignment="Center" />
-            <TextBlock Grid.Column="1" Text="{Binding LevelBadge}" Classes="eyebrow"
+            <TextBlock Text="{Binding LevelBadge}" Classes="eyebrow"
                        Foreground="{DynamicResource Ink.Accent}" VerticalAlignment="Center" />
-          </Grid>
+          </WrapPanel>
           <TextBlock Text="{Binding LevelSummaryShort}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      AutomationProperties.Name="What the ranked table holds" />
           <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
@@ -347,14 +349,13 @@
         <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="Forward (Alt+Right)"
                 Click="GoForward" IsVisible="{Binding CanGoForward}" ToolTip.Tip="{Binding ForwardLabel}"
                 AutomationProperties.Name="{Binding ForwardLabel}" />
-        <Button x:Name="AscendButton" Grid.Column="4" Content="{Binding AscendLabel}" Click="AscendOrClear"
-                MaxWidth="280"
-                AutomationProperties.Name="Go back one level, or clear the selection at the machine level">
-          <Button.Styles>
-            <Style Selector="Button > ContentPresenter > TextBlock">
-              <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-            </Style>
-          </Button.Styles>
+        <!-- Back's face names the rung it returns to by its kind, as Forward's names none, so the title keeps its room; the
+             rung itself is in its tooltip and accessible help. A face that still runs long ends in an ellipsis. -->
+        <Button x:Name="AscendButton" Grid.Column="4" Click="AscendOrClear" MaxWidth="280"
+                ToolTip.Tip="{Binding AscendDetail}"
+                AutomationProperties.Name="Go back one level, or clear the selection at the machine level"
+                AutomationProperties.HelpText="{Binding AscendDetail}">
+          <TextBlock x:Name="AscendText" Text="{Binding AscendLabel}" TextTrimming="CharacterEllipsis" />
         </Button>
         <!-- The application's settings (section 26.3): the theme, and where the settings are kept. -->
         <Button x:Name="ThemeButton" Grid.Column="5" Margin="8,0,0,0" Content="Theme"

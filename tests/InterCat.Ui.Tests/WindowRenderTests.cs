@@ -149,6 +149,66 @@ public sealed class WindowRenderTests
         Assert.Equal("L5 · EVIDENCE", viewModel.LevelBadge);
     }
 
+    [AvaloniaFact(DisplayName = "R15: at the minimum size a deep rung keeps its title whole, Back names the rung, and the rail's heading its badge apart")]
+    public async Task ADeepRungFitsTheMinimumWindow()
+    {
+        var window = new MainWindow(new WorkspaceViewModel()) { Width = 1080, Height = 700 };
+        window.Show();
+        var viewModel = (WorkspaceViewModel)window.DataContext!;
+        await viewModel.LayoutReady;
+        for (int depth = 0; depth < 4; depth++)
+        {
+            viewModel.SelectedRung = viewModel.RungRows[0];
+            Assert.True(viewModel.Descend(), $"the ladder refused to descend at depth {depth}");
+        }
+
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Assert.Equal("L4 · OPERATION", viewModel.LevelBadge);
+
+        // Back names the rung it returns to by its kind; the rung itself, a channel's two endpoints, is its tooltip and help.
+        Button back = window.GetControl<Button>("AscendButton");
+        TextBlock face = window.GetControl<TextBlock>("AscendText");
+        Assert.Equal("Back to Channel (Esc)", face.Text);
+        Assert.Equal(viewModel.AscendDetail, ToolTip.GetTip(back));
+        Assert.Equal(viewModel.AscendDetail, Avalonia.Automation.AutomationProperties.GetHelpText(back));
+        Assert.StartsWith("Back to Channel: 127.0.0.1:", viewModel.AscendDetail, StringComparison.Ordinal);
+        Assert.False(Trimmed(face));
+
+        // So the session's title keeps every word beside the rung's buttons.
+        Assert.False(Trimmed(window.GetControl<TextBlock>("HeaderTitle")));
+
+        // The rail's heading and the rung's badge never lie over each other: where both do not fit, the badge wraps under.
+        TextBlock[] heading = [.. window.GetControl<WrapPanel>("RankedHeading").Children.OfType<TextBlock>()];
+        Assert.Equal(("RANKED TABLE", "L4 · OPERATION"), (heading[0].Text, heading[1].Text));
+        Assert.False(heading[0].Bounds.Intersects(heading[1].Bounds), $"{heading[0].Bounds} meets {heading[1].Bounds}.");
+
+        // At the machine rung there is nothing to go back to, and Back clears the selection.
+        while (viewModel.Ascend())
+        {
+        }
+
+        Dispatch();
+        Assert.Equal(("Clear selection (Esc)", "Clear the selection, at the machine rung (Esc)"), (face.Text, viewModel.AscendDetail));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the timeline's peak rate reads above its plot, never over a bar, however wide it reads")]
+    public void ThePeakRateReadsAboveThePlot()
+    {
+        foreach (string peak in new[]
+        {
+            TimelineView.RateText(78), TimelineView.RateText(10_000_000), InterCat.Desktop.Presentation.WorkspaceRowBuilder.DescribeByteRate(7.24e9),
+        })
+        {
+            Rect bounds = TimelineView.RateLabelBounds(peak);
+            Assert.True(bounds.Top >= 0 && bounds.Bottom <= TimelineView.PlotTop && bounds.Width > 0, $"{peak} lies at {bounds}.");
+        }
+    }
+
+    /// <summary>Whether a text block ends in an ellipsis because its words did not fit.</summary>
+    private static bool Trimmed(TextBlock text) => text.TextLayout.TextLines.Any(line => line.HasCollapsed);
+
     [AvaloniaFact(DisplayName = "§6.1: the rail widens with a wide window until the user resizes it by its edge")]
     public void TheRailFollowsTheWindowUntilResized()
     {

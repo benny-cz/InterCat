@@ -2891,9 +2891,18 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public bool CanAscend => ladder.CanAscend;
 
+    /// <summary>
+    /// The back button's face: the rung it returns to by its kind alone, so a long name - a channel's two endpoints - never
+    /// pushes the title and breadcrumb out of the header at the minimum width (R15). <see cref="AscendDetail"/> names it.
+    /// </summary>
     public string AscendLabel => ladder.CanAscend
-        ? $"Back to {ladder.Breadcrumb[^2].Crumb} (Esc)"
+        ? $"Back to {NavigationState.Name(ladder.Breadcrumb[^2].Level)} (Esc)"
         : "Clear selection (Esc)";
+
+    /// <summary>Where the back button returns, in full, as its tooltip and its accessible help say it.</summary>
+    public string AscendDetail => ladder.CanAscend
+        ? $"Back to {ladder.Breadcrumb[^2].Crumb} (Esc)"
+        : "Clear the selection, at the machine rung (Esc)";
 
     /// <summary>Whether a forward step has a rung to re-enter: one an ascent or a crumb left (§6.7).</summary>
     public bool CanGoForward => ladder.CanGoForward;
@@ -4226,6 +4235,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(CanAscend));
         OnPropertyChanged(nameof(AscendLabel));
+        OnPropertyChanged(nameof(AscendDetail));
         OnPropertyChanged(nameof(CanGoForward));
         OnPropertyChanged(nameof(ForwardLabel));
         OnPropertyChanged(nameof(DescendHint));

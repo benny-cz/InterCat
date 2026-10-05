@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 306 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 307 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 307 — a deep rung fits the minimum window (R15):**
+  - Back names the rung it returns to by its kind, "Back to Channel (Esc)", with the rung in full as its tooltip and
+    help, so the title keeps its words; the rail's badge wraps under its heading rather than over it; and the
+    timeline's peak rate stands above the plot, never over a bar.
 
 - **Revision 306 — kept content released on its own (IC-016, content-v1 §2):**
   - `icat retain <session> --release-content` measures, and with `--confirm --reason` performs, a release of every
@@ -744,6 +749,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 307 was built and tested in the same Linux container: Debug and Release each ran **1,526 tests**, passing
+  **1,429 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of six mutations: Back naming the whole rung again, its tooltip or help left out, the machine rung's help
+  reworded, the badge laid over the heading, and the peak rate drawn over the plot again. The baseline's header test
+  at 1080 by 700 still fails here as before: it measures the machine rung's buttons in the Linux fallback font.
 - Revision 306 was built and tested in the same Linux container: Debug and Release each ran **1,524 tests**, passing
   **1,427 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of 19 mutations. They covered:
