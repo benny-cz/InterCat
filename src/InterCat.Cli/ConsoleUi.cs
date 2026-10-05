@@ -11,28 +11,85 @@ internal static class ConsoleUi
 {
     private static readonly bool UseColor = DetermineColorSupport();
 
+    // Fields written one after another are one group, written out when anything else is written or the command ends: a
+    // group's values start in one column, two spaces past its longest label, so a long label never pushes its own value
+    // out of line with the rest. A capture's progress can be written from another thread, hence the lock.
+    private static readonly Lock FieldGate = new();
+    private static readonly List<(string Label, string Value, int Width)> PendingFields = [];
+    private static TextWriter? pendingWriter;
+
     public static void Heading(string text)
     {
+        Flush();
         Console.Out.WriteLine();
         Console.Out.WriteLine(Paint(text.ToUpperInvariant(), "1;36"));
         Console.Out.WriteLine(new string('-', Math.Min(text.Length, 78)));
     }
 
-    public static void Line(string text = "") => Console.Out.WriteLine(text);
+    public static void Line(string text = "")
+    {
+        Flush();
+        Console.Out.WriteLine(text);
+    }
 
-    // A label as long as the column still keeps two spaces before its value, rather than running into it.
-    public static void Field(string label, string value, int width = 22) =>
-        Console.Out.WriteLine($"  {label.PadRight(Math.Max(width, label.Length + 2))}{value}");
+    /// <summary>
+    /// A labelled value. It is written with the fields written next to it, once something else is written or the command
+    /// ends (<see cref="Flush"/>): every value of the group starts in one column, at least <paramref name="width"/> past
+    /// the indent and two spaces past the group's longest label.
+    /// </summary>
+    public static void Field(string label, string value, int width = 22)
+    {
+        lock (FieldGate)
+        {
+            // A field written while help is explained on stderr belongs to that writer's group, not stdout's.
+            if (pendingWriter is not null && !ReferenceEquals(pendingWriter, Console.Out))
+            {
+                FlushFields();
+            }
 
-    public static void Bullet(string text) => Console.Out.WriteLine($"  - {text}");
+            pendingWriter = Console.Out;
+            PendingFields.Add((label, value, width));
+        }
+    }
 
-    public static void Note(string text) => Console.Out.WriteLine(Paint($"  {text}", "2"));
+    /// <summary>Writes the fields not yet written, as one group: every other write, and the end of a command, calls it.</summary>
+    public static void Flush()
+    {
+        lock (FieldGate)
+        {
+            FlushFields();
+        }
+    }
 
-    public static void Progress(string text) => Console.Error.WriteLine(Paint($"… {text}", "2"));
+    public static void Bullet(string text)
+    {
+        Flush();
+        Console.Out.WriteLine($"  - {text}");
+    }
 
-    public static void Warn(string text) => Console.Error.WriteLine(Paint($"! {text}", "33"));
+    public static void Note(string text)
+    {
+        Flush();
+        Console.Out.WriteLine(Paint($"  {text}", "2"));
+    }
 
-    public static void Failure(string text) => Console.Error.WriteLine(Paint($"x {text}", "31"));
+    public static void Progress(string text)
+    {
+        Flush();
+        Console.Error.WriteLine(Paint($"… {text}", "2"));
+    }
+
+    public static void Warn(string text)
+    {
+        Flush();
+        Console.Error.WriteLine(Paint($"! {text}", "33"));
+    }
+
+    public static void Failure(string text)
+    {
+        Flush();
+        Console.Error.WriteLine(Paint($"x {text}", "31"));
+    }
 
     /// <summary>A reader's refusal of a value, in its own words (<see cref="Reason"/>).</summary>
     public static void Failure(ArgumentException exception) => Failure(Reason(exception));
@@ -70,13 +127,18 @@ internal static class ConsoleUi
         }
     }
 
-    public static void Success(string text) => Console.Error.WriteLine(Paint($"+ {text}", "32"));
+    public static void Success(string text)
+    {
+        Flush();
+        Console.Error.WriteLine(Paint($"+ {text}", "32"));
+    }
 
     /// <summary>Renders a fixed-width table. Columns are padded from the widest cell, never truncated.</summary>
     public static void Table(IReadOnlyList<string> headers, IReadOnlyList<IReadOnlyList<string>> rows)
     {
         ArgumentNullException.ThrowIfNull(headers);
         ArgumentNullException.ThrowIfNull(rows);
+        Flush();
 
         var widths = new int[headers.Count];
         for (int column = 0; column < headers.Count; column++)
@@ -139,6 +201,23 @@ internal static class ConsoleUi
 
     public static string Ratio(decimal? value) =>
         value is null ? "not measured" : value.Value.ToString("P1", CultureInfo.CurrentCulture);
+
+    private static void FlushFields()
+    {
+        if (PendingFields.Count == 0)
+        {
+            return;
+        }
+
+        int column = PendingFields.Max(field => Math.Max(field.Width, field.Label.Length + 2));
+        foreach ((string label, string value, _) in PendingFields)
+        {
+            pendingWriter!.WriteLine($"  {label.PadRight(column)}{value}");
+        }
+
+        PendingFields.Clear();
+        pendingWriter = null;
+    }
 
     private static string Paint(string text, string code) => UseColor ? $"\u001b[{code}m{text}\u001b[0m" : text;
 

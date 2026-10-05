@@ -28,6 +28,13 @@ public sealed class CommandLineTests : IDisposable
         "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
     ];
 
+    /// <summary>The fields of icat staging's preview, whose labels run past the column a short label takes.</summary>
+    private static readonly string[] StagingFields =
+        ["Session", "Abandoned staged files", "Marker-only files", "Active writer files", "Unmarked legacy files", "Files removed"];
+
+    /// <summary>The fields an export's report ends with.</summary>
+    private static readonly string[] ExportFields = ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Rows", "Complete"];
+
     /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
     private static readonly string[] VersionNames = ["contract", "schemaVersion", "reportVersion"];
 
@@ -146,7 +153,7 @@ public sealed class CommandLineTests : IDisposable
             (InterCatExitCode reported, string report, _) = await Run("session", folder);
             Assert.Equal(InterCatExitCode.PartialResultSuccess, reported);
             Assert.Contains(SessionStore.NoGeneration, report, StringComparison.Ordinal);
-            Assert.Contains("Acquired              nothing: no generation has been published here", report, StringComparison.Ordinal);
+            Assert.Matches(@"(?m)^  Acquired +nothing: no generation has been published here\r?$", report);
             Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
 
             // A folder handed to import, which reads a trace file, is called a folder, not something that is not there; so
@@ -197,6 +204,29 @@ public sealed class CommandLineTests : IDisposable
         finally
         {
             Directory.Delete(damaged, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "§20.4: each group of a report's fields lines up, and the last group is written when its command ends")]
+    public async Task AReportsFieldsLineUp()
+    {
+        // The staging preview's labels run past the column a short one takes; every value still starts with the rest.
+        (InterCatExitCode previewed, string preview, _) = await Run("staging", session.Path);
+        Assert.Equal(InterCatExitCode.Success, previewed);
+        Assert.Single(StagingFields.Select(label => ValueColumn(preview, label)).Distinct());
+
+        // An export's report ends with its fields, which nothing written after them would bring out.
+        string destination = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".csv");
+        try
+        {
+            (InterCatExitCode exported, string report, _) = await Run("export", session.Path, "--output", destination);
+            Assert.Equal(InterCatExitCode.Success, exported);
+            Assert.Single(ExportFields.Select(label => ValueColumn(report, label)).Distinct());
+            Assert.EndsWith("yes", report.TrimEnd(), StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(destination);
         }
     }
 
@@ -603,6 +633,19 @@ public sealed class CommandLineTests : IDisposable
         System.Text.RegularExpressions.Regex.Replace(answer, "\"(elapsed|counted|duration)[A-Za-z]*\": [0-9.]+", "\"$1\": 0");
 
     /// <summary>One icat invocation, with what it wrote to stdout and to stderr.</summary>
+    /// <summary>The column a field's value starts in, in a report that has one field of that label.</summary>
+    private static int ValueColumn(string report, string label)
+    {
+        string line = report.Split(Environment.NewLine).Single(line => line.StartsWith($"  {label}  ", StringComparison.Ordinal));
+        int column = 2 + label.Length;
+        while (line[column] == ' ')
+        {
+            column++;
+        }
+
+        return column;
+    }
+
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)
     {
         TextWriter output = Console.Out;

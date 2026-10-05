@@ -12,6 +12,19 @@ internal static class Icat
     /// </summary>
     public static async Task<InterCatExitCode> RunAsync(string[] args, CancellationToken cancellationToken)
     {
+        try
+        {
+            return await DispatchAsync(args, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // A report's last fields are written when its command ends, as every other group is when something follows it.
+            ConsoleUi.Flush();
+        }
+    }
+
+    private static async Task<InterCatExitCode> DispatchAsync(string[] args, CancellationToken cancellationToken)
+    {
         if (args.Length == 0 || args[0] is "help" or "--help" or "-h")
         {
             PrintHelp();

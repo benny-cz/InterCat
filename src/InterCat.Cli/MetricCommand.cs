@@ -646,7 +646,7 @@ internal static class MetricCommand
         }
         else
         {
-            Console.Out.WriteLine(identity.CanonicalSpecification);
+            ConsoleUi.Line(identity.CanonicalSpecification);
             ConsoleUi.Success(identity.RequestedRows is { } rows
                 ? string.Create(CultureInfo.InvariantCulture, $"Query identity {identity.Token}, top {rows} (query-identity-v1).")
                 : $"Query identity {identity.Token} (query-identity-v1).");

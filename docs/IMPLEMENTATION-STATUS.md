@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 312 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 313 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 313 — a report's values line up (§20.4):**
+  - A label longer than the 22-character column pushed its value past the others; twelve labels in seven commands did.
+    Fields written one after another are now one group, whose values start two spaces past its longest label, and the
+    group is written out before whatever follows it.
 
 - **Revision 312 — a wrong input is named for what it is (§20.4):**
   - A folder that holds no session was refused with 2, 3, 4, or a warning and 1, by command; every command now refuses
@@ -775,6 +780,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 313 was built and tested in the same Linux container: Debug and Release each ran **1,537 tests**, passing
+  **1,440 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of fifteen mutations: no flush when a command ends, a group's column that ignores its labels or keeps one space
+  past the longest, each field in its own column, a change of writer kept in one group, a group never cleared, and each
+  of nine other writes that did not write out the group before it.
 - Revision 312 was built and tested in the same Linux container: Debug and Release each ran **1,534 tests**, passing
   **1,437 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of thirty mutations:
