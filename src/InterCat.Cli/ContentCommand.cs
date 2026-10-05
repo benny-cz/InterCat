@@ -88,7 +88,7 @@ internal static class ContentCommand
         }
         catch (ArgumentException exception)
         {
-            ConsoleUi.Failure(exception.Message);
+            ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
         catch (InvalidOperationException exception)

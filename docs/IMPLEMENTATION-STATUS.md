@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 303 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 304 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 304 — a reader's refusal of a value reads as its own words (§20.4):**
+  - `icat evidence --cursor abc` said "… restart from the first page. (Parameter 'cursor')", .NET's name for the
+    code's variable; the command line now prints a reader's refusal without it, in each place it reports one.
 
 - **Revision 303 — every machine-readable answer names its contract (§20.4, R18):**
   - `icat profiles --json` and `icat metric --matrix --json` printed bare arrays that named no contract; they are now
@@ -728,6 +732,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 304 was built and tested in the same Linux container: Debug and Release each ran **1,517 tests**, passing
+  **1,420 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  both mutations: the suffix kept, and `evidence` printing the exception's message again.
 - Revision 303 was built and tested in the same Linux container: Debug and Release each ran **1,517 tests**, passing
   **1,420 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   each of three mutations: the matrix or the catalog printed as an array again, and the matrix naming no contract.

@@ -105,7 +105,7 @@ internal static class ExportCommand
         }
         catch (ArgumentException exception)
         {
-            ConsoleUi.Failure(exception.Message);
+            ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException)

@@ -359,7 +359,7 @@ internal static class CaptureCommand
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or ArgumentException)
         {
             ConsoleUi.Warn(
-                $"No follow ticket could be written beside {sessionPath} ({exception.Message}). If this command ends early, "
+                $"No follow ticket could be written beside {sessionPath} ({ConsoleUi.Reason(exception)}). If this command ends early, "
                 + $"finish the session with icat follow {evidencePath} {sessionPath}.");
             return null;
         }

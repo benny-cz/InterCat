@@ -82,6 +82,12 @@ public sealed class CommandLineTests : IDisposable
             Assert.True(error.Split('\n', StringSplitOptions.RemoveEmptyEntries).Length > 1, $"{invocation} explained nothing:\n{error}");
         }
 
+        // A reader's refusal of a value is said in its own words, without .NET's name for the parameter.
+        (InterCatExitCode malformed, string none, string reason) = await Run("evidence", session.Path, "--cursor", "abc");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, malformed);
+        Assert.Empty(none);
+        Assert.Equal("x The evidence cursor is malformed; restart from the first page.", reason.TrimEnd());
+
         // Asked for, help is the answer, on stdout.
         (InterCatExitCode helped, string help, string quiet) = await Run("timeline", "--help");
         Assert.Equal(InterCatExitCode.Success, helped);

@@ -34,6 +34,22 @@ internal static class ConsoleUi
 
     public static void Failure(string text) => Console.Error.WriteLine(Paint($"x {text}", "31"));
 
+    /// <summary>A reader's refusal of a value, in its own words (<see cref="Reason"/>).</summary>
+    public static void Failure(ArgumentException exception) => Failure(Reason(exception));
+
+    /// <summary>
+    /// What an exception says, as a person reads it: .NET names an argument's parameter after its words,
+    /// " (Parameter 'cursor')", which is the code's name for the value and not one a person typed.
+    /// </summary>
+    public static string Reason(Exception exception)
+    {
+        ArgumentNullException.ThrowIfNull(exception);
+        string suffix = exception is ArgumentException { ParamName: { Length: > 0 } name } ? $" (Parameter '{name}')" : string.Empty;
+        return suffix.Length > 0 && exception.Message.EndsWith(suffix, StringComparison.Ordinal)
+            ? exception.Message[..^suffix.Length]
+            : exception.Message;
+    }
+
     /// <summary>
     /// Writes what <paramref name="write"/> prints to stderr. What explains a refusal or a failure - the help an invocation
     /// was refused against, what would complete it, the sources that kept a capture from starting - goes where the failure

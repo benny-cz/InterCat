@@ -599,7 +599,7 @@ internal static class MetricCommand
         {
             // A request the matrix accepts can still be one this session cannot scope, such as a tick interval over
             // readings on two clocks. That is the request's problem, reported beside it.
-            ConsoleUi.Failure(exception.Message);
+            ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
         MetricDocument document = Describe(result, full, store.Recovery.RolledBackToLastKnownGood, wholeRecording);
