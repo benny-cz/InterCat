@@ -33,7 +33,7 @@ internal static class ExportCommand
         bool overwrite = command.TryTakeFlag("--overwrite");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
-        TimeRange? interval = ParseInterval(intervalText);
+        TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
         ExportFormat? format = formatText switch
         {
             null => output?.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) == true ? ExportFormat.Csv : ExportFormat.Json,
@@ -65,7 +65,7 @@ internal static class ExportCommand
             : output is null ? "--output <path> is required; an export is written only where it is asked to be."
             : format is null ? "--format must be json or csv."
             : intervalText is not null && interval is null
-                ? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
+                ? tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
             : invalidLimit ? $"--limit applies to --evidence and must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}."
             : rankBy is null
                 ? "--rank-by must be records, bytes-sent, bytes-received, bytes-sent-and-received, rpc-calls-made, rpc-calls-served, "
@@ -135,17 +135,6 @@ internal static class ExportCommand
             if (evidence) ConsoleUi.Note("Normalized metadata and raw locators only: no body or extended-data bytes are exported.");
         }
         return result.Context.Complete ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
-    }
-
-    private static TimeRange? ParseInterval(string? raw)
-    {
-        string[] parts = raw?.Split(':') ?? [];
-        return parts.Length == 2
-            && long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long start)
-            && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long end)
-            && end > start
-                ? new TimeRange(start, end)
-                : null;
     }
 
     private static void PrintHelp()

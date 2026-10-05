@@ -1169,13 +1169,14 @@ internal sealed class TimelineColumns
             return [.. Enumerable.Repeat(CoverageState.UnknownCoverage, counts.Length)];
         }
 
-        // Adjacent columns share a boundary, so each boundary is mapped to its native reading once.
+        // Adjacent columns share a boundary, so each boundary is mapped to its native reading once; a column whose
+        // readings are further apart than a tick count holds is judged on the part centred on the epoch, as a bucket is.
         long?[] boundaries = [.. Enumerable.Range(0, counts.Length + 1).Select(index => FirstNativeAt(clock, Within(
             index == counts.Length ? interval.EndTicks : IntervalOf(interval, counts.Length, index).StartTicks)))];
         return [.. SessionCoverage.CaptureStates(coverage, [.. Enumerable.Range(0, counts.Length).Select(index =>
-            boundaries[index] is { } first && boundaries[index + 1] is { } last && last > first
-                ? new TimeRange(first, last)
-                : (TimeRange?)null)])];
+            boundaries[index] is { } first && boundaries[index + 1] is { } last
+                ? TimeRange.Around(first, last, clock.CaptureEpochNativeTicks)
+                : null)])];
 
         long Within(long tick) => within is { } bounds ? Math.Clamp(tick, bounds.StartTicks, bounds.EndTicks) : tick;
     }
@@ -1214,13 +1215,12 @@ internal sealed class TimelineColumns
     /// The native readings a presentation interval covers, or null when it maps to none. The presentation tick is
     /// nanoseconds / 100 with C# truncation toward zero; these are the exact nanosecond boundaries of that mapping,
     /// including its asymmetric zero tick (I3, I8). An interval that cannot be mapped is unknown, never inferred from
-    /// neighboring bins.
+    /// neighboring bins; one whose readings are further apart than a tick count holds is held centred on the epoch.
     /// </summary>
     private static TimeRange? NativeInterval(SourceClockDescriptor clock, TimeRange presentationInterval) =>
         FirstNativeAt(clock, presentationInterval.StartTicks) is { } first
             && FirstNativeAt(clock, presentationInterval.EndTicks) is { } lastExclusive
-            && lastExclusive > first
-                ? new TimeRange(first, lastExclusive)
+                ? TimeRange.Around(first, lastExclusive, clock.CaptureEpochNativeTicks)
                 : null;
 
     /// <summary>The first native reading at or after a presentation tick's lower bound, or null when it cannot be mapped.</summary>

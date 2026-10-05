@@ -1704,8 +1704,8 @@ internal static class MetricCommand
         problem = null;
         string[] parts = value.Split(':');
         if (parts.Length != 2
-            || !TryParseBound(parts[0], clock, end: false, out long start, out problem)
-            || !TryParseBound(parts[1], clock, end: true, out long end, out problem))
+            || !TryParseBound(parts[0], clock, end: false, out long start, out bool startBeyond, out problem)
+            || !TryParseBound(parts[1], clock, end: true, out long end, out bool endBeyond, out problem))
         {
             problem ??=
                 "--interval expects <start>:<end>, half-open. Each bound is a native tick (for example "
@@ -1720,13 +1720,31 @@ internal static class MetricCommand
             return false;
         }
 
-        interval = new TimeRange(start, end);
+        // A bound past the clock's range stands for every reading on its side, so an interval reaching that far is held
+        // centred on the capture's epoch, where its readings are; ticks a person wrote are the interval they asked for.
+        interval = (startBeyond || endBeyond) && clock is { } described
+            ? TimeRange.Around(start, end, described.CaptureEpochNativeTicks)
+            : TimeRange.TryCreate(start, end, out TimeRange asked) ? asked : null;
+        if (interval is null)
+        {
+            problem = $"--interval's end is more than {ConsoleUi.Count(long.MaxValue)} native ticks after its start, and no "
+                + $"interval is that long; '{value}' needs narrowing.";
+            return false;
+        }
+
         return true;
     }
 
-    private static bool TryParseBound(string text, SourceClockDescriptor? clock, bool end, out long nativeTicks, out string? problem)
+    private static bool TryParseBound(
+        string text,
+        SourceClockDescriptor? clock,
+        bool end,
+        out long nativeTicks,
+        out bool beyond,
+        out string? problem)
     {
         nativeTicks = 0;
+        beyond = false;
         problem = null;
         string trimmed = text.Trim();
         if (long.TryParse(trimmed, NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture, out nativeTicks))
@@ -1775,6 +1793,7 @@ internal static class MetricCommand
                 if (after == end)
                 {
                     nativeTicks = after ? long.MaxValue : long.MinValue;
+                    beyond = true;
                     return true;
                 }
 

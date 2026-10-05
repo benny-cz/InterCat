@@ -415,12 +415,11 @@ internal static class SessionOverviewIndex
 
         long start = reader.I64();
         long end = reader.I64();
-        if (end <= start)
+        if (!TimeRange.TryCreate(start, end, out TimeRange extent))
         {
-            throw reader.Invalid("its extent is empty.");
+            throw reader.Invalid("its extent is empty, or longer than a tick count holds.");
         }
 
-        var extent = new TimeRange(start, end);
         // How many columns the extent is divided into is a width, not a count of the fields that follow, so it bounds
         // nothing about the bytes left: a few records over a long extent fill few of many columns (overview-index-v1 §3).
         var main = new TimelineColumns(extent, SessionOverviewProjector.MaximumTimelineBuckets, tallyMechanisms: true);

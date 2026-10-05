@@ -1046,7 +1046,9 @@
         "I22: two packages of one session share no pseudonym"
       ],
       "I3": [
+        "I3: a fast clock's column wider than a tick count of its readings still says its coverage",
         "I3: a session-time interval maps to exactly the native readings inside it",
+        "I3: a time range's span is a tick count, and a wider interval is held around an instant",
         "I3: an interval scopes every metric half-open, and a rate divides by the whole of it",
         "I3: bucket boundaries are half-open and contiguous",
         "I3: histogram buckets are half-open, contiguous and contain their samples",
@@ -1597,6 +1599,7 @@
         "R3: a rate with no interval is unavailable rather than divided by the observed span",
         "R3: a record before the epoch or after the stop widens the recording to hold it, and one with no session time widens nothing",
         "R3: a record that declares no extended item is distinguished from an unreadable one",
+        "R3: a recording whose readings are further apart than a tick count holds is held centred on its epoch",
         "R3: a reset or impossible total-machine clock is unmeasured",
         "R3: a session whose capture recorded no stop has no recording, and its whole-session rate stays unavailable",
         "R3: a session's recording runs from its capture's epoch to the stop its clock calibration records, and a whole-session rate divides by it",

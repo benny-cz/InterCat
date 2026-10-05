@@ -22,7 +22,9 @@ public sealed record WorkspaceView
 
     /// <summary>The interval shown; null when this revision removes the view.</summary>
     [JsonIgnore]
-    public TimeRange? Interval => StartTicks is { } start && EndTicks is { } end && end > start ? new TimeRange(start, end) : null;
+    public TimeRange? Interval => StartTicks is { } start && EndTicks is { } end && TimeRange.TryCreate(start, end, out TimeRange interval)
+        ? interval
+        : null;
 
     /// <summary>The time reference whose clock the interval is in; null when this revision removes the view.</summary>
     public Guid? Reference { get; init; }
@@ -124,7 +126,7 @@ public static partial class InvestigationWorkspace
         return workspace.Views.FirstOrDefault(view => string.IsNullOrWhiteSpace(view.Name) || view.Name.Length > MostViewNameCharacters
             || view.Name != view.Name.Trim()
             || (view.StartTicks is null) != (view.EndTicks is null) || (view.StartTicks is null) != (view.Reference is null)
-            || view.StartTicks is { } start && view.EndTicks is { } end && end <= start
+            || view.StartTicks is { } start && view.EndTicks is { } end && !TimeRange.TryCreate(start, end, out _)
             || view.Reference is { } reference && !members.Contains(reference)) is { } wrong
             ? $"view revision {wrong.Revision} is not named, shows no interval, or is in the clock of no member"
             : null;

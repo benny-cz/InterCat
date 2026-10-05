@@ -292,7 +292,7 @@ A saved view is a named interval of the investigation's time, to show on the mer
 |---|---|
 | `revision` | A positive number, unique among views and increasing in the order saved |
 | `name` | The view's name, at most 100 characters, trimmed; one name, in any case, is one view |
-| `startTicks`, `endTicks` | The interval, in 100 ns ticks of the time reference's clock, its end after its start; null when the revision removes the view |
+| `startTicks`, `endTicks` | The interval, in 100 ns ticks of the time reference's clock, its end after its start by at most 2^63 - 1 ticks; null when the revision removes the view |
 | `reference` | The time reference the interval is in; null when the revision removes the view |
 | `recordedUtc` | When it was saved |
 

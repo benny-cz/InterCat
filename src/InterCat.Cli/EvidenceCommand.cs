@@ -35,7 +35,8 @@ internal static class EvidenceCommand
             (!int.TryParse(size, NumberStyles.None, CultureInfo.InvariantCulture, out pageSize)
                 || pageSize is < 1 or > SessionEvidenceQuery.MaximumPageSize);
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
-        bool invalidInterval = !TryParseInterval(intervalText, out TimeRange? interval);
+        TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
+        bool invalidInterval = intervalText is not null && interval is null;
         bool invalidOwner = ownerTexts.Any(text => !Guid.TryParse(text, out Guid ownerId) || ownerId == Guid.Empty);
         if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner)
         {
@@ -43,7 +44,7 @@ internal static class EvidenceCommand
                 : hasUnknown ? $"Unknown or incomplete option: {unknown}"
                 : invalidSize ? "--page-size must be an integer from 1 to 200."
                 : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
-                : "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
+                : tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
             PrintHelp();
             return InterCatExitCode.InvalidInvocation;
         }
@@ -139,18 +140,5 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");
-    }
-
-    private static bool TryParseInterval(string? raw, out TimeRange? interval)
-    {
-        interval = null;
-        if (raw is null) return true;
-        string[] parts = raw.Split(':');
-        if (parts.Length != 2
-            || !long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long start)
-            || !long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long end)
-            || end <= start) return false;
-        interval = new TimeRange(start, end);
-        return true;
     }
 }

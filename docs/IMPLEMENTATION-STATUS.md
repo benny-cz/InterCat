@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 296 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 297 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 297 — an interval's length is a tick count (I3, `metrics-v1` §5):**
+  - `icat timeline` and `icat metric --metric rate` failed with an overflow over an interval whose end is more than
+    2^63 - 1 ticks after its start, and `icat export` described one in the wrong unit. A time range now refuses such
+    bounds where it is made; the four commands that read `--interval` say it is too long, and a saved view or a
+    persisted overview extent that wide is refused in words.
+  - A clock interval converted from a presentation interval can still reach further: past the clock's range, or on a
+    3 GHz counter. It is held as the widest range centred on the capture's epoch, which holds every reading a session
+    admits.
 
 - **Revision 296 — an interval past the clock's range answers (`metrics-v1` §5):**
   - An interval ending beyond every instant the clock can read failed every ranking and the interval count with an
@@ -685,6 +694,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 297 was built and tested in the same Linux container: Debug and Release each ran **1,509 tests**, passing
+  **1,412 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of fourteen mutations: a range taking any span or `TryCreate` ignoring it; the held part not centred, reaching
+  past its end or not given; each of the ranking, bucket, capture-column and recording conversions constructing its
+  range (thrown) or declining a wide one (holding nothing, or its coverage unknown); and the overview and saved-view
+  checks left out. No test covers the command line, so it was run against a session: `timeline`, `evidence`, `export`
+  and `metric` refuse `-9223372036854775808:9223372036854775807`, `-9223372036854775808:0` and
+  `-1:9223372036854775807`, saying the interval is longer than any, where `timeline` and `metric --metric rate` had
+  failed with an overflow. `metric` over `-1000000000000000s:1000000000000000s` answers its 64 B over the range centred
+  on the epoch, and an export or `timeline --bytes` over `-100000000000000000:100000000000000000` answers in full.
 - Revision 296 was built and tested in the same Linux container: Debug and Release each ran **1,506 tests**, passing
   **1,409 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test failed
   with the bound's overflow thrown, as every ranking and the interval count had thrown it, and with an interval past

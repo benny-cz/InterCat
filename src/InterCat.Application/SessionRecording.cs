@@ -58,7 +58,7 @@ public static class SessionRecording
             ? Math.Min(clock.CaptureEpochNativeTicks, NativeAt(clock, checked((before.StartTicks * 100) - 99)))
             : clock.CaptureEpochNativeTicks;
         long end = records is { } after ? Math.Max(stop.Native, NativeAt(clock, checked(after.EndTicks * 100))) : stop.Native;
-        return new TimeRange(start, end);
+        return TimeRange.Around(start, end, clock.CaptureEpochNativeTicks);
     }
 
     /// <summary>

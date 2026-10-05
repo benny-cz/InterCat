@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Text.Json;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
@@ -294,6 +295,17 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Contains("columns this build does not draw", Assert.Throws<InvalidDataException>(
             () => SessionOverviewIndex.Read(otherBounds, manifest.SessionId)).Message, StringComparison.Ordinal);
         _ = Assert.Throws<InvalidDataException>(() => SessionOverviewIndex.Read((byte[])[.. bytes, 0], manifest.SessionId));
+
+        // An extent wider than a tick count is refused in those words, rather than measured into an overflow.
+        byte[] extent = new byte[16];
+        BinaryPrimitives.WriteInt64LittleEndian(extent, counts.Extent!.Value.StartTicks);
+        BinaryPrimitives.WriteInt64LittleEndian(extent.AsSpan(8), counts.Extent.Value.EndTicks);
+        int at = bytes.AsSpan().IndexOf(extent);
+        byte[] tooWide = [.. bytes];
+        BinaryPrimitives.WriteInt64LittleEndian(tooWide.AsSpan(at), long.MinValue);
+        BinaryPrimitives.WriteInt64LittleEndian(tooWide.AsSpan(at + 8), long.MaxValue);
+        Assert.Contains("longer than a tick count holds", Assert.Throws<InvalidDataException>(
+            () => SessionOverviewIndex.Read(tooWide, manifest.SessionId)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows")]

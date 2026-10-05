@@ -479,6 +479,17 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.False(InvestigationWorkspace.ViewIsCurrent(read, stale));
         Assert.Equal(4, read.Views.Count);
 
+        // A view wider than a tick count shows no interval, and its file is refused whole.
+        string valid = File.ReadAllText(workspace);
+        string tooWide = valid
+            .Replace("\"startTicks\": 12000000", "\"startTicks\": -9223372036854775808", StringComparison.Ordinal)
+            .Replace("\"endTicks\": 18000000", "\"endTicks\": 9223372036854775807", StringComparison.Ordinal);
+        Assert.NotEqual(valid, tooWide);
+        File.WriteAllText(workspace, tooWide);
+        Assert.Contains("shows no interval", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+            StringComparison.Ordinal);
+        File.WriteAllText(workspace, valid);
+
         // A view is named; none is removed that is not there; an earlier version's file holds none.
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SaveView(workspace, "  ", new TimeRange(0, 10), Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.RemoveView(workspace, "Handshake", Now));

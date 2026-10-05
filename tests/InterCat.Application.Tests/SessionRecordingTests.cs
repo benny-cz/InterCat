@@ -110,6 +110,34 @@ public sealed class SessionRecordingTests
         Assert.Equal(MetricUnavailableReason.NoInterval, rate.Unavailable);
     }
 
+    [Fact(DisplayName = "R3: a recording whose readings are further apart than a tick count holds is held centred on its epoch")]
+    public void ARecordingWiderThanATickCountIsHeldAroundItsEpoch()
+    {
+        // A 3 GHz clock, epoch at its reading 0, with records some 84 years either side, which no capture's plausibility
+        // window admits but a session can hold: the recording reaches further than a tick count, so it is the part
+        // centred on the epoch, and a whole-session rate over it says the two records beyond it are outside it.
+        var fast = new SourceClockDescriptor(TestSessions.Clock, HostId.Derive("fast-recording"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 3_000_000_000, 0, TimestampRounding.NearestEven, long.MaxValue);
+        const long far = 8_000_000_000_000_000_000;
+        using var session = new TemporarySession();
+        Publish(session.Store, [FastRecord(-far), FastRecord(3_000), FastRecord(far)], clock: fast,
+            calibration: Calibration(1_500, 7_500_000_000));
+
+        TimeRange native = SessionRecording.NativeInterval(session.Store, session.Store.Current!, fast)!.Value;
+        Assert.Equal(new TimeRange(-(1L << 62), (1L << 62) - 1), native);
+        MetricResult rate = SessionMetrics.Evaluate(session.Store, new MetricRequest
+        {
+            Basis = AnalysisBasis.SourceObservations,
+            Metric = Metric.Rate,
+            RateNumerator = Metric.Observations,
+            Interval = native,
+        });
+        Assert.Equal((1, long.MaxValue, 2L), (rate.Rate!.Numerator, rate.Rate.IntervalTicks, rate.ExcludedOutsideInterval));
+
+        // A 3 GHz reading is a third of a nanosecond.
+        static ObservationRowV1 FastRecord(long nativeTicks) => Record(nativeTicks) with { SessionRelativeTicks = nativeTicks / 3 };
+    }
+
     private static TimeRange? RecordingOf(ObservationRowV1[] rows, ClockCalibrationV1? calibration)
     {
         using var session = new TemporarySession();

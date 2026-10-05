@@ -499,6 +499,38 @@ public sealed class SessionTimelineTests
         Assert.All(after.Buckets, bucket => Assert.Equal(CoverageState.Covered, bucket.Coverage));
     }
 
+    [Fact(DisplayName = "I3: a fast clock's column wider than a tick count of its readings still says its coverage")]
+    public void AFastClocksWideColumnSaysItsCoverage()
+    {
+        // A 3 GHz clock reads 300 times a presentation tick, so a column of some 130 years spans more of its readings than
+        // a tick count holds. Its coverage is judged on the widest part a range holds, centred on the epoch as far as the
+        // column reaches: here a capture that says it recorded every reading its clock can make, and lost nothing.
+        var fast = new SourceClockDescriptor(TestSessions.Clock, HostId.Derive("fast-clock"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 3_000_000_000, 0, TimestampRounding.NearestEven, long.MaxValue);
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(6_000_000_000_000_000_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(ClientEnd, ServerEnd)
+                with { SessionRelativeTicks = 2_000_000_000_000_000_000 },
+        ], clock: fast, coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [Epoch(1, 0, 9_999, lost: 0) with { RecordedFromNativeTicks = long.MinValue, RecordedToNativeTicks = long.MaxValue }],
+        });
+
+        // A column holding a record says its mechanism's coverage there, and so does the mechanism's lane.
+        var holding = new TimeRange(-20_000_000_000_000_000, 25_000_000_000_000_000);
+        SessionTimelineDetail detail = SessionTimelineQuery.Detail(session.Store, holding, 1);
+        TimelineBucket column = Assert.Single(detail.Buckets);
+        Assert.Equal((holding, 1, CoverageState.Covered), (column.Interval, column.ObservationCount, column.Coverage));
+        Assert.Equal(CoverageState.Covered, Assert.Single(Assert.Single(detail.MechanismLanes).Buckets).Coverage);
+
+        // An empty one says the capture's own.
+        var quiet = new TimeRange(-30_000_000_000_000_000, 10_000_000_000_000_000);
+        TimelineBucket empty = Assert.Single(SessionTimelineQuery.Detail(session.Store, quiet, 1).Buckets);
+        Assert.Equal((0, CoverageState.Covered), (empty.ObservationCount, empty.Coverage));
+    }
+
     private static int ColumnAt(SessionMinimap minimap, long tick) =>
         Enumerable.Range(0, minimap.Counts.Count).Single(column => minimap.IntervalOf(column).Contains(tick));
 

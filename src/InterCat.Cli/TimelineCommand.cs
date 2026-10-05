@@ -43,7 +43,7 @@ internal static class TimelineCommand
         bool invalidColumns = columnsText is not null
             && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns)
                 || columns is < 1 or > SessionTimelineQuery.MaximumColumns);
-        TimeRange? interval = ParseInterval(intervalText);
+        TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
         string? scopeProblem = TryParseScope(mechanismText, processText, directionText, channelText, endText,
             out IntervalByteScope scope);
         if (directory is null || hasUnknown || invalidColumns || interval is null || scopeProblem is not null)
@@ -51,7 +51,7 @@ internal static class TimelineCommand
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat timeline <directory>."
                 : hasUnknown ? $"Unknown or incomplete option: {unknown}"
                 : invalidColumns ? $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."
-                : interval is null ? "--interval start:end is required, in 100-nanosecond session-relative ticks, with end > start."
+                : interval is null ? tooWide ?? "--interval start:end is required, in 100-nanosecond session-relative ticks, with end > start."
                 : scopeProblem!);
             PrintHelp();
             return InterCatExitCode.InvalidInvocation;
@@ -222,17 +222,6 @@ internal static class TimelineCommand
         measured > 0
             ? $"{ConsoleUi.Count(bytes)} B" + (unmeasured > 0 ? $" (+{ConsoleUi.Count(unmeasured)} unmeasured)" : string.Empty)
             : unmeasured > 0 ? $"{ConsoleUi.Count(unmeasured)} unmeasured" : "-";
-
-    private static TimeRange? ParseInterval(string? raw)
-    {
-        string[] parts = raw?.Split(':') ?? [];
-        return parts.Length == 2
-            && long.TryParse(parts[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out long start)
-            && long.TryParse(parts[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out long end)
-            && end > start
-                ? new TimeRange(start, end)
-                : null;
-    }
 
     private static void PrintHelp()
     {

@@ -88,7 +88,7 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
              count u32, (name str8, length i64, digest str8)*   ; covered observation segments, ascending by name
              rows i64, untimed i64 (0 <= untimed <= rows),
              hasExtent u8 (0, 1),
-             [extentStart i64, extentEnd i64 (> start),
+             [extentStart i64, extentEnd i64 (> start, by at most 2^63 - 1),
               mainColumns u32,
               count u32, (column u32, mechanism u16, records i32 (> 0))*        ; ascending by (column, mechanism)
               minimapStart i64, minimapEnd i64, minimapColumns u32,
@@ -129,6 +129,7 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
   and a width bounds nothing about the bytes that follow (revision 246 stopped refusing such an overview);
 - a column index is outside its columns, a mechanism is not one §23 defines, or bytes remain;
 - the main column count, or the minimap span and column count, are not what this build derives from the extent;
+- the extent is empty or wider than a tick count holds (its end more than 2^63 - 1 ticks after its start);
 - the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed;
 - an RPC link names an empty identity or the same instance twice, puts its pair or its links out of order, has a
   strength a link cannot have, holds no record, or there are more than 1,000,000 of them;

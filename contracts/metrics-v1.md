@@ -200,8 +200,11 @@ session-relative time converts each bound to the **first native reading at or af
 conversion that produced every stored session instant, so that the native interval holds precisely the
 readings whose session instant lies inside the requested one. A bound beyond every instant the clock can read lies
 after every reading, or before every one (plan revision 296), so an interval reaching past the clock's range holds
-the readings within it rather than failing to convert. An interval in native ticks names one clock: a generation
-whose segments are on more than one clock refuses an interval-scoped request.
+the readings within it rather than failing to convert. An interval's end is at most 2^63 - 1 ticks after its start
+(plan revision 297): a wider one written in ticks is refused, and one whose converted bounds lie further apart than
+that is held as the widest interval centred on the capture's epoch, which holds every reading a session admits, its
+clock's plausible distance from the epoch being days. An interval in native ticks names one clock: a generation whose
+segments are on more than one clock refuses an interval-scoped request.
 
 ## 6. Grouping
 

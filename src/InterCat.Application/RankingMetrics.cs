@@ -142,13 +142,15 @@ internal static class RankingScope
     /// A presentation interval as native readings, each bound's first reading at or after it, as the command line converts
     /// a time (metrics-v1 §5); null when no reading can fall between the two. A bound beyond every instant the clock can
     /// read lies after every reading, or before every one, so an interval reaching past the clock's range holds the
-    /// readings within it: converting such a bound once overflowed and failed the query.
+    /// readings within it: converting such a bound once overflowed and failed the query. Bounds further apart than a tick
+    /// count holds are held centred on the capture's epoch: every reading a session admits lies within its clock's
+    /// plausible distance of it, days, which the part held reaches far beyond.
     /// </summary>
     public static TimeRange? NativeInterval(SourceClockDescriptor clock, TimeRange presentation)
     {
         long first = FirstNativeAtOrAfter(clock, presentation.StartTicks);
         long end = FirstNativeAtOrAfter(clock, presentation.EndTicks);
-        return end > first ? new TimeRange(first, end) : null;
+        return TimeRange.Around(first, end, clock.CaptureEpochNativeTicks);
     }
 
     /// <summary>The first native reading at or after a presentation tick, or the clock's last or first one beyond its range.</summary>

@@ -37,6 +37,15 @@ public sealed class SessionByteRankingTests
         Assert.Equal(2, SessionIntervalQuery.Count(session.Store, past).ObservedRows);
         _ = SessionPeerRanking.Measure(session.Store, past);
         _ = SessionCallRanking.Measure(session.Store, past);
+
+        // Past the clock's range on both sides, the bounds' readings are further apart than a tick count holds: the
+        // interval is held centred on the capture's epoch, where its readings are, rather than failing every ranking.
+        var around = new TimeRange(-past.EndTicks, past.EndTicks);
+        SessionByteMeasures held = SessionByteRanking.Measure(session.Store, around);
+        Assert.Equal(whole.ByProcess.OrderBy(entry => entry.Key.ToString()), held.ByProcess.OrderBy(entry => entry.Key.ToString()));
+        Assert.Equal(2, SessionIntervalQuery.Count(session.Store, around).ObservedRows);
+        _ = SessionPeerRanking.Measure(session.Store, around);
+        _ = SessionCallRanking.Measure(session.Store, around);
     }
 
     [Fact(DisplayName = "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval")]
