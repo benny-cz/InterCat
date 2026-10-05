@@ -70,6 +70,35 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             InvestigationWorkspace.Resolve(moved, InvestigationWorkspace.Read(moved)).Select(resolution => resolution.State));
     }
 
+    [Fact(DisplayName = "§26.3: a workspace file that cannot be read says where to look - a line, the fields it lacks or holds - never the parser's words")]
+    public void AnUnreadableWorkspaceSaysWhereToLook()
+    {
+        string workspace = Path.Combine(root, "case" + InvestigationWorkspace.Extension);
+        string Refusal(string text)
+        {
+            File.WriteAllText(workspace, text);
+            string message = Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message;
+            Assert.StartsWith(workspace + " is not a readable workspace: ", message, StringComparison.Ordinal);
+            string reason = message[(workspace.Length + " is not a readable workspace: ".Length)..];
+            Assert.DoesNotContain("InterCat.", reason, StringComparison.Ordinal);
+            Assert.DoesNotContain("BytePositionInLine", reason, StringComparison.Ordinal);
+            return reason;
+        }
+
+        // Text that is not JSON, or JSON cut off, by the line and character where it stops being JSON.
+        Assert.Equal("it is not valid JSON at line 1, character 1.", Refusal("hello"));
+        Assert.Equal("it is not valid JSON at line 3, character 1.", Refusal("{\n  \"contract\": \"workspace-v12\",\n"));
+
+        // JSON that is not a workspace, by the fields it lacks or holds, or the value that does not fit.
+        Assert.Equal("it holds no object of fields.", Refusal("[1, 2]"));
+        Assert.Equal("it lacks the fields contract, workspaceId, createdUtc, updatedUtc, members, hostAliases.", Refusal("{}"));
+        string valid = """{"contract":"workspace-v12","workspaceId":"00000000-0000-0000-0000-000000000001","createdUtc":"2026-01-01T00:00:00Z","updatedUtc":"2026-01-01T00:00:00Z","members":[],"hostAliases":[]""";
+        Assert.Equal("it holds a field this version does not know: colour.", Refusal(valid + ",\"colour\":\"red\"}"));
+        Assert.Equal("its value at $.members is not of the kind that field holds.", Refusal(valid.Replace("\"members\":[]", "\"members\":5", StringComparison.Ordinal) + "}"));
+        File.WriteAllText(workspace, valid + "}");
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Members);
+    }
+
     [Fact(DisplayName = "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same")]
     public void ACaptureIsOneMember()
     {

@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using InterCat.Application;
 using InterCat.Desktop.Theme;
 
 namespace InterCat.Desktop.Settings;
@@ -167,7 +168,7 @@ public sealed class ApplicationSettingsStore
         }
         catch (JsonException exception)
         {
-            return (null, $"The settings file could not be read as JSON ({exception.Message}), so the defaults are used.");
+            return (null, $"The settings file could not be read: {JsonProblems.Syntax(exception)}, so the defaults are used.");
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
         {

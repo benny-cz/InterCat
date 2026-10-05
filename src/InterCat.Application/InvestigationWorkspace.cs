@@ -470,13 +470,31 @@ public static partial class InvestigationWorkspace
 
         string text = File.ReadAllText(full);
         InvestigationWorkspaceFile? workspace;
+
+        // A file a person may edit says where it went wrong: the place its text stops being JSON, or the fields it lacks or
+        // holds that a workspace does not, never the parser's own words (§26.3).
+        JsonDocument document;
         try
         {
-            workspace = JsonSerializer.Deserialize<InvestigationWorkspaceFile>(text, Json);
+            document = JsonDocument.Parse(text);
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException($"{full} is not a readable workspace: {exception.Message}", exception);
+            throw new InvalidDataException($"{full} is not a readable workspace: {JsonProblems.Syntax(exception)}.", exception);
+        }
+
+        using (document)
+        {
+            try
+            {
+                workspace = document.RootElement.Deserialize<InvestigationWorkspaceFile>(Json);
+            }
+            catch (JsonException exception)
+            {
+                throw new InvalidDataException(
+                    $"{full} is not a readable workspace: {JsonProblems.Fields<InvestigationWorkspaceFile>(document.RootElement, exception, Json)}.",
+                    exception);
+            }
         }
 
         string? problem = workspace is null ? "it holds no workspace" : Problem(workspace);

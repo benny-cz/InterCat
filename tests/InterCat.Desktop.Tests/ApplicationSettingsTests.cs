@@ -83,7 +83,9 @@ public sealed class ApplicationSettingsTests : IDisposable
 
         ApplicationSettings loaded = store.Load();
         Assert.Null(loaded.Theme);
-        Assert.Contains("could not be read as JSON", Assert.Single(loaded.Notices), StringComparison.Ordinal);
+        // It says where the hand edit stopped being JSON, never the parser's own words.
+        string notice = Assert.Single(loaded.Notices);
+        Assert.Equal("The settings file could not be read: it is not valid JSON at line 1, character 24, so the defaults are used.", notice);
 
         Assert.Equal(ThemeMode.Dark, store.SaveTheme(ThemeMode.Dark).Theme);
         string aside = Assert.Single(Directory.GetFiles(directory, "settings.json.unreadable-*"));
