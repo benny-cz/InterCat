@@ -48,6 +48,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private string? openingFromInvestigation;
     private (string Workspace, Guid Session)? layoutHome;
     private IReadOnlyDictionary<string, GraphPoint>? keptPins;
+
+    /// <summary>The ranking last kept in the shown session's investigation, or null when none was kept or read yet.</summary>
+    private (RankingMetric RankBy, bool PerSecond)? keptRanking;
     private Task pinsWritten = Task.CompletedTask;
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -892,7 +895,7 @@ public sealed partial class MainWindow : Window, IDisposable
         return window;
     }
 
-    /// <summary>Opens a member from its investigation, which then keeps the pins placed on its graph (§26.3).</summary>
+    /// <summary>Opens a member from its investigation, which then keeps its pins and its ranking (§26.3).</summary>
     private async Task<bool> FromInvestigationAsync(string investigation, Func<Task<bool>> open)
     {
         openingFromInvestigation = investigation;
@@ -907,18 +910,25 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// The pins member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>, none when it keeps none; null
-    /// when the file cannot be read or does not name the session, which then keeps its pins only while it is open.
+    /// What member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>: its pins, none when it keeps none,
+    /// and its ranking, records counted whole when it keeps none; null when the file cannot be read or does not name the
+    /// session, which then keeps them only while it is open.
     /// </summary>
-    private static Dictionary<string, GraphPoint>? PinsKeptIn(string investigation, Guid sessionId)
+    private static (Dictionary<string, GraphPoint> Pins, RankingMetric RankBy, bool PerSecond)? LayoutKeptIn(
+        string investigation,
+        Guid sessionId)
     {
         try
         {
             InvestigationWorkspaceFile file = InvestigationWorkspace.Read(investigation);
-            return file.Members.Any(member => member.SessionId == sessionId)
-                ? (InvestigationWorkspace.LayoutOf(file, sessionId)?.Pins ?? [])
-                    .ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal)
-                : null;
+            if (file.Members.All(member => member.SessionId != sessionId))
+            {
+                return null;
+            }
+
+            WorkspaceLayout? layout = InvestigationWorkspace.LayoutOf(file, sessionId);
+            return ((layout?.Pins ?? []).ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal),
+                layout?.RankBy ?? RankingMetric.Records, layout?.PerSecond ?? false);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -926,20 +936,34 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
+    /// <summary>What an investigation put back of a session's pins and ranking, ending its notice: ", which put back 2 pins."</summary>
+    private static string PutBack(int pins, RankingMetric rankBy, bool perSecond)
+    {
+        string? pinned = pins == 0 ? null : string.Create(CultureInfo.CurrentCulture, $"{pins:N0} {(pins == 1 ? "pin" : "pins")}");
+        string? ranked = rankBy == RankingMetric.Records && !perSecond
+            ? null
+            : $"its ranking by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}";
+        string[] restored = [.. new[] { pinned, ranked }.OfType<string>()];
+        return restored.Length == 0 ? "." : $", which put back {string.Join(" and ", restored)}.";
+    }
+
     /// <summary>
-    /// Keeps the shown session's pins in the investigation it was opened from, when they changed: one write after another,
-    /// off the UI thread, and a write that fails is said beside the session's status rather than lost silently.
+    /// Keeps the shown session's pins and ranking in the investigation it was opened from, when they changed: one write after
+    /// another, off the UI thread, and a write that fails is said beside the session's status rather than lost silently.
     /// </summary>
-    private void KeepPins((string Workspace, Guid Session) home)
+    private void KeepLayout((string Workspace, Guid Session) home)
     {
         IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
+        (RankingMetric RankBy, bool PerSecond) ranking = (workspace.RankBy, workspace.PerSecond);
         if (keptPins is { } kept && kept.Count == pins.Count
-            && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value))
+            && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value)
+            && keptRanking == ranking)
         {
             return;
         }
 
         keptPins = pins;
+        keptRanking = ranking;
         WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
         Task previous = pinsWritten;
         pinsWritten = Task.Run(async () =>
@@ -954,7 +978,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 // The earlier write said why it failed; this one tries afresh.
             }
 
-            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow);
+            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, ranking.RankBy, ranking.PerSecond);
         });
         _ = SayIfPinsNotKeptAsync(pinsWritten);
     }
@@ -971,12 +995,13 @@ public sealed partial class MainWindow : Window, IDisposable
             if (!closed)
             {
                 keptPins = null;
-                CaptureDetail.Text += " The pins could not be kept in the investigation: " + exception.Message;
+                keptRanking = null;
+                CaptureDetail.Text += " The pins and ranking could not be kept in the investigation: " + exception.Message;
             }
         }
     }
 
-    /// <summary>Completes once every change to the shown session's pins is written to its investigation.</summary>
+    /// <summary>Completes once every change to the shown session's pins and ranking is written to its investigation.</summary>
     internal Task PinsWritten => pinsWritten;
 
     /// <summary>
@@ -2102,17 +2127,20 @@ public sealed partial class MainWindow : Window, IDisposable
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
         IReadOnlyDictionary<string, GraphPoint>? pins = savedNavigation is null ? null : workspace.GraphPins;
         string? pinsNotice = null;
+        (RankingMetric RankBy, bool PerSecond)? restoredRanking = null;
         if (savedNavigation is null)
         {
-            // A session opened from an investigation it is a member of keeps its pins there, and gets back those it kept
-            // (§26.3); any other session keeps its pins only while it is open.
+            // A session opened from an investigation it is a member of keeps its pins and its ranking there, and gets back
+            // those it kept (§26.3); any other session keeps them only while it is open.
             layoutHome = null;
-            if (openingFromInvestigation is { } investigation && PinsKeptIn(investigation, overview.SessionId) is { } kept)
+            keptRanking = null;
+            if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
             {
                 layoutHome = (investigation, overview.SessionId);
-                pins = kept;
-                pinsNotice = $"Nodes pinned on its graph are kept in the investigation {Path.GetFileName(investigation)}"
-                    + (kept.Count == 0 ? "." : string.Create(CultureInfo.CurrentCulture, $", which put back {kept.Count:N0}."));
+                pins = kept.Pins;
+                restoredRanking = keptRanking = (kept.RankBy, kept.PerSecond);
+                pinsNotice = $"Its pins and ranking are kept in the investigation {Path.GetFileName(investigation)}"
+                    + PutBack(kept.Pins.Count, kept.RankBy, kept.PerSecond);
             }
 
             keptPins = pins;
@@ -2120,6 +2148,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
         var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins);
+        if (restoredRanking is { } ranking)
+        {
+            replacement.RankBy = ranking.RankBy;
+            replacement.PerSecond = ranking.PerSecond;
+        }
+
         if (pinsNotice is not null)
         {
             CaptureDetail.Text += " " + pinsNotice;
@@ -2326,9 +2360,11 @@ public sealed partial class MainWindow : Window, IDisposable
             KeepRailKeyboard();
         }
 
-        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) && layoutHome is { } home)
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) or nameof(WorkspaceViewModel.RankBy)
+                or nameof(WorkspaceViewModel.PerSecond)
+            && layoutHome is { } home)
         {
-            KeepPins(home);
+            KeepLayout(home);
         }
         UpdateEvidenceAction();
         GraphSurface.InvalidateVisual();

@@ -4,7 +4,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>How an alignment revision was made (`contracts/workspace-v11.md` §5).</summary>
+/// <summary>How an alignment revision was made (`contracts/workspace-v12.md` §5).</summary>
 public enum WorkspaceAlignmentMode
 {
     /// <summary>A person stated that an instant of the member's clock is an instant of the time reference's, within a bound.</summary>
@@ -674,7 +674,7 @@ public static partial class InvestigationWorkspace
     private static int NextRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Alignments.Count == 0 ? 1 : checked(workspace.Alignments.Max(alignment => alignment.Revision) + 1);
 
-    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v11.md` §5).</summary>
+    /// <summary>What makes a file's time contradict itself, or null (`contracts/workspace-v12.md` §5).</summary>
     private static string? TimeProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Contract == FirstContract && (workspace.TimeReference is not null || workspace.Alignments.Count > 0))

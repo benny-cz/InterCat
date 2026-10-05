@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 300 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 301 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 301 — an investigation keeps each session's ranking (§26.3, `workspace-v12`):**
+  - A session opened from an investigation now gets back what its rows were ranked by, and whether per second, as
+    it gets back its pins; a layout that keeps only a ranking is kept, and one that pins nothing and ranks by records
+    is removed. `icat workspace show` states each layout's pins and ranking (`workspace-resolution-v14`).
 
 - **Revision 300 — an option keeps its value wherever it is written (§20.4):**
   - 22 commands read their directory before their options, so `icat metric --metric observations <session>` looked
@@ -633,8 +638,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Qualify the **Other processes** remainder on real data when a naturally eligible capture exists. It is a budget
      fallback, covered synthetically; the dense capture never needs it.
    - Pins that survive reopening: done in revision 280 for a session opened from an investigation, which keeps them
-     (`workspace-v11`); a session opened on its own keeps them while it is open. §26.3's other workspace settings -
-     lane grouping, sort, view filters - are not kept yet.
+     (`workspace-v11`); a session opened on its own keeps them while it is open. Sort, the ranking and whether it
+     reads per second: done in revision 301, kept beside the pins (`workspace-v12`). §26.3's lane grouping and view
+     filters have no control in the window yet, so nothing of them is there to keep.
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
@@ -713,6 +719,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 301 was built and tested in the same Linux container: Debug and Release each ran **1,516 tests**, passing
+  **1,419 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  nine of eleven mutations: the ranking dropped from a layout, per second keeping nothing, a version-11 file allowed a
+  ranking, `Records` allowed by name, the ranking not put back on opening, a ranking change skipped when the pins are
+  unchanged, the notice or `icat workspace show` saying nothing of the ranking, and `show`'s contract left at v13.
+  The two left are equivalent: removing either `RankBy` or `PerSecond` from what the window watches changes nothing,
+  since every ranking change raises both.
 - Revision 300 was built and tested in the same Linux container: Debug and Release each ran **1,515 tests**, passing
   **1,418 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of eight mutations: the reader's guard against an option read after an operand removed, a negative number
@@ -1080,4 +1093,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v11.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v12.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

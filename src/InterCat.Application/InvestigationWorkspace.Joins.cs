@@ -2,7 +2,7 @@ using InterCat.Analysis;
 
 namespace InterCat.Application;
 
-/// <summary>What a person decided of a candidate join (`contracts/workspace-v11.md` §6, ADR-041).</summary>
+/// <summary>What a person decided of a candidate join (`contracts/workspace-v12.md` §6, ADR-041).</summary>
 public enum WorkspaceJoinDecision
 {
     /// <summary>A person accepted the candidate as one connection: a manual join, never evidence.</summary>
@@ -152,7 +152,7 @@ public static partial class InvestigationWorkspace
             ? (a.SessionId, a.Key, b.SessionId, b.Key)
             : (b.SessionId, b.Key, a.SessionId, a.Key);
 
-    /// <summary>What makes a file's joins contradict themselves, or null (`contracts/workspace-v11.md` §6).</summary>
+    /// <summary>What makes a file's joins contradict themselves, or null (`contracts/workspace-v12.md` §6).</summary>
     private static string? JoinProblem(InvestigationWorkspaceFile workspace)
     {
         // Join decisions arrived with the fourth version (revision 260).

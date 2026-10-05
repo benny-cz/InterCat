@@ -510,19 +510,7 @@ public sealed partial class WorkspaceViewModel
         return (value, measured, unmeasured, failed);
     }
 
-    private static string Phrase(RankingMetric metric) => metric switch
-    {
-        RankingMetric.BytesSent => "bytes sent",
-        RankingMetric.BytesReceived => "bytes received",
-        RankingMetric.RpcCallsMade => "RPC calls made",
-        RankingMetric.RpcCallsServed => "RPC calls served",
-        RankingMetric.EndpointBytes => "bytes sent and received",
-        RankingMetric.RpcErrors => "RPC errors",
-        RankingMetric.RpcCallTime => "RPC call times",
-        RankingMetric.RpcServeTime => "RPC serve times",
-        RankingMetric.ActivePeers => "peers",
-        _ => "records",
-    };
+    private static string Phrase(RankingMetric metric) => RankingMetrics.Phrase(metric);
 
     /// <summary>
     /// How many processes have a peer among the rows shown: every process with one at the machine rung, and at a group's

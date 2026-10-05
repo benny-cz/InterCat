@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace InterCat.Application;
 
 /// <summary>A node a person placed on a session's graph: its stable graph key, and where they put it (§19.4).</summary>
@@ -14,8 +16,9 @@ public sealed record WorkspacePin
 }
 
 /// <summary>
-/// How a person laid out a member session's graph (§26.3's workspace scope): the nodes they pinned, where. It is a
-/// preference, not a finding, so a member has one, replaced as it changes rather than kept as revisions.
+/// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where, and
+/// what its rows are ranked by. It is a preference, not a finding, so a member has one, replaced as it changes rather than
+/// kept as revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -24,7 +27,17 @@ public sealed record WorkspaceLayout
     /// <summary>The pinned nodes, by key.</summary>
     public required IReadOnlyList<WorkspacePin> Pins { get; init; }
 
+    /// <summary>What the session's rows are ranked by (§6.1) when not by their own records; null ranks by records.</summary>
+    public RankingMetric? RankBy { get; init; }
+
+    /// <summary>Whether a count or sum the rows are ranked by reads per second of the ranked interval.</summary>
+    public bool PerSecond { get; init; }
+
     public required DateTimeOffset UpdatedUtc { get; init; }
+
+    /// <summary>Whether it keeps anything: a pin, or a ranking other than records counted whole.</summary>
+    [JsonIgnore]
+    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond;
 }
 
 public static partial class InvestigationWorkspace
@@ -36,12 +49,24 @@ public static partial class InvestigationWorkspace
     public const int MostPinKeyCharacters = 256;
 
     /// <summary>
-    /// Keeps <paramref name="pins"/> as how member <paramref name="sessionId"/>'s graph is laid out, replacing its earlier
-    /// layout; no pin removes it. Null when it is removed.
+    /// Keeps <paramref name="pins"/>, and the ranking <paramref name="rankBy"/> read per second when
+    /// <paramref name="perSecond"/> says so, as how member <paramref name="sessionId"/>'s view is laid out, replacing its
+    /// earlier layout; one that pins nothing and ranks by records counted whole removes it. Null when it is removed.
     /// </summary>
-    public static WorkspaceLayout? SetLayout(string workspacePath, Guid sessionId, IReadOnlyList<WorkspacePin> pins, DateTimeOffset now)
+    public static WorkspaceLayout? SetLayout(
+        string workspacePath,
+        Guid sessionId,
+        IReadOnlyList<WorkspacePin> pins,
+        DateTimeOffset now,
+        RankingMetric rankBy = RankingMetric.Records,
+        bool perSecond = false)
     {
         ArgumentNullException.ThrowIfNull(pins);
+        if (!Enum.IsDefined(rankBy))
+        {
+            throw new InvalidOperationException("The layout is refused: it ranks by no metric §6.1 offers.");
+        }
+
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string file) = Load(full);
         if (workspace.Members.All(member => member.SessionId != sessionId))
@@ -54,9 +79,15 @@ public static partial class InvestigationWorkspace
             throw new InvalidOperationException($"The layout is refused: {problem}.");
         }
 
-        WorkspaceLayout? layout = pins.Count == 0
-            ? null
-            : new() { SessionId = sessionId, Pins = [.. pins.OrderBy(pin => pin.Key, StringComparer.Ordinal)], UpdatedUtc = now };
+        var kept = new WorkspaceLayout
+        {
+            SessionId = sessionId,
+            Pins = [.. pins.OrderBy(pin => pin.Key, StringComparer.Ordinal)],
+            RankBy = rankBy == RankingMetric.Records ? null : rankBy,
+            PerSecond = perSecond,
+            UpdatedUtc = now,
+        };
+        WorkspaceLayout? layout = kept.KeepsAnything ? kept : null;
         Save(full, workspace with
         {
             Layouts = [.. workspace.Layouts.Where(kept => kept.SessionId != sessionId), .. layout is null ? [] : new[] { layout }],
@@ -65,7 +96,7 @@ public static partial class InvestigationWorkspace
         return layout;
     }
 
-    /// <summary>How member <paramref name="sessionId"/>'s graph is laid out, or null when no node of it is pinned here.</summary>
+    /// <summary>How member <paramref name="sessionId"/>'s view is laid out, or null when it keeps nothing here.</summary>
     public static WorkspaceLayout? LayoutOf(InvestigationWorkspaceFile workspace, Guid sessionId)
     {
         ArgumentNullException.ThrowIfNull(workspace);
@@ -80,7 +111,7 @@ public static partial class InvestigationWorkspace
         : pins.Any(pin => !new GraphPoint(pin.X, pin.Y).IsValid) ? "a node is pinned outside the graph"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v11.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v12.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -94,16 +125,27 @@ public static partial class InvestigationWorkspace
             return "it lists an empty layout";
         }
 
+        // A layout's ranking arrived with the twelfth version (revision 301).
+        if (VersionOf(workspace) < 12 && workspace.Layouts.Any(layout => layout.RankBy is not null || layout.PerSecond))
+        {
+            return $"a {workspace.Contract} file ranks no session's rows";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
             return $"session {twice.Key:N} has two layouts";
         }
 
-        return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || layout.Pins.Count == 0
+        // Records are what no ranking ranks by, so a layout names another metric or none.
+        return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || !layout.KeepsAnything
+            || layout.RankBy is { } rankBy && (rankBy == RankingMetric.Records || !Enum.IsDefined(rankBy))
             || PinsProblem(layout.Pins) is not null) is { } wrong
             ? $"the layout of session {wrong.SessionId:N} "
-                + (!members.Contains(wrong.SessionId) ? "is of no member" : wrong.Pins.Count == 0 ? "pins nothing" : "is refused: " + PinsProblem(wrong.Pins))
+                + (!members.Contains(wrong.SessionId) ? "is of no member"
+                    : !wrong.KeepsAnything ? "keeps nothing"
+                    : PinsProblem(wrong.Pins) is { } problem ? "is refused: " + problem
+                    : "ranks by no metric §6.1 offers, or by records by name")
             : null;
     }
 }

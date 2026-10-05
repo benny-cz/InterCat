@@ -1,4 +1,5 @@
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -197,6 +198,31 @@ public sealed class CommandLineTests : IDisposable
         {
             File.Delete(workspace);
             Directory.Delete(second, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins and its ranking")]
+    public async Task WorkspaceShowStatesEachLayout()
+    {
+        string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
+        try
+        {
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, session.Path)).Code);
+            InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }],
+                DateTimeOffset.UtcNow, RankingMetric.BytesSent, perSecond: true);
+
+            (InterCatExitCode shown, string text, string said) = await Run("workspace", "show", workspace);
+            Assert.True(shown == InterCatExitCode.Success, said);
+            Assert.Contains("1 node pinned on its graph, and its rows ranked by bytes sent per second, put back when it is opened "
+                + "from this investigation.", text, StringComparison.Ordinal);
+            string json = (await Run("workspace", "show", workspace, "--json")).Output;
+            Assert.Contains("\"contract\": \"workspace-resolution-v14\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(workspace);
         }
     }
 

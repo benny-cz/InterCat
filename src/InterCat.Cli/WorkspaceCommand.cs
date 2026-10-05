@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v11.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v12.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -44,7 +44,7 @@ internal sealed record WorkspaceDocument
     /// <summary>The snapshot vector the overlaps answer (I16): each capture read to place it, at its one generation.</summary>
     public required IReadOnlyList<SnapshotEntryDocument> OverlapsSnapshotVector { get; init; }
 
-    /// <summary>How a person laid out each member's graph: the nodes they pinned, where (§26.3).</summary>
+    /// <summary>How a person laid out each member's view: the nodes they pinned, where, and its ranking (§26.3).</summary>
     public required IReadOnlyList<WorkspaceLayout> Layouts { get; init; }
 
     public required IReadOnlyList<string> Caveats { get; init; }
@@ -95,7 +95,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v11.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v12.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -127,7 +127,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v11.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v12.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -216,7 +216,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v13";
+    public const string ResolutionContract = "workspace-resolution-v14";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -1037,9 +1037,13 @@ internal static partial class WorkspaceCommand
             ConsoleUi.Heading("Layouts");
             foreach (WorkspaceLayout layout in document.Layouts)
             {
-                ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
-                    $"Session {Short(layout.SessionId)}: {layout.Pins.Count:N0} {(layout.Pins.Count == 1 ? "node" : "nodes")} pinned on its graph, ")
-                    + "put back when it is opened from this investigation.");
+                string? pinned = layout.Pins.Count == 0 ? null : string.Create(CultureInfo.CurrentCulture,
+                    $"{layout.Pins.Count:N0} {(layout.Pins.Count == 1 ? "node" : "nodes")} pinned on its graph");
+                string? ranked = layout.RankBy is null && !layout.PerSecond ? null
+                    : $"its rows ranked by {RankingMetrics.Phrase(layout.RankBy ?? RankingMetric.Records)}{(layout.PerSecond ? " per second" : string.Empty)}";
+                ConsoleUi.Note($"Session {Short(layout.SessionId)}: "
+                    + string.Join(", and ", new[] { pinned, ranked }.OfType<string>())
+                    + ", put back when it is opened from this investigation.");
             }
         }
 

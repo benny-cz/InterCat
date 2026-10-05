@@ -105,6 +105,21 @@ public static class RankingMetrics
     /// interval divided by it (metrics-v1 §7). A median and a distinct count do not add over time, and have none.
     /// </summary>
     public static bool IsAdditive(RankingMetric metric) => !IsDuration(metric) && metric != RankingMetric.ActivePeers;
+
+    /// <summary>A ranking as a sentence names what it ranks by, such as "bytes sent" or "RPC call times".</summary>
+    public static string Phrase(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "bytes sent",
+        RankingMetric.BytesReceived => "bytes received",
+        RankingMetric.RpcCallsMade => "RPC calls made",
+        RankingMetric.RpcCallsServed => "RPC calls served",
+        RankingMetric.EndpointBytes => "bytes sent and received",
+        RankingMetric.RpcErrors => "RPC errors",
+        RankingMetric.RpcCallTime => "RPC call times",
+        RankingMetric.RpcServeTime => "RPC serve times",
+        RankingMetric.ActivePeers => "peers",
+        _ => "records",
+    };
 }
 
 /// <summary>

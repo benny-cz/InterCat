@@ -91,7 +91,7 @@ public sealed class InvestigationWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins there, and gets them back when opened from it again")]
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins and ranking there, and gets them back when opened from it again")]
     public async Task AnInvestigationKeepsASessionsPins()
     {
         using var root = new TemporaryDirectory();
@@ -109,7 +109,7 @@ public sealed class InvestigationWindowTests
             Button open = Named<Button>(window, "Open the selected session in InterCat");
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
-            Assert.EndsWith("Nodes pinned on its graph are kept in the investigation case.icat-workspace.",
+            Assert.EndsWith("Its pins and ranking are kept in the investigation case.icat-workspace.",
                 main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
 
             // A node pinned on its graph is kept in the investigation, where it was put.
@@ -122,19 +122,37 @@ public sealed class InvestigationWindowTests
             WorkspacePin kept = Assert.Single(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins);
             Assert.Equal((key, 0.25, 0.75), (kept.Key, kept.X, kept.Y));
 
-            // Opened on its own, the session holds none of the investigation's pins.
-            Assert.True(await main.OpenSessionAsync(paired));
-            Assert.False(((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
+            // So is what its rows are ranked by, and whether per second (§26.3's sort), each as it is chosen.
+            shown.RankBy = RankingMetric.BytesSent;
+            await main.PinsWritten;
+            WorkspaceLayout ranked = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+            Assert.Equal((RankingMetric.BytesSent, false, 1), (ranked.RankBy, ranked.PerSecond, ranked.Pins.Count));
+            shown.PerSecond = true;
+            await main.PinsWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.PerSecond);
 
-            // Opened from the investigation again, its node is pinned where it was put.
+            // Opened on its own, the session holds none of the investigation's pins, and ranks by records.
+            Assert.True(await main.OpenSessionAsync(paired));
+            var alone = (WorkspaceViewModel)main.DataContext!;
+            Assert.False(alone.IsGraphNodePinned(key));
+            Assert.Equal((RankingMetric.Records, false), (alone.RankBy, alone.PerSecond));
+
+            // Opened from the investigation again, its node is pinned where it was put, and its rows ranked as they were.
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => ((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
             var again = (WorkspaceViewModel)main.DataContext!;
             Assert.Equal(place, again.GraphPins[key]);
-            Assert.Contains("which put back 1.", main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.Equal((RankingMetric.BytesSent, true), (again.RankBy, again.PerSecond));
+            Assert.Contains("which put back 1 pin and its ranking by bytes sent per second.",
+                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
 
-            // Released, the investigation keeps no layout of it.
+            // Released, the pin is gone and the ranking kept; ranked by records again, the investigation keeps no layout of it.
             Assert.True(again.UnpinGraphNode(key));
+            await main.PinsWritten;
+            WorkspaceLayout released = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+            Assert.Equal((RankingMetric.BytesSent, 0), (released.RankBy, released.Pins.Count));
+            again.RankBy = RankingMetric.Records;
+            again.PerSecond = false;
             await main.PinsWritten;
             Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
             window.Close();

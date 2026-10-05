@@ -2,7 +2,7 @@
 
 - Status: accepted; revision 263
 - Date: 2026-09-29
-- Relates to: §8.4, §11.3, M4, I15, R22, ADR-038, ADR-039, ADR-041, `contracts/workspace-v11.md`,
+- Relates to: §8.4, §11.3, M4, I15, R22, ADR-038, ADR-039, ADR-041, `contracts/workspace-v12.md`,
   `contracts/original-evidence-package-v1.md`
 
 ## Context

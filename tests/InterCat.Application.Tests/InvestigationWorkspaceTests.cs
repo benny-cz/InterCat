@@ -550,14 +550,17 @@ public sealed class InvestigationWorkspaceTests : IDisposable
                 InvestigationWorkspace.SaveView(workspace, "Start", new TimeRange(0, 10), Now);
             },
             read => read.Views.Count == 1);
+        As(InvestigationWorkspace.EleventhContract,
+            () => InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }], Now),
+            read => read.Layouts.Single() is { Pins.Count: 1, RankBy: null, PerSecond: false });
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
         InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
-        Assert.Equal((InvestigationWorkspace.Contract, 1, 1), (rewritten.Contract, rewritten.Views.Count, rewritten.Notes.Count));
+        Assert.Equal((InvestigationWorkspace.Contract, 1, 1), (rewritten.Contract, rewritten.Layouts.Count, rewritten.Notes.Count));
     }
 
-    [Fact(DisplayName = "R22: a member's graph layout is kept by node, replaced as it changes, and refused where it cannot be")]
+    [Fact(DisplayName = "R22: a member's layout is kept by node and ranking, replaced as it changes, and refused where it cannot be")]
     public void AMembersLayoutIsKept()
     {
         string workspace = NewWorkspace();
@@ -580,11 +583,45 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [Pin("k", 1.5, 0.5)], Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [Pin(" ", 0.5, 0.5)], Now));
 
-        // A file of a version before layouts holds none.
-        InvestigationWorkspace.SetLayout(workspace, a, [Pin("group:a", 0.2, 0.3)], Now);
-        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
-            $"\"{InvestigationWorkspace.TenthContract}\"", StringComparison.Ordinal));
-        Assert.Contains("holds no layout", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+        // A layout keeps what the rows are ranked by, and whether per second (§26.3's sort): with no pin it keeps that alone,
+        // and ranking by records counted whole, with no pin, it keeps nothing and is removed. Records per second is a
+        // ranking kept, by no metric's name.
+        WorkspaceLayout ranked = InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.RpcCallsMade, perSecond: true)!;
+        Assert.Equal((RankingMetric.RpcCallsMade, true, 0), (ranked.RankBy, ranked.PerSecond, ranked.Pins.Count));
+        WorkspaceLayout reread = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+        Assert.Equal((RankingMetric.RpcCallsMade, true, 0), (reread.RankBy, reread.PerSecond, reread.Pins.Count));
+        WorkspaceLayout records = InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.Records, perSecond: true)!;
+        Assert.Equal(((RankingMetric?)null, true), (records.RankBy, records.PerSecond));
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.Records, perSecond: false));
+        Assert.Empty(InvestigationWorkspace.Read(workspace).Layouts);
+        Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.SetLayout(workspace, a, [], Now, (RankingMetric)99));
+
+        // A file of a version before layouts holds none, and one before rankings ranks nothing; a layout that keeps
+        // nothing, or ranks by records by name or by no metric, is refused.
+        InvestigationWorkspace.SetLayout(workspace, a, [Pin("group:a", 0.2, 0.3)], Now, RankingMetric.BytesSent);
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"rankBy\": \"BytesSent\"", written, StringComparison.Ordinal);
+        foreach ((string text, string problem) in new[]
+        {
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TenthContract}\"", StringComparison.Ordinal),
+                "holds no layout"),
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.EleventhContract}\"", StringComparison.Ordinal),
+                "ranks no session's rows"),
+            (written.Replace("\"rankBy\": \"BytesSent\"", "\"rankBy\": \"Records\"", StringComparison.Ordinal), "or by records by name"),
+            (written.Replace("\"rankBy\": \"BytesSent\"", "\"rankBy\": 99", StringComparison.Ordinal), "ranks by no metric"),
+        })
+        {
+            Assert.NotEqual(written, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.BytesSent);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace("\"rankBy\": \"BytesSent\"", "\"rankBy\": null",
+            StringComparison.Ordinal));
+        Assert.Contains("keeps nothing", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
             StringComparison.Ordinal);
     }
 
