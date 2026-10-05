@@ -1,4 +1,5 @@
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Cli;
 
@@ -60,6 +61,10 @@ internal static class Icat
             ConsoleUi.Warn("Cancelled before a result was published.");
             return InterCatExitCode.Cancelled;
         }
+        catch (NoSessionException)
+        {
+            return NoSession();
+        }
         catch (UnauthorizedAccessException exception)
         {
             ConsoleUi.Failure(exception.Message);
@@ -78,6 +83,16 @@ internal static class Icat
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.CorruptedInput;
         }
+    }
+
+    /// <summary>
+    /// Every command refuses a folder that holds no session in the same words and with the same code: naming the wrong
+    /// folder, or a capture's that has published nothing yet, is a mistake in what was asked, as naming no folder is.
+    /// </summary>
+    internal static InterCatExitCode NoSession()
+    {
+        ConsoleUi.Failure(SessionStore.NoGeneration);
+        return InterCatExitCode.InvalidInvocation;
     }
 
     /// <summary>

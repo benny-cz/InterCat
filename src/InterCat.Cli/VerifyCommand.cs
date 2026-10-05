@@ -54,7 +54,14 @@ internal static class VerifyCommand
         };
         if (expectedMechanism is null)
         {
-            ConsoleUi.Failure($"Only 'tcp' and 'udp' verification exist in this milestone. Unknown mechanism: {mechanism}");
+            // The word most often put here by mistake is a session's folder, since verifying sounds like what a session
+            // needs: it is verified whenever it is opened, which no command has to be asked to do.
+            ConsoleUi.Failure(Directory.Exists(mechanism)
+                ? $"{Path.GetFullPath(mechanism)} is a folder; icat verify names a mechanism, tcp or udp, and re-evaluates "
+                    + "the run icat measure recorded for it: icat verify <tcp|udp> --run <raw-run-dir> --output "
+                    + "<curated-dir>. A session is verified whenever it is opened; icat session <directory> reports what "
+                    + "that found."
+                : $"icat verify re-evaluates a tcp or udp run that icat measure recorded; '{mechanism}' is neither.");
             return InterCatExitCode.InvalidInvocation;
         }
 

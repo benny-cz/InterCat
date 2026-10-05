@@ -79,8 +79,7 @@ internal static class CheckpointCommand
         SessionStore inspected = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (inspected.Current is not { } current)
         {
-            ConsoleUi.Failure("This session has no published generation to derive a checkpoint of.");
-            return InterCatExitCode.InvalidInvocation;
+            return Icat.NoSession();
         }
 
         // A store opened for reading cannot publish: a generation names its session, which is taken from the one this

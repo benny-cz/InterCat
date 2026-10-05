@@ -207,8 +207,7 @@ internal static class OperationsCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
+            return Icat.NoSession();
         }
 
         OperationsDocument document;

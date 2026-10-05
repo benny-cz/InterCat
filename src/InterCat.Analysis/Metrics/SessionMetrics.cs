@@ -862,7 +862,7 @@ public static partial class SessionMetrics
 
         if (store.Current is null)
         {
-            throw new InvalidOperationException(SessionStore.NoGeneration);
+            throw new NoSessionException();
         }
 
         // The generation and every dependency it names are held for the whole answer, and the manifest read is

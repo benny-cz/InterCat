@@ -151,8 +151,7 @@ internal static class PackageCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
         if (store.Current is null)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.InvalidInvocation;
+            return Icat.NoSession();
         }
 
         if (original)

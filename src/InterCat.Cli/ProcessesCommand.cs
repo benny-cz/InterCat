@@ -151,8 +151,7 @@ internal static class ProcessesCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
+            return Icat.NoSession();
         }
 
         ConsoleUi.Progress("Deriving process instances and binding every record to one.");

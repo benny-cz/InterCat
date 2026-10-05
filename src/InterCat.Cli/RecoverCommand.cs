@@ -79,8 +79,7 @@ internal static class RecoverCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure("This session has no complete generation to recover.");
-            return InterCatExitCode.CorruptedInput;
+            return Icat.NoSession();
         }
 
         if (expectedManifest is not null

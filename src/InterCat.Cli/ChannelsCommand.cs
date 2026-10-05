@@ -71,7 +71,7 @@ internal static class ChannelsCommand
             ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;
@@ -119,7 +119,7 @@ internal static class ChannelsCommand
             list = SessionConnections.OneSided(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), instance,
                 cancellationToken: cancellationToken);
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;

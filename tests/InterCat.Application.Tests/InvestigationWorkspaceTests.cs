@@ -169,7 +169,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Directory.CreateDirectory(moved);
         WorkspaceMemberResolution empty = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Unreadable, empty.State);
-        Assert.Contains("No session is published here", empty.Reason, StringComparison.Ordinal);
+        Assert.Equal(SessionStore.NoGeneration, empty.Reason);
         Directory.Delete(moved);
         File.WriteAllText(moved, "not a session");
         Assert.Equal(WorkspaceMemberState.Unreadable, Single(workspace).State);

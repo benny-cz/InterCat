@@ -542,8 +542,7 @@ internal static class MetricCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is not { } manifest)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.PermissionOrCapabilityFailure;
+            return Icat.NoSession();
         }
 
         if (store.Recovery.RolledBackToLastKnownGood)

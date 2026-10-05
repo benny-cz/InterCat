@@ -301,7 +301,10 @@ across process restart, and the guard is not a cross-process quota reservation f
 A lease on a session with no published generation is refused. An empty session is not a generation with no
 data. Since revision 310 a reader establishes a missing guard only in a folder that holds a session pointer, current or
 last-known-good: in one that holds none - not a session's folder, or a capture's before its first publication - it is
-refused, and writes nothing there. The refusal says so in a person's words, the same from every reader.
+refused, and writes nothing there. The refusal says so in a person's words, the same from every reader. Since revision 312
+the store raises it as `NoSessionException`, derived from the `InvalidOperationException` it raised before, so whatever
+handles a reader's refusals handles it. A command line answers it as an invalid invocation, the code for naming a folder
+that does not exist, never as a capability failure or a partial answer (§20.4).
 
 A lease carries the **manifest** of the generation it holds, and a reader reads that manifest rather than the
 store's current one. A commit that lands between acquiring a lease and asking the store for its current

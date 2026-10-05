@@ -51,7 +51,7 @@ public static class SessionExport
     {
         if (measures.SessionId != overview.SessionId)
         {
-            throw new InvalidDataException("This directory began holding another session during the export.");
+            throw new InvalidOperationException("This directory began holding another session during the export.");
         }
     }
 
@@ -79,7 +79,7 @@ public static class SessionExport
             SessionIntervalCounts counts = SessionIntervalQuery.Count(store, interval, cancellationToken: cancellationToken);
             if (counts.SessionId != overview.SessionId)
             {
-                throw new InvalidDataException("This directory began holding another session during the export.");
+                throw new InvalidOperationException("This directory began holding another session during the export.");
             }
 
             snapshot = OverviewWorkspace.WithinInterval(snapshot, counts);

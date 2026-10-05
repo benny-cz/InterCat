@@ -64,7 +64,7 @@ internal static class RawCommand
             ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Warn(exception.Message);
             return InterCatExitCode.PartialResultSuccess;

@@ -837,7 +837,7 @@ public sealed class SessionStore
             {
                 (SessionManifestV1? disk, bool rolledBack, string? reason) = Acquire(directory, measurements, current);
                 rollbackReason = rolledBack ? reason : null;
-                SessionManifestV1 manifest = disk ?? throw new InvalidOperationException(NoGeneration);
+                SessionManifestV1 manifest = disk ?? throw new NoSessionException();
                 if (manifest.SessionId != SessionId)
                 {
                     throw new InvalidDataException("The session identity changed after this store was opened.");
@@ -2330,7 +2330,7 @@ public sealed class SessionStore
                 // looks, at a folder someone chose by mistake, writes nothing there.
                 if (!Exists(directory, SessionPointerV1.FileName) && !Exists(directory, SessionPointerV1.PreviousFileName))
                 {
-                    throw new InvalidOperationException(NoGeneration);
+                    throw new NoSessionException();
                 }
 
                 // Older sessions predate the guard. A writable local reader can establish it;

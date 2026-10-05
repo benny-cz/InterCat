@@ -108,7 +108,7 @@ internal static class ExportCommand
             ConsoleUi.Failure(exception);
             return InterCatExitCode.InvalidInvocation;
         }
-        catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;

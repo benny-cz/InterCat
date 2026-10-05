@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 311 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 312 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 312 — a wrong input is named for what it is (§20.4):**
+  - A folder that holds no session was refused with 2, 3, 4, or a warning and 1, by command; every command now refuses
+    it in revision 310's sentence and with 2, as naming a folder that does not exist is. `icat export` reported a damaged
+    session as a capability failure and now reports it as corrupted input, as every reader does. `import` and `verify`
+    given a folder now say it is one, and `verify` says a session is verified whenever it is opened.
 
 - **Revision 311 — a hand-edited file that cannot be read says where to look (§26.3):**
   - A workspace or settings file gave the JSON parser's words, or named an internal type; it now gives the line and
@@ -769,6 +775,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 312 was built and tested in the same Linux container: Debug and Release each ran **1,534 tests**, passing
+  **1,437 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of thirty mutations:
+  - the shared refusal's code changed, or its handler removed;
+  - the refusal caught by any of seven readers' own handlers;
+  - `export`'s old handler back, or damage reported as a capability failure;
+  - either of the store's throws back to the old exception;
+  - `session`'s note or its "Acquired" line as before;
+  - `verify`'s folder message removed or inverted, and `import`'s, `measure`'s and the workspace's old words;
+  - ten commands' old codes.
+
+  The last, for `retain`, first survived until the test gave its journal release a folder too.
 - Revision 311 was built and tested in the same Linux container: Debug and Release each ran **1,533 tests**, passing
   **1,436 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of seven mutations: lines counted from 0, the missing or unknown fields or the value's path left unsaid, a

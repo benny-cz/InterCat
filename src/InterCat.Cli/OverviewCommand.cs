@@ -47,7 +47,7 @@ internal static class OverviewCommand
             overview = SessionOverviewProjector.Project(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), cancellationToken: cancellationToken);
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;

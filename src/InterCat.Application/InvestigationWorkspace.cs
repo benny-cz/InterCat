@@ -454,7 +454,7 @@ public static partial class InvestigationWorkspace
     {
         SessionStore store = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(directory));
         SessionManifestV1 manifest = store.Current
-            ?? throw new InvalidDataException("No session is published here: there is no current generation.");
+            ?? throw new InvalidDataException(SessionStore.NoGeneration);
         (CaptureId capture, SourceClockDescriptor clock) = SessionSegments.Source(store.Root, manifest)
             ?? throw new InvalidDataException(
                 $"Generation {manifest.Generation} names no journal, so the session has no capture, host or clock to place.");

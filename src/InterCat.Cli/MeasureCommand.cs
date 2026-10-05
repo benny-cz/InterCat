@@ -119,8 +119,7 @@ internal static partial class MeasureCommand
         };
         if (scenario is null)
         {
-            ConsoleUi.Failure(
-                $"Only 'tcp', 'udp', 'pipe' and 'rpc' are measurable in this milestone. Unknown mechanism: {mechanism}");
+            ConsoleUi.Failure($"icat measure runs the tcp, udp, pipe or rpc fixture; '{mechanism}' is none of them.");
             return InterCatExitCode.InvalidInvocation;
         }
 

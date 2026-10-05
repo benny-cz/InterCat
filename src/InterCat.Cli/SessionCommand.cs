@@ -298,7 +298,7 @@ internal static class SessionCommand
 
         if (manifest is null)
         {
-            notes.Add("This session has published no generation. That is an empty session, not a failure.");
+            notes.Add(SessionStore.NoGeneration);
         }
         else
         {
@@ -999,9 +999,9 @@ internal static class SessionCommand
         ConsoleUi.Heading("What opening this session found");
         ConsoleUi.Field(
             "Acquired",
-            document.Recovery.RolledBackToLastKnownGood
-                ? "the retained last-known-good generation"
-                : "the generation the pointer names");
+            document.Generation is null ? "nothing: no generation has been published here"
+            : document.Recovery.RolledBackToLastKnownGood ? "the retained last-known-good generation"
+            : "the generation the pointer names");
         if (document.Recovery.RollbackReason is { } reason)
         {
             ConsoleUi.Field("Rollback reason", reason);

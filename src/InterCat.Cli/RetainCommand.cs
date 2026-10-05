@@ -199,8 +199,7 @@ internal static class RetainCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.InvalidInvocation;
+            return Icat.NoSession();
         }
 
         ConsoleUi.Progress($"Measuring what releasing records before {before} would give up. Nothing is written yet.");
@@ -435,8 +434,7 @@ internal static class RetainCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
         if (store.Current is not { } manifest)
         {
-            ConsoleUi.Failure(SessionStore.NoGeneration);
-            return InterCatExitCode.InvalidInvocation;
+            return Icat.NoSession();
         }
 
         ConsoleUi.Progress("Measuring what releasing the session's kept content would give up. Nothing is written yet.");

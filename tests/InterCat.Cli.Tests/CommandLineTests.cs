@@ -118,25 +118,85 @@ public sealed class CommandLineTests : IDisposable
         File.WriteAllText(Path.Combine(folder, "notes.txt"), "a folder chosen by mistake");
         try
         {
+            string[] record = ["--session-id", Guid.NewGuid().ToString(), "--generation", "1", "--segment", "s", "--row", "0"];
             string[][] asked =
             [
-                ["overview", folder], ["evidence", folder], ["timeline", folder, "--interval", "0:10"], ["processes", folder],
-                ["operations", folder], ["exchanges", folder], ["metric", folder, "--metric", "observations"],
-                ["package", folder, "--redacted", "--output", package], ["retain", folder, "--release-content"],
+                ["overview", folder], ["channels", folder], ["channels", folder, "--process", record[1], "--one-sided"],
+                ["evidence", folder], ["timeline", folder, "--interval", "0:10"],
+                ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
+                ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
+                ["content", folder, .. record], ["package", folder, "--redacted", "--output", package],
+                ["retain", folder, "--release-content"], ["retain", folder, "--release-journal-before-record", "1"],
+                ["rederive", folder], ["compact", folder], ["checkpoint", folder],
+                ["recover", folder],
             ];
             foreach (string[] args in asked)
             {
+                // Naming a folder that holds no session is a mistake in what was asked, as naming none is, whatever the
+                // command would have done with a session.
                 (InterCatExitCode code, string output, string said) = await Run(args);
                 string invocation = "icat " + string.Join(' ', args);
-                Assert.True(code != InterCatExitCode.Success && output.Length == 0, $"{invocation} exited {code}: {output}");
+                Assert.True(code == InterCatExitCode.InvalidInvocation && output.Length == 0, $"{invocation} exited {code}: {output}");
                 Assert.True(said.Contains(SessionStore.NoGeneration, StringComparison.Ordinal), $"{invocation} said: {said}");
                 Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
                 Assert.False(Directory.Exists(package), $"{invocation} made {package}.");
             }
+
+            // icat session reports what opening a folder found, and says what this one is in the same words.
+            (InterCatExitCode reported, string report, _) = await Run("session", folder);
+            Assert.Equal(InterCatExitCode.PartialResultSuccess, reported);
+            Assert.Contains(SessionStore.NoGeneration, report, StringComparison.Ordinal);
+            Assert.Contains("Acquired              nothing: no generation has been published here", report, StringComparison.Ordinal);
+            Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
+
+            // A folder handed to import, which reads a trace file, is called a folder, not something that is not there; so
+            // is one handed to verify, which names a mechanism, since a session is verified whenever it is opened.
+            (InterCatExitCode imported, _, string importSaid) = await Run("import", folder);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, imported);
+            Assert.Contains("is a folder; icat import reads one ETL trace file", importSaid, StringComparison.Ordinal);
+            (InterCatExitCode verified, string verifiedOutput, string verifySaid) = await Run("verify", folder);
+            Assert.Equal((InterCatExitCode.InvalidInvocation, string.Empty), (verified, verifiedOutput));
+            Assert.Contains("is a folder; icat verify names a mechanism", verifySaid, StringComparison.Ordinal);
+            Assert.Contains("A session is verified whenever it is opened", verifySaid, StringComparison.Ordinal);
+            Assert.DoesNotContain("is a folder", (await Run("verify", "tpc")).Error, StringComparison.Ordinal);
+            Assert.Contains("icat measure runs the tcp, udp, pipe or rpc fixture; 'tpc' is none of them.",
+                (await Run("measure", "tpc")).Error, StringComparison.Ordinal);
         }
         finally
         {
             Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "§20.4: a damaged session is corrupted input to every reader, an export's as well")]
+    public async Task ADamagedSessionIsCorruptedInput()
+    {
+        string damaged = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        string exported = damaged + "-export";
+        Directory.CreateDirectory(damaged);
+        try
+        {
+            foreach (string file in Directory.EnumerateFiles(session.Path).Where(file => !file.EndsWith(".lock", StringComparison.Ordinal)))
+            {
+                File.Copy(file, Path.Combine(damaged, Path.GetFileName(file)));
+            }
+
+            string segment = Directory.EnumerateFiles(damaged, "seg-*").Single();
+            byte[] bytes = File.ReadAllBytes(segment);
+            bytes[^1] ^= 0xFF;
+            File.WriteAllBytes(segment, bytes);
+            foreach (string[] args in new[] { ["overview", damaged], new[] { "export", damaged, "--output", Path.Combine(exported, "rows.csv") } })
+            {
+                (InterCatExitCode code, string output, string said) = await Run(args);
+                string invocation = "icat " + string.Join(' ', args);
+                Assert.True(code == InterCatExitCode.CorruptedInput && output.Length == 0, $"{invocation} exited {code}: {output}");
+                Assert.True(said.Contains("no complete generation", StringComparison.Ordinal), $"{invocation} said: {said}");
+                Assert.False(Directory.Exists(exported), $"{invocation} made {exported}.");
+            }
+        }
+        finally
+        {
+            Directory.Delete(damaged, recursive: true);
         }
     }
 

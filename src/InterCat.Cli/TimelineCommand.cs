@@ -82,7 +82,7 @@ internal static class TimelineCommand
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
-        catch (InvalidOperationException exception)
+        catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
             ConsoleUi.Failure(exception.Message);
             return InterCatExitCode.PermissionOrCapabilityFailure;

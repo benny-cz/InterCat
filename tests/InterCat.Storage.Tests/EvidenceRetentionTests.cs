@@ -223,8 +223,9 @@ public sealed class EvidenceRetentionTests
         File.WriteAllText(Path.Combine(session.Path, "notes.txt"), "a folder chosen by mistake");
         string[] before = [.. Directory.EnumerateFileSystemEntries(session.Path).Order(StringComparer.Ordinal)];
 
-        InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
-            session.Store.AcquireLease(nowUtc: Committed));
+        // It is refused as a folder holding no session, which a command line tells apart from a session's own refusals.
+        NoSessionException refusal = Assert.Throws<NoSessionException>(() => session.Store.AcquireLease(nowUtc: Committed));
+        Assert.IsAssignableFrom<InvalidOperationException>(refusal);
 
         // It says, in a person's words, that no session was published there, and it leaves the folder as it found it.
         Assert.Equal(SessionStore.NoGeneration, refusal.Message);
@@ -234,7 +235,7 @@ public sealed class EvidenceRetentionTests
         // A writer that made the guard and stopped before its first publication left a session with no generation either.
         using var unpublished = new TemporarySession();
         File.WriteAllBytes(Path.Combine(unpublished.Path, SessionStore.EvidenceLeaseLockFileName), []);
-        Assert.Equal(SessionStore.NoGeneration, Assert.Throws<InvalidOperationException>(() =>
+        Assert.Equal(SessionStore.NoGeneration, Assert.Throws<NoSessionException>(() =>
             unpublished.Store.AcquireLease(nowUtc: Committed)).Message);
 
         // A session published before the guard existed still gets one from a reader that can write it.

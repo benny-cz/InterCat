@@ -79,8 +79,7 @@ internal static class CompactCommand
         SessionStore inspected = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (inspected.Current is not { } current)
         {
-            ConsoleUi.Failure("This session has no published generation to compact.");
-            return InterCatExitCode.InvalidInvocation;
+            return Icat.NoSession();
         }
 
         CompactionDocument document;

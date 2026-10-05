@@ -125,7 +125,11 @@ internal static class ImportCommand
         string full = Path.GetFullPath(sourcePath);
         if (!File.Exists(full))
         {
-            ConsoleUi.Failure($"ETL evidence not found: {full}");
+            // A folder - a session's, as often as not - is not a trace: say what it is rather than that nothing is there.
+            ConsoleUi.Failure(Directory.Exists(full)
+                ? $"{full} is a folder; icat import reads one ETL trace file. A session's folder is opened by the other "
+                    + "commands as it is."
+                : $"ETL evidence not found: {full}");
             return InterCatExitCode.InvalidInvocation;
         }
 

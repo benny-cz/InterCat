@@ -100,8 +100,7 @@ internal static class RederiveCommand
         SessionStore inspected = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (inspected.Current is not { } current)
         {
-            ConsoleUi.Failure("This session has no published generation to re-derive.");
-            return InterCatExitCode.PermissionOrCapabilityFailure;
+            return Icat.NoSession();
         }
 
         if (inspected.Recovery.RolledBackToLastKnownGood)
