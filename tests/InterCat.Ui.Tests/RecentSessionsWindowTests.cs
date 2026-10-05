@@ -17,6 +17,29 @@ namespace InterCat.Ui.Tests;
 /// <summary>§3.1 in the window: while no session is open, the saved ones are one gesture away.</summary>
 public sealed class RecentSessionsWindowTests
 {
+    [AvaloniaFact(DisplayName = "§3.1: a folder no session was published in does not open, says so in a person's words, and is left as it was")]
+    public async Task AFolderWithNoSessionDoesNotOpen()
+    {
+        using var root = new TemporaryDirectory();
+        string folder = Path.Combine(root.Path, "Documents");
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "a folder chosen by mistake");
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Assert.False(await window.OpenSessionAsync(folder));
+            Assert.Equal("Could not open this session", window.GetControl<TextBlock>("CaptureStatus").Text);
+            Assert.Equal(SessionStore.NoGeneration + " The current workspace is unchanged.",
+                window.GetControl<TextBlock>("CaptureDetail").Text);
+            Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§3.1: while no session is open the saved ones are listed where the ranked table will be, and Enter opens one")]
     public async Task SavedSessionsAreListedAndOpen()
     {

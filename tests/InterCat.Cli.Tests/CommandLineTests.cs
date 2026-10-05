@@ -109,6 +109,37 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "§20.4: a folder no session was published in is refused in a person's words, and every reader leaves it as it was")]
+    public async Task AFolderWithNoSessionIsLeftAsItWas()
+    {
+        string folder = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        string package = folder + "-package";
+        Directory.CreateDirectory(folder);
+        File.WriteAllText(Path.Combine(folder, "notes.txt"), "a folder chosen by mistake");
+        try
+        {
+            string[][] asked =
+            [
+                ["overview", folder], ["evidence", folder], ["timeline", folder, "--interval", "0:10"], ["processes", folder],
+                ["operations", folder], ["exchanges", folder], ["metric", folder, "--metric", "observations"],
+                ["package", folder, "--redacted", "--output", package], ["retain", folder, "--release-content"],
+            ];
+            foreach (string[] args in asked)
+            {
+                (InterCatExitCode code, string output, string said) = await Run(args);
+                string invocation = "icat " + string.Join(' ', args);
+                Assert.True(code != InterCatExitCode.Success && output.Length == 0, $"{invocation} exited {code}: {output}");
+                Assert.True(said.Contains(SessionStore.NoGeneration, StringComparison.Ordinal), $"{invocation} said: {said}");
+                Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
+                Assert.False(Directory.Exists(package), $"{invocation} made {package}.");
+            }
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]
     public async Task ARefusedInvocationLeavesStdoutToTheAnswer()
     {

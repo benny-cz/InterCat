@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 309 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 310 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 310 — a reader writes nothing into a folder that holds no session (store-v1 §8):**
+  - `icat session ~/Documents`, and the Desktop's open, left an evidence-lease lock in the folder; a reader now makes
+    a missing guard only where a session pointer is, and every reader refuses a folder with none in one person's
+    sentence.
 
 - **Revision 309 — `icat --help` names every form of every command (§20.4, R18):**
   - The summary had fallen behind: `--part`'s old rule, no `retain --release-content` or `package --original`, five
@@ -759,6 +764,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 310 was built and tested in the same Linux container: Debug and Release each ran **1,532 tests**, passing
+  **1,435 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of four mutations:
+  - the guard made in any folder again, which the storage, command-line and window tests each caught;
+  - an older session refused its guard;
+  - the old words for a folder with a guard and no pointer;
+  - `processes` keeping its own words.
+
+  The third first survived until the storage test covered a folder whose writer made the guard and stopped before
+  publishing.
 - Revision 309 was built and tested in the same Linux container: Debug and Release each ran **1,530 tests**, passing
   **1,433 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   six of seven mutations: a workspace subcommand, `package --original` or `retain --release-content` dropped from the

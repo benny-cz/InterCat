@@ -981,7 +981,7 @@
       "I18": [
         "I18: a lease acquires the generation and every dependency it names as one thing",
         "I18: a lease holds the manifest it acquired, and a later commit does not move it",
-        "I18: a lease on a session with no generation is refused rather than empty",
+        "I18: a lease on a session with no generation is refused rather than empty, and writes nothing",
         "I18: a pin that reserves less than it holds is refused, not silently promised",
         "I18: a published coverage ledger survives reopen and cannot be released as a derived index",
         "I18: a reader in another process keeps superseded manifests until a later publication finds none",

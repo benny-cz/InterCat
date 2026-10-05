@@ -862,9 +862,7 @@ public static partial class SessionMetrics
 
         if (store.Current is null)
         {
-            throw new InvalidOperationException(
-                "This session has published no generation, so there is nothing to answer from. An empty "
-                + "session is not a generation with no data.");
+            throw new InvalidOperationException(SessionStore.NoGeneration);
         }
 
         // The generation and every dependency it names are held for the whole answer, and the manifest read is

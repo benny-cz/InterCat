@@ -216,15 +216,43 @@ public sealed class EvidenceRetentionTests
         Assert.Equal(held, pin.ReservedBytes);
     }
 
-    [Fact(DisplayName = "I18: a lease on a session with no generation is refused rather than empty")]
+    [Fact(DisplayName = "I18: a lease on a session with no generation is refused rather than empty, and writes nothing")]
     public void ALeaseOnAnEmptySessionIsRefused()
     {
         using var session = new TemporarySession();
+        File.WriteAllText(Path.Combine(session.Path, "notes.txt"), "a folder chosen by mistake");
+        string[] before = [.. Directory.EnumerateFileSystemEntries(session.Path).Order(StringComparer.Ordinal)];
 
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             session.Store.AcquireLease(nowUtc: Committed));
 
-        Assert.Contains("nothing to acquire", refusal.Message, StringComparison.Ordinal);
+        // It says, in a person's words, that no session was published there, and it leaves the folder as it found it.
+        Assert.Equal(SessionStore.NoGeneration, refusal.Message);
+        Assert.StartsWith("No InterCat session has been published in this folder.", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal(before, Directory.EnumerateFileSystemEntries(session.Path).Order(StringComparer.Ordinal));
+
+        // A writer that made the guard and stopped before its first publication left a session with no generation either.
+        using var unpublished = new TemporarySession();
+        File.WriteAllBytes(Path.Combine(unpublished.Path, SessionStore.EvidenceLeaseLockFileName), []);
+        Assert.Equal(SessionStore.NoGeneration, Assert.Throws<InvalidOperationException>(() =>
+            unpublished.Store.AcquireLease(nowUtc: Committed)).Message);
+
+        // A session published before the guard existed still gets one from a reader that can write it.
+        using var older = new TemporarySession();
+        using (StoreStagingFile staged = older.Store.Stage("segment-0001.icats", StoreDependencyKind.Segment))
+        {
+            staged.Content.Write("rows"u8);
+            _ = staged.Complete();
+            _ = older.Store.Commit([staged], CommittedBoundary.None, Committed);
+        }
+
+        File.Delete(Path.Combine(older.Path, SessionStore.EvidenceLeaseLockFileName));
+        using (EvidenceLease lease = SessionStore.OpenExisting(LocalOwnedDirectory.Open(older.Path)).AcquireLease(nowUtc: Committed))
+        {
+            Assert.Equal(1, lease.Manifest.Generation);
+        }
+
+        Assert.True(File.Exists(Path.Combine(older.Path, SessionStore.EvidenceLeaseLockFileName)));
     }
 
     [Fact(DisplayName = "I15: a retention generation publishes what it released and why")]

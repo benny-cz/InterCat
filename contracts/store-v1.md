@@ -299,7 +299,9 @@ expiry has a timer so an idle client does not hold cleanup indefinitely. A lease
 across process restart, and the guard is not a cross-process quota reservation for pins.
 
 A lease on a session with no published generation is refused. An empty session is not a generation with no
-data.
+data. Since revision 310 a reader establishes a missing guard only in a folder that holds a session pointer, current or
+last-known-good: in one that holds none - not a session's folder, or a capture's before its first publication - it is
+refused, and writes nothing there. The refusal says so in a person's words, the same from every reader.
 
 A lease carries the **manifest** of the generation it holds, and a reader reads that manifest rather than the
 store's current one. A commit that lands between acquiring a lease and asking the store for its current

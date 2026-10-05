@@ -151,7 +151,7 @@ internal static class PackageCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session));
         if (store.Current is null)
         {
-            ConsoleUi.Failure("This session has published no generation, so there is nothing to package.");
+            ConsoleUi.Failure(SessionStore.NoGeneration);
             return InterCatExitCode.InvalidInvocation;
         }
 

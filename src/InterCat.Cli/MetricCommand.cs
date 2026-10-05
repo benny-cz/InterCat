@@ -542,9 +542,7 @@ internal static class MetricCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is not { } manifest)
         {
-            ConsoleUi.Failure(
-                "This session has published no generation, so there is nothing to answer from. An empty session is "
-                + "not a session with no traffic.");
+            ConsoleUi.Failure(SessionStore.NoGeneration);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 

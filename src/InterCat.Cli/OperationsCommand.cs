@@ -207,7 +207,7 @@ internal static class OperationsCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure("This session has published no generation, so it holds no calls.");
+            ConsoleUi.Failure(SessionStore.NoGeneration);
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 

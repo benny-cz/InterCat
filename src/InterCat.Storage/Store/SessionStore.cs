@@ -277,6 +277,13 @@ public sealed class SessionStore
 
     public const string EvidenceLeaseLockFileName = "session-evidence-lease.lock";
 
+    /// <summary>
+    /// What a reader says of a folder in which no generation was ever published: one that is not a session's, or a capture's
+    /// that has published nothing yet. Looking at it writes nothing there.
+    /// </summary>
+    public const string NoGeneration = "No InterCat session has been published in this folder. It is not a session's "
+        + "folder, or its capture has not published a generation yet; nothing was written to it.";
+
     public const string StagingPrefix = "stg-";
 
     public const string StagingSuffix = ".tmp";
@@ -830,10 +837,7 @@ public sealed class SessionStore
             {
                 (SessionManifestV1? disk, bool rolledBack, string? reason) = Acquire(directory, measurements, current);
                 rollbackReason = rolledBack ? reason : null;
-                SessionManifestV1 manifest = disk
-                    ?? throw new InvalidOperationException(
-                        "This session has published no generation, so there is nothing to acquire. An empty "
-                        + "session is not a generation with no data.");
+                SessionManifestV1 manifest = disk ?? throw new InvalidOperationException(NoGeneration);
                 if (manifest.SessionId != SessionId)
                 {
                     throw new InvalidDataException("The session identity changed after this store was opened.");
@@ -2322,6 +2326,13 @@ public sealed class SessionStore
             }
             catch (FileNotFoundException)
             {
+                // A folder no generation was published in is no session to establish a guard in: a reader that only
+                // looks, at a folder someone chose by mistake, writes nothing there.
+                if (!Exists(directory, SessionPointerV1.FileName) && !Exists(directory, SessionPointerV1.PreviousFileName))
+                {
+                    throw new InvalidOperationException(NoGeneration);
+                }
+
                 // Older sessions predate the guard. A writable local reader can establish it;
                 // a read-only viewer must ask the owner to upgrade the session first.
                 try

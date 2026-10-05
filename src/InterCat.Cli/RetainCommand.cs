@@ -199,7 +199,7 @@ internal static class RetainCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
         if (store.Current is null)
         {
-            ConsoleUi.Failure("This session has published no generation, so there is nothing to retain from.");
+            ConsoleUi.Failure(SessionStore.NoGeneration);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -435,7 +435,7 @@ internal static class RetainCommand
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
         if (store.Current is not { } manifest)
         {
-            ConsoleUi.Failure("This session has published no generation, so there is nothing to retain from.");
+            ConsoleUi.Failure(SessionStore.NoGeneration);
             return InterCatExitCode.InvalidInvocation;
         }
 
