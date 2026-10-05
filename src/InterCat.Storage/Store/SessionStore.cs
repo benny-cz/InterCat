@@ -1090,7 +1090,7 @@ public sealed class SessionStore
                 {
                     throw new ArgumentException(
                         "Kept content is evidence, not a rebuildable derived file: it goes with the journal chunk whose "
-                        + "records it belongs to, through the journal retention path (content-v1 §2).",
+                        + "records it belongs to, or all of it at once by a content release (content-v1 §2).",
                         nameof(names));
                 }
 
@@ -1146,8 +1146,8 @@ public sealed class SessionStore
             {
                 throw new InvalidOperationException(
                     "This session keeps content beside its journal. Rewriting the journal's prefix would leave content "
-                    + "whose records it no longer holds, so its content goes only with whole recording chunks "
-                    + "(content-v1 §2). Nothing was published.");
+                    + "whose records it no longer holds, so its content goes only with whole recording chunks, or all of "
+                    + "it on its own by a content release first (content-v1 §2). Nothing was published.");
             }
 
             StoreDependency previous = manifest.Dependencies.FirstOrDefault(dependency =>
@@ -1280,6 +1280,81 @@ public sealed class SessionStore
                 record,
                 committedUtc,
                 [.. releasedFiles],
+                now);
+        }
+    }
+
+    /// <summary>
+    /// Publishes a retention generation that stops naming every content chunk and keeps everything else: every journal,
+    /// row and derived file, the plan, the ledger, the calibration and the committed boundary (content-v1 §2). Kept content
+    /// is restricted evidence a person may give up on its own once a capture has finished, keeping what the capture
+    /// recorded about every message. The caller counted the released records, because this store does not read inside
+    /// the files it publishes.
+    /// </summary>
+    /// <remarks>
+    /// A capture still recording would find the session changed beneath it and fail its next publication, and one that
+    /// stopped without finishing cannot be told from it, so a session whose capture has not finished is refused: its
+    /// content goes with its journal chunks instead.
+    /// </remarks>
+    public RetentionOutcome ReleaseContent(
+        long sourceGeneration,
+        long releasedRecords,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        ArgumentOutOfRangeException.ThrowIfNegative(releasedRecords);
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
+            SessionManifestV1 manifest = current
+                ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            if (manifest.Generation != sourceGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {sourceGeneration} changed while its content was being measured. Reopen the current "
+                    + "generation and release its content again. Nothing was published.");
+            }
+
+            StoreDependency[] content =
+            [
+                .. manifest.Dependencies
+                    .Where(dependency => dependency.Kind == StoreDependencyKind.Content)
+                    .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+            ];
+            if (content.Length == 0)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {manifest.Generation} keeps no content, so a content release has nothing to give up. "
+                    + "Nothing was published.");
+            }
+
+            if (!manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CaptureFinalization))
+            {
+                throw new InvalidOperationException(
+                    "This session's capture has not finished. A capture still recording would find the session changed "
+                    + "beneath it and fail, and one that stopped without finishing cannot be told from it, so its content "
+                    + "is released with its journal chunks instead, or once it has finished. Nothing was published.");
+            }
+
+            var record = new RetentionRecord(
+                RetentionExtentKind.Content,
+                now,
+                reason,
+                [.. content.Select(dependency => dependency.Name)],
+                content.Sum(dependency => dependency.LengthBytes),
+                releasedRecords,
+                ChunkSourceDigest(content));
+            return Publish(
+                manifest,
+                [.. manifest.Dependencies.Except(content)],
+                manifest.Boundary,
+                record,
+                committedUtc,
+                [.. content],
                 now);
         }
     }

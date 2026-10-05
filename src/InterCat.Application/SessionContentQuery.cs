@@ -98,6 +98,19 @@ public static class SessionContentQuery
             revealBytes, cancellationToken);
     }
 
+    /// <summary>
+    /// What the generation's own retention record says of its content, when it is the generation a content release
+    /// published: when and why every record's content went (content-v1 §2). Null for any other generation.
+    /// </summary>
+    public static string? ReleasedContent(SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.Retention is { Kind: RetentionExtentKind.Content } release
+            ? string.Create(System.Globalization.CultureInfo.CurrentCulture,
+                $"Its content was released on {release.ReleasedUtc.UtcDateTime:yyyy-MM-dd HH:mm} UTC, with every record's content in the session: \"{release.Reason}\". Every record's metadata is kept, and none of its bytes.")
+            : null;
+    }
+
     private static SessionContentDetail Resolve(
         SessionStore store,
         SessionManifestV1 manifest,
@@ -119,8 +132,10 @@ public static class SessionContentQuery
                 UnavailableReason = index.Problem is { } problem
                     ? $"This session's kept content could not all be read ({problem}), so this record's may be in what "
                         + "could not."
-                    : "The session keeps no content of this record now. Its content is released with its journal "
-                        + "chunk, so a retention release may have removed both.",
+                    : ReleasedContent(manifest) is { } released
+                        ? released
+                        : "The session keeps no content of this record now. Kept content goes with its journal chunk, or "
+                            + "on its own by a content release, so a retention may have released it.",
             };
         }
 

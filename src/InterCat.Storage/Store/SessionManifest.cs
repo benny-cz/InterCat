@@ -102,6 +102,12 @@ public enum RetentionExtentKind
     /// the ability to re-derive those records after a normalizer revision.
     /// </summary>
     JournalPrefix = 2,
+
+    /// <summary>
+    /// Every kept content chunk, released on its own (`contracts/content-v1.md` §2): the messages' bytes and each
+    /// record's content facts go, and every journal, row and derived file stays. Nothing can rebuild them.
+    /// </summary>
+    Content = 3,
 }
 
 /// <summary>
@@ -176,6 +182,8 @@ public sealed record RetentionRecord(
             _ => Kind == RetentionExtentKind.JournalPrefix && !SessionManifestV1.IsDigest(SourceDigest)
                 ? "A journal release names the digest of the journal it started from. The released bytes are "
                     + "gone, so the file that held them is what stays identifiable afterwards."
+                : Kind == RetentionExtentKind.Content && !SessionManifestV1.IsDigest(SourceDigest)
+                    ? "A content release names the digest of the content chunks it released, which are gone afterwards."
                 : Kind == RetentionExtentKind.DerivedFiles && SourceDigest.Length > 0
                     ? "A derived-file release names no source digest; the files it released are listed instead."
                     : null,

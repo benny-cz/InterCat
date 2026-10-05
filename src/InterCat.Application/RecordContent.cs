@@ -83,6 +83,12 @@ public sealed record RecordContent(RecordContentState State, string Reason, stri
                 "RPC's events carry a call's interface, procedure and status, never its arguments.",
                 "No driverless source is known to carry them; instrumenting the process could."),
             Mechanism.Alpc => new(RecordContentState.None, "ALPC's kernel events carry a message id, never the message.", null),
+
+            // WinINet's capture carries the message itself, and a capture keeps a record for each of its buffers: one with
+            // none was released since, on its own or with its journal chunk (content-v1 §2).
+            Mechanism.Http => new(RecordContentState.None,
+                "Its source carries the message itself, and the session keeps none of it now: a retention released it, on "
+                + "its own or with its journal chunk.", null),
             _ => new(RecordContentState.None, "This record's source carries metadata only.", null),
         };
     }

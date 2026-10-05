@@ -304,7 +304,8 @@ internal static class TestSessions
         int journalBatchRecords = 4_096,
         DateTimeOffset? committedUtc = null,
         (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null,
-        ClockCalibrationV1? calibration = null)
+        ClockCalibrationV1? calibration = null,
+        bool finished = false)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -363,6 +364,19 @@ internal static class TestSessions
         if (calibration is not null)
         {
             builder.StageClockCalibration(calibration);
+        }
+
+        // A capture that reached its last publication says so, as a recorder's final generation does.
+        if (finished)
+        {
+            builder.StageCaptureFinalization(new CaptureFinalizationV1
+            {
+                Contract = CaptureFinalizationV1.ContractName,
+                CaptureId = captureId.Value,
+                FinalizedUtc = committedUtc ?? Committed,
+                ProvidersStopped = true,
+                CallbacksDrained = true,
+            });
         }
 
         return builder.Complete(committedUtc ?? Committed);

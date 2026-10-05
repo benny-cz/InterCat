@@ -317,8 +317,11 @@ RetentionRecord = (kind, released UTC, reason, released files, released bytes, r
 ```
 
 The reason is required. A release with no stated reason is indistinguishable from data loss. The kind is
-`DerivedFiles` — segments, dictionaries or indices, all rebuildable from the journal — or `JournalPrefix`,
-which ADR-010 makes the explicit action it is.
+`DerivedFiles` — segments, dictionaries or indices, all rebuildable from the journal — `JournalPrefix`,
+which ADR-010 makes the explicit action it is, or `Content` (revision 306): every content chunk at once, which nothing
+can rebuild (`contracts/content-v1.md` §2). A `JournalPrefix` or `Content` record names the digest of what it released,
+which is gone afterwards; a `DerivedFiles` record lists its files instead. A reader that does not implement a kind refuses
+the record.
 
 The record is appended to the manifest's canonical digest text **only when it is present**, so a generation
 published before retention existed verifies with exactly the digest it always had.
@@ -355,6 +358,11 @@ session with no journal cannot re-derive anything.
 **Kept content goes only with its journal chunk** (`contracts/content-v1.md` §2, revision 234). A content chunk is
 evidence, not a derived file, so releasing it by name is refused. Rewriting one journal's prefix is refused while any
 content is kept, since it would leave content whose records the retained journal no longer holds.
+
+**Kept content can be released on its own** (revision 306): every content chunk at once, by a `Content` retention that
+keeps every journal, row and derived file. It is refused while the capture has not finished, since a recorder still
+writing would find the session changed beneath it, and when the generation keeps no content. Afterwards a journal's
+prefix may be rewritten as for any session without content.
 
 **A live recording is released a chunk at a time** (ADR-024). A boundary counts records in stored order across the
 chunks the generation names, and releases each chunk that ends at or before it. Only a leading run of chunks is

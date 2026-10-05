@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -67,10 +68,58 @@ internal sealed record RetentionResultDocument
     public required IReadOnlyList<string> HeldByLease { get; init; }
 }
 
+/// <summary>What a content release would give up, or did (content-v1 §2): every message's bytes and content facts.</summary>
+internal sealed record ContentRetentionDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required string Action { get; init; }
+    public required bool Performed { get; init; }
+    public required ContentRetentionPreviewDocument Preview { get; init; }
+    public required ContentRetentionResultDocument? Result { get; init; }
+    public required IReadOnlyList<string> Notes { get; init; }
+}
+
+internal sealed record ContentRetentionPreviewDocument
+{
+    public required long Generation { get; init; }
+
+    /// <summary>The content chunks a release gives up, by name.</summary>
+    public required IReadOnlyList<string> Chunks { get; init; }
+
+    /// <summary>How many records' content they hold, as their headers declare.</summary>
+    public required long Records { get; init; }
+
+    /// <summary>How many bytes of messages were kept; null when a chunk could not be read.</summary>
+    public required long? KeptBytes { get; init; }
+
+    /// <summary>How many bytes the chunks take beside the journal.</summary>
+    public required long FileBytes { get; init; }
+
+    /// <summary>Whether the session's capture has finished, which a release needs.</summary>
+    public required bool Finished { get; init; }
+
+    /// <summary>The chunks whose records could not be counted; a release gives them up too.</summary>
+    public required IReadOnlyList<string> Unreadable { get; init; }
+    public required bool ReleasesAnything { get; init; }
+}
+
+internal sealed record ContentRetentionResultDocument
+{
+    public required long Generation { get; init; }
+    public required string ManifestDigest { get; init; }
+    public required long ReleasedRecords { get; init; }
+    public required long ReleasedBytes { get; init; }
+    public required long ReclaimedBytes { get; init; }
+    public required IReadOnlyList<string> ReleasedFiles { get; init; }
+    public required IReadOnlyList<string> RemovedFiles { get; init; }
+    public required IReadOnlyList<string> HeldByLease { get; init; }
+}
+
 /// <summary>
-/// Releases a prefix of a session's admitted journal. ADR-010 makes this explicit rather than a default,
-/// so the command is a dry run unless it is told otherwise: the extent it would give up is disclosed first
-/// and performed only on a separate decision (S5).
+/// Releases a prefix of a session's admitted journal, or its kept content on its own. ADR-010 makes a release explicit
+/// rather than a default, so the command is a dry run unless it is told otherwise: the extent it would give up is
+/// disclosed first and performed only on a separate decision (S5).
 /// </summary>
 internal static class RetainCommand
 {
@@ -86,6 +135,7 @@ internal static class RetainCommand
         string? reasonOption = command.TakeOption("--reason");
         string? outputOption = command.TakeOption("--output");
         string? sessionPath = command.TakePositional();
+        bool releaseContent = command.TryTakeFlag("--release-content");
         bool confirm = command.TryTakeFlag("--confirm");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
@@ -95,12 +145,19 @@ internal static class RetainCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (sessionPath is null || beforeOption is null)
+        if (sessionPath is null || (beforeOption is null && !releaseContent))
         {
             ConsoleUi.Failure(
-                "A session directory and a boundary are required: "
-                + "icat retain <directory> --release-journal-before-record <n>");
+                "A session directory and what to release are required: "
+                + "icat retain <directory> --release-journal-before-record <n>, or --release-content");
             ConsoleUi.Explain(PrintHelp);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (beforeOption is not null && releaseContent)
+        {
+            ConsoleUi.Failure("--release-content and --release-journal-before-record are two releases, each published "
+                + "with its own record; ask for one at a time.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -108,13 +165,6 @@ internal static class RetainCommand
         if (!Directory.Exists(full))
         {
             ConsoleUi.Failure($"No session directory at {full}.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
-        if (!long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out long before))
-        {
-            ConsoleUi.Failure(
-                $"--release-journal-before-record expects a non-negative whole number; '{beforeOption}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -130,6 +180,19 @@ internal static class RetainCommand
         if (outputPath is not null && File.Exists(outputPath) && !overwrite)
         {
             ConsoleUi.Failure($"{outputPath} exists. Pass --overwrite to replace it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (releaseContent)
+        {
+            return await ReleaseContentAsync(full, confirm ? reasonOption : null, outputPath, json, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        if (!long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out long before))
+        {
+            ConsoleUi.Failure(
+                $"--release-journal-before-record expects a non-negative whole number; '{beforeOption}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -362,6 +425,173 @@ internal static class RetainCommand
         }
     }
 
+    /// <summary>
+    /// Measures, and with a reason performs, the release of every content chunk the session keeps (content-v1 §2). The
+    /// messages' bytes and each record's content facts go; every journal, row and derived file stays.
+    /// </summary>
+    private static async Task<InterCatExitCode> ReleaseContentAsync(string path, string? reason, string? outputPath, bool json,
+        CancellationToken cancellationToken)
+    {
+        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+        if (store.Current is not { } manifest)
+        {
+            ConsoleUi.Failure("This session has published no generation, so there is nothing to retain from.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        ConsoleUi.Progress("Measuring what releasing the session's kept content would give up. Nothing is written yet.");
+        ContentReleasePreview preview = ContentRetention.Preview(store, cancellationToken);
+        SessionContentSummary? summary = preview.ReleasesAnything
+            ? SessionContentIndex.Read(store.Root, manifest, cancellationToken).Summarize()
+            : null;
+        RetentionOutcome? outcome = null;
+        string? refused = null;
+        if (reason is not null && preview.ReleasesAnything && preview.Finished)
+        {
+            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(path), manifest.SessionId, manifest.SourceIdentity);
+            ConsoleUi.Progress(string.Create(CultureInfo.CurrentCulture,
+                $"Releasing the content of {preview.Records:N0} records and publishing the retention generation."));
+            try
+            {
+                outcome = ContentRetention.Release(writable, reason, DateTimeOffset.UtcNow, cancellationToken: cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                refused = exception.Message;
+            }
+        }
+
+        var notes = new List<string>
+        {
+            "A content release gives up every message's bytes and what each record kept of its message: its classification, "
+            + "lengths and how it was cut. Every journal, row and derived file stays, so every record and its size remain.",
+        };
+        if (!preview.ReleasesAnything)
+        {
+            notes.Add("This session keeps no content, so there is nothing to release.");
+        }
+        else if (!preview.Finished)
+        {
+            notes.Add("This session's capture has not finished. A capture still recording would find the session changed "
+                + "beneath it and fail, and one that stopped without finishing cannot be told from it, so its content is "
+                + "released with its journal chunks instead (--release-journal-before-record), or once it has finished.");
+        }
+
+        if (preview.Unreadable.Count > 0)
+        {
+            notes.Add($"Some content could not be read, so its records are not counted; a release gives it up too: "
+                + string.Join(", ", preview.Unreadable) + ".");
+        }
+
+        if (refused is not null)
+        {
+            notes.Add("Nothing was published: " + refused);
+        }
+        else if (outcome is null && reason is null && preview.ReleasesAnything && preview.Finished)
+        {
+            notes.Add("This was a measurement. Add --confirm and --reason to perform it.");
+        }
+
+        if (outcome?.AwaitingRelease == true)
+        {
+            notes.Add("The released content is no longer part of any generation, but a live evidence lease still holds "
+                + "its bytes. They go when that reader lets go; retention never removes evidence behind an open reader (I18).");
+        }
+
+        var document = new ContentRetentionDocument
+        {
+            Contract = "store-v1",
+            Path = path,
+            Action = "release-content",
+            Performed = outcome is not null,
+            Preview = new()
+            {
+                Generation = preview.Generation,
+                Chunks = preview.Chunks,
+                Records = preview.Records,
+                KeptBytes = summary is { Problem: null } ? summary.KeptBytes : null,
+                FileBytes = preview.FileBytes,
+                Finished = preview.Finished,
+                Unreadable = preview.Unreadable,
+                ReleasesAnything = preview.ReleasesAnything,
+            },
+            Result = outcome is null ? null : new()
+            {
+                Generation = outcome.Manifest.Generation,
+                ManifestDigest = outcome.Manifest.Digest,
+                ReleasedRecords = outcome.Manifest.Retention?.ReleasedRecords ?? 0,
+                ReleasedBytes = outcome.Manifest.Retention?.ReleasedBytes ?? 0,
+                ReclaimedBytes = outcome.ReclaimedBytes,
+                ReleasedFiles = outcome.ReleasedFiles,
+                RemovedFiles = outcome.RemovedFiles,
+                HeldByLease = outcome.HeldByLease,
+            },
+            Notes = notes,
+        };
+        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
+        if (json)
+        {
+            Console.Out.WriteLine(payload);
+        }
+        else
+        {
+            RenderContent(document, summary);
+        }
+
+        if (outputPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
+            ConsoleUi.Success($"Retention report written to {outputPath}.");
+        }
+
+        if (refused is not null)
+        {
+            ConsoleUi.Warn("Nothing was published: " + refused);
+        }
+
+        return document.Performed || (reason is null && preview.ReleasesAnything && preview.Finished)
+            ? InterCatExitCode.Success
+            : InterCatExitCode.PartialResultSuccess;
+    }
+
+    private static void RenderContent(ContentRetentionDocument document, SessionContentSummary? summary)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ContentRetentionPreviewDocument preview = document.Preview;
+        ConsoleUi.Heading(document.Performed ? "Kept content released" : "Content release, measured only");
+        ConsoleUi.Field("Session", document.Path);
+        ConsoleUi.Field("Generation", preview.Generation.ToString("N0", culture));
+        if (preview.ReleasesAnything)
+        {
+            ConsoleUi.Field("Kept content", string.Create(culture,
+                $"{preview.Chunks.Count:N0} {(preview.Chunks.Count == 1 ? "chunk" : "chunks")} beside the journal, {ConsoleUi.Bytes(preview.FileBytes)}"));
+            ConsoleUi.Field("Messages", summary is { Problem: null }
+                ? string.Create(culture,
+                    $"{summary.Records:N0} records' content: {summary.Whole:N0} kept whole, {summary.Cut:N0} cut, {summary.Omitted:N0} not kept; {ConsoleUi.Bytes(summary.KeptBytes)} of message bytes")
+                : string.Create(culture, $"at least {preview.Records:N0} records' content"));
+            ConsoleUi.Field("Capture", preview.Finished ? "finished" : "not finished; its content is not released on its own");
+        }
+
+        if (document.Result is { } result)
+        {
+            ConsoleUi.Heading("Published retention generation");
+            ConsoleUi.Field("Generation", result.Generation.ToString("N0", culture));
+            ConsoleUi.Field("Given up", string.Create(culture,
+                $"the content of {result.ReleasedRecords:N0} records, {ConsoleUi.Bytes(result.ReleasedBytes)} of chunks"));
+            ConsoleUi.Field("Removed from disk", ConsoleUi.Bytes(result.ReclaimedBytes));
+            ConsoleUi.Field("Released files", string.Join(", ", result.ReleasedFiles));
+            ConsoleUi.Field("Held by a lease", result.HeldByLease.Count == 0 ? "none" : string.Join(", ", result.HeldByLease));
+            ConsoleUi.Field("Manifest digest", result.ManifestDigest);
+        }
+
+        ConsoleUi.Line();
+        foreach (string note in document.Notes)
+        {
+            ConsoleUi.Note(note);
+        }
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
@@ -372,5 +602,11 @@ internal static class RetainCommand
         ConsoleUi.Line("      empty the journal is refused. <n> counts records in stored order across the");
         ConsoleUi.Line("      journal the current generation holds. Re-derivation is refused afterwards,");
         ConsoleUi.Line("      because the released records' rows could not be rebuilt.");
+        ConsoleUi.Line("  icat retain <directory> --release-content");
+        ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("      Measures what releasing every message's kept content would give up - its bytes and");
+        ConsoleUi.Line("      what each record kept of its message - and performs it only with --confirm and a");
+        ConsoleUi.Line("      stated reason, once the capture has finished. Every journal, row and derived file");
+        ConsoleUi.Line("      stays, so every record and its size remain.");
     }
 }

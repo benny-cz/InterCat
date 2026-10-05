@@ -134,18 +134,136 @@ public sealed class SessionContentTests
         Assert.Contains(damaged, partial.Problem, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "ADR-036: rewriting one journal's prefix is refused while content is kept beside it")]
+    [Fact(DisplayName = "ADR-036: rewriting one journal's prefix is refused while content is kept beside it, and not once it is released")]
     public void APrefixRewriteIsRefusedWhileContentIsKept()
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Rows(0);
-        Publish(session.Store, rows, journalBatchRecords: 1, content: (ContentHeader(recordLimit: 8), Kept(rows)));
+        Publish(session.Store, rows, journalBatchRecords: 1, content: (ContentHeader(recordLimit: 8), Kept(rows)), finished: true);
         long generation = session.Store.Current!.Generation;
 
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             JournalRetention.Release(session.Store, 1, "free space", DateTimeOffset.UnixEpoch));
         Assert.Contains("keeps content", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("content release", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(generation, session.Store.Current!.Generation);
+
+        // With its content released on its own, the journal's prefix is what the journal alone decides.
+        ContentRetention.Release(session.Store, "payloads held tokens", DateTimeOffset.UnixEpoch);
+        RetentionOutcome prefix = JournalRetention.Release(session.Store, 1, "free space", DateTimeOffset.UnixEpoch);
+        Assert.Equal((RetentionExtentKind.JournalPrefix, 1L), (prefix.Manifest.Retention!.Kind, prefix.Manifest.Retention.ReleasedRecords));
+    }
+
+    [Fact(DisplayName = "ADR-036: kept content is released on its own once its capture has finished, and every record stays")]
+    public void ContentIsReleasedOnItsOwn()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] early = Rows(0);
+        ObservationRowV1[] late = Rows(100);
+        Publish(session.Store, early, content: (ContentHeader(recordLimit: 8), Kept(early)));
+        Publish(session.Store, late, content: (ContentHeader(recordLimit: 8), Kept(late)), finished: true);
+        SessionManifestV1 before = session.Store.Current!;
+        StoreDependency[] content = [.. before.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content)];
+
+        // Measured first, and nothing written: both chunks, every record's content they hold, and their size.
+        ContentReleasePreview preview = ContentRetention.Preview(session.Store);
+        Assert.Equal(["content-0000000001.icatc", "content-0000000002.icatc"], preview.Chunks);
+        Assert.Equal((before.Generation, 6L, content.Sum(dependency => dependency.LengthBytes), true, true),
+            (preview.Generation, preview.Records, preview.FileBytes, preview.Finished, preview.ReleasesAnything));
+        Assert.Empty(preview.Unreadable);
+        Assert.Same(before, session.Store.Current);
+
+        // Released, the generation names no content and keeps everything else as it was, the boundary included.
+        DateTimeOffset when = new(2026, 10, 5, 9, 30, 0, TimeSpan.Zero);
+        RetentionOutcome released = ContentRetention.Release(session.Store, "the investigation is done; its payloads held tokens",
+            DateTimeOffset.UnixEpoch, when);
+        SessionManifestV1 after = released.Manifest;
+        Assert.Equal(before.Dependencies.Where(dependency => dependency.Kind != StoreDependencyKind.Content), after.Dependencies);
+        Assert.Equal(before.Boundary, after.Boundary);
+        Assert.Equal(["content-0000000001.icatc", "content-0000000002.icatc"], released.ReleasedFiles);
+
+        // Its record says what went and why, as every retention's does.
+        RetentionRecord record = after.Retention!;
+        Assert.Equal((RetentionExtentKind.Content, when, "the investigation is done; its payloads held tokens", 6L,
+                content.Sum(dependency => dependency.LengthBytes), SessionStore.ChunkSourceDigest(content)),
+            (record.Kind, record.ReleasedUtc, record.Reason, record.ReleasedRecords, record.ReleasedBytes, record.SourceDigest));
+        Assert.Equal(released.ReleasedFiles, record.ReleasedFiles);
+        Assert.Null(record.Validate());
+        Assert.NotNull((record with { SourceDigest = string.Empty }).Validate());
+
+        // Every record stays, with none of its content, and asking for it says when and why it went.
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        Assert.Equal(6, page.Records.Count);
+        Assert.All(page.Records, evidence => Assert.Null(evidence.Content));
+        SessionContentDetail detail = SessionContentQuery.Read(session.Store, page.SessionId, page.Records[0], revealBytes: true);
+        Assert.Equal((false, (byte[]?)null), (detail.Available, detail.Bytes));
+        Assert.Equal("Its content was released on 2026-10-05 09:30 UTC, with every record's content in the session: \"the "
+            + "investigation is done; its payloads held tokens\". Every record's metadata is kept, and none of its bytes.",
+            detail.UnavailableReason);
+
+        // The released generation reopens and verifies, and there is nothing left to release.
+        Assert.Equal(after.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)).Current!.Generation);
+        Assert.False(ContentRetention.Preview(session.Store).ReleasesAnything);
+        Assert.Contains("keeps no content", Assert.Throws<InvalidOperationException>(() =>
+            ContentRetention.Release(session.Store, "again", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);
+
+        // A record of a source that carries its message, with none kept now, says it was released rather than never held.
+        Assert.Equal("None. Its source carries the message itself, and the session keeps none of it now: a retention "
+            + "released it, on its own or with its journal chunk.",
+            RecordContent.Of(early[0] with { Mechanism = Mechanism.Http }).Describe());
+    }
+
+    [Fact(DisplayName = "ADR-036: a content release is refused when nothing is kept or its capture has not finished, and publishes nothing")]
+    public void AContentReleaseIsRefusedUnlessItCanBeOne()
+    {
+        // A capture without its final publication may still be recording, and a release would strand its writer.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows(0);
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 8), Kept(rows)));
+        long generation = session.Store.Current!.Generation;
+        Assert.Equal((true, false), (ContentRetention.Preview(session.Store).ReleasesAnything, ContentRetention.Preview(session.Store).Finished));
+        Assert.Contains("has not finished", Assert.Throws<InvalidOperationException>(() =>
+            ContentRetention.Release(session.Store, "done", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => ContentRetention.Release(session.Store, " ", DateTimeOffset.UnixEpoch));
+        Assert.Equal(generation, session.Store.Current!.Generation);
+
+        // A session that keeps no content has none to release.
+        using var bare = new TemporarySession();
+        Publish(bare.Store, Rows(0), finished: true);
+        Assert.False(ContentRetention.Preview(bare.Store).ReleasesAnything);
+        Assert.Contains("keeps no content", Assert.Throws<InvalidOperationException>(() =>
+            ContentRetention.Release(bare.Store, "done", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);
+
+        // A chunk whose header cannot be read is named by the measurement, which does not count its records. One whose
+        // bytes changed is no longer the generation's, so nothing is published over it.
+        using var damaged = new TemporarySession();
+        Publish(damaged.Store, rows, content: (ContentHeader(recordLimit: 8), Kept(rows)));
+        ObservationRowV1[] later = Rows(100);
+        Publish(damaged.Store, later, content: (ContentHeader(recordLimit: 8), Kept(later)), finished: true);
+        using (FileStream stream = damaged.Store.Root.OpenOwnedFile("content-0000000001.icatc", FileMode.Open, FileAccess.ReadWrite,
+            FileShare.None, FileOptions.None))
+        {
+            stream.Position = 12;
+            int value = stream.ReadByte();
+            stream.Position = 12;
+            stream.WriteByte((byte)(value ^ 0xFF));
+        }
+
+        ContentReleasePreview partial = ContentRetention.Preview(damaged.Store);
+        Assert.Equal(["content-0000000001.icatc"], partial.Unreadable);
+        Assert.Equal(3, partial.Records);
+        long published = damaged.Store.Current!.Generation;
+        Assert.Contains("content-0000000001.icatc", Assert.Throws<InvalidDataException>(() =>
+            ContentRetention.Release(damaged.Store, "done", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);
+        Assert.Equal(published, damaged.Store.Current!.Generation);
+
+        // What was measured is what is released: a count taken in another generation is refused.
+        using var moved = new TemporarySession();
+        Publish(moved.Store, rows, content: (ContentHeader(recordLimit: 8), Kept(rows)), finished: true);
+        long measured = moved.Store.Current!.Generation;
+        Assert.Contains("changed while its content was being measured", Assert.Throws<InvalidOperationException>(() =>
+            moved.Store.ReleaseContent(measured - 1, 3, "done", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);
+        Assert.Equal(measured, moved.Store.Current!.Generation);
     }
 
     [Fact(DisplayName = "I22: a redacted package keeps no content and says so; the original package carries it and says how much")]

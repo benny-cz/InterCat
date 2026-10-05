@@ -88,6 +88,9 @@ internal sealed record SessionGenerationDocument
     public required string Digest { get; init; }
     public required SessionBoundaryDocument? Boundary { get; init; }
     public required IReadOnlyList<SessionDependencyDocument> Dependencies { get; init; }
+
+    /// <summary>What this generation released, and why, when a retention published it (store-v1 §8); null otherwise.</summary>
+    public required RetentionRecord? Retention { get; init; }
 }
 
 /// <summary>
@@ -483,6 +486,7 @@ internal static class SessionCommand
                         Digest = dependency.Digest,
                     }),
                 ],
+                Retention = manifest.Retention,
             },
             Recovery = new()
             {
@@ -627,6 +631,11 @@ internal static class SessionCommand
             RenderContent(content);
         }
 
+        if (generation.Retention is { } retention)
+        {
+            RenderRetention(retention);
+        }
+
         ConsoleUi.Heading("Published files");
         ConsoleUi.Table(
             ["File", "Kind", "Bytes"],
@@ -765,6 +774,33 @@ internal static class SessionCommand
 
         ConsoleUi.Note("Content is restricted evidence (ADR-036). icat export and a redacted package never carry it; an "
             + "original evidence package discloses it. icat raw states what each record kept.");
+    }
+
+    /// <summary>
+    /// What the generation released and why, as its retention record states it (store-v1 §8): a release with no reader
+    /// is indistinguishable from data loss, so the session says what went, when and why.
+    /// </summary>
+    private static void RenderRetention(RetentionRecord retention)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ConsoleUi.Heading("Released by retention");
+        ConsoleUi.Field("What", retention.Kind switch
+        {
+            RetentionExtentKind.DerivedFiles => "derived files - segments, dictionaries or indexes - all rebuildable from the journal",
+            RetentionExtentKind.JournalPrefix => string.Create(culture,
+                $"{ConsoleUi.Count(retention.ReleasedRecords)} records of the admitted journal, which can no longer be re-derived"),
+            RetentionExtentKind.Content => string.Create(culture,
+                $"the content kept of {ConsoleUi.Count(retention.ReleasedRecords)} records: their bytes and each one's content facts; every record's metadata is kept"),
+            _ => retention.Kind.ToString(),
+        });
+        ConsoleUi.Field("When", retention.ReleasedUtc.ToString("u", CultureInfo.InvariantCulture));
+        ConsoleUi.Field("Why", retention.Reason);
+        int listed = Math.Min(retention.ReleasedFiles.Count, 4);
+        ConsoleUi.Field("Files", string.Create(culture,
+            $"{ConsoleUi.Count(retention.ReleasedFiles.Count)}, {ConsoleUi.Bytes(retention.ReleasedBytes)}: {string.Join(", ", retention.ReleasedFiles.Take(listed))}")
+            + (retention.ReleasedFiles.Count > listed
+                ? string.Create(culture, $" and {ConsoleUi.Count(retention.ReleasedFiles.Count - listed)} more")
+                : string.Empty));
     }
 
     private static void RenderCalibration(ClockCalibrationV1 calibration, WallClockRate? rate, SessionRecordingDocument? recording)

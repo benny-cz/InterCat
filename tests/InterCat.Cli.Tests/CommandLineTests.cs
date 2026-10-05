@@ -239,6 +239,7 @@ public sealed class CommandLineTests : IDisposable
                 ["metric", session.Path, "--metric", "bytes-sent", "--byte-domain", "TransportObserved", "--side", "send", "--group-by", "process"],
                 ["metric", "--matrix"],
                 ["compact", session.Path, "--check"],
+                ["retain", session.Path, "--release-content"],
                 ["recover", session.Path],
                 ["staging", session.Path],
                 ["workspace", "show", workspace],
@@ -363,6 +364,70 @@ public sealed class CommandLineTests : IDisposable
                 missing.GetProperty("lastBuffer").GetInt64(), missing.GetProperty("length").ValueKind,
                 missing.GetProperty("partOffset").GetInt64()));
         Assert.DoesNotContain("head", output, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]
+    public async Task ContentIsReleasedOnlyWhenToldWhy()
+    {
+        using var kept = new TemporarySession();
+        ObservationRowV1[] rows = [Body(10, 1), Body(12, 2)];
+        Publish(kept.Store, rows, finished: true, content: (ContentHeader(recordLimit: 8),
+            [Content(rows[0], "head"u8.ToArray(), 8, ContentEncodingV1.Binary), Content(rows[1], "tail"u8.ToArray(), 8, ContentEncodingV1.Binary)]));
+        long generation = kept.Store.Current!.Generation;
+        kept.Store.ReleaseSegmentReaders();
+        long Current() => SessionStore.OpenExisting(LocalOwnedDirectory.Open(kept.Path)).Current!.Generation;
+
+        // Measured, nothing is written, and what would go is named: every message's bytes and content facts.
+        (InterCatExitCode code, string output, string said) = await Run("retain", kept.Path, "--release-content");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("2 records' content: 2 kept whole, 0 cut, 0 not kept; 8 B of message bytes", output, StringComparison.Ordinal);
+        Assert.Contains("This was a measurement. Add --confirm and --reason to perform it.", output, StringComparison.Ordinal);
+        Assert.Equal(generation, Current());
+
+        // Performing it needs a confirmation and a reason, and one release at a time.
+        (code, _, said) = await Run("retain", kept.Path, "--release-content", "--reason", "payloads held tokens");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(generation, Current());
+        (code, _, said) = await Run("retain", kept.Path, "--release-content", "--confirm");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--confirm needs --reason", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("retain", kept.Path, "--release-content", "--release-journal-before-record", "1");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("two releases", said, StringComparison.Ordinal);
+        Assert.Equal(generation, Current());
+
+        // Told why, it releases, and says what went.
+        (code, output, said) = await Run("retain", kept.Path, "--release-content", "--confirm", "--reason", "payloads held tokens", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement root = answer.RootElement;
+            Assert.Equal(("store-v1", "release-content", true), (root.GetProperty("contract").GetString(),
+                root.GetProperty("action").GetString(), root.GetProperty("performed").GetBoolean()));
+            Assert.Equal(2, root.GetProperty("result").GetProperty("releasedRecords").GetInt64());
+        }
+
+        Assert.Equal(generation + 1, Current());
+
+        // The session states the release, and a record's content says when and why it went.
+        (_, output, _) = await Run("session", kept.Path);
+        Assert.Contains("the content kept of 2 records: their bytes and each one's content facts; every record's metadata is kept",
+            output, StringComparison.Ordinal);
+        Assert.Contains("payloads held tokens", output, StringComparison.Ordinal);
+        Assert.Contains("\"kind\": \"Content\"", (await Run("session", kept.Path, "--json")).Output, StringComparison.Ordinal);
+        SessionEvidencePage page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(kept.Path)));
+        (code, _, said) = await Run("content", kept.Path, "--session-id", page.SessionId.ToString(), "--generation",
+            page.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), "--segment", page.Records[0].SegmentName,
+            "--row", page.Records[0].SegmentRow.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("Its content was released on", said, StringComparison.Ordinal);
+        Assert.Contains("\"payloads held tokens\"", said, StringComparison.Ordinal);
+
+        // Nothing is left to release.
+        (code, output, _) = await Run("retain", kept.Path, "--release-content", "--confirm", "--reason", "again");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("This session keeps no content, so there is nothing to release.", output, StringComparison.Ordinal);
+        Assert.Equal(generation + 1, Current());
     }
 
     /// <summary>A WinINet response body record of process 4242, whose payload names no owner.</summary>

@@ -46,6 +46,19 @@ generation in the same retention record. Releasing a chunk by name alone is refu
 that rewrites one journal while any chunk is kept, since it would leave content its records no longer have. A follower
 refuses an evidence session that names a chunk.
 
+Since revision 306 every chunk can also be released at once, on its own: a **content release** (store-v1 §8). It
+publishes a generation that names no chunk and keeps everything else - every journal, row and derived file, the plan,
+the ledger, the calibration and the committed boundary - with a retention record of kind `Content` that names the
+chunks, their bytes, how many records' content they held, the digest of their dependency lines, and why. The messages'
+bytes go, and so does what each record kept of its message - its classification, lengths and how it was cut - since a
+chunk holds both; every record and its size stay. It is refused, and nothing is published, when the generation keeps
+no chunk, and when its capture has not finished - it carries no capture finalization marker - since a capture still
+recording would find the session changed beneath it, and one that stopped without finishing cannot be told from it:
+its content goes with its journal chunks instead. `icat retain <session> --release-content` measures the release - the
+chunks, the records' content and the message bytes they hold - and performs it only with `--confirm` and a stated
+`--reason`. While the release's generation is current, a record's content states when and why it went; `icat session`
+states any retention record of the generation it reads.
+
 A viewer lists a chunk at open without hashing it, as it lists a journal (store-v1 §6): its header and each fragment
 carry their own checksums, and a reader checks a fragment before interpreting a byte of it.
 
@@ -198,5 +211,6 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
   raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
-- Releasing content alone while keeping the metadata, which needs a retention kind of its own.
 - Content an imported file already holds (§11.1).
+- A content release's record in later generations: it is its own generation's, as every retention record is, so a later
+  publication leaves it behind and a record's content then says only that a retention may have released it.

@@ -145,7 +145,7 @@ public sealed class ContentViewTests
         _ = JournalRetention.Release(session.Store, early.Length, "keep the last chunk", DateTimeOffset.UnixEpoch);
         SessionContentDetail released = SessionContentQuery.Read(session.Store, page.SessionId, cut, revealBytes: true);
         Assert.False(released.Available);
-        Assert.Contains("retention release", released.UnavailableReason, StringComparison.Ordinal);
+        Assert.Contains("a retention may have released it", released.UnavailableReason, StringComparison.Ordinal);
         Assert.Null(released.Bytes);
 
         // Kept without consent to inspect them, the bytes are never read for a person.
