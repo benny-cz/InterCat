@@ -8,7 +8,9 @@ namespace InterCat.Cli;
 
 /// <summary>
 /// One record's kept content, named by an evidence page's exact row locator (§3.7, ADR-036): its facts, and its bytes only
-/// when asked - shown bounded and inert, or saved as they are to a file the person names.
+/// when asked - shown bounded and inert, or saved as they are to a file the person names. A buffer of a part shows its
+/// part with --part: a whole one as one run of bytes, and one that is not whole buffer by buffer with each gap in place,
+/// never saved as one (M8).
 /// </summary>
 internal static class ContentCommand
 {
@@ -116,7 +118,17 @@ internal static class ContentCommand
                     : null,
                 Facts = facts,
                 Part = part is { IsPart: true } known
-                    ? new { known.Name, known.Complete, known.Length, Buffers = known.Buffers.Count, known.Statement }
+                    ? new
+                    {
+                        known.Name,
+                        known.Complete,
+                        known.Length,
+                        Buffers = known.Buffers.Count,
+                        known.Statement,
+                        // Where the part lacks bytes, in its order: a whole part has no gap (M8).
+                        Gaps = known.Pieces.Where(piece => piece.Kind != ContentPartPieceKind.Kept)
+                            .Select(piece => new { piece.Kind, piece.FirstBuffer, piece.LastBuffer, piece.Length, piece.PartOffset }),
+                    }
                     : null,
             }, JsonContracts.Indented));
             return detail.Available ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
@@ -225,7 +237,8 @@ internal static class ContentCommand
 
     /// <summary>
     /// The whole part a buffer belongs to, shown or saved as one: only when every buffer from its first to its last was
-    /// kept whole, since a part missing a buffer is never presented as whole (I21, P2).
+    /// kept whole, since a part missing a buffer is never presented as whole (I21, P2). One that is not whole is shown
+    /// with its gaps in place instead, and never saved as one.
     /// </summary>
     private static async Task<InterCatExitCode> WholePartAsync(SessionContentPartDetail? part, bool reveal, string? savePath,
         string? fromText, string? toText, bool overwrite, CancellationToken cancellationToken)
@@ -238,8 +251,7 @@ internal static class ContentCommand
 
         if (!part.Complete)
         {
-            ConsoleUi.Warn("The part is not whole, so it is neither shown nor saved as one; each buffer is, on its own.");
-            return reveal || savePath is not null ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
+            return GappedPart(part, reveal, savePath, fromText, toText);
         }
 
         if (!reveal && savePath is null)
@@ -288,6 +300,61 @@ internal static class ContentCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// A part that is not whole (M8): shown, when asked, buffer by buffer with each gap a line of its own - buffers never
+    /// recorded, bytes cut or not kept - chosen by buffer number, and never saved as one, since nothing may stand in for
+    /// its missing bytes (I21, P2). Its answer is partial: the part was asked for, and only some of it exists.
+    /// </summary>
+    private static InterCatExitCode GappedPart(SessionContentPartDetail part, bool reveal, string? savePath, string? fromText,
+        string? toText)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        if (!reveal)
+        {
+            if (savePath is null)
+            {
+                ConsoleUi.Note("Its bytes are hidden. Add --reveal to show the part with each gap in place, bounded and inert.");
+                return InterCatExitCode.Success;
+            }
+
+            ConsoleUi.Warn("The part is not whole, so it is never saved as one file: nothing may stand in for its missing "
+                + "bytes. Save each buffer from its own record, without --part.");
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        if (!part.BytesRead || ContentBytesView.RecordedBuffers(part) is not { } recorded)
+        {
+            ConsoleUi.Warn("The part's bytes are not shown: " + part.Statement);
+            return InterCatExitCode.PartialResultSuccess;
+        }
+
+        ContentBufferRange chosen = recorded;
+        if ((fromText is not null || toText is not null)
+            && !ContentBytesView.TryParseBuffers(fromText ?? recorded.First.ToString(CultureInfo.InvariantCulture),
+                toText ?? recorded.Last.ToString(CultureInfo.InvariantCulture), recorded, out chosen, out string? problem))
+        {
+            ConsoleUi.Failure(problem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        ContentPartLines lines = ContentBytesView.PartLines(part, chosen, culture);
+        ConsoleUi.Heading("The part, its gaps in place · inert hexadecimal");
+        ConsoleUi.Note("Chosen: " + chosen.Describe(culture) + " of " + part.Name + ". Each buffer's bytes are numbered from "
+            + "its own first byte, and nothing stands in for a gap.");
+        foreach (ContentLine line in lines.Lines)
+        {
+            ConsoleUi.Line("  " + line.Line);
+        }
+
+        if (savePath is not null)
+        {
+            ConsoleUi.Warn("The part is not whole, so it is never saved as one file: nothing may stand in for its missing "
+                + "bytes. Save each buffer from its own record, without --part.");
+        }
+
+        return InterCatExitCode.PartialResultSuccess;
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat content <session-directory> --session-id <guid> --generation <n> --segment <name> --row <n>");
@@ -299,6 +366,8 @@ internal static class ContentCommand
         ConsoleUi.Line("  --save writes them as they are to a new file. --from and --to choose the bytes, by offset in");
         ConsoleUi.Line("  the message, decimal or 0x hexadecimal. Content kept without consent to inspect it is never");
         ConsoleUi.Line("  shown or saved. --json states the facts only. For a buffer of an HTTP head or body it says whether");
-        ConsoleUi.Line("  its part was kept whole, and --part shows or saves the whole part instead - only when it was.");
+        ConsoleUi.Line("  its part was kept whole, and --part shows or saves the whole part instead. A part that is not whole");
+        ConsoleUi.Line("  is shown buffer by buffer with each gap in place - --from and --to then choose buffers by number -");
+        ConsoleUi.Line("  and is never saved as one.");
     }
 }

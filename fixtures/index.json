@@ -1143,7 +1143,11 @@
         "P17: a package labelled redacted carries none of its source's evidence: no journal, segment or plan of it"
       ],
       "P2": [
-        "P2: an RPC call never reports a byte value, and the byte criterion stays not measured"
+        "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
+        "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
+        "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
+        "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
+        "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one"
       ],
       "P21": [
         "P21: a closed workspace applies nothing that was still being counted for it",

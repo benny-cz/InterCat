@@ -294,6 +294,89 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one")]
+    public async Task APartThatIsNotWholeShowsItsGaps()
+    {
+        using var http = new TemporarySession();
+
+        // Exchange 4's response body: buffer 0 kept whole, buffer 1 never recorded, buffer 2 kept whole and flagged last.
+        ObservationRowV1[] rows = [Body(10, 1), Body(12, 2)];
+        (long Sequence, long Flags)[] places = [(0, 1), (2, 2)];
+        SourceFieldRowV1[] fields =
+        [
+            .. places.SelectMany((place, index) => new[]
+            {
+                Field(rows[index], SourceField.HttpExchangeId, 4),
+                Field(rows[index], SourceField.ContentBufferSequence, place.Sequence),
+                Field(rows[index], SourceField.ContentBufferFlags, place.Flags),
+            }),
+        ];
+        Publish(http.Store, rows, fields: fields, content: (ContentHeader(recordLimit: 8),
+            [Content(rows[0], "head"u8.ToArray(), 8, ContentEncodingV1.Binary), Content(rows[1], "tail"u8.ToArray(), 8, ContentEncodingV1.Binary)]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(http.Store);
+        http.Store.ReleaseSegmentReaders();
+        SessionEvidenceRecord first = page.Records[0];
+        string[] locator =
+        [
+            "content", http.Path, "--session-id", page.SessionId.ToString(), "--generation",
+            page.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), "--segment", first.SegmentName, "--row",
+            first.SegmentRow.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        ];
+        const string Gap = "  -- Buffer 1 was not recorded: its length is not known, and nothing stands in for it";
+
+        // Shown, the part is its buffers in order with the gap between them; the answer is partial, as the part is.
+        (InterCatExitCode code, string output, string said) = await Run([.. locator, "--part", "--reveal"]);
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        string[] shown = output.Split(Environment.NewLine);
+        int gap = Array.IndexOf(shown, Gap);
+        Assert.True(gap > 0, output);
+        Assert.Equal("  -- Buffer 0, the part's first: 4 bytes, kept whole; bytes 0 to 3 of the part", shown[gap - 2]);
+        Assert.Equal("  " + ContentBytesView.Rows("head"u8, 0).Single().Line, shown[gap - 1]);
+        Assert.Equal("  -- Buffer 2, the part's last: 4 bytes, kept whole", shown[gap + 1]);
+        Assert.Equal("  " + ContentBytesView.Rows("tail"u8, 0).Single().Line, shown[gap + 2]);
+
+        // --from and --to choose its buffers; a buffer past those recorded is refused in words.
+        (code, output, _) = await Run([.. locator, "--part", "--reveal", "--from", "1"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.DoesNotContain("-- Buffer 0", output, StringComparison.Ordinal);
+        Assert.Contains(Gap, output, StringComparison.Ordinal);
+        (code, _, said) = await Run([.. locator, "--part", "--reveal", "--to", "7"]);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("The part's recorded buffers are 0 to 2; choose buffers within them.", said, StringComparison.Ordinal);
+
+        // It is never written as one file, since nothing may stand in for its missing bytes.
+        string target = Path.Combine(Path.GetDirectoryName(http.Path)!, Guid.NewGuid().ToString("N") + ".bin");
+        (code, _, said) = await Run([.. locator, "--part", "--save", target]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.False(File.Exists(target));
+        Assert.Contains("never saved as one file", said, StringComparison.Ordinal);
+
+        // Its facts name the gap where it falls, and no byte.
+        (code, output, _) = await Run([.. locator, "--json"]);
+        Assert.Equal(InterCatExitCode.Success, code);
+        using JsonDocument answer = JsonDocument.Parse(output);
+        JsonElement part = answer.RootElement.GetProperty("part");
+        Assert.False(part.GetProperty("complete").GetBoolean());
+        JsonElement missing = Assert.Single(part.GetProperty("gaps").EnumerateArray().ToArray());
+        Assert.Equal(("NotRecorded", 1L, 1L, JsonValueKind.Null, 4L),
+            (missing.GetProperty("kind").GetString(), missing.GetProperty("firstBuffer").GetInt64(),
+                missing.GetProperty("lastBuffer").GetInt64(), missing.GetProperty("length").ValueKind,
+                missing.GetProperty("partOffset").GetInt64()));
+        Assert.DoesNotContain("head", output, StringComparison.Ordinal);
+    }
+
+    /// <summary>A WinINet response body record of process 4242, whose payload names no owner.</summary>
+    private static ObservationRowV1 Body(long ticks, ulong ordinal) =>
+        Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, null, ordinal) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = 2004,
+            HeaderProcessId = 4_242,
+            Direction = Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        };
+
     /// <summary>An answer without what differs between two runs of one query: how long each took.</summary>
     private static string Comparable(string answer) =>
         System.Text.RegularExpressions.Regex.Replace(answer, "\"(elapsed|counted|duration)[A-Za-z]*\": [0-9.]+", "\"$1\": 0");

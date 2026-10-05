@@ -105,8 +105,17 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   The viewer and `icat content` say which buffer of which part it is, which of the part's buffers were recorded and
   kept, and whether they make the whole part: every buffer from the one flagged first to the one flagged last, in
   sequence order, each kept whole. Only such a part may be shown, copied or saved as one (the viewer's toggle,
-  `icat content --part`); a part missing a buffer, or holding one cut, names what it lacks and is shown one buffer at
-  a time, never as a whole (I21, P2). An exchange's number is its client process's own count from 1 (revision 244),
+  `icat content --part`); a part missing a buffer, or holding one cut, names what it lacks and is never shown, copied
+  or saved as a whole (I21, P2). Since revision 305 it is shown with its gaps in place, when a person asks: its pieces
+  in order, each recorded buffer under a heading that names it, its ends and, while every piece before it has a known
+  length, its bytes in the part, with its kept bytes in hex numbered from its own first byte; and a line of its own,
+  beginning with `--` as no line of hex does, for each gap - buffers never recorded, before the first recorded one,
+  between two or after the last; the rest of a buffer the record limit cut; a buffer recorded with none of its bytes
+  kept - stating its length only where a record states it. Such a view is chosen by buffer number, shows at most
+  64 KiB at once and stops at a buffer's start, offers no text view, and copies its lines as shown; it is never saved
+  as a file. `content-view-v1`'s part lists the gaps, additively (`gaps`: each one's `kind` - `Cut`, `NotKept` or
+  `NotRecorded` - and its `firstBuffer`, `lastBuffer`, `length` and `partOffset`, each null where not known); a whole
+  part's list is empty. An exchange's number is its client process's own count from 1 (revision 244),
   so one number, event and process ID can name two exchanges in a session - a process ID used again, or WinINet loaded
   again - and a part is found among its number's buffers in time: a buffer flagged first, one after a buffer flagged
   last, or one numbered no later than the one before it opens another use, and two uses are never merged (R22).
@@ -185,8 +194,8 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 
 ## 6. What is not defined at this version
 
-- A part that is not whole shown with its gaps in place: it is shown one buffer at a time. HTTP/2, compressed responses
-  and asynchronous WinINet are unmeasured, and so are the other client libraries, which raise no such records.
+- HTTP/2, compressed responses and asynchronous WinINet are unmeasured, and so are the other client libraries, which
+  raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Releasing content alone while keeping the metadata, which needs a retention kind of its own.

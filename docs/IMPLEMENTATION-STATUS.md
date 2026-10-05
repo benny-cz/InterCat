@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 304 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 305 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 305 — a part that is not whole is shown with its gaps in place (M8, P2):**
+  - The viewer's toggle and `icat content --part --reveal` show such a part buffer by buffer, each under a heading,
+    with each gap a `--` line of its own: buffers never recorded, the rest of a cut buffer, a buffer kept without its
+    bytes, each length stated only where a record states it. It is chosen by buffer, shown in hex alone at most 64 KiB
+    at once, and never saved as one; `content-view-v1`'s part lists its gaps.
 
 - **Revision 304 — a reader's refusal of a value reads as its own words (§20.4):**
   - `icat evidence --cursor abc` said "… restart from the first page. (Parameter 'cursor')", .NET's name for the
@@ -623,9 +629,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      and chunked responses (FX-HTTP-003), and tells a reused exchange number's uses apart; revision 245 holds a
      request's scope to the named processes themselves; revision 247 puts a process's HTTP exchanges on its rung, each
      with its parts (`http-exchanges-v1`, `icat exchanges`); revision 290 draws them as a lane in the timeline, as an
-     RPC channel's calls are. Later: HTTP/2 and compressed responses through it; a part that
-     is not whole shown with its gaps in place; a follower that mirrors content, so a broker capture could keep it;
-     releasing content alone; and a fixture decoder (§11.2's `DecodedFields`).
+     RPC channel's calls are; revision 305 shows a part that is not whole with its gaps in place. Later: HTTP/2 and
+     compressed responses through it; a follower that mirrors content, so a broker capture could keep it; releasing
+     content alone; and a fixture decoder (§11.2's `DecodedFields`).
 
    - **One-sided connections (§7.1).** Revision 248 lists a process's connections no record's other end holds on its
      rung, and revision 249 counts its records apart in the timeline. Later: naming the other host where a source
@@ -732,6 +738,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 305 was built and tested in the same Linux container: Debug and Release each ran **1,521 tests**, passing
+  **1,424 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of 37 mutations. They covered:
+  - gaps before, between or after the recorded buffers left out or misnumbered;
+  - a cut tail or an omitted buffer read as kept, and an unknown length read as zero;
+  - bytes read unasked or from the wrong place;
+  - the view's choice of buffers, its bound and where it stops;
+  - the viewer's toggle, save, text view, labels, copy, colours and spoken names;
+  - the command line's exit code, gap list and choice of buffers.
+
+  Three first failed to build, since `if (false)` is unreachable code here; written otherwise, each was caught. A
+  rendered frame of the view was checked by eye for its headings, gap colour and alignment.
 - Revision 304 was built and tested in the same Linux container: Debug and Release each ran **1,517 tests**, passing
   **1,420 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   both mutations: the suffix kept, and `evidence` printing the exception's message again.

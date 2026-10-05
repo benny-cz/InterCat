@@ -11,10 +11,45 @@ namespace InterCat.Application;
 /// <param name="Entry">The content kept of it; null when the session keeps none of it.</param>
 public sealed record ContentPartBuffer(long Sequence, long Flags, RawRecordId Record, SessionContentEntry? Entry);
 
+/// <summary>What a piece of a part is: a buffer's kept bytes, or a gap where none of the part's bytes are (M8).</summary>
+public enum ContentPartPieceKind
+{
+    /// <summary>A recorded buffer's kept bytes: all of them, or the first ones when the record limit cut the rest.</summary>
+    Kept,
+
+    /// <summary>The rest of a buffer the record limit cut: recorded, and never kept.</summary>
+    Cut,
+
+    /// <summary>A recorded buffer none of whose bytes were kept.</summary>
+    NotKept,
+
+    /// <summary>Buffers never recorded: before the first one recorded, between two, or after the last.</summary>
+    NotRecorded,
+}
+
+/// <summary>
+/// A piece of a part, in the part's order (M8): one buffer's kept bytes, or a gap - the rest of a cut buffer, a buffer
+/// kept without its bytes, or buffers never recorded. Nothing stands in for a gap, and a gap's length is stated only
+/// where a record states it.
+/// </summary>
+/// <param name="Kind">What the piece is.</param>
+/// <param name="FirstBuffer">The first buffer it is of; null for what came before a first buffer its source did not flag.</param>
+/// <param name="LastBuffer">The last buffer it is of; null when not known: what followed the last buffer recorded.</param>
+/// <param name="Length">Its length in bytes when a record states it; a buffer never recorded states none.</param>
+/// <param name="PartOffset">Where it begins in the part, when every piece before it has a known length.</param>
+/// <param name="Buffer">The recorded buffer it is of; null for buffers never recorded.</param>
+public sealed record ContentPartPiece(
+    ContentPartPieceKind Kind, long? FirstBuffer, long? LastBuffer, long? Length, long? PartOffset, ContentPartBuffer? Buffer)
+{
+    /// <summary>A kept piece's bytes: only when they were asked for and the capture kept them with consent to show them.</summary>
+    public ReadOnlyMemory<byte>? Bytes { get; init; }
+}
+
 /// <summary>
 /// A message part - an HTTP exchange's request or response head or body - as its buffers' records hold it (M8, ADR-037):
-/// which buffers were recorded and kept, whether they make the whole part, and, only when they do and a person asks, its
-/// bytes in order. A part missing a buffer, or holding one cut, is stated as such and never shown as a whole (I21, P2).
+/// which buffers were recorded and kept, whether they make the whole part, and, only when a person asks, its bytes. A
+/// whole part's bytes are one run, in order; a part missing a buffer, or holding one cut, is never one: its kept bytes
+/// are read buffer by buffer and shown with every gap in place, and nothing stands in for what is missing (I21, P2).
 /// </summary>
 public sealed record SessionContentPartDetail
 {
@@ -38,6 +73,15 @@ public sealed record SessionContentPartDetail
 
     /// <summary>The whole part's length when it is complete; null otherwise.</summary>
     public long? Length { get; init; }
+
+    /// <summary>
+    /// The part in its order: each recorded buffer's kept bytes and every gap where it falls. A whole part's pieces are
+    /// all kept; each kept piece holds its bytes when they were read.
+    /// </summary>
+    public IReadOnlyList<ContentPartPiece> Pieces { get; init; } = [];
+
+    /// <summary>Whether the part's kept bytes were read: asked for, kept with consent to show them, and within the bound.</summary>
+    public bool BytesRead { get; init; }
 }
 
 /// <summary>
@@ -129,6 +173,15 @@ public static class SessionContentPartQuery
             : string.Empty;
         string? problem = Problem(buffers);
         long length = buffers.Sum(buffer => (long)(buffer.Entry?.Fragment.Kept ?? 0));
+
+        // A person sees the part's bytes only when every buffer that kept any kept them with consent to show them; a
+        // whole part's are one run, and a part that is not whole has each buffer's in its place among its gaps.
+        bool inspectable = buffers.All(buffer => buffer.Entry is not { } entry || entry.Inspectable);
+        bool read = revealBytes && inspectable && length <= MaximumPartBytes;
+        byte[]? bytes = read ? new byte[length] : null;
+        ContentPartPiece[] pieces = Pieces(buffers, bytes, store);
+        string shown = inspectable ? string.Empty
+            : " Its bytes are not shown: the capture kept them without consent to inspect them.";
         if (problem is not null)
         {
             return new()
@@ -137,27 +190,19 @@ public static class SessionContentPartQuery
                 Name = name,
                 Buffers = buffers,
                 Complete = false,
-                Statement = Capital(name) + " is not whole: " + problem + ". Its buffers are shown one at a time, and "
-                    + "nothing stands in for what is missing." + reused,
+                Pieces = pieces,
+                BytesRead = read,
+                Statement = Capital(name) + " is not whole: " + problem + ". It is shown with each gap in place and never "
+                    + "as one, and nothing stands in for what is missing." + shown
+                    + (length > MaximumPartBytes
+                        ? string.Create(CultureInfo.CurrentCulture, $" It keeps more than the {MaximumPartBytes:N0} bytes a part is read up to, so each buffer is shown from its own record.")
+                        : string.Empty)
+                    + reused,
             };
         }
 
         string statement = string.Create(CultureInfo.CurrentCulture,
             $"{Capital(name)}: {buffers.Length:N0} {(buffers.Length == 1 ? "buffer" : "buffers")}, from its first to its last, all kept whole - {length:N0} {(length == 1 ? "byte" : "bytes")}.");
-        bool inspectable = buffers.All(buffer => buffer.Entry!.Inspectable);
-        byte[]? bytes = null;
-        if (revealBytes && inspectable && length <= MaximumPartBytes)
-        {
-            bytes = new byte[length];
-            int at = 0;
-            foreach (ContentPartBuffer buffer in buffers)
-            {
-                byte[] kept = SessionContentIndex.ReadBytes(store.Root, buffer.Entry!, buffer.Entry!.Fragment.Kept)!;
-                kept.CopyTo(bytes, at);
-                at += kept.Length;
-            }
-        }
-
         return new()
         {
             IsPart = true,
@@ -166,13 +211,85 @@ public static class SessionContentPartQuery
             Complete = true,
             Length = length,
             Bytes = bytes,
-            Statement = statement + (inspectable ? string.Empty
-                : " Its bytes are not shown: the capture kept them without consent to inspect them.")
+            Pieces = pieces,
+            BytesRead = read,
+            Statement = statement + shown
                 + (length > MaximumPartBytes
                     ? string.Create(CultureInfo.CurrentCulture, $" It is longer than the {MaximumPartBytes:N0} bytes a part is assembled up to.")
                     : string.Empty)
                 + reused,
         };
+    }
+
+    /// <summary>
+    /// The part in its order (M8): before its first recorded buffer, the buffers never recorded; each recorded buffer's
+    /// kept bytes, then what of it was not kept; between two recorded buffers, those never recorded; and after its last,
+    /// what followed, unless the last is flagged its part's last. A piece's place in the part is known while every piece
+    /// before it has a known length. When <paramref name="kept"/> is given, every kept byte is read into it in order, and
+    /// each kept piece holds its own.
+    /// </summary>
+    private static ContentPartPiece[] Pieces(ContentPartBuffer[] buffers, byte[]? kept, SessionStore store)
+    {
+        if (buffers.Length == 0)
+        {
+            return [];
+        }
+
+        var pieces = new List<ContentPartPiece>(buffers.Length * 2 + 2);
+        long? offset = 0;
+        int at = 0;
+        if (buffers[0].Sequence > 0)
+        {
+            Add(ContentPartPieceKind.NotRecorded, 0, buffers[0].Sequence - 1, null, null);
+        }
+        else if ((buffers[0].Flags & 1) == 0 || buffers[0].Sequence != 0)
+        {
+            Add(ContentPartPieceKind.NotRecorded, null, null, null, null);
+        }
+
+        for (int index = 0; index < buffers.Length; index++)
+        {
+            ContentPartBuffer buffer = buffers[index];
+            if (index > 0 && buffer.Sequence - buffers[index - 1].Sequence > 1)
+            {
+                Add(ContentPartPieceKind.NotRecorded, buffers[index - 1].Sequence + 1, buffer.Sequence - 1, null, null);
+            }
+
+            if (buffer.Entry is not { } entry || entry.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit)
+            {
+                Add(ContentPartPieceKind.NotKept, buffer.Sequence, buffer.Sequence, buffer.Entry?.Fragment.OriginalLength, buffer);
+                continue;
+            }
+
+            ReadOnlyMemory<byte>? own = null;
+            if (kept is not null)
+            {
+                byte[] read = SessionContentIndex.ReadBytes(store.Root, entry, entry.Fragment.Kept)!;
+                read.CopyTo(kept, at);
+                own = kept.AsMemory(at, read.Length);
+                at += read.Length;
+            }
+
+            Add(ContentPartPieceKind.Kept, buffer.Sequence, buffer.Sequence, entry.Fragment.Kept, buffer, own);
+            if (entry.Fragment.Disposition != ContentDispositionV1.Whole)
+            {
+                Add(ContentPartPieceKind.Cut, buffer.Sequence, buffer.Sequence, entry.Fragment.Missing, buffer);
+            }
+        }
+
+        if ((buffers[^1].Flags & 2) == 0)
+        {
+            Add(ContentPartPieceKind.NotRecorded, buffers[^1].Sequence + 1, null, null, null);
+        }
+
+        return [.. pieces];
+
+        void Add(ContentPartPieceKind kind, long? first, long? last, long? length, ContentPartBuffer? buffer,
+            ReadOnlyMemory<byte>? bytes = null)
+        {
+            pieces.Add(new(kind, first, last, length, offset, buffer) { Bytes = bytes });
+            offset += length;
+        }
     }
 
     /// <summary>

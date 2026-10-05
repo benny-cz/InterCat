@@ -16,15 +16,49 @@ public readonly record struct ContentRange(long First, long Last)
         culture ?? CultureInfo.CurrentCulture, $"bytes {First:N0} to {Last:N0} ({Length:N0} {(Length == 1 ? "byte" : "bytes")})");
 }
 
+/// <summary>A run of a part's buffers by their numbers, from the first to the last, both included.</summary>
+public readonly record struct ContentBufferRange(long First, long Last)
+{
+    /// <summary>The range in words: "buffers 0 to 4", or "buffer 3".</summary>
+    public string Describe(IFormatProvider? culture = null) => First == Last
+        ? string.Create(culture ?? CultureInfo.CurrentCulture, $"buffer {First:N0}")
+        : string.Create(culture ?? CultureInfo.CurrentCulture, $"buffers {First:N0} to {Last:N0}");
+}
+
+/// <summary>One line of a view of kept bytes: a line of hexadecimal, or a line that marks where a buffer or a gap is.</summary>
+public abstract record ContentLine
+{
+    /// <summary>The line as a dump prints it, which is what a copy and a screen reader take.</summary>
+    public abstract string Line { get; }
+}
+
 /// <summary>One line of a hex view: at most sixteen bytes, the offset of the first in its message, and each one's ASCII.</summary>
 /// <param name="Offset">The first byte's offset in its message.</param>
 /// <param name="Hex">The bytes in hexadecimal, two groups of eight, padded so a short last line keeps the text column.</param>
 /// <param name="Text">Each byte as printable ASCII, or '.' for any other value.</param>
-public sealed record ContentHexRow(long Offset, string Hex, string Text)
+public sealed record ContentHexRow(long Offset, string Hex, string Text) : ContentLine
 {
-    /// <summary>The line as a hex dump prints it, which is what a copy and a screen reader take.</summary>
-    public string Line => string.Create(CultureInfo.InvariantCulture, $"{Offset:X8}  {Hex}  {Text}");
+    /// <inheritdoc />
+    public override string Line => string.Create(CultureInfo.InvariantCulture, $"{Offset:X8}  {Hex}  {Text}");
 }
+
+/// <summary>
+/// A line of a part's view that is not bytes (M8): a buffer's heading, or a gap where the part's bytes are not. It begins
+/// with "--", which no line of hexadecimal does, so no kept byte can pass for one.
+/// </summary>
+/// <param name="Text">What the line says.</param>
+/// <param name="Gap">Whether it marks a gap - bytes the part had that were never recorded or kept - rather than a heading.</param>
+public sealed record ContentMark(string Text, bool Gap) : ContentLine
+{
+    /// <inheritdoc />
+    public override string Line => "-- " + Text;
+}
+
+/// <summary>What a view of a part with its gaps in place shows (M8): its lines, and how far into the chosen buffers they reach.</summary>
+/// <param name="Lines">The headings, hexadecimal and gaps, in the part's order.</param>
+/// <param name="Bytes">How many kept bytes the lines show.</param>
+/// <param name="StoppedBefore">The buffer the view stopped before, at the bytes it shows at once; null when it shows every chosen buffer.</param>
+public sealed record ContentPartLines(IReadOnlyList<ContentLine> Lines, long Bytes, long? StoppedBefore);
 
 /// <summary>A fragment's text as its source declares it, made safe to show.</summary>
 /// <param name="Text">The text, with every control, format and private character shown as a visible mark.</param>
@@ -121,17 +155,194 @@ public static class ContentBytesView
     }
 
     /// <summary>The bytes as the hex view shows them, one line a row: what "copy as hex" places on the clipboard.</summary>
-    public static string Dump(ReadOnlySpan<byte> bytes, long firstOffset)
+    public static string Dump(ReadOnlySpan<byte> bytes, long firstOffset) => Dump(Rows(bytes, firstOffset));
+
+    /// <summary>The lines as a view shows them, one a row: what "copy as hex" places on the clipboard.</summary>
+    public static string Dump(IEnumerable<ContentLine> lines)
     {
-        IReadOnlyList<ContentHexRow> rows = Rows(bytes, firstOffset);
-        var dump = new StringBuilder(rows.Count * 80);
-        foreach (ContentHexRow row in rows)
+        ArgumentNullException.ThrowIfNull(lines);
+        var dump = new StringBuilder();
+        foreach (ContentLine line in lines)
         {
-            dump.Append(row.Line).Append(Environment.NewLine);
+            dump.Append(line.Line).Append(Environment.NewLine);
         }
 
         return dump.ToString();
     }
+
+    /// <summary>
+    /// The buffers a part's view may choose from: its first recorded buffer's number to its last's, the numbers of those
+    /// never recorded between them included. Null when it holds no buffer.
+    /// </summary>
+    public static ContentBufferRange? RecordedBuffers(SessionContentPartDetail part)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        return part.Buffers.Count == 0
+            ? null
+            : new(part.Buffers.Min(buffer => buffer.Sequence), part.Buffers.Max(buffer => buffer.Sequence));
+    }
+
+    /// <summary>
+    /// The lines of a part shown with its gaps in place (M8), for the buffers <paramref name="chosen"/>: a heading for each
+    /// recorded buffer, then its kept bytes in hexadecimal, numbered from the buffer's own first byte, and a line for every
+    /// gap where it falls - buffers never recorded, the rest of a cut buffer, a buffer kept without its bytes. Nothing
+    /// stands in for a gap. At most <see cref="MaximumShownBytes"/> bytes are shown at once: the view stops before the
+    /// buffer that would pass them, and says so.
+    /// </summary>
+    public static ContentPartLines PartLines(SessionContentPartDetail part, ContentBufferRange chosen, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        culture ??= CultureInfo.CurrentCulture;
+        var lines = new List<ContentLine>();
+        if (RecordedBuffers(part) is not { } recorded)
+        {
+            return new(lines, 0, null);
+        }
+
+        long shown = 0;
+        foreach (ContentPartPiece piece in part.Pieces)
+        {
+            if (!Within(piece, chosen, recorded))
+            {
+                continue;
+            }
+
+            if (piece.Kind != ContentPartPieceKind.Kept)
+            {
+                lines.Add(new ContentMark(Gap(piece, recorded, culture), Gap: true));
+                continue;
+            }
+
+            long buffer = piece.FirstBuffer!.Value;
+            int length = piece.Bytes?.Length ?? 0;
+            if (shown > 0 && shown + length > MaximumShownBytes)
+            {
+                lines.Add(new ContentMark(string.Create(culture,
+                    $"The view shows at most {MaximumShownBytes:N0} bytes at once, so it stops before buffer {buffer:N0}; choose from it to read on"),
+                    Gap: false));
+                return new(lines, shown, buffer);
+            }
+
+            lines.Add(new ContentMark(Heading(piece, culture), Gap: false));
+            if (piece.Bytes is not { } bytes)
+            {
+                if (piece.Length > 0)
+                {
+                    lines.Add(new ContentMark(piece.Buffer?.Entry is { Inspectable: false }
+                        ? "Its bytes are not shown: the capture kept them without consent to inspect them"
+                        : "Its bytes were not read", Gap: false));
+                }
+
+                continue;
+            }
+
+            int take = (int)Math.Min(length, MaximumShownBytes - shown);
+            lines.AddRange(Rows(bytes.Span[..take], 0));
+            shown += take;
+            if (take < length)
+            {
+                lines.Add(new ContentMark(string.Create(culture,
+                    $"The view shows the first {take:N0} of buffer {buffer:N0}'s {length:N0} bytes, the most it shows at once; its own record shows the rest"),
+                    Gap: false));
+                return new(lines, shown, buffer + 1 <= chosen.Last ? buffer + 1 : null);
+            }
+        }
+
+        return new(lines, shown, null);
+    }
+
+    /// <summary>
+    /// Whether a piece belongs to the view of <paramref name="chosen"/>: a recorded buffer's when its number is chosen; the
+    /// buffers missing before the first recorded one when the view begins there, and those after the last when it ends
+    /// there; and those missing between two when any of their numbers is chosen.
+    /// </summary>
+    private static bool Within(ContentPartPiece piece, ContentBufferRange chosen, ContentBufferRange recorded)
+    {
+        if (piece.Buffer is not null)
+        {
+            return piece.FirstBuffer >= chosen.First && piece.FirstBuffer <= chosen.Last;
+        }
+
+        if (piece.FirstBuffer is null || piece.LastBuffer < recorded.First)
+        {
+            return chosen.First <= recorded.First;
+        }
+
+        if (piece.LastBuffer is null)
+        {
+            return chosen.Last >= recorded.Last;
+        }
+
+        return piece.FirstBuffer <= chosen.Last && piece.LastBuffer >= chosen.First;
+    }
+
+    /// <summary>A recorded buffer's heading: its number, its ends, what of it was kept, and its place in the part when known.</summary>
+    private static string Heading(ContentPartPiece piece, IFormatProvider culture)
+    {
+        ContentPartBuffer buffer = piece.Buffer!;
+        long length = piece.Length ?? 0;
+        string kept = buffer.Entry?.Fragment.Disposition == ContentDispositionV1.TruncatedByRecordLimit
+            ? string.Create(culture, $"its first {length:N0} {(length == 1 ? "byte" : "bytes")} kept")
+            : length == 0
+                ? "no bytes"
+                : string.Create(culture, $"{length:N0} {(length == 1 ? "byte" : "bytes")}, kept whole");
+        string place = piece.PartOffset is { } offset && length > 0
+            ? string.Create(culture, $"; bytes {offset:N0} to {offset + length - 1:N0} of the part")
+            : string.Empty;
+        return string.Create(culture, $"Buffer {buffer.Sequence:N0}{Ends(buffer.Flags)}: {kept}{place}");
+    }
+
+    /// <summary>A gap in words: which bytes of the part it is, what is known of its length, and that nothing stands in for it.</summary>
+    private static string Gap(ContentPartPiece piece, ContentBufferRange recorded, IFormatProvider culture)
+    {
+        switch (piece.Kind)
+        {
+            case ContentPartPieceKind.Cut:
+            {
+                ContentPartBuffer buffer = piece.Buffer!;
+                int limit = buffer.Entry!.Header.RecordLimit;
+                return piece.Length is { } cut
+                    ? string.Create(culture,
+                        $"The rest of buffer {buffer.Sequence:N0}, {cut:N0} {(cut == 1 ? "byte" : "bytes")}, was cut by the {limit:N0}-byte record limit; nothing stands in for it")
+                    : string.Create(culture,
+                        $"The rest of buffer {buffer.Sequence:N0} was cut by the {limit:N0}-byte record limit; its length is not known, and nothing stands in for it");
+            }
+
+            case ContentPartPieceKind.NotKept:
+            {
+                ContentPartBuffer buffer = piece.Buffer!;
+                string bytes = piece.Length is { } length
+                    ? string.Create(culture, $"none of its {length:N0} {(length == 1 ? "byte" : "bytes")} were kept")
+                    : "none of its bytes were kept";
+                string why = buffer.Entry?.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit
+                    ? ", as the capture had reached its content limit"
+                    : string.Empty;
+                return string.Create(culture, $"Buffer {buffer.Sequence:N0}{Ends(buffer.Flags)}: {bytes}{why}; nothing stands in for them");
+            }
+
+            default:
+                return piece switch
+                {
+                    { FirstBuffer: null } => string.Create(culture,
+                        $"What came before buffer {recorded.First:N0} is not known: its source did not flag it the part's first, and nothing stands in for it"),
+                    { LastBuffer: null } => string.Create(culture,
+                        $"What followed buffer {piece.FirstBuffer - 1:N0} was not recorded: how much followed is not known, and nothing stands in for it"),
+                    _ when piece.FirstBuffer == piece.LastBuffer => string.Create(culture,
+                        $"Buffer {piece.FirstBuffer:N0} was not recorded: its length is not known, and nothing stands in for it"),
+                    _ => string.Create(culture,
+                        $"Buffers {piece.FirstBuffer:N0} to {piece.LastBuffer:N0} were not recorded: their lengths are not known, and nothing stands in for them"),
+                };
+        }
+    }
+
+    /// <summary>Which ends of its part a buffer's source flags it: ", the part's first", or none.</summary>
+    private static string Ends(long flags) => (flags & 3) switch
+    {
+        1 => ", the part's first",
+        2 => ", the part's last",
+        3 => ", the part's first and last",
+        _ => string.Empty,
+    };
 
     /// <summary>
     /// <paramref name="bytes"/> read as the text <paramref name="encoding"/> declares, which a caller asks only of a
@@ -250,6 +461,45 @@ public static class ContentBytesView
     }
 
     /// <summary>
+    /// Reads a run of buffers a person typed - the first and last buffer's numbers, decimal or hexadecimal after "0x" -
+    /// within <paramref name="recorded"/>. False, with the problem in words, when it is not one.
+    /// </summary>
+    public static bool TryParseBuffers(string? first, string? last, ContentBufferRange recorded, out ContentBufferRange range,
+        out string? problem)
+    {
+        range = default;
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        if (!TryParseOffset(first, out long from))
+        {
+            problem = string.Create(culture, $"Enter the first buffer as its number, like {recorded.First:N0}.");
+            return false;
+        }
+
+        if (!TryParseOffset(last, out long to))
+        {
+            problem = string.Create(culture, $"Enter the last buffer as its number, like {recorded.Last:N0}.");
+            return false;
+        }
+
+        if (from > to)
+        {
+            problem = "The first buffer comes after the last.";
+            return false;
+        }
+
+        if (from < recorded.First || to > recorded.Last)
+        {
+            problem = string.Create(culture,
+                $"The part's recorded buffers are {recorded.First:N0} to {recorded.Last:N0}; choose buffers within them.");
+            return false;
+        }
+
+        range = new(from, to);
+        problem = null;
+        return true;
+    }
+
+    /// <summary>
     /// What a person reads before any byte (§3.7): what the bytes are and where they came from, how many of the message
     /// were kept and which are missing, whether it is part of a reassembled whole, and what it was kept under.
     /// </summary>
@@ -309,7 +559,7 @@ public static class ContentBytesView
         string reassembly = buffer is not null
             ? string.Create(culture, $"Buffer {buffer.Sequence:N0} of {part!.Name}, of {part.Buffers.Count:N0} recorded; ")
                 + (part.Complete ? "every buffer of the part was kept whole, so it can be shown as one"
-                    : "the part is not whole, so it is shown one buffer at a time")
+                    : "the part is not whole, so it is shown with its gaps in place, never as one")
             : start > 0
                 ? string.Create(culture, $"One fragment, from byte {start:N0} of its message; it is not joined with any other record's content")
                 : "One fragment, from its message's first byte; it is not joined with any other record's content";

@@ -6,6 +6,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -49,7 +50,7 @@ public sealed class ContentWindowTests
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible);
         reveal.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
-            AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentHexRow>));
+            AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
         Assert.False(reveal.IsEffectivelyVisible);
 
@@ -117,8 +118,8 @@ public sealed class ContentWindowTests
         window.Close();
     }
 
-    [AvaloniaFact(DisplayName = "§3.7: a buffer of an HTTP part offers its whole part only when every buffer of it was kept whole")]
-    public void AWholePartIsShownOnlyWhenKept()
+    [AvaloniaFact(DisplayName = "§3.7: a buffer of an HTTP part offers its part: whole as one run, or else with its gaps in place, never saved")]
+    public async Task APartIsShownWholeOrWithItsGaps()
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = [Http(10, 1), Http(11, 2), Http(12, 3), Http(20, 4), Http(22, 6)];
@@ -132,9 +133,10 @@ public sealed class ContentWindowTests
                 Field(rows[index], SourceField.ContentBufferFlags, part.Flags),
             }),
         ];
+        // Declared text, so the text view is offered for a buffer and a whole part, and not among a part's gaps.
         string[] messages = ["hel", "lo ", "", "ab", ""];
         Publish(session.Store, rows, fields: fields, content: (ContentHeader(recordLimit: 8),
-            [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 8, ContentEncodingV1.Binary))]));
+            [.. messages.Select((message, index) => Content(rows[index], Encoding.ASCII.GetBytes(message), 8, ContentEncodingV1.Utf8))]));
         SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
 
         using var window = new SessionContentWindow(session.Path, page.SessionId, page.Records[1]);
@@ -145,8 +147,9 @@ public sealed class ContentWindowTests
         Assert.Contains("The response body of exchange 7: 3 buffers, from its first to its last, all kept whole - 6 bytes.", Texts(window));
 
         // The whole part replaces the buffer in the view, and back.
-        Button toggle = Named<Button>(window, "Switch between this buffer and its whole part");
+        Button toggle = Named<Button>(window, "Switch between this buffer and its part");
         Assert.True(toggle.IsEnabled);
+        Assert.Equal("Show its whole part", toggle.Content);
         toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
@@ -158,13 +161,83 @@ public sealed class ContentWindowTests
         Assert.Equal(ContentBytesView.Rows("lo "u8, 0).Single().Line, Lines(hex).Single());
         window.Close();
 
-        // Exchange 8's body lacks its middle buffer: it is named, and never offered whole.
+        // Exchange 8's body lacks its middle buffer: it is named, and its part is offered with its gaps, never whole.
         using var gapped = new SessionContentWindow(session.Path, page.SessionId, page.Records[3]);
         gapped.Show();
         WaitFor(() => Texts(gapped).Any(text => text.StartsWith("Checked content-", StringComparison.Ordinal)));
         Named<Button>(gapped, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         WaitFor(() => Texts(gapped).Any(text => text.Contains("buffer 1 was not recorded", StringComparison.Ordinal)));
-        Assert.False(Named<Button>(gapped, "Switch between this buffer and its whole part").IsEnabled);
+        Button part = Named<Button>(gapped, "Switch between this buffer and its part");
+        Assert.True(part.IsEnabled);
+        Assert.Equal("Show its part, with its gaps", part.Content);
+        part.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // Buffer by buffer, each gap a line of its own; chosen by buffer, in hex alone, and never saved as one.
+        ListBox lines = Named<ListBox>(gapped, "Hex view of the chosen bytes");
+        Assert.Equal(
+        [
+            "-- Buffer 0, the part's first: 2 bytes, kept whole; bytes 0 to 1 of the part",
+            ContentBytesView.Rows("ab"u8, 0).Single().Line,
+            "-- Buffer 1 was not recorded: its length is not known, and nothing stands in for it",
+            "-- Buffer 2, the part's last: no bytes",
+        ], Lines(lines));
+        Assert.Contains("Buffers from", Texts(gapped));
+        Assert.StartsWith("Chosen: buffers 0 to 2 of the response body of exchange 8, from its first buffer recorded to its last.",
+            Named<TextBlock>(gapped, "Which bytes are shown").Text, StringComparison.Ordinal);
+        Assert.False(Named<Button>(gapped, "Save the chosen bytes to a file").IsEnabled);
+        TabItem textView = gapped.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Text (UTF-8)"));
+        Assert.False(textView.IsVisible);
+        Assert.Equal("Show this buffer only", part.Content);
+
+        // The gap's line reads as itself, apart from the bytes: in the caution colour, to a screen reader by its words.
+        const string GapWords = "Buffer 1 was not recorded: its length is not known, and nothing stands in for it";
+        TextBlock gapLine = lines.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == "-- " + GapWords);
+        Assert.Contains("caution", gapLine.Classes);
+        Assert.Equal(GapWords, AutomationProperties.GetName(gapLine));
+        TextBlock heading = lines.GetVisualDescendants().OfType<TextBlock>().First();
+        Assert.Equal(("Buffer 0, the part's first: 2 bytes, kept whole; bytes 0 to 1 of the part", FontWeight.SemiBold),
+            (AutomationProperties.GetName(heading), heading.FontWeight));
+        Assert.Equal(ContentBytesView.Rows("ab"u8, 0).Single().Line,
+            AutomationProperties.GetName(lines.GetVisualDescendants().OfType<TextBlock>().ElementAt(1)));
+
+        // A typed run of buffers shows those alone; one past the recorded buffers is refused in words, the view kept.
+        TextBox from = Named<TextBox>(gapped, "First buffer to show");
+        TextBox to = Named<TextBox>(gapped, "Last buffer to show");
+        from.Text = "1";
+        to.Text = "1";
+        Named<Button>(gapped, "Show these buffers").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(["-- Buffer 1 was not recorded: its length is not known, and nothing stands in for it"], Lines(lines));
+
+        // The line in the view's first row was a heading; it is now the gap, drawn as a gap, whatever drew the heading.
+        TextBlock shownGap = lines.GetVisualDescendants().OfType<TextBlock>().Single(text => text.IsEffectivelyVisible);
+        Assert.Equal(("-- " + GapWords, true, FontWeight.Normal),
+            (shownGap.Text, shownGap.Classes.Contains("caution"), shownGap.FontWeight));
+        to.Text = "5";
+        to.RaiseEvent(new KeyEventArgs { RoutedEvent = InputElement.KeyDownEvent, Key = Key.Enter });
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Contains("The part's recorded buffers are 0 to 2; choose buffers within them.", Texts(gapped));
+        Assert.Single(Lines(lines));
+
+        // Copy takes the lines shown, the gap among them; every buffer comes back with All buffers.
+        Named<Button>(gapped, "Copy the chosen bytes as hex").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal("-- Buffer 1 was not recorded: its length is not known, and nothing stands in for it" + Environment.NewLine,
+            await gapped.Clipboard!.TryGetTextAsync());
+        Named<Button>(gapped, "Show every recorded buffer").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(4, Lines(lines).Count());
+
+        // Back to the buffer: its bytes, chosen by offset again, and saved as they are.
+        part.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(ContentBytesView.Rows("ab"u8, 0).Single().Line, Lines(lines).Single());
+        Assert.True(Named<Button>(gapped, "Save the chosen bytes to a file").IsEnabled);
+        Assert.Contains("Bytes from", Texts(gapped));
+        Assert.Equal("Show its part, with its gaps", part.Content);
+        Assert.True(textView.IsVisible);
+        Named<TextBox>(gapped, "First byte of the range");
         gapped.Close();
     }
 
@@ -208,5 +281,5 @@ public sealed class ContentWindowTests
         window.GetVisualDescendants().OfType<T>().Single(control => AutomationProperties.GetName(control) == name);
 
     private static IEnumerable<string> Lines(ListBox hex) =>
-        ((IEnumerable<ContentHexRow>)hex.ItemsSource!).Select(row => row.Line);
+        ((IEnumerable<ContentLine>)hex.ItemsSource!).Select(row => row.Line);
 }

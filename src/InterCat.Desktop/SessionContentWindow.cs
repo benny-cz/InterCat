@@ -19,7 +19,9 @@ namespace InterCat.Desktop;
 /// One record's kept content (§3.7, ADR-036): what the bytes are, how many of the message were kept and which are
 /// missing, and - only after the person asks - the bytes themselves, as inert hexadecimal and, where the source declares
 /// text, that text with every control and invisible character made visible. A typed range chooses which bytes are shown,
-/// copied or saved; at most a bounded window is shown at once, and nothing is decoded, searched or sent anywhere.
+/// copied or saved; at most a bounded window is shown at once, and nothing is decoded, searched or sent anywhere. A
+/// buffer of a part shows its part instead when asked: whole, as one run of bytes, or, when it is not whole, buffer by
+/// buffer with each gap a line of its own, chosen by buffer and never saved as one (M8).
 /// </summary>
 internal sealed class SessionContentWindow : Window, IDisposable
 {
@@ -49,10 +51,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private readonly Button save = new() { Content = "Save bytes…", IsEnabled = false };
     private readonly TextBlock partStatement = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly Button partToggle = new() { Content = "Show its whole part", IsVisible = false };
+    private readonly TextBlock rangeFrom = new() { Text = "Bytes from", VerticalAlignment = VerticalAlignment.Center };
     private SessionContentDetail? detail;
     private SessionContentPartDetail? part;
     private byte[]? shownBytes;
     private bool showingPart;
+    private ContentPartLines? partLines;
     private ContentRange? kept;
     private ContentRange? range;
     private bool loading;
@@ -96,7 +100,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         AutomationProperties.SetName(copy, "Copy the chosen bytes as hex");
         AutomationProperties.SetName(save, "Save the chosen bytes to a file");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
-        AutomationProperties.SetName(partToggle, "Switch between this buffer and its whole part");
+        AutomationProperties.SetName(partToggle, "Switch between this buffer and its part");
         rangeProblem.Classes.Add("caution");
 
         // A hex dump reads line under line: its lines keep a text line's height rather than a menu row's, and its one or
@@ -119,11 +123,28 @@ internal sealed class SessionContentWindow : Window, IDisposable
             },
         });
         hex.Bind(TemplatedControl.BackgroundProperty, hex.GetResourceObservable("Surface.Plot"));
-        hex.ItemTemplate = new FuncDataTemplate<ContentHexRow>((_, _) =>
+        // A part shown with its gaps holds lines that are not bytes: a buffer's heading, and each gap in the caution
+        // colour, wrapped within the view rather than scrolled past, and read aloud as its words alone.
+        ScrollViewer.SetHorizontalScrollBarVisibility(hex, ScrollBarVisibility.Disabled);
+        hex.ItemTemplate = new FuncDataTemplate<ContentLine>((shown, _) =>
         {
             var line = new TextBlock { FontFamily = Monospace, FontSize = 12 };
-            line.Bind(TextBlock.TextProperty, new Binding(nameof(ContentHexRow.Line)));
-            line.Bind(AutomationProperties.NameProperty, new Binding(nameof(ContentHexRow.Line)));
+            line.Bind(TextBlock.TextProperty, new Binding(nameof(ContentLine.Line)));
+            line.Bind(AutomationProperties.NameProperty,
+                new Binding(shown is ContentMark ? nameof(ContentMark.Text) : nameof(ContentLine.Line)));
+            if (shown is ContentMark mark)
+            {
+                line.TextWrapping = TextWrapping.Wrap;
+                if (mark.Gap)
+                {
+                    line.Classes.Add("caution");
+                }
+                else
+                {
+                    line.FontWeight = FontWeight.SemiBold;
+                }
+            }
+
             return line;
         });
         textTab.Content = new DockPanel
@@ -142,7 +163,8 @@ internal sealed class SessionContentWindow : Window, IDisposable
         showRange.Click += (_, _) => ApplyTypedRange();
         showAll.Click += (_, _) =>
         {
-            if (kept is { } all) Show(all);
+            if (GappedPart() is { } gapped && ContentBytesView.RecordedBuffers(gapped) is { } recorded) ShowBuffers(recorded);
+            else if (kept is { } all) Show(all);
         };
         first.KeyDown += ApplyOnEnter;
         last.KeyDown += ApplyOnEnter;
@@ -169,7 +191,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
             Spacing = 8,
             Children =
             {
-                new TextBlock { Text = "Bytes from", VerticalAlignment = VerticalAlignment.Center },
+                rangeFrom,
                 first,
                 new TextBlock { Text = "to", VerticalAlignment = VerticalAlignment.Center },
                 last,
@@ -295,8 +317,10 @@ internal sealed class SessionContentWindow : Window, IDisposable
             shownBytes = result.Bytes;
             if (part is { IsPart: true } found)
             {
+                // A whole part is shown as one run of its bytes; one that is not whole, with its gaps in place.
                 partToggle.IsVisible = true;
-                partToggle.IsEnabled = found is { Complete: true, Bytes.Length: > 0 };
+                partToggle.IsEnabled = found.Complete ? found.Bytes is { Length: > 0 } : found.BytesRead;
+                partToggle.Content = PartToggleText(found);
             }
             textTab.IsVisible = ContentBytesView.DeclaresText(entry.Fragment.Encoding);
             textTab.Header = entry.Fragment.Encoding == ContentEncodingV1.Utf8 ? "Text (UTF-8)" : "Text (UTF-16)";
@@ -358,6 +382,20 @@ internal sealed class SessionContentWindow : Window, IDisposable
 
     private void ApplyTypedRange()
     {
+        if (GappedPart() is { } gapped)
+        {
+            if (ContentBytesView.RecordedBuffers(gapped) is not { } recorded) return;
+            if (!ContentBytesView.TryParseBuffers(first.Text, last.Text, recorded, out ContentBufferRange buffers, out string? wrong))
+            {
+                rangeProblem.Text = wrong;
+                rangeProblem.IsVisible = true;
+                return;
+            }
+
+            ShowBuffers(buffers);
+            return;
+        }
+
         if (kept is not { } all) return;
         if (!ContentBytesView.TryParseRange(first.Text, last.Text, all, out ContentRange typed, out string? problem))
         {
@@ -409,26 +447,85 @@ internal sealed class SessionContentWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Switches the view between this record's buffer and the whole part it belongs to, which is offered only when every
-    /// buffer of the part was kept whole: a part missing a buffer is never shown as whole (I21, P2).
+    /// Shows the chosen buffers of a part that is not whole (M8): each buffer's heading and kept bytes, numbered from its
+    /// own first byte, and each gap where it falls, as a line no byte can pass for. Such a part is never saved as one.
+    /// </summary>
+    private void ShowBuffers(ContentBufferRange chosen)
+    {
+        if (GappedPart() is not { } gapped || ContentBytesView.RecordedBuffers(gapped) is not { } recorded) return;
+        rangeProblem.IsVisible = false;
+        first.Text = chosen.First.ToString(CultureInfo.InvariantCulture);
+        last.Text = chosen.Last.ToString(CultureInfo.InvariantCulture);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        ContentPartLines lines = ContentBytesView.PartLines(gapped, chosen, culture);
+        partLines = lines;
+        hex.ItemsSource = lines.Lines;
+        rangeSummary.Text = "Chosen: " + chosen.Describe(culture) + " of " + gapped.Name
+            + (chosen == recorded
+                ? ", from its first buffer recorded to its last."
+                : string.Create(culture, $", whose recorded buffers run from {recorded.First:N0} to {recorded.Last:N0}."))
+            + " Each buffer's bytes are numbered from its own first byte, and nothing stands in for a gap"
+            + (lines.StoppedBefore is { } stop
+                ? string.Create(culture, $"; the view stops before buffer {stop:N0}, at the {ContentBytesView.MaximumShownBytes:N0} bytes it shows at once")
+                : string.Empty)
+            + ". A part that is not whole is never saved as one: save a buffer from its own record.";
+        copy.IsEnabled = lines.Lines.Count > 0;
+        save.IsEnabled = false;
+    }
+
+    /// <summary>The part shown with its gaps in place, when that is what the view shows.</summary>
+    private SessionContentPartDetail? GappedPart() => showingPart && part is { Complete: false } gapped ? gapped : null;
+
+    private static string PartToggleText(SessionContentPartDetail found) =>
+        found.Complete ? "Show its whole part" : "Show its part, with its gaps";
+
+    /// <summary>
+    /// Switches the view between this record's buffer and the part it belongs to (M8): a whole part as one run of its
+    /// bytes, chosen by offset; a part that is not whole buffer by buffer with each gap in place, chosen by buffer, in hex
+    /// alone, and never saved as one, since nothing may stand in for its missing bytes (I21, P2).
     /// </summary>
     private void TogglePart()
     {
-        if (part is not { Complete: true, Bytes: { Length: > 0 } partBytes } || detail?.Bytes is not { } recordBytes
-            || detail.Entry is not { } entry)
+        if (part is not { IsPart: true } found || detail?.Bytes is not { } recordBytes || detail.Entry is not { } entry
+            || (found.Complete ? found.Bytes is not { Length: > 0 } : !found.BytesRead))
         {
             return;
         }
 
         showingPart = !showingPart;
-        shownBytes = showingPart ? partBytes : recordBytes;
-        kept = showingPart ? new ContentRange(0, partBytes.Length - 1) : ContentBytesView.Kept(entry.Fragment);
-        partToggle.Content = showingPart ? "Show this buffer only" : "Show its whole part";
+        partToggle.Content = showingPart ? "Show this buffer only" : PartToggleText(found);
+        bool byBuffers = showingPart && !found.Complete;
+        rangeFrom.Text = byBuffers ? "Buffers from" : "Bytes from";
+        showAll.Content = byBuffers ? "All buffers" : "All kept bytes";
+        AutomationProperties.SetName(first, byBuffers ? "First buffer to show" : "First byte of the range");
+        AutomationProperties.SetName(last, byBuffers ? "Last buffer to show" : "Last byte of the range");
+        AutomationProperties.SetName(showRange, byBuffers ? "Show these buffers" : "Show this range of bytes");
+        AutomationProperties.SetName(showAll, byBuffers ? "Show every recorded buffer" : "Show all kept bytes");
+
+        // A gap is a line of the hex view, which no byte can pass for; text has no such line, so it is not offered.
+        textTab.IsVisible = !byBuffers && ContentBytesView.DeclaresText(entry.Fragment.Encoding);
+        if (!textTab.IsVisible) views.SelectedIndex = 0;
+        if (byBuffers)
+        {
+            ShowBuffers(ContentBytesView.RecordedBuffers(found)!.Value);
+            return;
+        }
+
+        partLines = null;
+        shownBytes = showingPart ? found.Bytes : recordBytes;
+        kept = showingPart ? new ContentRange(0, found.Bytes!.Length - 1) : ContentBytesView.Kept(entry.Fragment);
         if (kept is { } all) Show(all);
     }
 
     private async Task CopyAsync()
     {
+        if (GappedPart() is { } gapped && partLines is { } lines && Clipboard is { } board)
+        {
+            await board.SetTextAsync(ContentBytesView.Dump(lines.Lines));
+            if (!closed) status.Text = $"Copied the lines shown of {gapped.Name}, its gaps among them, as hex.";
+            return;
+        }
+
         if (shownBytes is not { } bytes || kept is not { } all || range is not { } chosen || Clipboard is not { } clipboard) return;
         ContentRange shown = ContentBytesView.Shown(chosen);
         await clipboard.SetTextAsync(ContentBytesView.Dump(ContentBytesView.Slice(bytes, all, shown).Span, shown.First));
@@ -441,8 +538,8 @@ internal sealed class SessionContentWindow : Window, IDisposable
     /// </summary>
     private async Task SaveAsync()
     {
-        if (saving || shownBytes is not { } bytes || detail?.Entry is not { } entry || kept is not { } all
-            || range is not { } chosen) return;
+        if (saving || GappedPart() is not null || shownBytes is not { } bytes || detail?.Entry is not { } entry
+            || kept is not { } all || range is not { } chosen) return;
         saving = true;
         try
         {
