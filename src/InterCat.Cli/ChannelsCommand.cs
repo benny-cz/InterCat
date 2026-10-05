@@ -36,7 +36,7 @@ internal static class ChannelsCommand
         if (directory is null || hasUnknown || invalidProcess || invalidSize)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat channels <directory>."
-                : hasUnknown ? $"Unknown or incomplete option: {unknown}"
+                : hasUnknown ? CommandLine.Unknown(unknown!)
                 : invalidProcess
                     ? "--process must be a process-instance GUID from the overview."
                     : "--page-size must be an integer from 1 to 200.");

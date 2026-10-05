@@ -188,6 +188,9 @@ public sealed class CommandLineTests : IDisposable
 
             (InterCatExitCode saved, _, string viewSaid) = await Run("workspace", "view", workspace, "early", "-5", "10");
             Assert.True(saved == InterCatExitCode.Success, viewSaid);
+            (InterCatExitCode unwritten, _, string refusal) = await Run("workspace", "note", workspace, "-> retry storm here");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, unwritten);
+            Assert.Contains("an operand that starts with a dash follows --", refusal, StringComparison.Ordinal);
             (InterCatExitCode noted, _, string noteSaid) = await Run("workspace", "note", workspace, "--", "-> retry storm here");
             Assert.True(noted == InterCatExitCode.Success, noteSaid);
             string shown = (await Run("workspace", "show", workspace, "--json")).Output;

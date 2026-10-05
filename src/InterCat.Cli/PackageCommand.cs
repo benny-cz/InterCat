@@ -110,7 +110,7 @@ internal static class PackageCommand
         bool check = command.TryTakeFlag("--check");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
-        string? problem = command.TryReportUnknown(out string? unknown) ? $"Unknown or incomplete option: {unknown}"
+        string? problem = command.TryReportUnknown(out string? unknown) ? CommandLine.Unknown(unknown!)
             : sessionOption is null ? "A session directory is required: icat package <directory> --redacted --output <new-directory>."
             : original && redacted ? "Choose one package: --redacted or --original."
             : !redacted && !original

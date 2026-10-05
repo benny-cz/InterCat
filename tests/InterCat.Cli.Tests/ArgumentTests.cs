@@ -41,6 +41,15 @@ public sealed class ArgumentTests
         Assert.Equal("extra", stray.TakePositional());
         Assert.True(new CommandLine(["--", "extra"]).TryReportUnknown(out string? leftover));
         Assert.Equal("extra", leftover);
+
+        // A refusal names what it could not take: an option it does not know, an operand read as one because it starts
+        // with a dash - which says how to write it - or an operand past the last.
+        Assert.Equal("Unknown or incomplete option: --bogus", CommandLine.Unknown("--bogus"));
+        Assert.Equal("Unknown or incomplete option: -x", CommandLine.Unknown("-x"));
+        Assert.Equal("Unknown or incomplete option: -> retry - an operand that starts with a dash follows --, as in -- \"-> retry\"",
+            CommandLine.Unknown("-> retry"));
+        Assert.Contains("follows --", CommandLine.Unknown("--rows=2"), StringComparison.Ordinal);
+        Assert.Equal("Unexpected argument: extra", CommandLine.Unknown("extra"));
     }
 
     [Fact(DisplayName = "R18: a verb is read first, and no option is read after an operand")]

@@ -265,7 +265,7 @@ internal static partial class WorkspaceCommand
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
+            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
             return InterCatExitCode.InvalidInvocation;
         }
 

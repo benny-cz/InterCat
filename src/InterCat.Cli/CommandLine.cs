@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Globalization;
 
 namespace InterCat.Cli;
@@ -10,6 +11,10 @@ namespace InterCat.Cli;
 /// </summary>
 internal sealed class CommandLine
 {
+    /// <summary>What an option's name is written in, after its dashes.</summary>
+    private static readonly SearchValues<char> OptionNameCharacters =
+        SearchValues.Create("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-");
+
     private readonly List<string> arguments;
 
     /// <summary>What follows a bare <c>--</c>: operands only, never options, so a note or a name may start with a dash.</summary>
@@ -115,10 +120,31 @@ internal sealed class CommandLine
         return operands.TryDequeue(out string? operand) ? operand : null;
     }
 
+    /// <summary>
+    /// How a refusal names an argument no part of the command took: an option it does not know or that is missing its value,
+    /// an operand that starts with a dash and so was read as one, which follows <c>--</c> instead, or an operand past the
+    /// last the command takes.
+    /// </summary>
+    public static string Unknown(string argument)
+    {
+        ArgumentNullException.ThrowIfNull(argument);
+        return !argument.StartsWith('-') ? $"Unexpected argument: {argument}"
+            : NamesAnOption(argument) ? $"Unknown or incomplete option: {argument}"
+            : $"Unknown or incomplete option: {argument} - an operand that starts with a dash follows --, as in -- \"{argument}\"";
+    }
+
     public bool TryReportUnknown(out string? unknown)
     {
         unknown = arguments.Count > 0 ? arguments[0] : operands.TryPeek(out string? operand) ? operand : null;
         return unknown is not null;
+    }
+
+    /// <summary>Whether an argument is written as an option is: a dash or two, then a letter, then letters, digits and dashes.</summary>
+    private static bool NamesAnOption(string argument)
+    {
+        int name = argument.StartsWith("--", StringComparison.Ordinal) ? 2 : 1;
+        return argument.Length > name && char.IsAsciiLetter(argument[name])
+            && argument.AsSpan(name).IndexOfAnyExcept(OptionNameCharacters) < 0;
     }
 
     /// <summary>

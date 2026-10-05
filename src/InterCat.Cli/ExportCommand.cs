@@ -61,7 +61,7 @@ internal static class ExportCommand
                 || !int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
                 || limit is < 1 or > SessionExport.MaximumEvidenceLimit);
         string? problem = directory is null ? "A session directory is required: icat export <directory> --output <path>."
-            : hasUnknown ? $"Unknown or incomplete option: {unknown}"
+            : hasUnknown ? CommandLine.Unknown(unknown!)
             : output is null ? "--output <path> is required; an export is written only where it is asked to be."
             : format is null ? "--format must be json or csv."
             : intervalText is not null && interval is null

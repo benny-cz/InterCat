@@ -67,7 +67,7 @@ internal static class CaptureCommand
         bool json = command.TryTakeFlag("--json");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
+            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

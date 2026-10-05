@@ -47,7 +47,7 @@ internal static partial class MeasureCommand
         bool overwrite = command.TryTakeFlag("--overwrite");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
+            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
             return InterCatExitCode.InvalidInvocation;
         }
 

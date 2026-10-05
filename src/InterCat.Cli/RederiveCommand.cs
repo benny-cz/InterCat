@@ -57,7 +57,7 @@ internal static class RederiveCommand
         bool check = command.TryTakeFlag("--check");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure($"Unknown or incomplete option: {unknown}");
+            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
             return InterCatExitCode.InvalidInvocation;
         }
 

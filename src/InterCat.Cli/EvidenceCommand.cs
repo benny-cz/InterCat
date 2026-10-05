@@ -41,7 +41,7 @@ internal static class EvidenceCommand
         if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
-                : hasUnknown ? $"Unknown or incomplete option: {unknown}"
+                : hasUnknown ? CommandLine.Unknown(unknown!)
                 : invalidSize ? "--page-size must be an integer from 1 to 200."
                 : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
                 : tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
