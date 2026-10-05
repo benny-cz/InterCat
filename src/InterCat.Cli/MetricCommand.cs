@@ -1704,8 +1704,8 @@ internal static class MetricCommand
         problem = null;
         string[] parts = value.Split(':');
         if (parts.Length != 2
-            || !TryParseBound(parts[0], clock, out long start, out problem)
-            || !TryParseBound(parts[1], clock, out long end, out problem))
+            || !TryParseBound(parts[0], clock, end: false, out long start, out problem)
+            || !TryParseBound(parts[1], clock, end: true, out long end, out problem))
         {
             problem ??=
                 "--interval expects <start>:<end>, half-open. Each bound is a native tick (for example "
@@ -1724,7 +1724,7 @@ internal static class MetricCommand
         return true;
     }
 
-    private static bool TryParseBound(string text, SourceClockDescriptor? clock, out long nativeTicks, out string? problem)
+    private static bool TryParseBound(string text, SourceClockDescriptor? clock, bool end, out long nativeTicks, out string? problem)
     {
         nativeTicks = 0;
         problem = null;
@@ -1769,7 +1769,17 @@ internal static class MetricCommand
             }
             catch (OverflowException)
             {
-                problem = $"'{text}' is outside the range of readings this session's clock can hold.";
+                // Beyond every instant the clock can read, a bound lies after every reading or before every one
+                // (metrics-v1 §5): an end after them all, or a start before, holds every reading on that side.
+                bool after = nanoseconds > 0;
+                if (after == end)
+                {
+                    nativeTicks = after ? long.MaxValue : long.MinValue;
+                    return true;
+                }
+
+                problem = $"'{text}' is {(after ? "after" : "before")} every reading this session's clock can hold, so "
+                    + "the interval holds none.";
                 return false;
             }
         }

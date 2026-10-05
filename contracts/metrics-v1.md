@@ -198,8 +198,10 @@ in every filtered result, grouped or not.
 An interval is half-open (I3) and is expressed in native ticks of the session's clock. A caller that accepts a
 session-relative time converts each bound to the **first native reading at or after it** under exactly the
 conversion that produced every stored session instant, so that the native interval holds precisely the
-readings whose session instant lies inside the requested one. An interval in native ticks names one clock: a
-generation whose segments are on more than one clock refuses an interval-scoped request.
+readings whose session instant lies inside the requested one. A bound beyond every instant the clock can read lies
+after every reading, or before every one (plan revision 296), so an interval reaching past the clock's range holds
+the readings within it rather than failing to convert. An interval in native ticks names one clock: a generation
+whose segments are on more than one clock refuses an interval-scoped request.
 
 ## 6. Grouping
 

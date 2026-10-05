@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 295 · Branch: `main`
+Updated: 2026-10-05 · Plan revision: 296 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 296 — an interval past the clock's range answers (`metrics-v1` §5):**
+  - An interval ending beyond every instant the clock can read failed every ranking and the interval count with an
+    overflow. Its bound now lies after every reading, so the interval holds the readings within it. `icat metric`
+    takes such a bound the same way, and refuses only one that leaves the interval holding nothing, saying so.
 
 - **Revision 295 — a PID is written as the identity it is (§6.1, §6.3):**
   - The inspector wrote "PID 8,204" where every other pane writes "PID 8204", and a nameless process's node read
@@ -680,6 +685,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 296 was built and tested in the same Linux container: Debug and Release each ran **1,506 tests**, passing
+  **1,409 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test failed
+  with the bound's overflow thrown, as every ranking and the interval count had thrown it, and with an interval past
+  the range answered as holding nothing. No test covers the command line, so `icat metric` was run against a session:
+  "0s:90000000000s" answered its 64 B sent where it had refused, a start before the clock's range answered, and one
+  after it was refused, saying the interval holds none.
 - Revision 295 was built and tested in the same Linux container: Debug and Release each ran **1,505 tests**, passing
   **1,408 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests failed
   with the PID written as a quantity ("PID 1,960") and with a nameless node's PID drawn twice.

@@ -140,12 +140,27 @@ internal static class RankingScope
 {
     /// <summary>
     /// A presentation interval as native readings, each bound's first reading at or after it, as the command line converts
-    /// a time (metrics-v1 §5); null when no reading can fall between the two.
+    /// a time (metrics-v1 §5); null when no reading can fall between the two. A bound beyond every instant the clock can
+    /// read lies after every reading, or before every one, so an interval reaching past the clock's range holds the
+    /// readings within it: converting such a bound once overflowed and failed the query.
     /// </summary>
     public static TimeRange? NativeInterval(SourceClockDescriptor clock, TimeRange presentation)
     {
-        long first = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(presentation.StartTicks * 100)));
-        long end = SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(presentation.EndTicks * 100)));
+        long first = FirstNativeAtOrAfter(clock, presentation.StartTicks);
+        long end = FirstNativeAtOrAfter(clock, presentation.EndTicks);
         return end > first ? new TimeRange(first, end) : null;
+    }
+
+    /// <summary>The first native reading at or after a presentation tick, or the clock's last or first one beyond its range.</summary>
+    private static long FirstNativeAtOrAfter(SourceClockDescriptor clock, long presentationTick)
+    {
+        try
+        {
+            return SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(checked(presentationTick * 100)));
+        }
+        catch (OverflowException)
+        {
+            return presentationTick < 0 ? long.MinValue : long.MaxValue;
+        }
     }
 }

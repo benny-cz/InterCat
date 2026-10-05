@@ -14,6 +14,31 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class SessionByteRankingTests
 {
+    [Fact(DisplayName = "§6.4: an interval reaching past the clock's range holds the readings within it, in every ranking and count")]
+    public void AnIntervalPastTheClocksRangeHoldsItsReadings()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 1_100 },
+        ]);
+
+        // An end some three thousand years on, which the command line's --interval accepts: once an overflow that failed
+        // every ranking, it now holds every reading from the start on, and an interval starting there holds none.
+        var past = new TimeRange(0, 100_000_000_000_000_000);
+        SessionByteMeasures whole = SessionByteRanking.Measure(session.Store, null);
+        SessionByteMeasures reaching = SessionByteRanking.Measure(session.Store, past);
+        Assert.Equal(whole.ByProcess.OrderBy(entry => entry.Key.ToString()), reaching.ByProcess.OrderBy(entry => entry.Key.ToString()));
+        Assert.NotEmpty(reaching.ByProcess);
+        Assert.Empty(SessionByteRanking.Measure(session.Store, new TimeRange(past.EndTicks - 1, past.EndTicks)).ByProcess);
+        Assert.Equal(2, SessionIntervalQuery.Count(session.Store, past).ObservedRows);
+        _ = SessionPeerRanking.Measure(session.Store, past);
+        _ = SessionCallRanking.Measure(session.Store, past);
+    }
+
     [Fact(DisplayName = "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval")]
     public void RankedBytesAreTheMetricsBytes()
     {
