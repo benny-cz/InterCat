@@ -220,6 +220,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     private bool moved;
     private TimeRange panOrigin;
 
+    /// <summary>The pointer a press captured, released when its gesture ends or is cancelled.</summary>
+    private IPointer? pressPointer;
+
     /// <summary>
     /// The timeline as a screen reader meets it: its role, its keyboard path and table, and what it draws now, with the
     /// range in view and the time base it is counted in. The axis showed that range only to the eye, so after + or an
@@ -2373,8 +2376,36 @@ public sealed class TimelineView : Control, IHoverCardSource
         panOrigin = Viewport;
         brushAnchor = TickAt(pressX);
         brushEnd = null;
+        pressPointer = e.Pointer;
         e.Pointer.Capture(this);
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// Cancels the press or drag in progress, as Esc does (§6.7): a pan returns to the view it began from, a brush being
+    /// drawn is dropped, and the press selects nothing when released. False when no press is in progress.
+    /// </summary>
+    internal bool CancelDrag()
+    {
+        if (brushAnchor is null)
+        {
+            return false;
+        }
+
+        bool panned = moved && !brushing;
+        brushAnchor = null;
+        brushEnd = null;
+        pressedCall = null;
+        IPointer? pointer = pressPointer;
+        pressPointer = null;
+        pointer?.Capture(null);
+        if (panned)
+        {
+            SetViewport(panOrigin);
+        }
+
+        InvalidateVisual();
+        return true;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -2434,6 +2465,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         bool wasClick = !moved;
         brushAnchor = null;
         brushEnd = null;
+        pressPointer = null;
         e.Pointer.Capture(null);
         TimeRange extent = viewModel.Snapshot.Extent;
         if (wasBrushing && end is { } dragged)
@@ -2555,6 +2587,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         base.OnPointerCaptureLost(e);
         brushAnchor = null;
         brushEnd = null;
+        pressPointer = null;
         InvalidateVisual();
     }
 

@@ -90,6 +90,10 @@ public sealed class MinimapView : Control
     private TimelineView? timeline;
     private Gesture gesture;
     private long grabOffset;
+
+    // The view a press began from, which a cancelled move or resize gives back, and the pointer the press captured.
+    private TimeRange pressViewport;
+    private IPointer? pressPointer;
     private Cursor? resizeCursor;
     private Cursor? moveCursor;
 
@@ -291,6 +295,7 @@ public sealed class MinimapView : Control
         double x = e.GetPosition(this).X;
         (double bx1, double bx2) = Brush();
         TimeRange viewport = timeline.Viewport;
+        pressViewport = viewport;
         bool resizable = bx2 - bx1 > (2 * EdgeGrab) + 4;
         gesture = resizable && Math.Abs(x - bx1) <= EdgeGrab ? Gesture.ResizeStart
             : resizable && Math.Abs(x - bx2) <= EdgeGrab ? Gesture.ResizeEnd
@@ -307,7 +312,27 @@ public sealed class MinimapView : Control
             grabOffset = TickAt(x) - viewport.StartTicks;
         }
 
+        pressPointer = e.Pointer;
         e.Pointer.Capture(this);
+    }
+
+    /// <summary>
+    /// Cancels a move or resize of the viewport in progress, as Esc does (§6.7): the timeline returns to the view the press
+    /// began from, a press beside the brush included. False when none is in progress.
+    /// </summary>
+    internal bool CancelDrag()
+    {
+        if (gesture == Gesture.None || timeline is null)
+        {
+            return false;
+        }
+
+        gesture = Gesture.None;
+        IPointer? pointer = pressPointer;
+        pressPointer = null;
+        pointer?.Capture(null);
+        timeline.SetViewport(pressViewport);
+        return true;
     }
 
     protected override void OnPointerMoved(PointerEventArgs e)
@@ -342,6 +367,7 @@ public sealed class MinimapView : Control
         if (gesture != Gesture.None)
         {
             gesture = Gesture.None;
+            pressPointer = null;
             e.Pointer.Capture(null);
             e.Handled = true;
         }
@@ -351,6 +377,7 @@ public sealed class MinimapView : Control
     {
         base.OnPointerCaptureLost(e);
         gesture = Gesture.None;
+        pressPointer = null;
     }
 
     protected override void OnPointerWheelChanged(PointerWheelEventArgs e)

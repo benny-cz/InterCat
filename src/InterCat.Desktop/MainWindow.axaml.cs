@@ -416,7 +416,12 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = viewModel.RelayoutGraph();
                 break;
             case Key.Escape:
-                _ = viewModel.Ascend();
+                // A drag in progress is cancelled where it began (§6.7); with none, Esc ascends as the ladder's back does.
+                if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
+                {
+                    _ = viewModel.Ascend();
+                }
+
                 e.Handled = true;
                 break;
             case Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt):

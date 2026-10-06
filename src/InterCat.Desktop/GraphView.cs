@@ -71,6 +71,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     // A drag in progress: the node, where the press began, whether it has moved enough, and where it is now.
     private string? dragKey;
+    private IPointer? dragPointer;
     private Point dragFrom;
     private Point dragAt;
     private bool dragging;
@@ -1118,6 +1119,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             dragKey = key;
             dragFrom = e.GetPosition(this);
             dragging = false;
+            dragPointer = e.Pointer;
             e.Pointer.Capture(this);
         }
 
@@ -1137,6 +1139,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         Point at = e.GetPosition(this);
         dragKey = null;
         dragging = false;
+        dragPointer = null;
         e.Pointer.Capture(null);
         if (dropped && DataContext is WorkspaceViewModel viewModel)
         {
@@ -1153,7 +1156,28 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         base.OnPointerCaptureLost(e);
         dragKey = null;
         dragging = false;
+        dragPointer = null;
         InvalidateVisual();
+    }
+
+    /// <summary>
+    /// Cancels a node's press or drag in progress, as Esc does (§6.7): the node stays where it was and nothing is pinned;
+    /// the press's selection stands. False when none is in progress.
+    /// </summary>
+    internal bool CancelDrag()
+    {
+        if (dragKey is null)
+        {
+            return false;
+        }
+
+        dragKey = null;
+        dragging = false;
+        IPointer? pointer = dragPointer;
+        dragPointer = null;
+        pointer?.Capture(null);
+        InvalidateVisual();
+        return true;
     }
 
     /// <summary>The graph coordinates of a point in this control: the inverse of <see cref="Position"/>, kept in [0,1].</summary>
