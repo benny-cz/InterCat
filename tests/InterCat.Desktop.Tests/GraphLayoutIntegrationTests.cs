@@ -404,7 +404,8 @@ public sealed class GraphLayoutIntegrationTests
         HoverCard edge = Assert.IsType<HoverCard>(viewModel.DescribeGraphHover("pair"));
         Assert.Equal("Process 1 ↔ Process 2", edge.Title);
         Assert.Equal("TCP · direct evidence · 1 relationship · 0 channels", edge.Lines[0]);
-        Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[3]);
+        Assert.Equal("Rule: transport-endpoint-relation, version 4 · evidence: 0 channels by key", edge.Lines[1]);
+        Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[4]);
         Assert.Contains("Direction: display order only, not who initiated or sent", edge.Lines);
         Assert.Equal("Double-click opens its source process", edge.Lines[^1]);
         Assert.Null(viewModel.DescribeGraphHover("no such mark"));
@@ -563,7 +564,7 @@ public sealed class GraphLayoutIntegrationTests
         CoverageState.Covered);
 
     private static CommunicationEdge Edge(string key, ProcessNode source, ProcessNode target) =>
-        new(key, source.Id, target.Id, Mechanism.Tcp, 10, null, RelationStrength.Direct);
+        new(key, source.Id, target.Id, Mechanism.Tcp, 10, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
 
     private static double Distance(GraphPoint left, GraphPoint right) =>
         Math.Sqrt(Math.Pow(left.X - right.X, 2) + Math.Pow(left.Y - right.Y, 2));

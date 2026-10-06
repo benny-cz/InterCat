@@ -1766,7 +1766,7 @@
         "plannedBy": "M2"
       },
       "R4": {
-        "reason": "A relation carries its strength, and the index that derives it names its rule (transport-endpoint-relation-v4, rpc-call-peer-v1), but a relationship does not yet carry its rule's identity and version, or its evidence IDs, itself.",
+        "reason": "A relationship carries its rule's identity and version and its strength, and a TCP one the key of each connection it rests on, which names that connection's first record and opens its records; an RPC one does not yet carry the calls its links join, which the persisted overview keeps only as counts.",
         "plannedBy": "IC-015"
       }
     }

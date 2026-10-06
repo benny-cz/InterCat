@@ -33,15 +33,6 @@ public static class SyntheticWorkspace
             with { Activity = Made((Mechanism.Alpc, 111), (Mechanism.SharedSection, 1), (Mechanism.ProcessLifecycle, 1)) };
 
         var processes = new[] { browser, api, cache, indexer, broker };
-        var edges = new[]
-        {
-            new CommunicationEdge("edge.browser-api", browser.Id, api.Id, Mechanism.Tcp, 312, 6_420_000, RelationStrength.Direct),
-            new CommunicationEdge("edge.api-cache", api.Id, cache.Id, Mechanism.NamedPipe, 186, null, RelationStrength.Candidate),
-            new CommunicationEdge("edge.api-indexer", api.Id, indexer.Id, Mechanism.Rpc, 94, 820_000, RelationStrength.Correlated),
-            new CommunicationEdge("edge.indexer-broker", indexer.Id, broker.Id, Mechanism.Alpc, 221, null, RelationStrength.Candidate),
-            new CommunicationEdge("edge.cache-broker", cache.Id, broker.Id, Mechanism.SharedSection, 2, null, RelationStrength.Unresolved),
-        };
-
         var channels = new[]
         {
             new Channel("chan.https", "edge.browser-api", "127.0.0.1:44310 → 127.0.0.1:8443", Mechanism.Tcp, Direction.Outbound, 248, 5_180_000, CoverageState.Covered),
@@ -50,6 +41,23 @@ public static class SyntheticWorkspace
             new Channel("chan.indexrpc", "edge.api-indexer", "367abb81-9844-35f1-ad32-98f038001003", Mechanism.Rpc, Direction.Outbound, 94, 820_000, CoverageState.ReducedFidelity),
             new Channel("chan.brokeralpc", "edge.indexer-broker", @"\RPC Control\brokerport", Mechanism.Alpc, Direction.Bidirectional, 221, null, CoverageState.PartialGap),
             new Channel("chan.section", "edge.cache-broker", @"\BaseNamedObjects\intercat-shm", Mechanism.SharedSection, Direction.DirectionNotApplicable, 2, null, CoverageState.UnknownCoverage),
+        };
+
+        // The tour's relationships rest on its channels; no capture derived them, and their rule says so.
+        CommunicationEdge Edge(string key, ProcessNode source, ProcessNode target, Mechanism mechanism, long observations, long? bytes,
+            RelationStrength strength) => new(key, source.Id, target.Id, mechanism, observations, bytes, strength)
+        {
+            Rule = RelationRule.Tour,
+            Evidence = [.. channels.Where(channel => channel.EdgeKey == key).Select(channel => channel.Key).Order(StringComparer.Ordinal)],
+        };
+
+        var edges = new[]
+        {
+            Edge("edge.browser-api", browser, api, Mechanism.Tcp, 312, 6_420_000, RelationStrength.Direct),
+            Edge("edge.api-cache", api, cache, Mechanism.NamedPipe, 186, null, RelationStrength.Candidate),
+            Edge("edge.api-indexer", api, indexer, Mechanism.Rpc, 94, 820_000, RelationStrength.Correlated),
+            Edge("edge.indexer-broker", indexer, broker, Mechanism.Alpc, 221, null, RelationStrength.Candidate),
+            Edge("edge.cache-broker", cache, broker, Mechanism.SharedSection, 2, null, RelationStrength.Unresolved),
         };
 
         var operations = new List<ChannelOperation>

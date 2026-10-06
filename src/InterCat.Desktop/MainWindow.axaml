@@ -694,7 +694,7 @@
                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Target}" />
                 <TextBlock Grid.Column="3" Text="{Binding Mechanism}" Classes="muted" />
                 <TextBlock Grid.Column="4" Text="{Binding KnownBytes}" />
-                <TextBlock Grid.Column="5" Text="{Binding Evidence}" Classes="muted" />
+                <TextBlock Grid.Column="5" Text="{Binding Evidence}" Classes="muted" ToolTip.Tip="{Binding Explanation}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>

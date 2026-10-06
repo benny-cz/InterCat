@@ -395,5 +395,5 @@ public sealed class GraphProjectionTests
         ProcessNode target,
         long observations,
         RelationStrength strength = RelationStrength.Correlated) =>
-        new(key, source.Id, target.Id, Mechanism.Tcp, observations, null, strength);
+        new(key, source.Id, target.Id, Mechanism.Tcp, observations, null, strength) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
 }

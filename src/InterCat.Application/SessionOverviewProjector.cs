@@ -154,7 +154,12 @@ public static class SessionOverviewProjector
                 Mechanism.Tcp,
                 group.Sum(relation => relation.Records),
                 null,
-                group.Max(relation => relation.Strength)))];
+                group.Max(relation => relation.Strength))
+            {
+                // Each connection by the key its channel rung opens: the first record of the connection at either end.
+                Rule = RelationRule.TransportEndpoint,
+                Evidence = [.. group.Select(relation => relation.StableKey).Order(StringComparer.Ordinal)],
+            })];
 
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
         // §5c): from the links a persisted overview kept, or followed here when it kept none. A session without ALPC
@@ -163,7 +168,11 @@ public static class SessionOverviewProjector
             : counted.RpcLinks is { } kept ? [.. RpcPeerEdges.Of(kept, policy)]
             : [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
-            edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength))];
+            edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength)
+        {
+            Rule = RelationRule.RpcCallPeer,
+            Evidence = [],
+        })];
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "

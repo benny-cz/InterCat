@@ -20,7 +20,7 @@ public sealed class EvidenceScopeTests
             new(Server, 200, "app.exe", "Created", "executable:C:\\APP.EXE", 0, 0, CoverageState.UnknownCoverage),
             new(Other, 300, "other.exe", "Created", "executable:C:\\OTHER.EXE", 0, 0, CoverageState.UnknownCoverage),
         ],
-        [new("tcp:a:b", Client, Server, Mechanism.Tcp, 10, null, RelationStrength.Correlated)],
+        [new("tcp:a:b", Client, Server, Mechanism.Tcp, 10, null, RelationStrength.Correlated) { Rule = RelationRule.TransportEndpoint, Evidence = ["transport:one"] }],
         [new("transport:one", "tcp:a:b", "127.0.0.1:1 ↔ 127.0.0.1:2", Mechanism.Tcp, Direction.UnknownDirection, 10, null,
             CoverageState.UnknownCoverage)],
         [], [], []);

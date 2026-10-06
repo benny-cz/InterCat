@@ -459,9 +459,9 @@ public sealed class LadderKeyboardTests
         CommunicationEdge[] edges =
         [
             .. Enumerable.Range(0, busy.Length).Select(index => new CommunicationEdge(
-                $"busy{index}", pairs[index * 2].Id, pairs[(index * 2) + 1].Id, Mechanism.Tcp, 1_000, null, RelationStrength.Direct)),
+                $"busy{index}", pairs[index * 2].Id, pairs[(index * 2) + 1].Id, Mechanism.Tcp, 1_000, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] }),
             .. Enumerable.Range(0, members.Length / 2).Select(index => new CommunicationEdge(
-                $"pool{index}", members[index * 2].Id, members[(index * 2) + 1].Id, Mechanism.Tcp, 1, null, RelationStrength.Direct)),
+                $"pool{index}", members[index * 2].Id, members[(index * 2) + 1].Id, Mechanism.Tcp, 1, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] }),
         ];
         var viewModel = new WorkspaceViewModel(new WorkspaceSnapshot("Scroll", new(0, WorkspaceTime.TicksPerSecond),
             [.. busy, pool], [.. pairs, .. members], edges, [], [], [], []), "session:test:generation:1");

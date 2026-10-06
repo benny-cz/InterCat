@@ -22,8 +22,8 @@ public sealed class GraphLayoutTests
 
     private static readonly CommunicationEdge[] Edges =
     [
-        new("one", Nodes[0].Id, Nodes[2].Id, Mechanism.Tcp, 5, 10, RelationStrength.Correlated),
-        new("two", Nodes[1].Id, Nodes[3].Id, Mechanism.Tcp, 8, 16, RelationStrength.Correlated),
+        new("one", Nodes[0].Id, Nodes[2].Id, Mechanism.Tcp, 5, 10, RelationStrength.Correlated) { Rule = RelationRule.TransportEndpoint, Evidence = [] },
+        new("two", Nodes[1].Id, Nodes[3].Id, Mechanism.Tcp, 8, 16, RelationStrength.Correlated) { Rule = RelationRule.TransportEndpoint, Evidence = [] },
     ];
 
     [Fact(DisplayName = "R12: graph layout is identical after node, group and edge enumeration is reversed")]
@@ -68,8 +68,8 @@ public sealed class GraphLayoutTests
         CommunicationEdge[] edges =
         [
             .. peers.Select(peer => new CommunicationEdge($"hub-{peer.Id}", peer.Id, hub.Id, Mechanism.Tcp, 5, null,
-                RelationStrength.Direct)),
-            new("pair", pair[0].Id, pair[1].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct),
+                RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] }),
+            new("pair", pair[0].Id, pair[1].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] },
         ];
         ProcessNode[] all = [hub, .. peers, .. pair];
 
@@ -103,7 +103,7 @@ public sealed class GraphLayoutTests
     {
         GraphLayoutResult before = GraphLayout.Compute("graph-v1", Groups, Nodes, Edges);
         ProcessNode newcomer = Node(GuidFrom(30), "clients");
-        CommunicationEdge joined = new("three", newcomer.Id, Nodes[3].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct);
+        CommunicationEdge joined = new("three", newcomer.Id, Nodes[3].Id, Mechanism.Tcp, 5, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
 
         GraphLayoutResult after = GraphLayout.Compute("graph-v2", Groups, [.. Nodes, newcomer], [.. Edges, joined],
             previous: before.Positions.ToDictionary(entry => entry.Key, entry => entry.Value));

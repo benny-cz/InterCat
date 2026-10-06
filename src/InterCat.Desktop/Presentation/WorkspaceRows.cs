@@ -45,9 +45,18 @@ public sealed record RelationshipRow(
     /// <summary>The relationship's observation count, which <see cref="Observations"/> shows formatted.</summary>
     public long ObservationCount { get; init; }
 
+    /// <summary>The rule, by identity and version, that derived the relationship (R4).</summary>
+    public string Rule { get; init; } = string.Empty;
+
+    /// <summary>
+    /// How the relationship was made, in words: its evidence, the rule that derived it, and what it rests on by key - what
+    /// the evidence column's tooltip says, so no relationship is a mark nobody can explain (R4).
+    /// </summary>
+    public string Explanation { get; init; } = string.Empty;
+
     public string AccessibleName =>
         $"{Source} to {Target} over {Mechanism}, {Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, "
-        + $"evidence {Evidence}";
+        + $"evidence {Evidence}, derived by {Rule}";
 }
 
 /// <summary>A timeline cell as a table row, carrying the same counts and the same coverage state.</summary>
@@ -160,6 +169,8 @@ public static class WorkspaceRowBuilder
                 DescribeStrength(edge.Strength))
             {
                 ObservationCount = edge.ObservationCount,
+                Rule = DescribeRule(edge.Rule),
+                Explanation = Explain(edge),
             });
         }
 
@@ -321,6 +332,28 @@ public static class WorkspaceRowBuilder
 
         return string.Create(CultureInfo.CurrentCulture,
             $"{scaled.ToString(Math.Round(scaled, 1) < 10 ? "N1" : "N0", CultureInfo.CurrentCulture)} {units[unit]}");
+    }
+
+    /// <summary>A rule as a person reads it: "transport-endpoint-relation, version 4".</summary>
+    public static string DescribeRule(RelationRule rule) =>
+        string.Create(CultureInfo.CurrentCulture, $"{rule.Identity}, version {rule.Version:N0}");
+
+    /// <summary>
+    /// How a relationship was made, in words (R4): its evidence, the rule and version that derived it, and what it rests on -
+    /// the first of its channels by key, each of which opens its records, and how many more there are.
+    /// </summary>
+    public static string Explain(CommunicationEdge edge)
+    {
+        ArgumentNullException.ThrowIfNull(edge);
+        const int named = 3;
+        string strength = DescribeStrength(edge.Strength);
+        string rests = edge.Evidence.Count > 0
+            ? Spoken.Count(edge.Evidence.Count, "channel") + ": " + string.Join(", ", edge.Evidence.Take(named))
+                + (edge.Evidence.Count > named ? string.Create(CultureInfo.CurrentCulture, $", and {edge.Evidence.Count - named:N0} more") : string.Empty)
+            : edge.Rule == RelationRule.RpcCallPeer
+                ? "its calls' links, which this overview keeps only as counts"
+                : "no channel this overview keeps";
+        return $"{char.ToUpperInvariant(strength[0])}{strength[1..]} evidence, derived by {DescribeRule(edge.Rule)}, from {rests}.";
     }
 
     private static string DescribeStrength(RelationStrength strength) => strength switch

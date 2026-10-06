@@ -98,6 +98,10 @@ public sealed record ProcessNode(
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>
 public sealed record MechanismCount(Mechanism Mechanism, long Records);
 
+/// <summary>
+/// A relationship between two processes, as strong as its weakest evidence, carrying the rule that derived it and what it
+/// rests on (R4), so the edge it draws can always be explained.
+/// </summary>
 public sealed record CommunicationEdge(
     string Key,
     ProcessInstanceId SourceId,
@@ -105,7 +109,36 @@ public sealed record CommunicationEdge(
     Mechanism Mechanism,
     long ObservationCount,
     long? KnownBytes,
-    RelationStrength Strength);
+    RelationStrength Strength)
+{
+    /// <summary>The rule, by identity and version, that derived the relationship.</summary>
+    public required RelationRule Rule { get; init; }
+
+    /// <summary>
+    /// What the relationship rests on, by identity: the keys of the channels it holds, in ordinal order. A TCP channel's
+    /// key names the first record of its connection at either end, and opens every record of it. A relationship derived by
+    /// <see cref="RelationRule.RpcCallPeer"/> names none yet: the overview keeps its links only as counts.
+    /// </summary>
+    public required IReadOnlyList<string> Evidence { get; init; }
+
+    /// <summary>
+    /// Two relationships are one when each of their fields is, their evidence compared key by key: one generation read
+    /// twice yields equal relationships (R7), though each read builds its own list.
+    /// </summary>
+    public bool Equals(CommunicationEdge? other) =>
+        other is not null
+        && Key == other.Key
+        && SourceId == other.SourceId
+        && TargetId == other.TargetId
+        && Mechanism == other.Mechanism
+        && ObservationCount == other.ObservationCount
+        && KnownBytes == other.KnownBytes
+        && Strength == other.Strength
+        && Rule == other.Rule
+        && Evidence.SequenceEqual(other.Evidence, StringComparer.Ordinal);
+
+    public override int GetHashCode() => HashCode.Combine(Key, SourceId, TargetId, Mechanism, ObservationCount, KnownBytes, Strength, Rule);
+}
 
 /// <summary>
 /// An L3 rung: one channel or endpoint of a relationship. A relationship can carry more than one, which

@@ -31,6 +31,10 @@ public sealed class RpcPeerEdgesTests
         // Two linked calls, each a client start and stop and a server start and stop; the ALPC records are not counted.
         Assert.Equal((8L, (long?)null, RelationStrength.Correlated), (edge.ObservationCount, edge.KnownBytes, edge.Strength));
         Assert.Equal(new HashSet<ProcessInstanceId> { client, host }, [edge.SourceId, edge.TargetId]);
+
+        // It names the rule that linked its calls; the overview keeps the links themselves only as counts.
+        Assert.Equal((RelationRule.RpcCallPeer, RpcPeerIndex.PeerRule), (edge.Rule, edge.Rule.ToString()));
+        Assert.Empty(edge.Evidence);
         Assert.Contains(overview.Caveats, caveat => caveat.StartsWith("RPC edges join a process", StringComparison.Ordinal));
 
         // Under a brush holding only the first call, the edge counts only that link's records.

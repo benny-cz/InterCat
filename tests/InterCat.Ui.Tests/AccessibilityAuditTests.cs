@@ -5,6 +5,7 @@ using Avalonia.Automation.Provider;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -110,6 +111,19 @@ public sealed partial class AccessibilityAuditTests
                 {
                     Assert.Equal(rows[index].AccessibleName, AutomationProperties.GetName(container));
                 }
+            }
+        }
+
+        // Each relationship's evidence says in its tooltip the rule that derived it and what it rests on (R4), as its edge's
+        // card does.
+        ListBox relationships = window.GetControl<ListBox>("RelationshipList");
+        RelationshipRow[] related = [.. relationships.Items.OfType<RelationshipRow>()];
+        for (int index = 0; index < related.Length; index++)
+        {
+            if (relationships.ContainerFromIndex(index) is { } container)
+            {
+                Assert.Contains(container.GetVisualDescendants().OfType<TextBlock>(), text =>
+                    text.Text == related[index].Evidence && Equals(ToolTip.GetTip(text), related[index].Explanation));
             }
         }
 
