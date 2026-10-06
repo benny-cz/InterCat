@@ -2930,6 +2930,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)
             {
+                // A reused PID's later holder's records were left out as candidates: they are not one step away, and
+                // the reason says so beside the action that counts them.
+                if (WithheldRungProcess is { } withheld)
+                {
+                    return WorkspaceRowBuilder.ExplainWithheldRung(withheld);
+                }
+
                 return Snapshot.ChannelProjectionProblem is { } problem
                     ? problem + " Choose Browse paired channels here to page this process's admitted channels "
                         + "and inspect a selected channel's source rows."
@@ -4541,6 +4548,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(OffersEvidenceStep));
+        OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         RaiseEvidenceChanged();
         describesRow = false;
@@ -5470,6 +5478,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsEmptyReason));
         OnPropertyChanged(nameof(EmptyReason));
         OnPropertyChanged(nameof(OffersEvidenceStep));
+        OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(CanLoadMore));
@@ -5673,6 +5682,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
+        OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(EvidenceSummary));
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a

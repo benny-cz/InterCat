@@ -194,6 +194,60 @@ public sealed class ExplanationWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: a later holder's empty rung says its records were left out as candidates, and counts them in one click there")]
+    public async Task ALaterHoldersEmptyRungCountsItsCandidates()
+    {
+        // PID 100 exits and is created again, and its second holder sends twice to an end no record holds: a one-sided
+        // connection of candidates the default policy withholds.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 2)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd)),
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Complete, "Saved session open", "Saved.",
+            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Button count = window.GetControl<Button>("EmptyCountCandidatesButton");
+
+        // Its rung lists no row and says why, with the action that counts them beside E's.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == later.Id.ToString());
+        Assert.True(workspace.Descend());
+        Dispatch();
+        Assert.True(workspace.IsEmptyRung);
+        Assert.Contains("so the 2 records bound to this one over the session are only candidates",
+            workspace.EmptyReason, StringComparison.Ordinal);
+        Assert.True(count.IsEffectivelyVisible);
+        Assert.True(window.GetControl<Button>("EmptyEvidenceButton").IsEffectivelyVisible);
+        Save(window, "candidates-rung-offered-1456x939.png");
+        Assert.Empty(LegibleTextTests.CutOff(window, "the empty rung's offer"));
+        (window.Width, window.Height) = (window.MinWidth, window.MinHeight);
+        Assert.Empty(LegibleTextTests.CutOff(window, "the empty rung's offer, at the smallest window"));
+        (window.Width, window.Height) = (1456, 939);
+
+        // One click there counts them: the rung stays, and lists the connection its sends were on.
+        count.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Until(() => window.DataContext is WorkspaceViewModel { CountsCandidates: true });
+        var counted = (WorkspaceViewModel)window.DataContext!;
+        await counted.ConnectionsReady;
+        Dispatch();
+        Assert.Equal($"Process: client.exe · {later.PidLabel}", counted.Crumbs[^1].Label);
+        Assert.Equal("→ " + ServerEnd, Assert.Single(counted.RungRows).Label);
+        Assert.False(counted.IsEmptyRung);
+        Assert.False(count.IsEffectivelyVisible);
+        window.Close();
+    }
+
     private static async Task Until(Func<bool> condition)
     {
         for (int wait = 0; wait < 500 && !condition(); wait++)

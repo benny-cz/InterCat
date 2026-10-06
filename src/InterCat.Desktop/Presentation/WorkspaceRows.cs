@@ -418,6 +418,21 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>
+    /// Why a reused PID's later holder's rung lists no row while the evidence policy counts no candidate (§6.8), in the
+    /// words its binding explanation uses: every record naming its PID while it ran could be an earlier holder's, so none
+    /// is counted as its own, and only its lifecycle records are one step away.
+    /// </summary>
+    public static string ExplainWithheldRung(ProcessNode process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        long withheld = process.WithheldRecords;
+        return string.Create(CultureInfo.InvariantCulture, $"This process lists no row: PID {process.ProcessId} was held by an earlier ")
+            + $"process in this capture, so the {Spoken.Count(withheld, "record")} bound to this one over the session "
+            + (withheld == 1 ? "is only a candidate" : "are only candidates")
+            + ", which the evidence policy does not count. Its lifecycle records are one step away.";
+    }
+
+    /// <summary>
     /// How an executable group was formed and counted, in words (§6.8: a group row is one action from what its total rests
     /// on): by the executable its members' records name, or together when none names one, the rule that bound each
     /// member's own records, what the evidence policy left out of its total, and the worst coverage among its members.

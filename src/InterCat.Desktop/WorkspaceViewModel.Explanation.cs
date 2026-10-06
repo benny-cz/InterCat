@@ -75,6 +75,22 @@ public sealed partial class WorkspaceViewModel
     public bool OffersCandidates => !CountsCandidates && (WithheldOfSelection() > 0);
 
     /// <summary>
+    /// Whether the empty rung offers to count candidates beside its reason, which says its process's records were left out
+    /// as candidates: a reused PID's later holder's rung lists no row while they are not counted (§6.8).
+    /// </summary>
+    public bool OffersRungCandidates => IsEmptyRung && WithheldRungProcess is not null;
+
+    /// <summary>
+    /// The process whose rung is shown, when the evidence policy left records bound to it out as candidates; null at any
+    /// other rung, in the tour, and while candidates count, since then none is left out.
+    /// </summary>
+    private ProcessNode? WithheldRungProcess => realOverview
+        && ladder.Current.Level == DetailLevel.ProcessInstance && ladder.Current.Focus is { } focus
+        && wholeSnapshot.Processes.FirstOrDefault(process => process.Id.ToString() == focus.Key) is { WithheldRecords: > 0 } process
+            ? process
+            : null;
+
+    /// <summary>
     /// What the rail says while candidates count, so the unusual setting is never invisible (§6.8): every count, ranking,
     /// relationship and record E lists binds a reused PID's later holder's records to it, as candidates.
     /// </summary>

@@ -360,8 +360,8 @@ public sealed partial class WorkspaceViewModel
                 RankingMetric counted = rankBy == RankingMetric.RpcCallTime ? RankingMetric.RpcCallsMade : RankingMetric.RpcCallsServed;
                 if (ladder.Current.Level == DetailLevel.Machine && timed.Unattributed.Of(counted) is { Holds: true } unheld)
                 {
-                    detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {unheld.Measured:N0} more completed calls belong to no process the evidence policy admits.");
+                    detail += $" {Spoken.Count(unheld.Measured, "more completed call")} "
+                        + $"{(unheld.Measured == 1 ? "belongs" : "belong")} to no process the evidence policy admits.";
                 }
 
                 if (timed.Coverage.State != CoverageState.Covered)
@@ -398,8 +398,8 @@ public sealed partial class WorkspaceViewModel
 
                 if (ladder.Current.Level == DetailLevel.Machine && calls.Unattributed.Of(rankBy) is { Holds: true } unheld)
                 {
-                    detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {unheld.Measured:N0} more completed calls belong to no process the evidence policy admits.");
+                    detail += $" {Spoken.Count(unheld.Measured, "more completed call")} "
+                        + $"{(unheld.Measured == 1 ? "belongs" : "belong")} to no process the evidence policy admits.";
                 }
 
                 if (calls.Coverage.State != CoverageState.Covered)

@@ -233,6 +233,13 @@
                         AutomationProperties.HelpText="Show this rung's source records">
                   <TextBlock Text="Show source records (E)" TextWrapping="Wrap" />
                 </Button>
+                <!-- A rung its records were left out of as candidates offers to count them where that is read, as the
+                     inspector's explanation does (§6.8). -->
+                <Button x:Name="EmptyCountCandidatesButton" Click="CountCandidates"
+                        IsVisible="{Binding OffersRungCandidates}"
+                        AutomationProperties.HelpText="Count every reused PID's later holder's records as its own, as candidates, in every count, ranking and record list of this session">
+                  <TextBlock Text="Count them as candidates" TextWrapping="Wrap" />
+                </Button>
               </StackPanel>
             </Border>
           </ScrollViewer>
