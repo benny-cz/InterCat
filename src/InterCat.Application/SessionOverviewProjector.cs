@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -237,15 +238,20 @@ public static class SessionOverviewProjector
                     + "loss has no finer location than its epoch, and coverage does not prove a graph relationship complete.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
                 + $"{(withoutTime == 1 ? "is" : "are")} absent from the timeline; "
-                + $"{unresolved:N0} TCP rows have no admitted peer; {notAdmitted:N0} paired relationships "
-                + "were withheld by the evidence policy.",
-            $"{graphRows:N0} rows belong to displayed graph edges; {graphWithoutTime:N0} of them have no usable "
-                + "session time and are among the rows absent from the timeline.",
+                + $"{CountText.Of(unresolved, "TCP row")} {CountText.Agree(unresolved, "has", "have")} no admitted peer; "
+                + $"{CountText.Of(notAdmitted, "paired relationship")} {CountText.Agree(notAdmitted, "was", "were")} withheld by the "
+                + "evidence policy.",
+            // An edge holds records at both of its ends, so the graph's rows are never one.
+            string.Create(CultureInfo.CurrentCulture, $"{graphRows:N0} rows belong to displayed graph edges; {graphWithoutTime:N0} of them ")
+                + $"{CountText.Agree(graphWithoutTime, "has", "have")} no usable session time and "
+                + $"{CountText.Agree(graphWithoutTime, "is", "are")} among the rows absent from the timeline.",
             $"The ranked table orders groups and processes by their own records ({ProcessActivityIndex.CountRule}): "
-                + $"{heldByProcesses:N0} rows bind to a process instance the evidence policy admits. The other "
-                + $"{heldByNone:N0} name no owner ({activity.RecordsWithoutOwner:N0}), name a PID at a reading no "
-                + $"instance of it held ({activity.RecordsNotBound:N0}), or bind only as strongly as the policy "
-                + "withholds; the timeline counts them and no process does.",
+                + $"{CountText.Of(heldByProcesses, "row")} {CountText.Agree(heldByProcesses, "binds", "bind")} to a process "
+                + $"instance the evidence policy admits. The other {heldByNone:N0} "
+                + $"{CountText.Agree(heldByNone, "names", "name")} no owner ({activity.RecordsWithoutOwner:N0}), "
+                + $"{CountText.Agree(heldByNone, "names", "name")} a PID at a reading no instance of it held "
+                + $"({activity.RecordsNotBound:N0}), or {CountText.Agree(heldByNone, "binds", "bind")} only as strongly as the "
+                + $"policy withholds; the timeline counts {CountText.Agree(heldByNone, "it", "them")} and no process does.",
             "Byte totals, logical operations and exact-record drill-down are not in this overview bundle. "
                 + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
                 + "remains in the all-observations timeline, not a guessed channel.",

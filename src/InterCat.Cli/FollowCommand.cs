@@ -139,9 +139,9 @@ internal static class FollowCommand
                         if (step.MirroredChunks > 0 && !json)
                         {
                             ConsoleUi.Progress(
-                                $"Mirrored {step.MirroredChunks:N0} chunk(s) of {step.MirroredRecords:N0} records: "
-                                + $"{step.DerivedChunks:N0} of {step.EvidenceChunks:N0} chunks and "
-                                + $"{step.DerivedRecords:N0} records derived, generation {step.DerivedGeneration:N0}.");
+                                $"Mirrored {CountText.Of(step.MirroredChunks, "chunk")} of {CountText.Of(step.MirroredRecords, "record")}: "
+                                + $"{step.DerivedChunks:N0} of {CountText.Of(step.EvidenceChunks, "chunk")} and "
+                                + $"{CountText.Of(step.DerivedRecords, "record")} derived, generation {step.DerivedGeneration:N0}.");
                         }
                     },
                     cancellationToken).ConfigureAwait(false);

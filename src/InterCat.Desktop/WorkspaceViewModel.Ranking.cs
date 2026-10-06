@@ -378,7 +378,7 @@ public sealed partial class WorkspaceViewModel
                 if (unmeasured > 0)
                 {
                     detail += string.Create(CultureInfo.CurrentCulture,
-                        $" {unmeasured:N0} more carried no status and are counted as neither; a row with only such calls ranks after every row that knows its outcomes.");
+                        $" {unmeasured:N0} more carried no status and {CountText.Agree(unmeasured, "is", "are")} counted as neither; a row with only such calls ranks after every row that knows its outcomes.");
                 }
 
                 if (errors.Coverage.State != CoverageState.Covered)

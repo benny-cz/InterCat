@@ -443,7 +443,7 @@ internal static class ImportCommand
             ConsoleUi.Field("Generation", session.Generation.ToString("N0", CultureInfo.CurrentCulture));
             ConsoleUi.Field(
                 "Journal",
-                $"{session.JournalName}, {session.JournalRecords:N0} records, {session.JournalBytes:N0} B");
+                $"{session.JournalName}, {CountText.Of(session.JournalRecords, "record")}, {session.JournalBytes:N0} B");
             ConsoleUi.Field("Observations", session.ObservationRows.ToString("N0", CultureInfo.CurrentCulture));
             ConsoleUi.Field("Source fields", session.SourceFieldRows.ToString("N0", CultureInfo.CurrentCulture));
             ConsoleUi.Table(

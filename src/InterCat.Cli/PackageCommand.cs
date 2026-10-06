@@ -262,8 +262,9 @@ internal static class PackageCommand
                 NameNeedles = result.NameNeedles,
                 Description = string.Create(CultureInfo.InvariantCulture,
                     $"Reopened as a recipient would; every value checked against the issued pseudonyms; "
-                    + $"{result.FilesVerified:N0} files searched for {result.IdentityNeedles:N0} source identity and "
-                    + $"{result.NameNeedles:N0} name patterns, none found."),
+                    + $"{result.FilesVerified:N0} {(result.FilesVerified == 1 ? "file" : "files")} searched for "
+                    + $"{result.IdentityNeedles:N0} source identity {(result.IdentityNeedles == 1 ? "pattern" : "patterns")} and "
+                    + $"{result.NameNeedles:N0} name {(result.NameNeedles == 1 ? "pattern" : "patterns")}, none found."),
             },
             Warning = RedactedSessionPackage.Warning,
             Notes = notes,

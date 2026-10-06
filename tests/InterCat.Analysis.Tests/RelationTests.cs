@@ -806,7 +806,12 @@ public sealed class RelationTests
         Assert.Equal(
             [(ProcessBindingReason.PeerEndpointIncomplete, 1L), (ProcessBindingReason.PeerNotObserved, 1L)],
             clientPeers.UnknownCounterparts.OrderBy(entry => entry.Key).Select(entry => (entry.Key, entry.Value)));
-        Assert.Contains(clientPeers.Caveats, caveat => caveat.StartsWith("At least 1:", StringComparison.Ordinal));
+        Assert.Contains(clientPeers.Caveats, caveat => caveat.StartsWith("At least 1: 2 records in scope identify no peer (", StringComparison.Ordinal));
+
+        // Its one record whose other end nothing holds is said in the singular, as is the other process's only record.
+        Assert.Contains(clientPeers.Caveats, caveat =>
+            caveat.StartsWith("1 record in scope has its other end outside this capture's records: ", StringComparison.Ordinal)
+            && caveat.Contains(" It is left out; it involves ", StringComparison.Ordinal));
         Assert.Equal(1, SessionMetrics.Evaluate(session.Store, peers with { Sender = client }).Value);
         Assert.Equal(1, SessionMetrics.Evaluate(session.Store, peers with { Receiver = client }).Value);
 
@@ -814,6 +819,8 @@ public sealed class RelationTests
         MetricResult unresolved = SessionMetrics.Evaluate(session.Store, peers with { Participant = other });
         Assert.Equal(MetricUnavailableReason.NothingMeasured, unresolved.Unavailable);
         Assert.Null(unresolved.Value);
+        Assert.StartsWith("The one record in scope that has another end identifies no peer (PeerNotObserved 1)",
+            unresolved.UnavailableExplanation, StringComparison.Ordinal);
 
         Assert.Contains("is one count", (peers with { Participant = client, Grouping = LaneGrouping.InstanceOnly }).Check()!.Reason, StringComparison.Ordinal);
     }

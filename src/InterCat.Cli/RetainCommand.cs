@@ -216,10 +216,11 @@ internal static class RetainCommand
                 store.Current.SourceIdentity);
             ConsoleUi.Progress(
                 preview.JournalChunks > 1
-                    ? $"Releasing {preview.ReleasedRecords:N0} records in the {preview.ReleasedChunks.Count:N0} oldest "
-                        + "chunks and publishing the retention generation."
-                    : $"Releasing {preview.ReleasedRecords:N0} records in {preview.ReleasedBatches:N0} batches and "
-                        + "publishing the retention generation.");
+                    ? $"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in the "
+                        + (preview.ReleasedChunks.Count == 1 ? "oldest chunk" : $"{preview.ReleasedChunks.Count:N0} oldest chunks")
+                        + " and publishing the retention generation."
+                    : $"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in "
+                        + $"{CountText.Of(preview.ReleasedBatches, "batch", "batches")} and publishing the retention generation.");
             outcome = JournalRetention.Release(
                 writable,
                 before,
@@ -366,7 +367,7 @@ internal static class RetainCommand
         ConsoleUi.Field(
             "Journal",
             (chunked ? $"{preview.JournalChunks:N0} chunks of one recording" : preview.JournalName)
-            + $", {preview.JournalBytes:N0} B, {preview.TotalRecords:N0} records");
+            + $", {preview.JournalBytes:N0} B, {CountText.Of(preview.TotalRecords, "record")}");
         ConsoleUi.Field(
             "Boundaries it allows",
             preview.SmallestReleasingBoundary == 0
@@ -403,7 +404,7 @@ internal static class RetainCommand
                 (result.RetainedJournalChunks > 1
                     ? $"{result.RetainedJournalChunks:N0} chunks through {result.RetainedJournalName}"
                     : result.RetainedJournalName)
-                + $", {result.RetainedJournalBytes:N0} B, {result.RetainedJournalRecords:N0} records");
+                + $", {result.RetainedJournalBytes:N0} B, {CountText.Of(result.RetainedJournalRecords, "record")}");
             ConsoleUi.Field("Given up", $"{result.ReleasedBytes:N0} B of admitted evidence");
             ConsoleUi.Field("Removed from disk", $"{result.ReclaimedBytes:N0} B");
             ConsoleUi.Field(
@@ -448,7 +449,7 @@ internal static class RetainCommand
         {
             SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(path), manifest.SessionId, manifest.SourceIdentity);
             ConsoleUi.Progress(string.Create(CultureInfo.CurrentCulture,
-                $"Releasing the content of {preview.Records:N0} records and publishing the retention generation."));
+                $"Releasing the content of {CountText.Of(preview.Records, "record")} and publishing the retention generation."));
             try
             {
                 outcome = ContentRetention.Release(writable, reason, DateTimeOffset.UtcNow, cancellationToken: cancellationToken);
@@ -566,8 +567,8 @@ internal static class RetainCommand
                 $"{preview.Chunks.Count:N0} {(preview.Chunks.Count == 1 ? "chunk" : "chunks")} beside the journal, {ConsoleUi.Bytes(preview.FileBytes)}"));
             ConsoleUi.Field("Messages", summary is { Problem: null }
                 ? string.Create(culture,
-                    $"{summary.Records:N0} records' content: {summary.Whole:N0} kept whole, {summary.Cut:N0} cut, {summary.Omitted:N0} not kept; {ConsoleUi.Bytes(summary.KeptBytes)} of message bytes")
-                : string.Create(culture, $"at least {preview.Records:N0} records' content"));
+                    $"{RecordsContent(summary.Records)}: {summary.Whole:N0} kept whole, {summary.Cut:N0} cut, {summary.Omitted:N0} not kept; {ConsoleUi.Bytes(summary.KeptBytes)} of message bytes")
+                : "at least " + RecordsContent(preview.Records));
             ConsoleUi.Field("Capture", preview.Finished ? "finished" : "not finished; its content is not released on its own");
         }
 
@@ -576,7 +577,7 @@ internal static class RetainCommand
             ConsoleUi.Heading("Published retention generation");
             ConsoleUi.Field("Generation", result.Generation.ToString("N0", culture));
             ConsoleUi.Field("Given up", string.Create(culture,
-                $"the content of {result.ReleasedRecords:N0} records, {ConsoleUi.Bytes(result.ReleasedBytes)} of chunks"));
+                $"the content of {CountText.Of(result.ReleasedRecords, "record")}, {ConsoleUi.Bytes(result.ReleasedBytes)} of chunks"));
             ConsoleUi.Field("Removed from disk", ConsoleUi.Bytes(result.ReclaimedBytes));
             ConsoleUi.Field("Released files", string.Join(", ", result.ReleasedFiles));
             ConsoleUi.Field("Held by a lease", result.HeldByLease.Count == 0 ? "none" : string.Join(", ", result.HeldByLease));
@@ -607,4 +608,8 @@ internal static class RetainCommand
         ConsoleUi.Line("      stated reason, once the capture has finished. Every journal, row and derived file");
         ConsoleUi.Line("      stays, so every record and its size remain.");
     }
+
+    /// <summary>The content of a number of records, as the report heads it: "1 record's content", "3 records' content".</summary>
+    private static string RecordsContent(long records) =>
+        records == 1 ? "1 record's content" : string.Create(CultureInfo.CurrentCulture, $"{records:N0} records' content");
 }

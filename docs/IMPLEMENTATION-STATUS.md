@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 356 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 357 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 357 — a count of one reads in the singular (§6.8):**
+  - "1 records", "1 across 1 PIDs", "1 stops in scope are paired", "1 of them report" and their kind in the window, the
+    command line, the metric caveats and the overview's disclosures now agree with their count, through one helper,
+    `CountText`, every layer uses. Plural wording is unchanged.
 
 - **Revision 356 — an aggregate chosen in the graph is its processes (§6.4, I5):**
   - A quiet, undrawn-members or context node chosen in the graph: the timeline highlighted its members' records, the
@@ -977,10 +982,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      from its first view when opened from it again (§26.3, `workspace-v13`). Since revision 354 a later holder's
      empty rung says its records were left out as candidates and offers to count them there. Every read a process's
      rows, the call and peer rankings and the lanes make is tested under each policy.
-   - A count should agree with its noun wherever a person reads it. Revision 354 fixed the call rankings' "1 more
-     completed calls belong". Others of that shape remain: an error ranking's "1 more carried no status and are
-     counted", `icat operations`' "1 more groups", `icat metric`'s "1 more instances", the redaction notice's "1 files
-     were searched", a metric caveat's "1 contributions are", and the overview's "1 TCP rows have" and "1 rows belong".
+   - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
+     call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
+     `CountText`. A new sentence that states a count should say it through it.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
@@ -1019,6 +1023,28 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 357 was built and tested in the same Linux container: Debug and Release each ran **1,619 tests**, passing
+  **1,522 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests read a
+  count of one in the window's error ranking, in `icat processes`, `channels`, `timeline` and `overview`, in the peer
+  and RPC metric caveats and in the overview's disclosure. They caught each of twelve mutations:
+  - one counted as many;
+  - the verb agreeing with many;
+  - one record outside the capture, or the only record of a process, said in the plural;
+  - one unpaired failure "report", and one unknown status "they";
+  - one TCP row without a peer "have", one PID "of them", and a one-record connection "records";
+  - one record of neither side "state", one call with no status "are counted", and one row held by no process
+    "name".
+
+  Two existing tests had pinned the slips themselves, "1 of them report a failure status" and "The other 1 name no
+  owner"; they now read the corrected words. A first Release run also failed revision 342's lane-scale window test once,
+  at a pixel check after a descent: 1 in 188 recorded suite runs. It passed 14 reruns, and a run that stopped there drew
+  no hover card and counted the lanes on the same columns, so the cause is not confirmed. The test now asks for the
+  timeline's detail at once after each descent, and waits for it before reading lanes or pixels, removing the one
+  asynchronous redraw that could land mid-check. A second Debug run failed revision 355's channel-rung card test, which
+  read the card just after choosing the channel, while its bytes could still be "reading bytes…", and compared that
+  with the card after the descent, by then read. It now waits for the selection's bytes before each reading, and passed
+  ten runs in each configuration; the third pair of runs is the one above.
 
 - Revision 356 was built and tested in the same Linux container: Debug and Release each ran **1,617 tests**, passing
   **1,520 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test chooses

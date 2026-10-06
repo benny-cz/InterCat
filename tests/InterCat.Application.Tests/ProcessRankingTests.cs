@@ -46,7 +46,8 @@ public sealed class ProcessRankingTests
         Assert.Equal(1, overview.RowsNoProcessHolds);
         Assert.Equal(1, snapshot.RowsNoProcessHolds);
         Assert.Contains(overview.Caveats, caveat => caveat.Contains("28 rows bind to a process instance", StringComparison.Ordinal)
-            && caveat.Contains("The other 1 name no owner (1)", StringComparison.Ordinal)
+            && caveat.Contains("The other 1 names no owner (1), names a PID at a reading no instance of it held (0), or binds "
+                + "only as strongly as the policy withholds; the timeline counts it and no process does.", StringComparison.Ordinal)
             && caveat.Contains(ProcessActivityIndex.CountRule, StringComparison.Ordinal));
         foreach (LadderRow group in machine.Rows)
         {

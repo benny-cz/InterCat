@@ -404,7 +404,7 @@ internal static class OperationsCommand
         ConsoleUi.Field("Calls", string.Create(CultureInfo.CurrentCulture,
             $"{totals.Calls:N0}: {totals.Completed:N0} completed ({totals.Failed:N0} failed), {totals.OpenAtCaptureEnd:N0} open at capture end"));
         ConsoleUi.Field("Not paired", string.Create(CultureInfo.CurrentCulture,
-            $"{totals.StartNotObserved:N0} without their start, {totals.NoActivityId:N0} without an activity id, {totals.Ambiguous:N0} ambiguous"));
+            $"{totals.StartNotObserved:N0} without {CountText.Agree(totals.StartNotObserved, "its", "their")} start, {totals.NoActivityId:N0} without an activity id, {totals.Ambiguous:N0} ambiguous"));
         ConsoleUi.Line();
         if (document.Groups.Count == 0)
         {
@@ -434,8 +434,7 @@ internal static class OperationsCommand
                 ])]);
             if (shown.Count < document.Groups.Count)
             {
-                ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
-                    $"{document.Groups.Count - shown.Count:N0} more groups; --top 0 lists every one."));
+                ConsoleUi.Note(CountText.Of(document.Groups.Count - shown.Count, "more group") + "; --top 0 lists every one.");
             }
 
             foreach (OperationsGroupDocument group in shown.Where(group => group.Calls is { Count: > 0 }))

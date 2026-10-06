@@ -290,6 +290,20 @@ public sealed class RankingSelectorTests
         Assert.Equal(["1 error", "0 errors", "no calls", "no calls"], rpc.RungRows.Select(row => row.Figure));
         Assert.Contains("1 RPC error of 3 calls with a status", rpc.RungRows[0].AccessibleName, StringComparison.Ordinal);
         Assert.Equal("1 failed of 5 calls", rpc.RankingNote);
+
+        // One more call whose stop carried no status is counted as neither, and said so in the singular.
+        Guid unstated = new(7, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 2);
+        using var withUnstated = new TemporarySession();
+        Publish(withUnstated.Store,
+        [
+            .. Calls(),
+            Timed(RpcCall(80, ObservationKind.RequestStart, Direction.Outbound, 100, 21, unstated, Guid.Parse("367abb81-9844-35f1-ad32-98f038001003"))),
+            Timed(RpcCall(90, ObservationKind.RequestEnd, Direction.Outbound, 100, 22, unstated)),
+        ]);
+        using WorkspaceViewModel unstatedRpc = Open(withUnstated);
+        unstatedRpc.RankBy = RankingMetric.RpcErrors;
+        await unstatedRpc.RankingReady;
+        Assert.Contains(" 1 more carried no status and is counted as neither; ", unstatedRpc.RankingNoteDetail, StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "§5.2: RPC call and serve time rank the rail by each side's median call, slowest first, untimed rows after")]

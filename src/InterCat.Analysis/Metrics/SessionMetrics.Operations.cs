@@ -521,9 +521,10 @@ public static partial class SessionMetrics
 
         if (otherInterval > 0)
         {
-            caveats.Add(string.Create(
-                CultureInfo.CurrentCulture,
-                $"{otherInterval:N0} calls in the interval were made on the other side and measure {(client ? "server execution" : "client calls")}, another named interval; they are left out, never mixed in."));
+            caveats.Add(
+                $"{CountText.Of(otherInterval, "call")} in the interval {CountText.Agree(otherInterval, "was", "were")} made on the other side and "
+                + $"{CountText.Agree(otherInterval, "measures", "measure")} {(client ? "server execution" : "client calls")}, another named interval; "
+                + $"{CountText.Agree(otherInterval, "it is", "they are")} left out, never mixed in.");
         }
 
         return caveats;
@@ -575,14 +576,17 @@ public static partial class SessionMetrics
                 (tally.InScope.GetValueOrDefault(RpcCallState.StartNotObserved), "whose start is not in the evidence"),
                 (tally.InScope.GetValueOrDefault(RpcCallState.NoActivityId), "with no activity id"),
                 (tally.InScope.GetValueOrDefault(RpcCallState.Ambiguous), "of an activity id reused before its stop"));
+            string are = CountText.Agree(unpaired, "is", "are");
+            long failures = tally.UnpairedFailures;
             caveats.Add(
-                string.Create(CultureInfo.CurrentCulture, $"{unpaired:N0} stops in scope are paired with no start and are ")
-                + $"not counted: {Join(reasons)}."
-                + (effective == Metric.Errors && tally.UnpairedFailures > 0
-                    ? string.Create(
-                        CultureInfo.CurrentCulture,
-                        $" {tally.UnpairedFailures:N0} of them report a failure status; their calls are not complete in the ")
-                        + "evidence, so they are stated here rather than counted."
+                $"{CountText.Of(unpaired, "stop")} in scope {are} paired with no start and {are} not counted: {Join(reasons)}."
+                + (effective == Metric.Errors && failures > 0
+                    ? unpaired == 1
+                        ? " It reports a failure status; its call is not complete in the evidence, so it is stated here rather "
+                            + "than counted."
+                        : string.Create(CultureInfo.CurrentCulture, $" {failures:N0} of them {CountText.Agree(failures, "reports", "report")} ")
+                            + $"a failure status; {CountText.Agree(failures, "its call is", "their calls are")} not complete in the evidence, "
+                            + $"so {CountText.Agree(failures, "it is", "they are")} stated here rather than counted."
                     : string.Empty));
         }
 
@@ -590,8 +594,9 @@ public static partial class SessionMetrics
         {
             caveats.Add(string.Create(
                 CultureInfo.CurrentCulture,
-                $"{tally.Unknown:N0} of {tally.Known + tally.Unknown:N0} completed calls in scope carried no status. They are ")
-                + "counted as unknown, neither failed nor succeeded, and never as zero (R3).");
+                $"{tally.Unknown:N0} of {CountText.Of(tally.Known + tally.Unknown, "completed call")} in scope carried no status. ")
+                + $"{CountText.Agree(tally.Unknown, "It is", "They are")} counted as unknown, neither failed nor succeeded, and never as "
+                + "zero (R3).");
         }
 
         return caveats;
@@ -612,11 +617,12 @@ public static partial class SessionMetrics
         if (unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy) is { } notAdmitted
             && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
-            caveats.Add(string.Create(
-                CultureInfo.CurrentCulture,
-                $"{notAdmitted.KnownContributions + notAdmitted.UnknownContributions:N0} calls lie in the lifetime of a ")
-                + "later instance of a PID this capture reused, so they are candidates and stay unattributed under this "
-                + "evidence policy; ask for candidates to include them, labelled (identity-v1).");
+            long calls = notAdmitted.KnownContributions + notAdmitted.UnknownContributions;
+            caveats.Add(
+                $"{CountText.Of(calls, "call")} {CountText.Agree(calls, "lies", "lie")} in the lifetime of a later instance of a PID "
+                + $"this capture reused, so {CountText.Agree(calls, "it is a candidate and stays", "they are candidates and stay")} "
+                + "unattributed under this evidence policy; ask for candidates to include "
+                + $"{CountText.Agree(calls, "it", "them")}, labelled (identity-v1).");
         }
 
         return caveats;

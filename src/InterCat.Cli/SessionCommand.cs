@@ -691,7 +691,7 @@ internal static class SessionCommand
             foreach (SessionFieldSegmentDocument segment in document.FieldSegments)
             {
                 ConsoleUi.Field("Segment", segment.Name);
-                ConsoleUi.Field("Fields", $"{segment.RowCount:N0} rows");
+                ConsoleUi.Field("Fields", CountText.Of(segment.RowCount, "row"));
                 ConsoleUi.Table(
                     ["Field", "Rows"],
                     [.. segment.Fields.Select(entry => new[] { entry.Key, entry.Value.ToString("N0", CultureInfo.CurrentCulture) })]);

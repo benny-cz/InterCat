@@ -398,7 +398,10 @@ internal static class ProcessesCommand
             "Instances",
             string.Create(
                 CultureInfo.CurrentCulture,
-                $"{document.Summary.Instances:N0} across {document.Summary.ProcessIds:N0} PIDs, {document.Summary.ReusedProcessIds:N0} of them reused"));
+                $"{document.Summary.Instances:N0} across {CountText.Of(document.Summary.ProcessIds, "PID")}, ")
+                + (document.Summary.ProcessIds == 1
+                    ? document.Summary.ReusedProcessIds == 1 ? "reused" : "never reused"
+                    : string.Create(CultureInfo.CurrentCulture, $"{document.Summary.ReusedProcessIds:N0} of them reused")));
         ConsoleUi.Field(
             "Witnessed",
             string.Join(

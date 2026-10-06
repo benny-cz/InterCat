@@ -377,11 +377,14 @@ public static partial class SessionMetrics
         MetricGroup? notAdmitted = unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
+            long contributions = notAdmitted.KnownContributions + notAdmitted.UnknownContributions;
             caveats.Add(
-                $"{notAdmitted.KnownContributions + notAdmitted.UnknownContributions:N0} contributions lie in the lifetime "
+                $"{CountText.Of(contributions, "contribution")} {CountText.Agree(contributions, "lies", "lie")} in the lifetime "
                 + "of a later instance of a PID this capture reused. PID and time cannot tell a late record of the "
-                + "earlier instance from a record of the later one, so they are candidates and stay unattributed under "
-                + "this evidence policy; ask for candidates to include them, labelled (identity-v1).");
+                + "earlier instance from a record of the later one, so "
+                + $"{CountText.Agree(contributions, "it is a candidate and stays", "they are candidates and stay")} unattributed under "
+                + $"this evidence policy; ask for candidates to include {CountText.Agree(contributions, "it", "them")}, labelled "
+                + "(identity-v1).");
         }
 
         if (unattributed.Any(group => group.Reason is ProcessBindingReason.BeforeFirstEvidence

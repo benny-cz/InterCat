@@ -32,11 +32,13 @@ public sealed class ChannelRungCardTests
             // Chosen among the process's rows, the card counts its records; opened, its own rung's card counts them alike,
             // while the inspector's process is still the one it was opened from.
             workspace.SelectedRung = workspace.RungRows.Single(isKind);
+            await workspace.SelectionBytesReady;
             string counted = workspace.EvidenceSummary;
             Assert.Equal("Selected " + noun, workspace.EvidenceHeading);
             Assert.True(workspace.Descend());
             await workspace.RpcReady;
             await workspace.HttpReady;
+            await workspace.SelectionBytesReady;
             Assert.Equal((heading, counted), (workspace.EvidenceHeading, workspace.EvidenceSummary));
             Assert.Equal(client.Id, workspace.SelectedProcess?.Id);
 
@@ -47,6 +49,7 @@ public sealed class ChannelRungCardTests
             Assert.True(workspace.Ascend());
             await workspace.RpcReady;
             await workspace.HttpReady;
+            await workspace.SelectionBytesReady;
             Assert.Equal((heading, counted), (workspace.EvidenceHeading, workspace.EvidenceSummary));
             Assert.True(workspace.Ascend());
             await workspace.RpcReady;
@@ -89,9 +92,11 @@ public sealed class ChannelRungCardTests
 
         // On the paired channel's rung, the server chosen in the graph leaves the card on the channel, whose records E lists.
         workspace.SelectedRung = workspace.RungRows.Single(Kinds[0].IsKind);
+        await workspace.SelectionBytesReady;
         string counted = workspace.EvidenceSummary;
         Assert.True(workspace.Descend());
         workspace.SelectProcess(server.Id);
+        await workspace.SelectionBytesReady;
         Assert.Equal(("This channel", counted), (workspace.EvidenceHeading, workspace.EvidenceSummary));
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;

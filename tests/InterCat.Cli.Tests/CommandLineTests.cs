@@ -554,6 +554,40 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(new Regex(@"^\s*Time base\s+" + Regex.Escape(since) + @"\r?$", RegexOptions.Multiline), text);
     }
 
+    [Fact(DisplayName = "§6.8: the command line says a count of one in the singular: one PID, one record, one record of neither side, one row without a peer")]
+    public async Task ACountOfOneReadsInTheSingular()
+    {
+        // client.exe, the only process, connects once to another host and sends one datagram to a third: one PID, two
+        // connections of one record each, one record that is neither a send nor a receive, and one TCP row with no peer.
+        using var single = new TemporarySession();
+        Publish(single.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 2)
+                .Between("192.168.1.5:52000", "10.0.0.9:443") with { SessionRelativeTicks = 2_000 },
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 40, 100, 3)
+                .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = 3_000 },
+        ]);
+        single.Store.ReleaseSegmentReaders();
+        ProcessInstanceId client = SessionOverviewProjector.Project(single.Store).Nodes.Single().Id;
+
+        (InterCatExitCode code, string text, string said) = await Run("processes", single.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^\s*Instances\s+1 across 1 PID, never reused\r?$", RegexOptions.Multiline), text);
+
+        (code, text, said) = await Run("channels", single.Path, "--process", client.ToString(), "--one-sided");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(2, Regex.Count(text, " · 1 record · "));
+
+        (code, text, said) = await Run("timeline", single.Path, "--interval", "0:1000", "--bytes");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("1 record states neither side and is in neither column.", text, StringComparison.Ordinal);
+
+        (code, text, said) = await Run("overview", single.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("1 TCP row has no admitted peer; 0 paired relationships were withheld", text, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R5: icat overview and icat processes number a reused PID's holders alike, as the window does")]
     public async Task AReusedPidsHoldersAreNumberedAlike()
     {

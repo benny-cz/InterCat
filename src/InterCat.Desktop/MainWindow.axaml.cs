@@ -2008,7 +2008,8 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 Paragraph($"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}."),
                 Paragraph($"Before it was saved, the package was reopened as a recipient would open it, every value "
-                    + $"was checked against the pseudonyms it issued, and {result.FilesVerified:N0} files were searched "
+                    + $"was checked against the pseudonyms it issued, and {CountText.Of(result.FilesVerified, "file")} "
+                    + $"{CountText.Agree(result.FilesVerified, "was", "were")} searched "
                     + "for this session's identities and names. None was found."),
                 Paragraph($"Left behind: {result.Source.SourceJournals:N0} original {journals} "
                     + $"({RecentSessions.Size(result.Source.SourceJournalBytes, CultureInfo.CurrentCulture)})"

@@ -131,7 +131,8 @@ internal static class TimelineCommand
             long other = measured.Columns.Sum(column => column.OtherMeasured + column.OtherUnmeasured);
             if (other > 0)
             {
-                ConsoleUi.Note($"{other:N0} records state neither side and are in neither column.");
+                ConsoleUi.Note($"{CountText.Of(other, "record")} {CountText.Agree(other, "states", "state")} neither side and "
+                    + $"{CountText.Agree(other, "is", "are")} in neither column.");
             }
         }
 

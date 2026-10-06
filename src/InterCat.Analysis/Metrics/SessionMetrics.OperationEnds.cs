@@ -183,9 +183,11 @@ public static partial class SessionMetrics
         };
         if (unknownCount > 0)
         {
-            caveats.Add(
-                $"{unknownCount:N0} calls in scope have no admitted process at their other end, each by the reason given; "
-                + "any of them could add a peer, so the count is a lower bound beside them (P7).");
+            caveats.Add(unknownCount == 1
+                ? "1 call in scope has no admitted process at its other end, by the reason given; it could add a peer, so the "
+                    + "count is a lower bound beside it (P7)."
+                : $"{unknownCount:N0} calls in scope have no admitted process at their other end, each by the reason given; "
+                    + "any of them could add a peer, so the count is a lower bound beside them (P7).");
         }
 
         if (known == 0 && unknownCount > 0)
@@ -194,8 +196,10 @@ public static partial class SessionMetrics
             {
                 Unavailable = MetricUnavailableReason.NothingMeasured,
                 UnavailableExplanation =
-                    $"None of the {unknownCount:N0} calls in scope has a linked, admitted process at its other end, so no "
-                    + "peer is known. That is not a count of zero peers (R21).",
+                    (unknownCount == 1
+                        ? "The one call in scope has no linked, admitted process at its other end"
+                        : $"None of the {unknownCount:N0} calls in scope has a linked, admitted process at its other end")
+                    + ", so no peer is known. That is not a count of zero peers (R21).",
                 Unit = null,
                 Caveats = caveats,
             };
@@ -211,8 +215,8 @@ public static partial class SessionMetrics
         + "by time alone (P8)."
         + (undecided == 0
             ? string.Empty
-            : string.Create(CultureInfo.CurrentCulture, $" {undecided:N0} calls in scope whose other end is not linked, or not ")
-                + "admitted, could involve the filtered processes: they are disclosed by reason and never counted (P7).");
+            : $" {CountText.Of(undecided, "call")} in scope whose other end is not linked, or not admitted, could involve the "
+                + $"filtered processes: {CountText.Agree(undecided, "it is", "they are")} disclosed by reason and never counted (P7).");
 
     /// <summary>
     /// Records one call the filter left out only because its other end is not linked or not admitted: by the reason its

@@ -81,8 +81,11 @@ public sealed class OperationMetricsTests
         Assert.Equal((3L, 1L), (errors.KnownContributions, errors.UnknownContributions));
         Assert.Equal(0.75, errors.MeasurementAvailability);
         Assert.Equal(1, errors.Operations!.UnpairedFailures);
-        Assert.Contains(errors.Caveats, caveat => caveat.Contains("1 of them report a failure status", StringComparison.Ordinal));
-        Assert.Contains(errors.Caveats, caveat => caveat.Contains("1 of 4 completed calls in scope carried no status", StringComparison.Ordinal));
+        Assert.Contains(errors.Caveats, caveat => caveat.Contains(
+            "1 of them reports a failure status; its call is not complete in the evidence, so it is stated here rather than "
+            + "counted.", StringComparison.Ordinal));
+        Assert.Contains(errors.Caveats, caveat => caveat.Contains(
+            "1 of 4 completed calls in scope carried no status. It is counted as unknown", StringComparison.Ordinal));
 
         // Every operation is an RPC call, so the answer states RPC's coverage rather than an all-mechanism one.
         Assert.Contains(errors.Caveats, caveat => caveat.StartsWith("RPC's capture coverage is unknown", StringComparison.Ordinal));

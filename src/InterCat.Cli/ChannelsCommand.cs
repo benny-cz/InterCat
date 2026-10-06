@@ -142,7 +142,7 @@ internal static class ChannelsCommand
         foreach (ConnectionSummary connection in list.Connections)
         {
             ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
-                $"  {connection.Name} from {connection.LocalEndpoint} · {connection.Records:N0} records · {connection.Transfers(CultureInfo.CurrentCulture)} · {connection.Lifetime}"));
+                $"  {connection.Name} from {connection.LocalEndpoint} · {CountText.Of(connection.Records, "record")} · {connection.Transfers(CultureInfo.CurrentCulture)} · {connection.Lifetime}"));
             ConsoleUi.Line("    " + connection.Key);
         }
 

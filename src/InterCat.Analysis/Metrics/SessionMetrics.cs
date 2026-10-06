@@ -1620,8 +1620,9 @@ public static partial class SessionMetrics
         if (answer.ExcludedOtherDomain > 0)
         {
             caveats.Add(
-                $"{answer.ExcludedOtherDomain:N0} contributions are in another byte domain and are excluded, not "
-                + "added: two domains are never summed (I6, P3).");
+                $"{CountText.Of(answer.ExcludedOtherDomain, "contribution")} {CountText.Agree(answer.ExcludedOtherDomain, "is", "are")} "
+                + $"in another byte domain and {CountText.Agree(answer.ExcludedOtherDomain, "is", "are")} excluded, not added: two "
+                + "domains are never summed (I6, P3).");
         }
 
         if (answer.Sides.Any(side => side.Side == AccountingSide.EndpointActivity)
@@ -1703,9 +1704,10 @@ public static partial class SessionMetrics
         if (notObserved > 0)
         {
             caveats.Add(
-                $"{notObserved:N0} records in scope have their other end outside this capture's records: a remote "
-                + "process, or a local one the capture holds no record of on that connection. They are left out; one "
-                + $"involves {subject} only if its own records of that connection are missing.");
+                $"{CountText.Of(notObserved, "record")} in scope {CountText.Agree(notObserved, "has its", "have their")} other end "
+                + "outside this capture's records: a remote process, or a local one the capture holds no record of on that "
+                + $"connection. {CountText.Agree(notObserved, "It is left out; it", "They are left out; one")} involves {subject} "
+                + "only if its own records of that connection are missing.");
         }
 
         List<KeyValuePair<ProcessBindingReason, long>> undecided =
@@ -1716,11 +1718,14 @@ public static partial class SessionMetrics
         ];
         if (undecided.Count > 0)
         {
+            long undecidedRecords = undecided.Sum(entry => entry.Value);
             caveats.Add(
-                $"{undecided.Sum(entry => entry.Value):N0} records in scope have another end this session cannot decide ("
+                $"{CountText.Of(undecidedRecords, "record")} in scope {CountText.Agree(undecidedRecords, "has", "have")} another end "
+                + "this session cannot decide ("
                 + string.Join(", ", undecided.Select(entry => $"{entry.Key} {entry.Value:N0}"))
-                + $"). {char.ToUpperInvariant(subject[0])}{subject[1..]} could be that end, so they are disclosed and left "
-                + "out rather than guessed into the total (P6).");
+                + $"). {char.ToUpperInvariant(subject[0])}{subject[1..]} could be that end, so "
+                + $"{CountText.Agree(undecidedRecords, "it is", "they are")} disclosed and left out rather than guessed into the "
+                + "total (P6).");
         }
 
         return caveats;

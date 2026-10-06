@@ -94,7 +94,9 @@ public static partial class SessionMetrics
             {
                 Unavailable = MetricUnavailableReason.NothingMeasured,
                 UnavailableExplanation =
-                    $"None of the {unknown:N0} records in scope that have another end identifies a {noun} ("
+                    (unknown == 1
+                        ? $"The one record in scope that has another end identifies no {noun} ("
+                        : $"None of the {unknown:N0} records in scope that have another end identifies a {noun} (")
                     + Reasons(unknownReasons) + "), so none can be counted. Zero would be a guess about what the "
                     + "capture could not resolve.",
                 Unit = null,
@@ -106,8 +108,9 @@ public static partial class SessionMetrics
         if (unknown > 0)
         {
             caveats.Add(
-                $"At least {counted.Count:N0}: {unknown:N0} records in scope identify no {noun} ({Reasons(unknownReasons)}), "
-                + $"and each may add one this session cannot name. "
+                $"At least {counted.Count:N0}: {CountText.Of(unknown, "record")} in scope {CountText.Agree(unknown, "identifies", "identify")} "
+                + $"no {noun} ({Reasons(unknownReasons)}), and {CountText.Agree(unknown, "it", "each")} may add one this session "
+                + "cannot name. "
                 + (peers
                     ? "A remote process is never counted, because it is not a process instance of this capture."
                     : "A record of a mechanism no relation rule covers belongs to a channel nothing here identifies."));

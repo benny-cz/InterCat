@@ -906,9 +906,9 @@ internal static class MetricCommand
         MetricGroupKind.Mechanism => group.Mechanism!.Value.ToString(),
         MetricGroupKind.Executable => group.Executable!,
         MetricGroupKind.Unattributed => SessionText.Reason(group.Reason!.Value),
-        MetricGroupKind.Remainder => string.Create(
-            CultureInfo.CurrentCulture,
-            $"{group.GroupsMerged:N0} more {(result.Request.Grouping == LaneGrouping.Mechanism ? "mechanisms" : result.Request.Grouping == LaneGrouping.Executable ? "executables" : "instances")}"),
+        MetricGroupKind.Remainder => CountText.Of(group.GroupsMerged,
+            "more " + (result.Request.Grouping == LaneGrouping.Mechanism ? "mechanism"
+                : result.Request.Grouping == LaneGrouping.Executable ? "executable" : "instance")),
         _ => group.Kind.ToString(),
     };
 
@@ -1183,7 +1183,7 @@ internal static class MetricCommand
                     "Measured on",
                     string.Create(
                         CultureInfo.CurrentCulture,
-                        $"{measuredShare:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} calls in the cohort"));
+                        $"{measuredShare:P1} of {CountText.Of(document.Contributions.Known + document.Contributions.Unknown, "call")} in the cohort"));
             }
         }
         else if (IsErrorCount(request) && document.Contributions.MeasurementAvailability is { } statusKnown)
@@ -1285,13 +1285,13 @@ internal static class MetricCommand
             long failed = result.Value ?? result.Rate?.Numerator ?? 0;
             ConsoleUi.Line(string.Create(
                 CultureInfo.CurrentCulture,
-                $"  Of {known + document.Contributions.Unknown:N0} completed calls: {failed:N0} failed, {known - failed:N0} succeeded, "
+                $"  Of {CountText.Of(known + document.Contributions.Unknown, "completed call")}: {failed:N0} failed, {known - failed:N0} succeeded, "
                 + $"{document.Contributions.Unknown:N0} without a status."));
             if (operations.UnpairedFailures > 0)
             {
                 ConsoleUi.Line(string.Create(
                     CultureInfo.CurrentCulture,
-                    $"  {operations.UnpairedFailures:N0} stops paired with no start report a failure status; stated, not counted."));
+                    $"  {CountText.Of(operations.UnpairedFailures, "stop")} paired with no start {CountText.Agree(operations.UnpairedFailures, "reports", "report")} a failure status; stated, not counted."));
             }
         }
     }
@@ -1394,10 +1394,10 @@ internal static class MetricCommand
         ConsoleUi.Line(result.Operations is { } read
             ? string.Create(
                 CultureInfo.CurrentCulture,
-                $"  The first {document.Evidence.Count:N0} of {counted:N0} calls this answer counted, each by its {(read.CountedRecord == ObservationKind.RequestStart ? "start" : "stop")}:")
+                $"  The first {document.Evidence.Count:N0} of {CountText.Of(counted, "call")} this answer counted, each by its {(read.CountedRecord == ObservationKind.RequestStart ? "start" : "stop")}:")
             : string.Create(
                 CultureInfo.CurrentCulture,
-                $"  The first {document.Evidence.Count:N0} of {counted:N0} records this answer counted:"));
+                $"  The first {document.Evidence.Count:N0} of {CountText.Of(counted, "record")} this answer counted:"));
         ConsoleUi.Table(
             ["Time", "Mechanism", "Kind", "Owner PID", "Bytes", "Side", "Journal record"],
             [
