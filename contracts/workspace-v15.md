@@ -1,7 +1,7 @@
-# Workspace contract, version 14
+# Workspace contract, version 15
 
-Status: M4, revision 343 (ADR-038 to ADR-042); versions 1 to 13 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
-270, 271, 280, 301 and 339's, and packages revision 263's
+Status: M4, revision 360 (ADR-038 to ADR-042); versions 1 to 14 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
+270, 271, 280, 301, 339 and 343's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | package`
 Read by: `icat workspace show | compare | correlate`
@@ -15,19 +15,19 @@ any member placed in the workspace's time, not only to its reference (§5). Vers
 two host identities are one host (§4), version 8 their statements of known address translations (§6), version 9 their
 notes (§7), version 10 their saved views (§7), version 11 how they laid out each session's graph (§7), version 12
 what they rank each session's rows by (§7), version 13 how strongly a record must bind to a process to count as its
-own there (§7), and version 14 whether each of its timeline lanes is read against its own peak (§7). An earlier
-version's file is read as one without what later versions added - a `workspace-v1` file holds members and host names
-and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each aligned to the
-reference itself - and each is written as version 14. A kind of
-fact is refused only in a file of a version before the one that added it; until revision 279 each was refused in any
-version before the newest, so a file an earlier version wrote with what that version had added stopped reading once a
-later version appeared.
+own there (§7), version 14 whether each of its timeline lanes is read against its own peak (§7), and version 15 how they
+left the window's two main panes (§7). An earlier version's file is read as one without what later versions added - a
+`workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
+`workspace-v5` file members each aligned to the reference itself - and each is written as version 15. A kind of fact is
+refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
+before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
+version appeared.
 
 ## 1. The file
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v14"` (`"workspace-v1"` to `"workspace-v13"` are read) |
+| `contract` | `"workspace-v15"` (`"workspace-v1"` to `"workspace-v14"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -40,6 +40,7 @@ later version appeared.
 | `notes` | Every revision of a person's notes, in the order written (§7) |
 | `views` | Every revision of a person's saved views of the investigation's time, in the order saved (§7) |
 | `layouts` | How a person laid out each member's graph, ranked its rows and counted its records: at most one per member, replaced as it changes (§7) |
+| `panes` | How a person left the window's two main panes while showing its sessions: the graph's share of their height and the pane filling the column; null when it keeps none (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -83,14 +84,14 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v16`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v17`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
 reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
 `timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision, the
 overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
-read to place them, with its session, the one generation read and its manifest's digest - the layouts (§7), and
-caveats. It exits 0 when every member is present and 1 otherwise.
+read to place them, with its session, the one generation read and its manifest's digest - the layouts and the panes
+(§7), and caveats. It exits 0 when every member is present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -268,7 +269,7 @@ person's statement; it is never evidence of its own. A file whose translations n
 relate a loopback address, an endpoint to itself or an endpoint to an address alone, or appear in a file before version
 8, is refused.
 
-## 7. Notes, saved views and layouts
+## 7. Notes, saved views, layouts and panes
 
 A note is a person's words on the investigation (§8.4), about all of it or pinned at an instant of a member's session,
 which the investigation's time places as it places any other instant - the merged timeline marks it on that session's
@@ -328,6 +329,26 @@ by no metric §6.1 offers, count under `IncludeCorrelated` by name or under any 
 a file before version 11, rank in a file before version 12, name a policy in a file before version 13, or read each lane
 on its own scale in a file before version 14, is refused.
 
+The panes are how a person left the window's two main panes - the graph above the timeline - while showing the
+investigation's sessions (§6.1's persistence): the graph's share of the height the two share, and the pane filling the
+column by their command, if one does. They are the window's rather than a session's, so the investigation keeps them
+once, for every session opened from it, replaced as they change, and none is kept as a revision:
+
+| Panes field | Meaning |
+|---|---|
+| `graphShare` | The graph's share of the height it shares with the timeline, above 0 and below 1, kept to four decimal places; the timeline has the rest. 0.5, equal halves, is how a window first lays them out |
+| `expanded` | The pane filling the column, the other one command away: `Graph` or `Timeline`; null when the two share it |
+| `updatedUtc` | When they last changed |
+
+The Desktop keeps the panes in the investigation the shown session was opened from whenever a person drags the split
+between them, lets one fill the column or gives both their places back, and puts them back when one of its sessions is
+opened from it again, its status listing them with what else was put back. An investigation that keeps none leaves the
+panes as they are, as a session opened on its own does. A split gives neither pane less than its minimum height, so a
+kept share shows both on any window; only letting one fill the column hides the other (§6.1's collapse floor). Equal
+halves with both shown keep nothing, and are removed. A file whose panes keep nothing, give the graph a share that is
+not above 0 and below 1, let a pane the window does not have fill the column, or appear in a file before version 15, is
+refused.
+
 ## 8. A package
 
 `icat workspace package <workspace> --output <new-folder>`, and the Desktop's investigation window, share an
@@ -346,8 +367,8 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   the whole path it was last found at. On the computer that made the package it resolves as it did; elsewhere it is
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
-  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views` and `layouts`. The file is written as
-  `workspace-v14`.
+  `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `layouts` and `panes`. The file is written as
+  `workspace-v15`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -366,6 +387,8 @@ member could not be copied.
 
 - Alignment from shared markers (§8.2's third mode).
 - Graph pins: a note pinned at an instant is the investigation's pin, and each session's graph keeps its own.
+- Lane grouping, pinned lanes and column widths (§6.1's persistence): the window offers no control for them yet, so
+  nothing of them is kept.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
   session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.

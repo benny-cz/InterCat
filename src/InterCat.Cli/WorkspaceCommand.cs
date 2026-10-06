@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v14.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v15.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -46,6 +46,9 @@ internal sealed record WorkspaceDocument
 
     /// <summary>How a person laid out each member's view: the nodes they pinned, where, and its ranking (§26.3).</summary>
     public required IReadOnlyList<WorkspaceLayout> Layouts { get; init; }
+
+    /// <summary>How a person left the window's two main panes while showing its sessions (§6.1); null when it keeps none.</summary>
+    public required WorkspacePanes? Panes { get; init; }
 
     public required IReadOnlyList<string> Caveats { get; init; }
 }
@@ -95,7 +98,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v14.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v15.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -127,7 +130,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v14.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v15.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -216,7 +219,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v16";
+    public const string ResolutionContract = "workspace-resolution-v17";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -901,6 +904,7 @@ internal static partial class WorkspaceCommand
             })],
             OverlapsSnapshotVector = SnapshotOf(path, overlaps.Snapshot),
             Layouts = workspace.Layouts,
+            Panes = workspace.Panes,
             Caveats = caveats,
         };
     }
@@ -1030,11 +1034,18 @@ internal static partial class WorkspaceCommand
             }
         }
 
-        if (document.Layouts.Count > 0)
+        if (document.Layouts.Count > 0 || document.Panes is not null)
         {
-            // What the Desktop puts back when a member is opened from this investigation (§26.3).
+            // What the Desktop puts back when a member is opened from this investigation (§26.3): the window's panes for any
+            // of them, and each one's own view.
             ConsoleUi.Line();
             ConsoleUi.Heading("Layouts");
+            if (document.Panes is { } panes)
+            {
+                ConsoleUi.Note($"The window: {panes.Describe(CultureInfo.CurrentCulture)}, put back when any session is opened from "
+                    + "this investigation.");
+            }
+
             foreach (WorkspaceLayout layout in document.Layouts)
             {
                 ConsoleUi.Note($"Session {Short(layout.SessionId)}: {layout.Describe(CultureInfo.CurrentCulture)}, put back when it "

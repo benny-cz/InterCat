@@ -164,6 +164,7 @@ public sealed class LegibleTextTests
         InvestigationWorkspace.AddNote(workspace, "The build server's integration run starts its database migration here, which the nightly job waits on",
             new WorkspaceNoteAnchor(c, 2_000_000_000), Committed);
         InvestigationWorkspace.AddNote(workspace, "Nothing failed before the migration began.", null, Committed);
+        InvestigationWorkspace.SetPanes(workspace, 0.3712, WorkspacePane.Timeline, Committed);
 
         var main = new MainWindow { Width = 1080, Height = 700 };
         main.Show();
@@ -191,6 +192,8 @@ public sealed class LegibleTextTests
             await Pause();
             Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible
                 && text.Text?.StartsWith("Each session is named by its identity", StringComparison.Ordinal) == true);
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible
+                && text.Text?.StartsWith("Its sessions open with the timeline filling the column", StringComparison.Ordinal) == true);
             AssertKeepsTwoRows(Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one"));
             tabs.SelectedIndex = 3;
             await Pause();

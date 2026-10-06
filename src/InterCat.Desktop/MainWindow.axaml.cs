@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
@@ -52,12 +53,35 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>The view settings last kept in the shown session's investigation, or null when none were kept or read yet.</summary>
     private ViewSettings? keptSettings;
 
-    // The main pane a person let fill the column, if any, the split the two shared before, and whether the toggles are
-    // being set to show it rather than by a person.
+    // The main pane a person let fill the column, if any, the split the two shared before, and whether the window is laying
+    // them out - setting the toggles to show it, or putting back what an investigation kept - rather than a person.
     private MainPane? expandedPane;
     private (GridLength Graph, GridLength Timeline)? sharedSplit;
-    private bool showingExpandedPane;
-    private Task pinsWritten = Task.CompletedTask;
+    private bool layingPanes;
+
+    // Whether the splitter between the panes is being dragged, which is kept once it is let go, and whether a split moved
+    // otherwise is waiting to be kept once every row it moved has its height.
+    private bool draggingSplit;
+    private bool splitToKeep;
+
+    /// <summary>
+    /// The panes as the shown session's investigation last kept them, or put them back - equal halves with both shown when it
+    /// keeps none - or null when that is not known, so the next change is written whatever it is.
+    /// </summary>
+    private (double GraphShare, WorkspacePane? Expanded)? keptPanes;
+
+    /// <summary>
+    /// The least height a split leaves each main pane (§6.1's collapse floor): the graph its header and a legible plot, the
+    /// timeline its header, a lane with its axis, and the minimap. Only letting the other fill the column hides one.
+    /// </summary>
+    private const double GraphPaneFloor = 160;
+
+    /// <summary>The timeline's least height, by <see cref="GraphPaneFloor"/>'s rule.</summary>
+    private const double TimelinePaneFloor = 180;
+
+    // Every write to the shown session's investigation - its pins and view settings, and the window's panes - one after
+    // another.
+    private Task investigationWritten = Task.CompletedTask;
 
     /// <summary>
     /// What a member keeps in its investigation beside its pins (§26.3): what its rows are ranked by and whether per
@@ -170,6 +194,18 @@ public sealed partial class MainWindow : Window, IDisposable
         };
         // The minimap shows and moves the timeline's viewport; the timeline owns it (presentation only, §6.4).
         MinimapSurface.Timeline = TimelineSurface;
+
+        // Each pane keeps its least height while both are shown, and the split a person moves is kept in the investigation
+        // the shown session was opened from (§6.1, §26.3): a drag once it is let go, a key on the splitter as it moves it.
+        LayPanes(null, null);
+        PaneSplitter.AddHandler(Thumb.DragStartedEvent, (_, _) => draggingSplit = true, RoutingStrategies.Bubble, handledEventsToo: true);
+        PaneSplitter.AddHandler(Thumb.DragCompletedEvent, (_, _) =>
+        {
+            draggingSplit = false;
+            KeepSplit();
+        }, RoutingStrategies.Bubble, handledEventsToo: true);
+        PanesGrid.RowDefinitions[0].PropertyChanged += PaneRowChanged;
+        PanesGrid.RowDefinitions[2].PropertyChanged += PaneRowChanged;
         workspace = viewModel;
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
@@ -984,10 +1020,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// What member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>: its pins, none when it keeps none,
-    /// and its view settings, the defaults where it keeps none; null when the file cannot be read or does not name the
-    /// session, which then keeps them only while it is open.
+    /// its view settings, the defaults where it keeps none, and the window's panes the investigation keeps for all its
+    /// sessions, if any; null when the file cannot be read or does not name the session, which then keeps them only while it
+    /// is open.
     /// </summary>
-    private static (Dictionary<string, GraphPoint> Pins, ViewSettings Settings)? LayoutKeptIn(string investigation, Guid sessionId)
+    private static (Dictionary<string, GraphPoint> Pins, ViewSettings Settings, WorkspacePanes? Panes)? LayoutKeptIn(
+        string investigation, Guid sessionId)
     {
         try
         {
@@ -1000,7 +1038,8 @@ public sealed partial class MainWindow : Window, IDisposable
             WorkspaceLayout? layout = InvestigationWorkspace.LayoutOf(file, sessionId);
             return ((layout?.Pins ?? []).ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal),
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
-                    layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane));
+                    layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane),
+                file.Panes);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -1009,12 +1048,17 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// What an investigation put back of a session's pins and view settings, ending its notice in the words its window and
-    /// `icat workspace show` say them in: ", which put back 2 nodes pinned on its graph."
+    /// What an investigation put back of a session's pins and view settings, and of the window's panes, ending its notice in
+    /// the words its window and `icat workspace show` say them in: ", which put back 2 nodes pinned on its graph and the
+    /// timeline filling the column."
     /// </summary>
-    private static string PutBack(int pins, ViewSettings settings) =>
-        WorkspaceLayout.Describe(pins, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-            CultureInfo.CurrentCulture) is { Length: > 0 } restored
+    private static string PutBack(int pins, ViewSettings settings, WorkspacePanes? panes) =>
+        WorkspaceLayout.Series(
+        [
+            .. WorkspaceLayout.Parts(pins, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
+                CultureInfo.CurrentCulture),
+            .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
+        ]) is { Length: > 0 } restored
             ? $", which put back {restored}."
             : ".";
 
@@ -1037,8 +1081,19 @@ public sealed partial class MainWindow : Window, IDisposable
         keptPins = pins;
         keptSettings = settings;
         WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
-        Task previous = pinsWritten;
-        Task<WorkspaceLayout?> written = Task.Run(async () =>
+        Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
+            layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane));
+        _ = SayWhatIsKeptAsync(written, home);
+    }
+
+    /// <summary>
+    /// Writes to the shown session's investigation once every write to it before has ended, off the UI thread: two writes
+    /// at once would each find the file changed since it was read, and refuse.
+    /// </summary>
+    private Task<T> WriteToInvestigation<T>(Func<T> write)
+    {
+        Task previous = investigationWritten;
+        Task<T> written = Task.Run(async () =>
         {
             try
             {
@@ -1050,11 +1105,105 @@ public sealed partial class MainWindow : Window, IDisposable
                 // The earlier write said why it failed; this one tries afresh.
             }
 
-            return InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, settings.RankBy,
-                settings.PerSecond, settings.Policy, settings.ScalesEachLane);
+            return write();
         });
-        pinsWritten = written;
-        _ = SayWhatIsKeptAsync(written, home);
+        investigationWritten = written;
+        return written;
+    }
+
+    /// <summary>
+    /// Keeps the window's panes as a person left them in the investigation the shown session was opened from, when they
+    /// differ from what it keeps (§6.1, §26.3), and has each window showing that investigation say so; a write that fails is
+    /// said beside the session's status.
+    /// </summary>
+    private void KeepPanes((string Workspace, Guid Session) home)
+    {
+        (double share, WorkspacePane? expanded) = PanesNow();
+        (double GraphShare, WorkspacePane? Expanded) keeping = (WorkspacePanes.Kept(share), expanded);
+        if (keptPanes == keeping)
+        {
+            return;
+        }
+
+        keptPanes = keeping;
+        Task<WorkspacePanes?> written = WriteToInvestigation(() =>
+            InvestigationWorkspace.SetPanes(home.Workspace, keeping.GraphShare, keeping.Expanded, DateTimeOffset.UtcNow));
+        _ = SayPanesKeptAsync(written, home.Workspace);
+    }
+
+    private async Task SayPanesKeptAsync(Task<WorkspacePanes?> written, string investigation)
+    {
+        WorkspacePanes? panes;
+        try
+        {
+            panes = await written;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            if (!closed)
+            {
+                keptPanes = null;
+                CaptureDetail.Text += " The window's panes could not be kept in the investigation: " + exception.Message;
+            }
+
+            return;
+        }
+
+        foreach (InvestigationWindow shown in OwnedWindows.OfType<InvestigationWindow>())
+        {
+            shown.PanesKept(investigation, panes);
+        }
+    }
+
+    /// <summary>
+    /// The panes as a person left them: the graph's share of the height the two share - the split they return to, while one
+    /// fills the column - and the pane filling it, if one does.
+    /// </summary>
+    private (double GraphShare, WorkspacePane? Expanded) PanesNow()
+    {
+        RowDefinitions rows = PanesGrid.RowDefinitions;
+        (GridLength graph, GridLength timeline) = expandedPane is null
+            ? (rows[0].Height, rows[2].Height)
+            : sharedSplit ?? (GridLength.Star, GridLength.Star);
+
+        // A drag of the splitter leaves both rows shares of the height, in its pixels; one row set in pixels and the other
+        // shared is no split it makes, and reads as equal halves.
+        double share = graph.GridUnitType == timeline.GridUnitType && graph.Value + timeline.Value > 0
+            && graph.GridUnitType is GridUnitType.Star or GridUnitType.Pixel
+            ? graph.Value / (graph.Value + timeline.Value)
+            : WorkspacePanes.EqualShare;
+        return (share, expandedPane switch
+        {
+            MainPane.Graph => WorkspacePane.Graph,
+            MainPane.Timeline => WorkspacePane.Timeline,
+            _ => null,
+        });
+    }
+
+    /// <summary>
+    /// A row of the panes changed its height. A split a person moved by any means but a drag - which is kept once it is let
+    /// go - is kept once every row it moved has its height.
+    /// </summary>
+    private void PaneRowChanged(object? sender, AvaloniaPropertyChangedEventArgs change)
+    {
+        if (change.Property != RowDefinition.HeightProperty || layingPanes || draggingSplit || splitToKeep)
+        {
+            return;
+        }
+
+        splitToKeep = true;
+        Dispatcher.UIThread.Post(KeepSplit, DispatcherPriority.Background);
+    }
+
+    /// <summary>Keeps the split a person left in the shown session's investigation, when it was opened from one.</summary>
+    private void KeepSplit()
+    {
+        splitToKeep = false;
+        if (layoutHome is { } home)
+        {
+            KeepPanes(home);
+        }
     }
 
     /// <summary>
@@ -1087,8 +1236,11 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    /// <summary>Completes once every change to the shown session's layout is written to its investigation.</summary>
-    internal Task PinsWritten => pinsWritten;
+    /// <summary>
+    /// Completes once every change kept in the shown session's investigation - its layout and the window's panes - is
+    /// written there.
+    /// </summary>
+    internal Task InvestigationWritten => investigationWritten;
 
     /// <summary>
     /// Opens a session - or keeps it, when it is the one shown - with its timeline zoomed to <paramref name="interval"/> of
@@ -2248,7 +2400,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void GraphExpandChanged(object? sender, RoutedEventArgs eventArgs)
     {
-        if (!showingExpandedPane)
+        if (!layingPanes)
         {
             ExpandPane(GraphExpandToggle.IsChecked == true ? MainPane.Graph : null);
         }
@@ -2256,7 +2408,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void TimelineExpandChanged(object? sender, RoutedEventArgs eventArgs)
     {
-        if (!showingExpandedPane)
+        if (!layingPanes)
         {
             ExpandPane(TimelineExpandToggle.IsChecked == true ? MainPane.Timeline : null);
         }
@@ -2290,7 +2442,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Lets <paramref name="pane"/> fill the column, the other pane hidden one command away, or with null gives both their
-    /// places back at the split the person left - never by itself, only when asked (§6.1's collapse floor).
+    /// places back at the split the person left - never by itself, only when asked (§6.1's collapse floor). A session shown
+    /// from an investigation keeps it there, as it keeps the split (§26.3).
     /// </summary>
     internal void ExpandPane(MainPane? pane)
     {
@@ -2300,33 +2453,55 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         RowDefinitions rows = PanesGrid.RowDefinitions;
-        if (expandedPane is null)
+        LayPanes(pane, expandedPane is null ? (rows[0].Height, rows[2].Height) : sharedSplit);
+        if (layoutHome is { } home)
         {
-            sharedSplit = (rows[0].Height, rows[2].Height);
+            KeepPanes(home);
         }
+    }
 
-        expandedPane = pane;
-        (rows[0].Height, rows[2].Height) = pane switch
-        {
-            MainPane.Graph => (GridLength.Star, new GridLength(0)),
-            MainPane.Timeline => (new GridLength(0), GridLength.Star),
-            _ => sharedSplit ?? (GridLength.Star, GridLength.Star),
-        };
-        rows[1].Height = new GridLength(pane is null ? 6 : 0);
-        GraphPane.IsVisible = pane != MainPane.Timeline;
-        TimelinePane.IsVisible = pane != MainPane.Graph;
-        PaneSplitter.IsVisible = pane is null;
-        showingExpandedPane = true;
+    /// <summary>
+    /// Lays the two main panes out: <paramref name="pane"/> filling the column, or both at <paramref name="split"/>, which is
+    /// also the split they return to from a pane filling it. While both are shown each keeps its least height, so no split
+    /// hides one; filling the column with the other is what does.
+    /// </summary>
+    private void LayPanes(MainPane? pane, (GridLength Graph, GridLength Timeline)? split)
+    {
+        RowDefinitions rows = PanesGrid.RowDefinitions;
+        layingPanes = true;
         try
         {
+            sharedSplit = split;
+            expandedPane = pane;
+            (rows[0].Height, rows[2].Height) = pane switch
+            {
+                MainPane.Graph => (GridLength.Star, new GridLength(0)),
+                MainPane.Timeline => (new GridLength(0), GridLength.Star),
+                _ => split ?? (GridLength.Star, GridLength.Star),
+            };
+            rows[0].MinHeight = pane == MainPane.Timeline ? 0 : GraphPaneFloor;
+            rows[2].MinHeight = pane == MainPane.Graph ? 0 : TimelinePaneFloor;
+            rows[1].Height = new GridLength(pane is null ? 6 : 0);
+            GraphPane.IsVisible = pane != MainPane.Timeline;
+            TimelinePane.IsVisible = pane != MainPane.Graph;
+            PaneSplitter.IsVisible = pane is null;
             GraphExpandToggle.IsChecked = pane == MainPane.Graph;
             TimelineExpandToggle.IsChecked = pane == MainPane.Timeline;
         }
         finally
         {
-            showingExpandedPane = false;
+            layingPanes = false;
         }
     }
+
+    /// <summary>Lays the panes out as an investigation kept them: the graph's share of the height, and the pane filling the column.</summary>
+    private void PutBackPanes(WorkspacePanes panes) =>
+        LayPanes(panes.Expanded switch
+        {
+            WorkspacePane.Graph => MainPane.Graph,
+            WorkspacePane.Timeline => MainPane.Timeline,
+            _ => null,
+        }, (new GridLength(panes.GraphShare, GridUnitType.Star), new GridLength(1 - panes.GraphShare, GridUnitType.Star)));
 
     private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
         _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
@@ -2398,13 +2573,24 @@ public sealed partial class MainWindow : Window, IDisposable
             // before its overview was projected, under it.
             layoutHome = null;
             keptSettings = null;
+            keptPanes = null;
             if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
             {
+                // The window's panes are the investigation's, for every session opened from it: put back when it keeps them,
+                // and left as they are, as for a session opened on its own, when it keeps none.
                 layoutHome = (investigation, overview.SessionId);
                 pins = kept.Pins;
                 restored = keptSettings = kept.Settings;
+                keptPanes = kept.Panes is { } panes
+                    ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded)
+                    : (WorkspacePanes.EqualShare, null);
+                if (kept.Panes is { } put)
+                {
+                    PutBackPanes(put);
+                }
+
                 pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(investigation)}"
-                    + PutBack(kept.Pins.Count, kept.Settings with { Policy = overview.Policy });
+                    + PutBack(kept.Pins.Count, kept.Settings with { Policy = overview.Policy }, kept.Panes);
             }
 
             keptPins = pins;

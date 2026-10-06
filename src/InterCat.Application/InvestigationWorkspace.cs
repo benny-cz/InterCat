@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v14.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v15.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v14.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v15.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,14 +59,14 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v14`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v15`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
 /// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
 /// aligned to the time reference itself, a `workspace-v6` file as one without host confirmations, a `workspace-v7` file
 /// as one without address translations, a `workspace-v8` file as one without notes, a `workspace-v9` file as one
 /// without saved views, a `workspace-v10` file as one without layouts, a `workspace-v11` file as one whose layouts
-/// rank nothing, a `workspace-v12` file as one whose layouts count correlated evidence, and a `workspace-v13` file as one
-/// whose layouts read every timeline lane on one scale.
+/// rank nothing, a `workspace-v12` file as one whose layouts count correlated evidence, a `workspace-v13` file as one
+/// whose layouts read every timeline lane on one scale, and a `workspace-v14` file as one that keeps no window's panes.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -105,6 +105,12 @@ public sealed record InvestigationWorkspaceFile
 
     /// <summary>How a person laid out each member's graph, one per member at most (§26.3).</summary>
     public IReadOnlyList<WorkspaceLayout> Layouts { get; init; } = [];
+
+    /// <summary>
+    /// How a person left the window's two main panes while showing its sessions (§6.1, §26.3); null when it keeps none, and
+    /// a session opened from it leaves the panes as they are.
+    /// </summary>
+    public WorkspacePanes? Panes { get; init; }
 }
 
 /// <summary>A member as resolved against its path: the generation found there, and why it is not present, when not.</summary>
@@ -130,13 +136,19 @@ public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Gui
 }
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v14` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v15` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v14";
+    public const string Contract = "workspace-v15";
+
+    /// <summary>
+    /// The fourteenth version, revision 343's: layouts pin, rank, keep an evidence policy and read each timeline lane on its
+    /// own scale, and no window's panes are kept. It is read, and written as the current one.
+    /// </summary>
+    public const string FourteenthContract = "workspace-v14";
 
     /// <summary>
     /// The thirteenth version, revision 339's: layouts pin, rank and keep an evidence policy, and read every timeline lane
@@ -355,7 +367,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v14.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v15.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -518,13 +530,13 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or ThirteenthContract or TwelfthContract or EleventhContract or TenthContract or NinthContract
-            or EighthContract or SeventhContract or SixthContract or FifthContract or FourthContract or ThirdContract or SecondContract
-            or FirstContract))
+        if (workspace.Contract is not (Contract or FourteenthContract or ThirteenthContract or TwelfthContract or EleventhContract
+            or TenthContract or NinthContract or EighthContract or SeventhContract or SixthContract or FifthContract or FourthContract
+            or ThirdContract or SecondContract or FirstContract))
         {
             return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
                 + $"{FifthContract}, {SixthContract}, {SeventhContract}, {EighthContract}, {NinthContract}, {TenthContract}, "
-                + $"{EleventhContract}, {TwelfthContract}, {ThirteenthContract} or {Contract}";
+                + $"{EleventhContract}, {TwelfthContract}, {ThirteenthContract}, {FourteenthContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)
@@ -568,7 +580,7 @@ public static partial class InvestigationWorkspace
             .FirstOrDefault(group => group.Count() > 1) is { } name
             ? $"'{name.Key}' names two host identities"
             : TimeProblem(workspace) ?? JoinProblem(workspace) ?? HostProblem(workspace) ?? TranslationProblem(workspace)
-                ?? NoteProblem(workspace) ?? ViewProblem(workspace) ?? LayoutProblem(workspace);
+                ?? NoteProblem(workspace) ?? ViewProblem(workspace) ?? LayoutProblem(workspace) ?? PanesProblem(workspace);
     }
 
     /// <summary>

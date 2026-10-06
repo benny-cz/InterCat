@@ -70,21 +70,31 @@ public sealed record WorkspaceLayout
     /// words: nothing of a default, so what is said is only what differs from a session opened on its own.
     /// </summary>
     public static string Describe(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy, bool scalesEachLane,
-        IFormatProvider culture)
+        IFormatProvider culture) => Series(Parts(pins, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
+
+    /// <summary>
+    /// Each thing <see cref="Describe(int, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/> says such a layout
+    /// keeps, in its order, so a notice can list it in one series with what else was put back.
+    /// </summary>
+    public static IReadOnlyList<string> Parts(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy,
+        bool scalesEachLane, IFormatProvider culture) =>
+    [
+        .. new[]
+        {
+            pins == 0 ? null : string.Create(culture, $"{pins:N0} {(pins == 1 ? "node" : "nodes")} pinned on its graph"),
+            rankBy == RankingMetric.Records && !perSecond
+                ? null
+                : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
+            evidencePolicy == Domain.EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null,
+            scalesEachLane ? "each of its timeline lanes on its own scale" : null,
+        }.OfType<string>(),
+    ];
+
+    /// <summary>Things said as one series: one alone, two joined by "and", more listed with "and" before the last.</summary>
+    public static string Series(IReadOnlyList<string> parts)
     {
-        string[] kept =
-        [
-            .. new[]
-            {
-                pins == 0 ? null : string.Create(culture, $"{pins:N0} {(pins == 1 ? "node" : "nodes")} pinned on its graph"),
-                rankBy == RankingMetric.Records && !perSecond
-                    ? null
-                    : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
-                evidencePolicy == Domain.EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null,
-                scalesEachLane ? "each of its timeline lanes on its own scale" : null,
-            }.OfType<string>(),
-        ];
-        return kept.Length < 2 ? string.Concat(kept) : string.Join(", ", kept[..^1]) + " and " + kept[^1];
+        ArgumentNullException.ThrowIfNull(parts);
+        return parts.Count < 2 ? string.Concat(parts) : string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1];
     }
 }
 
@@ -171,7 +181,7 @@ public static partial class InvestigationWorkspace
         : pins.Any(pin => !new GraphPoint(pin.X, pin.Y).IsValid) ? "a node is pinned outside the graph"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v14.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v15.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).

@@ -42,6 +42,9 @@ public sealed record InvestigationView(
 {
     /// <summary>The investigation's notes in force, each with where it is pinned (§8.4).</summary>
     public IReadOnlyList<InvestigationNoteRow> Notes { get; init; } = [];
+
+    /// <summary>What opening any of its sessions puts back of the window's panes, in words; null when it keeps none (§26.3).</summary>
+    public string? Panes { get; init; }
 }
 
 /// <summary>A note as the investigation window lists it: its words, and where it is pinned in words.</summary>
@@ -134,6 +137,7 @@ public static class InvestigationRows
         {
             Notes = [.. InvestigationWorkspace.NotesInForce(workspace).Select(note => new InvestigationNoteRow(
                 note.NoteId, note.Text!, NotePlace(workspace, note, culture), note.At))],
+            Panes = PanesKept(workspace.Panes, culture),
         };
     }
 
@@ -143,6 +147,14 @@ public static class InvestigationRows
     /// </summary>
     public static string? Kept(WorkspaceLayout? layout, CultureInfo culture) =>
         layout?.Describe(culture) is { Length: > 0 } kept ? $"Opens with {kept}, as it was left here." : null;
+
+    /// <summary>
+    /// What opening any of an investigation's sessions puts back of the window's panes (§6.1, §26.3), in the words `icat
+    /// workspace show` says them in: "Its sessions open with the timeline filling the column, as the panes were left
+    /// here."; null when it keeps none, and a session opened from it leaves the panes as they are.
+    /// </summary>
+    public static string? PanesKept(WorkspacePanes? panes, CultureInfo culture) =>
+        panes?.Describe(culture) is { Length: > 0 } kept ? $"Its sessions open with {kept}, as the panes were left here." : null;
 
     /// <summary>
     /// The investigation's candidate joins (ADR-041), in words: each one's endpoints and timing, its two ends with their

@@ -41,6 +41,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
         VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
     };
     private readonly TextBlock caveats = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
+
+    /// <summary>What opening any of its sessions puts back of the window's panes, shown only when it keeps them (§26.3).</summary>
+    private readonly TextBlock panes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly ListBox members = new() { SelectionMode = SelectionMode.Single };
     private readonly TextBlock detail = new() { FontSize = 12 };
     private readonly TextBlock detailPath = new() { FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis };
@@ -106,9 +109,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
-    // What the window showing a member wrote of its layout while the investigation was being read, which that reading may
-    // have missed.
+    // What the window showing a member wrote of its layout, and of its panes, while the investigation was being read, which
+    // that reading may have missed.
     private readonly Dictionary<Guid, WorkspaceLayout?> keptWhileReading = [];
+    private (bool Written, WorkspacePanes? Panes) panesWhileReading;
 
     public InvestigationWindow(
         string path,
@@ -124,8 +128,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
         Height = 660;
         MinWidth = 680;
         // The smallest size at which each page keeps two of its sessions, lanes or notes in view, with overlaps stated and a
-        // session missing above them.
-        MinHeight = 600;
+        // session missing above them, and beneath its sessions the two lines that say what opening them puts back of the
+        // window's panes.
+        MinHeight = 640;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         // The investigation's file in one line: a path too long for it gives up its middle folders, and its tooltip has it whole.
         heading.Text = this.path;
@@ -287,15 +292,18 @@ internal sealed class InvestigationWindow : Window, IDisposable
         Grid.SetColumn(detailPath, 1);
         where.Children.Add(detail);
         where.Children.Add(detailPath);
-        // What naming a session and grouping hosts can and cannot say stands with the sessions it is about.
-        var sessionsPage = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+        // What opening any of them puts back of the window's panes, and what naming a session and grouping hosts can and
+        // cannot say, stand with the sessions they are about.
+        var sessionsPage = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
         Grid.SetRow(sessionsList, 0);
         Grid.SetRow(where, 1);
         Grid.SetRow(sessionActions, 2);
-        Grid.SetRow(caveats, 3);
+        Grid.SetRow(panes, 3);
+        Grid.SetRow(caveats, 4);
         sessionsPage.Children.Add(sessionsList);
         sessionsPage.Children.Add(where);
         sessionsPage.Children.Add(sessionActions);
+        sessionsPage.Children.Add(panes);
         sessionsPage.Children.Add(caveats);
 
         var candidatesHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(0, 8, 0, 0) };
@@ -583,13 +591,20 @@ internal sealed class InvestigationWindow : Window, IDisposable
         status.Text = message ?? "Looking for each session where it was last found…";
         Guid? selected = (members.SelectedItem as InvestigationMemberRow)?.SessionId;
         keptWhileReading.Clear();
+        panesWhileReading = default;
         try
         {
             CancellationToken token = lifetime.Token;
             InvestigationView view = await Task.Run(() => InvestigationRows.Describe(path, CultureInfo.CurrentCulture, token), token);
             if (closed) return;
             view = keptWhileReading.Aggregate(view, (shown, kept) => WithKept(shown, kept.Key, kept.Value));
+            if (panesWhileReading is (true, var written))
+            {
+                view = view with { Panes = InvestigationRows.PanesKept(written, CultureInfo.CurrentCulture) };
+            }
+
             View = view;
+            ShowPanes(view.Panes);
             summary.Text = view.Summary;
             time.Text = view.Time;
             overlaps.Text = string.Join("\n", view.Overlaps ?? []);
@@ -619,6 +634,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         {
             if (closed) return;
             View = null;
+            ShowPanes(null);
             members.ItemsSource = Array.Empty<InvestigationMemberRow>();
             package.IsEnabled = packaging is not null;
             compareInstants.IsEnabled = false;
@@ -658,6 +674,35 @@ internal sealed class InvestigationWindow : Window, IDisposable
         View = kept;
         members.ItemsSource = kept.Members;
         members.SelectedItem = kept.Members.FirstOrDefault(row => row.SessionId == selected);
+    }
+
+    /// <summary>
+    /// Says what the investigation at <paramref name="investigation"/> now keeps of the window's panes, as the window
+    /// showing one of its sessions just wrote them (§26.3): without reading the investigation again, and kept over a reading
+    /// under way that may have missed them.
+    /// </summary>
+    internal void PanesKept(string investigation, WorkspacePanes? kept)
+    {
+        if (closed || !string.Equals(Path.GetFullPath(investigation), path,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (loading)
+        {
+            panesWhileReading = (true, kept);
+        }
+
+        if (View is not { } view) return;
+        View = view with { Panes = InvestigationRows.PanesKept(kept, CultureInfo.CurrentCulture) };
+        ShowPanes(View.Panes);
+    }
+
+    private void ShowPanes(string? kept)
+    {
+        panes.Text = kept;
+        panes.IsVisible = kept is not null;
     }
 
     /// <summary>The view with member <paramref name="sessionId"/>'s row saying what <paramref name="layout"/> keeps; itself when it says so already.</summary>

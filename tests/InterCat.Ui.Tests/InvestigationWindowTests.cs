@@ -3,6 +3,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
@@ -121,7 +122,7 @@ public sealed class InvestigationWindowTests
             string key = shown.GraphDisplay.Nodes[0].Key;
             var place = new GraphPoint(0.25, 0.75);
             Assert.True(shown.PinGraphNode(key, place));
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             WorkspacePin kept = Assert.Single(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins);
             Assert.Equal((key, 0.25, 0.75), (kept.Key, kept.X, kept.Y));
 
@@ -134,16 +135,16 @@ public sealed class InvestigationWindowTests
 
             // So is what its rows are ranked by, and whether per second (§26.3's sort), each as it is chosen.
             shown.RankBy = RankingMetric.BytesSent;
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             WorkspaceLayout ranked = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
             Assert.Equal((RankingMetric.BytesSent, false, 1), (ranked.RankBy, ranked.PerSecond, ranked.Pins.Count));
             shown.PerSecond = true;
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.PerSecond);
 
             // And so is counting a reused PID's candidates (§6.8), which projects the session again and keeps its layout.
             Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates));
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             var counting = (WorkspaceViewModel)main.DataContext!;
             Assert.Equal((EvidencePolicy.IncludeCandidates, true, RankingMetric.BytesSent),
                 (counting.EvidencePolicy, counting.IsGraphNodePinned(key), counting.RankBy));
@@ -153,7 +154,7 @@ public sealed class InvestigationWindowTests
 
             // And so is reading each timeline lane on its own scale (§6.2).
             counting.ScalesEachLane = true;
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
 
             // The row lists all it keeps, as the investigation read again says it.
@@ -188,19 +189,19 @@ public sealed class InvestigationWindowTests
 
             // Released, the pin is gone and the ranking kept; ranked by records again, the investigation keeps no layout of it.
             Assert.True(again.UnpinGraphNode(key));
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             WorkspaceLayout released = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
             Assert.Equal((RankingMetric.BytesSent, 0), (released.RankBy, released.Pins.Count));
             again.RankBy = RankingMetric.Records;
             again.PerSecond = false;
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates,
                 InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.EvidencePolicy);
             Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated));
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
             ((WorkspaceViewModel)main.DataContext!).ScalesEachLane = false;
-            await main.PinsWritten;
+            await main.InvestigationWritten;
             Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
             // Keeping nothing, its row says nothing of it.
@@ -222,6 +223,149 @@ public sealed class InvestigationWindowTests
         {
             main.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: an investigation keeps the window's panes as a person left them, puts them back for any of its sessions, and its window says so")]
+    public async Task AnInvestigationKeepsTheWindowsPanes()
+    {
+        using var root = new TemporaryDirectory();
+        string alpha = PairedSession(root.Path, "alpha");
+        string beta = PairedSession(root.Path, "beta");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        InvestigationWorkspace.Add(workspace, alpha, Committed);
+        InvestigationWorkspace.Add(workspace, beta, Committed);
+        static (double, WorkspacePane?) Kept(WorkspacePanes? panes) => (panes!.GraphShare, panes.Expanded);
+        static string Said(WorkspacePanes panes) => InvestigationRows.PanesKept(panes, CultureInfo.CurrentCulture)!;
+        var main = new MainWindow { Width = 1456, Height = 939 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            Button open = Named<Button>(window, "Open in InterCat");
+            list.SelectedIndex = 0;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == alpha);
+            Assert.Null(window.View!.Panes);
+            Assert.Null(PanesLine(window));
+
+            // The person drags the split towards the graph, giving the timeline more of the column: nothing is written while
+            // the splitter is held, and the graph's share as drawn is kept once it is let go.
+            Border graphPane = main.GetControl<Border>("GraphPane");
+            Border timelinePane = main.GetControl<Border>("TimelinePane");
+            GridSplitter splitter = main.GetControl<GridSplitter>("PaneSplitter");
+            double Drawn() => graphPane.Bounds.Height / (graphPane.Bounds.Height + timelinePane.Bounds.Height);
+            Render(main);
+            Point grip = splitter.TranslatePoint(new Point(splitter.Bounds.Width / 2, splitter.Bounds.Height / 2), main)!.Value;
+            main.MouseDown(grip, MouseButton.Left);
+            main.MouseMove(grip + new Vector(0, -60));
+            main.MouseMove(grip + new Vector(0, -120));
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+            main.MouseUp(grip + new Vector(0, -120), MouseButton.Left);
+            await main.InvestigationWritten;
+            Render(main);
+            WorkspacePanes split = InvestigationWorkspace.Read(workspace).Panes!;
+            Assert.Null(split.Expanded);
+            Assert.Equal(Drawn(), split.GraphShare, 0.005);
+            Assert.True(split.GraphShare < 0.45, $"The graph kept {split.GraphShare} of the panes' height.");
+
+            // The investigation's window says so beneath its sessions as it is written, without being read again.
+            WaitFor(() => window.View!.Panes == Said(split));
+            Assert.StartsWith("Its sessions open with the graph at ", window.View!.Panes, StringComparison.Ordinal);
+            Assert.True(PanesLine(window)!.IsEffectivelyVisible);
+
+            // The timeline fills the column at the person's command, kept with the split the two return to.
+            ToggleButton timelineExpand = main.GetControl<ToggleButton>("TimelineExpandToggle");
+            timelineExpand.IsChecked = true;
+            await main.InvestigationWritten;
+            WorkspacePanes filling = InvestigationWorkspace.Read(workspace).Panes!;
+            Assert.Equal((split.GraphShare, (WorkspacePane?)WorkspacePane.Timeline), Kept(filling));
+            WaitFor(() => window.View!.Panes == Said(filling));
+            Assert.Contains("the timeline filling the column and the graph at ", window.View!.Panes, StringComparison.Ordinal);
+
+            // A session opened on its own leaves the panes as they are, and what is done with them there is not kept.
+            Assert.True(await main.OpenSessionAsync(beta));
+            Assert.Equal(MainPane.Timeline, main.ExpandedPane);
+            timelineExpand.IsChecked = false;
+            await main.InvestigationWritten;
+            Assert.Equal(Kept(filling), Kept(InvestigationWorkspace.Read(workspace).Panes));
+
+            // Any of its sessions opened from it again puts them back as they were left there, and its notice says so.
+            list.SelectedIndex = 1;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.ExpandedPane == MainPane.Timeline);
+            Assert.False(graphPane.IsEffectivelyVisible);
+            Assert.True(timelineExpand.IsChecked);
+            Assert.EndsWith("Its pins and view settings are kept in the investigation case.icat-workspace, which put back "
+                + filling.Describe(CultureInfo.CurrentCulture) + ".", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+
+            // F11 gives both their places back, at the split the person left there, and the panes are kept so.
+            main.KeyPressQwerty(PhysicalKey.F11, RawInputModifiers.None);
+            Render(main);
+            Assert.Null(main.ExpandedPane);
+            Assert.Equal(split.GraphShare, Drawn(), 0.005);
+            await main.InvestigationWritten;
+            Assert.Equal((split.GraphShare, (WorkspacePane?)null), Kept(InvestigationWorkspace.Read(workspace).Panes));
+
+            // A key on the splitter moves the split, which is kept as it moves.
+            splitter.Focus();
+            main.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Render(main);
+            await main.InvestigationWritten;
+            WorkspacePanes stepped = InvestigationWorkspace.Read(workspace).Panes!;
+            Assert.True(stepped.GraphShare > split.GraphShare, $"A key moved the split from {split.GraphShare} to {stepped.GraphShare}.");
+            Assert.Equal(Drawn(), stepped.GraphShare, 0.005);
+
+            // No split hides a pane: dragged as far as it goes either way, each keeps its least height, which only letting the
+            // other fill the column takes away.
+            foreach (double toward in new[] { -1, 1 })
+            {
+                grip = splitter.TranslatePoint(new Point(splitter.Bounds.Width / 2, splitter.Bounds.Height / 2), main)!.Value;
+                main.MouseDown(grip, MouseButton.Left);
+                main.MouseMove(grip + new Vector(0, toward * 400));
+                main.MouseMove(new Point(grip.X, toward < 0 ? 1 : main.Bounds.Height - 1));
+                main.MouseUp(new Point(grip.X, toward < 0 ? 1 : main.Bounds.Height - 1), MouseButton.Left);
+                Render(main);
+                Assert.True(graphPane.Bounds.Height >= 159.5, $"The graph was dragged to {graphPane.Bounds.Height:0.#} px.");
+                Assert.True(timelinePane.Bounds.Height >= 179.5, $"The timeline was dragged to {timelinePane.Bounds.Height:0.#} px.");
+            }
+
+            await main.InvestigationWritten;
+            Assert.Equal(Drawn(), InvestigationWorkspace.Read(workspace).Panes!.GraphShare, 0.005);
+
+            // Back at equal halves with both shown, the panes keep nothing, and the investigation's window says nothing of them.
+            RowDefinitions rows = main.GetControl<Grid>("PanesGrid").RowDefinitions;
+            (rows[0].Height, rows[2].Height) = (GridLength.Star, GridLength.Star);
+            Render(main);
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+            WaitFor(() => window.View!.Panes is null);
+            Assert.Null(PanesLine(window));
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>The line beneath an investigation's sessions that says what opening any of them puts back of the window's panes.</summary>
+    private static TextBlock? PanesLine(InvestigationWindow window)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window.GetVisualDescendants().OfType<TextBlock>().SingleOrDefault(line => line.IsEffectivelyVisible
+            && line.Text?.StartsWith("Its sessions open with", StringComparison.Ordinal) == true);
+    }
+
+    private static void Render(Window window)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        _ = window.CaptureRenderedFrame();
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
     /// <summary>The line of the first session's row that says what the investigation keeps of its view.</summary>

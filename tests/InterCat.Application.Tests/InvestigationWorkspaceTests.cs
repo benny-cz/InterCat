@@ -682,6 +682,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         As(InvestigationWorkspace.ThirteenthContract,
             () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, evidencePolicy: EvidencePolicy.IncludeCandidates),
             read => read.Layouts.Single() is { EvidencePolicy: EvidencePolicy.IncludeCandidates, ScalesEachLane: false });
+        As(InvestigationWorkspace.FourteenthContract,
+            () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true),
+            read => read.Layouts.Single() is { ScalesEachLane: true } && read.Panes is null);
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
@@ -811,6 +814,97 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         File.WriteAllText(workspace, lanes);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+    }
+
+    [Fact(DisplayName = "R22: an investigation keeps the window's panes once for all its sessions, replaced as they change, and refuses what no window can show")]
+    public void TheWindowsPanesAreKept()
+    {
+        string workspace = NewWorkspace();
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now);
+        Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+        static (double, WorkspacePane?) Kept(WorkspacePanes? panes) => (panes!.GraphShare, panes.Expanded);
+
+        // The graph's share is kept to four places, and the panes are replaced whole as they change; equal halves with both
+        // shown keep nothing, and remove them.
+        Assert.Equal((0.3712, (WorkspacePane?)null), Kept(InvestigationWorkspace.SetPanes(workspace, 0.371_249_9, null, Now)));
+        Assert.Equal((0.3712, (WorkspacePane?)null), Kept(InvestigationWorkspace.Read(workspace).Panes));
+        Assert.Equal((0.5, (WorkspacePane?)WorkspacePane.Timeline),
+            Kept(InvestigationWorkspace.SetPanes(workspace, 0.5, WorkspacePane.Timeline, Now)));
+        Assert.Equal((0.5, (WorkspacePane?)WorkspacePane.Timeline), Kept(InvestigationWorkspace.Read(workspace).Panes));
+        Assert.Null(InvestigationWorkspace.SetPanes(workspace, 0.500_04, null, Now));
+        Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+
+        // Refused: a share at which a pane has none of the height, which only letting the other fill the column gives it,
+        // or no share at all, and a pane the window does not have.
+        foreach (double share in new[] { 0, 1, -0.25, 1.5, 0.000_04, 0.999_96, double.NaN, double.PositiveInfinity })
+        {
+            Assert.Contains("is not above 0 and below 1", Assert.Throws<InvalidOperationException>(() =>
+                InvestigationWorkspace.SetPanes(workspace, share, null, Now)).Message, StringComparison.Ordinal);
+        }
+
+        Assert.Contains("a pane the window does not have", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.SetPanes(workspace, 0.4, (WorkspacePane)7, Now)).Message, StringComparison.Ordinal);
+        Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+
+        // A file of a version before them keeps none; one whose panes keep nothing, give a share no window can show or let a
+        // pane the window does not have fill the column, is refused.
+        InvestigationWorkspace.SetPanes(workspace, 0.25, WorkspacePane.Graph, Now);
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"graphShare\": 0.25", written, StringComparison.Ordinal);
+        Assert.Contains("\"expanded\": \"Graph\"", written, StringComparison.Ordinal);
+        foreach ((string text, string problem) in new[]
+        {
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FourteenthContract}\"", StringComparison.Ordinal),
+                "file keeps no window's panes"),
+            (written.Replace("\"graphShare\": 0.25", "\"graphShare\": 0", StringComparison.Ordinal), "is not above 0 and below 1"),
+            (written.Replace("\"graphShare\": 0.25", "\"graphShare\": 1.25", StringComparison.Ordinal), "is not above 0 and below 1"),
+            (written.Replace("\"expanded\": \"Graph\"", "\"expanded\": 7", StringComparison.Ordinal), "a pane the window does not have"),
+            (written.Replace("\"graphShare\": 0.25", "\"graphShare\": 0.5", StringComparison.Ordinal)
+                .Replace("\"expanded\": \"Graph\"", "\"expanded\": null", StringComparison.Ordinal), "its panes keep nothing"),
+        })
+        {
+            Assert.NotEqual(written, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // They are the investigation's, not a member's: a member's layout written beside them leaves them as they were.
+        File.WriteAllText(workspace, written);
+        Guid a = InvestigationWorkspace.Read(workspace).Members.Single().SessionId;
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true);
+        Assert.Equal((0.25, (WorkspacePane?)WorkspacePane.Graph), Kept(InvestigationWorkspace.Read(workspace).Panes));
+    }
+
+    [Fact(DisplayName = "§26.3: what the window's panes keep is said in one series, only what differs from equal halves with both shown")]
+    public void ThePanesAreDescribedInOneSeries()
+    {
+        CultureInfo culture = CultureInfo.GetCultureInfo("en-US");
+        Assert.Equal("the graph at 37% of the panes' height", WorkspacePanes.Describe(0.3712, null, culture));
+        Assert.Equal("the timeline filling the column", WorkspacePanes.Describe(0.5, WorkspacePane.Timeline, culture));
+
+        // With a pane filling the column, the split is said of the one out of sight, for when both are shown again.
+        Assert.Equal("the timeline filling the column and the graph at 37% of the panes' height when both are shown",
+            WorkspacePanes.Describe(0.3712, WorkspacePane.Timeline, culture));
+        Assert.Equal("the graph filling the column and the timeline at 63% of the panes' height when both are shown",
+            WorkspacePanes.Describe(0.3712, WorkspacePane.Graph, culture));
+
+        // A pane is never said to have none of the height, nor all of it, while both are shown; equal halves, or a share
+        // kept as them, are not said at all.
+        Assert.Equal("the graph at 1% of the panes' height", WorkspacePanes.Describe(0.001, null, culture));
+        Assert.Equal("the graph at 99% of the panes' height", WorkspacePanes.Describe(0.9999, null, culture));
+        Assert.Equal(string.Empty, WorkspacePanes.Describe(0.5, null, culture));
+        Assert.Equal(string.Empty, WorkspacePanes.Describe(0.500_04, null, culture));
+        Assert.Equal("the graph at 37% of the panes' height",
+            new WorkspacePanes { GraphShare = 0.3712, UpdatedUtc = Now }.Describe(culture));
+
+        // Listed with what a layout keeps, they are one series.
+        Assert.Equal("1 node pinned on its graph, the timeline filling the column and the graph at 37% of the panes' height when "
+            + "both are shown", WorkspaceLayout.Series(
+            [
+                .. WorkspaceLayout.Parts(1, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture),
+                .. WorkspacePanes.Parts(0.3712, WorkspacePane.Timeline, culture),
+            ]));
     }
 
     [Fact(DisplayName = "§26.3: what a layout keeps is said in one series, only what differs from a session opened on its own")]

@@ -479,7 +479,7 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
-    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, ranking, evidence policy and lane scale")]
+    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, ranking, evidence policy and lane scale, and the window's panes")]
     public async Task WorkspaceShowStatesEachLayout()
     {
         string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
@@ -495,9 +495,11 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": 1 node pinned on its graph and its rows ranked by "
                 + "bytes sent per second, put back when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
-            Assert.Contains("\"contract\": \"workspace-resolution-v16\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"contract\": \"workspace-resolution-v17\"", json, StringComparison.Ordinal);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
             Assert.Contains("\"evidencePolicy\": null", json, StringComparison.Ordinal);
+            Assert.Contains("\"panes\": null", json, StringComparison.Ordinal);
+            Assert.DoesNotContain("The window:", text, StringComparison.Ordinal);
 
             // A layout that counts a reused PID's candidates, and reads each lane on its own scale, says so too, and keeps
             // both in its document.
@@ -510,6 +512,18 @@ public sealed class CommandLineTests : IDisposable
                 StringComparison.Ordinal);
             Assert.Contains("\"evidencePolicy\": \"IncludeCandidates\"", (await Run("workspace", "show", workspace, "--json")).Output,
                 StringComparison.Ordinal);
+
+            // The window's panes, kept once for every session, are said before any session's layout, and kept in the document.
+            InvestigationWorkspace.SetPanes(workspace, 0.3712, WorkspacePane.Timeline, DateTimeOffset.UtcNow);
+            string panes = (await Run("workspace", "show", workspace)).Output;
+            Assert.Contains("The window: the timeline filling the column and the graph at "
+                + 0.37.ToString("P0", System.Globalization.CultureInfo.CurrentCulture) + " of the panes' height when both are shown, "
+                + "put back when any session is opened from this investigation.", panes, StringComparison.Ordinal);
+            Assert.True(panes.IndexOf("The window:", StringComparison.Ordinal)
+                < panes.IndexOf("Session " + TestSessions.Session.ToString("N")[..8] + ": its records", StringComparison.Ordinal));
+            json = (await Run("workspace", "show", workspace, "--json")).Output;
+            Assert.Contains("\"graphShare\": 0.3712", json, StringComparison.Ordinal);
+            Assert.Contains("\"expanded\": \"Timeline\"", json, StringComparison.Ordinal);
         }
         finally
         {
