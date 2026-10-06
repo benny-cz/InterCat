@@ -128,6 +128,9 @@ public static class SessionOverviewProjector
             captured)
         {
             Activity = ActivityOf(activity, positions[index], policy),
+            PidHolder = (int)instance.LifecycleEpoch,
+            PidHolders = processes.InstancesOf(instance.ProcessId),
+            WithheldRecords = activity.WithheldOf(positions[index], policy),
             ParentProcessId = instance.ParentProcessId,
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,

@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia.Media;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -385,6 +386,31 @@ public static class WorkspaceRowBuilder
             0 => "its source process",
             _ => string.Create(CultureInfo.CurrentCulture, $"its source process, whose rows list its {channels:N0} channels"),
         };
+    }
+
+    /// <summary>
+    /// How a process's own records were bound to it over the session, in words (§6.8: a ranked row or node is one action
+    /// from the rule, version and coverage behind its count): the rule that bound them and how strongly, what the
+    /// evidence policy left out of its total, and the capture's coverage. A later holder of a reused PID binds its records
+    /// only as candidates, which a policy that admits none counts in no process; the explanation says so, and how many,
+    /// so its row does not read as a quiet process (R21, R22).
+    /// </summary>
+    public static string ExplainBinding(ProcessNode process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        string rule = DescribeRule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
+        string pid = string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId}");
+        string holders = Spoken.Count(process.PidHolders, "process", "processes");
+        string binding = process.PidHolders <= 1
+            ? $"Each record naming {pid} while it ran is its own, correlated by {rule}: no other process held {pid} in this capture."
+            : process.PidHolder <= 1
+            ? $"Each record naming {pid} while it ran is its own, correlated by {rule}: it was the first of {holders} to hold {pid} in this capture."
+            : $"{pid} was held by {holders} in this capture, and this was the {Spoken.Ordinal(process.PidHolder)}. A record naming it "
+                + $"while this one ran could be a late record of an earlier one, so {rule}, binds it here only as a candidate. "
+                + (process.WithheldRecords == 0 ? "None is left out of its total."
+                    : "The evidence policy counts no candidate, so its total counts only its lifecycle records, leaving out "
+                        + $"{Spoken.Count(process.WithheldRecords, "record")} bound to it over the session.");
+        return $"{binding} Coverage over the session: {Spoken.Coverage(DescribeCoverage(process.Coverage))["coverage: ".Length..]}.";
     }
 
     private static string DescribeStrength(RelationStrength strength) => strength switch

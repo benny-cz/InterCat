@@ -134,6 +134,55 @@ public sealed class ProcessRankingTests
         }
     }
 
+    [Fact(DisplayName = "R22: a reused PID's later holder carries how many of its records the evidence policy withholds as candidates, and a reopen says the same")]
+    public void AReusedPidsLaterHolderCarriesWhatThePolicyWithholds()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+
+        // PID 100 exits and is created again, and its second holder sends twice: each send could be a late record of the
+        // first holder, so each binds only as a candidate. PID 200 is held once, and receives.
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(5, ObservationKind.Create, 200, 1)),
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 2)),
+            Timed(Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3).Between(ClientEnd, ServerEnd)),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 4)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 5)),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 6).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(55, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 7).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 8).Between(ClientEnd, ServerEnd)),
+        ]);
+
+        // By default the later holder counts its creation alone and carries the two sends the policy withheld; the first
+        // holder and the PID held once withhold nothing. Each says which holder of its PID it was, and of how many.
+        (int, int, int, long, long)[] byDefault = [(100, 1, 2, 3L, 0L), (100, 2, 2, 1L, 2L), (200, 1, 1, 2L, 0L)];
+        Assert.Equal(byDefault, Holders(SessionOverviewProjector.Project(session.Store)));
+
+        // A policy that admits candidates counts the sends and withholds none; one that admits only direct evidence
+        // withholds every correlated record too, and counts only lifecycle records.
+        Assert.Equal([(100, 1, 2, 3L, 0L), (100, 2, 2, 3L, 0L), (200, 1, 1, 2L, 0L)],
+            Holders(SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates)));
+        Assert.Equal([(100, 1, 2, 2L, 1L), (100, 2, 2, 1L, 2L), (200, 1, 1, 1L, 1L)],
+            Holders(SessionOverviewProjector.Project(session.Store, EvidencePolicy.DirectOnly)));
+
+        // A fresh viewer of the finished session takes them from its checkpoint, opening no segment, and says the same.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
+        Assert.True(SessionDerivationCache.For(reopened.Current!).ActivityFromCheckpoint);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(byDefault, Holders(overview));
+    }
+
+    /// <summary>Each process by PID and which holder of it it was, of how many, with its counted and withheld records.</summary>
+    private static (int, int, int, long, long)[] Holders(SessionOverviewBundle overview) =>
+        [.. overview.Nodes
+            .Select(node => (node.ProcessId, node.PidHolder, node.PidHolders, node.Records, node.WithheldRecords))
+            .OrderBy(holder => holder.ProcessId)
+            .ThenBy(holder => holder.PidHolder)];
+
     /// <summary>Every process's own records, by process and mechanism.</summary>
     private static (ProcessInstanceId Id, Mechanism Mechanism, long Records)[] Flatten(WorkspaceSnapshot snapshot) =>
         [.. snapshot.Processes.SelectMany(node => node.Activity.Select(entry => (node.Id, entry.Mechanism, entry.Records)))];

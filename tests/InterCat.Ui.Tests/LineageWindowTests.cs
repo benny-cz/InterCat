@@ -70,6 +70,44 @@ public sealed class LineageWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: a process chosen in the ranked table is explained in the inspector, a reused PID's later holder with what it left out")]
+    public async Task AChosenProcessIsExplained()
+    {
+        // PID 100 exits and is created again, and its second holder sends twice: candidates the default policy withholds.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 2)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between("127.0.0.1:50000", "127.0.0.1:8080")),
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Complete, "Saved session open", "Saved.",
+            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        TextBlock explanation = window.GetControl<TextBlock>("BindingText");
+        Assert.False(explanation.IsEffectivelyVisible);
+
+        // The client's group opens on its two processes, and the later holder chosen among them is explained beside them.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        Dispatch();
+        ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == later.Id.ToString());
+        Dispatch();
+        Assert.True(explanation.IsEffectivelyVisible);
+        Assert.StartsWith("PID 100 was held by 2 processes in this capture, and this was the 2nd.", explanation.Text,
+            StringComparison.Ordinal);
+        Assert.Contains("leaving out 2 records bound to it over the session.", explanation.Text, StringComparison.Ordinal);
+        Save(window, "binding-1456x939.png");
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {

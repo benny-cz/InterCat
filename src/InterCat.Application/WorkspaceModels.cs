@@ -55,7 +55,23 @@ public sealed record ProcessNode(
     public IReadOnlyList<MechanismCount> Activity { get; init; } = [];
 
     /// <summary>
-    /// The PID of the process that created this one, as its creation or rundown record named it (ntities-v1 §3); null
+    /// Which of the processes that held its PID in the capture this one was, from 1. A record naming the PID while a
+    /// later holder ran could be a late record of an earlier one, so it binds to the later holder only as a candidate
+    /// (`process-binding-v4`, identity-v1). 1 for a node not projected from a session.
+    /// </summary>
+    public int PidHolder { get; init; } = 1;
+
+    /// <summary>How many processes held its PID in the capture: two or more means the PID was reused.</summary>
+    public int PidHolders { get; init; } = 1;
+
+    /// <summary>
+    /// The records bound to it over the whole session that the evidence policy leaves out of <see cref="Activity"/>: a
+    /// later holder's, which bind only as candidates. Zero when the policy admits every record bound to it.
+    /// </summary>
+    public long WithheldRecords { get; init; }
+
+    /// <summary>
+    /// The PID of the process that created this one, as its creation or rundown record named it (entities-v1 §3); null
     /// when no lifecycle record of it named one.
     /// </summary>
     public int? ParentProcessId { get; init; }

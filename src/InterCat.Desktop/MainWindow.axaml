@@ -562,6 +562,12 @@
                   <TextBlock Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>
+                <!-- §6.8: a process's count is one action from the rule behind it - how its records were bound to it, and
+                     what the evidence policy left out, as a reused PID's later holder's candidates. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">
+                  <TextBlock Text="How its records are counted" Classes="muted" />
+                  <TextBlock x:Name="BindingText" Text="{Binding BindingExplanation}" TextWrapping="Wrap" />
+                </StackPanel>
                 <!-- Who started the process and whom it started (entities-v1's parent link): a parent named but not in the
                      capture stays a PID, never a guessed process. -->
                 <StackPanel Spacing="3" IsVisible="{Binding ShowsLineage}">

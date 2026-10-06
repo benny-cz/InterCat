@@ -99,6 +99,27 @@ public sealed partial class ProcessActivityIndex
             .Select(entry => (entry.Key, entry.Value))];
     }
 
+    /// <summary>
+    /// The records bound to the instance at <paramref name="instance"/> that <paramref name="policy"/> leaves out of
+    /// <see cref="RecordsOf"/>: every one but its lifecycle records, when the policy does not admit how strongly the
+    /// instance binds them. A later holder of a reused PID binds them only as candidates (identity-v1), so a policy that
+    /// admits no candidate counts them in no process. Zero when the policy admits them.
+    /// </summary>
+    public long WithheldOf(int instance, EvidencePolicy policy)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(instance);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(instance, processes.Instances.Count);
+        if (!Enum.IsDefined(policy))
+        {
+            throw new ArgumentOutOfRangeException(nameof(policy));
+        }
+
+        return instances.TryGetValue(instance, out InstanceActivity? activity)
+            && !new ProcessBinding(instance, StrengthOf(instance), ProcessBindingReason.Bound).IsAdmittedUnder(policy)
+            ? activity.Bound.Values.Sum()
+            : 0;
+    }
+
     /// <summary>Counts the records of <paramref name="segments"/>, the segments <paramref name="processes"/> was derived from.</summary>
     public static ProcessActivityIndex Derive(
         IReadOnlyList<SegmentReaderV1> segments,

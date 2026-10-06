@@ -119,7 +119,7 @@ Archived on 2026-09-28, at plan revision 245, whole and in order. The current re
     · PID 90512 · :15624 ↔ :15647 on 127.0.0.1 · 125 records"), from the workspace (`Channel.SecondHolder`).
   - Enter opens the selected channel's records; the list has an accessible name; the detail says where bytes are stated.
 
-- **Revision 211 — a process's parent and children in the inspector (ntities-v1 §3):**
+- **Revision 211 — a process's parent and children in the inspector (entities-v1 §3):**
   - "Started by" names the parent and how it is linked (start key, or PID and start time), a parent outside the
     capture as its PID, never guessed; "Started" names the processes it started (`WorkspaceViewModel.ParentText`).
   - Go to parent selects the parent; Select its children makes them a multi-selection Enter turns into their records.
