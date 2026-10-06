@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -69,7 +70,7 @@ public sealed class InvestigationWindowTests
 
             // A moved session is relinked where it is now; a folder that holds no session is refused, and says why.
             list.SelectedIndex = 1;
-            Assert.False(Named<Button>(window, "Open the selected session in InterCat").IsEnabled);
+            Assert.False(Named<Button>(window, "Open in InterCat").IsEnabled);
             await window.RelinkAsync(b, moved);
             WaitFor(() => window.View!.Members[1].State == WorkspaceMemberState.Present);
             Directory.CreateDirectory(Path.Combine(root.Path, "empty"));
@@ -78,7 +79,7 @@ public sealed class InvestigationWindowTests
 
             // A member opens in InterCat's own window, as a saved session would.
             list.SelectedIndex = 0;
-            Button open = Named<Button>(window, "Open the selected session in InterCat");
+            Button open = Named<Button>(window, "Open in InterCat");
             Assert.True(open.IsEnabled);
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == alpha);
@@ -106,7 +107,7 @@ public sealed class InvestigationWindowTests
             InvestigationWindow window = main.ShowInvestigation(workspace);
             WaitFor(() => window.View is not null);
             Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 0;
-            Button open = Named<Button>(window, "Open the selected session in InterCat");
+            Button open = Named<Button>(window, "Open in InterCat");
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
             Assert.EndsWith("Its pins and ranking are kept in the investigation case.icat-workspace.",
@@ -209,7 +210,7 @@ public sealed class InvestigationWindowTests
             ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
             list.SelectedIndex = 1;
             Assert.True(Named<Button>(window, "Align the selected session to the investigation's time").IsEnabled);
-            Assert.False(Named<Button>(window, "Withdraw the selected session's alignment").IsEnabled);
+            Assert.False(Named<Button>(window, "Withdraw alignment").IsEnabled);
 
             // The dialog aligns to the other session's clock, and says in words what it needs.
             InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
@@ -240,7 +241,7 @@ public sealed class InvestigationWindowTests
             WaitFor(() => window.View!.Members[1].IsAligned);
             Assert.StartsWith("Aligned by a person", window.View!.Members[1].Time, StringComparison.Ordinal);
             list.SelectedIndex = 1;
-            Assert.True(Named<Button>(window, "Withdraw the selected session's alignment").IsEnabled);
+            Assert.True(Named<Button>(window, "Withdraw alignment").IsEnabled);
             await window.WithdrawSelectedAsync();
             WaitFor(() => !window.View!.Members[1].IsAligned);
             Assert.Equal(2, InvestigationWorkspace.Read(workspace).Alignments.Count);
@@ -379,12 +380,12 @@ public sealed class InvestigationWindowTests
             Assert.EndsWith(" · 2 hosts", window.View!.Summary, StringComparison.Ordinal);
             ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
             list.SelectedIndex = 0;
-            Assert.True(Named<Button>(window, "Say whether the selected session's host is one host with another").IsEnabled);
+            Assert.True(Named<Button>(window, "One host…").IsEnabled);
 
             // Confirmed from alpha's side, the two identities read as one host, which the confirmation alone makes them.
             InvestigationHostWindow dialog = window.HostDialogForSelected()!;
             dialog.Show(window);
-            Assert.False(Named<Button>(dialog, "Withdraw your confirmation that the two identities are one host").IsEnabled);
+            Assert.False(Named<Button>(dialog, "They are not one host").IsEnabled);
             Save(dialog, "investigation-one-host.png");
             Assert.True(await dialog.DecideAsync(WorkspaceHostDecision.Confirmed));
             await window.RefreshAsync();
@@ -396,8 +397,8 @@ public sealed class InvestigationWindowTests
             list.SelectedIndex = 1;
             InvestigationHostWindow back = window.HostDialogForSelected()!;
             back.Show(window);
-            Assert.True(Named<Button>(back, "Withdraw your confirmation that the two identities are one host").IsEnabled);
-            Assert.False(Named<Button>(back, "Confirm that the two identities are one host").IsEnabled);
+            Assert.True(Named<Button>(back, "They are not one host").IsEnabled);
+            Assert.False(Named<Button>(back, "They are one host").IsEnabled);
             Assert.True(await back.DecideAsync(WorkspaceHostDecision.Withdrawn));
             await window.RefreshAsync();
             WaitFor(() => window.View!.Summary.EndsWith(" · 2 hosts", StringComparison.Ordinal));
@@ -428,7 +429,7 @@ public sealed class InvestigationWindowTests
             WaitFor(() => window.View is not null);
             window.ShowTab(2);
             WaitFor(() => window.Timeline is not null);
-            Assert.True(Named<Button>(window, "Compare an instant of one session with an instant of another").IsEnabled);
+            Assert.True(Named<Button>(window, "Compare instants…").IsEnabled);
             InvestigationCompareWindow dialog = window.CompareDialog()!;
             dialog.Show(window);
             CultureInfo culture = CultureInfo.CurrentCulture;
@@ -482,8 +483,8 @@ public sealed class InvestigationWindowTests
             window.ShowTab(2);
             WaitFor(() => window.Timeline is not null);
             TimeRange whole = window.Timeline!.Interval!.Value;
-            Assert.True(Named<Button>(window, "Zoom the timeline in around the chosen column").IsEnabled);
-            Assert.False(Named<Button>(window, "Show the whole investigation on the timeline").IsEnabled);
+            Assert.True(Named<Button>(window, "Zoom in").IsEnabled);
+            Assert.False(Named<Button>(window, "Whole investigation").IsEnabled);
 
             // The chosen column says its session, its time and its records; the cursor starts on the busiest.
             Assert.Contains($"Session {Short(a)}, column 1 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
@@ -502,7 +503,7 @@ public sealed class InvestigationWindowTests
             // Zoomed in around beta's column, half as much time is shown, within the whole; the whole comes back.
             int column = window.Timeline.Lanes[1].Buckets.ToList().FindIndex(bucket => bucket.ObservationCount > 0);
             window.ChooseColumn(1, column);
-            Named<Button>(window, "Zoom the timeline in around the chosen column").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Named<Button>(window, "Zoom in").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => window.Zoom is not null && window.Timeline!.Interval != whole);
             TimeRange zoomed = window.Timeline!.Interval!.Value;
             Assert.InRange(zoomed.EndTicks - zoomed.StartTicks, (whole.EndTicks - whole.StartTicks) / 2 - 1, (whole.EndTicks - whole.StartTicks) / 2 + 1);
@@ -790,16 +791,16 @@ public sealed class InvestigationWindowTests
 
             // Accepted as your decision, it says so, and can be withdrawn; every revision stays in the file.
             window.SelectCandidate(0);
-            Button accept = Named<Button>(window, "Accept the selected candidate as one connection, as your decision");
+            Button accept = Named<Button>(window, "Accept as one connection");
             Assert.True(accept.IsEnabled);
-            Assert.False(Named<Button>(window, "Withdraw your decision about the selected candidate").IsEnabled);
+            Assert.False(Named<Button>(window, "Withdraw decision").IsEnabled);
             await window.DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
             Assert.EndsWith("· accepted by a person", window.Candidates!.Rows[0].Title, StringComparison.Ordinal);
             Assert.Equal("1 candidate join, none established by evidence; 1 accepted and 0 rejected by a person; 0 not the only match of a connection.",
                 window.Candidates.Summary);
             window.SelectCandidate(0);
             Assert.False(accept.IsEnabled);
-            Assert.True(Named<Button>(window, "Withdraw your decision about the selected candidate").IsEnabled);
+            Assert.True(Named<Button>(window, "Withdraw decision").IsEnabled);
             Save(window, "investigation-candidates.png");
             await window.DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
             Assert.Null(window.Candidates!.Rows[0].Decision);
@@ -901,12 +902,13 @@ public sealed class InvestigationWindowTests
             // The confirmation offers each session that can be copied, chosen, and says what the choice exposes.
             var prompt = new InvestigationPackageWindow(InvestigationPackage.Preview(workspace));
             prompt.Show(window);
-            Assert.False(Named<CheckBox>(prompt, $"Copy session {Short(c)}, found in gamma").IsEnabled);
+            Assert.False(prompt.GetVisualDescendants().OfType<CheckBox>()
+                .Single(box => AutomationProperties.GetHelpText(box) == $"Copy session {Short(c)}, found in gamma").IsEnabled);
             Assert.Equal([a, b], prompt.Chosen);
             Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 2 of its 3 sessions",
                 prompt.Statements[0], StringComparison.Ordinal);
             Assert.Equal(InvestigationPackage.Warning, prompt.Statements[^1]);
-            Assert.Equal("Save unredacted package…", Named<Button>(prompt, "Save the package in a new folder you choose").Content);
+            Assert.Equal("Save unredacted package…", Named<Button>(prompt, "Save unredacted package…").Content);
             Save(prompt, "investigation-package-prompt.png");
             prompt.Choose(a, copied: false);
             Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 1 of its 3 sessions",
@@ -1032,9 +1034,15 @@ public sealed class InvestigationWindowTests
         Assert.True(condition());
     }
 
+    /// <summary>
+    /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
+    /// label it shows.
+    /// </summary>
     private static T Named<T>(Window window, string name)
         where T : Control =>
-        window.GetVisualDescendants().OfType<T>().Single(control => AutomationProperties.GetName(control) == name);
+        window.GetVisualDescendants().OfType<T>()
+            .Single(control => AutomationProperties.GetName(control) == name
+                || ControlAutomationPeer.CreatePeerForElement(control).GetName() == name);
 
     private static void AssertInside(Control inner, Control outer, Window window)
     {

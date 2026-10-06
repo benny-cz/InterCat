@@ -63,9 +63,9 @@ internal sealed class InvestigationAlignWindow : Window
         byInstant.IsChecked = true;
         AutomationProperties.SetName(reference, "The session to align to: the investigation's clock, or a session placed in it");
         TrimmedChoices.Apply(reference);
-        AutomationProperties.SetName(byBoot, "Align exactly by the boot both captures recorded");
-        AutomationProperties.SetName(byWallClock, "Align by the two captures' wall clocks");
-        AutomationProperties.SetName(byInstant, "Align by one or two instants read in both sessions");
+        AutomationProperties.SetHelpText(byBoot, "Align exactly by the boot both captures recorded");
+        AutomationProperties.SetHelpText(byWallClock, "Align by the two captures' wall clocks");
+        AutomationProperties.SetHelpText(byInstant, "Align by one or two instants read in both sessions");
         AutomationProperties.SetName(agreement, "How closely the two wall clocks agreed, with its unit");
         AutomationProperties.SetName(wallDrift, "How fast the two clocks drift apart at most, in parts per million");
         AutomationProperties.SetName(memberAt, "The instant in this session, in seconds");

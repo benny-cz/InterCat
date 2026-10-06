@@ -97,7 +97,7 @@
                      AutomationProperties.Name="The time range the ranking counts" />
           <Button x:Name="KeepRangeButton" Content="Keep this range" Click="KeepVisibleRange" FontSize="11"
                   Padding="8,2" HorizontalAlignment="Left" IsVisible="{Binding CanKeepVisibleRange}"
-                  AutomationProperties.Name="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
+                  AutomationProperties.HelpText="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
@@ -115,9 +115,9 @@
               <TextBlock x:Name="HeldBannerText" FontSize="11" TextWrapping="Wrap"
                          AutomationProperties.Name="Newer evidence is published" />
               <Button Content="Update to newest (F5)" Click="UpdateHeldGeneration"
-                      AutomationProperties.Name="Show the newest published generation" />
+                      AutomationProperties.HelpText="Show the newest published generation" />
               <Button x:Name="HeldFollowButton" Content="Follow live (F)" Click="ToggleFollow" IsVisible="False"
-                      AutomationProperties.Name="Resume following each new publication" />
+                      AutomationProperties.HelpText="Resume following each new publication" />
             </StackPanel>
           </Border>
         </StackPanel>
@@ -220,7 +220,7 @@
                      narrow rail wraps its label rather than cutting off the key that takes it. -->
                 <Button x:Name="EmptyEvidenceButton" Click="ShowSourceRecords"
                         IsVisible="{Binding OffersEvidenceStep}"
-                        AutomationProperties.Name="Show this rung's source records">
+                        AutomationProperties.HelpText="Show this rung's source records">
                   <TextBlock Text="Show source records (E)" TextWrapping="Wrap" />
                 </Button>
               </StackPanel>
@@ -255,7 +255,7 @@
               <Button x:Name="FinishCaptureButton" FontSize="13" IsVisible="False" Click="FinishInterruptedCapture" />
               <Button x:Name="ForgetCaptureButton" Content="Forget" FontSize="13" Click="ForgetInterruptedCapture"
                       ToolTip.Tip="{x:Static pres:InterruptedCaptureOffer.ForgetExplanation}"
-                      AutomationProperties.Name="Stop offering to finish this capture; the session and the evidence stay" />
+                      AutomationProperties.HelpText="Stop offering to finish this capture; the session and the evidence stay" />
             </WrapPanel>
           </StackPanel>
         </Border>
@@ -269,7 +269,7 @@
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
             <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
             <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13" Classes="primary"
-                    Click="StartExploring" AutomationProperties.Name="Start the default Explore capture" />
+                    Click="StartExploring" AutomationProperties.HelpText="Start the default Explore capture" />
             <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
                        TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
@@ -279,21 +279,21 @@
                          Classes="muted" FontSize="11" TextWrapping="Wrap" />
             </ScrollViewer>
             <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False" Classes="primary"
-                    Click="StopCapture" AutomationProperties.Name="Stop recording and save published evidence" />
+                    Click="StopCapture" AutomationProperties.HelpText="Stop recording and save published evidence" />
             <!-- Pausing the view is not pausing the capture: recording continues and the newest view is offered (§6.2). -->
             <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False" FontSize="13"
-                    Click="ToggleFollow" AutomationProperties.Name="Pause or resume following the live capture" />
+                    Click="ToggleFollow" AutomationProperties.HelpText="Pause or resume following the live capture" />
             <Button x:Name="OpenSavedSessionButton" Content="Open saved session" FontSize="13"
-                    Click="OpenSavedSession" AutomationProperties.Name="Open an existing InterCat session" />
+                    Click="OpenSavedSession" AutomationProperties.HelpText="Open an existing InterCat session" />
             <!-- An investigation spans sessions captured apart, on this machine or others (ADR-038). -->
             <Button x:Name="InvestigationButton" Content="Investigation" FontSize="13"
-                    AutomationProperties.Name="Open or start an investigation over several sessions">
+                    AutomationProperties.HelpText="Open or start an investigation over several sessions">
               <Button.Flyout>
                 <MenuFlyout Placement="BottomEdgeAlignedLeft">
                   <MenuItem x:Name="OpenInvestigationItem" Header="Open investigation…" Click="OpenInvestigation"
-                            AutomationProperties.Name="Open an investigation file" />
+                            AutomationProperties.HelpText="Open an investigation file" />
                   <MenuItem x:Name="NewInvestigationItem" Header="New investigation…" Click="NewInvestigation"
-                            AutomationProperties.Name="Start a new investigation file" />
+                            AutomationProperties.HelpText="Start a new investigation file" />
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
@@ -352,7 +352,7 @@
                      FontSize="11" FontWeight="SemiBold" />
         </Border>
         <Button Grid.Column="2" Margin="0,0,8,0" Content="{Binding TableToggleLabel}" Click="ToggleTables"
-                AutomationProperties.Name="Toggle the accessible table equivalents" />
+                AutomationProperties.HelpText="Toggle the accessible table equivalents" />
         <!-- Alt+Right's visible equivalent (R15), shown while an ascent or a crumb has left a rung to re-enter. It stands
              left of Back so Back never moves under a pointer that clicks it again and again. Its face stays short, so
              the title and breadcrumb keep their room at the minimum width; the rung it re-enters is in its tooltip and
@@ -364,7 +364,7 @@
              rung itself is in its tooltip and accessible help. A face that still runs long ends in an ellipsis. -->
         <Button x:Name="AscendButton" Grid.Column="4" Click="AscendOrClear" MaxWidth="280"
                 ToolTip.Tip="{Binding AscendDetail}"
-                AutomationProperties.Name="Go back one level, or clear the selection at the machine level"
+                AutomationProperties.Name="{Binding AscendLabel}"
                 AutomationProperties.HelpText="{Binding AscendDetail}">
           <TextBlock x:Name="AscendText" Text="{Binding AscendLabel}" TextTrimming="CharacterEllipsis" />
         </Button>
@@ -536,7 +536,7 @@
                       AutomationProperties.Name="Open the selected record's original journal entry" />
               <!-- §3.7: kept content opens apart from the original record, since it is kept beside the journal (ADR-036). -->
               <Button Content="Inspect its content (C)" Click="OpenContent" IsVisible="{Binding HasSelectedContent}"
-                      AutomationProperties.Name="Inspect the selected record's kept content" />
+                      AutomationProperties.HelpText="Inspect the selected record's kept content" />
             </StackPanel>
             <StackPanel Spacing="4" IsVisible="{Binding !IsEvidenceRung}">
               <TextBlock Text="{Binding SelectionTitle}" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
@@ -547,7 +547,7 @@
               <!-- §6.7: Enter turns a multi-selection into a filter; this is its visible equivalent. -->
               <Button x:Name="ShowChosenRecordsButton" Margin="0,6,0,0" Content="Show their records (Enter)"
                       Click="ShowChosenRecords" IsVisible="{Binding HasMultiSelection}"
-                      AutomationProperties.Name="Show the selected processes' records" />
+                      AutomationProperties.HelpText="Show the selected processes' records" />
             </StackPanel>
             <Border Classes="card" Margin="0,18,0,0" Padding="11" CornerRadius="8"
                     Background="{DynamicResource Surface.Elevated}">
@@ -585,37 +585,37 @@
             <StackPanel Margin="0,18,0,0" Spacing="8">
               <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
                       Click="ShowSourceRecords"
-                      AutomationProperties.Name="Show this rung's source records in the ladder" />
+                      AutomationProperties.HelpText="Show this rung's source records in the ladder" />
               <!-- The lineage the card states, one action away: the parent as the selection, the children as a set. -->
               <WrapPanel IsVisible="{Binding ShowsLineage}">
                 <Button x:Name="SelectParentButton" Content="Go to parent" Click="SelectParent" Margin="0,0,8,0"
                         IsEnabled="{Binding CanSelectParent}"
-                        AutomationProperties.Name="Select the process that started this one" />
+                        AutomationProperties.HelpText="Select the process that started this one" />
                 <Button x:Name="SelectChildrenButton" Content="{Binding SelectChildrenLabel}" Click="SelectChildren"
                         IsEnabled="{Binding CanSelectChildren}"
-                        AutomationProperties.Name="Select the processes this one started" />
+                        AutomationProperties.HelpText="Select the processes this one started" />
               </WrapPanel>
               <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
               <WrapPanel>
                 <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"
                         Click="TogglePinNode" Margin="0,0,8,0"
-                        AutomationProperties.Name="Pin the selected graph node where it is drawn, or release its pin" />
+                        AutomationProperties.HelpText="Pin the selected graph node where it is drawn, or release its pin" />
                 <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
-                        AutomationProperties.Name="Lay the graph out afresh, keeping pinned nodes where they are" />
+                        AutomationProperties.HelpText="Lay the graph out afresh, keeping pinned nodes where they are" />
               </WrapPanel>
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
                       Click="BrowseChannels"
-                      AutomationProperties.Name="Browse all admitted paired TCP channels" />
+                      AutomationProperties.HelpText="Browse all admitted paired TCP channels" />
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
-                      AutomationProperties.Name="Export the rows this rung shows, named by their scope" />
+                      AutomationProperties.HelpText="Export the rows this rung shows, named by their scope" />
               <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
-                      AutomationProperties.Name="Share a pseudonymized metadata report without original sources or raw record locators" />
+                      AutomationProperties.HelpText="Share a pseudonymized metadata report without original sources or raw record locators" />
               <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
               <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
-                      AutomationProperties.Name="Save a reopenable, pseudonymized copy of this session to share" />
+                      AutomationProperties.HelpText="Save a reopenable, pseudonymized copy of this session to share" />
               <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
               <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
-                      AutomationProperties.Name="Save an exact, unredacted copy of this session's evidence to share" />
+                      AutomationProperties.HelpText="Save an exact, unredacted copy of this session's evidence to share" />
             </StackPanel>
             <StackPanel Margin="0,20,0,0" Spacing="8">
               <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />
@@ -747,7 +747,7 @@
           </ComboBox>
           <Button x:Name="GroupTotalsButton" Grid.Column="3" Margin="8,0,0,0" Content="Group totals"
                   Click="ClearTimelineProcessFocus" IsVisible="{Binding HasSelectedProcessLane}"
-                  AutomationProperties.Name="Clear the selected process lane and show group interval totals" />
+                  AutomationProperties.HelpText="Clear the selected process lane and show group interval totals" />
         </Grid>
         <!-- Bytes come last: a real session's timeline sums none per interval, so its rows' bytes are read once the table
              is shown, sent and received apart; a session with no directory to read them from leaves the column out. -->

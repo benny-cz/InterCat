@@ -95,11 +95,11 @@ internal sealed class SessionContentWindow : Window, IDisposable
         AutomationProperties.SetName(first, "First byte of the range");
         AutomationProperties.SetName(last, "Last byte of the range");
         AutomationProperties.SetName(showRange, "Show this range of bytes");
-        AutomationProperties.SetName(showAll, "Show all kept bytes");
+        AutomationProperties.SetHelpText(showAll, "Show all kept bytes");
         AutomationProperties.SetName(hex, "Hex view of the chosen bytes");
         AutomationProperties.SetName(text, "The chosen bytes as the text their source declares");
-        AutomationProperties.SetName(copy, "Copy the chosen bytes as hex");
-        AutomationProperties.SetName(save, "Save the chosen bytes to a file");
+        AutomationProperties.SetHelpText(copy, "Copy the chosen bytes as hex");
+        AutomationProperties.SetHelpText(save, "Save the chosen bytes to a file");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
         AutomationProperties.SetName(partToggle, "Switch between this buffer and its part");
         rangeProblem.Classes.Add("caution");

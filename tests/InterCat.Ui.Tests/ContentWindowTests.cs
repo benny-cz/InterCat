@@ -1,5 +1,6 @@
 using System.Text;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -80,7 +81,7 @@ public sealed class ContentWindowTests
 
         // Copy takes exactly the chosen bytes, as the hex view shows them.
         string dump = ContentBytesView.Dump("2345"u8, 2);
-        Named<Button>(window, "Copy the chosen bytes as hex").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Named<Button>(window, "Copy as hex").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(dump, await window.Clipboard!.TryGetTextAsync());
         last.Text = "9";
@@ -157,7 +158,7 @@ public sealed class ContentWindowTests
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible);
         Assert.Contains(Texts(window), text => text.StartsWith("The capture kept these bytes without consent to inspect them",
             StringComparison.Ordinal));
-        Assert.False(Named<Button>(window, "Save the chosen bytes to a file").IsEnabled);
+        Assert.False(Named<Button>(window, "Save bytes…").IsEnabled);
         window.Close();
     }
 
@@ -228,7 +229,7 @@ public sealed class ContentWindowTests
         Assert.Contains("Buffers from", Texts(gapped));
         Assert.StartsWith("Chosen: buffers 0 to 2 of the response body of exchange 8, from its first buffer recorded to its last.",
             Named<TextBlock>(gapped, "Which bytes are shown").Text, StringComparison.Ordinal);
-        Assert.False(Named<Button>(gapped, "Save the chosen bytes to a file").IsEnabled);
+        Assert.False(Named<Button>(gapped, "Save bytes…").IsEnabled);
         TabItem textView = gapped.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Text (UTF-8)"));
         Assert.False(textView.IsVisible);
         Assert.Equal("Show this buffer only", part.Content);
@@ -264,7 +265,7 @@ public sealed class ContentWindowTests
         Assert.Single(Lines(lines));
 
         // Copy takes the lines shown, the gap among them; every buffer comes back with All buffers.
-        Named<Button>(gapped, "Copy the chosen bytes as hex").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Named<Button>(gapped, "Copy as hex").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal("-- Buffer 1 was not recorded: its length is not known, and nothing stands in for it" + Environment.NewLine,
             await gapped.Clipboard!.TryGetTextAsync());
@@ -276,7 +277,7 @@ public sealed class ContentWindowTests
         part.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(ContentBytesView.Rows("ab"u8, 0).Single().Line, Lines(lines).Single());
-        Assert.True(Named<Button>(gapped, "Save the chosen bytes to a file").IsEnabled);
+        Assert.True(Named<Button>(gapped, "Save bytes…").IsEnabled);
         Assert.Contains("Bytes from", Texts(gapped));
         Assert.Equal("Show its part, with its gaps", part.Content);
         Assert.True(textView.IsVisible);
@@ -331,9 +332,15 @@ public sealed class ContentWindowTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
+    /// <summary>
+    /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
+    /// label it shows.
+    /// </summary>
     private static T Named<T>(Window window, string name)
         where T : Control =>
-        window.GetVisualDescendants().OfType<T>().Single(control => AutomationProperties.GetName(control) == name);
+        window.GetVisualDescendants().OfType<T>()
+            .Single(control => AutomationProperties.GetName(control) == name
+                || ControlAutomationPeer.CreatePeerForElement(control).GetName() == name);
 
     private static IEnumerable<string> Lines(ListBox hex) =>
         ((IEnumerable<ContentLine>)hex.ItemsSource!).Select(row => row.Line);

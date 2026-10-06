@@ -146,7 +146,9 @@ public sealed partial class AccessibilityAuditTests
 
     /// <summary>
     /// What a screen reader cannot use in a window, walking the automation tree the window exposes: each element the reader
-    /// lands on - one the keyboard can focus, or a list item - with no name, and any named by a record's fields.
+    /// lands on - one the keyboard can focus, or a list item - with no name, and any named by a record's fields. A control
+    /// that shows a label is named by it first (WCAG 2.5.3), so a person who says what they see reaches it: its name begins
+    /// with what it shows, less a shortcut in brackets, a trailing ellipsis and an access key's underscore.
     /// </summary>
     internal static List<string> Unheard(Control root, out int listItems)
     {
@@ -171,12 +173,47 @@ public sealed partial class AccessibilityAuditTests
                 problems.Add($"{type} {peer.GetClassName()} is named by its fields: {spoken}");
             }
 
+            if (peer is ControlAutomationPeer { Owner: var owner } && VisibleLabel(owner) is { Length: > 0 } label
+                && !(spoken ?? string.Empty).StartsWith(label, StringComparison.CurrentCultureIgnoreCase))
+            {
+                problems.Add($"{type} {peer.GetClassName()} shows \"{label}\" but is named \"{spoken}\"");
+            }
+
             foreach (AutomationPeer child in peer.GetChildren())
             {
                 Walk(child);
             }
         }
     }
+
+    /// <summary>
+    /// The words a button, toggle, menu item or tab shows as its label, as a person would say them; empty for one that shows
+    /// no text of its own.
+    /// </summary>
+    private static string VisibleLabel(Control control)
+    {
+        object? shown = control switch
+        {
+            MenuItem item => item.Header,
+            TabItem tab => tab.Header,
+            Button or Avalonia.Controls.Primitives.ToggleButton => ((ContentControl)control).Content,
+            _ => null,
+        };
+        string text = shown switch
+        {
+            string words => words,
+            TextBlock { Text: { } words } => words,
+            _ => string.Empty,
+        };
+        string label = ShortcutHint().Replace(text.Replace("_", string.Empty, StringComparison.Ordinal), string.Empty).TrimEnd('…', '.', ' ');
+
+        // A symbol such as "/s" is no label a person says; its name says what it stands for.
+        return label.Count(char.IsLetter) < 2 ? string.Empty : label;
+    }
+
+    /// <summary>A shortcut shown after a label in brackets, such as " (Ctrl+E)".</summary>
+    [GeneratedRegex(@"\s*\([^)]*\)\s*$")]
+    private static partial Regex ShortcutHint();
 
     /// <summary>A compiler-written record ToString: "TypeName { Field = …".</summary>
     [GeneratedRegex(@"\b\w+ \{ \w+ = ")]

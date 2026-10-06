@@ -47,8 +47,8 @@ internal sealed class InvestigationHostWindow : Window
         TrimmedChoices.Apply(other);
         AutomationProperties.SetName(note, "A note about this confirmation");
         AutomationProperties.SetName(status, "One host status");
-        AutomationProperties.SetName(confirm, "Confirm that the two identities are one host");
-        AutomationProperties.SetName(withdraw, "Withdraw your confirmation that the two identities are one host");
+        AutomationProperties.SetHelpText(confirm, "Confirm that the two identities are one host");
+        AutomationProperties.SetHelpText(withdraw, "Withdraw your confirmation that the two identities are one host");
         other.SelectionChanged += (_, _) => ShowChoice();
         confirm.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Confirmed);
         withdraw.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Withdrawn);

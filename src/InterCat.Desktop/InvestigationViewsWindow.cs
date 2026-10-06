@@ -52,7 +52,7 @@ internal sealed class InvestigationViewsWindow : Window
         AutomationProperties.SetName(status, "Saved views status");
         AutomationProperties.SetName(show, "Show the selected view on the timeline");
         AutomationProperties.SetName(remove, "Remove the selected view");
-        AutomationProperties.SetName(save, "Save the interval the timeline shows now under this name");
+        AutomationProperties.SetHelpText(save, "Save the interval the timeline shows now under this name");
         save.IsEnabled = shown is not null;
         views.SelectionChanged += (_, _) => ShowChoice();
         views.DoubleTapped += (_, _) => ShowSelected();

@@ -71,7 +71,7 @@ public sealed class RedactedPackageWindowTests
             Button copy = window.GetControl<Button>("ShareOriginalButton");
             Assert.True(copy.IsEnabled);
             Assert.Equal("Share this package…", copy.Content);
-            Assert.Equal("Save an exact copy of this redacted package to share", AutomationProperties.GetName(copy));
+            Assert.Equal("Save an exact copy of this redacted package to share", AutomationProperties.GetHelpText(copy));
             OriginalEvidencePackagePreview preview = OriginalEvidencePackage.Preview(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(destination)));
             IReadOnlyList<string> disclosure = MainWindow.OriginalPackageDisclosure(preview);

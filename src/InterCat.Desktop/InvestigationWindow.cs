@@ -128,16 +128,16 @@ internal sealed class InvestigationWindow : Window, IDisposable
         ToolTip.SetTip(heading, this.path);
 
         AutomationProperties.SetName(members, "Sessions of this investigation; press Enter to open the selected one");
-        AutomationProperties.SetName(open, "Open the selected session in InterCat");
+        AutomationProperties.SetHelpText(open, "Open the selected session in InterCat");
         AutomationProperties.SetName(relink, "Relink the selected session to where it is now");
         AutomationProperties.SetName(alignButton, "Align the selected session to the investigation's time");
-        AutomationProperties.SetName(withdraw, "Withdraw the selected session's alignment");
-        AutomationProperties.SetName(oneHost, "Say whether the selected session's host is one host with another");
+        AutomationProperties.SetHelpText(withdraw, "Withdraw the selected session's alignment");
+        AutomationProperties.SetHelpText(oneHost, "Say whether the selected session's host is one host with another");
         AutomationProperties.SetName(notesList, "Notes on this investigation");
         AutomationProperties.SetName(addNote, "Add a note, pinned at the timeline's chosen column when there is one");
         AutomationProperties.SetName(rewordNote, "Reword the selected note");
         AutomationProperties.SetName(removeNote, "Remove the selected note");
-        AutomationProperties.SetName(showNote, "Show the selected note on the timeline");
+        AutomationProperties.SetHelpText(showNote, "Show the selected note on the timeline");
         AccessibleItems.Name(notesList);
         notesList.ItemTemplate = new FuncDataTemplate<InvestigationNoteRow>((row, _) => new StackPanel
         {
@@ -150,25 +150,25 @@ internal sealed class InvestigationWindow : Window, IDisposable
             },
         });
         AutomationProperties.SetName(add, "Add sessions to this investigation");
-        AutomationProperties.SetName(refresh, "Look again where each session was last found");
+        AutomationProperties.SetHelpText(refresh, "Look again where each session was last found");
         AutomationProperties.SetName(status, "Investigation status");
         AutomationProperties.SetName(overlaps, "Sessions of one host that ran at once, or may have");
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
-        AutomationProperties.SetName(translations, "State or withdraw a known address translation between the sessions");
+        AutomationProperties.SetHelpText(translations, "State or withdraw a known address translation between the sessions");
         AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
-        AutomationProperties.SetName(refreshTimeline, "Draw the investigation's timeline again");
-        AutomationProperties.SetName(compareInstants, "Compare an instant of one session with an instant of another");
-        AutomationProperties.SetName(zoomIn, "Zoom the timeline in around the chosen column");
-        AutomationProperties.SetName(zoomOut, "Zoom the timeline out");
-        AutomationProperties.SetName(zoomWhole, "Show the whole investigation on the timeline");
-        AutomationProperties.SetName(openColumn, "Open the chosen column's records in InterCat");
-        AutomationProperties.SetName(savedViews, "Save the view shown, or show a saved one");
+        AutomationProperties.SetHelpText(refreshTimeline, "Draw the investigation's timeline again");
+        AutomationProperties.SetHelpText(compareInstants, "Compare an instant of one session with an instant of another");
+        AutomationProperties.SetHelpText(zoomIn, "Zoom the timeline in around the chosen column");
+        AutomationProperties.SetHelpText(zoomOut, "Zoom the timeline out");
+        AutomationProperties.SetHelpText(zoomWhole, "Show the whole investigation on the timeline");
+        AutomationProperties.SetHelpText(openColumn, "Open the chosen column's records in InterCat");
+        AutomationProperties.SetHelpText(savedViews, "Save the view shown, or show a saved one");
         AutomationProperties.SetName(columnReadout, "The chosen column of the timeline");
-        AutomationProperties.SetName(acceptJoin, "Accept the selected candidate as one connection, as your decision");
+        AutomationProperties.SetHelpText(acceptJoin, "Accept the selected candidate as one connection, as your decision");
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
-        AutomationProperties.SetName(withdrawJoin, "Withdraw your decision about the selected candidate");
+        AutomationProperties.SetHelpText(withdrawJoin, "Withdraw your decision about the selected candidate");
         AutomationProperties.SetName(package, PackageName);
         AccessibleItems.Name(members);
         AccessibleItems.Name(candidates);
@@ -925,7 +925,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         };
         var done = new Button { Content = "Done" };
         var open = new Button { Content = "Open it here", IsVisible = offersOpen };
-        AutomationProperties.SetName(open, "Open the package's investigation in a window of its own");
+        AutomationProperties.SetHelpText(open, "Open the package's investigation in a window of its own");
         done.Click += (_, _) => prompt.Close(false);
         open.Click += (_, _) => prompt.Close(true);
         prompt.Opened += (_, _) => done.Focus();

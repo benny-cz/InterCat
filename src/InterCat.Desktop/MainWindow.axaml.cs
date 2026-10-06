@@ -1245,7 +1245,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 IsChecked = settings.Theme == mode,
             };
             item.Click += (_, _) => ChooseTheme(mode);
-            Avalonia.Automation.AutomationProperties.SetName(item, "Theme: " + label);
+            Avalonia.Automation.AutomationProperties.SetName(item, label + " theme");
             _ = menu.Items.Add(item);
         }
 
@@ -2529,7 +2529,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 : PackageUnavailable(session));
         ShareOriginalButton.Content = packagingCopy ? "Cancel packaging"
             : redactedPackage ? "Share this package…" : "Share original session…";
-        AutomationProperties.SetName(ShareOriginalButton, redactedPackage
+        AutomationProperties.SetHelpText(ShareOriginalButton, redactedPackage
             ? "Save an exact copy of this redacted package to share"
             : "Save an exact, unredacted copy of this session's evidence to share");
         ShareOriginalButton.IsEnabled = packagingCopy || canPackage;

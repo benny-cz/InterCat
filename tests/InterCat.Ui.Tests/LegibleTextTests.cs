@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -306,9 +307,15 @@ public sealed class LegibleTextTests
         Assert.True(viewport >= rows, $"{AutomationProperties.GetName(list)} shows {viewport:0} px of the {rows:0} its first two rows need.");
     }
 
+    /// <summary>
+    /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
+    /// label it shows.
+    /// </summary>
     private static T Named<T>(Window window, string name)
         where T : Control =>
-        window.GetVisualDescendants().OfType<T>().Single(control => AutomationProperties.GetName(control) == name);
+        window.GetVisualDescendants().OfType<T>()
+            .Single(control => AutomationProperties.GetName(control) == name
+                || ControlAutomationPeer.CreatePeerForElement(control).GetName() == name);
 
     private static async Task Until(Func<bool> condition)
     {

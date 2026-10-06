@@ -34,7 +34,7 @@ internal sealed class InvestigationPackageWindow : Window
 
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is saved");
-        AutomationProperties.SetName(save, "Save the package in a new folder you choose");
+        AutomationProperties.SetHelpText(save, "Save the package in a new folder you choose");
         AutomationProperties.SetName(statements, "What the package holds and exposes");
         cancel.Click += (_, _) => Close(false);
         save.Click += (_, _) => Close(true);
@@ -55,7 +55,8 @@ internal sealed class InvestigationPackageWindow : Window
                 IsEnabled = member.Measured is not null,
                 Content = new TextBlock { Text = Label(member), TextWrapping = TextWrapping.Wrap },
             };
-            AutomationProperties.SetName(choice, $"Copy session {Short(member.SessionId)}, found in {member.Folder}");
+            // Named by what it shows, as a screen reader hears it, and described by what choosing it copies.
+            AutomationProperties.SetHelpText(choice, $"Copy session {Short(member.SessionId)}, found in {member.Folder}");
             choice.IsCheckedChanged += (_, _) => Restate();
             choices.Add(member.SessionId, choice);
             sessions.Children.Add(choice);

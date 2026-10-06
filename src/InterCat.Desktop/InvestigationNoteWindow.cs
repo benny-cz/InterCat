@@ -47,12 +47,12 @@ internal sealed class InvestigationNoteWindow : Window
         at.Text = suggested is { } where ? (where.Nanoseconds / 1_000_000_000m).ToString("0.#########", System.Globalization.CultureInfo.CurrentCulture) : null;
         pin.IsChecked = suggested is not null;
         AutomationProperties.SetName(words, "The note's words");
-        AutomationProperties.SetName(pin, "Pin the note at an instant of a session");
+        AutomationProperties.SetHelpText(pin, "Pin the note at an instant of a session");
         AutomationProperties.SetName(session, "The session the note is pinned in");
         TrimmedChoices.Apply(session);
         AutomationProperties.SetName(at, "The instant it is pinned at, in seconds of that session's time");
         AutomationProperties.SetName(status, "Note status");
-        AutomationProperties.SetName(save, existing is null ? "Add the note" : "Save the note's new words");
+        AutomationProperties.SetHelpText(save, existing is null ? "Add the note" : "Save the note's new words");
         // The session takes the room the instant leaves it, so a long session name never pushes the instant out of the window.
         var atCaption = new TextBlock { Text = "at", VerticalAlignment = VerticalAlignment.Center };
         var place = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8, Margin = new Thickness(28, 0, 0, 0) };

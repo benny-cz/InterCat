@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 332 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 333 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 333 — a control is named by what it shows (R15, WCAG 2.5.3):**
+  - About fifty controls were spoken as descriptions that left out their own label, which a voice user could not say.
+    Each is now named by its label, with the description kept as help text, and the audits require it.
 
 - **Revision 332 — every window beside the main one is heard (R15):**
   - The screen-reader audit now covers the content, raw record and channel windows, the investigation window's pages
@@ -874,6 +878,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 333 was built and tested in the same Linux container: Debug and Release each ran **1,580 tests**, passing
+  **1,483 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The audits caught
+  two of four mutations: a main-window button and a secondary window's button named by their old descriptions. The
+  other two survived because they changed nothing. They removed names this revision had given a package choice and
+  the empty rung's step, and both already speak the text they show. Those two names are gone.
 - Revision 332 was built and tested in the same Linux container: Debug and Release each ran **1,580 tests**, passing
   **1,483 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The audits caught
   each of three mutations, one name removed from each family of window: the raw record, a saved view's name box, and
