@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 330 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 331 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 331 — R11's allocation test measures every thread (R11):**
+  - The warm-aggregate test failed once by reading a worker's 18 KB tally as a per-row cost. It measured only the
+    calling thread while a query counts its segments on pool threads. It now measures every thread's allocations.
 
 - **Revision 330 — the evidence card and E follow a chosen relationship (§6.4):**
   - With a relationship chosen, the inspector's evidence card counts its records and what was sent across it, where it
@@ -866,6 +870,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 331 was built and tested in the same Linux container: Debug and Release each ran **1,577 tests**, passing
+  **1,480 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The allocation test
+  passed in each of six runs of its project and in both suites. Two mutations checked that it still finds what it is for.
+  One added a byte per row to the interval count's segment pass, the other to the focused count's, and each failed it.
+  A probe of 600 isolated interval counts at 10,000 rows found 168,352 bytes on the calling thread every time; the
+  failing run's 149,976 was the same count with its worker's tally allocated on a pool thread. It also found that a warm
+  focused count over 100 instances allocates about 1.75 MB per call, in tallies sized by its lanes and columns, not by
+  its rows. R11 allows that; the measurement says what it is.
 - Revision 330 was built and tested in the same Linux container: Debug and Release each ran **1,577 tests**. Release
   passed **1,480 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Debug failed
   one more: R11's warm-aggregate allocation test measured the interval count at 0.9 B per row. That is an Application

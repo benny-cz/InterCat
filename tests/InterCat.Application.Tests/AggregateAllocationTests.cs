@@ -17,6 +17,13 @@ namespace InterCat.Application.Tests;
 /// among the cache's four, and tests running beside it push them out. A focused count then binds its rows again, 16 bytes
 /// a row, an interval count 28, and a projection whose pooled buffers have gone cold derives its activity anew, 10; the
 /// suite failed it so twice in 48 runs, and a test clearing the cache beside it, three times in three.
+/// <para>
+/// Every thread's allocations are measured, not the calling thread's. A query counts its segments side by side
+/// (SegmentPasses), and a worker's tally is the query's own, wherever the pool runs it. Measured on the calling thread
+/// alone, an interval count's single segment was counted elsewhere now and then, taking its 18 KB tally of 100 instances
+/// by 22 mechanisms with it. The smaller session then read 18 KB light, which the suite reported as 0.9 bytes a row.
+/// Measured on the calling thread, a per-row allocation made on a pool thread would also go unseen.
+/// </para>
 /// </remarks>
 [Collection(SharedDerivationCache.Name)]
 public sealed class AggregateAllocationTests
@@ -49,7 +56,7 @@ public sealed class AggregateAllocationTests
         Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
     }
 
-    /// <summary>What one warm call of each query allocates on this thread.</summary>
+    /// <summary>What one warm call of each query allocates, on whichever threads it runs.</summary>
     private static Dictionary<string, long> Measure(SessionStore store)
     {
         SessionOverviewBundle first = SessionOverviewProjector.Project(store);
@@ -66,16 +73,16 @@ public sealed class AggregateAllocationTests
         var spent = new Dictionary<string, long>(StringComparer.Ordinal);
         foreach ((string name, Action run) in queries)
         {
-            // Warm: derivations cached, readers verified, pooled buffers rented once, the code compiled. The least of three
+            // Warm: derivations cached, readers verified, pooled buffers rented once, the code compiled. The least of five
             // warm runs is the query's own: one run disturbed by what else the machine runs - a collection that trims the
-            // shared pool's buffers, another process's load - is not.
+            // shared pool's buffers, the runtime's own threads allocating beside it - is not.
             for (int warm = 0; warm < 3; warm++) run();
             long least = long.MaxValue;
-            for (int measured = 0; measured < 3; measured++)
+            for (int measured = 0; measured < 5; measured++)
             {
-                long before = GC.GetAllocatedBytesForCurrentThread();
+                long before = GC.GetTotalAllocatedBytes(precise: true);
                 run();
-                least = Math.Min(least, GC.GetAllocatedBytesForCurrentThread() - before);
+                least = Math.Min(least, GC.GetTotalAllocatedBytes(precise: true) - before);
             }
 
             spent[name] = least;
