@@ -216,7 +216,7 @@ public static class InvestigationTimeline
 
     /// <summary>
     /// Every pair of an investigation's captures of one host identity that ran at once, may have, cannot have but seem to,
-    /// or cannot be compared (§8.4, `contracts/workspace-v12.md` §5). Pairs of two hosts are never compared: their records
+    /// or cannot be compared (§8.4, `contracts/workspace-v13.md` §5). Pairs of two hosts are never compared: their records
     /// are of two machines' events.
     /// </summary>
     public static IReadOnlyList<WorkspaceOverlap> Overlaps(string workspacePath, CancellationToken cancellationToken = default) =>

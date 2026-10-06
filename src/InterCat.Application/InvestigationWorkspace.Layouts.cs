@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using InterCat.Domain;
 
 namespace InterCat.Application;
 
@@ -16,9 +17,9 @@ public sealed record WorkspacePin
 }
 
 /// <summary>
-/// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where, and
-/// what its rows are ranked by. It is a preference, not a finding, so a member has one, replaced as it changes rather than
-/// kept as revisions.
+/// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where,
+/// what its rows are ranked by, and the evidence policy its records are counted under. It is a preference, not a finding,
+/// so a member has one, replaced as it changes rather than kept as revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -33,11 +34,17 @@ public sealed record WorkspaceLayout
     /// <summary>Whether a count or sum the rows are ranked by reads per second of the ranked interval.</summary>
     public bool PerSecond { get; init; }
 
+    /// <summary>
+    /// How strongly a record must bind to a process to count as that process's in the session's view (§6.8), when not
+    /// correlated evidence: candidates too, the one other policy a view offers. Null counts correlated evidence, the default.
+    /// </summary>
+    public EvidencePolicy? EvidencePolicy { get; init; }
+
     public required DateTimeOffset UpdatedUtc { get; init; }
 
-    /// <summary>Whether it keeps anything: a pin, or a ranking other than records counted whole.</summary>
+    /// <summary>Whether it keeps anything: a pin, a ranking other than records counted whole, or another evidence policy.</summary>
     [JsonIgnore]
-    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond;
+    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond || EvidencePolicy is not null;
 }
 
 public static partial class InvestigationWorkspace
@@ -49,9 +56,10 @@ public static partial class InvestigationWorkspace
     public const int MostPinKeyCharacters = 256;
 
     /// <summary>
-    /// Keeps <paramref name="pins"/>, and the ranking <paramref name="rankBy"/> read per second when
-    /// <paramref name="perSecond"/> says so, as how member <paramref name="sessionId"/>'s view is laid out, replacing its
-    /// earlier layout; one that pins nothing and ranks by records counted whole removes it. Null when it is removed.
+    /// Keeps <paramref name="pins"/>, the ranking <paramref name="rankBy"/> read per second when
+    /// <paramref name="perSecond"/> says so, and the records counted under <paramref name="evidencePolicy"/>, as how member
+    /// <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing, ranks by records
+    /// counted whole and counts correlated evidence removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -59,12 +67,19 @@ public static partial class InvestigationWorkspace
         IReadOnlyList<WorkspacePin> pins,
         DateTimeOffset now,
         RankingMetric rankBy = RankingMetric.Records,
-        bool perSecond = false)
+        bool perSecond = false,
+        EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated)
     {
         ArgumentNullException.ThrowIfNull(pins);
         if (!Enum.IsDefined(rankBy))
         {
             throw new InvalidOperationException("The layout is refused: it ranks by no metric §6.1 offers.");
+        }
+
+        if (evidencePolicy is not (Domain.EvidencePolicy.IncludeCorrelated or Domain.EvidencePolicy.IncludeCandidates))
+        {
+            throw new InvalidOperationException(
+                "The layout is refused: a view counts correlated evidence, or candidates too, and under no other policy.");
         }
 
         string full = System.IO.Path.GetFullPath(workspacePath);
@@ -85,6 +100,7 @@ public static partial class InvestigationWorkspace
             Pins = [.. pins.OrderBy(pin => pin.Key, StringComparer.Ordinal)],
             RankBy = rankBy == RankingMetric.Records ? null : rankBy,
             PerSecond = perSecond,
+            EvidencePolicy = evidencePolicy == Domain.EvidencePolicy.IncludeCorrelated ? null : evidencePolicy,
             UpdatedUtc = now,
         };
         WorkspaceLayout? layout = kept.KeepsAnything ? kept : null;
@@ -111,7 +127,7 @@ public static partial class InvestigationWorkspace
         : pins.Any(pin => !new GraphPoint(pin.X, pin.Y).IsValid) ? "a node is pinned outside the graph"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v12.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v13.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -131,20 +147,31 @@ public static partial class InvestigationWorkspace
             return $"a {workspace.Contract} file ranks no session's rows";
         }
 
+        // A layout's evidence policy arrived with the thirteenth version (revision 339).
+        if (VersionOf(workspace) < 13 && workspace.Layouts.Any(layout => layout.EvidencePolicy is not null))
+        {
+            return $"a {workspace.Contract} file counts no session's records under another evidence policy";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
             return $"session {twice.Key:N} has two layouts";
         }
 
-        // Records are what no ranking ranks by, so a layout names another metric or none.
+        // Records are what no ranking ranks by, so a layout names another metric or none; correlated evidence is what every
+        // view counts unless told otherwise, and candidates the one other policy a view offers, so a layout names them or
+        // none: a reader puts back no policy it cannot show.
         return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || !layout.KeepsAnything
             || layout.RankBy is { } rankBy && (rankBy == RankingMetric.Records || !Enum.IsDefined(rankBy))
+            || layout.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
             || PinsProblem(layout.Pins) is not null) is { } wrong
             ? $"the layout of session {wrong.SessionId:N} "
                 + (!members.Contains(wrong.SessionId) ? "is of no member"
                     : !wrong.KeepsAnything ? "keeps nothing"
                     : PinsProblem(wrong.Pins) is { } problem ? "is refused: " + problem
+                    : wrong.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
+                        ? "counts its records under a policy no view offers, or under correlated evidence by name"
                     : "ranks by no metric §6.1 offers, or by records by name")
             : null;
     }

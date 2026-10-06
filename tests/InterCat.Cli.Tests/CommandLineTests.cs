@@ -479,7 +479,7 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
-    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins and its ranking")]
+    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, its ranking and its evidence policy")]
     public async Task WorkspaceShowStatesEachLayout()
     {
         string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
@@ -495,8 +495,18 @@ public sealed class CommandLineTests : IDisposable
             Assert.Contains("1 node pinned on its graph, and its rows ranked by bytes sent per second, put back when it is opened "
                 + "from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
-            Assert.Contains("\"contract\": \"workspace-resolution-v14\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"contract\": \"workspace-resolution-v15\"", json, StringComparison.Ordinal);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"evidencePolicy\": null", json, StringComparison.Ordinal);
+
+            // A layout that counts a reused PID's candidates says so too, and keeps it in its document.
+            InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [], DateTimeOffset.UtcNow,
+                evidencePolicy: EvidencePolicy.IncludeCandidates);
+            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": its records counted with candidates, put back "
+                + "when it is opened from this investigation.", (await Run("workspace", "show", workspace)).Output,
+                StringComparison.Ordinal);
+            Assert.Contains("\"evidencePolicy\": \"IncludeCandidates\"", (await Run("workspace", "show", workspace, "--json")).Output,
+                StringComparison.Ordinal);
         }
         finally
         {

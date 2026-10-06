@@ -6,7 +6,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v12.md` §3).</summary>
+/// <summary>A workspace with each member resolved against where it was last found (`contracts/workspace-v13.md` §3).</summary>
 internal sealed record WorkspaceDocument
 {
     public required string Contract { get; init; }
@@ -95,7 +95,7 @@ internal sealed record WorkspaceMemberDocument
     public required IReadOnlyList<Guid> Through { get; init; }
 }
 
-/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v12.md` §5).</summary>
+/// <summary>Two members' instants compared in the workspace's time (`contracts/workspace-v13.md` §5).</summary>
 internal sealed record WorkspaceComparisonDocument
 {
     public required string Contract { get; init; }
@@ -127,7 +127,7 @@ internal sealed record WorkspaceInstantDocument
     public required long? FromAnchorNanoseconds { get; init; }
 }
 
-/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v12.md` §6).</summary>
+/// <summary>Candidate joins between an investigation's captures (`contracts/workspace-v13.md` §6).</summary>
 internal sealed record WorkspaceCorrelationDocument
 {
     public required string Contract { get; init; }
@@ -216,7 +216,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v14";
+    public const string ResolutionContract = "workspace-resolution-v15";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -1041,8 +1041,9 @@ internal static partial class WorkspaceCommand
                     $"{layout.Pins.Count:N0} {(layout.Pins.Count == 1 ? "node" : "nodes")} pinned on its graph");
                 string? ranked = layout.RankBy is null && !layout.PerSecond ? null
                     : $"its rows ranked by {RankingMetrics.Phrase(layout.RankBy ?? RankingMetric.Records)}{(layout.PerSecond ? " per second" : string.Empty)}";
+                string? counted = layout.EvidencePolicy == EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null;
                 ConsoleUi.Note($"Session {Short(layout.SessionId)}: "
-                    + string.Join(", and ", new[] { pinned, ranked }.OfType<string>())
+                    + string.Join(", and ", new[] { pinned, ranked, counted }.OfType<string>())
                     + ", put back when it is opened from this investigation.");
             }
         }

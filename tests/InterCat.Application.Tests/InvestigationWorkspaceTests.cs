@@ -676,6 +676,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         As(InvestigationWorkspace.EleventhContract,
             () => InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }], Now),
             read => read.Layouts.Single() is { Pins.Count: 1, RankBy: null, PerSecond: false });
+        As(InvestigationWorkspace.TwelfthContract,
+            () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.BytesSent, perSecond: true),
+            read => read.Layouts.Single() is { Pins.Count: 0, RankBy: RankingMetric.BytesSent, PerSecond: true, EvidencePolicy: null });
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
@@ -683,7 +686,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal((InvestigationWorkspace.Contract, 1, 1), (rewritten.Contract, rewritten.Layouts.Count, rewritten.Notes.Count));
     }
 
-    [Fact(DisplayName = "R22: a member's layout is kept by node and ranking, replaced as it changes, and refused where it cannot be")]
+    [Fact(DisplayName = "R22: a member's layout is kept by node, ranking and evidence policy, replaced as it changes, and refused where it cannot be")]
     public void AMembersLayoutIsKept()
     {
         string workspace = NewWorkspace();
@@ -746,6 +749,48 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             StringComparison.Ordinal));
         Assert.Contains("keeps nothing", Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
             StringComparison.Ordinal);
+
+        // A layout keeps the evidence policy its records are counted under (§6.8): candidates alone are kept, correlated
+        // evidence is the default and keeps nothing, and a policy no view offers, or none at all, is refused.
+        File.WriteAllText(workspace, written);
+        WorkspaceLayout counted = InvestigationWorkspace.SetLayout(workspace, a, [], Now,
+            evidencePolicy: EvidencePolicy.IncludeCandidates)!;
+        Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates, counted.EvidencePolicy);
+        Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates,
+            InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.EvidencePolicy);
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, evidencePolicy: EvidencePolicy.IncludeCorrelated));
+        foreach (EvidencePolicy offered in new[] { EvidencePolicy.DirectOnly, EvidencePolicy.AllIncludingConflicting, (EvidencePolicy)99 })
+        {
+            Assert.Contains("under no other policy", Assert.Throws<InvalidOperationException>(() =>
+                InvestigationWorkspace.SetLayout(workspace, a, [], Now, evidencePolicy: offered)).Message, StringComparison.Ordinal);
+        }
+
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // A file of a version before policies counts under none; one naming correlated evidence, a policy no view offers or
+        // no policy, is refused.
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, evidencePolicy: EvidencePolicy.IncludeCandidates);
+        string candidates = File.ReadAllText(workspace);
+        Assert.Contains("\"evidencePolicy\": \"IncludeCandidates\"", candidates, StringComparison.Ordinal);
+        foreach ((string text, string problem) in new[]
+        {
+            (candidates.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.TwelfthContract}\"", StringComparison.Ordinal),
+                "counts no session's records under another evidence policy"),
+            (candidates.Replace("\"evidencePolicy\": \"IncludeCandidates\"", "\"evidencePolicy\": \"IncludeCorrelated\"", StringComparison.Ordinal),
+                "or under correlated evidence by name"),
+            (candidates.Replace("\"evidencePolicy\": \"IncludeCandidates\"", "\"evidencePolicy\": \"DirectOnly\"", StringComparison.Ordinal),
+                "counts its records under a policy no view offers"),
+            (candidates.Replace("\"evidencePolicy\": \"IncludeCandidates\"", "\"evidencePolicy\": \"AllIncludingConflicting\"", StringComparison.Ordinal),
+                "counts its records under a policy no view offers"),
+            (candidates.Replace("\"evidencePolicy\": \"IncludeCandidates\"", "\"evidencePolicy\": 99", StringComparison.Ordinal),
+                "counts its records under a policy no view offers"),
+        })
+        {
+            Assert.NotEqual(candidates, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

@@ -51,6 +51,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>The ranking last kept in the shown session's investigation, or null when none was kept or read yet.</summary>
     private (RankingMetric RankBy, bool PerSecond)? keptRanking;
+
+    /// <summary>The evidence policy last kept in the shown session's investigation; null when none is kept there.</summary>
+    private EvidencePolicy? keptPolicy;
     private Task pinsWritten = Task.CompletedTask;
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -936,7 +939,7 @@ public sealed partial class MainWindow : Window, IDisposable
         return window;
     }
 
-    /// <summary>Opens a member from its investigation, which then keeps its pins and its ranking (§26.3).</summary>
+    /// <summary>Opens a member from its investigation, which then keeps its pins, ranking and evidence policy (§26.3).</summary>
     private async Task<bool> FromInvestigationAsync(string investigation, Func<Task<bool>> open)
     {
         openingFromInvestigation = investigation;
@@ -952,10 +955,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// What member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>: its pins, none when it keeps none,
-    /// and its ranking, records counted whole when it keeps none; null when the file cannot be read or does not name the
-    /// session, which then keeps them only while it is open.
+    /// its ranking, records counted whole when it keeps none, and its evidence policy, correlated evidence when it keeps
+    /// none; null when the file cannot be read or does not name the session, which then keeps them only while it is open.
     /// </summary>
-    private static (Dictionary<string, GraphPoint> Pins, RankingMetric RankBy, bool PerSecond)? LayoutKeptIn(
+    private static (Dictionary<string, GraphPoint> Pins, RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy)? LayoutKeptIn(
         string investigation,
         Guid sessionId)
     {
@@ -969,7 +972,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
             WorkspaceLayout? layout = InvestigationWorkspace.LayoutOf(file, sessionId);
             return ((layout?.Pins ?? []).ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal),
-                layout?.RankBy ?? RankingMetric.Records, layout?.PerSecond ?? false);
+                layout?.RankBy ?? RankingMetric.Records, layout?.PerSecond ?? false,
+                layout?.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
@@ -977,34 +981,46 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    /// <summary>What an investigation put back of a session's pins and ranking, ending its notice: ", which put back 2 pins."</summary>
-    private static string PutBack(int pins, RankingMetric rankBy, bool perSecond)
+    /// <summary>
+    /// What an investigation put back of a session's pins, ranking and evidence policy, ending its notice: ", which put back
+    /// 2 pins."
+    /// </summary>
+    private static string PutBack(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy policy)
     {
         string? pinned = pins == 0 ? null : string.Create(CultureInfo.CurrentCulture, $"{pins:N0} {(pins == 1 ? "pin" : "pins")}");
         string? ranked = rankBy == RankingMetric.Records && !perSecond
             ? null
             : $"its ranking by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}";
-        string[] restored = [.. new[] { pinned, ranked }.OfType<string>()];
-        return restored.Length == 0 ? "." : $", which put back {string.Join(" and ", restored)}.";
+        string? counted = policy == EvidencePolicy.IncludeCandidates ? "its counting of candidates" : null;
+        string[] restored = [.. new[] { pinned, ranked, counted }.OfType<string>()];
+        return restored.Length switch
+        {
+            0 => ".",
+            1 => $", which put back {restored[0]}.",
+            _ => $", which put back {string.Join(", ", restored[..^1])} and {restored[^1]}.",
+        };
     }
 
     /// <summary>
-    /// Keeps the shown session's pins and ranking in the investigation it was opened from, when they changed: one write after
-    /// another, off the UI thread, and a write that fails is said beside the session's status rather than lost silently.
+    /// Keeps the shown session's pins, ranking and evidence policy in the investigation it was opened from, when they changed:
+    /// one write after another, off the UI thread, and a write that fails is said beside the session's status rather than
+    /// lost silently.
     /// </summary>
     private void KeepLayout((string Workspace, Guid Session) home)
     {
         IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
         (RankingMetric RankBy, bool PerSecond) ranking = (workspace.RankBy, workspace.PerSecond);
+        EvidencePolicy policy = workspace.EvidencePolicy;
         if (keptPins is { } kept && kept.Count == pins.Count
             && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value)
-            && keptRanking == ranking)
+            && keptRanking == ranking && keptPolicy == policy)
         {
             return;
         }
 
         keptPins = pins;
         keptRanking = ranking;
+        keptPolicy = policy;
         WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
         Task previous = pinsWritten;
         pinsWritten = Task.Run(async () =>
@@ -1019,7 +1035,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 // The earlier write said why it failed; this one tries afresh.
             }
 
-            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, ranking.RankBy, ranking.PerSecond);
+            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, ranking.RankBy, ranking.PerSecond,
+                policy);
         });
         _ = SayIfPinsNotKeptAsync(pinsWritten);
     }
@@ -1037,12 +1054,13 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 keptPins = null;
                 keptRanking = null;
-                CaptureDetail.Text += " The pins and ranking could not be kept in the investigation: " + exception.Message;
+                keptPolicy = null;
+                CaptureDetail.Text += " The pins, ranking and evidence policy could not be kept in the investigation: " + exception.Message;
             }
         }
     }
 
-    /// <summary>Completes once every change to the shown session's pins and ranking is written to its investigation.</summary>
+    /// <summary>Completes once every change to the shown session's layout is written to its investigation.</summary>
     internal Task PinsWritten => pinsWritten;
 
     /// <summary>
@@ -1089,12 +1107,16 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             CaptureStatus.Text = "Opening saved session";
-            // A session opened is a workspace of its own, which counts correlated evidence until its person chooses.
-            evidencePolicy = EvidencePolicy.IncludeCorrelated;
-            EvidencePolicy policy = evidencePolicy;
+            string? investigation = openingFromInvestigation;
             (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
             {
                 SessionStore opened = SharedSessionStores.Open(path);
+
+                // A session opened is a workspace of its own, which counts correlated evidence until its person chooses,
+                // or as its investigation kept it when it is opened from one (§26.3).
+                EvidencePolicy policy = investigation is not null && LayoutKeptIn(investigation, opened.SessionId) is { } kept
+                    ? kept.Policy
+                    : EvidencePolicy.IncludeCorrelated;
                 try
                 {
                     return (opened, SessionOverviewProjector.Project(opened, policy));
@@ -1108,6 +1130,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
             });
             if (closed) return false;
+            evidencePolicy = overview.Policy;
             int run = ++captureRunId;
             heldUpdate = null;
             CaptureSummary.Text = string.Empty;
@@ -2230,6 +2253,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
         ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
             SessionPath: path, Overview: overview, OverviewChunks: displayedChunks), overview, forceOverview: false);
+
+        // A member opened from its investigation keeps its choice there, as it keeps a pin or its ranking (§26.3).
+        if (layoutHome is { } home)
+        {
+            KeepLayout(home);
+        }
+
         return true;
     }
 
@@ -2253,17 +2283,20 @@ public sealed partial class MainWindow : Window, IDisposable
         (RankingMetric RankBy, bool PerSecond)? restoredRanking = null;
         if (savedNavigation is null)
         {
-            // A session opened from an investigation it is a member of keeps its pins and its ranking there, and gets back
-            // those it kept (§26.3); any other session keeps them only while it is open.
+            // A session opened from an investigation it is a member of keeps its pins, ranking and evidence policy there,
+            // and gets back those it kept (§26.3); any other session keeps them only while it is open. Its policy was put
+            // back before its overview was projected, under it.
             layoutHome = null;
             keptRanking = null;
+            keptPolicy = null;
             if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
             {
                 layoutHome = (investigation, overview.SessionId);
                 pins = kept.Pins;
                 restoredRanking = keptRanking = (kept.RankBy, kept.PerSecond);
-                pinsNotice = $"Its pins and ranking are kept in the investigation {Path.GetFileName(investigation)}"
-                    + PutBack(kept.Pins.Count, kept.RankBy, kept.PerSecond);
+                keptPolicy = kept.Policy;
+                pinsNotice = $"Its pins, ranking and evidence policy are kept in the investigation {Path.GetFileName(investigation)}"
+                    + PutBack(kept.Pins.Count, kept.RankBy, kept.PerSecond, overview.Policy);
             }
 
             keptPins = pins;

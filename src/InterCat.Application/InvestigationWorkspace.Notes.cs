@@ -101,7 +101,7 @@ public static partial class InvestigationWorkspace
         return note;
     }
 
-    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v12.md` §7).</summary>
+    /// <summary>What makes a file's notes contradict themselves, or null (`contracts/workspace-v13.md` §7).</summary>
     private static string? NoteProblem(InvestigationWorkspaceFile workspace)
     {
         // Notes arrived with the ninth version (revision 270).
