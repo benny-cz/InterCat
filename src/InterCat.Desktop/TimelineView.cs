@@ -220,6 +220,11 @@ public sealed class TimelineView : Control, IHoverCardSource
     private bool moved;
     private TimeRange panOrigin;
 
+    // Whether the last press ended as a plain click, neither a pan, a brush nor cancelled. Only then does a second press at
+    // its place make the double click that zooms (§6.7): two quick pans begun at one place are two pans. A press records
+    // its end when it ends, since the double click is raised after the second press's own handling.
+    private bool clickedLast;
+
     /// <summary>The pointer a press captured, released when its gesture ends or is cancelled.</summary>
     private IPointer? pressPointer;
 
@@ -2294,7 +2299,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>§6.7: a double click zooms in by 2 around the pointer, keeping the instant under it where it is.</summary>
     private void ZoomAtDoubleClick(object? sender, TappedEventArgs e)
     {
-        if (DataContext is not WorkspaceViewModel viewModel)
+        if (DataContext is not WorkspaceViewModel viewModel || !clickedLast)
         {
             return;
         }
@@ -2396,6 +2401,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         brushAnchor = null;
         brushEnd = null;
         pressedCall = null;
+        clickedLast = false;
         IPointer? pointer = pressPointer;
         pressPointer = null;
         pointer?.Capture(null);
@@ -2463,6 +2469,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         long? end = brushEnd;
         bool wasBrushing = brushing && moved;
         bool wasClick = !moved;
+        clickedLast = wasClick;
         brushAnchor = null;
         brushEnd = null;
         pressPointer = null;
@@ -2585,6 +2592,13 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
         base.OnPointerCaptureLost(e);
+
+        // Lost mid-gesture, the press ended as no click; a release lets its capture go only once it has recorded its end.
+        if (brushAnchor is not null)
+        {
+            clickedLast = false;
+        }
+
         brushAnchor = null;
         brushEnd = null;
         pressPointer = null;

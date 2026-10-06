@@ -76,6 +76,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private Point dragAt;
     private bool dragging;
 
+    // Whether the last press ended as a plain click, neither a node's drag nor cancelled. Only then does a second press at
+    // its place make the double click that opens what is there (§6.7): a drag given up with Esc and begun again opens
+    // nothing. A press records its end when it ends, since the double click is raised after the second press's handling.
+    private bool clickedLast;
+    private bool pressCancelled;
+
     // Hover (§6.2): the node or edge under the pointer, where the pointer is, and its card - described once per key and
     // drawing, not on every move. Hover only highlights; it never changes selection or filters.
     private string? hovered;
@@ -1083,6 +1089,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         base.OnPointerPressed(e);
         Focus();
+        pressCancelled = false;
         if (DataContext is not WorkspaceViewModel viewModel)
         {
             return;
@@ -1130,6 +1137,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     protected override void OnPointerReleased(PointerReleasedEventArgs e)
     {
         base.OnPointerReleased(e);
+        clickedLast = !pressCancelled && !dragging;
         if (dragKey is not { } key)
         {
             return;
@@ -1152,8 +1160,15 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
-        // A drag cancelled by the system leaves the node where it was: nothing is pinned by a gesture that did not end.
+        // A drag cancelled by the system leaves the node where it was: nothing is pinned by a gesture that did not end. A
+        // release lets its capture go only once it has recorded its end.
         base.OnPointerCaptureLost(e);
+        if (dragKey is not null)
+        {
+            pressCancelled = true;
+            clickedLast = false;
+        }
+
         dragKey = null;
         dragging = false;
         dragPointer = null;
@@ -1171,6 +1186,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             return false;
         }
 
+        pressCancelled = true;
+        clickedLast = false;
         dragKey = null;
         dragging = false;
         IPointer? pointer = dragPointer;
@@ -1217,6 +1234,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         // channels: the double click is Enter on its row. A double click on an edge opens that relationship's channel
         // view (§6.7).
         Point pointer = e.GetPosition(this);
+        if (!clickedLast)
+        {
+            return;
+        }
+
         if (HitTest(viewModel, pointer) is { } key)
         {
             e.Handled = viewModel.OpenGraphNode(key);
