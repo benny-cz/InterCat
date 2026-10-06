@@ -990,6 +990,55 @@ public sealed class EvidenceRungTests
         Assert.Contains("this relationship chosen", workspace.Filters.Single().Reason, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§6.4: below the machine rung E lists what the inspector counts: a process chosen among a group's members, a chosen relationship, else the rung's own records")]
+    public async Task BelowTheMachineRungEListsWhatTheInspectorCounts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode server = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        string group = workspace.Snapshot.Groups.Single().Name;
+
+        // The two processes' group, opened: with nothing chosen there, E lists the group's records.
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(group, Assert.Single(workspace.Filters, filter => filter.Field == "scope").Label);
+        Assert.True(workspace.Ascend());
+
+        // A process chosen among them: the card counts it, and E lists its records alone, saying where it was chosen.
+        workspace.SelectProcess(server.Id);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        FilterRow chosen = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.Equal(server.NameWithPid, chosen.Label);
+        Assert.Contains("from the group rung with this process selected", chosen.Reason, StringComparison.Ordinal);
+        Assert.StartsWith("Records owned by " + server.NameWithPid, workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+
+        // A relationship chosen there: the card counts its records, and E lists its channel's, both ends'.
+        workspace.SelectedRelationship = Assert.Single(workspace.Relationships);
+        Assert.Equal("Selected relationship", workspace.EvidenceHeading);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal($"Paired TCP channel {channel.Name}", workspace.EvidenceScopeText);
+        Assert.Contains("from the group rung with this relationship chosen",
+            Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+
+        // At the server's own rung, its channel chosen among its rows: the card still counts the process, and so does E.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == server.Id.ToString());
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == channel.Key);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records owned by " + server.NameWithPid, workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The evidence rung's export, in each format: complete, naming the rung's scope, and holding exactly the records the
     /// rung lists once every page is loaded, in its order - never a wider scope's (§6.4) - each with the owner the rung

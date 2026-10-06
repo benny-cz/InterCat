@@ -4238,8 +4238,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). At a published session's
-    /// machine rung a selected process is the scope, named in the filter bar where it can be removed.
+    /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). In a published session it lists
+    /// what the inspector's evidence card counts: a chosen relationship's records at any rung, a process selected at the
+    /// machine rung or among a group's members, a group selected at the machine rung, and otherwise the rung's own -
+    /// named in the filter bar, where it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
@@ -4248,16 +4250,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
-        // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5).
+        // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5): the button
+        // that takes it stands beneath the card that counts the selection.
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
-        bool machine = realOverview && ladder.Current.Level == DetailLevel.Machine;
-        LadderDescent descent = machine && ChosenRelationshipRecords() is { } relationship
+        DetailLevel level = ladder.Current.Level;
+        bool machine = realOverview && level == DetailLevel.Machine;
+        string rung = NavigationState.Name(level).ToLowerInvariant();
+        LadderDescent descent = realOverview && ChosenRelationshipRecords() is { } relationship
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, relationship,
-                "Evidence was reached from the machine rung with this relationship chosen.")
-            : machine && selectedProcess is { } process
+                $"Evidence was reached from the {rung} rung with this relationship chosen.")
+            : realOverview && level is DetailLevel.Machine or DetailLevel.Group && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.NameWithPid),
-                "Evidence was reached from the machine rung with this process selected.")
+                $"Evidence was reached from the {rung} rung with this process selected.")
             : machine && SelectedGroup is { } group
                 ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                     new(DetailLevel.Group, group.Key, group.Name),
