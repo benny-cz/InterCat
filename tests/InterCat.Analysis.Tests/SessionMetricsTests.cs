@@ -574,6 +574,28 @@ public sealed class SessionMetricsTests
         Assert.Contains(sent.Caveats, caveat => caveat.Contains("never as zero", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "P5: two records at one instant with one size are two observations, counted and listed twice")]
+    public void EqualRecordsAreNeverOneObservation()
+    {
+        // Two sends a source reported at one instant, of one size, by one process: a repeated write or a retransmission is
+        // the source's to tell apart, and neither is taken for a copy of the other and dropped.
+        using var session = new TemporarySession();
+        Publish(
+            session.Store,
+            [
+                Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, owner: 1_000, 7),
+                Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, owner: 1_000, 8),
+            ]);
+
+        MetricResult sent = SessionMetrics.Evaluate(
+            session.Store,
+            Request(AnalysisBasis.SourceObservations, Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide),
+            new() { EvidenceLimit = 10 });
+        Assert.Equal((128L, 2L), (sent.Value, sent.KnownContributions));
+        Assert.Equal([7UL, 8UL], sent.Evidence.Select(item => item.ObservationId.RawRecordId.RecordOrdinal));
+        Assert.Equal(2, SessionMetrics.Evaluate(session.Store, Request(AnalysisBasis.SourceObservations, Metric.Observations)).Value);
+    }
+
     [Fact(DisplayName = "I5: a total resolves to exactly the records it counted, with identities that survive a re-read")]
     public void ATotalResolvesToTheRecordsItCounted()
     {

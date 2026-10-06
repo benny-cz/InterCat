@@ -811,6 +811,9 @@
         "I1: re-derivation refuses journal chunks that do not continue one another, and publishes nothing",
         "I1: replaying a journal preserves every field of every record"
       ],
+      "I10": [
+        "I10: a member's own durations are on its one clock, unchanged by every alignment revision, a measured rate's included"
+      ],
       "I11": [
         "I11: a metric answers over every segment of the generation, and projects by layer",
         "I11: an application payload metric projects onto its layer, and refuses any other",
@@ -1203,6 +1206,9 @@
         "P4: started, completed and failed calls are counted from the calls, never from the records beneath them",
         "P4: what no derived operation can answer is unavailable with its reason, never a zero"
       ],
+      "P5": [
+        "P5: two records at one instant with one size are two observations, counted and listed twice"
+      ],
       "P6": [
         "P6: a PID seen only in its own records is one provisional instance, never an invented start",
         "P6: an end held by two processes, or by records that bind to none, leaves its peers unresolved",
@@ -1228,6 +1234,9 @@
         "P8: over random calls, each count equals the calls whose counted record is in scope, derived independently",
         "P8: the calls a timeline draws are those running in its interval, and a denser one says how many it left out",
         "P8: the evidence of an RPC channel is its calls' records, and of one call its start and stop"
+      ],
+      "P9": [
+        "P9: no order across hosts is stated that their combined uncertainty does not support, not even at its edge"
       ],
       "R1": [
         "R1: a UDP receive keeps its endpoints as delivered and is read as its owner's own flow",
@@ -1724,10 +1733,6 @@
       ]
     },
     "uncovered": {
-      "I10": {
-        "reason": "Cross-host alignment invariance belongs to M4.",
-        "plannedBy": "M4"
-      },
       "I17": {
         "reason": "Late-evidence revisions need the storage generations of IC-016.",
         "plannedBy": "IC-016"
@@ -1760,17 +1765,9 @@
         "reason": "Whole-session interactive scans belong to M2 scale work.",
         "plannedBy": "M2"
       },
-      "P5": {
-        "reason": "Retransmit folding is asserted with the transport correlators of IC-006.",
-        "plannedBy": "IC-006"
-      },
-      "P9": {
-        "reason": "Cross-host ordering claims belong to M4.",
-        "plannedBy": "M4"
-      },
       "R4": {
-        "reason": "Relationship rule identity and strength arrive with the correlators of IC-006.",
-        "plannedBy": "IC-006"
+        "reason": "A relation carries its strength, and the index that derives it names its rule (transport-endpoint-relation-v4, rpc-call-peer-v1), but a relationship does not yet carry its rule's identity and version, or its evidence IDs, itself.",
+        "plannedBy": "IC-015"
       }
     }
   }

@@ -381,6 +381,75 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.EndsWith("on one clock.", one.Statement(CultureInfo.CurrentCulture), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I10: a member's own durations are on its one clock, unchanged by every alignment revision, a measured rate's included")]
+    public void AlignmentRevisionsChangeNoLocalDuration()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "a"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "b"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        long start = Seconds(1);
+        long end = Seconds(4) + 250_000;
+        TimeComparison Measured() => InvestigationWorkspace.Compare(InvestigationWorkspace.Read(workspace), b, end, b, start).Result;
+        var local = new TimeComparison(TimeOrder.After, start - end, TimeUncertainty.Exact);
+        Assert.Equal(local, Measured());
+
+        // Aligned within a bound, aligned again at two instants whose rate then places it, and withdrawn: each revises the
+        // workspace's time, and none changes how long anything took on the member's own clock.
+        InvestigationWorkspace.Align(workspace, b, Seconds(2), a, Seconds(5), 500_000, 50, null, Now);
+        Assert.Equal(local, Measured());
+        InvestigationWorkspace.Align(workspace, b, Seconds(2), a, Seconds(5), 500_000, 50, null, Now,
+            second: (Seconds(102), Seconds(105) + 1_000_000));
+        Assert.Equal(local, Measured());
+
+        // Placed in the workspace's time, the two instants are as far apart as the measured rate makes them: a placement,
+        // which is not the duration the member measured.
+        InvestigationWorkspaceFile rated = InvestigationWorkspace.Read(workspace);
+        long placed = InvestigationWorkspace.Place(rated, b, end).WorkspaceNanoseconds!.Value
+            - InvestigationWorkspace.Place(rated, b, start).WorkspaceNanoseconds!.Value;
+        Assert.NotEqual(end - start, placed);
+        InvestigationWorkspace.Withdraw(workspace, b, Now);
+        Assert.Equal(local, Measured());
+    }
+
+    [Fact(DisplayName = "P9: no order across hosts is stated that their combined uncertainty does not support, not even at its edge")]
+    public void NoOrderAcrossHostsWithinTheirUncertainty()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "a"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "b"), "lab-2", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "c"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, Seconds(2), a, Seconds(5), 500_000, 50, null, Now);
+        InvestigationWorkspace.Align(workspace, c, Seconds(1), a, Seconds(5), 1_000_000, null, null, Now);
+        InvestigationWorkspaceFile read = InvestigationWorkspace.Read(workspace);
+
+        // A difference as large as the pair's combined uncertainty, and no larger, could still be none: it is no order, and
+        // its words say neither which came first nor how long after. A nanosecond beyond it is an order.
+        double half = InvestigationWorkspace.Compare(read, a, Seconds(5), b, Seconds(2)).Result.Uncertainty!.Value.HalfWidthNanoseconds;
+        long edge = (long)Math.Floor(half);
+        WorkspaceComparison within = InvestigationWorkspace.Compare(read, a, Seconds(5) + edge, b, Seconds(2));
+        Assert.Equal((TimeOrder.Ambiguous, -edge), (within.Result.Order, within.Result.DifferenceNanoseconds));
+        string said = within.Statement(CultureInfo.InvariantCulture);
+        Assert.StartsWith("Their order is ambiguous:", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("before", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("after", said, StringComparison.Ordinal);
+        Assert.Equal(TimeOrder.After, InvestigationWorkspace.Compare(read, a, Seconds(5) + edge + 1, b, Seconds(2)).Result.Order);
+
+        // Where the uncertainty is unknown - c's drift is not stated, away from its anchor - no order is stated, and no
+        // difference either.
+        Assert.Equal(new TimeComparison(TimeOrder.Unknown, null, null), InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(3)).Result);
+        Assert.StartsWith("No order is stated:", InvestigationWorkspace.Compare(read, b, Seconds(2), c, Seconds(3))
+            .Statement(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+
+        // Nor through a member both are aligned through whose drift is not stated: in its clock the two are a known
+        // distance apart, but its rate is unknown, so in the workspace's time not even that distance is stated.
+        Guid d = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "d"), "lab-4", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        Guid e = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "e"), "lab-5", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        InvestigationWorkspace.Align(workspace, d, Seconds(1), c, Seconds(1), 1_000, 10, null, Now);
+        InvestigationWorkspace.Align(workspace, e, Seconds(1), c, Seconds(1) + 300_000, 1_000, 10, null, Now);
+        Assert.Equal(new TimeComparison(TimeOrder.Unknown, null, null),
+            InvestigationWorkspace.Compare(InvestigationWorkspace.Read(workspace), d, Seconds(1), e, Seconds(1)).Result);
+    }
+
     [Fact(DisplayName = "R22: a member is aligned to the workspace's one time reference, and a file whose time contradicts itself is refused")]
     public void AnAlignmentIsToTheOneTimeReference()
     {

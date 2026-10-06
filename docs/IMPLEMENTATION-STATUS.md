@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 315 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 316 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 316 — I10, P9 and P5 asserted (§13.5):**
+  - Three rules listed as uncovered now have tests named for them: a member's own durations are unchanged by every
+    alignment revision (I10), no order is stated within the combined uncertainty, even at its edge (P9), and two records
+    at one instant with one size count twice (P5). R4's stale reason now says what a relationship still lacks.
 
 - **Revision 315 — a release outlives the generation that made it (IC-016, store-v1 §8):**
   - A later generation, such as a checkpoint, left a retention record behind: a record's content said only that a
@@ -792,6 +797,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 316 was built and tested in the same Linux container: Debug and Release each ran **1,545 tests**, passing
+  **1,448 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of five mutations:
+  - one member's instants compared through its alignment;
+  - an order stated at the uncertainty's edge;
+  - an unknown comparison given a difference, on either branch that finds it unknown;
+  - an ambiguous one worded as an order.
+
+  The branch through a shared member whose rate is not stated first survived every workspace test, until P9's test
+  aligned two members through one. P5's test guards a prohibition no code implements, so it has no mutation.
 - Revision 315 was built and tested in the same Linux container: Debug and Release each ran **1,542 tests**, passing
   **1,445 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of seventeen mutations:
