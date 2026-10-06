@@ -57,13 +57,16 @@ internal static class EvidenceCommand
         }
 
         ProcessInstanceId[] owners = [.. ownerTexts.Select(text => new ProcessInstanceId(Guid.Parse(text)))];
+        // A relationship's evidence key opens its records at both ends (R4): a paired TCP channel's, or an RPC
+        // relationship's, channel's or call's, whose records the RPC calls name.
+        bool rpc = RpcChannelKeys.IsRpc(channel);
         SessionEvidencePage page;
         try
         {
             page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
-                channel, interval, pageSize: pageSize, cursor: cursor,
+                rpc ? null : channel, interval, pageSize: pageSize, cursor: cursor,
                 ownerProcesses: owners.Length == 0 ? null : owners, resolveOwners: true,
-                cancellationToken: cancellationToken);
+                operationKey: rpc ? channel : null, cancellationToken: cancellationToken);
         }
         catch (ArgumentException exception)
         {
@@ -90,7 +93,7 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Session ID", page.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
-        if (channel is not null) ConsoleUi.Field("Paired TCP channel", channel);
+        if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired TCP channel", channel);
         foreach (ProcessInstanceId owner in page.OwnerProcesses)
             ConsoleUi.Field("Canonical owner process", owner.ToString()!);
         if (interval is { } range)
@@ -129,13 +132,15 @@ internal static class EvidenceCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat evidence <session-directory> [--channel <paired-tcp-key>] [--owner-process <instance-guid> ...]");
+        ConsoleUi.Line("icat evidence <session-directory> [--channel <key>] [--owner-process <instance-guid> ...]");
         ConsoleUi.Line("              [--interval <start:end>]");
         ConsoleUi.Line("              [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
-        ConsoleUi.Line("  or derivation asks for an explicit restart. --channel uses an overview channel key.");
+        ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
+        ConsoleUi.Line("  paired TCP channel's, or an RPC relationship's, which opens the calls its links join at both");
+        ConsoleUi.Line("  ends; an RPC channel's or call's key opens its own records, and no RPC key takes --owner-process.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");

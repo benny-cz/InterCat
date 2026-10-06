@@ -170,8 +170,9 @@ public static class SessionOverviewProjector
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
             edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength)
         {
+            // Its own key opens the calls its links join, at both ends: the links are kept as counts, never as a list.
             Rule = RelationRule.RpcCallPeer,
-            Evidence = [],
+            Evidence = [edge.Key],
         })];
 
         string? channelProblem = admitted.Length > maximumChannels

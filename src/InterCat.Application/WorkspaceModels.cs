@@ -115,9 +115,9 @@ public sealed record CommunicationEdge(
     public required RelationRule Rule { get; init; }
 
     /// <summary>
-    /// What the relationship rests on, by identity: the keys of the channels it holds, in ordinal order. A TCP channel's
-    /// key names the first record of its connection at either end, and opens every record of it. A relationship derived by
-    /// <see cref="RelationRule.RpcCallPeer"/> names none yet: the overview keeps its links only as counts.
+    /// What the relationship rests on, by identity, in ordinal order, each key opening its records at both ends. A TCP
+    /// relationship names each connection it holds by the key of its channel, which names the connection's first record. An
+    /// RPC relationship, whose links the overview keeps only as counts, names itself: its key opens the calls its links join.
     /// </summary>
     public required IReadOnlyList<string> Evidence { get; init; }
 

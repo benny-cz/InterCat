@@ -668,6 +668,26 @@ public sealed class CommandLineTests : IDisposable
     private static string Comparable(string answer) =>
         System.Text.RegularExpressions.Regex.Replace(answer, "\"(elapsed|counted|duration)[A-Za-z]*\": [0-9.]+", "\"$1\": 0");
 
+    [Fact(DisplayName = "R4: icat evidence opens an RPC relationship's linked calls at both ends by the key the relationship carries")]
+    public async Task EvidenceOpensAnRpcRelationshipByItsKey()
+    {
+        using var linked = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Publish(linked.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        CommunicationEdge edge = Assert.Single(SessionOverviewProjector.Project(linked.Store).Edges, candidate => candidate.Mechanism == Mechanism.Rpc);
+        string key = Assert.Single(edge.Evidence);
+
+        // The key a relationship rests on is the one --channel takes: two linked calls, a start and a stop at each end.
+        (InterCatExitCode code, string answer, _) = await Run("evidence", linked.Path, "--channel", key, "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using JsonDocument page = JsonDocument.Parse(answer);
+        Assert.Equal(edge.ObservationCount, page.RootElement.GetProperty("page").GetProperty("records").GetArrayLength());
+        Assert.Equal(key, page.RootElement.GetProperty("page").GetProperty("operationKey").GetString());
+        (code, answer, _) = await Run("evidence", linked.Path, "--channel", key);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches($@"(?m)^  RPC key +{Regex.Escape(key)}$", answer);
+    }
+
     /// <summary>One icat invocation, with what it wrote to stdout and to stderr.</summary>
     /// <summary>The column a field's value starts in, in a report that has one field of that label.</summary>
     private static int ValueColumn(string report, string label)

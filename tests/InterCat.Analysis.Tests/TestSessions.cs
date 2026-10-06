@@ -277,6 +277,51 @@ internal static class TestSessions
         ],
     };
 
+    /// <summary>The service control manager's RPC interface.</summary>
+    public static readonly Guid ServiceControlInterface = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+
+    /// <summary>
+    /// A caller's three calls to the service control manager and the three the host served, the first and third linked by
+    /// an ALPC message sent on the caller's thread and received on the thread that began the served call.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedRpcCalls()
+    {
+        ObservationRowV1[] messages =
+        [
+            Alpc(102, ObservationKind.Send, 400, 401, 60),
+            Alpc(103, ObservationKind.Receive, 1_960, 1_961, 61),
+            Alpc(302, ObservationKind.Send, 400, 401, 62),
+            Alpc(303, ObservationKind.Receive, 1_960, 1_961, 63),
+        ];
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(1, ObservationKind.Create, 400, 1),
+            Lifecycle(2, ObservationKind.Inventory, 1_960, 2),
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 10, RpcActivity(1), ServiceControlInterface),
+            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 11, RpcActivity(1), status: 0),
+            RpcCall(200, ObservationKind.RequestStart, Direction.Outbound, 400, 20, RpcActivity(2), ServiceControlInterface),
+            RpcCall(210, ObservationKind.RequestEnd, Direction.Outbound, 400, 21, RpcActivity(2), status: 0),
+            RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 30, RpcActivity(3), ServiceControlInterface),
+            RpcCall(340, ObservationKind.RequestEnd, Direction.Outbound, 400, 31, RpcActivity(3), status: 5),
+            RpcCall(105, ObservationKind.RequestStart, Direction.Inbound, 1_960, 50, RpcActivity(11), ServiceControlInterface),
+            RpcCall(110, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 51, RpcActivity(11), status: 0),
+            RpcCall(205, ObservationKind.RequestStart, Direction.Inbound, 1_960, 52, RpcActivity(12), ServiceControlInterface),
+            RpcCall(207, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 53, RpcActivity(12), status: 0),
+            RpcCall(305, ObservationKind.RequestStart, Direction.Inbound, 1_960, 54, RpcActivity(13), ServiceControlInterface),
+            RpcCall(330, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 55, RpcActivity(13), status: 5),
+            .. messages,
+        ];
+        return (
+            rows,
+            [
+                .. rows.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
+                    .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
+                .. messages.Select((message, index) => Field(message, SourceField.AlpcMessageId, 21 + (index / 2))),
+            ]);
+    }
+
+    private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+
     /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
     public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
     {

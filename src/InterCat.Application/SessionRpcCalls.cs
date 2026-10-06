@@ -558,8 +558,8 @@ public static class SessionRpcCalls
     }
 
     /// <summary>
-    /// The records an RPC channel or call key scopes, by segment name and row in the leased generation, for an evidence
-    /// page; null when the generation holds no such channel or call.
+    /// The records an RPC channel, call or relationship key scopes, by segment name and row in the leased generation, for
+    /// an evidence page; null when the generation holds no such channel, call or relationship under the policy.
     /// </summary>
     internal static HashSet<(string Segment, int Row)>? RecordsOf(
         SessionStore store,
@@ -569,6 +569,17 @@ public static class SessionRpcCalls
         EvidencePolicy policy,
         CancellationToken cancellationToken)
     {
+        // An RPC relationship's key opens the calls its links join, at both ends and in either direction (R4); one no
+        // admitted link joins is no relationship of this generation under the policy.
+        if (RpcPeerEdges.TryParseKey(operationKey, out ProcessInstanceId one, out ProcessInstanceId other))
+        {
+            RpcPeerIndex linked = Peers(store, manifest, segments, cancellationToken);
+            IReadOnlyList<ProcessInstance> instances = linked.Calls.Processes.Instances;
+            HashSet<(string Segment, int Row)> joined = [.. linked.LinkedRecords(link => RpcPeerEdges.Joins(link, instances, one, other, policy))
+                .Select(record => (linked.Calls.SegmentNames[record.Segment] ?? string.Empty, record.Row))];
+            return joined.Count == 0 ? null : joined;
+        }
+
         string channelKey = operationKey;
         (uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey)? first = null;
         if (RpcChannelKeys.TryParseCall(operationKey, out string callChannel, out var callFirst))
@@ -579,7 +590,7 @@ public static class SessionRpcCalls
 
         if (!RpcChannelKeys.TryParseChannel(channelKey, out ProcessInstanceId instance, out RpcCallSide side, out Guid? rpcInterface))
         {
-            throw new ArgumentException("This key names no RPC channel or call.", nameof(operationKey));
+            throw new ArgumentException("This key names no RPC channel, call or relationship.", nameof(operationKey));
         }
 
         RpcCallIndex calls = Index(store, manifest, segments, cancellationToken);

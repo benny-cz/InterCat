@@ -109,4 +109,54 @@ internal static class RpcPeerEdges
     }
 
     public static string KeyOf(ProcessInstanceId first, ProcessInstanceId second) => $"{KeyPrefix}{first}:{second}";
+
+    /// <summary>
+    /// The pair an RPC relationship's key names: two distinct instances, the first before the second as their "N" forms
+    /// order, as <see cref="KeyOf"/> writes them. False for any other key, an RPC channel's or call's among them.
+    /// </summary>
+    public static bool TryParseKey(string? key, out ProcessInstanceId first, out ProcessInstanceId second)
+    {
+        first = second = default;
+        if (key is null || !key.StartsWith(KeyPrefix, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        string[] parts = key[KeyPrefix.Length..].Split(':');
+        if (parts.Length != 2
+            || !Guid.TryParseExact(parts[0], "N", out Guid one) || !Guid.TryParseExact(parts[1], "N", out Guid other)
+            || one == Guid.Empty || other == Guid.Empty || string.CompareOrdinal(parts[0], parts[1]) >= 0
+            || parts[0] != one.ToString("N") || parts[1] != other.ToString("N"))
+        {
+            return false;
+        }
+
+        (first, second) = (new ProcessInstanceId(one), new ProcessInstanceId(other));
+        return true;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="link"/> is one the relationship between <paramref name="first"/> and
+    /// <paramref name="second"/> rests on under <paramref name="policy"/>, in either direction: both its calls bind to an
+    /// instance, those instances are the pair, and the link's strength - correlated at best, as weak as its weaker
+    /// binding - is one the policy admits. It is the same reading <see cref="Totals"/> and <see cref="Of(IReadOnlyList{RpcPeerLinkTotal}, EvidencePolicy)"/>
+    /// give the relationship's count.
+    /// </summary>
+    public static bool Joins(RpcCallLink link, IReadOnlyList<ProcessInstance> instances, ProcessInstanceId first,
+        ProcessInstanceId second, EvidencePolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(instances);
+        if (!link.Client.IsBound || !link.Server.IsBound)
+        {
+            return false;
+        }
+
+        var strength = (RelationStrength)Math.Max(
+            (int)RelationStrength.Correlated,
+            Math.Max((int)link.Client.Strength, (int)link.Server.Strength));
+        ProcessInstanceId client = instances[link.Client.Instance].Id;
+        ProcessInstanceId server = instances[link.Server.Instance].Id;
+        return SessionOverviewProjector.Admitted(strength, policy)
+            && ((client == first && server == second) || (client == second && server == first));
+    }
 }

@@ -339,20 +339,20 @@ public static class WorkspaceRowBuilder
         string.Create(CultureInfo.CurrentCulture, $"{rule.Identity}, version {rule.Version:N0}");
 
     /// <summary>
-    /// How a relationship was made, in words (R4): its evidence, the rule and version that derived it, and what it rests on -
-    /// the first of its channels by key, each of which opens its records, and how many more there are.
+    /// How a relationship was made, in words (R4): its evidence, the rule and version that derived it, and what it rests on
+    /// by key - the first of its channels, each of which opens its records, and how many more there are; or, for an RPC
+    /// relationship, its own key, which opens the calls its links join.
     /// </summary>
     public static string Explain(CommunicationEdge edge)
     {
         ArgumentNullException.ThrowIfNull(edge);
         const int named = 3;
         string strength = DescribeStrength(edge.Strength);
-        string rests = edge.Evidence.Count > 0
-            ? Spoken.Count(edge.Evidence.Count, "channel") + ": " + string.Join(", ", edge.Evidence.Take(named))
-                + (edge.Evidence.Count > named ? string.Create(CultureInfo.CurrentCulture, $", and {edge.Evidence.Count - named:N0} more") : string.Empty)
-            : edge.Rule == RelationRule.RpcCallPeer
-                ? "its calls' links, which this overview keeps only as counts"
-                : "no channel this overview keeps";
+        string keys = string.Join(", ", edge.Evidence.Take(named))
+            + (edge.Evidence.Count > named ? string.Create(CultureInfo.CurrentCulture, $", and {edge.Evidence.Count - named:N0} more") : string.Empty);
+        string rests = edge.Evidence.Count == 0 ? "no evidence this overview keeps"
+            : edge.Rule == RelationRule.RpcCallPeer ? "the calls its links join: " + keys
+            : Spoken.Count(edge.Evidence.Count, "channel") + ": " + keys;
         return $"{char.ToUpperInvariant(strength[0])}{strength[1..]} evidence, derived by {DescribeRule(edge.Rule)}, from {rests}.";
     }
 

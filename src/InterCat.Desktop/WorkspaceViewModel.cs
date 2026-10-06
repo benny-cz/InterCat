@@ -3305,10 +3305,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         CommunicationEdge[] made = [.. Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))];
         if (made.Length > 0)
         {
-            bool countedLinks = made.All(edge => edge.Rule == RelationRule.RpcCallPeer && edge.Evidence.Count == 0);
+            bool calls = made.All(edge => edge.Rule == RelationRule.RpcCallPeer);
             lines.Add("Rule: " + string.Join("; ", made.Select(edge => edge.Rule).Distinct().Select(WorkspaceRowBuilder.DescribeRule))
-                + " · evidence: " + (countedLinks
-                    ? "its calls' links, kept here only as counts"
+                + " · evidence: " + (calls
+                    ? "the calls its links join, by key"
                     : Counted(made.Sum(edge => edge.Evidence.Count), "channel", "channels") + " by key"));
         }
 

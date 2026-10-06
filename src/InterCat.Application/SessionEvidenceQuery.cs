@@ -69,8 +69,9 @@ public sealed record SessionEvidencePage(
     public long? ContinuedFromGeneration { get; init; }
 
     /// <summary>
-    /// The RPC channel or call (<see cref="RpcChannelKeys"/>), or the process's HTTP exchanges or one exchange
-    /// (<see cref="HttpExchangeKeys"/>), the page is scoped to; null when it is not.
+    /// The RPC channel or call (<see cref="RpcChannelKeys"/>), the RPC relationship whose linked calls it opens at both ends
+    /// (<see cref="RpcPeerEdges.KeyOf"/>), or the process's HTTP exchanges or one exchange (<see cref="HttpExchangeKeys"/>),
+    /// the page is scoped to; null when it is not.
     /// </summary>
     public string? OperationKey { get; init; }
 }
@@ -146,9 +147,9 @@ public static class SessionEvidenceQuery
     {
         if (operationKey is null) return;
         if (!RpcChannelKeys.IsRpc(operationKey) && !HttpExchangeKeys.IsHttp(operationKey))
-            throw new ArgumentException("This key names no RPC channel or call, and no HTTP exchanges.", nameof(operationKey));
+            throw new ArgumentException("This key names no RPC channel, call or relationship, and no HTTP exchanges.", nameof(operationKey));
         if (channelKey is not null || owners.Length > 0)
-            throw new ArgumentException("An RPC channel or call, or HTTP exchanges, scope their own records; name one alone.",
+            throw new ArgumentException("An RPC channel, call or relationship, or HTTP exchanges, scope their own records; name one alone.",
                 nameof(operationKey));
     }
 
@@ -274,8 +275,8 @@ public static class SessionEvidenceQuery
         else if (operationKey is not null)
         {
             rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, segments, operationKey, policy, cancellationToken)
-                ?? throw new InvalidOperationException("This RPC channel or call is not in the current generation under the "
-                    + "evidence policy. Return to the process and select its channel again.");
+                ?? throw new InvalidOperationException("This RPC channel, call or relationship is not in the current generation "
+                    + "under the evidence policy. Return to the process or the graph and select it again.");
         }
 
         // Segments join the merge in order of their earliest reading, and only once that reading could come next: every

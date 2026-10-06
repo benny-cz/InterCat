@@ -14,8 +14,6 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class RpcPeerEdgesTests
 {
-    private static readonly Guid ServiceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
-
     [Fact(DisplayName = "§7.4: the overview joins a caller and the process that served it by an RPC edge of the linked calls' records")]
     public void TheOverviewDrawsAnRpcEdge()
     {
@@ -32,9 +30,9 @@ public sealed class RpcPeerEdgesTests
         Assert.Equal((8L, (long?)null, RelationStrength.Correlated), (edge.ObservationCount, edge.KnownBytes, edge.Strength));
         Assert.Equal(new HashSet<ProcessInstanceId> { client, host }, [edge.SourceId, edge.TargetId]);
 
-        // It names the rule that linked its calls; the overview keeps the links themselves only as counts.
+        // It names the rule that linked its calls, and rests on its own key, which opens them.
         Assert.Equal((RelationRule.RpcCallPeer, RpcPeerIndex.PeerRule), (edge.Rule, edge.Rule.ToString()));
-        Assert.Empty(edge.Evidence);
+        Assert.Equal([edge.Key], edge.Evidence);
         Assert.Contains(overview.Caveats, caveat => caveat.StartsWith("RPC edges join a process", StringComparison.Ordinal));
 
         // Under a brush holding only the first call, the edge counts only that link's records.
@@ -57,45 +55,6 @@ public sealed class RpcPeerEdgesTests
             key => key.StartsWith(RpcPeerEdges.KeyPrefix, StringComparison.Ordinal));
     }
 
-    /// <summary>
-    /// A caller's three calls to the service control manager and the three the host served, the first and third linked by
-    /// an ALPC message sent on the caller's thread and received on the thread that began the served call.
-    /// </summary>
-    internal static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls()
-    {
-        ObservationRowV1[] messages =
-        [
-            Alpc(102, ObservationKind.Send, 400, 401, 60),
-            Alpc(103, ObservationKind.Receive, 1_960, 1_961, 61),
-            Alpc(302, ObservationKind.Send, 400, 401, 62),
-            Alpc(303, ObservationKind.Receive, 1_960, 1_961, 63),
-        ];
-        ObservationRowV1[] rows =
-        [
-            Lifecycle(1, ObservationKind.Create, 400, 1),
-            Lifecycle(2, ObservationKind.Inventory, 1_960, 2),
-            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 10, Activity(1), ServiceControl),
-            RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 11, Activity(1), status: 0),
-            RpcCall(200, ObservationKind.RequestStart, Direction.Outbound, 400, 20, Activity(2), ServiceControl),
-            RpcCall(210, ObservationKind.RequestEnd, Direction.Outbound, 400, 21, Activity(2), status: 0),
-            RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 30, Activity(3), ServiceControl),
-            RpcCall(340, ObservationKind.RequestEnd, Direction.Outbound, 400, 31, Activity(3), status: 5),
-            RpcCall(105, ObservationKind.RequestStart, Direction.Inbound, 1_960, 50, Activity(11), ServiceControl),
-            RpcCall(110, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 51, Activity(11), status: 0),
-            RpcCall(205, ObservationKind.RequestStart, Direction.Inbound, 1_960, 52, Activity(12), ServiceControl),
-            RpcCall(207, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 53, Activity(12), status: 0),
-            RpcCall(305, ObservationKind.RequestStart, Direction.Inbound, 1_960, 54, Activity(13), ServiceControl),
-            RpcCall(330, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 55, Activity(13), status: 5),
-            .. messages,
-        ];
-        return (
-            rows,
-            [
-                .. rows.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
-                    .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
-                .. messages.Select((message, index) => Field(message, SourceField.AlpcMessageId, 21 + (index / 2))),
-            ]);
-    }
-
-    private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+    /// <summary>The service control manager's calls, linked through ALPC (<see cref="TestSessions.LinkedRpcCalls"/>).</summary>
+    internal static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls() => TestSessions.LinkedRpcCalls();
 }

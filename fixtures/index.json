@@ -1647,6 +1647,14 @@
         "R3: under a byte ranking a relationship whose sends recorded no size is drawn unmeasured, never as zero",
         "R3: unknown and observed zero remain distinct"
       ],
+      "R4": [
+        "R4: a TCP relationship carries the rule that derived it and the key of each connection it rests on, which opens that connection's records at both its ends",
+        "R4: a recorded name with no version from 1 after its identity names no rule",
+        "R4: a rule's recorded name reads back as its identity and version",
+        "R4: an RPC relationship carries the rule that linked its calls and its own key, which opens those calls at both its ends",
+        "R4: icat evidence opens an RPC relationship's linked calls at both ends by the key the relationship carries",
+        "R4: the tour's relationships name a rule of their own and rest on the tour's channels, so none passes for a capture's"
+      ],
       "R5": [
         "R5: a channel row names its mechanism and direction in words, never an enumeration name",
         "R5: initial normative wire codes stay stable",
@@ -1764,10 +1772,6 @@
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",
         "plannedBy": "M2"
-      },
-      "R4": {
-        "reason": "A relationship carries its rule's identity and version and its strength, and a TCP one the key of each connection it rests on, which names that connection's first record and opens its records; an RPC one does not yet carry the calls its links join, which the persisted overview keeps only as counts.",
-        "plannedBy": "IC-015"
       }
     }
   }

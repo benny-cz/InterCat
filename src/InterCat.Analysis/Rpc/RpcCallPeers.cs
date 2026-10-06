@@ -295,11 +295,36 @@ public sealed class RpcPeerIndex
     }
 
     /// <summary>Every served call with the call that served it, in the index's call order.</summary>
-    public IEnumerable<RpcCallLink> Links()
+    public IEnumerable<RpcCallLink> Links() => LinkedCalls().Select(linked => linked.Link);
+
+    /// <summary>
+    /// The records of both calls of every link <paramref name="joins"/> accepts - each call's start and stop, at its own
+    /// end - by the call index's segment and row: what an RPC relationship's evidence opens (R4).
+    /// </summary>
+    public IEnumerable<(int Segment, int Row)> LinkedRecords(Func<RpcCallLink, bool> joins)
+    {
+        ArgumentNullException.ThrowIfNull(joins);
+        foreach ((RpcCallLink link, int client, int server) in LinkedCalls())
+        {
+            if (!joins(link))
+            {
+                continue;
+            }
+
+            (RpcCallGroup clientGroup, int clientAt) = calls.GroupAt(client);
+            (RpcCallGroup serverGroup, int serverAt) = calls.GroupAt(server);
+            foreach ((int Segment, int Row) record in calls.RecordsOf(clientGroup, clientAt).Concat(calls.RecordsOf(serverGroup, serverAt)))
+            {
+                yield return record;
+            }
+        }
+    }
+
+    /// <summary>Each link once, from its client call - a served server call is the other end of one of them - with both calls.</summary>
+    private IEnumerable<(RpcCallLink Link, int Client, int Server)> LinkedCalls()
     {
         for (int call = 0; call < states.Length; call++)
         {
-            // Each link once, from its client call: a served server call is the other end of one of them.
             if (states[call] != RpcPeerState.Served || calls.FactsOf(call).Side != RpcCallSide.Client)
             {
                 continue;
@@ -307,7 +332,7 @@ public sealed class RpcPeerIndex
 
             RpcCallIndex.PeerFacts client = calls.FactsOf(call);
             RpcCallIndex.PeerFacts server = calls.FactsOf(peers[call]);
-            yield return new(
+            yield return (new(
                 client.ProcessId,
                 client.Process,
                 client.StartTicks,
@@ -315,7 +340,7 @@ public sealed class RpcPeerIndex
                 server.ProcessId,
                 server.Process,
                 server.StartTicks,
-                server.HasStop ? server.StopTicks : null);
+                server.HasStop ? server.StopTicks : null), call, peers[call]);
         }
     }
 

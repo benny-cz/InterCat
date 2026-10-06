@@ -25,7 +25,7 @@ public sealed class RelationshipExplanationTests
         Assert.EndsWith(", evidence direct, derived by synthetic-tour, version 1", browser.AccessibleName, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "§6.3: a relationship resting on many channels names its first three and counts the rest, and an RPC one says its links are kept as counts")]
+    [Fact(DisplayName = "§6.3: a relationship resting on many channels names its first three and counts the rest, and an RPC one names the key that opens its linked calls")]
     public void AnExplanationNamesItsFirstChannelsAndCountsTheRest()
     {
         var many = new CommunicationEdge("tcp:a:b", First, Second, Mechanism.Tcp, 10, null, RelationStrength.Correlated)
@@ -42,9 +42,11 @@ public sealed class RelationshipExplanationTests
         Assert.Equal("Correlated evidence, derived by transport-endpoint-relation, version 4, from 1 channel: transport:1.",
             WorkspaceRowBuilder.Explain(one));
 
-        CommunicationEdge rpc = many with { Mechanism = Mechanism.Rpc, Rule = RelationRule.RpcCallPeer, Evidence = [] };
-        Assert.Equal(
-            "Correlated evidence, derived by rpc-call-peer, version 1, from its calls' links, which this overview keeps only as counts.",
+        string key = $"rpc:{First}:{Second}";
+        CommunicationEdge rpc = many with { Key = key, Mechanism = Mechanism.Rpc, Rule = RelationRule.RpcCallPeer, Evidence = [key] };
+        Assert.Equal($"Correlated evidence, derived by rpc-call-peer, version 1, from the calls its links join: {key}.",
             WorkspaceRowBuilder.Explain(rpc));
+        Assert.Equal("Correlated evidence, derived by rpc-call-peer, version 1, from no evidence this overview keeps.",
+            WorkspaceRowBuilder.Explain(rpc with { Evidence = [] }));
     }
 }
