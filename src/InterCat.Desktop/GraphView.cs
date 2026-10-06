@@ -1082,8 +1082,20 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         base.OnPointerPressed(e);
         Focus();
-        if (DataContext is not WorkspaceViewModel viewModel || HitTest(viewModel, e.GetPosition(this)) is not { } key)
+        if (DataContext is not WorkspaceViewModel viewModel)
         {
+            return;
+        }
+
+        if (HitTest(viewModel, e.GetPosition(this)) is not { } key)
+        {
+            // A click on an edge chooses the relationship it stands for, as its row in the table does (§6.7). The press is
+            // left unhandled, so a second one still makes the double click that opens it.
+            if (EdgeHitTest(viewModel, e.GetPosition(this)) is { } edge && viewModel.SelectGraphEdge(edge))
+            {
+                InvalidateVisual();
+            }
+
             return;
         }
 

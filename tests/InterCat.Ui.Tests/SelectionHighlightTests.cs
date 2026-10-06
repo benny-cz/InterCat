@@ -2,12 +2,14 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -71,6 +73,74 @@ public sealed class SelectionHighlightTests
         Assert.DoesNotContain("highlighted", workspace.TimelineCaption, StringComparison.Ordinal);
         window.MouseMove(new Point(2, 2));
         Assert.False(ColumnDiffers(before, Settle(window), column, timeline, window), "The cleared highlight is still drawn.");
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: a click on an edge chooses its relationship as its row does, so its edge is haloed, the inspector describes it and the timeline highlights its records")]
+    public async Task AClickOnAnEdgeChoosesItsRelationship()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(100));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        _ = Settle(window);
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        GraphDisplayEdge drawn = Assert.Single(workspace.GraphDisplay.Edges);
+        Point source = graph.PointOf(drawn.SourceKey)!.Value;
+        Point target = graph.PointOf(drawn.TargetKey)!.Value;
+        Point middle = graph.TranslatePoint(new((source.X + target.X) / 2, (source.Y + target.Y) / 2), window)!.Value;
+        ProcessNode client = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        workspace.SelectedProcess = client;
+
+        // A click on the edge chooses its relationship in place of the process: its row in the table is chosen, the
+        // inspector describes it, its edge is haloed, and the timeline highlights its channel's records at both ends.
+        window.MouseDown(middle, MouseButton.Left);
+        window.MouseUp(middle, MouseButton.Left);
+        Dispatch();
+        RelationshipRow chosen = Assert.IsType<RelationshipRow>(workspace.SelectedRelationship);
+        Assert.Equal(Assert.Single(drawn.Relationships), chosen.Key);
+        workspace.ShowTables = true;
+        Dispatch();
+        Assert.Same(chosen, window.GetControl<ListBox>("RelationshipList").SelectedItem);
+        Assert.Null(workspace.SelectedProcess);
+        Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
+        Assert.Equal($"{chosen.Source} ↔ {chosen.Target}", workspace.SelectionTitle);
+        Assert.Equal($"{chosen.Mechanism} · {chosen.Explanation}", workspace.SelectionSubtitle);
+        Assert.Equal("A double click on its edge, or Enter on its row, opens its channel", workspace.SelectionActions);
+        await workspace.HighlightReady;
+        Dispatch();
+        Assert.Equal(200, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.Contains($"selection highlighted: {chosen.Source} ↔ {chosen.Target}", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // A brush restates its row and keeps the choice, in the table too; choosing the process again lets it go.
+        workspace.SelectInterval(new TimeRange(10, 60));
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal(chosen.Key, workspace.SelectedRelationship?.Key);
+        Assert.Same(workspace.SelectedRelationship, window.GetControl<ListBox>("RelationshipList").SelectedItem);
+        Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
+        workspace.SelectedProcess = client;
+        Dispatch();
+        Assert.Null(workspace.SelectedRelationship);
+        Assert.Null(workspace.HighlightedEdgeKey);
+        Assert.Equal(client.Name, workspace.SelectionTitle);
+
+        // Chosen again in the table and then unchosen there, it takes its halo and its records' highlight with it.
+        ListBox table = window.GetControl<ListBox>("RelationshipList");
+        table.SelectedIndex = 0;
+        Dispatch();
+        await workspace.HighlightReady;
+        Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
+        Assert.NotNull(workspace.TimelineHighlightBuckets);
+        table.SelectedIndex = -1;
+        Dispatch();
+        await workspace.HighlightReady;
+        Assert.Equal((null, null, "Nothing selected"),
+            (workspace.HighlightedEdgeKey, workspace.TimelineHighlightBuckets, workspace.SelectionTitle));
         window.Close();
     }
 

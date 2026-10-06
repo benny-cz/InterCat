@@ -127,6 +127,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private CrumbRow? selectedCrumb;
     private FilterRow? selectedFilter;
     private RelationshipRow? selectedRelationship;
+    private bool restatingRelationships;
     private IntervalRow? selectedIntervalRow;
     private LadderView view;
     private bool showTables;
@@ -729,6 +730,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             ProcessInstanceId[] members = [.. ChosenProcesses.Select(process => process.Id)];
             return members.Length == 0 ? (null, null) : (new(null, members), ProcessSetFilter.Label(members.Length));
+        }
+
+        // A chosen relationship's records: its linked calls, read by its own key, or the one channel it rests on.
+        if (selectedRelationship is { } relationship)
+        {
+            string name = $"{relationship.Source} ↔ {relationship.Target}";
+            return RpcChannelKeys.IsRpc(relationship.Key) ? (new(null, [], relationship.Key), name)
+                : chosenChannelKey is { } only ? (new(only, []), name)
+                : (null, null);
         }
 
         if (chosenChannelKey is { } channelKey
@@ -1798,6 +1808,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenProcesses.Clear();
         graphSelection = null;
         describesRow = false;
+        ForgetRelationship();
         if (ladder.Current.Level == DetailLevel.Machine && selectedRung is not null)
         {
             // A machine-rung row is a group; an aggregate spans groups, so no row stands for it.
@@ -1818,6 +1829,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenProcesses.Clear();
         graphSelection = null;
         describesRow = false;
+        ForgetRelationship();
         if (syncRow && ladder.Current.Level == DetailLevel.Machine
             && RungRows.FirstOrDefault(row => row.Key == groupKey) is { } row)
         {
@@ -3005,6 +3017,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
+            if (value is not null) ForgetRelationship();
             chosenChannelKey = ladder.Current.Level == DetailLevel.ProcessInstance && value is not null
                 && wholeSnapshot.Channels.Any(channel => string.Equals(channel.Key, value.Key, StringComparison.Ordinal))
                     ? value.Key : null;
@@ -3042,6 +3055,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         get
         {
+            if (selectedRelationship is { } chosen) return $"A double click on its edge, or Enter on its row, opens {chosen.Opens}";
             if (DescribedRow is not { } row) return string.Empty;
             string enter = RpcChannelKeys.TryParseChannel(row.Key, out _, out _, out _) ? "Enter lists its calls"
                 : row.Source.DescendsTo switch
@@ -3099,20 +3113,142 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
+    /// <summary>
+    /// The relationship chosen in the table, or by a click on its edge (§6.7): the selection while it is the latest choice.
+    /// Its edge is haloed, the inspector describes it, and the timeline highlights its records - its channel's when it rests
+    /// on one, its linked calls when calls link it. Choosing anything else, or moving to another rung, lets it go; a new
+    /// count or bytes read restate its row, never the choice.
+    /// </summary>
     public RelationshipRow? SelectedRelationship
     {
         get => selectedRelationship;
         set
         {
-            selectedRelationship = value;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(SelectedRelationshipExplanation));
-            OnPropertyChanged(nameof(HasSelectedRelationship));
-            if (value is not null)
+            // While the table restates its rows the list lets its choice go for a moment; the choice is kept by key instead.
+            if (restatingRelationships || ReferenceEquals(selectedRelationship, value))
             {
-                SelectProcess(value.SourceId);
+                return;
             }
+
+            if (value is null)
+            {
+                // Unchosen in the table, it takes its edge's halo and its records' highlight with it.
+                ForgetRelationship();
+                return;
+            }
+
+            // The relationship is the selection now, in place of a process, group, aggregate, set or described row.
+            SelectedProcess = null;
+            selectedClusterKey = null;
+            selectedGroupKey = null;
+            chosenProcesses.Clear();
+            graphSelection = null;
+            describesRow = false;
+            chosenChannelKey = OnlyChannelOf(value.Key);
+            selectedRelationship = value;
+            RaiseRelationshipChosen();
         }
+    }
+
+    /// <summary>
+    /// §6.7's click on an edge: chooses the one relationship it stands for, as choosing its row in the table does. An
+    /// aggregate edge stands for several and chooses none.
+    /// </summary>
+    public bool SelectGraphEdge(string edgeKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
+        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is not { Relationships.Count: 1 } drawn
+            || relationships.FirstOrDefault(row => row.Key == drawn.Relationships[0]) is not { } row)
+        {
+            return false;
+        }
+
+        SelectedRelationship = row;
+        return true;
+    }
+
+    /// <summary>The one channel a relationship rests on, whose records the timeline then highlights; null for none or several.</summary>
+    private string? OnlyChannelOf(string relationshipKey)
+    {
+        string? only = null;
+        foreach (Channel channel in wholeSnapshot.Channels)
+        {
+            if (!string.Equals(channel.EdgeKey, relationshipKey, StringComparison.Ordinal)) continue;
+            if (only is not null) return null;
+            only = channel.Key;
+        }
+
+        return only;
+    }
+
+    /// <summary>
+    /// Lets the chosen relationship go, as choosing anything else or moving to another rung does, with the channel whose
+    /// records it highlighted. It restates only what described the relationship and the timeline's highlight; the choice
+    /// that replaces it says what it is itself.
+    /// </summary>
+    private void ForgetRelationship()
+    {
+        if (selectedRelationship is null) return;
+        selectedRelationship = null;
+        chosenChannelKey = null;
+        RaiseRelationshipDescribed();
+        OnPropertyChanged(nameof(HighlightedEdgeKey));
+        UpdateHighlight();
+    }
+
+    /// <summary>
+    /// Rebuilds the relationship table's rows for a new count or bytes read, keeping the relationship chosen in it by key:
+    /// the rows are restated, never the choice. A brush keeps every relationship listed, but one no longer listed would
+    /// let the choice go.
+    /// </summary>
+    private void RestateRelationships()
+    {
+        string? chosen = selectedRelationship?.Key;
+        relationships = RelationshipRows();
+        RelationshipRow? kept = chosen is null ? null : relationships.FirstOrDefault(row => row.Key == chosen);
+        restatingRelationships = true;
+        try
+        {
+            OnPropertyChanged(nameof(Relationships));
+        }
+        finally
+        {
+            restatingRelationships = false;
+        }
+
+        if (chosen is null)
+        {
+            return;
+        }
+
+        if (kept is null)
+        {
+            ForgetRelationship();
+            return;
+        }
+
+        selectedRelationship = kept;
+        RaiseRelationshipDescribed();
+    }
+
+    /// <summary>A person's choice of a relationship: the graph, the inspector and the timeline's highlight all follow it.</summary>
+    private void RaiseRelationshipChosen()
+    {
+        RaiseRelationshipDescribed();
+        OnPropertyChanged(nameof(HighlightedEdgeKey));
+        RaiseGraphSelectionChanged();
+    }
+
+    /// <summary>What states the chosen relationship: its row's choice in the table, the line beneath it, and the inspector.</summary>
+    private void RaiseRelationshipDescribed()
+    {
+        OnPropertyChanged(nameof(SelectedRelationship));
+        OnPropertyChanged(nameof(SelectedRelationshipExplanation));
+        OnPropertyChanged(nameof(HasSelectedRelationship));
+        OnPropertyChanged(nameof(SelectionTitle));
+        OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(SelectionActions));
+        OnPropertyChanged(nameof(HasSelectionActions));
     }
 
     /// <summary>
@@ -3159,6 +3295,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 chosenProcesses.Clear();
                 graphSelection = null;
                 describesRow = false;
+                ForgetRelationship();
             }
 
             OnPropertyChanged();
@@ -3174,13 +3311,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public TimeRange? SelectedInterval => selectedInterval;
 
-    public string SelectionTitle => DescribedRow is { } row ? row.Source.Label
+    public string SelectionTitle => selectedRelationship is { } chosen ? $"{chosen.Source} ↔ {chosen.Target}"
+        : DescribedRow is { } row ? row.Source.Label
         : HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
         : SelectedCluster is { } cluster ? cluster.Label
         : SelectedGroup is { } group ? group.Name
         : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
 
-    public string SelectionSubtitle => DescribedRow is { } row ? DescribeRow(row)
+    public string SelectionSubtitle => selectedRelationship is { } chosen ? $"{chosen.Mechanism} · {chosen.Explanation}"
+        : DescribedRow is { } row ? DescribeRow(row)
         : HasMultiSelection ? DescribeChosen()
         : SelectedCluster is { } cluster ? DescribeCluster(cluster)
         : SelectedGroup is { } group ? DescribeGroup(group)
@@ -4036,6 +4175,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedGroupKey = null;
         chosenChannelKey = null;
         graphSelection = null;
+        ForgetRelationship();
         if (selectedProcess is not null)
         {
             // The set replaces the single selection; the coordinator's cleared process does not clear the set.
@@ -4250,6 +4390,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenChannelKey = null;
         chosenProcesses.Clear();
         graphSelection = null;
+        ForgetRelationship();
         selection.Clear();
         RaiseGraphSelectionChanged();
     }
@@ -4274,7 +4415,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         graphSelection = null;
         RefreshGraphDisplay();
 
-        // The relationship table lists what the rung's graph draws.
+        // The relationship table lists what the rung's graph draws; a relationship chosen at the rung left goes with it.
+        ForgetRelationship();
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
         OnPropertyChanged(nameof(RelationshipTableScope));
@@ -4460,7 +4602,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         get
         {
             if (IsEvidenceRung) return evidence?.Scope.ContributingEdgeKey;
-            if (ladder.Current.Level != DetailLevel.Channel || ladder.Current.Focus is not { } focus) return null;
+
+            // Elsewhere than a channel's rung, the relationship chosen in the table or by a click on its edge is haloed.
+            if (ladder.Current.Level != DetailLevel.Channel || ladder.Current.Focus is not { } focus) return selectedRelationship?.Key;
 
             // The graph reads this on every repaint of a channel rung, so it is a plain scan rather than a query (R11).
             IReadOnlyList<Channel> channels = Snapshot.Channels;
@@ -5430,14 +5574,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             graphDisplay = ScopeGraph(wholeDisplay, scoped);
         }
         view = ProjectLadder();
-        relationships = RelationshipRows();
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(GraphSummary));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
         OnPropertyChanged(nameof(Snapshot));
         OnPropertyChanged(nameof(IsRankedWithinInterval));
         OnPropertyChanged(nameof(RankingScopeText));
-        OnPropertyChanged(nameof(Relationships));
+        RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
@@ -5553,6 +5696,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             chosenProcesses.Clear();
             graphSelection = null;
             describesRow = false;
+            ForgetRelationship();
         }
 
         OnPropertyChanged(nameof(SelectedProcess));

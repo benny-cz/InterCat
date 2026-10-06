@@ -69,8 +69,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private void RefreshDescribedBytes()
     {
-        relationships = RelationshipRows();
-        OnPropertyChanged(nameof(Relationships));
+        RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(LevelSummary));

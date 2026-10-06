@@ -262,13 +262,32 @@ public sealed class RpcScopeTests
         Assert.Contains(source.Name, workspace.Crumbs[^1].Label, StringComparison.Ordinal);
         Assert.Equal(3, workspace.Crumbs.Count);
 
+        // There, the relationship chosen and then one of the process's own RPC channels: the channel replaces it.
+        await workspace.RpcReady;
+        workspace.SelectedRelationship = Assert.Single(workspace.Relationships, candidate => candidate.Key == relationship.Key);
+        workspace.SelectedRung = workspace.RungRows.First(candidate => RpcChannelKeys.IsRpc(candidate.Key));
+        Assert.Equal((null, null), (workspace.SelectedRelationship, workspace.HighlightedEdgeKey));
+
         // Its row in the relationship table says what Enter opens, and opens the same.
         workspace.ReturnTo(0);
         RelationshipRow row = Assert.Single(workspace.Relationships, candidate => candidate.Key == relationship.Key);
         Assert.Equal("the calls its links join", row.Opens);
+
+        // Chosen, it is the selection: its edge is haloed, and the timeline highlights its linked calls, read by its key.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
         workspace.SelectedRelationship = row;
         Assert.EndsWith(" Enter opens the calls its links join.", workspace.SelectedRelationshipExplanation, StringComparison.Ordinal);
+        Assert.Equal(relationship.Key, workspace.HighlightedEdgeKey);
+        await workspace.HighlightReady;
+        Assert.Equal(8, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal($"{row.Source} ↔ {row.Target}", workspace.TimelineHighlightName);
+
+        // Clearing the selection lets it go, as opening it does once it is open.
+        workspace.ClearSelection();
+        Assert.Null(workspace.SelectedRelationship);
+        workspace.SelectedRelationship = row;
         Assert.True(workspace.OpenSelectedRelationship());
+        Assert.Null(workspace.SelectedRelationship);
         await workspace.EvidenceReady;
         Assert.Equal(calls, workspace.EvidenceScopeText);
         Assert.Equal(8, workspace.RungRows.Count);

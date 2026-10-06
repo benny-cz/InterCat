@@ -492,6 +492,10 @@ public sealed class GraphLayoutIntegrationTests
             line => line.StartsWith("Double-click", StringComparison.Ordinal));
         Assert.False(viewModel.OpenGraphEdge(aggregate.Key));
         Assert.Single(viewModel.Crumbs);
+
+        // A click on it chooses none of them either.
+        Assert.False(viewModel.SelectGraphEdge(aggregate.Key));
+        Assert.Null(viewModel.SelectedRelationship);
     }
 
     [Fact(DisplayName = "§3.2: a focus claims peers only when it has some, and says when its processes are drawn as fewer nodes")]
