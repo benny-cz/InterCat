@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 364 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 365 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 365 — the command line's tables name mechanisms and states as the window does (R5):**
+  - `icat timeline`, `session`, `capabilities` and a content request's preview printed "Tcp", "PartialGap" and
+    "ProcessLifecycle, ThreadLifecycle, Udp"; they now read "TCP", "partial gap, not extrapolated" and "process
+    lifecycle, thread lifecycle, UDP", from the one mapping the window's rows and hover cards read
+    (`CoverageStateText`, `MechanismText`). `icat session` names the epoch of each line of losses.
 
 - **Revision 364 — a coverage state is said in words wherever a caveat states one (R5):**
   - Notes and caveats printed enumeration names, "RPC's capture coverage over this scope is UnknownCoverage", and
@@ -1033,9 +1039,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      --interval` still states no coverage for its range, and a selected record's own coverage has no place in the
      inspector yet.
    - One display mapping per dimension (R5): done in revision 364 for a mechanism's names (`MechanismText`) and for
-     its coverage in a sentence (`SessionCoverage.Sentence`), which every caveat and note now says. The window's row
-     labels for a coverage state, kept twice (`WorkspaceRows`, `LadderRows`), and `icat timeline`'s coverage column,
-     which prints the enumeration's name, are not yet that mapping.
+     its coverage in a sentence (`SessionCoverage.Sentence`), which every caveat and note now says, and in revision
+     365 for a coverage state's label and value (`CoverageStateText`), which the window's rows and hover cards and
+     the command line's tables read. JSON documents keep the enumerations' names for a tool. A layer, an observation's
+     kind and a capability's tier are still printed by their enumeration's name in `icat session` and `icat
+     capabilities`.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
@@ -1074,6 +1082,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 365 was built and tested in the same Linux container: Debug and Release each ran **1,634 tests**, Debug
+  passing **1,536 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read every
+  mechanism's name for a lane and for a sentence and every state's value and label, and the command line's tables over a
+  capture with two epochs: `icat timeline`'s buckets; `icat session`'s summary, coverage table, list of what was not
+  collected, each epoch's losses and rows; `icat capabilities`' mechanisms; and a content request's preview, none naming
+  an enumeration. A test that had pinned "mostly Named pipe" in the inspector now reads "named pipe". They caught each
+  of 18 mutations:
+  - a partial gap's value without its qualifier, unknown's value and label exchanged, and a label taking another
+    state's value;
+  - a named pipe keeping its capital in a sentence, and an abbreviation lowered;
+  - the window's rows, and a process's explanation, stating the enumeration;
+  - by their enumeration: the timeline table's mechanism or coverage, the session's summary, coverage table, list of
+    what was not collected or rows, the capabilities table's mechanism or coverage, and the content request's mechanism;
+  - each epoch's losses unlabelled.
+
+  Release passed 1,535: it also failed revision 342's lane-scale window test once, at its pixel check after a descent,
+  the second recorded failure and the first since revision 357 made it wait for the timeline's detail after each
+  descent. It passed six runs alone and a rerun of the whole Release window suite, so it is intermittent and not this
+  slice's; revision 366 takes it up.
 
 - Revision 364 was built and tested in the same Linux container: Debug and Release each ran **1,632 tests**,
   passing **1,534 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read the

@@ -121,10 +121,10 @@ internal static class CapabilitiesCommand
         {
             mechanismRows.Add(
             [
-                mechanism.Mechanism.ToString(),
+                MechanismText.Name(mechanism.Mechanism),
                 mechanism.State.ToString(),
                 mechanism.Tier.ToString(),
-                mechanism.Coverage.ToString(),
+                CoverageStateText.Value(mechanism.Coverage),
                 mechanism.Measurement is null ? "none" : mechanism.Measurement.FixtureId,
             ]);
         }

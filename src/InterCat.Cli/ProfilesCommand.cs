@@ -391,7 +391,7 @@ internal static class ProfilesCommand
             ContentCaptureDecision content = plan.Content;
             ConsoleUi.Heading("Content request boundaries");
             ConsoleUi.Field("Source", content.SourceId);
-            ConsoleUi.Field("Mechanism", content.Mechanism.ToString());
+            ConsoleUi.Field("Mechanism", MechanismText.Name(content.Mechanism));
             ConsoleUi.Field("Process selectors", string.Join(", ", content.ProcessIds));
             ConsoleUi.Field("Channel selectors", string.Join(", ", content.ChannelSelectors));
             ConsoleUi.Field("Per-record limit", ConsoleUi.Bytes(content.MaximumRecordBytes));

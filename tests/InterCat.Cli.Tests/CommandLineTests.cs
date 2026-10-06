@@ -881,6 +881,46 @@ public sealed class CommandLineTests : IDisposable
             answer);
     }
 
+    [Fact(DisplayName = "R5: icat's tables name a mechanism and a coverage state as the window does, never by the enumeration")]
+    public async Task TablesNameMechanismsAndCoverageInWords()
+    {
+        using TemporarySession gapped = Gapped();
+
+        // A timeline's buckets: the mechanism a bucket mostly holds and the capture's coverage there, in the window's words.
+        (InterCatExitCode code, string answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered$", answer);
+        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown$", answer);
+
+        // A session's summary, its coverage table and what was not collected, each epoch's losses named for it.
+        (code, answer, _) = await Run("session", gapped.Path, "--rows", "2");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Mechanisms +TCP$", answer);
+        Assert.Matches(@"(?m)^  TCP +covered +2 records from its 1 admitted descriptor", answer);
+        Assert.Contains("says nothing about their activity: process lifecycle, thread lifecycle, UDP, Unix socket, named pipe,",
+            answer, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Epoch 1 reported lost +Source session 0 records", answer);
+        Assert.Matches(@"(?m)^  Epoch 2 undecodable +0$", answer);
+        Assert.Matches(@"(?m)^  10 +TCP +Send +100 ", answer);
+
+        // A machine's mechanisms, and a content request's.
+        (_, answer, _) = await Run("capabilities");
+        Assert.Matches(@"(?m)^  TCP +\S+ +\S+ +unknown +none$", answer);
+        Assert.Matches(@"(?m)^  Named pipe +", answer);
+        (_, answer, _) = await Run("profiles", "content", "--source", "etw/manifest/Microsoft-Windows-WinINet-Capture",
+            "--mechanism", "http", "--pid", "1234", "--channel", "*", "--max-record-bytes", "4096", "--max-session-bytes", "65536",
+            "--retention", "stop-at-limit", "--inspection", "hex-text");
+        Assert.Matches(@"(?m)^  Mechanism +HTTP$", answer);
+
+        // None of them names a mechanism or a state by its enumeration.
+        foreach (string[] asked in (string[][])[["timeline", gapped.Path, "--interval", "0:60", "--columns", "6"], ["session", gapped.Path, "--rows", "2"],
+            ["capabilities"]])
+        {
+            (_, answer, _) = await Run(asked);
+            Assert.DoesNotMatch(@"\b(Tcp|Udp|NamedPipe|ProcessLifecycle|UnknownCoverage|PartialGap|NotCollected)\b", answer);
+        }
+    }
+
     /// <summary>A capture that delivered readings from 0 to 20 and from 40 to 60, and none between, and lost nothing.</summary>
     private static TemporarySession Gapped()
     {

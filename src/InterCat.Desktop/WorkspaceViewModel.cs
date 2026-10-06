@@ -3462,7 +3462,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     node.Observations - Snapshot.Edges
                         .Where(edge => edge.Mechanism == Mechanism.Rpc && (members.Contains(edge.SourceId) || members.Contains(edge.TargetId)))
                         .Sum(edge => edge.ObservationCount)),
-                "Coverage: " + DescribeCoverage(coverage),
+                "Coverage: " + CoverageStateText.Value(coverage),
                 node.Kind == GraphNodeKind.Context
                     ? "Size: fixed; the rest of the machine is not read on this focus's scale"
                     : node.Unmeasured
@@ -3544,7 +3544,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : "Direction: display order only, not who initiated or sent");
         }
 
-        lines.Add("Coverage: " + DescribeCoverage(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
+        lines.Add("Coverage: " + CoverageStateText.Value(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
             : channels.Length == 0 ? CoverageState.UnknownCoverage : Worst(channels.Select(channel => channel.Coverage))));
         lines.Add(drawn.Unmeasured
             ? "Thickness: none · its sends recorded no size, so it is drawn as an open cross-hatched band, unknown rather than zero"
@@ -3800,7 +3800,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ReadBytesOf(scope, bucket.Interval) is { } read ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(read)
             : ReadsBytes ? "Bytes: not summed by the timeline · the interval table (T) reads those of what it lists"
             : "Bytes: unknown · this timeline counts records");
-        lines.Add("Coverage: " + DescribeCoverage(bucket.Coverage)
+        lines.Add("Coverage: " + CoverageStateText.Value(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));
         lines.Add(resolution ?? (zoomed
             ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own count, {timelineDetail!.Buckets.Count:N0} buckets")
@@ -3824,15 +3824,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         return worst;
     }
-
-    private static string DescribeCoverage(CoverageState coverage) => coverage switch
-    {
-        CoverageState.Covered => "covered",
-        CoverageState.ReducedFidelity => "reduced fidelity",
-        CoverageState.PartialGap => "partial gap, not extrapolated",
-        CoverageState.NotCollected => "not collected",
-        _ => "unknown",
-    };
 
     /// <summary>The name an L2 source-direction row, its selector entry and its table scope share.</summary>
     internal static string DirectionLabel(Direction direction) => direction switch

@@ -564,7 +564,7 @@ public sealed class GraphLayoutIntegrationTests
 
         // The tour's cache talks over a pipe and a shared section, neither of which measured a byte.
         viewModel.SelectProcess(new ProcessInstanceId(Guid.Parse("25ecf72c-7d72-4421-943e-eb6d66cd2fe8")));
-        Assert.Equal("95 own records, mostly Named pipe · 188 observations on 2 relationships · bytes unknown",
+        Assert.Equal("95 own records, mostly named pipe · 188 observations on 2 relationships · bytes unknown",
             viewModel.EvidenceSummary);
     }
 

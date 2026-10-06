@@ -671,7 +671,7 @@ internal static class SessionCommand
                 coverage.MinNativeTicks is null
                     ? "none"
                     : $"[{coverage.MinNativeTicks:N0}, {coverage.MaxNativeTicks:N0}] source ticks");
-            ConsoleUi.Field("Mechanisms", coverage.Mechanisms.Count == 0 ? "none" : string.Join(", ", coverage.Mechanisms));
+            ConsoleUi.Field("Mechanisms", coverage.Mechanisms.Count == 0 ? "none" : string.Join(", ", coverage.Mechanisms.Select(MechanismLabel)));
             ConsoleUi.Field("Layers", coverage.Layers.Count == 0 ? "none" : string.Join(", ", coverage.Layers));
         }
 
@@ -887,11 +887,13 @@ internal static class SessionCommand
         [
             .. ledger.Mechanisms.Where(entry => entry.State == nameof(CoverageState.NotCollected)).Select(entry => entry.Mechanism),
         ];
-        ConsoleUi.Table(["Mechanism", "Coverage", "Why"], [.. collected.Select(entry => new[] { entry.Mechanism, Words(entry.State), entry.Reason })]);
+        // Mechanisms and states named as the window names them (R5); the document keeps the enumeration's names for a tool.
+        ConsoleUi.Table(["Mechanism", "Coverage", "Why"],
+            [.. collected.Select(entry => new[] { MechanismLabel(entry.Mechanism), StateValue(entry.State), entry.Reason })]);
         if (notCollected.Count > 0)
         {
-            ConsoleUi.Line(
-                $"  Not collected, so an absence of their records says nothing about their activity: {string.Join(", ", notCollected)}.");
+            ConsoleUi.Line("  Not collected, so an absence of their records says nothing about their activity: "
+                + $"{string.Join(", ", notCollected.Select(MechanismInSentence))}.");
         }
 
         Dictionary<Guid, string> names = facts.Epochs
@@ -934,10 +936,22 @@ internal static class SessionCommand
                 epoch.Losses.Select(loss => loss.Layer == LossLayer.ConsumerBuffers
                     ? $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} buffers"
                     : $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} records"));
-            ConsoleUi.Field("Reported lost", losses.Length == 0 ? "nothing reported" : losses);
-            ConsoleUi.Field("Undecodable", ConsoleUi.Count(undecodable));
+            // Each epoch's losses are its own: with several, each line names the epoch it is of.
+            string of = facts.Epochs.Count == 1 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"Epoch {epoch.Epoch} ");
+            ConsoleUi.Field(of.Length == 0 ? "Reported lost" : of + "reported lost", losses.Length == 0 ? "nothing reported" : losses);
+            ConsoleUi.Field(of.Length == 0 ? "Undecodable" : of + "undecodable", ConsoleUi.Count(undecodable));
         }
     }
+
+    /// <summary>A mechanism the document names by its enumeration, as a lane names it: "TCP", "Process".</summary>
+    private static string MechanismLabel(string name) => Enum.TryParse(name, out Mechanism mechanism) ? MechanismText.Name(mechanism) : name;
+
+    /// <summary>A mechanism the document names by its enumeration, as a sentence names it: "TCP", "process lifecycle".</summary>
+    private static string MechanismInSentence(string name) =>
+        Enum.TryParse(name, out Mechanism mechanism) ? MechanismText.InSentence(mechanism) : name;
+
+    /// <summary>A coverage state the document names by its enumeration, as the window says it: "partial gap, not extrapolated".</summary>
+    private static string StateValue(string name) => Enum.TryParse(name, out CoverageState state) ? CoverageStateText.Value(state) : name;
 
     /// <summary>Splits a PascalCase name into lower-case words, e.g. "etl import".</summary>
     private static string Words(string identifier)
@@ -976,7 +990,7 @@ internal static class SessionCommand
                     return new[]
                     {
                         row.NativeTicks.ToString("N0", CultureInfo.CurrentCulture),
-                        row.Mechanism.ToString(),
+                        MechanismText.Name(row.Mechanism),
                         row.Kind.ToString(),
                         EvidenceRowText.OwnerProcessId(row)?.ToString(CultureInfo.CurrentCulture) ?? "unknown",
                         row.ByteValue is { } value

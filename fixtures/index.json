@@ -1672,9 +1672,11 @@
       ],
       "R5": [
         "R5: a channel row names its mechanism and direction in words, never an enumeration name",
+        "R5: a mechanism and a coverage state each have one set of names, for a lane, a sentence and a label",
         "R5: a mechanism's coverage is said in one sentence form wherever a layer states it, never as an enumeration's name",
         "R5: icat metric states its coverage in the inspector's words, and names a mechanism as the window does",
         "R5: icat overview and icat processes number a reused PID's holders alike, as the window does",
+        "R5: icat's tables name a mechanism and a coverage state as the window does, never by the enumeration",
         "R5: initial normative wire codes stay stable",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields"
       ],

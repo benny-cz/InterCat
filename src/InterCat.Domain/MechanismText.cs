@@ -30,11 +30,25 @@ public static class MechanismText
         _ => mechanism.ToString(),
     };
 
-    /// <summary>A mechanism as a sentence names it: "TCP", and "process lifecycle" where a lane says "Process".</summary>
+    /// <summary>
+    /// A mechanism as a sentence names it: "TCP", "named pipe", and "process lifecycle" where a lane says "Process". A
+    /// word keeps its capital only where it is a name or an abbreviation: "Unix socket", "COM activation".
+    /// </summary>
     public static string InSentence(Mechanism mechanism) => mechanism switch
     {
         Mechanism.ProcessLifecycle => "process lifecycle",
         Mechanism.ThreadLifecycle => "thread lifecycle",
+        Mechanism.NamedPipe => "named pipe",
+        Mechanism.AnonymousPipe => "anonymous pipe",
+        Mechanism.SharedSection => "shared section",
+        Mechanism.Synchronization => "synchronization",
+        Mechanism.WindowMessage => "window message",
+        Mechanism.Clipboard => "clipboard",
+        Mechanism.Mailslot => "mailslot",
+        Mechanism.RemoteFileOrSmb => "remote file",
+        Mechanism.ApplicationSdk => "application SDK",
+        Mechanism.Instrumented => "instrumented",
+        Mechanism.UnknownMechanism => "unknown mechanism",
         _ => Name(mechanism),
     };
 }

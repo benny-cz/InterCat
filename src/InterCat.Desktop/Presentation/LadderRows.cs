@@ -160,7 +160,7 @@ public static class LadderRowBuilder
                 row.KnownBytes is null && !bytesSummed ? string.Empty : WorkspaceRowBuilder.DescribeBytes(row.KnownBytes),
                 tokens.Label,
                 tokens.Glyph,
-                DescribeCoverage(row.Coverage),
+                CoverageStateText.Label(row.Coverage),
                 NavigationState.Name(row.DescendsTo),
                 row)
             {
@@ -401,15 +401,6 @@ public static class LadderRowBuilder
             ? Spoken.Count(total, "observation") + " · " + WorkspaceRowBuilder.DescribeBytes(view.KnownBytes)
             : "no single total: these rows overlap";
     }
-
-    private static string DescribeCoverage(CoverageState coverage) => coverage switch
-    {
-        CoverageState.Covered => "covered",
-        CoverageState.ReducedFidelity => "reduced fidelity",
-        CoverageState.PartialGap => "partial gap, not extrapolated",
-        CoverageState.NotCollected => "not collected",
-        _ => "unknown coverage",
-    };
 }
 
 /// <summary>How much of what a ranked row stands for is in §6.7's multi-selection.</summary>

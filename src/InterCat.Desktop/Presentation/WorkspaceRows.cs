@@ -225,7 +225,7 @@ public static class WorkspaceRowBuilder
                 bytesOf is null ? DescribeBytes(bucket.KnownBytes) : bytesOf(bucket),
                 tokens.Label,
                 tokens.Glyph,
-                DescribeCoverage(bucket.Coverage))
+                CoverageStateText.Label(bucket.Coverage))
             {
                 ObservationCount = bucket.ObservationCount,
                 FocusCount = focusCount,
@@ -486,8 +486,7 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>A coverage state as a sentence ends with it: "covered", "partial gap, not extrapolated", "unknown".</summary>
-    private static string CoverageWords(CoverageState coverage) =>
-        Spoken.Coverage(DescribeCoverage(coverage))["coverage: ".Length..];
+    private static string CoverageWords(CoverageState coverage) => CoverageStateText.Value(coverage);
 
     private static string DescribeStrength(RelationStrength strength) => strength switch
     {
@@ -496,14 +495,5 @@ public static class WorkspaceRowBuilder
         RelationStrength.Candidate => "candidate",
         RelationStrength.Unresolved => "unresolved",
         _ => "conflicting",
-    };
-
-    private static string DescribeCoverage(CoverageState coverage) => coverage switch
-    {
-        CoverageState.Covered => "covered",
-        CoverageState.ReducedFidelity => "reduced fidelity",
-        CoverageState.PartialGap => "partial gap, not extrapolated",
-        CoverageState.NotCollected => "not collected",
-        _ => "unknown coverage",
     };
 }

@@ -146,8 +146,8 @@ internal static class TimelineCommand
         {
             WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
             ConsoleUi.Count(bucket.ObservationCount),
-            bucket.ObservationCount == 0 ? "-" : bucket.DominantMechanism.ToString(),
-            bucket.Coverage.ToString(),
+            bucket.ObservationCount == 0 ? "-" : MechanismText.Name(bucket.DominantMechanism),
+            CoverageStateText.Value(bucket.Coverage),
         };
         if (measured is not null)
         {
