@@ -3951,14 +3951,25 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// What the inspector's evidence line describes: the chosen relationship, processes or row, or the selected aggregate,
-    /// group or process.
+    /// group or process; with nothing selected in a published session, the records E then lists, the rung's own.
     /// </summary>
     public string EvidenceHeading => selectedRelationship is not null ? "Selected relationship"
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : SelectedCluster is not null ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
+        : RungRecords is not null ? "Records E lists"
         : "Selected process";
+
+    /// <summary>
+    /// With nothing selected in a published session, the rung's own records, as E reads them over the scope the rows count
+    /// (§6.4, I5): "Every admitted record in this session", "Records owned by the 2 instances of client.exe". Null with a
+    /// selection, in the tour, and at the evidence rung, whose records are listed already.
+    /// </summary>
+    private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
+        && selectedRelationship is null && SelectedCluster is null && SelectedGroup is null && ChosenRow is null
+            ? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport }).Description
+            : null;
 
     public string EvidenceSummary
     {
@@ -3996,7 +4007,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : selectedProcess is { } process ? [process.Id] : [];
             if (scope.Count == 0)
             {
-                return "No evidence selected";
+                return RungRecords ?? "No evidence selected";
             }
 
             // What the selection made comes first, as the ranked table counts it; what its relationships carry, from both

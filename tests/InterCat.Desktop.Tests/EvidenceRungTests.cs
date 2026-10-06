@@ -1004,7 +1004,7 @@ public sealed class EvidenceRungTests
         Publish(session.Store, Rows());
         using WorkspaceViewModel workspace = Open(session);
         Channel channel = workspace.Snapshot.Channels.Single();
-        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
 
         // Chosen, its records are what the inspector counts, both ends', with what was sent across its one channel.
         workspace.SelectedRelationship = Assert.Single(workspace.Relationships);
@@ -1105,6 +1105,51 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.StartsWith("Records owned by " + server.NameWithPid, workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.4: with nothing selected the evidence card names the records E then lists, the rung's own, over the scope the rows count")]
+    public async Task WithNothingSelectedTheCardNamesWhatEListsNext()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+
+        // The machine rung with nothing chosen: every admitted record, as E lists them.
+        Assert.Equal(("Records E lists", "Every admitted record in this session"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await AssertEListsWhatTheCardNames(workspace);
+
+        // A group opened with nothing chosen there: its instances' records.
+        DescendTo(workspace, workspace.Snapshot.Groups.Single().Key);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+        Assert.StartsWith("Records owned by the 3 instances of ", workspace.EvidenceSummary, StringComparison.Ordinal);
+        await AssertEListsWhatTheCardNames(workspace);
+        Assert.True(workspace.Ascend());
+
+        // Under a brush, with the group the way back chose let go, the range they are counted in, which E reads.
+        workspace.ClearSelection();
+        workspace.SelectInterval(new TimeRange(10, 60));
+        await workspace.IntervalReady;
+        Assert.Equal("Every admitted record in this session · "
+            + WorkspaceTime.FormatRange(new TimeRange(10, 60), System.Globalization.CultureInfo.CurrentCulture), workspace.EvidenceSummary);
+        await AssertEListsWhatTheCardNames(workspace);
+
+        // A selection is what the card counts instead.
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.DoesNotContain("Every admitted record", workspace.EvidenceSummary, StringComparison.Ordinal);
+    }
+
+    /// <summary>E from the rung shown lists exactly the records the card names, and the way back lands where it began.</summary>
+    private static async Task AssertEListsWhatTheCardNames(WorkspaceViewModel workspace)
+    {
+        string named = workspace.EvidenceSummary;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(named, workspace.EvidenceScopeText);
+
+        // There the records are listed already, and E lists nothing further.
+        Assert.NotEqual("Records E lists", workspace.EvidenceHeading);
+        Assert.True(workspace.Ascend());
     }
 
     [Fact(DisplayName = "§6.4: a channel chosen among a process's rows under a brush counts the brush's records and the bytes read for it, which E lists")]

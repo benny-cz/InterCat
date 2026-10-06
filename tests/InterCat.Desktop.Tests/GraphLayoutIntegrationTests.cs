@@ -490,6 +490,8 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Contains(channel.Detail, viewModel.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal("Enter opens the channel", viewModel.SelectionActions);
         Assert.Equal("Selected process", viewModel.EvidenceHeading);
+        viewModel.ClearSelection();
+        Assert.Equal(("Selected process", "No evidence selected"), (viewModel.EvidenceHeading, viewModel.EvidenceSummary));
 
         // The context node says which of its relationships are drawn into it and which stay folded among its processes.
         viewModel.SelectGraphNode(viewModel.GraphDisplay.NodeOf(cache)!.Key);
