@@ -106,6 +106,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
+    // What the window showing a member wrote of its layout while the investigation was being read, which that reading may
+    // have missed.
+    private readonly Dictionary<Guid, WorkspaceLayout?> keptWhileReading = [];
+
     public InvestigationWindow(
         string path,
         Func<string, Task<bool>>? openSession,
@@ -183,6 +187,14 @@ internal sealed class InvestigationWindow : Window, IDisposable
                 new TextBlock { Text = row?.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = row?.Detail, FontSize = 11, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = row?.Time, FontSize = 11, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } },
+                new TextBlock
+                {
+                    Text = row?.Kept,
+                    FontSize = 11,
+                    TextWrapping = TextWrapping.Wrap,
+                    IsVisible = row?.Kept is not null,
+                    Classes = { "muted" },
+                },
                 new TextBlock
                 {
                     Text = row?.Reason,
@@ -570,11 +582,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
         loading = true;
         status.Text = message ?? "Looking for each session where it was last found…";
         Guid? selected = (members.SelectedItem as InvestigationMemberRow)?.SessionId;
+        keptWhileReading.Clear();
         try
         {
             CancellationToken token = lifetime.Token;
             InvestigationView view = await Task.Run(() => InvestigationRows.Describe(path, CultureInfo.CurrentCulture, token), token);
             if (closed) return;
+            view = keptWhileReading.Aggregate(view, (shown, kept) => WithKept(shown, kept.Key, kept.Value));
             View = view;
             summary.Text = view.Summary;
             time.Text = view.Time;
@@ -617,6 +631,42 @@ internal sealed class InvestigationWindow : Window, IDisposable
         {
             loading = false;
         }
+    }
+
+    /// <summary>
+    /// Says what the investigation at <paramref name="investigation"/> now keeps of member <paramref name="sessionId"/>'s
+    /// view, as the window showing it just wrote it (§26.3), in its row: without reading the investigation again, and kept
+    /// over a reading under way that may have missed it.
+    /// </summary>
+    internal void LayoutKept(string investigation, Guid sessionId, WorkspaceLayout? layout)
+    {
+        if (closed || !string.Equals(Path.GetFullPath(investigation), path,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        if (loading)
+        {
+            keptWhileReading[sessionId] = layout;
+        }
+
+        if (View is not { } view) return;
+        InvestigationView kept = WithKept(view, sessionId, layout);
+        if (ReferenceEquals(kept, view)) return;
+        Guid? selected = (members.SelectedItem as InvestigationMemberRow)?.SessionId;
+        View = kept;
+        members.ItemsSource = kept.Members;
+        members.SelectedItem = kept.Members.FirstOrDefault(row => row.SessionId == selected);
+    }
+
+    /// <summary>The view with member <paramref name="sessionId"/>'s row saying what <paramref name="layout"/> keeps; itself when it says so already.</summary>
+    private static InvestigationView WithKept(InvestigationView view, Guid sessionId, WorkspaceLayout? layout)
+    {
+        string? kept = InvestigationRows.Kept(layout, CultureInfo.CurrentCulture);
+        return view.Members.Any(row => row.SessionId == sessionId && row.Kept != kept)
+            ? view with { Members = [.. view.Members.Select(row => row.SessionId == sessionId ? row with { Kept = kept } : row)] }
+            : view;
     }
 
     /// <summary>Looks for candidate joins between the sessions, off the window's thread, and lists them with their evidence.</summary>

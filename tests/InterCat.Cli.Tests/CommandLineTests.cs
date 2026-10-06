@@ -492,8 +492,8 @@ public sealed class CommandLineTests : IDisposable
 
             (InterCatExitCode shown, string text, string said) = await Run("workspace", "show", workspace);
             Assert.True(shown == InterCatExitCode.Success, said);
-            Assert.Contains("1 node pinned on its graph, and its rows ranked by bytes sent per second, put back when it is opened "
-                + "from this investigation.", text, StringComparison.Ordinal);
+            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": 1 node pinned on its graph and its rows ranked by "
+                + "bytes sent per second, put back when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains("\"contract\": \"workspace-resolution-v16\"", json, StringComparison.Ordinal);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
@@ -503,7 +503,7 @@ public sealed class CommandLineTests : IDisposable
             // both in its document.
             InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [], DateTimeOffset.UtcNow,
                 evidencePolicy: EvidencePolicy.IncludeCandidates, scalesEachLane: true);
-            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": its records counted with candidates, and each "
+            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": its records counted with candidates and each "
                 + "of its timeline lanes on its own scale, put back when it is opened from this investigation.",
                 (await Run("workspace", "show", workspace)).Output, StringComparison.Ordinal);
             Assert.Contains("\"scalesEachLane\": true", (await Run("workspace", "show", workspace, "--json")).Output,

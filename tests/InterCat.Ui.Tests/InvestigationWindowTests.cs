@@ -92,7 +92,7 @@ public sealed class InvestigationWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, and gets them back when opened from it again")]
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again")]
     public async Task AnInvestigationKeepsASessionsPins()
     {
         using var root = new TemporaryDirectory();
@@ -106,12 +106,14 @@ public sealed class InvestigationWindowTests
         {
             InvestigationWindow window = main.ShowInvestigation(workspace);
             WaitFor(() => window.View is not null);
-            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 0;
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
             Button open = Named<Button>(window, "Open in InterCat");
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
             Assert.EndsWith("Its pins and view settings are kept in the investigation case.icat-workspace.",
                 main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.Null(window.View!.Members[0].Kept);
 
             // A node pinned on its graph is kept in the investigation, where it was put.
             var shown = (WorkspaceViewModel)main.DataContext!;
@@ -122,6 +124,13 @@ public sealed class InvestigationWindowTests
             await main.PinsWritten;
             WorkspacePin kept = Assert.Single(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins);
             Assert.Equal((key, 0.25, 0.75), (kept.Key, kept.X, kept.Y));
+
+            // The investigation's window says so in the session's row as it is written, without being read again.
+            const string Pinned = "Opens with 1 node pinned on its graph, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Pinned);
+            Assert.Equal(Pinned, KeptLine(list).Text);
+            Assert.Contains(Pinned, AutomationProperties.GetName(list.ContainerFromIndex(0)!), StringComparison.Ordinal);
+            Assert.Same(window.View!.Members[0], list.SelectedItem);
 
             // So is what its rows are ranked by, and whether per second (§26.3's sort), each as it is chosen.
             shown.RankBy = RankingMetric.BytesSent;
@@ -147,6 +156,15 @@ public sealed class InvestigationWindowTests
             await main.PinsWritten;
             Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
 
+            // The row lists all it keeps, as the investigation read again says it.
+            const string Everything = "Opens with 1 node pinned on its graph, its rows ranked by bytes sent per second, its records "
+                + "counted with candidates and each of its timeline lanes on its own scale, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Everything);
+            Assert.Equal(Everything, KeptLine(list).Text);
+            Save(window, "investigation-window-kept.png");
+            await window.RefreshAsync();
+            Assert.Equal(Everything, window.View!.Members[0].Kept);
+
             // Opened on its own, the session holds none of the investigation's pins, ranks by records, and counts correlated
             // evidence.
             Assert.True(await main.OpenSessionAsync(paired));
@@ -163,8 +181,9 @@ public sealed class InvestigationWindowTests
             Assert.Equal(place, again.GraphPins[key]);
             Assert.Equal((RankingMetric.BytesSent, true, EvidencePolicy.IncludeCandidates, true),
                 (again.RankBy, again.PerSecond, again.EvidencePolicy, again.ScalesEachLane));
-            Assert.Contains("which put back 1 pin, its ranking by bytes sent per second, its counting of candidates and each "
-                + "timeline lane on its own scale.", main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.Contains("which put back 1 node pinned on its graph, its rows ranked by bytes sent per second, its records "
+                + "counted with candidates and each of its timeline lanes on its own scale.", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
             Assert.True(main.GetControl<StackPanel>("EvidencePolicyPanel").IsVisible);
 
             // Released, the pin is gone and the ranking kept; ranked by records again, the investigation keeps no layout of it.
@@ -183,12 +202,37 @@ public sealed class InvestigationWindowTests
             ((WorkspaceViewModel)main.DataContext!).ScalesEachLane = false;
             await main.PinsWritten;
             Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+            // Keeping nothing, its row says nothing of it.
+            WaitFor(() => window.View!.Members[0].Kept is null);
+            Assert.False(KeptLine(list, visible: false).IsVisible);
+
+            // A layout written while the investigation is being read again is not lost to a reading that began before it.
+            Task reading = window.RefreshAsync();
+            window.LayoutKept(workspace, a, new WorkspaceLayout { SessionId = a, Pins = [], ScalesEachLane = true, UpdatedUtc = Committed });
+            await reading;
+            Assert.Equal("Opens with each of its timeline lanes on its own scale, as it was left here.", window.View!.Members[0].Kept);
+
+            // Only over that reading: the next one says what the file holds, which here was never written.
+            await window.RefreshAsync();
+            Assert.Null(window.View!.Members[0].Kept);
             window.Close();
         }
         finally
         {
             main.Close();
         }
+    }
+
+    /// <summary>The line of the first session's row that says what the investigation keeps of its view.</summary>
+    private static TextBlock KeptLine(ListBox list, bool visible = true)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        var row = (InvestigationMemberRow)list.Items[0]!;
+        TextBlock[] lines = [.. list.ContainerFromIndex(0)!.GetVisualDescendants().OfType<TextBlock>()];
+        return visible
+            ? lines.Single(line => line.IsVisible && line.Text == row.Kept)
+            : lines.Single(line => !line.IsVisible && line.Text is null && line.Classes.Contains("muted"));
     }
 
     [AvaloniaFact(DisplayName = "R22: a new investigation starts empty, and an existing file is opened, never written over")]

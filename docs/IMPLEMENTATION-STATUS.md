@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 346 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 347 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -73,10 +73,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | IC-018 query identity | Metrics identity frozen; CLI/Desktop export scopes share projection, and since revision 326 an evidence rung's pages and its export read its scope through one mapping, an RPC or HTTP key included | Full UI query identity, generation-aware numeric cache/cursors and coherent bundle publication. |
 | §11.3 sharing | All three presets, CLI and Desktop: the metadata-only report (`intercat-share-report-v1`), the reopenable redacted session package (`redacted-session-v1`) and the unredacted original evidence package (`original-evidence-package-v1`) | Redacted packages above 10,000,000 rows (an interval-scoped package), since revision 217 raised the bound from 1,000,000. |
 | M3 IPC breadth and content | Exit gate met for its measured scope ([review](reviews/M3-exit-review.md), revision 252) | Pipe and shared-section topology unavailable (to M7/M9); RPC over TCP, HTTP/2, compressed responses and asynchronous WinINet unmeasured; timing profile unavailable. |
-| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by, and since revision 277 candidate joins and the merged time name the generation of each capture they read (I16) | A known two-host exchange (needs a second host), alignment from shared markers. |
+| M4 multi-machine | In progress: since revision 253 an investigation's workspace (ADR-038) names separately valid sessions by identity, one member per capture, each resolved against where it was last found with the reason, never writing to one; a live capture's host identity includes its installation's. Since revision 254 (`workspace-v2`, ADR-039) a person aligns members to one member's clock with stated bounds, and `icat workspace compare` orders two members' instants only beyond their combined uncertainty. Since revision 255 (ADR-040) a live capture records its clock against the wall clock and its boot, and since revision 256 (`workspace-v3`) a workspace aligns one boot's captures exactly and others through their recorded wall clocks; since revision 257 the Desktop shows an investigation in a window of its own that lists, relinks, adds and opens its sessions; since revision 258 (ADR-041) `icat workspace correlate` proposes candidate joins between captures, since revision 259 the investigation window aligns sessions and lists candidates, since revision 260 (`workspace-v4`) a person's decisions about candidates are kept revisions, flagged when the alignments change, since revision 261 the window draws the merged time, a lane per session, since revision 262 two captures of one host that ran at once are flagged, since revision 263 (ADR-042) an investigation is packaged with its sessions, since revision 264 (`workspace-v5`) two instants a person reads in both measure the clocks' rate, since revision 265 (`workspace-v6`) a session is aligned through another, since revision 266 (`workspace-v7`) a person confirms two host identities are one host, since revision 267 the window compares two instants, since revision 268 it zooms the merged time and opens a column's records, since revision 269 (`workspace-v8`) candidates mirror through known address translations, since revision 270 (`workspace-v9`) a person keeps notes, pinned on the merged time, since revision 271 (`workspace-v10`) saved views of it, since revision 276 a capture that ends before its last publication, as a killed broker's does, still names its boot and start's wall clock to align by, since revision 277 candidate joins and the merged time name the generation of each capture they read (I16), and since revision 347 its window lists what it keeps of each session's view, as `icat workspace show` does | A known two-host exchange (needs a second host), alignment from shared markers. |
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 347 — an investigation's window says what it keeps of each session (§26.3):**
+  - `icat workspace show` listed each member's pins, ranking, evidence policy and lane scale; the window that opens
+    members listed none of them. Each member's row now says what opening it puts back, "Opens with 1 node pinned on
+    its graph and its rows ranked by bytes sent per second, as it was left here.", and changes as the main window
+    writes it. The command, the notice and the row say it in one set of words.
 
 - **Revision 346 — E lists a chosen set's records (§6.7):**
   - With several processes chosen, E listed one of them while the card counted the set. E now lists the set's records,
@@ -854,8 +860,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - Pins that survive reopening: done in revision 280 for a session opened from an investigation, which keeps them
      (`workspace-v11`); a session opened on its own keeps them while it is open. Sort, the ranking and whether it
      reads per second: done in revision 301, kept beside the pins (`workspace-v12`). Its evidence policy: done in
-     revision 339 (`workspace-v13`). Each lane's own scale: done in revision 343 (`workspace-v14`). §26.3's lane grouping and view filters have no control in the window yet, so
-     nothing of them is there to keep.
+     revision 339 (`workspace-v13`). Each lane's own scale: done in revision 343 (`workspace-v14`). Since revision 347 the investigation's window lists
+     what it keeps of each session, in the words `icat workspace show` and the notice use. §26.3's lane grouping and
+     view filters have no control in the window yet, so nothing of them is there to keep.
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
@@ -952,6 +959,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 347 was built and tested in the same Linux container: Debug and Release each ran **1,602 tests**, passing
+  **1,505 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of nineteen mutations. Seven were in the shared words: a series joined with ", and", per second, one node, a
+  reused PID's candidates or each lane's own scale left unsaid, a default ranking said, and a layout's pins counted as
+  none. One was `icat workspace show` saying nothing of a layout. The other eleven were in the windows: the notice
+  putting back nothing; no investigation window told of a write; a write told during a reading not kept, not put back,
+  or put back forever; the selection lost; another investigation's window told; the row's line hidden or left out of
+  its spoken name; a reading listing no kept layout; and the line saying what is kept without what it means.
 - Revision 346 was built and tested in the same Linux container: Debug and Release each ran **1,601 tests**, passing
   **1,504 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught the
   one mutation that matters, E ignoring the chosen set. A guard for a chosen relationship beside a set was dropped as

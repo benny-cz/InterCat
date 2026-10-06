@@ -1004,24 +1004,14 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// What an investigation put back of a session's pins and view settings, ending its notice: ", which put back 2 pins."
+    /// What an investigation put back of a session's pins and view settings, ending its notice in the words its window and
+    /// `icat workspace show` say them in: ", which put back 2 nodes pinned on its graph."
     /// </summary>
-    private static string PutBack(int pins, ViewSettings settings)
-    {
-        string? pinned = pins == 0 ? null : string.Create(CultureInfo.CurrentCulture, $"{pins:N0} {(pins == 1 ? "pin" : "pins")}");
-        string? ranked = settings.RankBy == RankingMetric.Records && !settings.PerSecond
-            ? null
-            : $"its ranking by {RankingMetrics.Phrase(settings.RankBy)}{(settings.PerSecond ? " per second" : string.Empty)}";
-        string? counted = settings.Policy == EvidencePolicy.IncludeCandidates ? "its counting of candidates" : null;
-        string? scaled = settings.ScalesEachLane ? "each timeline lane on its own scale" : null;
-        string[] restored = [.. new[] { pinned, ranked, counted, scaled }.OfType<string>()];
-        return restored.Length switch
-        {
-            0 => ".",
-            1 => $", which put back {restored[0]}.",
-            _ => $", which put back {string.Join(", ", restored[..^1])} and {restored[^1]}.",
-        };
-    }
+    private static string PutBack(int pins, ViewSettings settings) =>
+        WorkspaceLayout.Describe(pins, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
+            CultureInfo.CurrentCulture) is { Length: > 0 } restored
+            ? $", which put back {restored}."
+            : ".";
 
     /// <summary>
     /// Keeps the shown session's pins and view settings in the investigation it was opened from, when they changed: one
@@ -1043,7 +1033,7 @@ public sealed partial class MainWindow : Window, IDisposable
         keptSettings = settings;
         WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
         Task previous = pinsWritten;
-        pinsWritten = Task.Run(async () =>
+        Task<WorkspaceLayout?> written = Task.Run(async () =>
         {
             try
             {
@@ -1055,17 +1045,23 @@ public sealed partial class MainWindow : Window, IDisposable
                 // The earlier write said why it failed; this one tries afresh.
             }
 
-            InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, settings.RankBy,
+            return InvestigationWorkspace.SetLayout(home.Workspace, home.Session, layout, DateTimeOffset.UtcNow, settings.RankBy,
                 settings.PerSecond, settings.Policy, settings.ScalesEachLane);
         });
-        _ = SayIfPinsNotKeptAsync(pinsWritten);
+        pinsWritten = written;
+        _ = SayWhatIsKeptAsync(written, home);
     }
 
-    private async Task SayIfPinsNotKeptAsync(Task written)
+    /// <summary>
+    /// Once a layout is written, has each window showing its investigation say what it now keeps of the session; a write
+    /// that failed is said beside the session's status instead.
+    /// </summary>
+    private async Task SayWhatIsKeptAsync(Task<WorkspaceLayout?> written, (string Workspace, Guid Session) home)
     {
+        WorkspaceLayout? layout;
         try
         {
-            await written;
+            layout = await written;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
@@ -1076,6 +1072,13 @@ public sealed partial class MainWindow : Window, IDisposable
                 keptSettings = null;
                 CaptureDetail.Text += " The pins and view settings could not be kept in the investigation: " + exception.Message;
             }
+
+            return;
+        }
+
+        foreach (InvestigationWindow shown in OwnedWindows.OfType<InvestigationWindow>())
+        {
+            shown.LayoutKept(home.Workspace, home.Session, layout);
         }
     }
 

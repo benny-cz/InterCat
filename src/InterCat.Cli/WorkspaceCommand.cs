@@ -1037,15 +1037,8 @@ internal static partial class WorkspaceCommand
             ConsoleUi.Heading("Layouts");
             foreach (WorkspaceLayout layout in document.Layouts)
             {
-                string? pinned = layout.Pins.Count == 0 ? null : string.Create(CultureInfo.CurrentCulture,
-                    $"{layout.Pins.Count:N0} {(layout.Pins.Count == 1 ? "node" : "nodes")} pinned on its graph");
-                string? ranked = layout.RankBy is null && !layout.PerSecond ? null
-                    : $"its rows ranked by {RankingMetrics.Phrase(layout.RankBy ?? RankingMetric.Records)}{(layout.PerSecond ? " per second" : string.Empty)}";
-                string? counted = layout.EvidencePolicy == EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null;
-                string? scaled = layout.ScalesEachLane ? "each of its timeline lanes on its own scale" : null;
-                ConsoleUi.Note($"Session {Short(layout.SessionId)}: "
-                    + string.Join(", and ", new[] { pinned, ranked, counted, scaled }.OfType<string>())
-                    + ", put back when it is opened from this investigation.");
+                ConsoleUi.Note($"Session {Short(layout.SessionId)}: {layout.Describe(CultureInfo.CurrentCulture)}, put back when it "
+                    + "is opened from this investigation.");
             }
         }
 

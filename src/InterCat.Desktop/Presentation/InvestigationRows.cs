@@ -4,7 +4,10 @@ using InterCat.Domain;
 
 namespace InterCat.Desktop.Presentation;
 
-/// <summary>One member of an investigation as its window lists it: where it stands, its host and its time (ADR-038).</summary>
+/// <summary>
+/// One member of an investigation as its window lists it: where it stands, its host, its time and what the investigation
+/// keeps of its view (ADR-038, §26.3).
+/// </summary>
 public sealed record InvestigationMemberRow(
     Guid SessionId,
     string Title,
@@ -17,13 +20,14 @@ public sealed record InvestigationMemberRow(
     bool IsTimeReference = false,
     bool IsAligned = false,
     IReadOnlyList<Guid>? AlignedThrough = null,
-    Guid HostId = default) : IAccessibleRow
+    Guid HostId = default,
+    string? Kept = null) : IAccessibleRow
 {
     /// <summary>Whether it has a place in the investigation's time: it is its clock, or aligned to a session that has one.</summary>
     public bool IsPlaced => IsTimeReference || IsAligned;
 
-    public string AccessibleName => $"{Title}. {Detail}. {Time}." + (Reason is null ? string.Empty : $" {Reason}")
-        + (HoldsItsCapture ? " Press Enter to open it." : " Relink it to open it.");
+    public string AccessibleName => $"{Title}. {Detail}. {Time}." + (Kept is null ? string.Empty : $" {Kept}")
+        + (Reason is null ? string.Empty : $" {Reason}") + (HoldsItsCapture ? " Press Enter to open it." : " Relink it to open it.");
 }
 
 /// <summary>An investigation as its window shows it: the file, a summary, its members and what it cannot say.</summary>
@@ -103,7 +107,8 @@ public static class InvestigationRows
                     InvestigationWorkspace.ChainOf(workspace, member.SessionId) is { } chain
                         ? [.. chain.Links.Skip(1).Select(link => link.Clock)]
                         : [],
-                    member.HostId);
+                    member.HostId,
+                    Kept(InvestigationWorkspace.LayoutOf(workspace, member.SessionId), culture));
             }),
         ];
 
@@ -131,6 +136,13 @@ public static class InvestigationRows
                 note.NoteId, note.Text!, NotePlace(workspace, note, culture), note.At))],
         };
     }
+
+    /// <summary>
+    /// What opening a member from its investigation puts back of its view (§26.3), in the words `icat workspace show` says
+    /// it in: "Opens with 1 node pinned on its graph, as it was left here."; null when the investigation keeps nothing of it.
+    /// </summary>
+    public static string? Kept(WorkspaceLayout? layout, CultureInfo culture) =>
+        layout?.Describe(culture) is { Length: > 0 } kept ? $"Opens with {kept}, as it was left here." : null;
 
     /// <summary>
     /// The investigation's candidate joins (ADR-041), in words: each one's endpoints and timing, its two ends with their

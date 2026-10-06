@@ -813,6 +813,40 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
     }
 
+    [Fact(DisplayName = "§26.3: what a layout keeps is said in one series, only what differs from a session opened on its own")]
+    public void ALayoutIsDescribedInOneSeries()
+    {
+        CultureInfo culture = CultureInfo.InvariantCulture;
+        static WorkspaceLayout Layout(int pins, RankingMetric? rankBy = null, bool perSecond = false, EvidencePolicy? policy = null,
+            bool scales = false) => new()
+        {
+            SessionId = Guid.Empty,
+            Pins = [.. Enumerable.Range(0, pins).Select(index => new WorkspacePin { Key = $"group:{index}", X = 0.5, Y = 0.5 })],
+            RankBy = rankBy,
+            PerSecond = perSecond,
+            EvidencePolicy = policy,
+            ScalesEachLane = scales,
+            UpdatedUtc = Now,
+        };
+
+        // One thing kept is said alone, two are joined by "and", and more are listed with "and" before the last.
+        Assert.Equal("1 node pinned on its graph", Layout(1).Describe(culture));
+        Assert.Equal("its rows ranked by records per second", Layout(0, perSecond: true).Describe(culture));
+        Assert.Equal("1,200 nodes pinned on its graph and its records counted with candidates",
+            Layout(1_200, policy: EvidencePolicy.IncludeCandidates).Describe(culture));
+        Assert.Equal("its rows ranked by bytes sent, its records counted with candidates and each of its timeline lanes on its own scale",
+            Layout(0, RankingMetric.BytesSent, policy: EvidencePolicy.IncludeCandidates, scales: true).Describe(culture));
+        Assert.Equal("2 nodes pinned on its graph, its rows ranked by RPC calls made per second, its records counted with candidates "
+            + "and each of its timeline lanes on its own scale",
+            Layout(2, RankingMetric.RpcCallsMade, true, EvidencePolicy.IncludeCandidates, true).Describe(culture));
+
+        // A default is not said: a session opened on its own ranks by records counted whole, under correlated evidence, on
+        // one scale, as one opened from an investigation that keeps none of it.
+        Assert.Equal(string.Empty, WorkspaceLayout.Describe(0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture));
+        Assert.Equal("each of its timeline lanes on its own scale",
+            WorkspaceLayout.Describe(0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, true, culture));
+    }
+
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]
     public void ANoteIsKeptAsRevisions()
     {

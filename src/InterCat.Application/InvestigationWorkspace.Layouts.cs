@@ -55,6 +55,37 @@ public sealed record WorkspaceLayout
     /// </summary>
     [JsonIgnore]
     public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond || EvidencePolicy is not null || ScalesEachLane;
+
+    /// <summary>
+    /// What it keeps, in the words every place that says so uses - `icat workspace show`, the notice of a session opened
+    /// from its investigation and that investigation's window: "1 node pinned on its graph and its rows ranked by bytes
+    /// sent per second". Empty when it keeps nothing.
+    /// </summary>
+    public string Describe(IFormatProvider culture) => Describe(Pins.Count, RankBy ?? RankingMetric.Records, PerSecond,
+        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
+
+    /// <summary>
+    /// What a layout that pins <paramref name="pins"/> nodes, ranks by <paramref name="rankBy"/>, counts under
+    /// <paramref name="evidencePolicy"/> and reads each lane on its own scale or not keeps, in <see cref="Describe(IFormatProvider)"/>'s
+    /// words: nothing of a default, so what is said is only what differs from a session opened on its own.
+    /// </summary>
+    public static string Describe(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy, bool scalesEachLane,
+        IFormatProvider culture)
+    {
+        string[] kept =
+        [
+            .. new[]
+            {
+                pins == 0 ? null : string.Create(culture, $"{pins:N0} {(pins == 1 ? "node" : "nodes")} pinned on its graph"),
+                rankBy == RankingMetric.Records && !perSecond
+                    ? null
+                    : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
+                evidencePolicy == Domain.EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null,
+                scalesEachLane ? "each of its timeline lanes on its own scale" : null,
+            }.OfType<string>(),
+        ];
+        return kept.Length < 2 ? string.Concat(kept) : string.Join(", ", kept[..^1]) + " and " + kept[^1];
+    }
 }
 
 public static partial class InvestigationWorkspace

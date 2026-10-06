@@ -1560,7 +1560,7 @@
         "R22: a saved view is a named interval of the investigation's time, kept in its reference's clock",
         "R22: a sent total measured at the receiving end is attributed to a sender only through a relation",
         "R22: a server call is counted as raised in the recorded host only when its own process is that host",
-        "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, and gets them back when opened from it again",
+        "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
