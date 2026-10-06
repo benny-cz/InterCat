@@ -92,6 +92,32 @@ public sealed class MultiSelectionTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: E with several processes chosen lists exactly their records, as Enter does, since the card counts them")]
+    public async Task EListsTheChosenSet()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. Third(20)]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ListBox list = window.GetControl<ListBox>("RungList");
+        CtrlClick(window, list, Row(workspace, "client"));
+        CtrlClick(window, list, Row(workspace, "server"));
+        Assert.Equal("Selected processes", workspace.EvidenceHeading);
+
+        // E reads what the card above its button counts: the two chosen processes' records, the set its visible filter.
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        Assert.Contains(workspace.Filters, filter => filter.Label == "2 selected processes");
+        Assert.Equal(31 + 31, workspace.RungRows.Count);
+        Assert.False(workspace.HasMultiSelection);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: Ctrl+click on graph nodes composes a set with the node selected before it, and a plain click replaces it")]
     public void GraphNodesComposeAndAPlainClickReplaces()
     {

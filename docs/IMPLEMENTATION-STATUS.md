@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 345 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 346 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 346 — E lists a chosen set's records (§6.7):**
+  - With several processes chosen, E listed one of them while the card counted the set. E now lists the set's records,
+    as Enter does.
 
 - **Revision 345 — E lists what the inspector counts at every rung (§6.4, I5):**
   - At a group's rung the card above "Show source records (E)" counted a chosen process or relationship while E listed
@@ -948,11 +952,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 346 was built and tested in the same Linux container: Debug and Release each ran **1,601 tests**, passing
+  **1,504 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught the
+  one mutation that matters, E ignoring the chosen set. A guard for a chosen relationship beside a set was dropped as
+  dead: choosing either lets the other go.
 - Revision 345 was built and tested in the same Linux container: Debug and Release each ran **1,600 tests**, passing
   **1,503 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   each of three mutations: a chosen relationship followed only at the machine rung, a chosen process followed only
-  there, and the filter's reason always naming the machine rung. E with several processes chosen still lists the one
-  the keyboard is on, while the card counts the set; Enter lists the set.
+  there, and the filter's reason always naming the machine rung. E with several processes chosen still listed the one
+  the keyboard was on, while the card counted the set; revision 346 has it list the set, as Enter does.
 - Revision 344 was built and tested in the same Linux container: Debug and Release each ran **1,599 tests**, passing
   **1,502 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   each of ten mutations: the graph's toggle expanding nothing, the other pane left shown, the expanded pane keeping half

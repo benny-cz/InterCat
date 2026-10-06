@@ -4238,16 +4238,23 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). In a published session it lists
-    /// what the inspector's evidence card counts: a chosen relationship's records at any rung, a process selected at the
-    /// machine rung or among a group's members, a group selected at the machine rung, and otherwise the rung's own -
-    /// named in the filter bar, where it can be removed.
+    /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). It lists what the inspector's
+    /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen;
+    /// a process selected at the machine rung or among a group's members; a group selected at the machine rung; and
+    /// otherwise the rung's own - named in the filter bar, where it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
         if (ladder.Current.Level == DetailLevel.Evidence)
         {
             return false;
+        }
+
+        // Several processes chosen are what the card counts - choosing them lets a chosen relationship go, and choosing one
+        // lets them go - and E lists them as Enter does (§6.7).
+        if (HasMultiSelection)
+        {
+            return ShowChosenRecords();
         }
 
         // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5): the button
