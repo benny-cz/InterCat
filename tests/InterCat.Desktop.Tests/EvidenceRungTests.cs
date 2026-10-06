@@ -827,6 +827,153 @@ public sealed class EvidenceRungTests
         Assert.Equal(7, workspace.RungRows.Count);
     }
 
+    [Fact(DisplayName = "§6.4: an export from any evidence rung holds exactly the records it lists, an RPC or HTTP one's as a process's")]
+    public async Task AnEvidenceExportHoldsExactlyTheRecordsTheRungLists()
+    {
+        // Process 100 calls the service control manager three times and makes two HTTP exchanges, the first in four
+        // buffers and the second in three, beside its paired channel.
+        Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes)[] buffers =
+        [
+            (6_000, 2001, 1, 0, 3, 181), (6_002, 2003, 1, 0, 3, 115), (6_004, 2004, 1, 0, 1, 900), (6_006, 2004, 1, 1, 2, 0),
+            (7_000, 2001, 2, 0, 3, 181), (7_002, 2003, 2, 0, 3, 115), (7_004, 2004, 2, 0, 3, 50),
+        ];
+        ObservationRowV1[] http = [.. buffers.Select((buffer, index) => Timed(Transfer(buffer.Ticks,
+            buffer.Event <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            buffer.Event <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, buffer.Bytes, null, (ulong)(60_000 + index)) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = buffer.Event,
+            HeaderProcessId = 100,
+            Direction = buffer.Event <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        }))];
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Rows(),
+            .. Enumerable.Range(0, 3).SelectMany(index => new[]
+            {
+                Timed(RpcCall(5_000 + (10 * index), ObservationKind.RequestStart, Direction.Outbound, 100,
+                    (ulong)(40_000 + (2 * index)), Activity(index), serviceControl)),
+                Timed(RpcCall(5_004 + (10 * index), ObservationKind.RequestEnd, Direction.Outbound, 100,
+                    (ulong)(40_001 + (2 * index)), Activity(index), status: 0)),
+            }),
+            .. http,
+        ], fields:
+        [
+            .. buffers.SelectMany((buffer, index) => new[]
+            {
+                Field(http[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(http[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(http[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.RpcReady;
+        await workspace.HttpReady;
+
+        // The process's records, over two pages, and its paired channel's, over three.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records owned by", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        await AssertExportsWhatTheRungLists(workspace, 1 + Exchanges + 6 + 7);
+        Assert.True(workspace.Ascend());
+        DescendTo(workspace, workspace.Snapshot.Channels.Single().Key);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        await AssertExportsWhatTheRungLists(workspace, 2 * Exchanges);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        await workspace.HttpReady;
+
+        // The process's HTTP exchanges' buffers, and then one exchange's.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "HTTP exchanges");
+        Assert.True(workspace.Descend());
+        await workspace.HttpReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        await AssertExportsWhatTheRungLists(workspace, 7);
+        Assert.True(workspace.Ascend());
+        await workspace.HttpReady;
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records of HTTP exchange at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        await AssertExportsWhatTheRungLists(workspace, 4);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+
+        // The RPC channel's records, then those a brush over its first call holds, and then that call's own.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svcctl (Service Control Manager)");
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records of RPC calls to svcctl", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        await AssertExportsWhatTheRungLists(workspace, 6);
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        var brush = new TimeRange(4_990, 5_008);
+        workspace.SelectInterval(brush);
+        await workspace.IntervalReady;
+        await workspace.RpcReady;
+        Assert.Single(workspace.RungRows);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(brush, (await AssertExportsWhatTheRungLists(workspace, 2)).Interval);
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        await workspace.EvidenceReady;
+        Assert.StartsWith("Records of RPC call at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        await AssertExportsWhatTheRungLists(workspace, 2);
+    }
+
+    /// <summary>
+    /// The evidence rung's export, in each format: complete, naming the rung's scope, and holding exactly the records the
+    /// rung lists once every page is loaded, in its order - never a wider scope's (§6.4) - each with the owner the rung
+    /// resolved for it.
+    /// </summary>
+    private static async Task<ExportContext> AssertExportsWhatTheRungLists(WorkspaceViewModel workspace, int records)
+    {
+        while (workspace.CanLoadMoreEvidence)
+        {
+            await workspace.LoadMoreEvidenceAsync();
+        }
+
+        Assert.Equal(records, workspace.RungRows.Count);
+        string?[] owners = [.. workspace.RungRows.Select(row =>
+        {
+            workspace.SelectedRung = row;
+            return workspace.SelectedEvidence!.Owner?.Instance?.ToString();
+        })];
+        Assert.Contains(owners, owner => owner is not null);
+        var at = new DateTimeOffset(2026, 10, 6, 12, 0, 0, TimeSpan.Zero);
+        SessionExportResult json = await workspace.ExportAsync(ExportFormat.Json, at);
+        Assert.True(json.Context.Complete);
+        Assert.Equal(workspace.EvidenceScopeText, json.Context.Scope);
+        using (var document = System.Text.Json.JsonDocument.Parse(json.Content))
+        {
+            System.Text.Json.JsonElement[] exported = [.. document.RootElement.GetProperty("records").EnumerateArray()];
+            Assert.Equal(workspace.RungRows.Select(row => row.Key), exported
+                .Select(record => record.GetProperty("observationId"))
+                .Select(id => $"{id.GetProperty("stream").GetRawText()}/{id.GetProperty("epoch").GetRawText()}/"
+                    + $"{id.GetProperty("ordinal").GetRawText()}/{id.GetProperty("factKey").GetString()}"));
+            Assert.Equal(owners, exported.Select(record => record.GetProperty("owner").GetProperty("instance").GetString()));
+        }
+
+        Assert.Equal(records, (await workspace.ExportAsync(ExportFormat.Csv, at)).Rows);
+        return json.Context;
+    }
+
     [Fact]
     public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
     {

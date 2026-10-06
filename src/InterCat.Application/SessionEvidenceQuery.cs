@@ -142,6 +142,43 @@ public static class SessionEvidenceQuery
             cancellationToken);
     }
 
+    /// <summary>
+    /// One page of an evidence rung's scope, each record's owner resolved: its paired channel or one-sided connection,
+    /// its owner processes, or its RPC or HTTP key's own records, within its interval.
+    /// </summary>
+    public static SessionEvidencePage Read(
+        SessionStore store,
+        EvidenceScope scope,
+        string? cursor,
+        CancellationToken cancellationToken = default) =>
+        Read(store, ReadableChannel(scope), scope.Interval, cursor: cursor, ownerProcesses: OwnersOf(scope),
+            resolveOwners: true, operationKey: scope.OperationKey, cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// Every record of an evidence rung's scope up to a limit, read as its pages read it, so an export of the scope holds
+    /// exactly the records the rung lists and never a wider scope's.
+    /// </summary>
+    public static SessionEvidencePage ReadScope(
+        SessionStore store,
+        EvidenceScope scope,
+        int limit,
+        CancellationToken cancellationToken = default) =>
+        ReadScope(store, limit, ReadableChannel(scope), scope.Interval, OwnersOf(scope), resolveOwners: true,
+            operationKey: scope.OperationKey, cancellationToken: cancellationToken);
+
+    /// <summary>
+    /// A scope's channel, once it is known to be readable: one that states a problem names nothing to read, and is
+    /// refused with it rather than read as the whole session it would otherwise look like.
+    /// </summary>
+    private static string? ReadableChannel(EvidenceScope scope)
+    {
+        ArgumentNullException.ThrowIfNull(scope);
+        return scope.Problem is { } problem ? throw new InvalidOperationException(problem) : scope.ChannelKey;
+    }
+
+    private static IReadOnlyCollection<ProcessInstanceId>? OwnersOf(EvidenceScope scope) =>
+        scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses;
+
     /// <summary>An RPC scope names its own records, so it is never combined with a channel or an owner scope.</summary>
     private static void RequireOneScope(string? channelKey, ProcessInstanceId[] owners, string? operationKey)
     {

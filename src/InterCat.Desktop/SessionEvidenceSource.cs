@@ -201,28 +201,12 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     public Task<SessionEvidencePage> ReadScopeAsync(EvidenceScope scope, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Task.Run(() => SessionEvidenceQuery.ReadScope(
-            Store(),
-            limit,
-            scope.ChannelKey,
-            scope.Interval,
-            scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses,
-            resolveOwners: true,
-            cancellationToken: cancellationToken), cancellationToken);
+        return Task.Run(() => SessionEvidenceQuery.ReadScope(Store(), scope, limit, cancellationToken), cancellationToken);
     }
 
     public Task<SessionEvidencePage> ReadAsync(EvidenceScope scope, string? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Task.Run(() => SessionEvidenceQuery.Read(
-            Store(),
-            scope.ChannelKey,
-            scope.Interval,
-            pageSize: SessionEvidenceQuery.DefaultPageSize,
-            cursor: cursor,
-            ownerProcesses: scope.OwnerProcesses.Count == 0 ? null : scope.OwnerProcesses,
-            resolveOwners: true,
-            operationKey: scope.OperationKey,
-            cancellationToken: cancellationToken), cancellationToken);
+        return Task.Run(() => SessionEvidenceQuery.Read(Store(), scope, cursor, cancellationToken), cancellationToken);
     }
 }

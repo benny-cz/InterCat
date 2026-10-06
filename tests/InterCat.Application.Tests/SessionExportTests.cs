@@ -100,6 +100,23 @@ public sealed class SessionExportTests
         Assert.Contains(partial.Context.Caveats, caveat => caveat.Contains("--limit", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "§6.4: a scope that cannot be read is refused with its reason, a page as a whole scope, never read as the whole session")]
+    public void AnUnreadableScopeIsRefused()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows();
+        Publish(session.Store, rows);
+
+        // It names no channel, owner or key, as the whole session's scope does, and says why it cannot be read.
+        var unreadable = new EvidenceScope("No readable scope", null, [], null, null,
+            "None of the selected processes is in this generation.");
+        Assert.Equal(unreadable.Problem,
+            Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store, unreadable, null)).Message);
+        Assert.Equal(unreadable.Problem,
+            Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.ReadScope(session.Store, unreadable, 1_000)).Message);
+        Assert.Equal(rows.Length, SessionEvidenceQuery.ReadScope(session.Store, unreadable with { Problem = null }, 1_000).Records.Count);
+    }
+
     /// <summary>Two paired connections between two process pairs, 400 records, some beyond one page.</summary>
     private static ObservationRowV1[] Rows() =>
     [
