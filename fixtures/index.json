@@ -1502,6 +1502,7 @@
         "R21: an untimed relation remains a graph edge without an invented timeline extent",
         "R21: coverage outcomes and descriptor bounds refuse overflow rather than wrapping",
         "R21: host B receiving 0.2 ms before host A sends, within 3 ms, is no order and no latency, and no local span changes",
+        "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words",
         "R21: interval coverage never extends beyond delivered readings or over an epoch gap",
         "R21: live counters state each loss so far, and an unreadable counter as unreadable",
         "R21: live counters update the health strip while recording and leave the view where it is",

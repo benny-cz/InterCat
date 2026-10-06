@@ -3967,7 +3967,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// the same range bring their coverage with them, as they bring their numbers. Empty for a range no source is there to
     /// count, and in the tour and an empty workspace, which judged no coverage.
     /// </summary>
-    public string ScopeCoverage => ScopeCounted ? WorkspaceRowBuilder.DescribeScopeCoverage(Snapshot.MechanismCoverage)
+    public string ScopeCoverage => ScopeCounted ? CoverageText.Describe(Snapshot.MechanismCoverage)
         : evidenceSource is null ? string.Empty
         : intervalProblem is null ? "Reading this range's coverage…"
         : "Coverage unknown: this range could not be counted";
@@ -3979,7 +3979,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// are said plainly too until this generation's own replace them.
     /// </summary>
     public bool ScopeCoverageLimited => ScopeCounted && !scopeStandsIn && Snapshot.CoverageLedgerPublished
-        && WorkspaceRowBuilder.IsCoverageShort(Snapshot.MechanismCoverage);
+        && CoverageText.IsShort(Snapshot.MechanismCoverage);
 
     public bool ShowsScopeCoverage => ScopeCoverage.Length > 0;
 
@@ -4106,7 +4106,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             .First();
 
         // A lane may be called "Process"; in a sentence the records are the process's lifecycle.
-        string name = WorkspaceRowBuilder.MechanismInSentence(mechanism);
+        string name = EvidenceRowText.MechanismInSentence(mechanism);
         return string.Create(CultureInfo.CurrentCulture,
             $"{own:N0} own {(own == 1 ? "record" : "records")}, {(records == own ? "all" : "mostly")} {name}");
     }

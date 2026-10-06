@@ -192,6 +192,14 @@ public static class EvidenceRowText
         _ => string.Create(CultureInfo.InvariantCulture, $"level {(int)level}"),
     };
 
+    /// <summary>A mechanism as a sentence names it: "TCP", and "process lifecycle" where a lane says "Process".</summary>
+    public static string MechanismInSentence(Mechanism mechanism) => mechanism switch
+    {
+        Mechanism.ProcessLifecycle => "process lifecycle",
+        Mechanism.ThreadLifecycle => "thread lifecycle",
+        _ => MechanismName(mechanism),
+    };
+
     public static string MechanismName(Mechanism mechanism) => mechanism switch
     {
         Mechanism.ProcessLifecycle => "Process",

@@ -83,7 +83,7 @@ internal static class EvidenceCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "evidence-page-v2", SessionPath = path, Page = page,
+                Contract = "evidence-page-v3", SessionPath = path, Page = page,
             }, JsonContracts.Indented));
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
         }
@@ -103,6 +103,11 @@ internal static class EvidenceCommand
             ConsoleUi.Warn(page.RestartReason!);
             return InterCatExitCode.PartialResultSuccess;
         }
+
+        // What the capture covered over the page's time scope, in the inspector's words: a page that lists no record is
+        // not a quiet scope unless the capture covered it (R21).
+        if (CoverageText.Describe(page.Coverage) is { Length: > 0 } coverage)
+            ConsoleUi.Note(coverage);
 
         if (page.ContinuedFromGeneration is { } earlier)
             ConsoleUi.Note($"Continued from generation {ConsoleUi.Count(earlier)} after its last row. Rows published "
@@ -144,6 +149,8 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
+        ConsoleUi.Line("  Each page states what the capture covered over its time scope, mechanism by mechanism, so a");
+        ConsoleUi.Line("  page without a row is not read as a quiet scope.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");
     }
 }

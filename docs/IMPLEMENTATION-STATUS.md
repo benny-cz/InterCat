@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 362 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 363 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 363 — `icat evidence` states its page's coverage (R21, R18):**
+  - A page with no record in a capture gap said "Rows on page 0" and sent the reader to the coverage ledger. Each
+    page now carries each mechanism's coverage over its time scope (`evidence-page-v3`) and says it beneath its fields
+    in the inspector's words, which both now take from one place, `CoverageText`.
 
 - **Revision 362 — the inspector states its time scope's coverage (R21, §6.5):**
   - Brushed where the capture delivered no reading, the card read "No own record admitted · 0 paired TCP
@@ -1017,9 +1022,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
    - A scope's coverage beside its counts (R21): done in revision 362 for the inspector, which states beneath its time
-     scope what the capture covered there, mechanism by mechanism, read with the scope's counts. `icat evidence
-     --interval` and `icat export --interval` still state no coverage for the range they read, and a selected
-     record's own coverage has no place in the inspector yet.
+     scope what the capture covered there, mechanism by mechanism, read with the scope's counts, and in revision 363
+     for `icat evidence`, whose pages carry it (`evidence-page-v3`) in the same words (`CoverageText`). `icat export
+     --interval` still states no coverage for its range, and a selected record's own coverage has no place in the
+     inspector yet.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
@@ -1058,6 +1064,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 363 was built and tested in the same Linux container: Debug and Release each ran **1,630 tests**,
+  passing **1,532 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its command-line
+  test reads `icat evidence` over a capture that delivered readings from 0 to 20 and from 40 to 60: the whole session
+  and a range within an epoch say TCP was covered, a range between them lists no row and says its coverage is unknown,
+  its JSON names each mechanism's state and reason, and a generation without a ledger says it judged nothing. The
+  inspector's tests read the same words from `CoverageText`, whose own tests moved with them. They caught each of 16
+  mutations:
+  - a page without its coverage or stating the whole session's for its interval, the coverage left unsaid, the
+    document still named `evidence-page-v2`, and the caveat still sending readers to the ledger;
+  - the whole session judged as a range no reading falls in, and such a range given the whole session's coverage;
+  - where the words moved: the worst state named first, what was not collected left unsaid, three names joined by
+    "and" alone, nothing collected not short, covered mechanisms split by their counts, unknown for different reasons
+    said as one, and process lifecycle named as its lane;
+  - the card describing nothing, and its limit judged on nothing.
 
 - Revision 362 was built and tested in the same Linux container: Debug and Release each ran **1,629 tests**,
   passing **1,531 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests brush a

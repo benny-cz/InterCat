@@ -74,6 +74,12 @@ public sealed record SessionEvidencePage(
     /// the page is scoped to; null when it is not.
     /// </summary>
     public string? OperationKey { get; init; }
+
+    /// <summary>
+    /// Each mechanism's coverage over the page's time scope - its interval, or the whole session - and the fact that
+    /// decided it (`coverage-v2` §4): whether a scope could have held a record it lists none of (R21).
+    /// </summary>
+    public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
 }
 
 public static class SessionEvidenceQuery
@@ -92,7 +98,7 @@ public static class SessionEvidenceQuery
         + "original payload bytes. A channel page includes only the admitted paired TCP incarnation; an owner-process "
         + "page includes only rows canonically bound to those processes as owner, not possible peer rows. One-sided "
         + "and ambiguous rows remain available in unscoped evidence. This page does not infer completeness from "
-        + "observed rows; consult the session's coverage ledger.";
+        + "observed rows: its coverage states what the capture's sources covered over its time scope.";
 
     public static SessionEvidencePage Read(
         SessionStore store,
@@ -234,6 +240,11 @@ public static class SessionEvidenceQuery
             : SessionContentIndex.Empty;
         SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
         string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, operationKey);
+
+        // What the capture covered over the page's time scope, stated beside its records (R21): a page listing none is
+        // not a quiet scope unless the capture covered it.
+        IReadOnlyList<MechanismCoverage> coverage = CoverageText.Over(
+            SessionSegments.CoverageLedger(store.Root, manifest), SessionSegments.SourceClock(store.Root, manifest), interval);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
             new(identity, manifest.SessionId, manifest.Generation, channelKey,
@@ -242,6 +253,7 @@ public static class SessionEvidenceQuery
                 OwnerProcesses = Array.AsReadOnly(owners),
                 ContinuedFromGeneration = continuedFrom,
                 OperationKey = operationKey,
+                Coverage = coverage,
             };
 
         if (position is { Legacy: true })

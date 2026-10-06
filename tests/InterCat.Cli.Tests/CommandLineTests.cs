@@ -808,6 +808,82 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches($@"(?m)^  RPC key +{Regex.Escape(key)}$", answer);
     }
 
+    [Fact(DisplayName = "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words")]
+    public async Task EvidenceStatesItsScopesCoverage()
+    {
+        // A capture that delivered readings from 0 to 20 and from 40 to 60, and none between, and lost nothing.
+        using var gapped = new TemporarySession();
+        Publish(gapped.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 1_000 },
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 5_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [TcpEpoch(1, 0, 20), TcpEpoch(2, 40, 60)],
+        });
+
+        // Over the whole session, and over a range within an epoch, the capture covered what it collected.
+        const string Covered = "Coverage: covered for TCP · no other mechanism collected";
+        (InterCatExitCode code, string answer, _) = await Run("evidence", gapped.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}$", answer);
+        (code, answer, _) = await Run("evidence", gapped.Path, "--interval", "5:15");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Covered)}$", answer);
+
+        // A range it delivered nothing in lists no record, and says that is no proof of inactivity, as the inspector does.
+        const string Unknown = "Coverage unknown: outside the readings the capture's sources delivered, so a count of none here "
+            + "is not proof of inactivity";
+        (code, answer, _) = await Run("evidence", gapped.Path, "--interval", "25:35");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Rows on page +0$", answer);
+        Assert.Matches($@"(?m)^  {Regex.Escape(Unknown)}$", answer);
+        Assert.Contains("its coverage states what the capture's sources covered over its time scope", answer, StringComparison.Ordinal);
+
+        // Its JSON carries each mechanism's state and the fact behind it.
+        (code, answer, _) = await Run("evidence", gapped.Path, "--interval", "25:35", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using (JsonDocument page = JsonDocument.Parse(answer))
+        {
+            Assert.Equal("evidence-page-v3", page.RootElement.GetProperty("contract").GetString());
+            JsonElement coverage = page.RootElement.GetProperty("page").GetProperty("coverage");
+            Assert.Equal(Enum.GetValues<Mechanism>().Length, coverage.GetArrayLength());
+            Assert.All(coverage.EnumerateArray(), entry => Assert.Equal(
+                ("UnknownCoverage", "outside the readings the capture's sources delivered"),
+                (entry.GetProperty("state").GetString(), entry.GetProperty("reason").GetString())));
+        }
+
+        // A generation without a ledger has judged nothing, and says so.
+        (code, answer, _) = await Run("evidence", session.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity$",
+            answer);
+    }
+
+    /// <summary>A live epoch between two delivered readings that collected TCP, delivered two records and lost nothing.</summary>
+    private static CoverageEpochV1 TcpEpoch(int number, long first, long last) => new()
+    {
+        Epoch = number,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = first,
+        LastDeliveredNativeTicks = last,
+        Collected =
+        [
+            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+        ],
+        Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 2, Admitted = 2, Omitted = 0 }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
+
     /// <summary>One icat invocation, with what it wrote to stdout and to stderr.</summary>
     /// <summary>The column a field's value starts in, in a report that has one field of that label.</summary>
     private static int ValueColumn(string report, string label)

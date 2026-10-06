@@ -148,19 +148,9 @@ public static class SessionIntervalQuery
             ProcessRecords = processRecords,
             CaptureCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.CaptureStates(ledger, [native])[0],
             TcpCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.Of(ledger, Mechanism.Tcp, native).State,
-            MechanismCoverage = native is { } placed ? SessionCoverage.ByMechanism(ledger, placed) : Unplaced,
+            MechanismCoverage = CoverageText.Over(ledger, clock, interval),
         };
     }
-
-    /// <summary>
-    /// Every mechanism's coverage over an interval no reading of the capture's clock falls in, such as one narrower than a
-    /// tick: nothing could be read there, and the whole session's coverage is not this interval's.
-    /// </summary>
-    private static readonly IReadOnlyList<MechanismCoverage> Unplaced = Array.AsReadOnly(
-    [
-        .. Enum.GetValues<Mechanism>().Select(mechanism => new MechanismCoverage(
-            mechanism, CoverageState.UnknownCoverage, "no reading of the capture's clock falls in this interval")),
-    ]);
 
     /// <summary>
     /// Counts one segment's records inside the interval: every one observed, each by the instance its owner binds to as
