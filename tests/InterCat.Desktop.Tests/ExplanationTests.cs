@@ -133,6 +133,66 @@ public sealed class ExplanationTests
         Assert.Equal(string.Empty, tour.Explanation);
     }
 
+    [Fact(DisplayName = "§6.8: what a reused PID's later holder left out is offered as candidates, and counted so it is said and read everywhere")]
+    public async Task CandidatesAreOfferedAndCounted()
+    {
+        // client.exe's PID is reused, and its second holder's two sends are candidates; server.exe is held once.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(5, ObservationKind.Create, 200, 1) with { ResourceName = @"C:\Tools\server.exe" }),
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 2) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 3)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 4) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(55, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 6).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 7).Between(ClientEnd, ServerEnd)),
+        ]);
+
+        // Counting correlated evidence, the later holder and its group offer the records they left out; others do not.
+        SessionOverviewBundle correlated = SessionOverviewProjector.Project(session.Store);
+        using (var workspace = new WorkspaceViewModel(OverviewWorkspace.From(correlated), correlated.GraphIdentity,
+            new SessionEvidenceSource(session.Path, correlated.SessionId, correlated.Generation, correlated.Policy)))
+        {
+            Assert.Equal((EvidencePolicy.IncludeCorrelated, false, string.Empty),
+                (workspace.EvidencePolicy, workspace.CountsCandidates, workspace.EvidencePolicyNote));
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+            Assert.True(workspace.OffersCandidates);
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.PidHolder == 2).Id);
+            Assert.True(workspace.OffersCandidates);
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100 && node.PidHolder == 1).Id);
+            Assert.False(workspace.OffersCandidates);
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+            Assert.False(workspace.OffersCandidates);
+            Assert.DoesNotContain(workspace.DescribeExport(DateTimeOffset.UnixEpoch).Caveats,
+                caveat => caveat.StartsWith("Counted with candidates", StringComparison.Ordinal));
+        }
+
+        // Counted with candidates, the later holder's total includes them and says so, as its group's does, the rail says
+        // what is counted, an export says it too, and its rung's records hold its sends.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates);
+        var source = new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation, overview.Policy);
+        using var counted = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, source);
+        Assert.True(counted.CountsCandidates);
+        Assert.Equal("Counting candidates: a reused PID's later holder also counts records naming its PID that may be an "
+            + "earlier holder's", counted.EvidencePolicyNote);
+        Assert.Contains(counted.DescribeExport(DateTimeOffset.UnixEpoch).Caveats,
+            caveat => caveat.StartsWith("Counted with candidates", StringComparison.Ordinal));
+        counted.SelectedRung = counted.RungRows.Single(row => row.Label == "client.exe");
+        Assert.False(counted.OffersCandidates);
+        Assert.Contains(" The evidence policy counts candidates, so its total includes 2 records bound to 1 later holder of a "
+            + "reused PID among them.", counted.Explanation, StringComparison.Ordinal);
+        ProcessNode later = counted.Snapshot.Processes.Single(node => node.PidHolder == 2);
+        Assert.Equal(3, later.Records);
+        counted.SelectProcess(later.Id);
+        Assert.Contains("binds it here only as a candidate. The evidence policy counts candidates, so its total includes the 2 "
+            + "records bound to it over the session.", counted.Explanation, StringComparison.Ordinal);
+        Assert.False(counted.OffersCandidates);
+        SessionEvidencePage records = await source.ReadScopeAsync(
+            new EvidenceScope("Records owned by the later holder", null, [later.Id], null, null), 100, CancellationToken.None);
+        Assert.Equal(3, records.Records.Count);
+    }
+
     [Fact(DisplayName = "§6.8: a channel chosen among a process's rows says how its ends were paired, whether the capture saw it open and close, and its key")]
     public void AChosenChannelSaysHowItWasPaired()
     {

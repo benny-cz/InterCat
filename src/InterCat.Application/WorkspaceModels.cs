@@ -77,6 +77,13 @@ public sealed record ProcessNode(
     public long WithheldRecords { get; init; }
 
     /// <summary>
+    /// The records bound to it over the whole session only as candidates, whether or not the evidence policy counts them:
+    /// a later holder's every record but its lifecycle records. <see cref="WithheldRecords"/> is these under a policy
+    /// that admits no candidate, and zero under one that does.
+    /// </summary>
+    public long CandidateRecords { get; init; }
+
+    /// <summary>
     /// The PID of the process that created this one, as its creation or rundown record named it (entities-v1 §3); null
     /// when no lifecycle record of it named one.
     /// </summary>

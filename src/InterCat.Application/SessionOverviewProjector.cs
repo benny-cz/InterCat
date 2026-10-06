@@ -53,6 +53,12 @@ public sealed record SessionOverviewBundle(
 
     /// <summary>The digest of the one generation's manifest the overview was built from (I16).</summary>
     public string? ManifestDigest { get; init; }
+
+    /// <summary>
+    /// How strongly a record had to bind to a process to count as that process's, and a relationship to be drawn, in this
+    /// overview: correlated evidence unless a person chose otherwise.
+    /// </summary>
+    public EvidencePolicy Policy { get; init; } = EvidencePolicy.IncludeCorrelated;
 }
 
 /// <summary>
@@ -131,6 +137,7 @@ public static class SessionOverviewProjector
             PidHolder = (int)instance.LifecycleEpoch,
             PidHolders = processes.InstancesOf(instance.ProcessId),
             WithheldRecords = activity.WithheldOf(positions[index], policy),
+            CandidateRecords = activity.CandidatesOf(positions[index]),
             ParentProcessId = instance.ParentProcessId,
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
@@ -294,6 +301,7 @@ public static class SessionOverviewProjector
             RowsNoProcessHolds = heldByNone,
             Recording = SessionRecording.Interval(store.Root, manifest, clock, extent),
             ManifestDigest = manifest.Digest,
+            Policy = policy,
         };
 
         SegmentReaderV1[] Segments() => opened ??=

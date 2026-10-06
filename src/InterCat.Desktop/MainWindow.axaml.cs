@@ -72,6 +72,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private CaptureUiPhase phase = CaptureUiPhase.Complete;
     private SessionOverviewBundle? displayedOverview;
+
+    /// <summary>
+    /// The evidence policy the window projects and reads a session under (§6.8): correlated evidence until a person
+    /// chooses to count a reused PID's candidates too, and again for each session opened or captured after. A capture's
+    /// thread reads it as each live publication is projected.
+    /// </summary>
+    private volatile EvidencePolicy evidencePolicy = EvidencePolicy.IncludeCorrelated;
     private DateTimeOffset? lastPublicationUtc;
     private BrokerCaptureHealth? liveHealth;
 
@@ -1082,19 +1089,22 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             CaptureStatus.Text = "Opening saved session";
+            // A session opened is a workspace of its own, which counts correlated evidence until its person chooses.
+            evidencePolicy = EvidencePolicy.IncludeCorrelated;
+            EvidencePolicy policy = evidencePolicy;
             (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
             {
                 SessionStore opened = SharedSessionStores.Open(path);
                 try
                 {
-                    return (opened, SessionOverviewProjector.Project(opened));
+                    return (opened, SessionOverviewProjector.Project(opened, policy));
                 }
                 catch (InvalidDataException) when (!opened.VerifyContents().Verified)
                 {
                     // The first view read a file that fails its own checksum, and hashing what the generation names
                     // found files that changed after they were published. The hashing forgot them, so this projection's
                     // lease falls back to the last complete generation, as hashing at open once did.
-                    return (opened, SessionOverviewProjector.Project(opened));
+                    return (opened, SessionOverviewProjector.Project(opened, policy));
                 }
             });
             if (closed) return false;
@@ -1976,12 +1986,16 @@ public sealed partial class MainWindow : Window, IDisposable
         captureStop = new CancellationTokenSource();
         int run = ++captureRunId;
         ForgetDisplayedSession();
+        evidencePolicy = EvidencePolicy.IncludeCorrelated;
         ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
             "Windows may ask for administrator approval to record system-wide events."));
         try
         {
+            // Each publication is projected under the policy the window holds when it is projected, so a person's choice
+            // made while recording holds from the next one on.
+            var options = new CaptureRunOptions { EvidencePolicy = () => evidencePolicy };
             captureTask = Task.Run(() => DesktopCaptureRunner.RunAsync(
-                update => ReceiveCaptureUpdate(run, update), captureStop.Token));
+                update => ReceiveCaptureUpdate(run, update), captureStop.Token, options));
             await captureTask;
         }
         catch (Exception exception)
@@ -2178,6 +2192,47 @@ public sealed partial class MainWindow : Window, IDisposable
         return true;
     }
 
+    private void CountCandidates(object? sender, RoutedEventArgs eventArgs) =>
+        _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates);
+
+    private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
+        _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
+
+    /// <summary>
+    /// Counts the shown session's records under another evidence policy (§6.8): its generation is projected again under
+    /// it, and the workspace keeps its rung, selection, pins and interval, as a newer publication of it does. A live
+    /// capture projects every later publication under it too, and one whose view is held or paused shows it from the next
+    /// publication it shows. False when nothing is shown, or it is already counted so.
+    /// </summary>
+    internal async Task<bool> ChooseEvidencePolicyAsync(EvidencePolicy policy)
+    {
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (displayedOverview is not { } shown || currentSessionPath is not { } path || shown.Policy == policy)
+        {
+            return false;
+        }
+
+        evidencePolicy = policy;
+        if (IsLive && (!followLatest || workspace.HoldsGeneration))
+        {
+            return true;
+        }
+
+        SessionOverviewBundle overview = await Task.Run(
+            () => SessionOverviewProjector.Project(SharedSessionStores.Open(path, shown.SessionId), policy));
+
+        // A newer publication, another session or another choice may have come meanwhile; only this one's answer is shown.
+        if (closed || evidencePolicy != policy || displayedSessionId != overview.SessionId
+            || displayedGeneration > overview.Generation)
+        {
+            return false;
+        }
+
+        ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
+            SessionPath: path, Overview: overview, OverviewChunks: displayedChunks), overview, forceOverview: false);
+        return true;
+    }
+
     private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview)
     {
         WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
@@ -2188,8 +2243,9 @@ public sealed partial class MainWindow : Window, IDisposable
         displayedOverview = overview;
         displayedChunks = update.OverviewChunks ?? 0;
         currentSessionPath = update.SessionPath ?? currentSessionPath;
+        // Every read of the workspace binds records as the overview it shows was projected: under its policy.
         SessionEvidenceSource? evidence = currentSessionPath is { } path
-            ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation)
+            ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation, overview.Policy)
             : null;
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
         IReadOnlyDictionary<string, GraphPoint>? pins = savedNavigation is null ? null : workspace.GraphPins;

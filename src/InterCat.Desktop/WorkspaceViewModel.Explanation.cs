@@ -1,5 +1,6 @@
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
+using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
@@ -58,6 +59,49 @@ public sealed partial class WorkspaceViewModel
 
     public bool HasExplanation => Explanation.Length > 0;
 
+    /// <summary>
+    /// How strongly a record must bind to a process for this workspace to count it as that process's: the policy its
+    /// overview was projected under and every read of it binds by, correlated evidence unless a person chose otherwise.
+    /// </summary>
+    public EvidencePolicy EvidencePolicy => evidenceSource?.Policy ?? EvidencePolicy.IncludeCorrelated;
+
+    /// <summary>Whether a reused PID's later holders' records count as theirs, as candidates.</summary>
+    public bool CountsCandidates => EvidencePolicy >= EvidencePolicy.IncludeCandidates;
+
+    /// <summary>
+    /// Whether the inspector offers to count candidates: the explanation it states says records were left out of the
+    /// selection's total, which counting candidates would put back (§6.8, one action from the explanation).
+    /// </summary>
+    public bool OffersCandidates => !CountsCandidates && (WithheldOfSelection() > 0);
+
+    /// <summary>
+    /// What the rail says while candidates count, so the unusual setting is never invisible (§6.8): every count, ranking,
+    /// relationship and record E lists binds a reused PID's later holder's records to it, as candidates.
+    /// </summary>
+    public string EvidencePolicyNote => CountsCandidates
+        ? "Counting candidates: a reused PID's later holder also counts records naming its PID that may be an earlier "
+            + "holder's"
+        : string.Empty;
+
+    /// <summary>What an export says of the evidence policy its rows or records were counted under, when not the default.</summary>
+    private string? EvidencePolicyCaveat => CountsCandidates
+        ? "Counted with candidates: a reused PID's later holder's records count as its own, as candidates (evidence "
+            + "policy include-candidates); counted with correlated evidence only, they would be left out."
+        : null;
+
+    /// <summary>The records the explained process or group left out of its total, under the policy counted.</summary>
+    private long WithheldOfSelection()
+    {
+        if (BindingExplanation.Length > 0 && selectedProcess is { } selected)
+        {
+            return wholeSnapshot.Processes.FirstOrDefault(process => process.Id == selected.Id)?.WithheldRecords ?? 0;
+        }
+
+        return GroupingExplanation.Length > 0 && SelectedGroup is { } group
+            ? wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key).Sum(process => process.WithheldRecords)
+            : 0;
+    }
+
     private void RaiseExplanationChanged()
     {
         OnPropertyChanged(nameof(BindingExplanation));
@@ -66,5 +110,6 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(Explanation));
         OnPropertyChanged(nameof(ExplanationHeading));
         OnPropertyChanged(nameof(HasExplanation));
+        OnPropertyChanged(nameof(OffersCandidates));
     }
 }

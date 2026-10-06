@@ -1,6 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -112,6 +113,89 @@ public sealed class ExplanationWindowTests
         Assert.Contains(channel.Key, explanation.Text, StringComparison.Ordinal);
         Save(window, "explanation-channel-1456x939.png");
         window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.8: Count them as candidates counts a later holder's records everywhere, keeps the view, says so in the rail, and one click undoes it")]
+    public async Task CandidatesAreCountedOneActionAway()
+    {
+        // PID 100 exits and is created again, and its second holder sends twice: candidates the default policy withholds.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 2)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd)),
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Complete, "Saved session open", "Saved.",
+            SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Button count = window.GetControl<Button>("CountCandidatesButton");
+        StackPanel rail = window.GetControl<StackPanel>("EvidencePolicyPanel");
+
+        // The later holder chosen among its group's processes counts its creation alone, and offers what it left out.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == later.Id.ToString());
+        Dispatch();
+        Assert.Equal("1", workspace.RungRows.Single(row => row.Key == later.Id.ToString()).Observations);
+        Assert.True(count.IsEffectivelyVisible);
+        Assert.False(rail.IsEffectivelyVisible);
+        Save(window, "candidates-offered-1456x939.png");
+        Assert.Empty(LegibleTextTests.CutOff(window, "the offer"));
+        (window.Width, window.Height) = (window.MinWidth, window.MinHeight);
+        Assert.Empty(LegibleTextTests.CutOff(window, "the offer, at the smallest window"));
+        (window.Width, window.Height) = (1456, 939);
+
+        // One click counts them: the view keeps its rung and choice, the row its sends, and the rail says what is counted.
+        count.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Until(() => window.DataContext is WorkspaceViewModel { CountsCandidates: true });
+        var counted = (WorkspaceViewModel)window.DataContext!;
+        Dispatch();
+        Assert.Equal(later.Id, counted.SelectedProcess?.Id);
+        Assert.Equal("3", counted.RungRows.Single(row => row.Key == later.Id.ToString()).Observations);
+        Assert.Contains("its total includes the 2 records bound to it over the session",
+            window.GetControl<TextBlock>("ExplanationText").Text, StringComparison.Ordinal);
+        Assert.False(count.IsEffectivelyVisible);
+        Assert.True(rail.IsEffectivelyVisible);
+        Assert.StartsWith("Counting candidates:", window.GetControl<TextBlock>("EvidencePolicyText").Text, StringComparison.Ordinal);
+        Save(window, "candidates-1456x939.png");
+        (window.Width, window.Height) = (window.MinWidth, window.MinHeight);
+        Assert.Empty(LegibleTextTests.CutOff(window, "counting candidates, at the smallest window"));
+        (window.Width, window.Height) = (1456, 939);
+
+        // One more counts correlated evidence only again, and the rail has nothing unusual to say.
+        window.GetControl<Button>("CountCorrelatedOnlyButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await Until(() => window.DataContext is WorkspaceViewModel { CountsCandidates: false });
+        var restored = (WorkspaceViewModel)window.DataContext!;
+        Dispatch();
+        Assert.Equal("1", restored.RungRows.Single(row => row.Key == later.Id.ToString()).Observations);
+        Assert.False(rail.IsEffectivelyVisible);
+        Assert.True(count.IsEffectivelyVisible);
+
+        // The choice is the workspace's: a session opened afterwards, even this one again, counts correlated evidence.
+        Assert.True(await window.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates));
+        Assert.True(Assert.IsType<WorkspaceViewModel>(window.DataContext).CountsCandidates);
+        Assert.True(await window.OpenSessionAsync(session.Path));
+        Assert.False(Assert.IsType<WorkspaceViewModel>(window.DataContext).CountsCandidates);
+        window.Close();
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        for (int wait = 0; wait < 500 && !condition(); wait++)
+        {
+            Dispatch();
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
     }
 
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>

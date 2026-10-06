@@ -152,7 +152,7 @@ public static class SessionExport
             throw new InvalidOperationException(problem);
         }
 
-        SessionEvidencePage read = SessionEvidenceQuery.ReadScope(store, scope, request.EvidenceLimit, cancellationToken);
+        SessionEvidencePage read = SessionEvidenceQuery.ReadScope(store, scope, request.EvidenceLimit, cancellationToken: cancellationToken);
         IReadOnlyList<SessionEvidenceRecord> records = read.Records;
         ExportContext context = WorkspaceExport.EvidenceContext(read.SessionId, read.Generation, ladder, scope,
             read.NextCursor is null, OverviewWorkspace.DisclosureFor(snapshot),

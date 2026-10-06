@@ -407,9 +407,13 @@ public static class WorkspaceRowBuilder
             ? $"Each record naming {pid} while it ran is its own, correlated by {rule}: it was the first of {holders} to hold {pid} in this capture."
             : $"{pid} was held by {holders} in this capture, and this was the {Spoken.Ordinal(process.PidHolder)}. A record naming it "
                 + $"while this one ran could be a late record of an earlier one, so {rule}, binds it here only as a candidate. "
-                + (process.WithheldRecords == 0 ? "None is left out of its total."
-                    : "The evidence policy counts no candidate, so its total counts only its lifecycle records, leaving out "
-                        + $"{Spoken.Count(process.WithheldRecords, "record")} bound to it over the session.");
+                + (process.WithheldRecords > 0
+                    ? "The evidence policy counts no candidate, so its total counts only its lifecycle records, leaving out "
+                        + $"{Spoken.Count(process.WithheldRecords, "record")} bound to it over the session."
+                    : process.CandidateRecords > 0
+                    ? "The evidence policy counts candidates, so its total includes the "
+                        + $"{Spoken.Count(process.CandidateRecords, "record")} bound to it over the session."
+                    : "None is left out of its total.");
         return $"{binding} Coverage over the session: {CoverageWords(process.Coverage)}.";
     }
 
@@ -427,14 +431,21 @@ public static class WorkspaceRowBuilder
             ? "Grouped here because no record names the executable its members ran: none is given a guessed name."
             : "Grouped by the executable its members' records name, compared without case.";
         long withheld = members.Sum(member => member.WithheldRecords);
-        int holders = members.Count(member => member.WithheldRecords > 0);
-        string left = withheld == 0 ? string.Empty
-            : $" The evidence policy counts no candidate, so its total leaves out {Spoken.Count(withheld, "record")} bound to "
-                + $"{Spoken.Count(holders, "later holder of a reused PID", "later holders of reused PIDs")} among them.";
+        long candidates = members.Sum(member => member.CandidateRecords);
+        string left = withheld > 0
+            ? $" The evidence policy counts no candidate, so its total leaves out {Spoken.Count(withheld, "record")} bound to "
+                + $"{LaterHolders(members.Count(member => member.WithheldRecords > 0))} among them."
+            : candidates > 0
+            ? $" The evidence policy counts candidates, so its total includes {Spoken.Count(candidates, "record")} bound to "
+                + $"{LaterHolders(members.Count(member => member.CandidateRecords > 0))} among them."
+            : string.Empty;
         CoverageState coverage = members.Count == 0 ? CoverageState.UnknownCoverage : members.Max(member => member.Coverage);
         return $"{grouped} Each member's own records are bound to it by {rule}.{left} "
             + $"Coverage over the session: {CoverageWords(coverage)}.";
     }
+
+    private static string LaterHolders(int count) =>
+        Spoken.Count(count, "later holder of a reused PID", "later holders of reused PIDs");
 
     /// <summary>
     /// How a paired channel's two ends were paired, in words (§6.8: a channel row is one action from the rule, version,

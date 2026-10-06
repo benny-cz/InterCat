@@ -98,6 +98,16 @@
           <Button x:Name="KeepRangeButton" Content="Keep this range" Click="KeepVisibleRange" FontSize="11"
                   Padding="8,2" HorizontalAlignment="Left" IsVisible="{Binding CanKeepVisibleRange}"
                   AutomationProperties.HelpText="Keep the visible range as the analysis interval, so zooming and panning no longer change what the ranking counts" />
+          <!-- §6.8: an evidence policy other than the default is never invisible, and one action restores the default. -->
+          <StackPanel x:Name="EvidencePolicyPanel" Spacing="4" IsVisible="{Binding CountsCandidates}">
+            <TextBlock x:Name="EvidencePolicyText" Text="{Binding EvidencePolicyNote}" Foreground="{DynamicResource Ink.Accent}"
+                       FontSize="11" TextWrapping="Wrap" />
+            <Button x:Name="CountCorrelatedOnlyButton" Click="CountCorrelatedOnly"
+                    FontSize="11" Padding="8,2" HorizontalAlignment="Left"
+                    AutomationProperties.HelpText="Leave a reused PID's candidates out of every count again, as by default">
+              <TextBlock Text="Count correlated evidence only" TextWrapping="Wrap" />
+            </Button>
+          </StackPanel>
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
@@ -567,6 +577,13 @@
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">
                   <TextBlock Text="{Binding ExplanationHeading}" Classes="muted" />
                   <TextBlock x:Name="ExplanationText" Text="{Binding Explanation}" TextWrapping="Wrap" />
+                  <!-- What it says was left out, one action away: counted, as candidates, wherever the session is counted. -->
+                  <!-- Its words wrap: the inspector is narrower than they are long at its narrowest. -->
+                  <Button x:Name="CountCandidatesButton" Click="CountCandidates"
+                          Margin="0,4,0,0" HorizontalAlignment="Left" IsVisible="{Binding OffersCandidates}"
+                          AutomationProperties.HelpText="Count every reused PID's later holder's records as its own, as candidates, in every count, ranking and record list of this session">
+                    <TextBlock Text="Count them as candidates" TextWrapping="Wrap" />
+                  </Button>
                 </StackPanel>
                 <!-- Who started the process and whom it started (entities-v1's parent link): a parent named but not in the
                      capture stays a PID, never a guessed process. -->

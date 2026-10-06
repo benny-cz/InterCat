@@ -85,6 +85,28 @@ public sealed class LiveDerivationTests
         Assert.Equal(0, saved.SegmentReaderCache.Entries);
     }
 
+    [Fact(DisplayName = "§6.8: a live publication is projected under the evidence policy the window holds as it is projected")]
+    public async Task ALivePublicationIsProjectedUnderTheWindowsPolicy()
+    {
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4]);
+
+        // The policy is asked for as the publication is projected, not when the follow began.
+        EvidencePolicy held = EvidencePolicy.IncludeCorrelated;
+        using var derivation = new LiveDerivation(evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4), () => held);
+        held = EvidencePolicy.IncludeCandidates;
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        Assert.Equal(EvidencePolicy.IncludeCandidates, step.Overview!.Policy);
+
+        // With no policy given, a publication counts correlated evidence, the default.
+        using var plain = new TemporarySession();
+        using var defaulted = new LiveDerivation(evidence.Path, Path.Combine(plain.Path, "explore"), Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4));
+        Assert.Equal(EvidencePolicy.IncludeCorrelated, (await defaulted.StepAsync(CancellationToken.None)).Overview!.Policy);
+    }
+
     [Fact(DisplayName = "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation")]
     public async Task AFinishedFollowPublishesTheCheckpoint()
     {

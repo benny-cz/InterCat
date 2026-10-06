@@ -70,6 +70,12 @@ public sealed record CaptureRunOptions
     public string? SessionRoot { get; init; }
 
     public int MaximumDurationSeconds { get; init; } = 600;
+
+    /// <summary>
+    /// The evidence policy each new generation is projected under, read as each is projected, so a person's choice made
+    /// while recording holds for every later publication; null means correlated evidence, the default.
+    /// </summary>
+    public Func<EvidencePolicy>? EvidencePolicy { get; init; }
 }
 
 /// <summary>
@@ -227,7 +233,7 @@ public static class DesktopCaptureRunner
             // Following and projecting run off this loop, one step at a time, so status, the live preview and the owner
             // lease keep their own cadence however long a growing session takes to derive (§12, §19.3, revision 128's
             // 10-minute measurement). A finished step wakes the loop at once, so its overview is not held for a poll.
-            using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed);
+            using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed, policy: options.EvidencePolicy);
             Task<LiveDerivationStep>? deriving = null;
             bool derivingAfterClose = false;
             long stepStarted = 0;

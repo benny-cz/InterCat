@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using InterCat.Application;
 using InterCat.Capture.Journal;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Desktop;
@@ -28,11 +29,15 @@ internal sealed record LiveDerivationStep(
 /// Where the derived store becomes the session's shared store, so the window's queries read through the store that
 /// publishes; the process-wide registry unless a test gives its own.
 /// </param>
+/// <param name="policy">
+/// The evidence policy each generation is projected under, asked for as each is projected; correlated evidence when null.
+/// </param>
 internal sealed class LiveDerivation(
     string evidencePath,
     string sessionPath,
     Stopwatch elapsed,
-    SessionStoreRegistry? stores = null) : IDisposable
+    SessionStoreRegistry? stores = null,
+    Func<EvidencePolicy>? policy = null) : IDisposable
 {
     private readonly CancellationTokenSource halt = new();
     private LiveSessionFollower? follower;
@@ -124,7 +129,8 @@ internal sealed class LiveDerivation(
         try
         {
             long projectionStarted = Stopwatch.GetTimestamp();
-            SessionOverviewBundle overview = SessionOverviewProjector.Project(derived, cancellationToken: cancellationToken);
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(
+                derived, policy?.Invoke() ?? EvidencePolicy.IncludeCorrelated, cancellationToken: cancellationToken);
             return new(step, current.Generation, generationAt, overview, derivation,
                 Stopwatch.GetElapsedTime(projectionStarted), null);
         }

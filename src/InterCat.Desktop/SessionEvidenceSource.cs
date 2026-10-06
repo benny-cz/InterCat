@@ -6,9 +6,12 @@ namespace InterCat.Desktop;
 
 /// <summary>
 /// Where the viewer reads evidence rows and original records for the session it shows. Every read acquires its own
-/// lease off the UI thread; pages continue by row, so a live publication between two pages does not restart them.
+/// lease off the UI thread; pages continue by row, so a live publication between two pages does not restart them. Every
+/// read that binds a record to a process does so under one evidence policy, the one the shown overview was projected
+/// under, so a count, a ranking and the records E lists never disagree about whose a record is.
 /// </summary>
-public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, long generation)
+public sealed class SessionEvidenceSource(
+    string sessionPath, Guid sessionId, long generation, EvidencePolicy policy = EvidencePolicy.IncludeCorrelated)
 {
     private readonly Lock storeGate = new();
     private SessionStore? store;
@@ -20,11 +23,18 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     /// <summary>The generation the workspace was projected from; a page may continue in a newer one.</summary>
     public long Generation { get; } = generation;
 
+    /// <summary>
+    /// How strongly a record must bind to a process for a read to count it as that process's: correlated by default, or
+    /// candidates too, when a person chose to count a reused PID's later holders' records.
+    /// </summary>
+    public EvidencePolicy Policy { get; } = Enum.IsDefined(policy) ? policy : throw new ArgumentOutOfRangeException(nameof(policy));
+
     /// <summary>Counts each edge's and channel's records inside an analysis interval, for a brushed ranking.</summary>
     public Task<SessionIntervalCounts> CountAsync(TimeRange interval, CancellationToken cancellationToken) =>
         Task.Run(() => SessionIntervalQuery.Count(
             Store(),
             interval,
+            Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -35,6 +45,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionByteRanking.Measure(
             Store(),
             interval,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -45,6 +56,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionCallRanking.Measure(
             Store(),
             interval,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -55,6 +67,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
         Task.Run(() => SessionPeerRanking.Measure(
             Store(),
             interval,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -68,6 +81,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             columns,
             scope,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -96,6 +110,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             columns,
             laneColumns,
             owners,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -109,6 +124,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             columns,
             owner,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
@@ -127,6 +143,7 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
             interval,
             columns,
             focus,
+            policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -134,39 +151,42 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     /// the whole session holds, or <paramref name="interval"/> does.
     /// </summary>
     public Task<RpcChannelList> RpcChannelsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionRpcCalls.Channels(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
+        Task.Run(() => SessionRpcCalls.Channels(Store(), instance, interval, policy: Policy, cancellationToken: cancellationToken),
+            cancellationToken);
 
     /// <summary>One RPC channel's calls in reading order, from <paramref name="offset"/>, one page, within <paramref name="interval"/> if given.</summary>
     public Task<RpcCallPage> RpcCallsAsync(string channelKey, int offset, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, interval: interval, cancellationToken: cancellationToken),
-            cancellationToken);
+        Task.Run(() => SessionRpcCalls.Calls(Store(), channelKey, offset, interval: interval, policy: Policy,
+            cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
     /// A call's channel's calls in reading order from the first through the page that holds the call, within
     /// <paramref name="interval"/> if given; the first page alone when the call is not listed there or lies too far down.
     /// </summary>
     public Task<RpcCallPage> RpcCallsThroughAsync(string callKey, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionRpcCalls.CallsThrough(Store(), callKey, interval: interval, cancellationToken: cancellationToken),
-            cancellationToken);
+        Task.Run(() => SessionRpcCalls.CallsThrough(Store(), callKey, interval: interval, policy: Policy,
+            cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
     /// One process instance's HTTP exchanges in the current generation, as one channel (ADR-037), counting the exchanges
     /// the whole session holds, or <paramref name="interval"/> does.
     /// </summary>
     public Task<HttpChannelList> HttpChannelsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionHttpExchanges.Channels(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
+        Task.Run(() => SessionHttpExchanges.Channels(Store(), instance, interval, policy: Policy,
+            cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>One process's HTTP exchanges in reading order, from <paramref name="offset"/>, one page, within <paramref name="interval"/> if given.</summary>
     public Task<HttpExchangePage> HttpExchangesAsync(string channelKey, int offset, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionHttpExchanges.Exchanges(Store(), channelKey, offset, interval: interval, cancellationToken: cancellationToken),
-            cancellationToken);
+        Task.Run(() => SessionHttpExchanges.Exchanges(Store(), channelKey, offset, interval: interval, policy: Policy,
+            cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
     /// One process instance's one-sided connections in the current generation - the TCP connections and UDP flows whose
     /// other end no record holds - with their records and bytes, in the whole session or <paramref name="interval"/>.
     /// </summary>
     public Task<ConnectionList> ConnectionsAsync(ProcessInstanceId instance, TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionConnections.OneSided(Store(), instance, interval, cancellationToken: cancellationToken), cancellationToken);
+        Task.Run(() => SessionConnections.OneSided(Store(), instance, interval, policy: Policy, cancellationToken: cancellationToken),
+            cancellationToken);
 
     /// <summary>
     /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density
@@ -174,13 +194,14 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     /// </summary>
     public Task<HttpExchangeSpanPage> HttpSpansAsync(
         string channelKey, TimeRange viewport, int columns, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionHttpExchanges.Spans(Store(), channelKey, viewport, columns: columns,
+        Task.Run(() => SessionHttpExchanges.Spans(Store(), channelKey, viewport, columns: columns, policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>One RPC channel's calls within an interval, for the timeline's call lane.</summary>
     public Task<RpcCallSpanPage> RpcSpansAsync(string channelKey, TimeRange interval, int columns, CancellationToken cancellationToken) =>
         Task.Run(
-            () => SessionRpcCalls.Spans(Store(), channelKey, interval, columns: columns, cancellationToken: cancellationToken),
+            () => SessionRpcCalls.Spans(Store(), channelKey, interval, columns: columns, policy: Policy,
+                cancellationToken: cancellationToken),
             cancellationToken);
 
     /// <summary>
@@ -201,12 +222,12 @@ public sealed class SessionEvidenceSource(string sessionPath, Guid sessionId, lo
     public Task<SessionEvidencePage> ReadScopeAsync(EvidenceScope scope, int limit, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Task.Run(() => SessionEvidenceQuery.ReadScope(Store(), scope, limit, cancellationToken), cancellationToken);
+        return Task.Run(() => SessionEvidenceQuery.ReadScope(Store(), scope, limit, Policy, cancellationToken), cancellationToken);
     }
 
     public Task<SessionEvidencePage> ReadAsync(EvidenceScope scope, string? cursor, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(scope);
-        return Task.Run(() => SessionEvidenceQuery.Read(Store(), scope, cursor, cancellationToken), cancellationToken);
+        return Task.Run(() => SessionEvidenceQuery.Read(Store(), scope, cursor, Policy, cancellationToken), cancellationToken);
     }
 }

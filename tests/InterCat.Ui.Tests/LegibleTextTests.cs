@@ -426,7 +426,7 @@ public sealed class LegibleTextTests
     /// its own box shows that neither wraps nor ends in an ellipsis, one a clipping card, panel or the window itself cuts at
     /// any edge, and one that ends in an ellipsis with no tooltip to complete it.
     /// </summary>
-    private static IEnumerable<string> CutOff(Window window, string where)
+    internal static IEnumerable<string> CutOff(Window window, string where)
     {
         for (int pass = 0; pass < 3; pass++)
         {

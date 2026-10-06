@@ -150,8 +150,9 @@ public static class SessionEvidenceQuery
         SessionStore store,
         EvidenceScope scope,
         string? cursor,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default) =>
-        Read(store, ReadableChannel(scope), scope.Interval, cursor: cursor, ownerProcesses: OwnersOf(scope),
+        Read(store, ReadableChannel(scope), scope.Interval, cursor: cursor, policy: policy, ownerProcesses: OwnersOf(scope),
             resolveOwners: true, operationKey: scope.OperationKey, cancellationToken: cancellationToken);
 
     /// <summary>
@@ -162,8 +163,9 @@ public static class SessionEvidenceQuery
         SessionStore store,
         EvidenceScope scope,
         int limit,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default) =>
-        ReadScope(store, limit, ReadableChannel(scope), scope.Interval, OwnersOf(scope), resolveOwners: true,
+        ReadScope(store, limit, ReadableChannel(scope), scope.Interval, OwnersOf(scope), policy, resolveOwners: true,
             operationKey: scope.OperationKey, cancellationToken: cancellationToken);
 
     /// <summary>

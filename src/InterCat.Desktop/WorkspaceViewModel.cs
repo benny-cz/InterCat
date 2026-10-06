@@ -5644,7 +5644,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records);
 
         // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
-        return RankingExportCaveat is { } caveat ? context with { Caveats = [.. context.Caveats, caveat] } : context;
+        context = RankingExportCaveat is { } caveat ? context with { Caveats = [.. context.Caveats, caveat] } : context;
+        return EvidencePolicyCaveat is { } policy ? context with { Caveats = [.. context.Caveats, policy] } : context;
     }
 
     /// <summary>
@@ -5666,6 +5667,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 string.Create(CultureInfo.InvariantCulture,
                     $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
                 exportedUtc);
+            if (EvidencePolicyCaveat is { } policy)
+            {
+                context = context with { Caveats = [.. context.Caveats, policy] };
+            }
+
             string content = redacted
                 ? RedactedShareExport.Evidence(format, context, read.Records)
                 : WorkspaceExport.Evidence(format, context, read.Records);

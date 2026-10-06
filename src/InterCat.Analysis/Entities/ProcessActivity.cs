@@ -120,6 +120,19 @@ public sealed partial class ProcessActivityIndex
             : 0;
     }
 
+    /// <summary>
+    /// The records bound to the instance at <paramref name="instance"/> only as candidates, whatever a policy admits:
+    /// every one but its lifecycle records when it is a later holder of a reused PID (identity-v1), and none otherwise.
+    /// </summary>
+    public long CandidatesOf(int instance)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(instance);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(instance, processes.Instances.Count);
+        return StrengthOf(instance) == RelationStrength.Candidate && instances.TryGetValue(instance, out InstanceActivity? activity)
+            ? activity.Bound.Values.Sum()
+            : 0;
+    }
+
     /// <summary>Counts the records of <paramref name="segments"/>, the segments <paramref name="processes"/> was derived from.</summary>
     public static ProcessActivityIndex Derive(
         IReadOnlyList<SegmentReaderV1> segments,

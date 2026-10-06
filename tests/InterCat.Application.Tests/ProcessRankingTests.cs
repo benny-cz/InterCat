@@ -154,17 +154,32 @@ public sealed class ProcessRankingTests
             Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 8).Between(ClientEnd, ServerEnd)),
         ]);
 
-        // By default the later holder counts its creation alone and carries the two sends the policy withheld; the first
-        // holder and the PID held once withhold nothing. Each says which holder of its PID it was, and of how many.
-        (int, int, int, long, long)[] byDefault = [(100, 1, 2, 3L, 0L), (100, 2, 2, 1L, 2L), (200, 1, 1, 2L, 0L)];
-        Assert.Equal(byDefault, Holders(SessionOverviewProjector.Project(session.Store)));
+        // By default the later holder counts its creation alone and carries the two sends the policy withheld, which are
+        // its candidates; the first holder and the PID held once withhold nothing. Each says which holder of its PID it
+        // was, and of how many.
+        (int, int, int, long, long, long)[] byDefault =
+            [(100, 1, 2, 3L, 0L, 0L), (100, 2, 2, 1L, 2L, 2L), (200, 1, 1, 2L, 0L, 0L)];
+        SessionOverviewBundle correlated = SessionOverviewProjector.Project(session.Store);
+        Assert.Equal(EvidencePolicy.IncludeCorrelated, correlated.Policy);
+        Assert.Equal(byDefault, Holders(correlated));
 
-        // A policy that admits candidates counts the sends and withholds none; one that admits only direct evidence
-        // withholds every correlated record too, and counts only lifecycle records.
-        Assert.Equal([(100, 1, 2, 3L, 0L), (100, 2, 2, 3L, 0L), (200, 1, 1, 2L, 0L)],
-            Holders(SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates)));
-        Assert.Equal([(100, 1, 2, 2L, 1L), (100, 2, 2, 1L, 2L), (200, 1, 1, 1L, 1L)],
+        // A policy that admits candidates counts the sends and withholds none, and says it was projected so; one that
+        // admits only direct evidence withholds every correlated record too, and counts only lifecycle records.
+        SessionOverviewBundle candidates = SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates);
+        Assert.Equal(EvidencePolicy.IncludeCandidates, candidates.Policy);
+        Assert.Equal([(100, 1, 2, 3L, 0L, 0L), (100, 2, 2, 3L, 0L, 2L), (200, 1, 1, 2L, 0L, 0L)], Holders(candidates));
+        Assert.Equal([(100, 1, 2, 2L, 1L, 0L), (100, 2, 2, 1L, 2L, 2L), (200, 1, 1, 1L, 1L, 0L)],
             Holders(SessionOverviewProjector.Project(session.Store, EvidencePolicy.DirectOnly)));
+
+        // The later holder's records, read as its rung's scope, are its creation alone, or its sends too under candidates.
+        ProcessInstanceId later = correlated.Nodes.Single(node => node.PidHolder == 2).Id;
+        var scope = new EvidenceScope("Records owned by the later holder", null, [later], null, null);
+        Assert.Equal([ObservationKind.Create], SessionEvidenceQuery.ReadScope(session.Store, scope, 100).Records
+            .Select(record => record.Observation.Kind));
+        Assert.Equal([ObservationKind.Create, ObservationKind.Send, ObservationKind.Send],
+            SessionEvidenceQuery.ReadScope(session.Store, scope, 100, EvidencePolicy.IncludeCandidates).Records
+                .Select(record => record.Observation.Kind));
+        Assert.Equal(3, SessionEvidenceQuery.Read(session.Store, scope, null, EvidencePolicy.IncludeCandidates).Records.Count);
 
         // A fresh viewer of the finished session takes them from its checkpoint, opening no segment, and says the same.
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
@@ -176,10 +191,12 @@ public sealed class ProcessRankingTests
         Assert.Equal(byDefault, Holders(overview));
     }
 
-    /// <summary>Each process by PID and which holder of it it was, of how many, with its counted and withheld records.</summary>
-    private static (int, int, int, long, long)[] Holders(SessionOverviewBundle overview) =>
+    /// <summary>
+    /// Each process by PID and which holder of it it was, of how many, with its counted, withheld and candidate records.
+    /// </summary>
+    private static (int, int, int, long, long, long)[] Holders(SessionOverviewBundle overview) =>
         [.. overview.Nodes
-            .Select(node => (node.ProcessId, node.PidHolder, node.PidHolders, node.Records, node.WithheldRecords))
+            .Select(node => (node.ProcessId, node.PidHolder, node.PidHolders, node.Records, node.WithheldRecords, node.CandidateRecords))
             .OrderBy(holder => holder.ProcessId)
             .ThenBy(holder => holder.PidHolder)];
 
