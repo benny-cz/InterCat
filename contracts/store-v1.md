@@ -43,6 +43,7 @@ SessionManifestV1 = (
     committed boundary,
     dependencies: [ (name, kind, length, sha256) ],
     retention?,
+    earlier releases?: [ (generation, retention record) ],
     digest)
 ```
 
@@ -338,6 +339,18 @@ the record.
 
 The record is appended to the manifest's canonical digest text **only when it is present**, so a generation
 published before retention existed verifies with exactly the digest it always had.
+
+**A release outlives the generation that made it** (revision 315). Every later generation carries the latest release of
+each extent nothing can rebuild - a `JournalPrefix` and a `Content` release - with the generation that published it, as
+`earlierReleases: [ { generation, record } ]`. A generation that releases one itself carries no earlier one of that kind,
+whose own record is then the latest, so a manifest carries at most one of each. A `DerivedFiles` release is not carried:
+what it released can be rebuilt. Readers state a carried release as they state a generation's own: a record's content
+says when and why its content went (`contracts/content-v1.md` §2), re-derivation is refused as the journal release itself
+refused it - the rows of the released records are still held - and `icat session` names the generation that released
+each. The list is written only when it holds a release, and appended to the canonical digest text then alone, each
+entry as `earlier|<generation>|<record>`, so a manifest that carries none is the file, and the digest, it always was. A
+list that is empty, that names a generation not earlier than its own or out of order, that carries a `DerivedFiles`
+release, or two of one kind, or one of the kind its own record releases, is refused.
 
 Releasing and removing are separate steps. The generation stops naming a file immediately, which is what
 makes the retention visible; the bytes go when the last reader that acquired them lets go. A file a live

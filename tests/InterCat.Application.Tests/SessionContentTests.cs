@@ -201,8 +201,16 @@ public sealed class SessionContentTests
             + "investigation is done; its payloads held tokens\". Every record's metadata is kept, and none of its bytes.",
             detail.UnavailableReason);
 
+        // A later generation still says when and why the content went, since it carries the release.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, DateTimeOffset.UnixEpoch).Outcome);
+        SessionManifestV1 checkpointed = session.Store.Current!;
+        Assert.Equal((after.Generation + 1, (RetentionRecord?)null), (checkpointed.Generation, checkpointed.Retention));
+        Assert.Equal(new GenerationRelease(after.Generation, record), Assert.Single(checkpointed.EarlierReleases!));
+        Assert.Equal(detail.UnavailableReason,
+            SessionContentQuery.Read(session.Store, page.SessionId, page.Records[0], revealBytes: true).UnavailableReason);
+
         // The released generation reopens and verifies, and there is nothing left to release.
-        Assert.Equal(after.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)).Current!.Generation);
+        Assert.Equal(checkpointed.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)).Current!.Generation);
         Assert.False(ContentRetention.Preview(session.Store).ReleasesAnything);
         Assert.Contains("keeps no content", Assert.Throws<InvalidOperationException>(() =>
             ContentRetention.Release(session.Store, "again", DateTimeOffset.UnixEpoch)).Message, StringComparison.Ordinal);

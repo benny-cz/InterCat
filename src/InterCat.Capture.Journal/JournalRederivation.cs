@@ -130,14 +130,19 @@ public static class JournalRederivation
         + "retained journals alone, so it would drop theirs. It is refused rather than losing them (ADR-024).";
 
     /// <summary>
-    /// Why a journal-prefix retention generation cannot be re-derived, or null for any other generation. The release
-    /// keeps every derived row, including those of the records it gave up, which only the replay would then drop.
+    /// Why a generation that states a journal-prefix release - its own, or an earlier generation's it carries - cannot be
+    /// re-derived, or null for one that states none. The release keeps every derived row, including those of the records
+    /// it gave up, which only the replay would then drop, and no later generation releases those rows.
     /// </summary>
     private static string? ReleasedEvidenceRefusal(SessionManifestV1 manifest) =>
-        manifest.Retention is { Kind: RetentionExtentKind.JournalPrefix } retention
-            ? $"Generation {manifest.Generation} released "
-                + retention.ReleasedRecords.ToString("N0", CultureInfo.InvariantCulture)
-                + " admitted records from its journal and still holds the rows derived from them. "
+        manifest.LatestRelease(RetentionExtentKind.JournalPrefix) is { } release
+            ? $"Generation {release.Generation} released "
+                + release.Record.ReleasedRecords.ToString("N0", CultureInfo.InvariantCulture)
+                + " admitted records from its journal"
+                + (release.Generation == manifest.Generation
+                    ? " and still holds"
+                    : $", and generation {manifest.Generation} still holds")
+                + " the rows derived from them. "
                 + UnrebuildableRows
             : null;
 

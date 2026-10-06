@@ -910,6 +910,7 @@
         "I15: a published segment from before minor 1 is read whole and checked by its trailer",
         "I15: a published segment opens by its header, directories and time column, and reads a column when first asked",
         "I15: a published segment whose length changed since its generation recorded it is not read",
+        "I15: a release nothing can rebuild is carried by every later generation, and a manifest that carries none is as it was",
         "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",
         "I15: a retention generation publishes what it released and why",

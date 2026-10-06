@@ -214,6 +214,17 @@ public sealed record RetentionRecord(
 }
 
 /// <summary>
+/// A retention record and the generation that published it. A later generation carries the latest release of each extent
+/// nothing can rebuild - a journal prefix, kept content - so what was given up, when and why is still stated once the
+/// generation that released it is superseded (store-v1 §8).
+/// </summary>
+public sealed record GenerationRelease(long Generation, RetentionRecord Record)
+{
+    internal string CanonicalForm =>
+        string.Create(CultureInfo.InvariantCulture, $"{Generation}|{Record.CanonicalForm}");
+}
+
+/// <summary>
 /// One immutable generation of a session. A manifest carries its own digest and its complete dependency
 /// list, which is what lets a torn publication be detected and rolled back instead of trusted.
 /// </summary>
@@ -257,6 +268,15 @@ public sealed record SessionManifestV1
     /// </summary>
     public RetentionRecord? Retention { get; init; }
 
+    /// <summary>
+    /// The latest release of a journal prefix and of kept content that earlier generations published, each with the
+    /// generation that published it: every later generation carries them, so a release is still stated once the
+    /// generation that made it is superseded. Absent when there are none - from the file as well as the digest - so a
+    /// manifest that carries none is the shape it always was, and verifies with the digest it always had.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IReadOnlyList<GenerationRelease>? EarlierReleases { get; init; }
+
     /// <summary>`sha256:` and 64 lowercase hexadecimal characters over everything above.</summary>
     public required string Digest { get; init; }
 
@@ -268,7 +288,8 @@ public sealed record SessionManifestV1
         long? previousGeneration,
         CommittedBoundary boundary,
         IReadOnlyList<StoreDependency> dependencies,
-        RetentionRecord? retention = null)
+        RetentionRecord? retention = null,
+        IReadOnlyList<GenerationRelease>? earlierReleases = null)
     {
         ArgumentNullException.ThrowIfNull(dependencies);
         ArgumentNullException.ThrowIfNull(boundary);
@@ -283,6 +304,7 @@ public sealed record SessionManifestV1
             Boundary = boundary,
             Dependencies = dependencies,
             Retention = retention,
+            EarlierReleases = earlierReleases is { Count: > 0 } ? earlierReleases : null,
             Digest = string.Empty,
         };
         string? problem = manifest.Validate();
@@ -290,6 +312,46 @@ public sealed record SessionManifestV1
             ? throw new ArgumentException(problem)
             : manifest with { Digest = manifest.ComputeDigest() };
     }
+
+    /// <summary>
+    /// What a generation that follows <paramref name="previous"/> carries: the latest release of each extent nothing can
+    /// rebuild, the previous generation's own replacing an earlier one of its kind, and none of the kind the new
+    /// generation releases itself, whose own record is then the latest.
+    /// </summary>
+    public static IReadOnlyList<GenerationRelease>? ReleasesCarriedFrom(SessionManifestV1? previous, RetentionRecord? own = null)
+    {
+        if (previous is null)
+        {
+            return null;
+        }
+
+        var releases = new List<GenerationRelease>(previous.EarlierReleases ?? []);
+        if (previous.Retention is { } released && IsCarried(released.Kind))
+        {
+            _ = releases.RemoveAll(release => release.Record.Kind == released.Kind);
+            releases.Add(new(previous.Generation, released));
+        }
+
+        if (own is not null)
+        {
+            _ = releases.RemoveAll(release => release.Record.Kind == own.Kind);
+        }
+
+        return releases.Count == 0 ? null : [.. releases.OrderBy(release => release.Generation)];
+    }
+
+    /// <summary>
+    /// The latest release of <paramref name="kind"/> this generation states: its own record when it published one, else
+    /// the one it carries; null when it states none.
+    /// </summary>
+    public GenerationRelease? LatestRelease(RetentionExtentKind kind) =>
+        Retention is { } own && own.Kind == kind
+            ? new(Generation, own)
+            : EarlierReleases?.LastOrDefault(release => release.Record.Kind == kind);
+
+    /// <summary>The releases a later generation carries: those nothing can rebuild. Derived files can be rebuilt.</summary>
+    private static bool IsCarried(RetentionExtentKind kind) =>
+        kind is RetentionExtentKind.JournalPrefix or RetentionExtentKind.Content;
 
     /// <summary>The manifest file name for a generation. Fixed width, so the names sort as the numbers do.</summary>
     public static string FileNameFor(long generation) =>
@@ -365,7 +427,57 @@ public sealed record SessionManifestV1
             return "The committed boundary names a journal, a non-negative extent and a digest, or none.";
         }
 
-        return Retention?.Validate();
+        return Retention?.Validate() ?? EarlierReleasesProblem();
+    }
+
+    /// <summary>Why the releases this manifest carries are not ones a generation can carry, or null when they are.</summary>
+    private string? EarlierReleasesProblem()
+    {
+        if (EarlierReleases is not { } earlier)
+        {
+            return null;
+        }
+
+        if (earlier.Count == 0)
+        {
+            return "A manifest that carries no earlier release names none, rather than an empty list.";
+        }
+
+        var kinds = new HashSet<RetentionExtentKind>();
+        long last = 0;
+        foreach (GenerationRelease? release in earlier)
+        {
+            if (release?.Record is null)
+            {
+                return "An earlier release names the generation that published it and its retention record.";
+            }
+
+            if (release.Generation <= last || release.Generation >= Generation)
+            {
+                return $"Generation {Generation} carries a release of generation {release.Generation}: a generation carries "
+                    + "releases of earlier generations, oldest first.";
+            }
+
+            if (!IsCarried(release.Record.Kind))
+            {
+                return $"Generation {Generation} carries a {release.Record.Kind} release: a generation carries only the "
+                    + "releases nothing can rebuild, of a journal prefix and of kept content.";
+            }
+
+            if (!kinds.Add(release.Record.Kind) || Retention?.Kind == release.Record.Kind)
+            {
+                return $"Generation {Generation} carries more than the latest {release.Record.Kind} release.";
+            }
+
+            if (release.Record.Validate() is { } problem)
+            {
+                return problem;
+            }
+
+            last = release.Generation;
+        }
+
+        return null;
     }
 
     /// <summary>Returns the reason this manifest's own bytes do not match its digest, or null.</summary>
@@ -404,6 +516,13 @@ public sealed record SessionManifestV1
         if (Retention is { } retention)
         {
             canonical.Append(retention.CanonicalForm).Append('\n');
+        }
+
+        // So are the releases carried from earlier generations, so a manifest that carries none hashes as it did before
+        // releases were carried.
+        foreach (GenerationRelease release in EarlierReleases ?? [])
+        {
+            canonical.Append("earlier|").Append(release.CanonicalForm).Append('\n');
         }
 
         return string.Concat(

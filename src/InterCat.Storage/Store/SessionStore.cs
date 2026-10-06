@@ -780,7 +780,8 @@ public sealed class SessionStore
                 SourceIdentity,
                 previousGeneration == 0 ? null : previousGeneration,
                 boundary,
-                [.. carried, .. published]);
+                [.. carried, .. published],
+                earlierReleases: SessionManifestV1.ReleasesCarriedFrom(current));
             RequireUnpublishedTarget(SessionManifestV1.FileNameFor(manifest.Generation));
 
             // The manifest may reference only durable dependencies, so every one of them is read back
@@ -1765,7 +1766,8 @@ public sealed class SessionStore
             previousManifest.Generation,
             boundary,
             dependencies,
-            record);
+            record,
+            SessionManifestV1.ReleasesCarriedFrom(previousManifest, record));
         Unverified? unverifiable = VerifyDependencies(directory, manifest, measurements);
         if (unverifiable is not null)
         {

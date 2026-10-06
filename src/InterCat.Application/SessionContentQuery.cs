@@ -99,13 +99,13 @@ public static class SessionContentQuery
     }
 
     /// <summary>
-    /// What the generation's own retention record says of its content, when it is the generation a content release
-    /// published: when and why every record's content went (content-v1 §2). Null for any other generation.
+    /// What the generation says of a content release, when one was published - by this generation, or by an earlier one
+    /// whose record it carries: when and why every record's content went (content-v1 §2). Null when none was.
     /// </summary>
     public static string? ReleasedContent(SessionManifestV1 manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        return manifest.Retention is { Kind: RetentionExtentKind.Content } release
+        return manifest.LatestRelease(RetentionExtentKind.Content)?.Record is { } release
             ? string.Create(System.Globalization.CultureInfo.CurrentCulture,
                 $"Its content was released on {release.ReleasedUtc.UtcDateTime:yyyy-MM-dd HH:mm} UTC, with every record's content in the session: \"{release.Reason}\". Every record's metadata is kept, and none of its bytes.")
             : null;

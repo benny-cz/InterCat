@@ -637,6 +637,19 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
         Assert.Contains("This session keeps no content, so there is nothing to release.", output, StringComparison.Ordinal);
         Assert.Equal(generation + 1, Current());
+
+        // A later generation still states the release, and which generation made it.
+        (code, _, said) = await Run("checkpoint", kept.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(generation + 2, Current());
+        (_, output, _) = await Run("session", kept.Path);
+        Assert.Matches($@"(?m)^  Released by +generation {generation + 1}\r?$", output);
+        Assert.Contains("payloads held tokens", output, StringComparison.Ordinal);
+        page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(kept.Path)));
+        (_, _, said) = await Run("content", kept.Path, "--session-id", page.SessionId.ToString(), "--generation",
+            page.Generation.ToString(System.Globalization.CultureInfo.InvariantCulture), "--segment", page.Records[0].SegmentName,
+            "--row", page.Records[0].SegmentRow.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Assert.Contains("Its content was released on", said, StringComparison.Ordinal);
     }
 
     /// <summary>A WinINet response body record of process 4242, whose payload names no owner.</summary>

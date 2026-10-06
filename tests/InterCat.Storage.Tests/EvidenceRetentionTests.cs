@@ -1,3 +1,4 @@
+using System.Text;
 using InterCat.Domain;
 using Xunit;
 
@@ -413,6 +414,60 @@ public sealed class EvidenceRetentionTests
         SessionStore reopened = session.Reopen();
         Assert.Equal(2, reopened.Current!.Generation);
         Assert.Empty(reopened.Recovery.OrphanFiles);
+    }
+
+    [Fact(DisplayName = "I15: a release nothing can rebuild is carried by every later generation, and a manifest that carries none is as it was")]
+    public void AReleaseIsCarriedByEveryLaterGeneration()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, 9, batchCapacity: 3);
+        RetentionRecord released = JournalRetention.Release(
+            session.Store, firstRetainedRecordIndex: 6, "older than the retained window", Committed, Committed).Manifest.Retention!;
+
+        // A generation that follows carries it, with the generation that published it, though it releases nothing itself.
+        using (StoreStagingFile ledger = session.Store.Stage("coverage-0003.json", StoreDependencyKind.CoverageLedger))
+        {
+            ledger.Content.Write(Encoding.UTF8.GetBytes("{}"));
+            _ = ledger.Complete();
+            _ = session.Store.Commit([ledger], session.Store.Current!.Boundary, Committed);
+        }
+
+        SessionManifestV1 later = session.Store.Current!;
+        Assert.Equal((3L, (RetentionRecord?)null), (later.Generation, later.Retention));
+        Assert.Equal([new GenerationRelease(2, released)], later.EarlierReleases!);
+        Assert.Equal(new GenerationRelease(2, released), later.LatestRelease(RetentionExtentKind.JournalPrefix));
+        Assert.Null(later.LatestRelease(RetentionExtentKind.Content));
+
+        // It is written and hashed with the manifest and read back as written. A manifest that carries none is the shape
+        // it always was.
+        SessionManifestV1 reopened = session.Reopen().Current!;
+        Assert.Equal(later.Digest, reopened.Digest);
+        GenerationRelease read = Assert.Single(reopened.EarlierReleases!);
+        Assert.Equal((2L, released.Kind, released.ReleasedUtc, released.Reason, released.ReleasedRecords, released.SourceDigest),
+            (read.Generation, read.Record.Kind, read.Record.ReleasedUtc, read.Record.Reason, read.Record.ReleasedRecords, read.Record.SourceDigest));
+        Assert.DoesNotContain("earlierReleases", File.ReadAllText(Path.Combine(session.Path, SessionManifestV1.FileNameFor(2))), StringComparison.Ordinal);
+        Assert.Contains("earlierReleases", File.ReadAllText(Path.Combine(session.Path, SessionManifestV1.FileNameFor(3))), StringComparison.Ordinal);
+
+        // Only the latest of each kind is carried: a later release of a journal prefix stands for both.
+        Assert.Null(SessionManifestV1.ReleasesCarriedFrom(later, released with { Reason = "a later release" }));
+        Assert.Contains("only the releases nothing can rebuild", (later with
+        {
+            EarlierReleases = [new(2, RetentionRecord.ForDerivedFiles(Committed, "rebuildable", ["segment-0001.icats"], 1))],
+        }).Validate()!, StringComparison.Ordinal);
+        Assert.Contains("more than the latest", (later with { EarlierReleases = [new(1, released), new(2, released)] }).Validate()!,
+            StringComparison.Ordinal);
+        Assert.Contains("releases of earlier generations", (later with { EarlierReleases = [new(3, released)] }).Validate()!,
+            StringComparison.Ordinal);
+        Assert.Contains("names none", (later with { EarlierReleases = [] }).Validate()!, StringComparison.Ordinal);
+        Assert.Contains("and its retention record", (later with { EarlierReleases = [new(2, null!)] }).Validate()!,
+            StringComparison.Ordinal);
+
+        // A change to what it carries fails the generation, as any change to its manifest does.
+        string path = Path.Combine(session.Path, SessionManifestV1.FileNameFor(3));
+        File.WriteAllText(path, File.ReadAllText(path).Replace("older than the retained window", "older than a retained window",
+            StringComparison.Ordinal));
+        SessionStore changed = session.Reopen();
+        Assert.Equal((true, 2L), (changed.Recovery.RolledBackToLastKnownGood, changed.Current!.Generation));
     }
 
     [Fact(DisplayName = "I15: a journal release that would leave no evidence at all is refused")]

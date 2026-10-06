@@ -91,6 +91,12 @@ internal sealed record SessionGenerationDocument
 
     /// <summary>What this generation released, and why, when a retention published it (store-v1 §8); null otherwise.</summary>
     public required RetentionRecord? Retention { get; init; }
+
+    /// <summary>
+    /// The latest release of a journal prefix and of kept content that earlier generations published, which this one
+    /// carries; null when there are none (store-v1 §8).
+    /// </summary>
+    public required IReadOnlyList<GenerationRelease>? EarlierReleases { get; init; }
 }
 
 /// <summary>
@@ -487,6 +493,7 @@ internal static class SessionCommand
                     }),
                 ],
                 Retention = manifest.Retention,
+                EarlierReleases = manifest.EarlierReleases,
             },
             Recovery = new()
             {
@@ -633,7 +640,12 @@ internal static class SessionCommand
 
         if (generation.Retention is { } retention)
         {
-            RenderRetention(retention);
+            RenderRetention(retention, "this generation");
+        }
+
+        foreach (GenerationRelease earlier in generation.EarlierReleases ?? [])
+        {
+            RenderRetention(earlier.Record, string.Create(CultureInfo.CurrentCulture, $"generation {earlier.Generation:N0}"));
         }
 
         ConsoleUi.Heading("Published files");
@@ -777,13 +789,15 @@ internal static class SessionCommand
     }
 
     /// <summary>
-    /// What the generation released and why, as its retention record states it (store-v1 §8): a release with no reader
-    /// is indistinguishable from data loss, so the session says what went, when and why.
+    /// What a release gave up and why, as its retention record states it - this generation's, or an earlier one's that it
+    /// carries (store-v1 §8): a release with no reader is indistinguishable from data loss, so the session says what went,
+    /// when and why, and which generation released it.
     /// </summary>
-    private static void RenderRetention(RetentionRecord retention)
+    private static void RenderRetention(RetentionRecord retention, string publishedBy)
     {
         CultureInfo culture = CultureInfo.CurrentCulture;
         ConsoleUi.Heading("Released by retention");
+        ConsoleUi.Field("Released by", publishedBy);
         ConsoleUi.Field("What", retention.Kind switch
         {
             RetentionExtentKind.DerivedFiles => "derived files - segments, dictionaries or indexes - all rebuildable from the journal",

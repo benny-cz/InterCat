@@ -267,14 +267,18 @@ public sealed class LiveSessionRecorderTests
         Assert.Throws<InvalidOperationException>(() => JournalRederivation.Rebuild(writable, DateTimeOffset.UtcNow));
         Assert.Equal(released.Manifest.Generation, writable.Current!.Generation);
 
-        // A later generation no longer says what was released, but its rows still go back to the released records.
+        // A later generation carries the release, so it says what was released and refuses as the release did, before
+        // anything is replayed: its rows still go back to the released records.
         string fields = SessionSegments.FieldNames(released.Manifest)[0];
         RetentionOutcome later = writable.ReleaseDependencies([fields], "source fields are not needed", DateTimeOffset.UtcNow);
         Assert.Equal(RetentionExtentKind.DerivedFiles, later.Manifest.Retention!.Kind);
-        Assert.True(JournalRederivation.Assess(later.Manifest).CanAttempt);
+        JournalRederivationReadiness laterReadiness = JournalRederivation.Assess(later.Manifest);
+        Assert.False(laterReadiness.CanAttempt);
+        Assert.StartsWith($"Generation {released.Manifest.Generation} released 2 admitted records from its journal, and generation "
+            + $"{later.Manifest.Generation} still holds the rows derived from them.", laterReadiness.Explanation, StringComparison.Ordinal);
         InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
             JournalRederivation.Rebuild(writable, DateTimeOffset.UtcNow));
-        Assert.Contains("rows go back to record 1, but its retained records begin at 3", refused.Message, StringComparison.Ordinal);
+        Assert.Equal(laterReadiness.Explanation, refused.Message);
         Assert.Equal(later.Manifest.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(directory.Path)).Current!.Generation);
     }
 

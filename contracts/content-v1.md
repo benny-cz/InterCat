@@ -56,8 +56,9 @@ no chunk, and when its capture has not finished - it carries no capture finaliza
 recording would find the session changed beneath it, and one that stopped without finishing cannot be told from it:
 its content goes with its journal chunks instead. `icat retain <session> --release-content` measures the release - the
 chunks, the records' content and the message bytes they hold - and performs it only with `--confirm` and a stated
-`--reason`. While the release's generation is current, a record's content states when and why it went; `icat session`
-states any retention record of the generation it reads.
+`--reason`. A record's content then states when and why it went, and `icat session` states the release. Since revision
+315 every later generation carries the release (store-v1 §8), so both still say so once another generation - a
+checkpoint, a compaction - is published after it.
 
 A viewer lists a chunk at open without hashing it, as it lists a journal (store-v1 §6): its header and each fragment
 carry their own checksums, and a reader checks a fragment before interpreting a byte of it.
@@ -212,5 +213,3 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
 - An evidence follower that mirrors content, so a broker capture could keep it.
 - Content an imported file already holds (§11.1).
-- A content release's record in later generations: it is its own generation's, as every retention record is, so a later
-  publication leaves it behind and a record's content then says only that a retention may have released it.
