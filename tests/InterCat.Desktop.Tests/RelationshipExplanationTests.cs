@@ -22,7 +22,8 @@ public sealed class RelationshipExplanationTests
             .Single(row => row.Source.StartsWith("Browser", StringComparison.Ordinal));
         Assert.Equal("synthetic-tour, version 1", browser.Rule);
         Assert.Equal("Direct evidence, derived by synthetic-tour, version 1, from 2 channels: chan.health, chan.https.", browser.Explanation);
-        Assert.EndsWith(", evidence direct, derived by synthetic-tour, version 1", browser.AccessibleName, StringComparison.Ordinal);
+        Assert.EndsWith(", evidence direct, derived by synthetic-tour, version 1. Press Enter to open its source process, "
+            + "whose rows list its 2 channels.", browser.AccessibleName, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§6.3: a relationship resting on many channels names its first three and counts the rest, and an RPC one names the key that opens its linked calls")]

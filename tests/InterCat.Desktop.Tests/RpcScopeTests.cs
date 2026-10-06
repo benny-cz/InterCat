@@ -224,7 +224,7 @@ public sealed class RpcScopeTests
     });
 
     [Fact(DisplayName = "§7.4: the graph joins a caller and the process that served it by an RPC edge, read as call records with no size")]
-    public void TheGraphDrawsAnRpcEdge()
+    public void TheGraphDrawsAnRpcEdge() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
@@ -239,13 +239,45 @@ public sealed class RpcScopeTests
         Assert.Contains("Rule: rpc-call-peer, version 1 · evidence: the calls its links join, by key", card.Lines);
         Assert.Contains("Bytes: none · an RPC call carries no size", card.Lines);
         Assert.Contains("Direction: display order only; each end's RPC rows say which calls and which served", card.Lines);
-        Assert.Contains("Double-click opens its source process, whose rows list its RPC channels", card.Lines);
+        Assert.Contains("Double-click opens the calls its links join", card.Lines);
         Assert.Contains("caller.exe", card.Title, StringComparison.Ordinal);
         Assert.Contains("services.exe", card.Title, StringComparison.Ordinal);
 
         // What the view says it draws names the linked calls, not TCP alone.
         Assert.Equal(OverviewWorkspace.LinkedCallsDisclosure, OverviewWorkspace.DisclosureFor(workspace.Snapshot));
-    }
+
+        // A double click opens the calls its links join: the source process's evidence step, read by the relationship's own
+        // key, lists both linked calls' records at both ends, and Esc climbs to that process.
+        CommunicationEdge relationship = workspace.Snapshot.Edges.Single(edge => edge.Key == Assert.Single(drawn.Relationships));
+        ProcessNode source = workspace.Snapshot.Processes.Single(node => node.Id == relationship.SourceId);
+        ProcessNode target = workspace.Snapshot.Processes.Single(node => node.Id == relationship.TargetId);
+        string calls = $"Records of RPC calls linked between {source.NameWithPid} and {target.NameWithPid}";
+        Assert.True(workspace.OpenGraphEdge(drawn.Key));
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(calls, workspace.EvidenceScopeText);
+        Assert.Equal(8, workspace.RungRows.Count);
+        Assert.All(workspace.RungRows, row => Assert.StartsWith("RPC request ", row.Label, StringComparison.Ordinal));
+        Assert.True(workspace.Ascend());
+        Assert.Contains(source.Name, workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+        Assert.Equal(3, workspace.Crumbs.Count);
+
+        // Its row in the relationship table says what Enter opens, and opens the same.
+        workspace.ReturnTo(0);
+        RelationshipRow row = Assert.Single(workspace.Relationships, candidate => candidate.Key == relationship.Key);
+        Assert.Equal("the calls its links join", row.Opens);
+        workspace.SelectedRelationship = row;
+        Assert.EndsWith(" Enter opens the calls its links join.", workspace.SelectedRelationshipExplanation, StringComparison.Ordinal);
+        Assert.True(workspace.OpenSelectedRelationship());
+        await workspace.EvidenceReady;
+        Assert.Equal(calls, workspace.EvidenceScopeText);
+        Assert.Equal(8, workspace.RungRows.Count);
+
+        // Without the session's records there are no calls to open, so the edge opens nothing rather than an empty rung.
+        using var unread = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
+        Assert.False(unread.OpenGraphEdge(Assert.Single(unread.GraphDisplay.Edges, edge => edge.Mechanism == Mechanism.Rpc).Key));
+        Assert.Single(unread.Crumbs);
+    });
 
     /// <summary>The process's service-control-manager channel as the rail shows it.</summary>
     private static RungRow Scm(WorkspaceViewModel workspace) =>

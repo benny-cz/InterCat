@@ -682,6 +682,7 @@
         <ListBox x:Name="RelationshipList" Grid.Row="2" Margin="0,4,0,0"
                  ItemsSource="{Binding Relationships}"
                  SelectedItem="{Binding SelectedRelationship, Mode=TwoWay}"
+                 DoubleTapped="OpenRelationshipRow"
                  Background="Transparent" BorderThickness="0"
                  AutomationProperties.Name="Relationship table, the table equivalent of the communication graph">
           <ListBox.ItemTemplate>

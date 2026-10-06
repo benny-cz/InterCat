@@ -319,6 +319,20 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = true;
                 break;
             case Key.Enter:
+                if (RelationshipList.IsKeyboardFocusWithin)
+                {
+                    // Enter on a relationship opens it as a double click on its edge does (R15): the row with the keyboard
+                    // is the one opened when none is chosen yet, as on the ranked table.
+                    if (viewModel.SelectedRelationship is null
+                        && FocusManager?.GetFocusedElement() is ListBoxItem { DataContext: RelationshipRow focused })
+                    {
+                        viewModel.SelectedRelationship = focused;
+                    }
+
+                    e.Handled = OpenSelectedRelationship();
+                    break;
+                }
+
                 if (CrumbWithKeyboard() is { IsCurrent: false } crumb)
                 {
                     // A crumb with the keyboard says "press Enter to return to this level"; the rung's table then has it.
@@ -483,6 +497,20 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     private void OpenSearchHit(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedSearchHit();
+
+    /// <summary>The pointer equivalent of Enter on a relationship, and of a double click on its edge (§6.7, R15).</summary>
+    private void OpenRelationshipRow(object? sender, TappedEventArgs eventArgs) => eventArgs.Handled = OpenSelectedRelationship();
+
+    /// <summary>
+    /// Opens the relationship chosen in the table as a double click on its edge does, and gives the keyboard to the rung it
+    /// opened: its rows, or the step that lists its records when it has none.
+    /// </summary>
+    private bool OpenSelectedRelationship()
+    {
+        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSelectedRelationship()) return false;
+        FocusRail();
+        return true;
+    }
 
     private bool OpenSelectedSearchHit()
     {

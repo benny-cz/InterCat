@@ -1829,26 +1829,60 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// §6.7's double-click on an edge: opens the relationship's channel view. The ladder descends one rung at a time, so
-    /// the path runs from the machine through the source process's group and the process to the relationship's channel,
-    /// when it has exactly one; with several it stops at the process, whose rows list them. The breadcrumb states every
-    /// rung, and each Esc climbs one. An aggregate edge stands for several relationships and opens nothing.
+    /// §6.7's double-click on an edge: opens the one relationship it stands for, as <see cref="OpenRelationship"/> does. An
+    /// aggregate edge stands for several relationships and opens nothing.
     /// </summary>
     public bool OpenGraphEdge(string edgeKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
-        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is not { Relationships.Count: 1 } drawn
-            || wholeSnapshot.Edges.FirstOrDefault(edge => edge.Key == drawn.Relationships[0]) is not { } relationship
+        return graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is { Relationships.Count: 1 } drawn
+            && OpenRelationship(drawn.Relationships[0]);
+    }
+
+    /// <summary>
+    /// Opens one relationship, from its edge or from its row in the relationship table, the graph's keyboard and
+    /// screen-reader equivalent (R15). The ladder descends one rung at a time from the machine, through the source
+    /// process's group, to the process. A relationship resting on exactly one channel goes on to that channel. An RPC
+    /// relationship goes on to the calls its links join, which the process's evidence step reads by the relationship's own
+    /// key (R4). Any other stops at the process, whose rows list its channels. The breadcrumb states every rung, and each
+    /// Esc climbs one.
+    /// </summary>
+    public bool OpenRelationship(string relationshipKey)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(relationshipKey);
+        if (wholeSnapshot.Edges.FirstOrDefault(edge => edge.Key == relationshipKey) is not { } relationship
             || wholeSnapshot.Processes.FirstOrDefault(process => process.Id == relationship.SourceId) is not { } source)
         {
             return false;
         }
 
-        Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
-        return DescendAlong(channels.Length == 1
-            ? [source.GroupKey, source.Id.ToString(), channels[0].Key]
-            : [source.GroupKey, source.Id.ToString()], selectedInterval);
+        string[] process = [source.GroupKey, source.Id.ToString()];
+        if (relationship.Rule != RelationRule.RpcCallPeer)
+        {
+            Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
+            return DescendAlong(channels.Length == 1 ? [.. process, channels[0].Key] : process, selectedInterval);
+        }
+
+        // Linked calls are records only the session holds, so there is nothing to open without it.
+        if (evidenceSource is null || !TryBuildDescents(process, Snapshot, out List<LadderDescent> descents))
+        {
+            return false;
+        }
+
+        ladder.RecordInterval(selectedInterval);
+        if (!ladder.TryReturnTo(0, out _)) return false;
+        foreach (LadderDescent descent in descents) _ = TryDescend(descent);
+        string peer = wholeSnapshot.Processes.FirstOrDefault(node => node.Id == relationship.TargetId)?.NameWithPid
+            ?? "an unknown process";
+        _ = TryDescend(LadderProjection.EvidenceDescentFor(ladder.Current, selectedInterval ?? ladder.Current.Viewport,
+            new(DetailLevel.Channel, relationship.Key, $"RPC calls linked between {source.NameWithPid} and {peer}"),
+            "Evidence was reached from an RPC relationship: the calls its links join."));
+        AfterNavigation();
+        return true;
     }
+
+    /// <summary>Enter, or a double click, on the relationship chosen in the table: <see cref="OpenRelationship"/>.</summary>
+    public bool OpenSelectedRelationship() => selectedRelationship is { } row && OpenRelationship(row.Key);
 
     /// <summary>
     /// Opens the records of the call at the other end of an RPC call row (`contracts/operations-v1.md` §5c): the ladder
@@ -3083,9 +3117,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// The selected relationship in words, beneath the table: what its evidence's tooltip says - the rule that derived it
-    /// and what it rests on - for a person who chose it by keyboard as for one who points at it (R4, §6.2).
+    /// and what it rests on - for a person who chose it by keyboard as for one who points at it (R4, §6.2), and what Enter
+    /// opens, as its edge's card says of a double click (R15).
     /// </summary>
-    public string SelectedRelationshipExplanation => selectedRelationship?.Explanation ?? string.Empty;
+    public string SelectedRelationshipExplanation => selectedRelationship is { } row
+        ? $"{row.Explanation} Enter opens {row.Opens}."
+        : string.Empty;
 
     public bool HasSelectedRelationship => selectedRelationship is not null;
 
@@ -3349,17 +3386,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : magnitude == "records"
             ? string.Create(CultureInfo.CurrentCulture, $"Thickness: log scale against the busiest drawn edge, {edgeScale:N0}")
             : $"Thickness: bytes sent across, log scale against the busiest drawn edge, {WorkspaceRowBuilder.DescribeSize(edgeScale)}");
-        if (drawn.Relationships.Count == 1)
+        if (drawn.Relationships.Count == 1 && made is [{ } only])
         {
-            // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read.
-            lines.Add(channels.Length switch
-            {
-                1 => "Double-click opens its channel",
-                0 when drawn.Mechanism == Mechanism.Rpc => "Double-click opens its source process, whose rows list its RPC channels",
-                0 => "Double-click opens its source process",
-                _ => string.Create(CultureInfo.CurrentCulture,
-                    $"Double-click opens its source process, whose rows list its {channels.Length:N0} channels"),
-            });
+            // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read; the relationship's row in
+            // the table says the same of Enter.
+            lines.Add("Double-click opens " + WorkspaceRowBuilder.Opens(Snapshot, only));
         }
 
         string source = graphDisplay.Node(drawn.SourceKey)?.Label ?? drawn.SourceKey;

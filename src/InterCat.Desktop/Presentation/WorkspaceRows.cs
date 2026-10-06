@@ -54,9 +54,15 @@ public sealed record RelationshipRow(
     /// </summary>
     public string Explanation { get; init; } = string.Empty;
 
+    /// <summary>The relationship's own key, by which Enter or a double click on the row opens it as its edge does.</summary>
+    public string Key { get; init; } = string.Empty;
+
+    /// <summary>What opening the relationship shows, as its edge's card says a double click does: "its channel", say.</summary>
+    public string Opens { get; init; } = string.Empty;
+
     public string AccessibleName =>
         $"{Source} to {Target} over {Mechanism}, {Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, "
-        + $"evidence {Evidence}, derived by {Rule}";
+        + $"evidence {Evidence}, derived by {Rule}. Press Enter to open {Opens}.";
 }
 
 /// <summary>A timeline cell as a table row, carrying the same counts and the same coverage state.</summary>
@@ -171,6 +177,8 @@ public static class WorkspaceRowBuilder
                 ObservationCount = edge.ObservationCount,
                 Rule = DescribeRule(edge.Rule),
                 Explanation = Explain(edge),
+                Key = edge.Key,
+                Opens = Opens(snapshot, edge),
             });
         }
 
@@ -354,6 +362,29 @@ public static class WorkspaceRowBuilder
             : edge.Rule == RelationRule.RpcCallPeer ? "the calls its links join: " + keys
             : Spoken.Count(edge.Evidence.Count, "channel") + ": " + keys;
         return $"{char.ToUpperInvariant(strength[0])}{strength[1..]} evidence, derived by {DescribeRule(edge.Rule)}, from {rests}.";
+    }
+
+    /// <summary>
+    /// What opening a relationship shows, from its edge or its row in the table (§6.7, R15): the channel it rests on when
+    /// it rests on one, the calls its links join when calls link it, or else its source process, whose rows list its
+    /// channels.
+    /// </summary>
+    public static string Opens(WorkspaceSnapshot snapshot, CommunicationEdge edge)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(edge);
+        if (edge.Rule == RelationRule.RpcCallPeer)
+        {
+            return "the calls its links join";
+        }
+
+        int channels = snapshot.Channels.Count(channel => string.Equals(channel.EdgeKey, edge.Key, StringComparison.Ordinal));
+        return channels switch
+        {
+            1 => "its channel",
+            0 => "its source process",
+            _ => string.Create(CultureInfo.CurrentCulture, $"its source process, whose rows list its {channels:N0} channels"),
+        };
     }
 
     private static string DescribeStrength(RelationStrength strength) => strength switch
