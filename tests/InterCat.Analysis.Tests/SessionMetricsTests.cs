@@ -430,9 +430,9 @@ public sealed class SessionMetricsTests
     }
 
     [Theory(DisplayName = "R21: a mechanism-scoped rate carries ledger coverage without changing observed arithmetic")]
-    [InlineData(0L, CoverageState.Covered)]
-    [InlineData(1L, CoverageState.PartialGap)]
-    public void ARateReportsCaptureCoverageSeparately(long lost, CoverageState expected)
+    [InlineData(0L, CoverageState.Covered, "TCP was covered over the selected interval: ")]
+    [InlineData(1L, CoverageState.PartialGap, "TCP has a partial gap over the selected interval, not extrapolated: ")]
+    public void ARateReportsCaptureCoverageSeparately(long lost, CoverageState expected, string said)
     {
         using var session = new TemporarySession();
         Publish(session.Store,
@@ -447,7 +447,7 @@ public sealed class SessionMetricsTests
         Assert.Equal(11, rate.Rate.IntervalTicks);
         Assert.True(rate.Coverage!.LedgerPublished);
         Assert.Equal(expected, Assert.Single(rate.Coverage.Mechanisms).State);
-        Assert.Contains(rate.Caveats, caveat => caveat.Contains($"is {expected}", StringComparison.Ordinal));
+        Assert.Contains(rate.Caveats, caveat => caveat.StartsWith(said, StringComparison.Ordinal));
         Assert.Contains(rate.Caveats, caveat => caveat.Contains("observed rate and not a corrected one", StringComparison.Ordinal));
 
         MetricResult quiet = Evaluate(session.Store, AnalysisBasis.SourceObservations, Metric.Observations,

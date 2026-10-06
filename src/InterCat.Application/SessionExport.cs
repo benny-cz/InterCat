@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -44,7 +45,7 @@ public static class SessionExport
             ? $"RPC calls were asked to rank the rows, but {unavailable}; the rows rank by records."
             : calls.Coverage.State == CoverageState.Covered
                 ? null
-                : $"RPC's capture coverage over this scope is {calls.Coverage.State}: {calls.Coverage.Reason}.";
+                : SessionCoverage.Sentence(calls.Coverage, "this scope");
     }
 
     private static void SameSession(IRankingMeasures measures, SessionOverviewBundle overview)

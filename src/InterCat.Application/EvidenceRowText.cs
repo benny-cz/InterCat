@@ -192,36 +192,8 @@ public static class EvidenceRowText
         _ => string.Create(CultureInfo.InvariantCulture, $"level {(int)level}"),
     };
 
-    /// <summary>A mechanism as a sentence names it: "TCP", and "process lifecycle" where a lane says "Process".</summary>
-    public static string MechanismInSentence(Mechanism mechanism) => mechanism switch
-    {
-        Mechanism.ProcessLifecycle => "process lifecycle",
-        Mechanism.ThreadLifecycle => "thread lifecycle",
-        _ => MechanismName(mechanism),
-    };
-
-    public static string MechanismName(Mechanism mechanism) => mechanism switch
-    {
-        Mechanism.ProcessLifecycle => "Process",
-        Mechanism.ThreadLifecycle => "Thread",
-        Mechanism.Tcp => "TCP",
-        Mechanism.Udp => "UDP",
-        Mechanism.UnixDomainSocket => "Unix socket",
-        Mechanism.NamedPipe => "Named pipe",
-        Mechanism.AnonymousPipe => "Anonymous pipe",
-        Mechanism.Rpc => "RPC",
-        Mechanism.Alpc => "ALPC",
-        Mechanism.SharedSection => "Shared section",
-        Mechanism.ComActivation => "COM activation",
-        Mechanism.WindowMessage => "Window message",
-        Mechanism.RemoteFileOrSmb => "Remote file",
-        Mechanism.Quic => "QUIC",
-        Mechanism.Dde => "DDE",
-        Mechanism.ApplicationSdk => "Application SDK",
-        Mechanism.Http => "HTTP",
-        Mechanism.UnknownMechanism => "Unknown mechanism",
-        _ => mechanism.ToString(),
-    };
+    /// <summary>A mechanism as a lane or a row names it (<see cref="MechanismText.Name"/>).</summary>
+    public static string MechanismName(Mechanism mechanism) => MechanismText.Name(mechanism);
 
     private static string Verb(ObservationKind kind) => kind switch
     {

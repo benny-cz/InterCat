@@ -1115,13 +1115,13 @@ internal static class MetricCommand
             "Projection",
             string.Join(
                 ", ",
-                new[] { request.Layer?.ToString(), request.Mechanism?.ToString() }
+                new[] { request.Layer?.ToString(), request.Mechanism is { } mechanism ? MechanismText.Name(mechanism) : null }
                     .Where(value => value is not null)
                     .DefaultIfEmpty("every layer and mechanism")));
 
-        if (document.Coverage is { } coverage)
+        if (result.Coverage is { } coverage)
         {
-            RenderCoverage(coverage, request.Mechanism);
+            RenderCoverage(coverage, request);
         }
 
         if (!document.Available)
@@ -1217,28 +1217,14 @@ internal static class MetricCommand
         }
     }
 
-    private static void RenderCoverage(MetricCoverageDocument coverage, Mechanism? selected)
-    {
-        if (!coverage.LedgerPublished)
-        {
-            ConsoleUi.Field("Capture coverage", "unknown: this generation publishes no coverage ledger");
-            return;
-        }
-
-        if (selected is not null)
-        {
-            MetricMechanismCoverageDocument state = coverage.Mechanisms.Single();
-            ConsoleUi.Field("Capture coverage", $"{Words(state.State)} for {Words(state.Mechanism)}: {state.Reason}");
-            return;
-        }
-
-        string[] collected = [.. coverage.Mechanisms
-            .Where(state => state.State != nameof(CoverageState.NotCollected))
-            .Select(state => $"{Words(state.Mechanism)} {Words(state.State).ToLowerInvariant()}")];
-        int uncollected = coverage.Mechanisms.Count - collected.Length;
-        string observed = collected.Length == 0 ? "no mechanisms collected" : string.Join("; ", collected);
-        ConsoleUi.Field("Capture coverage", $"{observed}; {uncollected} not collected (icat session for details)");
-    }
+    /// <summary>
+    /// The capture's coverage over the answer's scope, in the words the inspector and icat evidence use (R5, R21): one
+    /// mechanism's as a sentence where the request names it, or each collected mechanism's, never one rolled-up state.
+    /// </summary>
+    private static void RenderCoverage(MetricCoverage coverage, MetricRequest request) => ConsoleUi.Note(
+        request.Mechanism is not null && coverage.Mechanisms.Count == 1
+            ? SessionCoverage.Sentence(coverage.Mechanisms[0], request.Interval is null ? "the session" : "the selected interval")
+            : CoverageText.Describe(coverage.LedgerPublished ? coverage.Mechanisms : SessionCoverage.ByMechanism(null)));
 
     /// <summary>A count of errors, or a rate of them: the metric that counts completed calls by their status.</summary>
     private static bool IsErrorCount(MetricRequest request) =>

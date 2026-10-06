@@ -915,8 +915,8 @@ public static partial class SessionMetrics
         }
 
         MechanismCoverage rpc = coverage.Mechanisms.Single(state => state.Mechanism == Mechanism.Rpc);
-        return $"Every operation here is an RPC call, and RPC's capture coverage over the selected scope is {rpc.State}: "
-            + $"{rpc.Reason}.";
+        return "Every operation here is an RPC call, so only RPC's coverage applies. "
+            + SessionCoverage.Sentence(rpc, "the selected scope");
     }
 
     private static MetricCoverage CoverageOf(SessionStore store, SessionManifestV1 manifest, MetricRequest request)
@@ -942,8 +942,8 @@ public static partial class SessionMetrics
 
         if (mechanism is { } named)
         {
-            MechanismCoverage state = coverage.Mechanisms.Single();
-            return $"Capture coverage for {named} over the selected interval is {state.State}: {state.Reason}.";
+            MechanismCoverage state = coverage.Mechanisms.Single(entry => entry.Mechanism == named);
+            return SessionCoverage.Sentence(state, "the selected interval");
         }
 
         return "Capture coverage varies by mechanism over the selected interval; the separate states are part of "

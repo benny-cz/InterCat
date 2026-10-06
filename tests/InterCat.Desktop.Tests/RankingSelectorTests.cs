@@ -248,7 +248,7 @@ public sealed class RankingSelectorTests
         Assert.Contains("0 RPC calls made, 1 stop paired with no start", workspace.RungRows[1].AccessibleName, StringComparison.Ordinal);
         Assert.Equal("3 calls · 1 failed · 1 unpaired", workspace.RankingNote);
         Assert.EndsWith(
-            "RPC's capture coverage over this scope is UnknownCoverage: this generation publishes no coverage ledger.",
+            "RPC's coverage over this scope is unknown: this generation publishes no coverage ledger.",
             workspace.RankingNoteDetail, StringComparison.Ordinal);
 
         // One read answers both sides: the service served two calls and ranks first at once.
@@ -261,7 +261,7 @@ public sealed class RankingSelectorTests
             SessionExportResult desktop = await workspace.ExportAsync(format, Exported);
             Assert.Equal(desktop.Content, SessionExport.Build(session.Store,
                 new([], null, false, format, RankBy: RankingMetric.RpcCallsServed), Exported).Content);
-            Assert.Contains(desktop.Context.Caveats, caveat => caveat.StartsWith("RPC's capture coverage", StringComparison.Ordinal));
+            Assert.Contains(desktop.Context.Caveats, caveat => caveat.StartsWith("RPC's coverage over this scope is unknown", StringComparison.Ordinal));
         }
     });
 
@@ -290,6 +290,7 @@ public sealed class RankingSelectorTests
         Assert.Equal(["1 error", "0 errors", "no calls", "no calls"], rpc.RungRows.Select(row => row.Figure));
         Assert.Contains("1 RPC error of 3 calls with a status", rpc.RungRows[0].AccessibleName, StringComparison.Ordinal);
         Assert.Equal("1 failed of 5 calls", rpc.RankingNote);
+        Assert.EndsWith("RPC's coverage over this scope is unknown: this generation publishes no coverage ledger.", rpc.RankingNoteDetail, StringComparison.Ordinal);
 
         // One more call whose stop carried no status is counted as neither, and said so in the singular.
         Guid unstated = new(7, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 2);
@@ -328,6 +329,7 @@ public sealed class RankingSelectorTests
         Assert.Equal($"Median {Took(1_000)} over 3 calls · 1 unpaired", workspace.RankingNote);
         Assert.StartsWith("RPC call time is how long each process's completed client calls took", workspace.RankingNoteDetail,
             StringComparison.Ordinal);
+        Assert.EndsWith("RPC's coverage over this scope is unknown: this generation publishes no coverage ledger.", workspace.RankingNoteDetail, StringComparison.Ordinal);
 
         // One read answers both sides: the service took 700 ns to serve each of its two calls.
         workspace.RankBy = RankingMetric.RpcServeTime;

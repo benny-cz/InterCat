@@ -4106,7 +4106,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             .First();
 
         // A lane may be called "Process"; in a sentence the records are the process's lifecycle.
-        string name = EvidenceRowText.MechanismInSentence(mechanism);
+        string name = MechanismText.InSentence(mechanism);
         return string.Create(CultureInfo.CurrentCulture,
             $"{own:N0} own {(own == 1 ? "record" : "records")}, {(records == own ? "all" : "mostly")} {name}");
     }

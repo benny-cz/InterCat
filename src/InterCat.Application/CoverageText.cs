@@ -63,7 +63,7 @@ public static class CoverageText
                 .ThenBy(group => group.First().Mechanism)
                 .Select(group =>
                 {
-                    string names = List([.. group.Select(entry => EvidenceRowText.MechanismInSentence(entry.Mechanism))]);
+                    string names = List([.. group.Select(entry => MechanismText.InSentence(entry.Mechanism))]);
                     return group.Key.State switch
                     {
                         CoverageState.Covered => $"covered for {names}",

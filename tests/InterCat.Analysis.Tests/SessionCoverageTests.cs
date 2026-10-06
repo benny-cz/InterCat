@@ -140,6 +140,45 @@ public sealed class SessionCoverageTests
         Assert.Equal(CoverageState.Covered, SessionCoverage.Of(quiet, Mechanism.Tcp, new TimeRange(0, 30)).State);
     }
 
+    [Fact(DisplayName = "R5: a mechanism's coverage is said in one sentence form wherever a layer states it, never as an enumeration's name")]
+    public void AMechanismsCoverageIsSaidInWords()
+    {
+        // Each state in its own words, the mechanism as a sentence names it and the fact that decided it last.
+        Assert.Equal("TCP was covered over the selected interval: 2 records from its 1 admitted descriptor, and nothing was "
+            + "reported lost.", SessionCoverage.Sentence(new(Mechanism.Tcp, CoverageState.Covered,
+                "2 records from its 1 admitted descriptor, and nothing was reported lost"), "the selected interval"));
+        Assert.Equal("UDP was captured at reduced fidelity over this scope: sampled.",
+            SessionCoverage.Sentence(new(Mechanism.Udp, CoverageState.ReducedFidelity, "sampled"), "this scope"));
+        Assert.Equal("Process lifecycle has a partial gap over this scope, not extrapolated: the session reported 1 lost "
+            + "event, which may be any mechanism's.", SessionCoverage.Sentence(new(Mechanism.ProcessLifecycle,
+                CoverageState.PartialGap, "the session reported 1 lost event, which may be any mechanism's"), "this scope"));
+        Assert.Equal("RPC was not collected over the session: no admitted descriptor records it.", SessionCoverage.Sentence(
+            new(Mechanism.Rpc, CoverageState.NotCollected, "no admitted descriptor records it"), "the session"));
+        Assert.Equal("HTTP's coverage over this scope is unknown: outside the readings the capture's sources delivered.",
+            SessionCoverage.Sentence(new(Mechanism.Http, CoverageState.UnknownCoverage,
+                "outside the readings the capture's sources delivered"), "this scope"));
+
+        // A lane names a lifecycle in one word; a sentence names it as the process's or the thread's.
+        Assert.Equal(("Process", "process lifecycle"),
+            (MechanismText.Name(Mechanism.ProcessLifecycle), MechanismText.InSentence(Mechanism.ProcessLifecycle)));
+        Assert.Equal(("Thread", "thread lifecycle"),
+            (MechanismText.Name(Mechanism.ThreadLifecycle), MechanismText.InSentence(Mechanism.ThreadLifecycle)));
+        Assert.Equal("TCP", MechanismText.InSentence(Mechanism.Tcp));
+
+        // An answer over logical operations states RPC's coverage, the only one its calls rest on, in the same words.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TestSessions.LinkedRpcCalls();
+        TestSessions.Publish(session.Store, rows, fields: fields, coverage: TestSessions.RpcLedger(alpc: false));
+        MetricResult completed = SessionMetrics.Evaluate(session.Store, new MetricRequest
+        {
+            Basis = AnalysisBasis.LogicalOperations,
+            Metric = Metric.OperationsCompleted,
+        });
+        Assert.Contains("Every operation here is an RPC call, so only RPC's coverage applies. RPC's coverage over the selected "
+            + "scope is unknown: its 1 admitted descriptor delivered nothing, and a file cannot show whether its session "
+            + "recorded them.", completed.Caveats);
+    }
+
     [Fact(DisplayName = "R21: an interval ending at maximum ticks is evaluated without overflow")]
     public void MaximumNativeTickDoesNotOverflow()
     {

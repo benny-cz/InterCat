@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
@@ -366,7 +367,7 @@ public sealed partial class WorkspaceViewModel
 
                 if (timed.Coverage.State != CoverageState.Covered)
                 {
-                    detail += $" RPC's capture coverage over this scope is {timed.Coverage.State}: {timed.Coverage.Reason}.";
+                    detail += " " + SessionCoverage.Sentence(timed.Coverage, "this scope");
                 }
             }
             else if (shown is SessionCallMeasures errors && rankBy == RankingMetric.RpcErrors)
@@ -383,7 +384,7 @@ public sealed partial class WorkspaceViewModel
 
                 if (errors.Coverage.State != CoverageState.Covered)
                 {
-                    detail += $" RPC's capture coverage over this scope is {errors.Coverage.State}: {errors.Coverage.Reason}.";
+                    detail += " " + SessionCoverage.Sentence(errors.Coverage, "this scope");
                 }
             }
             else if (shown is SessionCallMeasures calls)
@@ -404,7 +405,7 @@ public sealed partial class WorkspaceViewModel
 
                 if (calls.Coverage.State != CoverageState.Covered)
                 {
-                    detail += $" RPC's capture coverage over this scope is {calls.Coverage.State}: {calls.Coverage.Reason}.";
+                    detail += " " + SessionCoverage.Sentence(calls.Coverage, "this scope");
                 }
             }
             else

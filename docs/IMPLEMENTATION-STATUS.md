@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 363 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 364 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 364 — a coverage state is said in words wherever a caveat states one (R5):**
+  - Notes and caveats printed enumeration names, "RPC's capture coverage over this scope is UnknownCoverage", and
+    `icat metric` "Tcp covered; … 19 not collected". They now say one sentence form, "RPC's coverage over this scope
+    is unknown: …", and `icat metric` states its coverage as the inspector does; a mechanism is named through one
+    mapping, `MechanismText`.
 
 - **Revision 363 — `icat evidence` states its page's coverage (R21, R18):**
   - A page with no record in a capture gap said "Rows on page 0" and sent the reader to the coverage ledger. Each
@@ -1026,6 +1032,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      for `icat evidence`, whose pages carry it (`evidence-page-v3`) in the same words (`CoverageText`). `icat export
      --interval` still states no coverage for its range, and a selected record's own coverage has no place in the
      inspector yet.
+   - One display mapping per dimension (R5): done in revision 364 for a mechanism's names (`MechanismText`) and for
+     its coverage in a sentence (`SessionCoverage.Sentence`), which every caveat and note now says. The window's row
+     labels for a coverage state, kept twice (`WorkspaceRows`, `LadderRows`), and `icat timeline`'s coverage column,
+     which prints the enumeration's name, are not yet that mapping.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
@@ -1064,6 +1074,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 364 was built and tested in the same Linux container: Debug and Release each ran **1,632 tests**,
+  passing **1,534 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read the
+  sentence for each coverage state, a lifecycle named in a sentence, and the caveat an answer over RPC calls gives under
+  an imported ledger; and `icat metric` for every mechanism, for TCP over a gap and over the session, and for a
+  generation without a ledger, its projection named as a lane is. Two tests had pinned the enumeration's names, "is
+  UnknownCoverage" in a ranking note and "is PartialGap" in a rate's caveat, and now read the words. The call-time and
+  errors rankings' notes, which no test read, are read now. They caught each of 19 mutations, two of them once those
+  notes were read:
+  - four states said as their enumeration, a partial gap not said to be unextrapolated, a sentence starting in lower
+    case, and one without the fact behind it;
+  - a lifecycle named as its lane in a sentence, and TCP by its enumeration;
+  - the operations, rate and export caveats, and each of the three ranking notes, naming the state's enumeration;
+  - `icat metric` stating one mechanism as a scope, its session said as the selected interval, nothing judged where no
+    ledger was published, and its projection naming the enumeration.
 
 - Revision 363 was built and tested in the same Linux container: Debug and Release each ran **1,630 tests**,
   passing **1,532 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its command-line

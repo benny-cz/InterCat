@@ -811,19 +811,7 @@ public sealed class CommandLineTests : IDisposable
     [Fact(DisplayName = "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words")]
     public async Task EvidenceStatesItsScopesCoverage()
     {
-        // A capture that delivered readings from 0 to 20 and from 40 to 60, and none between, and lost nothing.
-        using var gapped = new TemporarySession();
-        Publish(gapped.Store,
-        [
-            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
-                with { SessionRelativeTicks = 1_000 },
-            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between("127.0.0.1:50000", "127.0.0.1:8080")
-                with { SessionRelativeTicks = 5_000 },
-        ], coverage: new CoverageLedgerV1
-        {
-            Contract = CoverageLedgerV1.ContractName,
-            Epochs = [TcpEpoch(1, 0, 20), TcpEpoch(2, 40, 60)],
-        });
+        using TemporarySession gapped = Gapped();
 
         // Over the whole session, and over a range within an epoch, the capture covered what it collected.
         const string Covered = "Coverage: covered for TCP · no other mechanism collected";
@@ -861,6 +849,54 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity$",
             answer);
+    }
+
+    [Fact(DisplayName = "R5: icat metric states its coverage in the inspector's words, and names a mechanism as the window does")]
+    public async Task MetricStatesItsCoverageInWords()
+    {
+        using TemporarySession gapped = Gapped();
+
+        // Every mechanism's coverage, as the inspector states it beneath its time scope.
+        (InterCatExitCode code, string answer, _) = await Run("metric", gapped.Path, "--metric", "observations");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Coverage: covered for TCP · no other mechanism collected$", answer);
+
+        // One mechanism's, over a range the capture delivered nothing in, as one sentence; the projection names it as a
+        // lane does, never by its enumeration's name.
+        (code, answer, _) = await Run("metric", gapped.Path, "--metric", "observations", "--mechanism", "Tcp", "--interval", "25:35");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  TCP's coverage over the selected interval is unknown: outside the readings the capture's sources delivered\.$",
+            answer);
+        Assert.Matches(@"(?m)^  Projection +TCP$", answer);
+        Assert.DoesNotContain("Tcp", answer, StringComparison.Ordinal);
+        (code, answer, _) = await Run("metric", gapped.Path, "--metric", "observations", "--mechanism", "Tcp");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  TCP was covered over the session: 2 records from its 1 admitted descriptor, and nothing was reported lost\.$",
+            answer);
+
+        // A generation without a ledger has judged nothing.
+        (code, answer, _) = await Run("metric", session.Path, "--metric", "observations");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of inactivity$",
+            answer);
+    }
+
+    /// <summary>A capture that delivered readings from 0 to 20 and from 40 to 60, and none between, and lost nothing.</summary>
+    private static TemporarySession Gapped()
+    {
+        var gapped = new TemporarySession();
+        Publish(gapped.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 1_000 },
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 5_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [TcpEpoch(1, 0, 20), TcpEpoch(2, 40, 60)],
+        });
+        return gapped;
     }
 
     /// <summary>A live epoch between two delivered readings that collected TCP, delivered two records and lost nothing.</summary>

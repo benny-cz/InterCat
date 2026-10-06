@@ -140,6 +140,27 @@ public static class SessionCoverage
         .Select(mechanism => StateIn(epoch, mechanism).State)
         .DefaultIfEmpty(CoverageState.NotCollected));
 
+    /// <summary>
+    /// One mechanism's coverage over a scope as a sentence states it, in the words every layer uses (R5, R21): "TCP was
+    /// covered over the selected interval: …", "RPC has a partial gap over this scope, not extrapolated: …", "UDP's
+    /// coverage over this scope is unknown: …", each ending with the fact that decided it.
+    /// </summary>
+    public static string Sentence(MechanismCoverage coverage, string scope)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+        ArgumentException.ThrowIfNullOrEmpty(scope);
+        string name = MechanismText.InSentence(coverage.Mechanism);
+        string said = coverage.State switch
+        {
+            CoverageState.Covered => $"{name} was covered over {scope}",
+            CoverageState.ReducedFidelity => $"{name} was captured at reduced fidelity over {scope}",
+            CoverageState.PartialGap => $"{name} has a partial gap over {scope}, not extrapolated",
+            CoverageState.NotCollected => $"{name} was not collected over {scope}",
+            _ => $"{name}'s coverage over {scope} is unknown",
+        };
+        return string.Concat(char.ToUpperInvariant(said[0]).ToString(), said[1..], ": ", coverage.Reason, ".");
+    }
+
     /// <summary>The worst of several states on the ordered lattice; nothing to span is unknown.</summary>
     public static CoverageState Worst(IEnumerable<CoverageState> states)
     {
