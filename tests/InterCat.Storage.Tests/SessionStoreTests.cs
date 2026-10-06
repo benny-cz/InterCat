@@ -382,7 +382,8 @@ public sealed class SessionStoreTests
         Assert.Equal(1, reopened.Current!.Generation);
         Assert.True(reopened.Recovery.RolledBackToLastKnownGood);
         Assert.Contains("segment-0002.icats", reopened.Recovery.RollbackReason!, StringComparison.Ordinal);
-        Assert.Contains("computes", reopened.Recovery.RollbackReason!, StringComparison.Ordinal);
+        Assert.Matches(@"^'segment-0002\.icats' does not match what generation 2 records \(its SHA-256 begins [0-9a-f]{12}, not [0-9a-f]{12}\)$",
+            reopened.Recovery.RollbackReason!);
     }
 
     [Fact(DisplayName = "I15: a writer re-hashes a dependency whose file was written after it measured it")]
@@ -421,7 +422,7 @@ public sealed class SessionStoreTests
         SessionStore reader = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
         Assert.True(reader.Recovery.RolledBackToLastKnownGood);
         Assert.Equal(1, reader.Current!.Generation);
-        Assert.Contains("computes", reader.Recovery.RollbackReason!, StringComparison.Ordinal);
+        Assert.Contains("'segment-0002.icats' does not match what generation 2 records", reader.Recovery.RollbackReason!, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I15: a viewer opens a session by listing its files, and hashes them after its first view")]
@@ -455,11 +456,11 @@ public sealed class SessionStoreTests
         Assert.False(report.Verified);
         Assert.Equal((2L, 1), (report.Generation, report.HashedFiles));
         string problem = Assert.Single(report.Problems);
-        Assert.Contains("'segment-0002.icats' computes", problem, StringComparison.Ordinal);
+        Assert.Contains("'segment-0002.icats' does not match what generation 2 records", problem, StringComparison.Ordinal);
         using EvidenceLease after = viewer.AcquireLease();
         Assert.Equal(1, after.Manifest.Generation);
         Assert.Equal(1, viewer.Current!.Generation);
-        Assert.Contains("'segment-0002.icats' computes", viewer.RollbackReason!, StringComparison.Ordinal);
+        Assert.Contains("'segment-0002.icats' does not match what generation 2 records", viewer.RollbackReason!, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I15: a viewer's open hashes at once a file that carries no checksum of its own")]
@@ -485,7 +486,7 @@ public sealed class SessionStoreTests
 
         Assert.True(viewer.Recovery.RolledBackToLastKnownGood);
         Assert.Equal(1, viewer.Current!.Generation);
-        Assert.Contains("'coverage-0002.json' computes", viewer.Recovery.RollbackReason!, StringComparison.Ordinal);
+        Assert.Contains("'coverage-0002.json' does not match what generation 2 records", viewer.Recovery.RollbackReason!, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I15: a viewer's open still refuses a file that is missing or not its recorded length")]
@@ -500,13 +501,14 @@ public sealed class SessionStoreTests
         SessionStore resized = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.True(resized.Recovery.RolledBackToLastKnownGood);
         Assert.Equal(2, resized.Current!.Generation);
-        Assert.Contains("'segment-0003.icats' is 15 bytes", resized.Recovery.RollbackReason!, StringComparison.Ordinal);
+        Assert.Equal("'segment-0003.icats' does not match what generation 3 records (it is 15 bytes, not 5)",
+            resized.Recovery.RollbackReason);
 
         File.Delete(Path.Combine(session.Path, "segment-0003.icats"));
         SessionStore missing = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.True(missing.Recovery.RolledBackToLastKnownGood);
         Assert.Equal(2, missing.Current!.Generation);
-        Assert.Contains("'segment-0003.icats' could not be read", missing.Recovery.RollbackReason!, StringComparison.Ordinal);
+        Assert.Equal("'segment-0003.icats', which generation 3 records, is missing", missing.Recovery.RollbackReason);
     }
 
     [Fact(DisplayName = "I15: hashing after the first view hashes each file once, and nothing an open already hashed")]
@@ -606,6 +608,68 @@ public sealed class SessionStoreTests
         Assert.Contains("segment-0001.icats", refused.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a session no generation of which verifies is refused naming what is wrong once, and is left as it is")]
+    public void ASessionNoGenerationOfWhichVerifiesSaysWhyOnce()
+    {
+        // Both generations need the first segment, so a change to it fails both, and is said once.
+        using var shared = new TemporarySession();
+        _ = Publish(shared.Store, ("segment-0001.icats", "first"));
+        _ = Publish(shared.Store, ("segment-0002.icats", "second"));
+        shared.WriteRaw("segment-0001.icats", "FIRST");
+        string[] before = Files(shared.Path);
+        InvalidDataException refusal = Assert.Throws<InvalidDataException>(shared.Reopen);
+        Assert.Matches(
+            @"^This session cannot be read, because no generation of it verifies: 'segment-0001\.icats' does not match what "
+            + @"generation 2 records \(its SHA-256 begins [0-9a-f]{12}, not [0-9a-f]{12}\)\. The generation kept to fall back to "
+            + @"needs the same file\. Its files are left as they are\.$",
+            refusal.Message);
+        Assert.Equal(before, Files(shared.Path));
+
+        // A generation kept to fall back to that fails for a reason of its own gives it too.
+        File.Delete(Path.Combine(shared.Path, SessionPointerV1.FileName));
+        Assert.Equal(
+            $"This session cannot be read, because no generation of it verifies: '{SessionPointerV1.FileName}' is missing or "
+            + "unreadable. The generation kept to fall back to does not verify either: 'segment-0001.icats' does not match "
+            + "what generation 1 records",
+            Assert.Throws<InvalidDataException>(shared.Reopen).Message.Split(" (its SHA-256")[0]);
+
+        // With none kept, there is none to fall back to.
+        using var alone = new TemporarySession();
+        _ = Publish(alone.Store, ("segment-0001.icats", "first"));
+        File.Delete(Path.Combine(alone.Path, "segment-0001.icats"));
+        Assert.Equal(
+            "This session cannot be read, because no generation of it verifies: 'segment-0001.icats', which generation 1 "
+            + "records, is missing. No earlier generation is kept to fall back to. Its files are left as they are.",
+            Assert.Throws<InvalidDataException>(alone.Reopen).Message);
+    }
+
+    [Fact(DisplayName = "I15: a file read before the store hashes the session is refused in the words opening uses")]
+    public void AFileReadBeforeHashingIsRefusedInOpeningsWords()
+    {
+        using var session = new TemporarySession();
+        byte[] bytes = Encoding.UTF8.GetBytes("an index's bytes");
+        string digest = string.Concat("sha256:", Convert.ToHexStringLower(SHA256.HashData(bytes)));
+        var index = new StoreDependency("overview-0000000001.bin", StoreDependencyKind.Index, bytes.Length, digest);
+        string path = Path.Combine(session.Path, index.Name);
+        File.WriteAllBytes(path, bytes);
+        Assert.Equal(bytes, SessionSegments.ReadVerified(session.Store.Root, index, 1_024));
+
+        bytes[0] ^= 0xFF;
+        File.WriteAllBytes(path, bytes);
+        string changed = Assert.Throws<InvalidDataException>(() => SessionSegments.ReadVerified(session.Store.Root, index, 1_024)).Message;
+        Assert.Matches(
+            $@"^'overview-0000000001\.bin' does not match what its generation records \(its SHA-256 begins [0-9a-f]{{12}}, not {digest[7..19]}\)\.$",
+            changed);
+
+        File.WriteAllBytes(path, bytes[..^1]);
+        Assert.Equal(
+            "'overview-0000000001.bin' does not match what its generation records (it is 15 bytes, not 16).",
+            Assert.Throws<InvalidDataException>(() => SessionSegments.ReadVerified(session.Store.Root, index, 1_024)).Message);
+    }
+
+    private static string[] Files(string folder) =>
+        [.. Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName).Order(StringComparer.Ordinal)!];
+
     [Fact(DisplayName = "I15: a manifest whose contents no longer match its digest is refused")]
     public void AManifestThatDoesNotMatchItsDigestIsRefused()
     {
@@ -619,7 +683,7 @@ public sealed class SessionStoreTests
         session.WriteRaw(manifestName, tampered);
 
         InvalidDataException refusal = Assert.Throws<InvalidDataException>(session.Reopen);
-        Assert.Contains("no complete generation", refusal.Message, StringComparison.Ordinal);
+        Assert.StartsWith("This session cannot be read, because no generation of it verifies: ", refusal.Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I15: opening reports a staging file without deleting another writer's work")]

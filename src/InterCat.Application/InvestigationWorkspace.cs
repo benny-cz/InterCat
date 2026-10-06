@@ -393,7 +393,7 @@ public static partial class InvestigationWorkspace
 
         string? rolledBack = found.RollbackReason is null
             ? null
-            : $"Its current generation could not be read ({found.RollbackReason}), so its last-known-good was.";
+            : $"Its current generation could not be read, so its last-known-good was: {found.RollbackReason}.";
         if (manifest.Generation == member.Generation && manifest.Digest == member.ManifestDigest)
         {
             return new(member, full, WorkspaceMemberState.Present, manifest.Generation, rolledBack);
@@ -405,9 +405,11 @@ public static partial class InvestigationWorkspace
                 + "selected. Relink the member to its own path to select it.")
             : new(member, full, WorkspaceMemberState.Replaced, manifest.Generation, string.Join(' ', new[]
             {
+                // An older generation is a copy put in its place, unless it is the one kept to fall back to, which the
+                // next sentence says.
                 manifest.Generation < member.Generation
                     ? $"The path holds generation {manifest.Generation} of this session, older than the selected generation "
-                        + $"{member.Generation}: an earlier copy was put in its place."
+                        + $"{member.Generation}{(rolledBack is null ? ": an earlier copy was put in its place." : ".")}"
                     : $"The path holds a generation {manifest.Generation} of this session derived apart from the one selected.",
                 rolledBack,
                 "Relink the member to its own path to select what is there.",

@@ -271,9 +271,7 @@ public static class OriginalEvidencePackage
         string digest = string.Concat("sha256:", Convert.ToHexStringLower(hash.GetHashAndReset()));
         return string.Equals(digest, dependency.Digest, StringComparison.Ordinal)
             ? copied
-            : throw new InvalidDataException(
-                $"'{dependency.Name}' computes {digest} where its generation recorded {dependency.Digest}, so it is not "
-                + "copied into a package.");
+            : throw new InvalidDataException($"{dependency.DigestMismatch(digest)}, so it is not copied into a package.");
     }
 
     /// <summary>

@@ -149,6 +149,14 @@ present with the recorded length and digest.
   nothing usable is not silently reset.
 - Neither pointer exists → the session is empty, which is not a failure.
 
+Since revision 314 a reason names the file that failed and what is wrong with it in a person's words:
+"'seg-0000000001-0000.icats' does not match what generation 2 records (its SHA-256 begins d678662e9244, not
+2d7f44f53556)", "(it is 2,831 bytes, not 2,832)", or "'…', which generation 2 records, is missing". A digest is given by
+its first twelve digits, which tell two apart; the whole of the recorded one is in the manifest. The two generations
+share most of their files, so a refusal states a file both need once: "The generation kept to fall back to needs the
+same file." A last-known-good that fails for another reason gives that reason too, and a refusal ends by saying the
+session's files are left as they are.
+
 **A viewer opens without hashing what checks itself.** Hashing every dependency makes opening cost every byte of
 the session, which §12.1's S1 forbids at scale: a million-row session is 309 MiB, and hashing it took 210 ms of a
 fresh open. So a viewer opens a session the same way with one difference. A `Segment`, `Dictionary`, `Journal`,

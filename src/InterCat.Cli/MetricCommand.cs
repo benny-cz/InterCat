@@ -548,8 +548,8 @@ internal static class MetricCommand
         if (store.Recovery.RolledBackToLastKnownGood)
         {
             ConsoleUi.Warn(
-                $"The newest generation did not verify ({store.Recovery.RollbackReason}); answering from the retained "
-                + $"last-known-good generation {manifest.Generation}.");
+                $"The newest generation did not verify, so the answer is from the retained last-known-good generation "
+                + $"{manifest.Generation}: {store.Recovery.RollbackReason}.");
         }
 
         bool wholeRecording = false;

@@ -80,7 +80,8 @@ public sealed class OriginalEvidencePackageTests
         InvalidDataException refused = Assert.Throws<InvalidDataException>(() =>
             OriginalEvidencePackage.Create(source.Store, package.Path));
 
-        Assert.Contains($"'{published.Segments[0].Name}' computes", refused.Message, StringComparison.Ordinal);
+        Assert.Contains($"'{published.Segments[0].Name}' does not match what its generation records (its SHA-256 begins ",
+            refused.Message, StringComparison.Ordinal);
         Assert.Contains("so it is not copied into a package", refused.Message, StringComparison.Ordinal);
         Assert.False(Directory.Exists(package.Path));
         Assert.Empty(Directory.EnumerateDirectories(Path.GetDirectoryName(package.Path)!, Path.GetFileName(package.Path) + ".partial-*"));

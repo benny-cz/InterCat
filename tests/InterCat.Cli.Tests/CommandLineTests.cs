@@ -197,7 +197,7 @@ public sealed class CommandLineTests : IDisposable
                 (InterCatExitCode code, string output, string said) = await Run(args);
                 string invocation = "icat " + string.Join(' ', args);
                 Assert.True(code == InterCatExitCode.CorruptedInput && output.Length == 0, $"{invocation} exited {code}: {output}");
-                Assert.True(said.Contains("no complete generation", StringComparison.Ordinal), $"{invocation} said: {said}");
+                Assert.True(said.Contains("no generation of it verifies", StringComparison.Ordinal), $"{invocation} said: {said}");
                 Assert.False(Directory.Exists(exported), $"{invocation} made {exported}.");
             }
         }
@@ -228,6 +228,29 @@ public sealed class CommandLineTests : IDisposable
         {
             File.Delete(destination);
         }
+    }
+
+    [Fact(DisplayName = "§20.4: a command answering from the last complete generation says so, with what kept the newest from verifying")]
+    public async Task AnAnswerFromTheLastCompleteGenerationSaysWhy()
+    {
+        using var twice = new TemporarySession();
+        Publish(twice.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")]);
+        string[] first = [.. twice.Store.Current!.Dependencies.Select(dependency => dependency.Name)];
+        Publish(twice.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 32, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")]);
+        twice.Store.ReleaseSegmentReaders();
+        StoreDependency newest = twice.Store.Current!.Dependencies.First(dependency =>
+            dependency.Kind == StoreDependencyKind.Segment && !first.Contains(dependency.Name));
+        string path = Path.Combine(twice.Path, newest.Name);
+        File.WriteAllBytes(path, File.ReadAllBytes(path)[..^1]);
+        string why = newest.LengthMismatch(newest.LengthBytes - 1, 2);
+
+        (_, string measured, string measuring) = await Run("metric", twice.Path, "--metric", "observations");
+        Assert.NotEmpty(measured);
+        Assert.Contains($"The newest generation did not verify, so the answer is from the retained last-known-good generation 1: {why}.",
+            measuring, StringComparison.Ordinal);
+        (_, _, string rederiving) = await Run("rederive", twice.Path, "--check");
+        Assert.Contains($"The newest generation did not verify, so the retained last-known-good generation 1 is re-derived: {why}.",
+            rederiving, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give")]

@@ -177,12 +177,13 @@ public sealed class LiveSessionRecorderTests
         var host = new ScriptedHost();
         long now = Stopwatch.GetTimestamp();
 
-        // The second burst repeats the first's ordinals, as a chunk replayed twice would; the pause puts it in a later chunk.
+        // The second burst repeats the first's ordinals, as a chunk replayed twice would. It is delivered once the first
+        // chunk is published, so it is in a later chunk however long a loaded machine takes to publish the first.
         for (int index = 0; index < 4; index++)
         {
             if (index == 2)
             {
-                host.Pause(TimeSpan.FromMilliseconds(600));
+                host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
             }
 
             host.Admit(new AdmittedEvent

@@ -106,8 +106,8 @@ internal static class RederiveCommand
         if (inspected.Recovery.RolledBackToLastKnownGood)
         {
             ConsoleUi.Warn(
-                $"The newest generation did not verify ({inspected.Recovery.RollbackReason}); re-deriving the "
-                + $"retained last-known-good generation {current.Generation}.");
+                $"The newest generation did not verify, so the retained last-known-good generation {current.Generation} is "
+                + $"re-derived: {inspected.Recovery.RollbackReason}.");
         }
 
         // A live recording's journal is a sequence of chunks (ADR-022), replayed in order as one capture (ADR-023).

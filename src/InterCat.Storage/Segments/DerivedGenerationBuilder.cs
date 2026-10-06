@@ -1040,7 +1040,7 @@ public static class SessionSegments
         {
             if (stream.Length != bytes.Length)
             {
-                throw new InvalidDataException($"'{dependency.Name}' is not the length its generation recorded.");
+                throw new InvalidDataException($"{dependency.LengthMismatch(stream.Length)}.");
             }
 
             stream.ReadExactly(bytes);
@@ -1049,8 +1049,7 @@ public static class SessionSegments
         string digest = string.Concat("sha256:", Convert.ToHexStringLower(SHA256.HashData(bytes)));
         return string.Equals(digest, dependency.Digest, StringComparison.Ordinal)
             ? bytes
-            : throw new InvalidDataException(
-                $"'{dependency.Name}' computes {digest} where its generation recorded {dependency.Digest}.");
+            : throw new InvalidDataException($"{dependency.DigestMismatch(digest)}.");
     }
 
     /// <summary>The largest redaction policy a generation publishes or a reader accepts.</summary>

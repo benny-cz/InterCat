@@ -1082,8 +1082,8 @@ public sealed partial class MainWindow : Window, IDisposable
             if (store.RollbackReason is { } fallback)
             {
                 detail = string.Create(CultureInfo.CurrentCulture,
-                    $"Its newest generation could not be verified ({fallback}), so generation {overview.Generation:N0}, the "
-                    + $"last complete one, is shown. Nothing on disk was changed. {detail}");
+                    $"Its newest generation could not be verified, so generation {overview.Generation:N0}, the last complete "
+                    + $"one, is shown: {fallback}. Nothing on disk was changed. {detail}");
             }
 
             ApplyCaptureUpdate(new(CaptureUiPhase.Complete, headline, detail, SessionPath: path, Overview: overview),

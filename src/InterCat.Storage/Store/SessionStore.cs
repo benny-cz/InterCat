@@ -785,7 +785,7 @@ public sealed class SessionStore
 
             // The manifest may reference only durable dependencies, so every one of them is read back
             // and measured before it is named. A rename is not a power-failure guarantee (§20.1).
-            string? unverifiable = VerifyDependencies(directory, manifest, measurements);
+            Unverified? unverifiable = VerifyDependencies(directory, manifest, measurements);
             if (unverifiable is not null)
             {
                 throw new IOException(
@@ -925,8 +925,7 @@ public sealed class SessionStore
                 }
 
                 problem = stream.Length != dependency.LengthBytes
-                    ? $"dependency '{dependency.Name}' is {stream.Length} bytes where generation {manifest.Generation} "
-                        + $"recorded {dependency.LengthBytes}"
+                    ? dependency.LengthMismatch(stream.Length, manifest.Generation)
                     : DigestProblem(stream, dependency, manifest.Generation, buffer, cancellationToken);
                 if (problem is null)
                 {
@@ -938,7 +937,7 @@ public sealed class SessionStore
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                problem = $"dependency '{dependency.Name}' could not be read: {exception.Message}";
+                problem = Unreadable(dependency, exception, manifest.Generation);
             }
 
             measurements.Forget(dependency.Name);
@@ -984,8 +983,17 @@ public sealed class SessionStore
         string digest = string.Concat("sha256:", Convert.ToHexStringLower(hash.GetHashAndReset()));
         return string.Equals(digest, dependency.Digest, StringComparison.Ordinal)
             ? null
-            : $"dependency '{dependency.Name}' computes {digest} where generation {generation} recorded {dependency.Digest}";
+            : dependency.DigestMismatch(digest, generation);
     }
+
+    /// <summary>
+    /// Why a dependency could not be read. A missing one is said to be missing, where the exception would give the file's
+    /// whole path in words of its own.
+    /// </summary>
+    private static string Unreadable(StoreDependency dependency, Exception exception, long generation) =>
+        exception is FileNotFoundException
+            ? string.Create(CultureInfo.InvariantCulture, $"'{dependency.Name}', which generation {generation} records, is missing")
+            : $"'{dependency.Name}' could not be read: {exception.Message}";
 
     /// <summary>Every lease still holding evidence at this moment. An expired one holds nothing.</summary>
     public IReadOnlyList<EvidenceLease> LiveLeases(DateTimeOffset? nowUtc = null)
@@ -1717,11 +1725,11 @@ public sealed class SessionStore
 
             cancellationToken.ThrowIfCancellationRequested();
             Write(directory, SessionPointerV1.FileName, SessionPointerV1.For(manifest), SessionManifestV1.Json);
-            string? verificationProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? repaired, measurements);
+            Unverified? verificationProblem = TryAcquire(directory, SessionPointerV1.FileName, out SessionManifestV1? repaired, measurements);
             if (verificationProblem is not null || repaired?.Digest != manifest.Digest)
             {
                 throw new IOException(
-                    $"Pointer repair was written but did not verify ({verificationProblem ?? "generation mismatch"}). "
+                    $"Pointer repair was written but did not verify ({verificationProblem?.Reason ?? "generation mismatch"}). "
                     + "Do not publish until the session is inspected again.");
             }
 
@@ -1758,7 +1766,7 @@ public sealed class SessionStore
             boundary,
             dependencies,
             record);
-        string? unverifiable = VerifyDependencies(directory, manifest, measurements);
+        Unverified? unverifiable = VerifyDependencies(directory, manifest, measurements);
         if (unverifiable is not null)
         {
             throw new IOException($"Generation {manifest.Generation} was not published: {unverifiable}");
@@ -1997,30 +2005,49 @@ public sealed class SessionStore
         SessionManifestV1? verified = null,
         bool hashContents = true)
     {
-        string? currentProblem = TryAcquire(
+        Unverified? currentProblem = TryAcquire(
             directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements, verified, hashContents);
         if (currentProblem is null)
         {
             return (manifest, false, null);
         }
 
-        string? previousProblem = TryAcquire(
+        Unverified? previousProblem = TryAcquire(
             directory, SessionPointerV1.PreviousFileName, out manifest, measurements, hashContents: hashContents);
         if (previousProblem is null && manifest is not null)
         {
-            return (manifest, true, currentProblem);
+            return (manifest, true, currentProblem.Reason);
         }
 
         // A session whose pointer names nothing is empty; one whose pointer names something that does
         // not verify, with no usable last-known-good, is refused rather than silently reset.
         return Exists(directory, SessionPointerV1.FileName) || Exists(directory, SessionPointerV1.PreviousFileName)
-            ? throw new InvalidDataException(
-                $"This session has no complete generation. Its pointer is unusable ({currentProblem}) and "
-                + $"its last-known-good is too ({previousProblem ?? "it names no generation"}).")
+            ? throw new InvalidDataException(NoGenerationVerifies(directory, currentProblem, previousProblem))
             : (null, false, null);
     }
 
-    private static string? TryAcquire(
+    /// <summary>
+    /// What a reader says of a session no generation of which verifies. A generation and the one kept to fall back to
+    /// share most of their files, so a file both need is named once, and what is wrong with it is said once.
+    /// </summary>
+    private static string NoGenerationVerifies(IOwnedDirectory directory, Unverified current, Unverified? previous)
+    {
+        string fallback = previous is null || !Exists(directory, SessionPointerV1.PreviousFileName)
+            ? "No earlier generation is kept to fall back to."
+            : string.Equals(previous.File, current.File, StringComparison.OrdinalIgnoreCase)
+                ? "The generation kept to fall back to needs the same file."
+                : $"The generation kept to fall back to does not verify either: {previous.Reason}.";
+        return $"This session cannot be read, because no generation of it verifies: {current.Reason}. {fallback} "
+            + "Its files are left as they are.";
+    }
+
+    /// <summary>Why a generation did not verify, and the file that kept it from verifying.</summary>
+    private sealed record Unverified(string File, string Reason)
+    {
+        public override string ToString() => Reason;
+    }
+
+    private static Unverified? TryAcquire(
         IOwnedDirectory directory,
         string pointerName,
         out SessionManifestV1? manifest,
@@ -2032,13 +2059,13 @@ public sealed class SessionStore
         SessionPointerV1? pointer = Read<SessionPointerV1>(directory, pointerName);
         if (pointer is null)
         {
-            return $"'{pointerName}' is missing or unreadable";
+            return new(pointerName, $"'{pointerName}' is missing or unreadable");
         }
 
         string? problem = pointer.Validate();
         if (problem is not null)
         {
-            return problem;
+            return new(pointerName, problem);
         }
 
         bool unchanged = verified is not null
@@ -2049,32 +2076,32 @@ public sealed class SessionStore
         SessionManifestV1? candidate = unchanged ? verified : Read<SessionManifestV1>(directory, pointer.ManifestName);
         if (candidate is null)
         {
-            return $"generation {pointer.Generation} names manifest '{pointer.ManifestName}', which is "
-                + "missing or unreadable";
+            return new(pointer.ManifestName, $"generation {pointer.Generation} names manifest '{pointer.ManifestName}', "
+                + "which is missing or unreadable");
         }
 
         problem = unchanged ? null : candidate.Validate() ?? candidate.VerifyDigest();
         if (problem is not null)
         {
-            return problem;
+            return new(pointer.ManifestName, problem);
         }
 
         if (!string.Equals(candidate.Digest, pointer.ManifestDigest, StringComparison.Ordinal))
         {
-            return $"the pointer expects manifest digest {pointer.ManifestDigest} but '{pointer.ManifestName}' "
-                + $"carries {candidate.Digest}";
+            return new(pointer.ManifestName, $"the pointer expects manifest digest {pointer.ManifestDigest} but "
+                + $"'{pointer.ManifestName}' carries {candidate.Digest}");
         }
 
         if (candidate.Generation != pointer.Generation)
         {
-            return $"the pointer names generation {pointer.Generation} but its manifest is "
-                + $"generation {candidate.Generation}";
+            return new(pointer.ManifestName, $"the pointer names generation {pointer.Generation} but its manifest is "
+                + $"generation {candidate.Generation}");
         }
 
-        problem = VerifyDependencies(directory, candidate, measurements, hashContents);
-        if (problem is not null)
+        Unverified? unverified = VerifyDependencies(directory, candidate, measurements, hashContents);
+        if (unverified is not null)
         {
-            return problem;
+            return unverified;
         }
 
         manifest = candidate;
@@ -2098,7 +2125,7 @@ public sealed class SessionStore
     /// listed and hashed later, by <see cref="VerifyContents"/>, so opening costs one listing rather than every byte of
     /// the session (S1). Every other dependency is small and carries no checksum of its own, so it is hashed now.
     /// </param>
-    private static string? VerifyDependencies(
+    private static Unverified? VerifyDependencies(
         IOwnedDirectory directory,
         SessionManifestV1 manifest,
         DependencyMeasurements? measurements,
@@ -2137,8 +2164,7 @@ public sealed class SessionStore
                     FileOptions.SequentialScan);
                 if (stream.Length != dependency.LengthBytes)
                 {
-                    return $"dependency '{dependency.Name}' is {stream.Length} bytes where generation "
-                        + $"{manifest.Generation} recorded {dependency.LengthBytes}";
+                    return new(dependency.Name, dependency.LengthMismatch(stream.Length, manifest.Generation));
                 }
 
                 long lastWrite = File.GetLastWriteTimeUtc(stream.SafeFileHandle).Ticks;
@@ -2157,14 +2183,14 @@ public sealed class SessionStore
                 string? problem = DigestProblem(stream, dependency, manifest.Generation, buffer, CancellationToken.None);
                 if (problem is not null)
                 {
-                    return problem;
+                    return new(dependency.Name, problem);
                 }
 
                 measurements?.Record(dependency, lastWrite);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
             {
-                return $"dependency '{dependency.Name}' could not be read: {exception.Message}";
+                return new(dependency.Name, Unreadable(dependency, exception, manifest.Generation));
             }
         }
 

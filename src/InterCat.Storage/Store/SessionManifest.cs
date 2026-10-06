@@ -69,6 +69,23 @@ public sealed record StoreDependency(
 {
     internal string CanonicalForm =>
         string.Create(CultureInfo.InvariantCulture, $"{Name}|{(int)Kind}|{LengthBytes}|{Digest}");
+
+    /// <summary>
+    /// Why the file is not the one its generation records, in words a person reads: its SHA-256 differs. Each digest is
+    /// given by its first twelve digits, which tell two apart; the whole of the recorded one is in the manifest.
+    /// </summary>
+    public string DigestMismatch(string digest, long? generation = null) =>
+        Mismatch($"its SHA-256 begins {DigestStart(digest)}, not {DigestStart(Digest)}", generation);
+
+    /// <summary>Why the file is not the one its generation records: its length differs.</summary>
+    public string LengthMismatch(long length, long? generation = null) =>
+        Mismatch(string.Create(CultureInfo.InvariantCulture, $"it is {length:N0} bytes, not {LengthBytes:N0}"), generation);
+
+    private string Mismatch(string difference, long? generation) => string.Create(CultureInfo.InvariantCulture,
+        $"'{Name}' does not match what {(generation is { } number ? $"generation {number}" : "its generation")} records ({difference})");
+
+    private static string DigestStart(string digest) =>
+        digest.StartsWith("sha256:", StringComparison.Ordinal) && digest.Length >= 19 ? digest[7..19] : digest;
 }
 
 /// <summary>

@@ -203,6 +203,31 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Contains("derived apart", derivedApart.Reason, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R22: a member whose newest generation does not verify is its last complete one, said as such and not as a copy")]
+    public void AMemberWhoseNewestGenerationFailsSaysWhy()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        string[] first = [.. alpha.Current!.Dependencies.Select(dependency => dependency.Name)];
+        Publish(alpha, Rows(2_000), capture: Capture, clock: SessionSegments.SourceClock(alpha.Root, alpha.Current!));
+        alpha.ReleaseSegmentReaders();
+        Assert.Equal(2, InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).Generation);
+
+        // A file only the newest generation needs is cut short, which a viewer's open finds from the listing.
+        StoreDependency newest = alpha.Current!.Dependencies.First(dependency =>
+            dependency.Kind == StoreDependencyKind.Segment && !first.Contains(dependency.Name));
+        string path = Path.Combine(alpha.Root.Path, newest.Name);
+        File.WriteAllBytes(path, File.ReadAllBytes(path)[..^1]);
+
+        WorkspaceMemberResolution failed = Single(workspace);
+        Assert.Equal((WorkspaceMemberState.Replaced, 1L), (failed.State, failed.CurrentGeneration));
+        Assert.Equal(
+            "The path holds generation 1 of this session, older than the selected generation 2. Its current generation could "
+            + $"not be read, so its last-known-good was: {newest.LengthMismatch(newest.LengthBytes - 1, 2)}. Relink the member "
+            + "to its own path to select what is there.",
+            failed.Reason);
+    }
+
     [Fact(DisplayName = "R22: hosts are one only by identity, and a name never makes two of them one")]
     public void HostsAreOneOnlyByIdentity()
     {

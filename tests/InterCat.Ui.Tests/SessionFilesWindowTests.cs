@@ -50,7 +50,7 @@ public sealed class SessionFilesWindowTests
             workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
             Assert.Equal(1, workspace.DisplayedGeneration);
             Assert.Contains("Its newest generation could not be verified", Detail(window), StringComparison.Ordinal);
-            Assert.Contains($"'{newest}' computes", Detail(window), StringComparison.Ordinal);
+            Assert.Contains($"is shown: '{newest}' does not match what generation 2 records", Detail(window), StringComparison.Ordinal);
             Assert.Contains("generation 1, the last complete one, is shown", Detail(window), StringComparison.Ordinal);
             Assert.Contains("Nothing on disk was changed", Detail(window), StringComparison.Ordinal);
         }
@@ -82,7 +82,7 @@ public sealed class SessionFilesWindowTests
             var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
             Assert.Equal(1, workspace.DisplayedGeneration);
             Assert.Equal("Saved session open", window.GetControl<TextBlock>("CaptureStatus").Text);
-            Assert.Contains($"'{newest}' computes", Detail(window), StringComparison.Ordinal);
+            Assert.Contains($"'{newest}' does not match what generation 2 records", Detail(window), StringComparison.Ordinal);
             Assert.Contains("generation 1, the last complete one, is shown", Detail(window), StringComparison.Ordinal);
 
             // What remains to hash is the last complete generation's, and it checks out: nothing further changes.

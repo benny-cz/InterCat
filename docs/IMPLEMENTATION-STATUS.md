@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-05 · Plan revision: 313 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 314 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 314 — a damaged session says what changed, once (§20.4, store-v1 §6):**
+  - One changed byte was refused with four 64-digit digests and store jargon, repeated for the generation kept to fall
+    back to. A reason now names the file and what is wrong with it - "does not match what generation 2 records (its
+    SHA-256 begins d678662e9244, not 2d7f44f53556)", its length, or missing - and a refusal says once that the fallback
+    needs the same file. A workspace member that fell back is no longer said to be a copy put in its place.
 
 - **Revision 313 — a report's values line up (§20.4):**
   - A label longer than the 22-character column pushed its value past the others; twelve labels in seven commands did.
@@ -780,6 +786,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 314 was built and tested in the same Linux container: Debug ran **1,541 tests**, passing **1,444 with 4
+  skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Release failed one more, "I1:
+  re-derivation refuses journal chunks that do not continue one another". Its second burst of records waited a fixed
+  600 ms for the first chunk to publish, and under the whole suite's load publishing took longer. It passed alone five
+  times out of five. It now waits for the first publication itself, through the scripted host's `PauseUntil`, and
+  passes in both configurations; its project passes in Release with only its three baseline failures. The tests
+  caught nineteen of twenty mutations:
+  - the digest given whole or by eleven digits, the lengths swapped, the generation left unnamed, a missing file
+    called unreadable;
+  - a shared file said twice, no fallback said to fail, a problem filed under its manifest, the files left unsaid;
+  - the old digest and length wording;
+  - `rederive`'s, `metric`'s, the Desktop's and the workspace's reasons back in parentheses, and the workspace calling
+    a fallback a copy;
+  - the package's and the builder's old words.
+
+  The twentieth, the contents check's own length wording, is reachable only when a file changes between a lease and
+  its hashing, because the lease checks lengths first and falls back.
 - Revision 313 was built and tested in the same Linux container: Debug and Release each ran **1,537 tests**, passing
   **1,440 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of fifteen mutations: no flush when a command ends, a group's column that ignores its labels or keeps one space
