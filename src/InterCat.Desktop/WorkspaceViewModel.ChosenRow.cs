@@ -69,10 +69,11 @@ public sealed partial class WorkspaceViewModel
     /// On a channel's own rung, the channel it opened, as the card heads and counts it: the records E lists from there and
     /// the level line counts (§6.4, I5), in the words its row used where it was chosen, so opening a channel does not turn
     /// the card back to the process it was opened from. Null at any other rung, in the tour, and while several processes
-    /// are chosen there, which the card then counts and E lists, as it does a chosen relationship before either.
+    /// or an aggregate of them are chosen there, which the card then counts and E lists, as it does a chosen relationship
+    /// before either.
     /// </summary>
     private (string Heading, string Summary)? OpenedChannel =>
-        !realOverview || HasMultiSelection ? null
+        !realOverview || HasMultiSelection || SelectedCluster is not null ? null
         : IsRpcChannelRung
             ? ("This RPC channel", rpcCalls?.Channel is { } calls ? CallRecords(calls.Records) : RpcCallSummary(brief: true))
         : IsHttpChannelRung

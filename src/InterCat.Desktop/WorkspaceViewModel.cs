@@ -4004,18 +4004,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return opened.Summary;
             }
 
-            if (SelectedCluster is { } cluster)
-            {
-                string counted = Snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc)
-                    ? "paired TCP and linked RPC call records"
-                    : "paired TCP observations";
-                return cluster.Relationships == 0
-                    ? "No admitted paired TCP relationship among these processes. Other activity may be present."
-                    : string.Create(CultureInfo.CurrentCulture, $"{cluster.Observations:N0} {counted} on ")
-                        + Counted(cluster.Relationships, "relationship", "relationships") + " · bytes unknown";
-            }
-
+            // An aggregate drawn in the graph stands for its processes, as a set of them chosen together does: the card
+            // counts their own records, as the timeline highlights them and E lists them.
             HashSet<ProcessInstanceId> scope = HasMultiSelection ? [.. chosenProcesses]
+                : SelectedCluster is { } cluster ? [.. cluster.Members]
                 : SelectedGroup is { } group
                 ? [.. Snapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
                 : selectedProcess is { } process ? [process.Id] : [];
@@ -4035,7 +4027,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : "observations";
             string relationships = edges.Length == 0
                 ? realOverview ? "no admitted paired TCP relationship" : "no relationship"
-                : realOverview && SelectedGroup is null && !HasMultiSelection
+                : realOverview && SelectedGroup is null && SelectedCluster is null && !HasMultiSelection
                     ? string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind}")
                     : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind} on ")
                         + Counted(edges.Length, "relationship", "relationships");
@@ -4273,9 +4265,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). It lists what the inspector's
-    /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen;
-    /// a row chosen among a process's rows; a process selected at the machine rung or among a group's members; a group
-    /// selected at the machine rung; and otherwise the rung's own - named in the filter bar, where it can be removed.
+    /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen,
+    /// or an aggregate of them drawn in the graph; a row chosen among a process's rows; a process selected at the machine
+    /// rung or among a group's members; a group selected at the machine rung; and otherwise the rung's own - named in the
+    /// filter bar, where it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
@@ -4303,6 +4296,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ChosenRow is { } row
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, row.Records,
                 $"Evidence was reached from the {rung} rung with {(HttpExchangeKeys.IsHttp(row.Row.Key) ? "its" : "this")} {ChosenRowNoun(row.Row)} chosen.")
+            : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), ProcessSetFilter.Label(aggregate.Members.Count)),
+                $"Evidence was reached from the {rung} rung with the aggregate {aggregate.Label} selected: exactly its processes.")
             : realOverview && level is DetailLevel.Machine or DetailLevel.Group && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.NameWithPid),
