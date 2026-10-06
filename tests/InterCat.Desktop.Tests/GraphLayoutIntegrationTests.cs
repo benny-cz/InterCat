@@ -408,7 +408,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("Bytes: unknown · 0 contributing observations in this scope", aggregate.Lines[4]);
 
         HoverCard edge = Assert.IsType<HoverCard>(viewModel.DescribeGraphHover("pair"));
-        Assert.Equal("Process 1 ↔ Process 2", edge.Title);
+        Assert.Equal("Process 1 · PID 2001 ↔ Process 2 · PID 2002", edge.Title);
         Assert.Equal("TCP · direct evidence · 1 relationship · 0 channels", edge.Lines[0]);
         Assert.Equal("Rule: transport-endpoint-relation, version 4 · evidence: 0 channels by key", edge.Lines[1]);
         Assert.Equal("Paired TCP observations: 10 · from both ends", edge.Lines[4]);
@@ -417,7 +417,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Null(viewModel.DescribeGraphHover("no such mark"));
     }
 
-    [Fact(DisplayName = "§6.3: a reused PID's holders are numbered in their graph cards' titles, as in their rows and lanes")]
+    [Fact(DisplayName = "§6.3: a reused PID's holders are numbered in their graph cards' titles, and their relationship's, as in their rows and lanes")]
     public async Task AReusedPidsHoldersAreNumberedInTheirCards()
     {
         // The pair's two ends held one PID in turn.
@@ -434,6 +434,9 @@ public sealed class GraphLayoutIntegrationTests
 
         Assert.Equal("Process 1 · PID 2001 #1", viewModel.DescribeGraphHover(processes[0].Id.ToString())!.Title);
         Assert.Equal("Process 2 · PID 2001 #2", viewModel.DescribeGraphHover(processes[1].Id.ToString())!.Title);
+
+        // The relationship between them names each end the same way, so it never reads as one process talking to itself.
+        Assert.Equal("Process 1 · PID 2001 #1 ↔ Process 2 · PID 2001 #2", viewModel.DescribeGraphHover("pair")!.Title);
     }
 
     [Fact(DisplayName = "§3.2: each rung draws its own neighbourhood, and a double click on an edge opens its channel")]

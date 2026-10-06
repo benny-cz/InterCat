@@ -290,6 +290,13 @@ public sealed class GraphProjectionTests
             snapshot with { Edges = [edges[0] with { ObservationCount = 1 }, edges[1] with { ObservationCount = 1 }] });
         Assert.Equal(["PID 100 #1", "PID 100 #2", "PID 200"], PidLabels(recounted, first, second, server));
         Assert.All(display.Nodes.Where(node => node.Kind != GraphNodeKind.Process), node => Assert.Null(node.PidLabel));
+
+        // A card's title names a process by name and PID, numbered, and one named by its PID alone by that once.
+        Assert.Equal(["client.exe · PID 100 #1", "client.exe · PID 100 #2", "server.exe · PID 200"],
+            [.. new[] { first, second, server }.Select(process => display.NodeOf(process.Id)!.Title)]);
+        GraphDisplayNode nameless = display.NodeOf(second.Id)! with { Label = ProcessNode.PidName(100) };
+        Assert.Equal("PID 100 #2", nameless.Title);
+        Assert.Equal("Other processes", (nameless with { Label = "Other processes", ProcessId = null }).Title);
     }
 
     [Fact(DisplayName = "§6.3: singleton-heavy captures use an explicit remainder and preserve the focused process")]

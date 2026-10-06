@@ -99,6 +99,14 @@ public sealed record GraphDisplayNode(
     /// null for an aggregate.
     /// </summary>
     public string? PidLabel => ProcessId is { } pid ? ProcessNode.PidLabelOf(pid, PidHolder, PidHolders) : null;
+
+    /// <summary>
+    /// The node as a card names it: a process by its name and PID, as <see cref="ProcessNode.NameWithPid"/> does, so one
+    /// executable's instances read apart, and an aggregate by its label.
+    /// </summary>
+    public string Title => ProcessId is { } pid && PidLabel is { } pidLabel
+        ? string.Equals(Label, ProcessNode.PidName(pid), StringComparison.Ordinal) ? pidLabel : $"{Label} · {pidLabel}"
+        : Label;
 }
 
 /// <summary>

@@ -3425,9 +3425,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawnDisplay.Node(key) is { } node)
         {
             long scale = GraphEncoding.NodeScale(drawnDisplay);
-            string title = node.ProcessId is { } pid && node.PidLabel is { } pidLabel
-                ? node.Label == ProcessNode.PidName(pid) ? pidLabel : $"{node.Label} · {pidLabel}"
-                : node.Label;
+            string title = node.Title;
             string what = node.Kind switch
             {
                 GraphNodeKind.Process => "Process instance · " + Counted(node.Relationships, "relationship", "relationships"),
@@ -3549,8 +3547,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             lines.Add("Double-click opens " + WorkspaceRowBuilder.Opens(Snapshot, only));
         }
 
-        string source = graphDisplay.Node(drawn.SourceKey)?.Label ?? drawn.SourceKey;
-        string target = graphDisplay.Node(drawn.TargetKey)?.Label ?? drawn.TargetKey;
+        // Each end named as its node's card names it, and as the relationship table names a process: by name and PID, so
+        // an edge between two instances of one executable never reads "chrome.exe ↔ chrome.exe".
+        string source = graphDisplay.Node(drawn.SourceKey)?.Title ?? drawn.SourceKey;
+        string target = graphDisplay.Node(drawn.TargetKey)?.Title ?? drawn.TargetKey;
         return new($"{source} ↔ {target}", lines);
     }
 
