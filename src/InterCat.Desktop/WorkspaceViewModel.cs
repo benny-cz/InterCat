@@ -3342,7 +3342,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedGroup is { } group ? DescribeGroup(group)
         : selectedProcess is null
             ? "Choose a node, ranked row, or timeline bucket."
-            : $"PID {selectedProcess.ProcessId.ToString(CultureInfo.InvariantCulture)} · {selectedProcess.Role}";
+            : $"{selectedProcess.PidLabel} · {selectedProcess.Role}";
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
     /// <summary>What a multi-selection holds, by name, and the two gestures that change or apply it (§6.7).</summary>
@@ -3425,8 +3425,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawnDisplay.Node(key) is { } node)
         {
             long scale = GraphEncoding.NodeScale(drawnDisplay);
-            string title = node.ProcessId is { } pid && node.Label != ProcessNode.PidName(pid)
-                ? string.Create(CultureInfo.CurrentCulture, $"{node.Label} · PID {pid}")
+            string title = node.ProcessId is { } pid && node.PidLabel is { } pidLabel
+                ? node.Label == ProcessNode.PidName(pid) ? pidLabel : $"{node.Label} · {pidLabel}"
                 : node.Label;
             string what = node.Kind switch
             {
@@ -4251,7 +4251,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 "Evidence was reached from the machine rung with this relationship chosen.")
             : machine && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
-                new(DetailLevel.ProcessInstance, process.Id.ToString(), process.Name),
+                new(DetailLevel.ProcessInstance, process.Id.ToString(), process.NameWithPid),
                 "Evidence was reached from the machine rung with this process selected.")
             : machine && SelectedGroup is { } group
                 ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,

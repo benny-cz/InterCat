@@ -2773,15 +2773,18 @@ public sealed class TimelineView : Control, IHoverCardSource
         return label;
     }
 
-    /// <summary>An owner row's name: its executable and PID, or its instance when the process left no name.</summary>
-    private static string OwnerLabel(ProcessTimelineLane lane, WorkspaceViewModel viewModel)
+    /// <summary>
+    /// An owner row's name: its executable and PID, a reused PID's holder numbered as the ranked table numbers it, or its
+    /// instance when the process left no name.
+    /// </summary>
+    internal static string OwnerLabel(ProcessTimelineLane lane, WorkspaceViewModel viewModel)
     {
         ProcessNode? process = viewModel.Snapshot.Processes.FirstOrDefault(node => node.Id == lane.ProcessId);
         string name = process?.Name ?? "Process";
         string shortName = Shortened(name, 14);
         return process is null ? $"{shortName} · {lane.ProcessId.Value.ToString("N")[..6]}"
-            : name == ProcessNode.PidName(process.ProcessId) ? name
-            : $"{shortName} · PID {process.ProcessId}";
+            : name == ProcessNode.PidName(process.ProcessId) ? process.PidLabel
+            : $"{shortName} · {process.PidLabel}";
     }
 
     /// <summary><paramref name="text"/>, cut to <paramref name="length"/> characters with an ellipsis when longer.</summary>

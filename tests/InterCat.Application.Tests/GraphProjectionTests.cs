@@ -264,6 +264,34 @@ public sealed class GraphProjectionTests
         Assert.Throws<ArgumentException>(() => GraphProjection.Rescope(display, snapshot, changedStrength));
     }
 
+    [Fact(DisplayName = "§7.2: a reused PID's holders are named apart, numbered as icat processes numbers them, and stay so when the graph is re-counted")]
+    public void AReusedPidsHoldersAreNamedApart()
+    {
+        // PID 100 was held twice, and each holder talked to the server, whose PID no other process held.
+        ProcessGroup clients = new("client", "client.exe", LaneGrouping.Executable);
+        ProcessGroup servers = new("server", "server.exe", LaneGrouping.Executable);
+        ProcessNode first = Node(1, clients.Key) with { ProcessId = 100, Name = "client.exe", PidHolders = 2 };
+        ProcessNode second = Node(2, clients.Key) with { ProcessId = 100, Name = "client.exe", PidHolder = 2, PidHolders = 2 };
+        ProcessNode server = Node(3, servers.Key) with { ProcessId = 200, Name = "server.exe" };
+        CommunicationEdge[] edges = [Edge("first", first, server, 3), Edge("second", second, server, 4)];
+        WorkspaceSnapshot snapshot = Snapshot([clients, servers], [first, second, server], edges);
+
+        // A caption numbers each holder, and a process named by its PID alone is numbered once, not named twice.
+        Assert.Equal(("client.exe · PID 100 #1", "client.exe · PID 100 #2", "server.exe · PID 200"),
+            (first.NameWithPid, second.NameWithPid, server.NameWithPid));
+        Assert.Equal(("PID 100 #2", "PID 200"), ((second with { Name = ProcessNode.PidName(100) }).NameWithPid,
+            (server with { Name = ProcessNode.PidName(200) }).NameWithPid));
+
+        // So does each drawn node, and a brush's re-count keeps its number.
+        GraphDisplay display = GraphProjection.Project(snapshot);
+        Assert.All([first, second, server], process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+        Assert.Equal(["PID 100 #1", "PID 100 #2", "PID 200"], PidLabels(display, first, second, server));
+        GraphDisplay recounted = GraphProjection.Rescope(display, snapshot,
+            snapshot with { Edges = [edges[0] with { ObservationCount = 1 }, edges[1] with { ObservationCount = 1 }] });
+        Assert.Equal(["PID 100 #1", "PID 100 #2", "PID 200"], PidLabels(recounted, first, second, server));
+        Assert.All(display.Nodes.Where(node => node.Kind != GraphNodeKind.Process), node => Assert.Null(node.PidLabel));
+    }
+
     [Fact(DisplayName = "§6.3: singleton-heavy captures use an explicit remainder and preserve the focused process")]
     public void SingletonHeavyCaptureUsesRemainderWithoutOmission()
     {
@@ -378,6 +406,10 @@ public sealed class GraphProjectionTests
         IReadOnlyList<ProcessNode> processes,
         IReadOnlyList<CommunicationEdge> edges) =>
         new("Graph projection test", new TimeRange(0, 10), groups, processes, edges, [], [], [], []);
+
+    /// <summary>The PID each process's drawn node is labelled by, or "none".</summary>
+    private static string[] PidLabels(GraphDisplay display, params ProcessNode[] processes) =>
+        [.. processes.Select(process => display.NodeOf(process.Id)!.PidLabel ?? "none")];
 
     private static ProcessNode Node(int index, string group) => new(
         new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")),

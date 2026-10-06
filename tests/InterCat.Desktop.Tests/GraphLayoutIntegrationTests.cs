@@ -9,7 +9,7 @@ namespace InterCat.Desktop.Tests;
 
 public sealed class GraphLayoutIntegrationTests
 {
-    [Fact(DisplayName = "§6.3: a process node no executable names is labelled by its PID once, and a named one has its PID beneath")]
+    [Fact(DisplayName = "§6.3: a process node no executable names is labelled by its PID once, a named one has its PID beneath, and a reused PID's holder is numbered")]
     public void ANamelessProcessIsLabelledByItsPidOnce()
     {
         static GraphDisplayNode Process(string label) =>
@@ -18,6 +18,12 @@ public sealed class GraphLayoutIntegrationTests
         // Named by its PID, the node has no second line: it once read "PID 100" over "PID 100".
         Assert.Equal(string.Empty, GraphView.Detail(Process(ProcessNode.PidName(100))));
         Assert.Equal("PID 100", GraphView.Detail(Process("client.exe")));
+
+        // The second process to hold a reused PID is numbered beneath its name, and beneath its PID when no executable
+        // names it, so its node never reads as the first's.
+        Assert.Equal("PID 100 #2", GraphView.Detail(Process("client.exe") with { PidHolder = 2, PidHolders = 2 }));
+        Assert.Equal("PID 100 #2", GraphView.Detail(Process(ProcessNode.PidName(100)) with { PidHolder = 2, PidHolders = 2 }));
+        Assert.Equal("PID 100 #1", GraphView.Detail(Process("client.exe") with { PidHolders = 2 }));
     }
 
     [Fact(DisplayName = "§3.1: a zero-edge graph does not imply the timeline recorded nothing")]
@@ -409,6 +415,25 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Contains("Direction: display order only, not who initiated or sent", edge.Lines);
         Assert.Equal("Double-click opens its source process", edge.Lines[^1]);
         Assert.Null(viewModel.DescribeGraphHover("no such mark"));
+    }
+
+    [Fact(DisplayName = "§6.3: a reused PID's holders are numbered in their graph cards' titles, as in their rows and lanes")]
+    public async Task AReusedPidsHoldersAreNumberedInTheirCards()
+    {
+        // The pair's two ends held one PID in turn.
+        (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
+        WorkspaceSnapshot reused = snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process =>
+                process.Id == processes[0].Id ? process with { PidHolders = 2 }
+                : process.Id == processes[1].Id ? process with { ProcessId = processes[0].ProcessId, PidHolder = 2, PidHolders = 2 }
+                : process)],
+        };
+        using var viewModel = new WorkspaceViewModel(reused, "session:test:generation:1");
+        await viewModel.LayoutReady;
+
+        Assert.Equal("Process 1 · PID 2001 #1", viewModel.DescribeGraphHover(processes[0].Id.ToString())!.Title);
+        Assert.Equal("Process 2 · PID 2001 #2", viewModel.DescribeGraphHover(processes[1].Id.ToString())!.Title);
     }
 
     [Fact(DisplayName = "§3.2: each rung draws its own neighbourhood, and a double click on an edge opens its channel")]

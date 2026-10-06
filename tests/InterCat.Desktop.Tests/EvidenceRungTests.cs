@@ -492,7 +492,7 @@ public sealed class EvidenceRungTests
         workspace.SelectProcess(server.Id);
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
-        Assert.Contains(workspace.Filters, filter => filter.Field == "scope" && filter.Label == server.Name);
+        Assert.Contains(workspace.Filters, filter => filter.Field == "scope" && filter.Label == server.NameWithPid);
         Assert.StartsWith("Records owned by", workspace.EvidenceScopeText, StringComparison.Ordinal);
         await workspace.LoadMoreEvidenceAsync();
         Assert.Equal(Exchanges + 1, workspace.RungRows.Count);
@@ -504,6 +504,29 @@ public sealed class EvidenceRungTests
         await workspace.EvidenceReady;
         Assert.StartsWith("Paired TCP channel", workspace.EvidenceScopeText, StringComparison.Ordinal);
         Assert.False(workspace.ShowChannelEvidence(channel));
+    }
+
+    [Fact(DisplayName = "§3.2: E from the machine rung scopes to the selected process by name and PID, a reused PID's holder numbered, in its crumb and filter")]
+    public async Task EvidenceFromTheMachineRungNamesItsProcessApart()
+    {
+        // PID 100 is held twice, by client.exe both times.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 2)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\client.exe" }),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+
+        // E with the later holder selected scopes to it, named as its row and lane name it, never as the first holder.
+        workspace.SelectProcess(later.Id);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Contains(workspace.Filters, filter => filter.Field == "scope" && filter.Label == "client.exe · PID 100 #2");
+        Assert.EndsWith("client.exe · PID 100 #2", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+        Assert.StartsWith("Records owned by client.exe · PID 100 #2", workspace.EvidenceScopeText, StringComparison.Ordinal);
     }
 
     [Fact]

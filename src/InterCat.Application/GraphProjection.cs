@@ -87,6 +87,18 @@ public sealed record GraphDisplayNode(
 
     /// <summary>The value the node's size is read from: its magnitude when it has one, else its relationships' records.</summary>
     public long Weight => Magnitude ?? Observations;
+
+    /// <summary>Which of the processes that held its PID a process node is, from 1 (<see cref="ProcessNode.PidHolder"/>).</summary>
+    public int PidHolder { get; init; } = 1;
+
+    /// <summary>How many processes held a process node's PID in the capture (<see cref="ProcessNode.PidHolders"/>).</summary>
+    public int PidHolders { get; init; } = 1;
+
+    /// <summary>
+    /// A process node's PID as its process's <see cref="ProcessNode.PidLabel"/> reads it, a reused PID's holder numbered;
+    /// null for an aggregate.
+    /// </summary>
+    public string? PidLabel => ProcessId is { } pid ? ProcessNode.PidLabelOf(pid, PidHolder, PidHolders) : null;
 }
 
 /// <summary>
@@ -306,7 +318,9 @@ public static class GraphProjection
         string Label,
         string? GroupKey,
         ProcessInstanceId? Process,
-        int? ProcessId);
+        int? ProcessId,
+        int PidHolder = 1,
+        int PidHolders = 1);
 
     /// <summary>One step of the fallback order: these members join the drawn node <paramref name="Key"/>.</summary>
     private sealed record Fold(string Key, IReadOnlyList<ProcessInstanceId> Members);
@@ -395,7 +409,7 @@ public static class GraphProjection
             assignment[process.Id] = key;
             descriptors[key] = new(
                 GraphNodeKind.Process, process.Name, process.GroupKey,
-                process.Id, process.ProcessId);
+                process.Id, process.ProcessId, process.PidHolder, process.PidHolders);
         }
 
         // A descriptor names what a node would be; only a node that receives members is drawn.
@@ -672,7 +686,7 @@ public static class GraphProjection
             .ToDictionary(entry => entry.member, entry => entry.Key);
         Dictionary<string, Descriptor> descriptors = display.Nodes.ToDictionary(
             node => node.Key,
-            node => new Descriptor(node.Kind, node.Label, node.GroupKey, node.Process, node.ProcessId),
+            node => new Descriptor(node.Kind, node.Label, node.GroupKey, node.Process, node.ProcessId, node.PidHolder, node.PidHolders),
             StringComparer.Ordinal);
         GraphDisplay recounted = Materialize(scoped, assignment, descriptors, display.ExpandedGroup, display.Kept);
         if (!SameStructure(display, recounted))
@@ -950,7 +964,11 @@ public static class GraphProjection
                     Array.AsReadOnly(ids),
                     nodeTotals.Observations,
                     nodeTotals.Relationships,
-                    nodeTotals.InternalRelationships);
+                    nodeTotals.InternalRelationships)
+                {
+                    PidHolder = descriptor.PidHolder,
+                    PidHolders = descriptor.PidHolders,
+                };
             })];
 
         var builtEdges = new List<GraphDisplayEdge>(aggregates.Count);

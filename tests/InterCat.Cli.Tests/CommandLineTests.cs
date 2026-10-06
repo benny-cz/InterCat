@@ -514,6 +514,28 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R5: icat overview and icat processes number a reused PID's holders alike, as the window does")]
+    public async Task AReusedPidsHoldersAreNumberedAlike()
+    {
+        // PID 100 is created, exits and is created again, both times as client.exe.
+        using var reused = new TemporarySession();
+        Publish(reused.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(30, ObservationKind.Exit, 100, 2),
+            Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\client.exe" },
+        ]);
+        reused.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string overview, string said) = await Run("overview", reused.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("client.exe · PID 100 #1", overview, StringComparison.Ordinal);
+        Assert.Contains("client.exe · PID 100 #2", overview, StringComparison.Ordinal);
+        string processes = (await Run("processes", reused.Path)).Output;
+        Assert.Contains("100 #1", processes, StringComparison.Ordinal);
+        Assert.Contains("100 #2", processes, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one")]
     public async Task APartThatIsNotWholeShowsItsGaps()
     {

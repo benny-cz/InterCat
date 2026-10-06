@@ -1044,15 +1044,15 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         box.Inflate(radius).Contains(centre);
 
     /// <summary>
-    /// The secondary line: a process's PID, or how many processes and relationships an aggregate stands for. A process no
-    /// executable names is labelled by its PID already, and has none: its node read "PID 100" over "PID 100".
+    /// The secondary line: a process's PID, a reused PID's holder numbered ("PID 100 #2"), or how many processes and
+    /// relationships an aggregate stands for. A process no executable names is labelled by its PID already, and has none
+    /// unless its PID was reused: its node read "PID 100" over "PID 100".
     /// </summary>
     internal static string Detail(GraphDisplayNode node)
     {
         ArgumentNullException.ThrowIfNull(node);
-        if (node.ProcessId is { } pid)
+        if (node.PidLabel is { } line)
         {
-            string line = string.Create(CultureInfo.InvariantCulture, $"PID {pid}");
             return string.Equals(node.Label, line, StringComparison.Ordinal) ? string.Empty : line;
         }
 

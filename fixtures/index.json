@@ -1663,6 +1663,7 @@
       ],
       "R5": [
         "R5: a channel row names its mechanism and direction in words, never an enumeration name",
+        "R5: icat overview and icat processes number a reused PID's holders alike, as the window does",
         "R5: initial normative wire codes stay stable",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields"
       ],

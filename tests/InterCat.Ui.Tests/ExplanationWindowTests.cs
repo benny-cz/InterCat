@@ -22,7 +22,7 @@ public sealed class ExplanationWindowTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
-    [AvaloniaFact(DisplayName = "§6.8: a group and a process chosen in the ranked table are explained in the inspector, with what a reused PID's later holder left out")]
+    [AvaloniaFact(DisplayName = "§6.8: a group and a process chosen in the ranked table are explained in the inspector, with what a reused PID's later holder left out, each holder numbered")]
     public async Task AChosenProcessIsExplained()
     {
         // PID 100 exits and is created again, and its second holder sends twice: candidates the default policy withholds.
@@ -54,12 +54,19 @@ public sealed class ExplanationWindowTests
         Assert.Contains("its total leaves out 2 records bound to 1 later holder of a reused PID among them.", explanation.Text,
             StringComparison.Ordinal);
 
-        // It opens on its two processes, and the later holder chosen among them is explained beside them.
+        // It opens on its two processes, which read apart as icat processes numbers them: in their rows, their lanes and
+        // the inspector, whose explanation of the later one stands beside them.
         Assert.True(workspace.Descend());
         Dispatch();
         ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
+        Assert.Equal(["PID 100 #1 · created during capture", "PID 100 #2 · created during capture"],
+            workspace.RungRows.Select(row => row.Detail).Order(StringComparer.Ordinal));
+        await Until(() => workspace.ProcessLaneDisplay.Count == 2);
+        Assert.Equal(["client.exe · PID 100 #1", "client.exe · PID 100 #2"],
+            workspace.ProcessLaneDisplay.Select(lane => TimelineView.OwnerLabel(lane, workspace)).Order(StringComparer.Ordinal));
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == later.Id.ToString());
         Dispatch();
+        Assert.Equal("PID 100 #2 · created during capture", workspace.SelectionSubtitle);
         Assert.True(explanation.IsEffectivelyVisible);
         Assert.Equal("How its records are counted", heading.Text);
         Assert.StartsWith("PID 100 was held by 2 processes in this capture, and this was the 2nd.", explanation.Text,

@@ -44,15 +44,30 @@ public sealed record ProcessNode(
 {
     /// <summary>
     /// The process as a caption names it: its name and its PID, each once. A process whose executable was not witnessed
-    /// is already named by its PID, so it reads "PID 812" rather than "PID 812 · PID 812".
+    /// is already named by its PID, so it reads "PID 812" rather than "PID 812 · PID 812". A reused PID's holders are
+    /// told apart by <see cref="PidLabel"/>: "client.exe · PID 100 #2".
     /// </summary>
     public string NameWithPid => string.Equals(Name, PidName(ProcessId), StringComparison.Ordinal)
-        ? Name
-        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} · PID {ProcessId}");
+        ? PidLabel
+        : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{Name} · {PidLabel}");
+
+    /// <summary>
+    /// Its PID as a person reads it: "PID 100", or, when more than one process held the PID in the capture, which of them
+    /// this was - "PID 100 #2" for the second, as `icat processes` names it - since the two otherwise read alike.
+    /// </summary>
+    public string PidLabel => PidLabelOf(ProcessId, PidHolder, PidHolders);
 
     /// <summary>The name an instance gets when no executable was witnessed for it.</summary>
     public static string PidName(int processId) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PID {processId}");
+
+    /// <summary>
+    /// A PID as <see cref="PidLabel"/> reads it for the <paramref name="holder"/>th of <paramref name="holders"/>
+    /// processes that held it: numbered only when more than one did.
+    /// </summary>
+    public static string PidLabelOf(int processId, int holder, int holders) => holders > 1
+        ? string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PID {processId} #{holder}")
+        : PidName(processId);
 
     /// <summary>
     /// What the process was observed doing: its own records by mechanism, most first, as the evidence policy admits them

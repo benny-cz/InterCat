@@ -285,7 +285,7 @@ public static class LadderProjection
             rows.Add(new LadderRow(
                 process.Id.ToString(),
                 process.Name,
-                string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId} · {process.Role}"),
+                $"{process.PidLabel} · {process.Role}",
                 process.Records,
                 KnownBytes(edges),
                 Dominant([process]),
