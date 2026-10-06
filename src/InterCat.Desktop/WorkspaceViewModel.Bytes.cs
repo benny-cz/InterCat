@@ -41,7 +41,7 @@ public sealed partial class WorkspaceViewModel
     /// channel a channel rung is focused on.
     /// </summary>
     private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null || HasMultiSelection || showTables
-        || FocusedRealChannel is not null;
+        || FocusedRealChannel is not null || selectedRelationship is not null;
 
     /// <summary>
     /// What a description says where the scope's bytes are not known: that they are being read, that they could not be,

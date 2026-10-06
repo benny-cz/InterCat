@@ -1887,7 +1887,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string peer = wholeSnapshot.Processes.FirstOrDefault(node => node.Id == relationship.TargetId)?.NameWithPid
             ?? "an unknown process";
         _ = TryDescend(LadderProjection.EvidenceDescentFor(ladder.Current, selectedInterval ?? ladder.Current.Viewport,
-            new(DetailLevel.Channel, relationship.Key, $"RPC calls linked between {source.NameWithPid} and {peer}"),
+            new(DetailLevel.Channel, relationship.Key, LinkedCalls(source.NameWithPid, peer)),
             "Evidence was reached from an RPC relationship: the calls its links join."));
         AfterNavigation();
         return true;
@@ -3167,6 +3167,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return true;
     }
 
+    /// <summary>
+    /// The records of the chosen relationship as one scope, which E reads at the machine rung: the calls its links join, by
+    /// its own key, or the one channel it rests on. Null with none chosen, and for one resting on several channels, which no
+    /// one scope names; its row opens its source process, whose rows list them.
+    /// </summary>
+    private LadderTarget? ChosenRelationshipRecords() =>
+        selectedRelationship is not { } chosen ? null
+        : RpcChannelKeys.IsRpc(chosen.Key) ? new(DetailLevel.Channel, chosen.Key, LinkedCalls(chosen.Source, chosen.Target))
+        : chosenChannelKey is { } only && wholeSnapshot.Channels.FirstOrDefault(channel => channel.Key == only) is { } channel
+            ? new(DetailLevel.Channel, channel.Key, channel.Name)
+            : null;
+
+    /// <summary>How an RPC relationship's calls are named where its records are read: by the two processes its links join.</summary>
+    private static string LinkedCalls(string source, string target) => $"RPC calls linked between {source} and {target}";
+
     /// <summary>The one channel a relationship rests on, whose records the timeline then highlights; null for none or several.</summary>
     private string? OnlyChannelOf(string relationshipKey)
     {
@@ -3249,6 +3264,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(SelectionSubtitle));
         OnPropertyChanged(nameof(SelectionActions));
         OnPropertyChanged(nameof(HasSelectionActions));
+        OnPropertyChanged(nameof(EvidenceHeading));
+        OnPropertyChanged(nameof(EvidenceSummary));
     }
 
     /// <summary>
@@ -3929,7 +3946,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>
-    public string EvidenceHeading => HasMultiSelection ? "Selected processes"
+    public string EvidenceHeading => selectedRelationship is not null ? "Selected relationship"
+        : HasMultiSelection ? "Selected processes"
         : SelectedCluster is not null ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : "Selected process";
@@ -3938,6 +3956,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         get
         {
+            // A chosen relationship's records as its row counts them, and what was sent across it; a call carries no size.
+            if (selectedRelationship is { } chosen)
+            {
+                bool calls = RpcChannelKeys.IsRpc(chosen.Key);
+                string counted = calls ? "linked RPC call records" : realOverview ? "paired TCP observations" : "observations";
+                return string.Create(CultureInfo.CurrentCulture, $"{chosen.ObservationCount:N0} {counted} · ")
+                    + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
+            }
+
             if (SelectedCluster is { } cluster)
             {
                 string counted = Snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc)
@@ -4219,7 +4246,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5).
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         bool machine = realOverview && ladder.Current.Level == DetailLevel.Machine;
-        LadderDescent descent = machine && selectedProcess is { } process
+        LadderDescent descent = machine && ChosenRelationshipRecords() is { } relationship
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, relationship,
+                "Evidence was reached from the machine rung with this relationship chosen.")
+            : machine && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.Name),
                 "Evidence was reached from the machine rung with this process selected.")

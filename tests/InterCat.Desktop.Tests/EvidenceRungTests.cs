@@ -937,6 +937,36 @@ public sealed class EvidenceRungTests
         await AssertExportsWhatTheRungLists(workspace, 2);
     }
 
+    [Fact(DisplayName = "§6.4: with a relationship chosen at the machine rung, the inspector counts its records and bytes, and E lists them")]
+    public async Task EListsAChosenRelationshipsRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+
+        // Chosen, its records are what the inspector counts, both ends', with what was sent across its one channel.
+        workspace.SelectedRelationship = Assert.Single(workspace.Relationships);
+        Assert.Equal("Selected relationship", workspace.EvidenceHeading);
+        Assert.StartsWith($"{2 * Exchanges:N0} paired TCP observations · ", workspace.EvidenceSummary, StringComparison.Ordinal);
+        await workspace.SelectionBytesReady;
+        Assert.Equal($"{2 * Exchanges:N0} paired TCP observations · "
+            + $"{WorkspaceRowBuilder.DescribeSize(Exchanges * 64L)} sent across", workspace.EvidenceSummary);
+
+        // E lists exactly that channel's records, the step's scope naming it.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal($"Paired TCP channel {channel.Name}", workspace.EvidenceScopeText);
+        while (workspace.CanLoadMoreEvidence)
+        {
+            await workspace.LoadMoreEvidenceAsync();
+        }
+
+        Assert.Equal(2 * Exchanges, workspace.RungRows.Count);
+        Assert.Contains("this relationship chosen", workspace.Filters.Single().Reason, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// The evidence rung's export, in each format: complete, naming the rung's scope, and holding exactly the records the
     /// rung lists once every page is loaded, in its order - never a wider scope's (§6.4) - each with the owner the rung

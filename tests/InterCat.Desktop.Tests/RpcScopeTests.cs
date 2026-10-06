@@ -282,6 +282,15 @@ public sealed class RpcScopeTests
         Assert.Equal(8, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
         Assert.Equal($"{row.Source} ↔ {row.Target}", workspace.TimelineHighlightName);
 
+        // The inspector counts its calls' records, which carry no size, and E lists them, read by its key.
+        Assert.Equal(("Selected relationship", "8 linked RPC call records · an RPC call carries no size"),
+            (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal((calls, 8), (workspace.EvidenceScopeText, workspace.RungRows.Count));
+        Assert.True(workspace.Ascend());
+        workspace.SelectedRelationship = row;
+
         // Clearing the selection lets it go, as opening it does once it is open.
         workspace.ClearSelection();
         Assert.Null(workspace.SelectedRelationship);
