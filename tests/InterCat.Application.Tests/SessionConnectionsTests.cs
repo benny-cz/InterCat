@@ -47,6 +47,14 @@ public sealed class SessionConnectionsTests
             SessionConnections.OneSided(session.Store, client, new TimeRange(1_900, 2_100)).Connections.Select(connection => connection.Name));
     }
 
+    [Fact(DisplayName = "§7.1: a TCP connection's lifetime says whether the capture saw it open and close")]
+    public void AConnectionsLifetimeSaysWhatTheCaptureSaw() =>
+        Assert.Equal(
+            ["opened and closed in the capture", "opened in the capture, still open at its end",
+                "open before the capture, closed in it", "open before the capture and after it"],
+            new[] { (true, true), (true, false), (false, true), (false, false) }
+                .Select(seen => ConnectionSummary.LifetimeWords(seen.Item1, seen.Item2)));
+
     [Fact(DisplayName = "R21: the timeline counts a connection's records apart, the same records its evidence reads")]
     public void TheTimelineCountsAConnectionApart()
     {

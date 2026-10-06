@@ -1,6 +1,5 @@
 using System.Globalization;
 using InterCat.Application;
-using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -22,16 +21,6 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public bool ShowsLineage => realOverview && selectedProcess is not null && !HasMultiSelection
         && SelectedGroup is null && SelectedCluster is null && DescribedRow is null;
-
-    /// <summary>
-    /// How the selected process's records were bound to it over the session, stated beside its lineage (§6.8): the rule
-    /// and how strongly, what the evidence policy left out of its total, and the capture's coverage. A reused PID's
-    /// later holder counts only its lifecycle records, and without this its row would read as a quiet process.
-    /// </summary>
-    public string BindingExplanation => ShowsLineage && selectedProcess is { } selected
-        && wholeSnapshot.Processes.FirstOrDefault(process => process.Id == selected.Id) is { } whole
-        ? WorkspaceRowBuilder.ExplainBinding(whole)
-        : string.Empty;
 
     /// <summary>The selected process's parent when the capture holds it.</summary>
     private ProcessNode? ParentOfSelected => selectedProcess?.Parent is { } parent
@@ -130,11 +119,11 @@ public sealed partial class WorkspaceViewModel
     private void RaiseLineageChanged()
     {
         OnPropertyChanged(nameof(ShowsLineage));
-        OnPropertyChanged(nameof(BindingExplanation));
         OnPropertyChanged(nameof(ParentText));
         OnPropertyChanged(nameof(ChildrenText));
         OnPropertyChanged(nameof(CanSelectParent));
         OnPropertyChanged(nameof(CanSelectChildren));
         OnPropertyChanged(nameof(SelectChildrenLabel));
+        RaiseExplanationChanged();
     }
 }

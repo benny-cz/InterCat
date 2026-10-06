@@ -740,6 +740,64 @@ public sealed class DerivationCheckpointOverviewTests
         }
     }
 
+    [Fact(DisplayName = "R4: a paired channel carries the rule that paired it, how strongly, and whether the capture saw it open and close, from its derivation and its checkpoint alike")]
+    public void APairedChannelCarriesHowItWasPaired()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        const string Client = "127.0.0.1:50000";
+        const string OtherClient = "127.0.0.1:50001";
+        const string ReusedClient = "127.0.0.1:50002";
+        const string Server = "127.0.0.1:8080";
+
+        // The capture sees the first connection open and close at both ends, the second only exchange two records. The
+        // third's client is a reused PID's later holder, so its end binds only as a candidate.
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1),
+            Lifecycle(2, ObservationKind.Create, 200, 2),
+            Lifecycle(3, ObservationKind.Create, 300, 11),
+            Lifecycle(4, ObservationKind.Exit, 300, 12),
+            Lifecycle(5, ObservationKind.Create, 300, 13),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 14).Between(ReusedClient, Server),
+            Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 15).Between(Server, ReusedClient),
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3).Between(Client, Server),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between(Server, Client),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(Client, Server),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 6).Between(Server, Client),
+            Transfer(14, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 7).Between(Client, Server),
+            Transfer(15, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 8).Between(Server, Client),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 9).Between(OtherClient, Server),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 10).Between(Server, OtherClient),
+        ]);
+        (RelationRule?, RelationStrength, bool, bool)[] expected =
+        [
+            (RelationRule.TransportEndpoint, RelationStrength.Correlated, true, true),
+            (RelationRule.TransportEndpoint, RelationStrength.Correlated, false, false),
+        ];
+        Assert.Equal(expected, Pairings(SessionOverviewProjector.Project(session.Store)));
+
+        // Only a policy that admits candidates lists the third, and it says it was paired as a candidate.
+        Assert.Equal([.. expected, (RelationRule.TransportEndpoint, RelationStrength.Candidate, false, false)],
+            Pairings(SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates)));
+
+        // A fresh viewer of the finished session takes them from its checkpoint, opening no segment, and says the same.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(reopened);
+        Assert.True(SessionDerivationCache.For(reopened.Current!).RelationsFromCheckpoint);
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        Assert.Equal(expected, Pairings(overview));
+    }
+
+    /// <summary>Each channel's pairing, in the order of its client's port.</summary>
+    private static (RelationRule?, RelationStrength, bool, bool)[] Pairings(SessionOverviewBundle overview) =>
+        [.. overview.Channels
+            .OrderBy(channel => channel.Name.Contains("50002", StringComparison.Ordinal) ? 2
+                : channel.Name.Contains("50001", StringComparison.Ordinal) ? 1 : 0)
+            .Select(channel => (channel.Rule, channel.Strength, channel.OpenWitnessed, channel.CloseWitnessed))];
+
     /// <summary>
     /// A session whose bytes each evidence policy attributes differently: a client sending to a server whose PID was used
     /// before, so the server's records are a candidate's and so is their channel; two processes in a conversation, which

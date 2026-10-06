@@ -404,6 +404,10 @@ public static class SessionOverviewProjector
     {
         FirstHolder = relation.First.Id,
         SecondHolder = relation.Second.Id,
+        Rule = RelationRule.TransportEndpoint,
+        Strength = relation.Strength,
+        OpenWitnessed = relation.OpenWitnessed,
+        CloseWitnessed = relation.CloseWitnessed,
     };
 
     /// <summary>

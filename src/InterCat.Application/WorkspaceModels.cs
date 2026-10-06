@@ -185,6 +185,28 @@ public sealed record Channel(
 
     /// <summary>The process holding the second endpoint of <see cref="Name"/>, when known; the first's for a process connected to itself.</summary>
     public ProcessInstanceId? SecondHolder { get; init; }
+
+    /// <summary>
+    /// The rule that paired its two ends (R4): `transport-endpoint-relation` for a TCP connection a session's relations
+    /// paired; null for a channel no rule derived, as the tour's.
+    /// </summary>
+    public RelationRule? Rule { get; init; }
+
+    /// <summary>
+    /// How strongly the pairing holds: correlated, or a candidate when either end's records bind to their process only
+    /// as candidates, as a reused PID's later holder's do (`contracts/relations-v1.md` §5).
+    /// </summary>
+    public RelationStrength Strength { get; init; } = RelationStrength.Correlated;
+
+    /// <summary>
+    /// Whether the capture saw the connection open at both ends - a connect at one, an accept at the other - and close
+    /// at both. A connection the capture did not see open was open before the capture began, and one it did not see close
+    /// was still open when the capture ended. Both true for a channel no rule derived.
+    /// </summary>
+    public bool OpenWitnessed { get; init; } = true;
+
+    /// <inheritdoc cref="OpenWitnessed"/>
+    public bool CloseWitnessed { get; init; } = true;
 }
 
 /// <summary>

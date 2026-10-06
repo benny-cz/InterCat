@@ -53,15 +53,20 @@ public sealed record ConnectionSummary(
     }
 
     /// <summary>Whether the capture saw it open and close, in words.</summary>
-    public string Lifetime => Mechanism == Mechanism.Udp
-        ? "a datagram flow"
-        : (OpenWitnessed, CloseWitnessed) switch
-        {
-            (true, true) => "opened and closed in the capture",
-            (true, false) => "opened in the capture, still open at its end",
-            (false, true) => "open before the capture, closed in it",
-            _ => "open before the capture and after it",
-        };
+    public string Lifetime => Mechanism == Mechanism.Udp ? "a datagram flow" : LifetimeWords(OpenWitnessed, CloseWitnessed);
+
+    /// <summary>
+    /// A TCP connection's lifetime as the capture saw it, in words: whether a connect or an accept opened it in the
+    /// capture, and a disconnect closed it there. A connection the capture did not see open was open before the capture
+    /// began, and one it did not see close was still open when the capture ended.
+    /// </summary>
+    public static string LifetimeWords(bool openWitnessed, bool closeWitnessed) => (openWitnessed, closeWitnessed) switch
+    {
+        (true, true) => "opened and closed in the capture",
+        (true, false) => "opened in the capture, still open at its end",
+        (false, true) => "open before the capture, closed in it",
+        _ => "open before the capture and after it",
+    };
 }
 
 /// <summary>A process instance's one-sided connections in one generation, the most records first.</summary>

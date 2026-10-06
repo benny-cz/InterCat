@@ -19,6 +19,7 @@ public sealed class BindingExplanationTests
 {
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
+    private const string OtherClientEnd = "127.0.0.1:50001";
 
     [Fact(DisplayName = "§6.8: the inspector says how a selected process's records were bound to it, and what a reused PID's later holder left out of its total")]
     public void TheInspectorExplainsHowAProcesssRecordsAreBound()
@@ -86,6 +87,73 @@ public sealed class BindingExplanationTests
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1");
         tour.SelectProcess(tour.Snapshot.Processes[0].Id);
         Assert.Equal(string.Empty, tour.BindingExplanation);
+    }
+
+    [Fact(DisplayName = "§6.8: a channel chosen among a process's rows says how its ends were paired, whether the capture saw it open and close, and its key")]
+    public void AChosenChannelSaysHowItWasPaired()
+    {
+        // The client connects to the server twice. The capture sees the first connection open and close at both ends,
+        // and neither for the second.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            Timed(Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 6).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(14, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 7).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(15, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 200, 8).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 9).Between(OtherClientEnd, ServerEnd)),
+            Timed(Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 10).Between(ServerEnd, OtherClientEnd)),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        Channel whole = workspace.Snapshot.Channels.Single(channel => channel.Name.Contains("50000", StringComparison.Ordinal));
+        Channel unseen = workspace.Snapshot.Channels.Single(channel => channel.Name.Contains("50001", StringComparison.Ordinal));
+        Assert.Equal((true, true, false, false), (whole.OpenWitnessed, whole.CloseWitnessed, unseen.OpenWitnessed, unseen.CloseWitnessed));
+        const string Paired = "Each end's records bind to one process and name the other end: paired by "
+            + "transport-endpoint-relation, version 4, correlated. ";
+
+        // The client's rung lists both channels; the one chosen is explained, with the key E lists its records by.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows.Single();
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == whole.Key);
+        Assert.Equal(("How it was paired", Paired + "Opened and closed in the capture. Coverage over the session: unknown. "
+            + $"E lists its records at both ends, by its key {whole.Key}."), (workspace.ExplanationHeading, workspace.Explanation));
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == unseen.Key);
+        Assert.Equal(Paired + "Open before the capture and after it. Coverage over the session: unknown. "
+            + $"E lists its records at both ends, by its key {unseen.Key}.", workspace.Explanation);
+
+        // A pairing that rests on a candidate end says so, which the window's policy never admits; a channel no rule paired,
+        // as the tour's, has nothing to explain.
+        Assert.StartsWith("Each end's records bind to one process and name the other end: paired by transport-endpoint-relation, "
+            + "version 4, as a candidate, since one end's records bind to their process only as candidates. ",
+            WorkspaceRowBuilder.ExplainPairing(whole with { Strength = RelationStrength.Candidate }), StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => WorkspaceRowBuilder.ExplainPairing(whole with { Rule = null }));
+        using (var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1"))
+        {
+            while (tour.RungRows.Count > 0 && !tour.Snapshot.Channels.Any(channel => channel.Key == tour.RungRows[0].Key))
+            {
+                tour.SelectedRung = tour.RungRows[0];
+                Assert.True(tour.Descend());
+            }
+
+            tour.SelectedRung = tour.RungRows[0];
+            Assert.NotNull(tour.DescribedRow);
+            Assert.Equal(string.Empty, tour.Explanation);
+        }
+
+        // On its own rung the inspector describes the process it was opened from, and the explanation follows it.
+        Assert.True(workspace.Descend());
+        Assert.StartsWith("Channel", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+        Assert.Equal("client.exe", workspace.SelectionTitle);
+        Assert.Equal("How its records are counted", workspace.ExplanationHeading);
+        Assert.StartsWith("Each record naming PID 100 while it ran is its own", workspace.Explanation, StringComparison.Ordinal);
     }
 
     /// <summary>Positions whose ordinal suffix differs from their last digit's, and the ones around them.</summary>

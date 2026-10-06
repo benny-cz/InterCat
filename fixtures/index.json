@@ -1654,6 +1654,7 @@
       ],
       "R4": [
         "R4: a TCP relationship carries the rule that derived it and the key of each connection it rests on, which opens that connection's records at both its ends",
+        "R4: a paired channel carries the rule that paired it, how strongly, and whether the capture saw it open and close, from its derivation and its checkpoint alike",
         "R4: a recorded name with no version from 1 after its identity names no rule",
         "R4: a rule's recorded name reads back as its identity and version",
         "R4: an RPC relationship carries the rule that linked its calls and its own key, which opens those calls at both its ends",

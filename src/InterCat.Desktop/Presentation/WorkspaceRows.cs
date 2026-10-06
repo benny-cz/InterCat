@@ -410,8 +410,35 @@ public static class WorkspaceRowBuilder
                 + (process.WithheldRecords == 0 ? "None is left out of its total."
                     : "The evidence policy counts no candidate, so its total counts only its lifecycle records, leaving out "
                         + $"{Spoken.Count(process.WithheldRecords, "record")} bound to it over the session.");
-        return $"{binding} Coverage over the session: {Spoken.Coverage(DescribeCoverage(process.Coverage))["coverage: ".Length..]}.";
+        return $"{binding} Coverage over the session: {CoverageWords(process.Coverage)}.";
     }
+
+    /// <summary>
+    /// How a paired channel's two ends were paired, in words (§6.8: a channel row is one action from the rule, version,
+    /// evidence key and coverage behind it): the rule and how strongly the pairing holds, whether the capture saw the
+    /// connection open and close, the capture's coverage over the session, and the key E lists its records by.
+    /// </summary>
+    public static string ExplainPairing(Channel channel)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        if (channel.Rule is not { } rule)
+        {
+            throw new ArgumentException("A channel no rule paired has no pairing to explain.", nameof(channel));
+        }
+
+        string strength = channel.Strength == RelationStrength.Candidate
+            ? "as a candidate, since one end's records bind to their process only as candidates"
+            : "correlated";
+        string lifetime = ConnectionSummary.LifetimeWords(channel.OpenWitnessed, channel.CloseWitnessed);
+        // The key comes last: it is what icat evidence --channel takes, and long enough to bury the sentence before it.
+        return $"Each end's records bind to one process and name the other end: paired by {DescribeRule(rule)}, {strength}. "
+            + $"{char.ToUpperInvariant(lifetime[0])}{lifetime[1..]}. Coverage over the session: {CoverageWords(channel.Coverage)}. "
+            + $"E lists its records at both ends, by its key {channel.Key}.";
+    }
+
+    /// <summary>A coverage state as a sentence ends with it: "covered", "partial gap, not extrapolated", "unknown".</summary>
+    private static string CoverageWords(CoverageState coverage) =>
+        Spoken.Coverage(DescribeCoverage(coverage))["coverage: ".Length..];
 
     private static string DescribeStrength(RelationStrength strength) => strength switch
     {
