@@ -51,6 +51,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>The view settings last kept in the shown session's investigation, or null when none were kept or read yet.</summary>
     private ViewSettings? keptSettings;
+
+    // The main pane a person let fill the column, if any, the split the two shared before, and whether the toggles are
+    // being set to show it rather than by a person.
+    private MainPane? expandedPane;
+    private (GridLength Graph, GridLength Timeline)? sharedSplit;
+    private bool showingExpandedPane;
     private Task pinsWritten = Task.CompletedTask;
 
     /// <summary>
@@ -267,6 +273,13 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             SearchBox.Focus();
             SearchBox.SelectAll();
+            e.Handled = true;
+            return;
+        }
+
+        // F11 edits no text, so it gives a filled column back from wherever the keyboard is, a search box included (§6.1).
+        if (e.Key == Key.F11 && e.KeyModifiers == KeyModifiers.None && ToggleFocusedPane())
+        {
             e.Handled = true;
             return;
         }
@@ -2224,6 +2237,88 @@ public sealed partial class MainWindow : Window, IDisposable
     private void CountCandidates(object? sender, RoutedEventArgs eventArgs) =>
         _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates);
 
+    private void GraphExpandChanged(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (!showingExpandedPane)
+        {
+            ExpandPane(GraphExpandToggle.IsChecked == true ? MainPane.Graph : null);
+        }
+    }
+
+    private void TimelineExpandChanged(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (!showingExpandedPane)
+        {
+            ExpandPane(TimelineExpandToggle.IsChecked == true ? MainPane.Timeline : null);
+        }
+    }
+
+    /// <summary>
+    /// F11 (§6.1): with a pane filling the column, gives both their places back, wherever the keyboard is; otherwise lets
+    /// the pane holding the keyboard fill it. With the keyboard in neither pane, nothing is hidden.
+    /// </summary>
+    private bool ToggleFocusedPane()
+    {
+        if (expandedPane is not null)
+        {
+            ExpandPane(null);
+            return true;
+        }
+
+        MainPane? holding = GraphPane.IsKeyboardFocusWithin ? MainPane.Graph
+            : TimelinePane.IsKeyboardFocusWithin ? MainPane.Timeline
+            : null;
+        if (holding is { } pane)
+        {
+            ExpandPane(pane);
+        }
+
+        return holding is not null;
+    }
+
+    /// <summary>The main pane filling the column by a person's command (§6.1), or null when the two share it.</summary>
+    internal MainPane? ExpandedPane => expandedPane;
+
+    /// <summary>
+    /// Lets <paramref name="pane"/> fill the column, the other pane hidden one command away, or with null gives both their
+    /// places back at the split the person left - never by itself, only when asked (§6.1's collapse floor).
+    /// </summary>
+    internal void ExpandPane(MainPane? pane)
+    {
+        if (pane == expandedPane)
+        {
+            return;
+        }
+
+        RowDefinitions rows = PanesGrid.RowDefinitions;
+        if (expandedPane is null)
+        {
+            sharedSplit = (rows[0].Height, rows[2].Height);
+        }
+
+        expandedPane = pane;
+        (rows[0].Height, rows[2].Height) = pane switch
+        {
+            MainPane.Graph => (GridLength.Star, new GridLength(0)),
+            MainPane.Timeline => (new GridLength(0), GridLength.Star),
+            _ => sharedSplit ?? (GridLength.Star, GridLength.Star),
+        };
+        rows[1].Height = new GridLength(pane is null ? 6 : 0);
+        GraphPane.IsVisible = pane != MainPane.Timeline;
+        TimelinePane.IsVisible = pane != MainPane.Graph;
+        PaneSplitter.IsVisible = pane is null;
+        showingExpandedPane = true;
+        try
+        {
+            GraphExpandToggle.IsChecked = pane == MainPane.Graph;
+            TimelineExpandToggle.IsChecked = pane == MainPane.Timeline;
+        }
+        finally
+        {
+            showingExpandedPane = false;
+        }
+    }
+
     private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
         _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
 
@@ -2777,4 +2872,11 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace.PropertyChanged -= OnWorkspaceChanged;
         workspace.Dispose();
     }
+}
+
+/// <summary>The two main panes a person may let fill the column (§6.1).</summary>
+internal enum MainPane
+{
+    Graph,
+    Timeline,
 }

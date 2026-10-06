@@ -471,15 +471,16 @@
       </WrapPanel>
     </Border>
 
-    <!-- Panes -->
-    <Grid Grid.Column="1" Grid.Row="2" RowDefinitions="*,6,*" Margin="16">
-      <Border Grid.Row="0" CornerRadius="10" Background="{DynamicResource Surface.Plot}"
+    <!-- Panes. Either may fill the column by an explicit command, and only by one (§6.1): its header's Expand, or F11
+         with the keyboard in it. The other comes back, at the split the person left, by the same command. -->
+    <Grid x:Name="PanesGrid" Grid.Column="1" Grid.Row="2" RowDefinitions="*,6,*" Margin="16">
+      <Border x:Name="GraphPane" Grid.Row="0" CornerRadius="10" Background="{DynamicResource Surface.Plot}"
               BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1" ClipToBounds="True">
         <Grid RowDefinitions="48,*">
           <Border Padding="14,9" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1">
             <!-- The pane's own statement gets the full width of the second line; the gesture hint shares the first line
                  with the title and yields first when the pane is narrow. -->
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
               <TextBlock Text="COMMUNICATION GRAPH" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
                          Text="Hover explains · drag to pin · P pin/unpin · L re-layout · Enter opens a node"
@@ -489,6 +490,13 @@
               <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding GraphSummary}" Classes="muted" FontSize="11"
                          TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GraphSummary}"
                          AutomationProperties.Name="{Binding GraphSummary}" />
+              <ToggleButton x:Name="GraphExpandToggle" Grid.Column="2" Grid.RowSpan="2" Margin="12,0,0,0"
+                            FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
+                            VerticalContentAlignment="Center" IsCheckedChanged="GraphExpandChanged"
+                            ToolTip.Tip="Expand: let the graph fill the column, the timeline one click away (F11 with the graph focused). Click again, or press F11, to give both their places back."
+                            AutomationProperties.Name="Expand the graph to fill the column; again to restore the timeline beneath it">
+                <TextBlock Text="Expand" />
+              </ToggleButton>
             </Grid>
           </Border>
           <local:GraphView x:Name="GraphSurface" Grid.Row="1" Focusable="True"
@@ -496,14 +504,14 @@
         </Grid>
       </Border>
 
-      <GridSplitter Grid.Row="1" Height="6" Background="Transparent"
+      <GridSplitter x:Name="PaneSplitter" Grid.Row="1" Height="6" Background="Transparent"
                     AutomationProperties.Name="Resize the graph and timeline panes" />
 
-      <Border Grid.Row="2" CornerRadius="10" Background="{DynamicResource Surface.Plot}"
+      <Border x:Name="TimelinePane" Grid.Row="2" CornerRadius="10" Background="{DynamicResource Surface.Plot}"
               BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1" ClipToBounds="True">
         <Grid RowDefinitions="48,*,38">
           <Border Padding="14,9" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto" RowDefinitions="Auto,Auto">
               <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
                          Text="Wheel or double-click zooms · drag or ←→ pan · ↑↓ lanes · [ ] step · 0 fits"
@@ -513,6 +521,13 @@
               <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding TimelineCaption}"
                          Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
                          ToolTip.Tip="{Binding TimelineCaption}" AutomationProperties.Name="{Binding TimelineCaption}" />
+              <ToggleButton x:Name="TimelineExpandToggle" Grid.Column="2" Grid.RowSpan="2" Margin="12,0,0,0"
+                            FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
+                            VerticalContentAlignment="Center" IsCheckedChanged="TimelineExpandChanged"
+                            ToolTip.Tip="Expand: let the timeline fill the column, the graph one click away (F11 with the timeline focused). Click again, or press F11, to give both their places back."
+                            AutomationProperties.Name="Expand the timeline to fill the column; again to restore the graph above it">
+                <TextBlock Text="Expand" />
+              </ToggleButton>
             </Grid>
           </Border>
           <!-- The plot handles time gestures; the left lane-label gutter lets the parent scroll long lane lists. -->
