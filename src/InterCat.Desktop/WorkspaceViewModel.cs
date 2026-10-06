@@ -1312,6 +1312,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsRankingScope));
         OnPropertyChanged(nameof(RankingScopeText));
         OnPropertyChanged(nameof(IntervalLabel));
+        RaiseScopeCoverageChanged();
     }
 
     /// <summary>What the ranking counts, stated wherever totals appear so a brushed number is never read as a session total.</summary>
@@ -2875,8 +2876,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return evidence.Problem
                     ?? (evidence.Loading
                         ? "Reading this scope's source records…"
-                        : "No admitted source record is in this scope. That is not proof of inactivity: coverage "
-                            + "is stated in the health strip, and a time brush or a removed filter changes the scope.");
+                        : "No admitted source record is in this scope. That is not proof of inactivity: the "
+                            + "inspector states this scope's coverage under its time scope, and a time brush or a removed "
+                            + "filter changes the scope.");
             }
 
             if (IsRpcChannelRung)
@@ -3957,6 +3959,44 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>
+    /// What the capture covered over the time scope, stated beneath it (R21, §6.5's capture coverage): each collected
+    /// mechanism's coverage over the whole session, the visible range or the brush, with the fact behind any state short of
+    /// covered, so a count of none where the capture delivered no reading, or lost some, is not read as no activity. A
+    /// range's coverage comes with its counts: until they are read it is said to be read, never carried from another
+    /// scope, and a range that could not be counted has none said for it. An earlier publication's counts standing in for
+    /// the same range bring their coverage with them, as they bring their numbers. Empty for a range no source is there to
+    /// count, and in the tour and an empty workspace, which judged no coverage.
+    /// </summary>
+    public string ScopeCoverage => ScopeCounted ? WorkspaceRowBuilder.DescribeScopeCoverage(Snapshot.MechanismCoverage)
+        : evidenceSource is null ? string.Empty
+        : intervalProblem is null ? "Reading this range's coverage…"
+        : "Coverage unknown: this range could not be counted";
+
+    /// <summary>
+    /// Whether the scope's coverage falls short of covered where a ledger judged it, which the card states in caution ink as
+    /// the health strip does. A generation without a ledger has judged nothing yet, which is said plainly (§6.6). An earlier
+    /// publication's counts standing in carry that generation's coverage, which this one's ledger did not judge, so they
+    /// are said plainly too until this generation's own replace them.
+    /// </summary>
+    public bool ScopeCoverageLimited => ScopeCounted && !scopeStandsIn && Snapshot.CoverageLedgerPublished
+        && WorkspaceRowBuilder.IsCoverageShort(Snapshot.MechanismCoverage);
+
+    public bool ShowsScopeCoverage => ScopeCoverage.Length > 0;
+
+    /// <summary>
+    /// Whether the counts shown answer the time scope: the whole session's, or the range's own once read. Interval counts
+    /// are shown only with the interval they answer, which is cleared with them.
+    /// </summary>
+    private bool ScopeCounted => ScopeInterval is not { } scope || displayedCountsInterval == scope;
+
+    private void RaiseScopeCoverageChanged()
+    {
+        OnPropertyChanged(nameof(ScopeCoverage));
+        OnPropertyChanged(nameof(ScopeCoverageLimited));
+        OnPropertyChanged(nameof(ShowsScopeCoverage));
+    }
+
+    /// <summary>
     /// What the inspector's evidence line describes: the chosen relationship, processes or row, the channel whose own rung
     /// is shown, or the selected aggregate, group or process; with nothing selected in a published session, the records E
     /// then lists, the rung's own.
@@ -4064,13 +4104,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             .OrderByDescending(entry => entry.Records)
             .ThenBy(entry => entry.Mechanism)
             .First();
-        string name = mechanism switch
-        {
-            // A lane may be called "Process"; in a sentence the records are the process's lifecycle.
-            Mechanism.ProcessLifecycle => "process lifecycle",
-            Mechanism.ThreadLifecycle => "thread lifecycle",
-            _ => EvidenceRowText.MechanismName(mechanism),
-        };
+
+        // A lane may be called "Process"; in a sentence the records are the process's lifecycle.
+        string name = WorkspaceRowBuilder.MechanismInSentence(mechanism);
         return string.Create(CultureInfo.CurrentCulture,
             $"{own:N0} own {(own == 1 ? "record" : "records")}, {(records == own ? "all" : "mostly")} {name}");
     }
@@ -5678,6 +5714,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(Snapshot));
         OnPropertyChanged(nameof(IsRankedWithinInterval));
         OnPropertyChanged(nameof(RankingScopeText));
+        RaiseScopeCoverageChanged();
         RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(RungRows));

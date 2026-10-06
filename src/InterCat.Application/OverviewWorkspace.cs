@@ -57,6 +57,7 @@ public static class OverviewWorkspace
             MechanismLanes = overview.MechanismLanes,
             Clock = overview.Clock,
             CoverageLedgerPublished = overview.CoverageLedgerPublished,
+            MechanismCoverage = overview.MechanismCoverage,
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Recording = overview.Recording,
             Began = overview.Began,
@@ -76,7 +77,7 @@ public static class OverviewWorkspace
     /// The same workspace ranked within an analysis interval: every process, edge and channel keeps its identity and
     /// position and carries only the records inside the interval, so the ladder's totals and ranking follow the brush
     /// while the graph and timeline keep their shape (plan §6.4). One with nothing in the interval counts zero, not
-    /// "absent".
+    /// "absent", beside each mechanism's coverage there, which says whether a zero could be seen at all (R21).
     /// </summary>
     public static WorkspaceSnapshot WithinInterval(WorkspaceSnapshot snapshot, SessionIntervalCounts counts)
     {
@@ -102,6 +103,7 @@ public static class OverviewWorkspace
             RowsNoProcessHolds = snapshot.RowsNoProcessHolds is null
                 ? null
                 : counts.ObservedRows - counts.ProcessRecords.Values.Sum(records => records.Sum(entry => entry.Records)),
+            MechanismCoverage = counts.MechanismCoverage,
         };
     }
 

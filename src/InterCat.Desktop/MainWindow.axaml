@@ -604,6 +604,11 @@
                 <StackPanel Spacing="3">
                   <TextBlock Text="Time scope" Classes="muted" />
                   <TextBlock x:Name="TimeScopeValue" Text="{Binding IntervalLabel}" TextWrapping="Wrap" />
+                  <!-- R21: what the capture covered over the scope, beneath it, so every count below is read against it: a count
+                       of none where the capture delivered nothing is not a quiet scope. Caution ink for a limit, as the strip's. -->
+                  <TextBlock x:Name="TimeScopeCoverage" Text="{Binding ScopeCoverage}" TextWrapping="Wrap" FontSize="12"
+                             Classes="muted" Classes.caution="{Binding ScopeCoverageLimited}"
+                             IsVisible="{Binding ShowsScopeCoverage}" />
                 </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />

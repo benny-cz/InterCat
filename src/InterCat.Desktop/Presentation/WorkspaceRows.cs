@@ -489,6 +489,80 @@ public static class WorkspaceRowBuilder
     private static string CoverageWords(CoverageState coverage) =>
         Spoken.Coverage(DescribeCoverage(coverage))["coverage: ".Length..];
 
+    /// <summary>
+    /// What the capture covered over a time scope, in words (R21; metrics-v1 §7 states an all-mechanism answer's coverage
+    /// mechanism by mechanism, never as one state): each state with the mechanisms in it, the fact behind any state short
+    /// of covered, and that no other mechanism was collected, so no count of one was possible. When nothing is known of
+    /// any mechanism for one reason - no ledger, or a scope outside every reading the capture delivered - that reason is
+    /// said once, with what it means for a count of none. Empty when nothing was judged.
+    /// </summary>
+    public static string DescribeScopeCoverage(IReadOnlyList<MechanismCoverage> mechanisms)
+    {
+        ArgumentNullException.ThrowIfNull(mechanisms);
+        if (mechanisms.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        if (mechanisms.All(entry => entry.State == CoverageState.UnknownCoverage
+            && string.Equals(entry.Reason, mechanisms[0].Reason, StringComparison.Ordinal)))
+        {
+            return $"Coverage unknown: {mechanisms[0].Reason}, so a count of none here is not proof of inactivity";
+        }
+
+        MechanismCoverage[] collected = [.. mechanisms.Where(entry => entry.State != CoverageState.NotCollected)];
+        if (collected.Length == 0)
+        {
+            return "Coverage: no mechanism was collected here, so a count of none here is not proof of inactivity";
+        }
+
+        // Mechanisms that share a state, and the fact behind it, are named together; a covered one needs no fact.
+        List<string> parts =
+        [
+            .. collected
+                .GroupBy(entry => (entry.State, Reason: entry.State == CoverageState.Covered ? string.Empty : entry.Reason))
+                .OrderBy(group => group.Key.State)
+                .ThenBy(group => group.First().Mechanism)
+                .Select(group =>
+                {
+                    string names = Spoken.List([.. group.Select(entry => MechanismInSentence(entry.Mechanism))]);
+                    return group.Key.State switch
+                    {
+                        CoverageState.Covered => $"covered for {names}",
+                        CoverageState.ReducedFidelity => $"reduced fidelity for {names}: {group.Key.Reason}",
+                        CoverageState.PartialGap => $"a partial gap, not extrapolated, for {names}: {group.Key.Reason}",
+                        _ => $"unknown for {names}: {group.Key.Reason}",
+                    };
+                }),
+        ];
+        if (collected.Length < mechanisms.Count)
+        {
+            parts.Add("no other mechanism collected");
+        }
+
+        return "Coverage: " + string.Join(" · ", parts);
+    }
+
+    /// <summary>
+    /// Whether a scope's coverage falls short of covered: a collected mechanism was judged anything less, or nothing was
+    /// collected. A scope that did not collect some mechanism is not short for it: its counts are as complete as the
+    /// capture's sources allowed, and its words say what it did not collect.
+    /// </summary>
+    public static bool IsCoverageShort(IReadOnlyList<MechanismCoverage> mechanisms)
+    {
+        ArgumentNullException.ThrowIfNull(mechanisms);
+        MechanismCoverage[] collected = [.. mechanisms.Where(entry => entry.State != CoverageState.NotCollected)];
+        return mechanisms.Count > 0 && (collected.Length == 0 || collected.Any(entry => entry.State != CoverageState.Covered));
+    }
+
+    /// <summary>A mechanism as a sentence names it: "TCP", and "process lifecycle" where a lane says "Process".</summary>
+    public static string MechanismInSentence(Mechanism mechanism) => mechanism switch
+    {
+        Mechanism.ProcessLifecycle => "process lifecycle",
+        Mechanism.ThreadLifecycle => "thread lifecycle",
+        _ => EvidenceRowText.MechanismName(mechanism),
+    };
+
     private static string DescribeStrength(RelationStrength strength) => strength switch
     {
         RelationStrength.Direct => "direct",

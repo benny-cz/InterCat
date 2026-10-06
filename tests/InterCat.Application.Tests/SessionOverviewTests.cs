@@ -546,6 +546,69 @@ public sealed class SessionOverviewTests
             node => Assert.Equal(CoverageState.UnknownCoverage, node.Coverage));
     }
 
+    [Fact(DisplayName = "R21: an interval's counts carry each mechanism's coverage there, and the whole session's come with its overview")]
+    public void CountsCarryEachMechanismsCoverage()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 3_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [LiveEpoch(1, 0, 24, lost: 0), LiveEpoch(2, 25, 40, lost: 1)],
+        });
+
+        // The whole session's coverage comes with its overview: TCP is as complete as its worse epoch, and every other
+        // mechanism was not collected, each stated on its own.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        WorkspaceSnapshot whole = OverviewWorkspace.From(overview);
+        Assert.Same(overview.MechanismCoverage, whole.MechanismCoverage);
+        Assert.Equal(Enum.GetValues<Mechanism>().Length, whole.MechanismCoverage.Count);
+        Assert.Equal(CoverageState.PartialGap, whole.MechanismCoverage.Single(entry => entry.Mechanism == Mechanism.Tcp).State);
+
+        // An interval's comes with its counts, judged by its own readings, and is what the workspace ranked within it states.
+        SessionIntervalCounts first = SessionIntervalQuery.Count(session.Store, new TimeRange(0, 21));
+        Assert.Equal(Enum.GetValues<Mechanism>().Length, first.MechanismCoverage.Count);
+        Assert.Equal(
+            (CoverageState.Covered, "2 records from its 1 admitted descriptor, and nothing was reported lost"),
+            first.MechanismCoverage.Where(entry => entry.Mechanism == Mechanism.Tcp).Select(entry => (entry.State, entry.Reason)).Single());
+        Assert.All(first.MechanismCoverage.Where(entry => entry.Mechanism != Mechanism.Tcp),
+            entry => Assert.Equal(CoverageState.NotCollected, entry.State));
+        Assert.Same(first.MechanismCoverage, OverviewWorkspace.WithinInterval(whole, first).MechanismCoverage);
+        Assert.Equal(
+            (CoverageState.PartialGap, "the session reported 1 lost event, which may be any mechanism's"),
+            SessionIntervalQuery.Count(session.Store, new TimeRange(25, 35)).MechanismCoverage
+                .Where(entry => entry.Mechanism == Mechanism.Tcp).Select(entry => (entry.State, entry.Reason)).Single());
+
+        // Past the delivered readings nothing is known of any mechanism, collected or not.
+        Assert.All(SessionIntervalQuery.Count(session.Store, new TimeRange(50, 60)).MechanismCoverage, entry => Assert.Equal(
+            (CoverageState.UnknownCoverage, "outside the readings the capture's sources delivered"), (entry.State, entry.Reason)));
+
+        // On a clock of whole milliseconds, a brush narrower than a tick holds no reading: nothing is known there, and the
+        // whole session's coverage is not claimed for it.
+        var milliseconds = new SourceClockDescriptor(Clock, HostId.Derive("coarse-clock"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 1_000, 0, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        using var coarse = new TemporarySession();
+        Publish(coarse.Store,
+        [
+            Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1)
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000_000 },
+        ], clock: milliseconds, coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [LiveEpoch(1, 0, 24, lost: 0)],
+        });
+        SessionIntervalCounts unplaced = SessionIntervalQuery.Count(coarse.Store, new TimeRange(1, 2));
+        Assert.Equal(CoverageState.UnknownCoverage, unplaced.CaptureCoverage);
+        Assert.Equal(Enum.GetValues<Mechanism>().Length, unplaced.MechanismCoverage.Count);
+        Assert.All(unplaced.MechanismCoverage, entry => Assert.Equal(
+            (CoverageState.UnknownCoverage, "no reading of the capture's clock falls in this interval"), (entry.State, entry.Reason)));
+    }
+
     private static CoverageEpochV1 LiveEpoch(int number, long first, long last, long lost) => new()
     {
         Epoch = number,

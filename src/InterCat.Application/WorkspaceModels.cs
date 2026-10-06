@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Domain;
 
 namespace InterCat.Application;
@@ -397,6 +398,13 @@ public sealed record WorkspaceSnapshot(
     /// coverage is unknown because nothing has judged it yet, which is a different statement from a gap.
     /// </summary>
     public bool CoverageLedgerPublished { get; init; } = true;
+
+    /// <summary>
+    /// Each mechanism's coverage over what the snapshot counts - the whole session, or the interval it was counted within
+    /// (<see cref="OverviewWorkspace.WithinInterval"/>) - and the fact that decided it (`coverage-v2` §4); empty for a
+    /// snapshot that was not projected from a session.
+    /// </summary>
+    public IReadOnlyList<MechanismCoverage> MechanismCoverage { get; init; } = [];
 
     /// <summary>
     /// Observed rows in scope that no process instance holds, which the ranked table's groups and processes therefore

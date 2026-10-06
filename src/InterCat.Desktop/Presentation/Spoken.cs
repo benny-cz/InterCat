@@ -21,6 +21,11 @@ internal static class Spoken
     public static string Coverage(string label) =>
         "coverage: " + (label.EndsWith(" coverage", StringComparison.Ordinal) ? label[..^" coverage".Length] : label);
 
+    /// <summary>Several names as a sentence lists them: "TCP", "TCP and UDP", "process lifecycle, TCP and UDP".</summary>
+    public static string List(IReadOnlyList<string> names) => names.Count < 2
+        ? string.Concat(names)
+        : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
+
     /// <summary>A position as a sentence says it: "1st", "2nd", "3rd", "4th", "11th", "12th", "21st".</summary>
     public static string Ordinal(int position)
     {
