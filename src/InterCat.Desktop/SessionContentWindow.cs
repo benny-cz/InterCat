@@ -34,6 +34,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Grid facts = new() { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 12, RowSpacing = 3 };
     private readonly TextBlock disclosure = new() { FontSize = 11, TextWrapping = TextWrapping.Wrap };
+    private readonly ScrollViewer factsScroller = new() { HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };
     private readonly Button reveal = new() { Content = "Show the kept bytes", IsEnabled = false, IsVisible = false };
     private readonly TextBox first = new() { Width = 110 };
     private readonly TextBox last = new() { Width = 110 };
@@ -202,7 +203,9 @@ internal sealed class SessionContentWindow : Window, IDisposable
         rangePanel.Children.Add(rangeSummary);
         rangePanel.Children.Add(rangeProblem);
 
-        var header = new StackPanel { Spacing = 6, Children = { heading, status, facts, disclosure, reveal, rangePanel } };
+        factsScroller.Content = new StackPanel { Spacing = 6, Children = { facts, disclosure } };
+        AutomationProperties.SetName(factsScroller, "What was kept of the record's message, and under which policy");
+        var header = new StackPanel { Spacing = 6, Children = { heading, status, factsScroller, reveal, rangePanel } };
         var footer = new StackPanel
         {
             Orientation = Orientation.Horizontal,
@@ -226,6 +229,28 @@ internal sealed class SessionContentWindow : Window, IDisposable
 
         Opened += (_, _) => _ = LoadAsync(revealBytes: false);
         Closed += (_, _) => Dispose();
+        views.SizeChanged += (_, _) => FitFacts();
+    }
+
+    /// <summary>The least room the facts keep beside shown bytes: about three of their rows.</summary>
+    internal const double MinimumFactsHeight = 72;
+
+    /// <summary>The room shown bytes keep before the facts give up any: the tabs and about ten lines.</summary>
+    internal const double MinimumBytesHeight = 200;
+
+    /// <summary>
+    /// Once the bytes are shown they are what a person came to read. The facts and the notice above them share the room
+    /// between the heading and the range with the bytes, and give up as much of it as leaves the bytes ten lines, scrolling
+    /// within what they keep: the smallest window showed the bytes two lines at a time. A taller window keeps both whole.
+    /// </summary>
+    private void FitFacts()
+    {
+        double shared = factsScroller.Bounds.Height + views.Bounds.Height;
+        double fitted = views.IsVisible ? Math.Max(MinimumFactsHeight, shared - MinimumBytesHeight) : double.PositiveInfinity;
+        if (Math.Abs(fitted - factsScroller.MaxHeight) > 0.5 || double.IsInfinity(fitted) != double.IsInfinity(factsScroller.MaxHeight))
+        {
+            factsScroller.MaxHeight = fitted;
+        }
     }
 
     public void Dispose()

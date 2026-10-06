@@ -97,6 +97,49 @@ public sealed class ContentWindowTests
         Assert.True(closed);
     }
 
+    [AvaloniaFact(DisplayName = "§3.7: at its smallest the content viewer shows the chosen bytes ten lines at a time, its facts scrolling above them")]
+    public void TheSmallestViewerKeepsRoomForTheBytes()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = [Rows()[0], Rows()[1] with { ByteValue = 2_048 }];
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 4_096), [Content(rows[1], new byte[2_048], 4_096)]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+
+        using var window = new SessionContentWindow(session.Path, page.SessionId, page.Records[1]);
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
+        window.Show();
+        WaitFor(() => Texts(window).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
+        ScrollViewer facts = Named<ScrollViewer>(window, "What was kept of the record's message, and under which policy");
+        TabControl views = window.GetVisualDescendants().OfType<TabControl>().Single();
+
+        // Until the bytes are shown the facts are all there is to read, and keep all the room they need.
+        Settle(window);
+        Assert.True(double.IsPositiveInfinity(facts.MaxHeight));
+        Assert.True(facts.Extent.Height <= facts.Viewport.Height + 0.5);
+
+        // Shown, the bytes keep the tabs and ten lines; the facts give up the rest, scrolled within what they keep, and
+        // every one of them is still there to scroll to.
+        Named<Button>(window, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
+            AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
+        Settle(window);
+        ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
+        double line = Assert.IsAssignableFrom<Control>(hex.ContainerFromIndex(0)).Bounds.Height;
+        Assert.True(hex.Bounds.Height >= 10 * line, $"The bytes show {hex.Bounds.Height / line:F1} lines.");
+        Assert.True(views.Bounds.Height >= SessionContentWindow.MinimumBytesHeight - 0.5, $"The bytes keep {views.Bounds.Height:F0} px.");
+        Assert.True(facts.Extent.Height > facts.Viewport.Height + 0.5, "At this size the facts scroll.");
+        Assert.True(facts.Bounds.Height >= SessionContentWindow.MinimumFactsHeight - 0.5, $"The facts keep {facts.Bounds.Height:F0} px.");
+        Assert.Contains("Stored in", Texts(window));
+
+        // A taller window gives the facts back their whole height, and the bytes the room it has left.
+        window.Height = 760;
+        Settle(window);
+        Assert.True(facts.Extent.Height <= facts.Viewport.Height + 0.5, "A taller window shows every fact.");
+        Assert.True(views.Bounds.Height >= SessionContentWindow.MinimumBytesHeight - 0.5);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "ADR-036: content kept without consent to inspect it is stated in the viewer, and never shown")]
     public void ContentWithoutConsentIsNeverShown()
     {
@@ -275,6 +318,18 @@ public sealed class ContentWindowTests
         .. window.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible)
             .Select(text => text.Text ?? string.Empty),
     ];
+
+    /// <summary>Lays the window out and draws it until what it fits to its size has settled.</summary>
+    private static void Settle(Window window)
+    {
+        for (int pass = 0; pass < 4; pass++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            _ = window.CaptureRenderedFrame();
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
 
     private static T Named<T>(Window window, string name)
         where T : Control =>

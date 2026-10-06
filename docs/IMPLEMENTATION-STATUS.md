@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 316 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 317 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 317 — shown bytes keep room in the smallest content viewer (§3.7):**
+  - At its minimum size the viewer's facts left a shown message two lines of hex. While the bytes are shown, the facts
+    now scroll and give up as much room as leaves the bytes ten lines; before then, and in a taller window, they keep
+    all they need.
 
 - **Revision 316 — I10, P9 and P5 asserted (§13.5):**
   - Three rules listed as uncovered now have tests named for them: a member's own durations are unchanged by every
@@ -797,6 +802,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 317 was built and tested in the same Linux container: Debug and Release each ran **1,546 tests**, passing
+  **1,449 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  five of six mutations: the facts never capped, too little room kept for the bytes, no refit as the byte view resizes,
+  room never given back to a taller window, and facts that cannot scroll. The sixth capped the facts before the bytes
+  show; it cannot differ, since the fit runs only when the byte view resizes and the view is never hidden again once
+  shown.
 - Revision 316 was built and tested in the same Linux container: Debug and Release each ran **1,545 tests**, passing
   **1,448 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of five mutations:
