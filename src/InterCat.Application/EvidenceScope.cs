@@ -42,10 +42,13 @@ public static class ProcessSetFilter
         return Prefix + string.Join(",", members.Select(member => member.Value.ToString("N")).Distinct().Order(StringComparer.Ordinal));
     }
 
-    /// <summary>How the set reads in a breadcrumb or a caption.</summary>
-    public static string Label(int count) => count == 1
-        ? "1 selected process"
-        : string.Create(CultureInfo.CurrentCulture, $"{count:N0} selected processes");
+    /// <summary>
+    /// How the set reads in a breadcrumb or a caption: "3 selected processes", or, for an aggregate drawn in the graph and
+    /// chosen by its name, "the 3 processes of Rest of the machine".
+    /// </summary>
+    public static string Label(int count, string? of = null) => of is null
+        ? count == 1 ? "1 selected process" : string.Create(CultureInfo.CurrentCulture, $"{count:N0} selected processes")
+        : count == 1 ? $"the 1 process of {of}" : string.Create(CultureInfo.CurrentCulture, $"the {count:N0} processes of {of}");
 
     /// <summary>The members a set's key names; false for a key that names no set.</summary>
     public static bool TryParse(string? key, out ProcessInstanceId[] members)
@@ -92,11 +95,15 @@ public static class EvidenceScopes
             ImpliedFilter filter = rung.Filters[index];
             if (ProcessSetFilter.TryParse(filter.Key, out ProcessInstanceId[] chosen))
             {
-                // A multi-selection turned into a filter reads exactly its members that this generation still holds.
+                // A multi-selection turned into a filter reads exactly its members that this generation still holds; an
+                // aggregate chosen by its name keeps the name its filter shows.
                 ProcessInstanceId[] present = [.. snapshot.Processes.Where(node => chosen.Contains(node.Id)).Select(node => node.Id)];
+                string? named = string.Equals(filter.Value, ProcessSetFilter.Label(chosen.Length), StringComparison.Ordinal)
+                    ? null
+                    : filter.Value;
                 return present.Length == 0
                     ? Unreadable("None of the selected processes is in this generation.", interval)
-                    : new($"Records owned by {ProcessSetFilter.Label(present.Length)}{time}", null, present, interval, null);
+                    : new($"Records owned by {ProcessSetFilter.Label(present.Length, named)}{time}", null, present, interval, null);
             }
 
             switch (filter.Level)

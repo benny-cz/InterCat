@@ -1,6 +1,7 @@
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -67,10 +68,12 @@ public sealed class AggregateEvidenceTests
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.Equal(records, workspace.RungRows.Count);
-        Assert.StartsWith($"Records owned by {aggregate.Members.Count} selected processes", workspace.EvidenceScopeText,
+        // Its filter and its scope name the aggregate chosen, rather than calling its processes selected one by one.
+        Assert.StartsWith($"Records owned by the {aggregate.Members.Count} processes of {aggregate.Label}", workspace.EvidenceScopeText,
             StringComparison.Ordinal);
-        Assert.Contains($"with the aggregate {aggregate.Label} selected", Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason,
-            StringComparison.Ordinal);
+        FilterRow scope = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.Equal("Records of: " + aggregate.Label, scope.Chip);
+        Assert.Contains($"with the aggregate {aggregate.Label} selected", scope.Reason, StringComparison.Ordinal);
         Assert.True(workspace.Ascend());
     }
 

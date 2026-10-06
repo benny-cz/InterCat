@@ -4298,7 +4298,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 $"Evidence was reached from the {rung} rung with {(HttpExchangeKeys.IsHttp(row.Row.Key) ? "its" : "this")} {ChosenRowNoun(row.Row)} chosen.")
             : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
-                new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), ProcessSetFilter.Label(aggregate.Members.Count)),
+                new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), aggregate.Label),
                 $"Evidence was reached from the {rung} rung with the aggregate {aggregate.Label} selected: exactly its processes.")
             : realOverview && level is DetailLevel.Machine or DetailLevel.Group && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,

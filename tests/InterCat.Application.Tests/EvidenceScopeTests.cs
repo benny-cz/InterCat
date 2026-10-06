@@ -169,6 +169,13 @@ public sealed class EvidenceScopeTests
         Assert.NotNull(EvidenceScopes.Resolve(Snapshot,
             Rung(Filter("scope", "1 selected process", DetailLevel.Group, ProcessSetFilter.KeyOf([gone])))).Problem);
 
+        // An aggregate's processes, chosen by its name, read as its, counted as this generation still holds them.
+        Assert.StartsWith("Records owned by the 2 processes of Rest of the machine", EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", "Rest of the machine", DetailLevel.Group, key))).Description, StringComparison.Ordinal);
+        Assert.StartsWith("Records owned by the 1 process of No relationships", EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", "No relationships", DetailLevel.Group, ProcessSetFilter.KeyOf([Client, gone])))).Description,
+            StringComparison.Ordinal);
+
         // Keys that name no set are not read as one.
         Assert.False(ProcessSetFilter.TryParse("executable:C:\\APP.EXE", out _));
         Assert.False(ProcessSetFilter.TryParse(ProcessSetFilter.Prefix, out _));
