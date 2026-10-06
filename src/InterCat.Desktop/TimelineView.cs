@@ -198,6 +198,15 @@ public sealed class TimelineView : Control, IHoverCardSource
     private Point hoverInWindow;
     private double peakRate;
 
+    /// <summary>
+    /// Each drawn lane row's own busiest rate, in the rows' order, when each lane is read against its own (§6.2's
+    /// normalization scope): the first <see cref="rowPeakCount"/> are this frame's, in an array kept from frame to frame so
+    /// a repaint allocates nothing (R11). None under one shared scale.
+    /// </summary>
+    private double[] rowPeaks = new double[16];
+
+    private int rowPeakCount;
+
     private readonly DispatcherTimer detailTimer;
     private TimeRange? viewport;
     private long? brushAnchor;
@@ -649,6 +658,11 @@ public sealed class TimelineView : Control, IHoverCardSource
                 : Math.Max(PeakRate(coarse, visible), PeakRate(fine, visible));
         peakRate = maximumRate;
 
+        // Each lane against its own busiest bar, when a person chose so (§6.2): one peak per row drawn, found as the shared
+        // one is found over all of them.
+        rowPeakCount = viewModel.ScalesEachLane ? FillRowPeaks(viewModel, rows, detail, visible, bytes, groupBytes, directionBytes) : 0;
+        ReadOnlySpan<double> peaks = rowPeaks.AsSpan(0, rowPeakCount);
+
         // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
         bool focused = viewModel.TimelineShowsFocus;
@@ -658,16 +672,16 @@ public sealed class TimelineView : Control, IHoverCardSource
             switch (rows?.Kind)
             {
                 case null:
-                    DrawMechanismLanes(context, viewModel, detail, scale, bytes);
+                    DrawMechanismLanes(context, viewModel, detail, scale, bytes, peaks);
                     break;
                 case FocusRowKind.Owners:
-                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes);
+                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes, peaks);
                     break;
                 case FocusRowKind.Directions:
-                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale, directionBytes);
+                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale, directionBytes, peaks);
                     break;
                 case FocusRowKind.ChannelEnds:
-                    DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale);
+                    DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale, peaks);
                     break;
                 default:
                     if (viewModel.ShowsHttpExchangeLane)
@@ -753,7 +767,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (LiveEdgePlacement is { } live)
         {
             // A preview counts records, so beside byte lanes it is drawn on its own records scale, never the bytes'.
-            DrawLiveEdge(context, viewModel, live, rows, top, bottom, plotsBytes ? 0 : maximumRate, plotsBytes);
+            DrawLiveEdge(context, viewModel, live, rows, top, bottom, plotsBytes ? 0 : maximumRate, plotsBytes,
+                plotsBytes ? default : peaks);
         }
 
         DrawSelection(context, viewModel, visible, left, plotWidth, top, bottom);
@@ -771,10 +786,13 @@ public sealed class TimelineView : Control, IHoverCardSource
             string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
                 WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, end, new(right - (6.5 * end.Length), bottom + 7));
-            string peak = plotsBytes
+            // Under each lane's own scale no one rate tops the axis; each lane's own is in its cards (§6.2).
+            string peak = rowPeakCount > 0 ? OwnPeaksLabel
+                : plotsBytes
                 ? byteRateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond,
                     static rate => WorkspaceRowBuilder.DescribeByteRate(rate))
                 : rateLabel.Get(maximumRate * WorkspaceTime.TicksPerSecond, static rate => RateText(rate));
+            AxisPeakText = peak;
             DrawText(context, peak, RateLabelBounds(peak).TopLeft);
         }
 
@@ -965,7 +983,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             FocusRowKind? kind = FocusRows?.Kind;
             Mechanism? mechanism = ShowingMechanismLanes && index is { } mechanismIndex
                 ? viewModel.Snapshot.MechanismLanes[mechanismIndex].Mechanism : null;
-            var key = new CardKey(viewModel, bucket, mechanism, index ?? -1, peakRate, ThemeResources.CurrentMode);
+            double peak = index is { } row && row < rowPeakCount ? rowPeaks[row] : peakRate;
+            var key = new CardKey(viewModel, bucket, mechanism, index ?? -1, peak, ThemeResources.CurrentMode);
             if (cardKey == key)
             {
                 return card;
@@ -977,7 +996,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             ChannelEndTimelineLane? end = kind == FocusRowKind.ChannelEnds && index is > 0
                 ? viewModel.TimelineChannelEndLanes![index.Value - 1] : null;
             cardKey = key;
-            card = viewModel.DescribeTimelineHover(bucket, peakRate * WorkspaceTime.TicksPerSecond,
+            card = viewModel.DescribeTimelineHover(bucket, peak * WorkspaceTime.TicksPerSecond,
                 mechanism, owner, direction, end);
             return card;
         }
@@ -1507,7 +1526,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private static void DrawMechanismLanes(
         DrawingContext context, WorkspaceViewModel viewModel, SessionTimelineDetail? detail, BarScale scale,
-        TimelineByteLayer? bytes)
+        TimelineByteLayer? bytes, ReadOnlySpan<double> peaks)
     {
         IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
         for (int index = 0; index < lanes.Count; index++)
@@ -1531,7 +1550,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 DrawText(context, NothingToPlot(bytes.Metric), new(19, row.Center.Y + 4));
             }
             var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, baseline, scale.MaximumRate, Focused: false);
+                row.Top + 3, baseline, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
 
             // Byte bars come first, so a coverage hatch crosses them as it crosses a record bar. The selection's share is
             // a count of records, which has no height on a byte scale, so bytes draw none.
@@ -1743,7 +1762,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private static void DrawProcessLanes(DrawingContext context, WorkspaceViewModel viewModel,
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ProcessTimelineLane> lanes, BarScale scale,
-        ProcessLaneByteLayer? bytes)
+        ProcessLaneByteLayer? bytes, ReadOnlySpan<double> peaks)
     {
         int count = lanes.Count + 1;
         bool coverageOnly = bytes is not null;
@@ -1753,7 +1772,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
+                row.Top + 3, row.Bottom - 5, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
             if (index == 0)
             {
                 DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
@@ -1806,7 +1825,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private static void DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<DirectionTimelineLane> lanes, BarScale scale,
-        DirectionLaneByteLayer? bytes)
+        DirectionLaneByteLayer? bytes, ReadOnlySpan<double> peaks)
     {
         int count = lanes.Count + 1;
         bool coverageOnly = bytes is not null;
@@ -1816,7 +1835,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
             var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, row.Bottom - 5, scale.MaximumRate, Focused: false);
+                row.Top + 3, row.Bottom - 5, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
             if (index == 0)
             {
                 DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
@@ -1869,7 +1888,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// the published timeline every quarter second.
     /// </summary>
     private void DrawLiveEdge(DrawingContext context, WorkspaceViewModel viewModel, LiveEdgeArea live,
-        FocusRowSet? rows, double top, double bottom, double maximumRate, bool besideBytes = false)
+        FocusRowSet? rows, double top, double bottom, double maximumRate, bool besideBytes, ReadOnlySpan<double> peaks)
     {
         double scaleRate = maximumRate > 0 ? maximumRate : LivePeak(live.Edge.Bins);
         double ruleX = live.Left - (LiveEdgeGap / 2);
@@ -1886,14 +1905,17 @@ public sealed class TimelineView : Control, IHoverCardSource
             for (int index = 0; index < lanes.Count; index++)
             {
                 Rect row = LaneRow(index, lanes.Count, top, bottom);
-                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, scaleRate, OccupiedFloor, LiveBars.Lane, lanes[index].Mechanism);
+                // Each lane's own scale, where each lane has one and it published a record in view (§6.2).
+                double laneRate = index < peaks.Length && peaks[index] > 0 ? peaks[index] : scaleRate;
+                DrawLiveBars(context, live, row.Top + 3, row.Bottom - 5, laneRate, OccupiedFloor, LiveBars.Lane, lanes[index].Mechanism);
             }
         }
         else if (rows is not null)
         {
             DrawText(context, besideBytes ? "live records" : "live", new(live.Left, top - 16));
             Rect machine = LaneRow(0, rows.Rows.Count + 1, top, bottom);
-            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, scaleRate, OccupiedFloor, LiveBars.Machine, default);
+            double machineRate = peaks.Length > 0 && peaks[0] > 0 ? peaks[0] : scaleRate;
+            DrawLiveBars(context, live, machine.Top + 3, machine.Bottom - 5, machineRate, OccupiedFloor, LiveBars.Machine, default);
         }
         else
         {
@@ -1985,7 +2007,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// as a disconnect, is a neutral mark on the midline rather than a bar on either side.
     /// </summary>
     private static void DrawChannelEnds(DrawingContext context, WorkspaceViewModel viewModel,
-        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ChannelEndTimelineLane> ends, BarScale scale)
+        IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ChannelEndTimelineLane> ends, BarScale scale,
+        ReadOnlySpan<double> peaks)
     {
         int count = ends.Count + 1;
         for (int index = 0; index < count; index++)
@@ -1999,7 +2022,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 DrawLaneSeries(context, viewModel, null,
                     machine,
                     new BarScale(scale.Visible, scale.Left, scale.PlotWidth, row.Top + 3, row.Bottom - 5,
-                        scale.MaximumRate, Focused: false),
+                        PeakOf(peaks, 0, scale.MaximumRate), Focused: false),
                     row, contextRow: true);
                 continue;
             }
@@ -2021,6 +2044,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             double bandTop = row.Top + 3;
             double middle = (bandTop + row.Bottom - 6) / 2;
             double half = Math.Max(1, middle - bandTop - 1);
+            double endRate = PeakOf(peaks, index, scale.MaximumRate);
             context.DrawLine(RulePen, new(scale.Left, middle), new(scale.Left + scale.PlotWidth, middle));
             DrawText(context, "↑", new(scale.Left - 12, middle - 13));
             DrawText(context, "↓", new(scale.Left - 12, middle - 1));
@@ -2034,7 +2058,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 Rect? drawn = null;
                 if (end.Outbound[bucketIndex] is { ObservationCount: > 0 } sent)
                 {
-                    double height = BandHeight(sent, half, scale.MaximumRate);
+                    double height = BandHeight(sent, half, endRate);
                     Rect bar = new(x1, middle - 1 - height, width, height);
                     context.DrawRectangle(BrushFor(sent.DominantMechanism), null, bar);
                     drawn = bar;
@@ -2042,7 +2066,7 @@ public sealed class TimelineView : Control, IHoverCardSource
 
                 if (end.Inbound[bucketIndex] is { ObservationCount: > 0 } received)
                 {
-                    Rect bar = new(x1, middle + 1, width, BandHeight(received, half, scale.MaximumRate));
+                    Rect bar = new(x1, middle + 1, width, BandHeight(received, half, endRate));
                     context.DrawRectangle(BrushFor(received.DominantMechanism), null, bar);
                     drawn = drawn is { } upper ? upper.Union(bar) : bar;
                 }
@@ -2820,6 +2844,108 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         return null;
+    }
+
+    /// <summary>What the axis says above the plot when each lane has its own scale: there is no one peak to state.</summary>
+    private const string OwnPeaksLabel = "each lane to its own peak";
+
+    /// <summary>The rate row <paramref name="index"/> is read against: its own peak where each lane has one, else the shared.</summary>
+    private static double PeakOf(ReadOnlySpan<double> peaks, int index, double shared) =>
+        index < peaks.Length ? peaks[index] : shared;
+
+    /// <summary>What the axis said above the plot when last drawn: the shared peak rate, or that each lane has its own.</summary>
+    internal string? AxisPeakText { get; private set; }
+
+    /// <summary>
+    /// The rate, per second, row <paramref name="row"/>'s heights were last drawn against: its own busiest bar where each
+    /// lane has its own scale, else the busiest every row shares (§6.2).
+    /// </summary>
+    internal double RowScale(int row) => (row < rowPeakCount ? rowPeaks[row] : peakRate) * WorkspaceTime.TicksPerSecond;
+
+    /// <summary>Where lane row <paramref name="row"/> is drawn, in rows' order, the machine context first on a focused rung.</summary>
+    internal Rect RowBounds(int row) => LaneRow(row, LaneCount, PlotTop, Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin));
+
+    /// <summary>
+    /// Fills <see cref="rowPeaks"/> with each drawn lane row's own busiest rate in view, in the rows' order, found as the
+    /// shared peak is found over all of them: what each row is read against when each lane has its own scale (§6.2).
+    /// Returns how many rows it filled - none where no lanes are drawn, or where the lane is an operation's, whose calls
+    /// keep a density scale of their own.
+    /// </summary>
+    private int FillRowPeaks(WorkspaceViewModel viewModel, FocusRowSet? rows, SessionTimelineDetail? detail, TimeRange visible,
+        TimelineByteLayer? bytes, ProcessLaneByteLayer? groupBytes, DirectionLaneByteLayer? directionBytes)
+    {
+        if (rows is null)
+        {
+            if (!ShowingMechanismLanes)
+            {
+                return 0;
+            }
+
+            IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
+            EnsureRowPeaks(lanes.Count);
+            SessionMechanismByteMeasures? zoomed = bytes?.Zoomed is { } fine && Intersects(fine.Interval, visible) ? fine : null;
+            for (int index = 0; index < lanes.Count; index++)
+            {
+                Mechanism mechanism = lanes[index].Mechanism;
+                if (bytes is not null)
+                {
+                    // As the lane draws them: the zoomed view's own columns where they were read, the overview's elsewhere.
+                    SessionIntervalByteMeasures? fineLane = zoomed?.Of(mechanism);
+                    double peak = bytes.Overview.Of(mechanism) is { } coarse
+                        ? BytePeak(coarse, bytes.Metric, visible, fineLane?.Interval) : 0;
+                    rowPeaks[index] = fineLane is null ? peak : Math.Max(peak, BytePeak(fineLane, bytes.Metric, visible, null));
+                }
+                else
+                {
+                    MechanismTimelineLane? detailLane = LaneOf(detail?.MechanismLanes, mechanism);
+                    rowPeaks[index] = detail is null || detailLane is null
+                        ? PeakRate(lanes[index].Buckets, visible)
+                        : Math.Max(PeakRate(lanes[index].Buckets, visible, detail.Interval), PeakRate(detailLane.Buckets, visible));
+                }
+            }
+
+            return lanes.Count;
+        }
+
+        if (rows.Kind is not (FocusRowKind.Owners or FocusRowKind.Directions or FocusRowKind.ChannelEnds))
+        {
+            return 0;
+        }
+
+        int count = rows.Rows.Count + 1;
+        EnsureRowPeaks(count);
+        RankingMetric? metric = groupBytes?.Metric ?? directionBytes?.Metric;
+        SessionIntervalByteMeasures? machine = groupBytes?.Measures.Machine ?? directionBytes?.Measures.Machine;
+        rowPeaks[0] = machine is not null && metric is { } machineMetric
+            ? BytePeak(machine, machineMetric, visible, null)
+            : PeakRate(rows.Context, visible);
+        for (int index = 1; index < count; index++)
+        {
+            rowPeaks[index] = rows.Kind switch
+            {
+                FocusRowKind.ChannelEnds => Math.Max(
+                    PeakRate(viewModel.TimelineChannelEndLanes![index - 1].Outbound, visible),
+                    PeakRate(viewModel.TimelineChannelEndLanes![index - 1].Inbound, visible)),
+                FocusRowKind.Owners when groupBytes is not null =>
+                    groupBytes.Measures.Of(viewModel.ProcessLaneDisplay[index - 1].ProcessId) is { } owner
+                        ? BytePeak(owner, groupBytes.Metric, visible, null) : 0,
+                FocusRowKind.Directions when directionBytes is not null =>
+                    directionBytes.Measures.Of(viewModel.TimelineDirectionLanes![index - 1].Direction) is { } direction
+                        ? BytePeak(direction, directionBytes.Metric, visible, null) : 0,
+                _ => PeakRate(rows.Rows[index - 1], visible),
+            };
+        }
+
+        return count;
+    }
+
+    /// <summary>Grows <see cref="rowPeaks"/> to hold <paramref name="count"/> rows, which a repaint of as many never needs.</summary>
+    private void EnsureRowPeaks(int count)
+    {
+        if (rowPeaks.Length < count)
+        {
+            rowPeaks = new double[Math.Max(count, rowPeaks.Length * 2)];
+        }
     }
 
     /// <summary>The highest rate among the buckets the viewport shows, leaving out any inside <paramref name="except"/>.</summary>

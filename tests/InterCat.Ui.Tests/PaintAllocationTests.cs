@@ -43,8 +43,10 @@ public sealed class PaintAllocationTests
         await Settle(window, workspace);
         var report = new List<string>();
 
-        // The machine rung, with its mechanism lanes; then with a bar and its card under the pointer.
+        // The machine rung, with its mechanism lanes, on one scale and each on its own (§6.2); then with a bar and its card
+        // under the pointer.
         Measure(window, "machine", report);
+        await MeasureEachLaneOnItsOwn(window, workspace, "machine", report);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         TimelineBucket busiest = workspace.Snapshot.Timeline.MaxBy(bucket => bucket.ObservationCount)!;
         window.MouseMove(timeline.TranslatePoint(timeline.PointOf(busiest)!.Value, window)!.Value);
@@ -67,6 +69,7 @@ public sealed class PaintAllocationTests
         Assert.NotNull(workspace.TimelineBytes);
         Assert.True(workspace.TimelineDrawsUnmeasured);
         Measure(window, "machine, plotting bytes sent", report);
+        await MeasureEachLaneOnItsOwn(window, workspace, "machine, plotting bytes sent", report);
         workspace.RankBy = RankingMetric.Records;
         await workspace.RankingReady;
 
@@ -77,6 +80,7 @@ public sealed class PaintAllocationTests
             Assert.True(workspace.Descend(), rung);
             await Settle(window, workspace);
             Measure(window, rung, report);
+            await MeasureEachLaneOnItsOwn(window, workspace, rung, report);
             if (rung is "group" or "process")
             {
                 // The rung's rows and the machine row above them, plotting bytes sent.
@@ -166,6 +170,19 @@ public sealed class PaintAllocationTests
     /// <summary>The first density column that counts something.</summary>
     private static int Occupied(IReadOnlyList<long> columns) =>
         Enumerable.Range(0, columns.Count).First(column => columns[column] > 0);
+
+    /// <summary>
+    /// Measures the rung again with each timeline lane read against its own busiest bar (§6.2), then puts back the one
+    /// scale every lane shares: each row's peak is found in an array kept from frame to frame, never a new one.
+    /// </summary>
+    private static async Task MeasureEachLaneOnItsOwn(Window window, WorkspaceViewModel workspace, string rung, List<string> report)
+    {
+        workspace.ScalesEachLane = true;
+        await Settle(window, workspace);
+        Measure(window, $"{rung}, each lane on its own scale", report);
+        workspace.ScalesEachLane = false;
+        await Settle(window, workspace);
+    }
 
     private static void Measure(Window window, string rung, List<string> report)
     {

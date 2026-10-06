@@ -61,6 +61,18 @@ public sealed class CoarserLanesWindowTests
             && bucket.Interval.EndTicks > timeline.Viewport.StartTicks && bucket.Interval.StartTicks < timeline.Viewport.EndTicks);
         Assert.NotNull(timeline.PointOf(lane.ProcessId, drawn));
         Save(window, "coarser-lanes-3600x1400.png");
+
+        // Each lane on its own scale (§6.2), a hundred and one rows of them: the last lane reads against its own peak.
+        workspace.ScalesEachLane = true;
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        ProcessTimelineLane last = workspace.ProcessLaneDisplay[^1];
+        double ownPeak = last.Buckets
+            .Where(bucket => bucket.Interval.EndTicks > timeline.Viewport.StartTicks && bucket.Interval.StartTicks < timeline.Viewport.EndTicks)
+            .Select(bucket => (double)bucket.ObservationCount / bucket.Interval.SpanTicks)
+            .DefaultIfEmpty(0)
+            .Max() * WorkspaceTime.TicksPerSecond;
+        Assert.Equal(ownPeak, timeline.RowScale(workspace.ProcessLaneDisplay.Count));
         window.Close();
     }
 

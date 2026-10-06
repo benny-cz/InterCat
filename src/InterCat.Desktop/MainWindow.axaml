@@ -430,6 +430,21 @@
           <TextBlock x:Name="UnmeasuredLegendText" Text="Size not measured"
                      Classes="muted" FontSize="11" VerticalAlignment="Center" />
         </StackPanel>
+        <!-- §6.2: what the lanes' heights plot and the scale they are read against, with each lane's own one click away.
+             One scale lets heights compare across lanes; each lane's own shows a quiet lane's shape beside a busy one,
+             and the axis and every card then say so. -->
+        <StackPanel x:Name="LaneScalePanel" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
+                    IsVisible="{Binding OffersLaneScale}">
+          <TextBlock Text="HEIGHT" Classes="eyebrow" VerticalAlignment="Center" />
+          <TextBlock x:Name="LaneScaleText" Text="{Binding LaneScaleText}" Classes="muted" FontSize="11"
+                     VerticalAlignment="Center" />
+          <ToggleButton x:Name="LaneScaleToggle" IsChecked="{Binding ScalesEachLane, Mode=TwoWay}" FontSize="11"
+                        Padding="6,0" MinHeight="22" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                        ToolTip.Tip="Per lane: read each lane's bars against its own busiest bar, so a quiet lane's shape shows beside a busy one. Its heights then compare with no other lane's: compare lanes by the numbers in their cards. Off, every lane shares one scale."
+                        AutomationProperties.Name="Per lane: read each lane's bars against its own busiest bar rather than one scale for every lane">
+            <TextBlock Text="Per lane" />
+          </ToggleButton>
+        </StackPanel>
         <!-- A descent may imply a filter. It is shown here, where it can be seen and removed (section 3.2). The chips
              wrap within the bar, so a deep rung's last filter is never cut off at the window's edge. -->
         <DockPanel IsVisible="{Binding HasFilters}">

@@ -77,7 +77,8 @@ public sealed record WorkspaceNavigationMemento(
     int? SelectedChannelEnd = null,
     IReadOnlyList<NavigationState>? Forward = null,
     RankingMetric RankBy = RankingMetric.Records,
-    bool PerSecond = false);
+    bool PerSecond = false,
+    bool ScalesEachLane = false);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1377,7 +1378,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         [.. ladder.Breadcrumb.Select(rung => rung with { Filters = [.. rung.Filters] })],
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
-        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond);
+        selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
+        scalesEachLane);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1474,6 +1476,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         AfterNavigation();
         RankBy = saved.RankBy;
         PerSecond = saved.PerSecond;
+        ScalesEachLane = saved.ScalesEachLane;
         if (saved.SelectedTimelineMechanism is { } savedMechanism)
         {
             if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))
@@ -3719,10 +3722,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         lines.Add(ownerLane is not null || directionLane is not null
-            ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible lane including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)"
-            : lane is null
+            ? $"Rate: {TimelineView.RateText(perSecond)} · "
+                + HeightAgainst("the busiest visible lane including machine context", TimelineView.RateText(peakPerSecond))
+            : lane is null && !(scalesEachLane && OffersLaneScale)
             ? $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest visible bar, {TimelineView.RateText(peakPerSecond)}"
-            : $"Rate: {TimelineView.RateText(perSecond)} · height against the busiest mechanism lane in this time view, {TimelineView.RateText(peakPerSecond)} (shared scale)");
+            : $"Rate: {TimelineView.RateText(perSecond)} · "
+                + HeightAgainst("the busiest mechanism lane in this time view", TimelineView.RateText(peakPerSecond)));
         return FinishTimelineHover(bucket, zoomed, lines,
             ScopeOfLane(lane, ownerLane?.Id, directionLane, end: null),
             ownerLane is not null && CoarserLaneColumns is { } laneColumns
@@ -3767,8 +3772,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         lines.Add($"Rate: {TimelineView.RateText((double)outbound * WorkspaceTime.TicksPerSecond / span)} outbound, "
-            + $"{TimelineView.RateText((double)inbound * WorkspaceTime.TicksPerSecond / span)} inbound · each band's height "
-            + $"against the busiest visible band including machine context, {TimelineView.RateText(peakPerSecond)} (shared scale)");
+            + $"{TimelineView.RateText((double)inbound * WorkspaceTime.TicksPerSecond / span)} inbound · each band's "
+            + HeightAgainst("the busiest visible band including machine context", TimelineView.RateText(peakPerSecond)));
         return FinishTimelineHover(bucket, timelineDetail is not null && end.Buckets.Contains(bucket), lines,
             ScopeOfLane(null, null, null, end));
     }
@@ -5749,6 +5754,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
             PropertyChanged?.Invoke(this, new(nameof(DrawsUnmeasured)));
+        }
+        else if (propertyName is nameof(ShowsMechanismLanes) or nameof(ShowsProcessLanes) or nameof(ShowsDirectionLanes)
+            or nameof(ShowsChannelEndLanes) or nameof(TimelineBytes) or nameof(ProcessLaneBytes) or nameof(DirectionLaneBytes))
+        {
+            // The legend's height key follows the lanes drawn and what they plot (§6.2, §6.8).
+            PropertyChanged?.Invoke(this, new(nameof(OffersLaneScale)));
+            PropertyChanged?.Invoke(this, new(nameof(LaneScaleText)));
         }
     }
 }

@@ -612,8 +612,8 @@ public sealed partial class WorkspaceViewModel
             if (value is { } sum)
             {
                 lines.Add($"Plotted: {WorkspaceRowBuilder.DescribeSize(sum)} {verb} on {Spoken.Count(measured, "measured " + record)}");
-                lines.Add($"Rate: {WorkspaceRowBuilder.DescribeByteRate((double)sum * WorkspaceTime.TicksPerSecond / span)} · height "
-                    + $"against {scale}, {WorkspaceRowBuilder.DescribeByteRate(Math.Max(0, peakPerSecond))} (shared scale)");
+                lines.Add($"Rate: {WorkspaceRowBuilder.DescribeByteRate((double)sum * WorkspaceTime.TicksPerSecond / span)} · "
+                    + HeightAgainst(scale, WorkspaceRowBuilder.DescribeByteRate(Math.Max(0, peakPerSecond))));
                 unmeasured = withoutSize > 0
                     ? $"Unmeasured: {Spoken.Count(withoutSize, "more " + record)} recorded no size, so the bar is a lower bound"
                     : $"Unmeasured: none; every {record} here recorded its size";
