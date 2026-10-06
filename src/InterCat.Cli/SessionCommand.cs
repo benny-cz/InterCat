@@ -401,8 +401,8 @@ internal static class SessionCommand
             else if (calibration is null && manifest.Boundary.IsDeclared)
             {
                 notes.Add(
-                    "This session records no clock calibration - it was imported, packaged, or captured before revision 255 - "
-                    + "so the wall-clock time of its readings and the boot it ran in are unknown.");
+                    "This session records no clock calibration - it was imported, packaged, or captured by an earlier version of "
+                    + "InterCat - so the wall-clock time of its readings and the boot it ran in are unknown.");
             }
 
             notes.Add(

@@ -659,8 +659,8 @@ public static partial class InvestigationWorkspace
         Found found = Open(resolution.FullPath);
         ClockCalibrationV1 calibration = ClockCalibrationV1.Read(found.Root, found.Manifest)
             ?? throw new InvalidOperationException($"Session {sessionId:N} records no clock calibration - it was imported, "
-                + "packaged, or captured before revision 255 - so it has no recorded wall clock or boot to align by. Align it by "
-                + "a stated instant.");
+                + "packaged, or captured by an earlier version of InterCat - so it has no recorded wall clock or boot to align "
+                + "by. Align it by a stated instant.");
         return calibration.ClockId == found.Clock.Id.Value
             ? (found.Clock, calibration)
             : throw new InvalidDataException($"Session {sessionId:N}'s clock calibration names another clock than its journal.");

@@ -340,7 +340,7 @@ public static class AdmissionPlanCompiler
                     resolved.Field.InType,
                     fieldIntent.Unit,
                     fieldIntent.ByteDomain,
-                    $"Input type {resolved.Field.InType} is not a fixed field of at most {MaximumSlotWidth} bytes, so it is not admitted in this milestone."));
+                    $"Input type {resolved.Field.InType} is not a fixed field of at most {MaximumSlotWidth} bytes, so this version does not admit it."));
                 continue;
             }
 

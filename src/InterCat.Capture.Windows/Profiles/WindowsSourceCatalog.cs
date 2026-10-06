@@ -332,7 +332,7 @@ public static class WindowsSourceCatalog
                 [ContentEvidenceClassification.ApplicationPayload],
                 EnforcesProcessScopeBeforePersistence: false,
                 EnforcesChannelScopeBeforePersistence: false,
-                "contracts/content-v1.md; the content-fixture workload's truth log (revision 235)",
+                "contracts/content-v1.md; the content-fixture workload's truth log",
                 OverheadClass.Unmeasured,
                 string.Empty),
             FilteringNotes =
@@ -507,7 +507,7 @@ public static class WindowsSourceCatalog
             Notes =
             [
                 "ProcessSequenceNumber with CreateTime forms the start key that keeps reused PIDs from merging (I12, R22).",
-                "ThreadLifecycle needs WINEVENT_KEYWORD_THREAD, which this plan omits to keep the M0 volume bounded.",
+                "ThreadLifecycle needs WINEVENT_KEYWORD_THREAD, which the capture profiles omit to keep a capture's volume bounded.",
             ],
         };
 
@@ -566,7 +566,7 @@ public static class WindowsSourceCatalog
             MatchAnyKeyword = 0,
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
-            FilteringNotes = "Not enabled by the M0 plan: its volume and field semantics are unmeasured.",
+            FilteringNotes = "No capture profile requests it: its volume and field semantics are unmeasured.",
             StartupBehaviour = "Unmeasured.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,
@@ -599,8 +599,8 @@ public static class WindowsSourceCatalog
             SupportsCaptureSideProcessFilter = true,
             FilteringNotes =
                 "The provider accepts a process-id filter, but a pipe peer lives in another process, so a "
-                + "process-scoped capture loses the peer side. The M0 plan therefore captures whole-machine "
-                + "file activity and discloses the cost (section 9.4).",
+                + "process-scoped capture loses the peer side. A capture that requests it therefore records the whole "
+                + "machine's file activity and discloses the cost (section 9.4).",
             StartupBehaviour =
                 "No rundown. A pipe opened before capture starts has no observed Create, so its name cannot be "
                 + "resolved from this source and its operations stay bound to an unnamed object (section 18.5).",
@@ -617,12 +617,12 @@ public static class WindowsSourceCatalog
             ],
             Notes =
             [
-                "Registration is not evidence of pipe traffic or peers; only a measured fixture assigns a tier (IC-005).",
+                "Registration is not evidence of pipe traffic or peers; only a measured fixture assigns a tier.",
                 "IOSize is requested bytes and OperationEnd carries completed bytes. The two are separate byte domains "
                 + "and are never summed or substituted (P3, I6).",
                 "Equal pipe names do not identify one instance: a FileObject binds an operation to one open instance "
                 + "only inside its observed lifetime (R22, I12).",
-                "This source observes the whole machine's file activity, which is the dominant overhead of the M0 plan.",
+                "This source observes the whole machine's file activity, the dominant overhead of a capture that requests it.",
             ],
         };
 
@@ -638,7 +638,7 @@ public static class WindowsSourceCatalog
             MatchAnyKeyword = 0,
             RequestedKeywords = [],
             SupportsCaptureSideProcessFilter = false,
-            FilteringNotes = "Not enabled by the M0 plan.",
+            FilteringNotes = "No capture profile requests it.",
             StartupBehaviour = "Unmeasured.",
             SupportsCaptureState = false,
             ContractStatus = SourceContractStatus.Experimental,

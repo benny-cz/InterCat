@@ -534,7 +534,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
             if (covering.Count == 0 && omittedByProfile.TryGetValue(mechanism, out List<SourceCapability>? omitted))
             {
                 state = CapabilityState.DisabledByProfile;
-                reason = "A registered source could serve this mechanism, but the M0 plan does not request it.";
+                reason = "A registered source could serve this mechanism, but the active profile does not request it.";
                 foreach (SourceCapability source in omitted)
                 {
                     sourceIds.Add(source.SourceId);
@@ -584,7 +584,7 @@ public sealed class CapabilityInventoryProbe(IEtwMetadataSource metadata, TimePr
                 CapabilityState.Experimental =>
                     $"{mechanism}: a registered source with a readable schema and a compiled admission plan. No capture has measured it.",
                 CapabilityState.DisabledByProfile =>
-                    $"{mechanism}: reachable from a registered source, but not requested by the M0 capture plan.",
+                    $"{mechanism}: reachable from a registered source, but not requested by the active profile.",
                 CapabilityState.SchemaUnknown =>
                     $"{mechanism}: the candidate source is registered but its schema could not be read here.",
                 _ => $"{mechanism}: no validated source on this machine.",

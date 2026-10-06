@@ -281,7 +281,7 @@ internal static class ExchangesCommand
         {
             ConsoleUi.Note(document.RecordsWithoutExchange > 0
                 ? "No HTTP exchange is grouped: its HTTP records name no exchange number, so none can be told apart - as in a "
-                    + "redacted package made before revision 250, which withheld the numbers."
+                    + "redacted package made by an earlier version of InterCat, which withheld the numbers."
                 : "This session holds no HTTP exchange: its capture kept no WinINet capture records, or none of the process "
                     + "asked for.");
             return;

@@ -299,7 +299,7 @@ internal static class Icat
         ConsoleUi.Line();
         ConsoleUi.Line("  icat bench [--output <path>] [--series <series.json>] [--overwrite] [--json]");
         ConsoleUi.Line("             [--no-storage-probe]");
-        ConsoleUi.Line("      Publishes the IC-010 baseline: this machine against the section 12 reference,");
+        ConsoleUi.Line("      Publishes the performance baseline: this machine against the section 12 reference,");
         ConsoleUi.Line("      every section 12 budget with what measured it, and the per-build validation");
         ConsoleUi.Line("      backlog. Starts no capture and needs no elevation.");
         ConsoleUi.Line();

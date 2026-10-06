@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 317 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 318 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 318 — text a person reads names the product, not the plan (§20.4):**
+  - "Captured before revision 255", "the M0 plan", "this milestone" and "(IC-005)" reached the align dialog, `icat
+    session`, `icat exchanges`, the capability report and the source catalog. They now say what they mean, and a test
+    refuses a string in the product that cites a revision, a milestone or a backlog item; the build's qualification
+    tools are the stated exception.
 
 - **Revision 317 — shown bytes keep room in the smallest content viewer (§3.7):**
   - At its minimum size the viewer's facts left a shown message two lines of hex. While the bytes are shown, the facts
@@ -802,6 +808,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 318 was built and tested in the same Linux container: Debug and Release each ran **1,547 tests**, passing
+  **1,450 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  each of five mutations putting the plan back into product text: a revision, an interpolated revision, a milestone
+  plan, a backlog item and "this milestone".
 - Revision 317 was built and tested in the same Linux container: Debug and Release each ran **1,546 tests**, passing
   **1,449 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   five of six mutations: the facts never capped, too little room kept for the bytes, no refit as the byte view resizes,

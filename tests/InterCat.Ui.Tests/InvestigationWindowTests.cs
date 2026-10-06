@@ -985,6 +985,12 @@ public sealed class InvestigationWindowTests
 
     private static void Save(Window window, string name)
     {
+        for (int pass = 0; pass < 4; pass++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            _ = window.CaptureRenderedFrame();
+        }
+
         Avalonia.Media.Imaging.WriteableBitmap? frame = window.CaptureRenderedFrame();
         Assert.NotNull(frame);
         string directory = Path.Combine(AppContext.BaseDirectory, "rendered");
