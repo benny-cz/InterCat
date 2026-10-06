@@ -216,10 +216,13 @@
                 <TextBlock Text="{Binding EmptyHeading}" Classes="eyebrow" />
                 <TextBlock Text="{Binding EmptyReason}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                            AutomationProperties.Name="Why this level has no rows" />
-                <!-- Evidence is one step from every rung; an empty rung offers that step where the reason is read. -->
-                <Button x:Name="EmptyEvidenceButton" Content="Show source records (E)" Click="ShowSourceRecords"
+                <!-- Evidence is one step from every rung; an empty rung offers that step where the reason is read. A
+                     narrow rail wraps its label rather than cutting off the key that takes it. -->
+                <Button x:Name="EmptyEvidenceButton" Click="ShowSourceRecords"
                         IsVisible="{Binding OffersEvidenceStep}"
-                        AutomationProperties.Name="Show this rung's source records" />
+                        AutomationProperties.Name="Show this rung's source records">
+                  <TextBlock Text="Show source records (E)" TextWrapping="Wrap" />
+                </Button>
               </StackPanel>
             </Border>
           </ScrollViewer>

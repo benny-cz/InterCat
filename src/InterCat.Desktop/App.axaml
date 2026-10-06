@@ -89,11 +89,14 @@
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="Opacity" Value="0.75" />
     </Style>
+    <!-- A heading wraps where its place is narrower than its words - a card in a rail dragged to its narrowest - rather
+         than losing its last letters; where it has the room, it is one line, as it always was. -->
     <Style Selector="TextBlock.eyebrow">
       <Setter Property="Foreground" Value="{DynamicResource Ink.Accent}" />
       <Setter Property="FontSize" Value="11" />
       <Setter Property="FontWeight" Value="SemiBold" />
       <Setter Property="LetterSpacing" Value="1.1" />
+      <Setter Property="TextWrapping" Value="Wrap" />
     </Style>
   </Application.Styles>
 </Application>

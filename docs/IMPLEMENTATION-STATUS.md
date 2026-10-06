@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 318 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 319 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 319 — no text in the main window is cut off (§6.8):**
+  - An empty rung's step read "Show source records (E", and the rail's card headings lost letters at its narrowest.
+    Both wrap now, and a test walks every rung at the minimum window, at both rail widths, refusing text cut off by its
+    box or a card, or trimmed with no tooltip to complete it.
 
 - **Revision 318 — text a person reads names the product, not the plan (§20.4):**
   - "Captured before revision 255", "the M0 plan", "this milestone" and "(IC-005)" reached the align dialog, `icat
@@ -808,6 +813,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 319 was built and tested in the same Linux container: Debug and Release each ran **1,548 tests**, passing
+  **1,451 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  each of three mutations: the empty rung's step back to words that cannot wrap, headings that never wrap, and a
+  trimmed hint left with no tooltip.
 - Revision 318 was built and tested in the same Linux container: Debug and Release each ran **1,547 tests**, passing
   **1,450 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   each of five mutations putting the plan back into product text: a revision, an interpolated revision, a milestone
