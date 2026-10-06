@@ -482,12 +482,14 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal(GraphNodeKind.Context, viewModel.GraphDisplay.NodeOf(cache)!.Kind);
         Assert.StartsWith("Browser · PID 8204 and its peers: 2 processes drawn", viewModel.GraphSummary, StringComparison.Ordinal);
 
-        // A channel chosen among the process's rows is described in full, with what Enter opens.
+        // A channel chosen among the process's rows is described in full, with what Enter opens. The tour's rows illustrate
+        // and it holds no records for E to list, so its card, unlike a session's, does not count the channel's.
         InterCat.Desktop.Presentation.RungRow channel = viewModel.RungRows[0];
         viewModel.SelectedRung = channel;
         Assert.Equal(channel.Source.Label, viewModel.SelectionTitle);
         Assert.Contains(channel.Detail, viewModel.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal("Enter opens the channel", viewModel.SelectionActions);
+        Assert.Equal("Selected process", viewModel.EvidenceHeading);
 
         // The context node says which of its relationships are drawn into it and which stay folded among its processes.
         viewModel.SelectGraphNode(viewModel.GraphDisplay.NodeOf(cache)!.Key);

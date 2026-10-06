@@ -228,7 +228,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private TimelineFocus? highlight;
     private string? highlightName;
 
-    // A channel chosen among a process's rows; any other selection, and every navigation, lets it go.
+    // The one channel a chosen relationship rests on, whose records it highlights and E lists; any other selection, and
+    // every navigation, lets it go. A row chosen among a process's rows is the described row (see ChosenRow).
     private string? chosenChannelKey;
 
     // §6.7's multi-selection: the processes Ctrl+click added, an explicit predicate. A plain selection or a navigation
@@ -717,8 +718,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// The selected entity's records as a timeline focus, and its name; none for an empty selection. A channel chosen
-    /// among a process's rows is the latest choice there, so it is highlighted rather than the process the rung shows.
+    /// The selected entity's records as a timeline focus, and its name; none for an empty selection. A row chosen among a
+    /// process's rows is the latest choice there, so its records are highlighted rather than the process the rung shows.
     /// </summary>
     private (TimelineFocus? Focus, string? Name) SelectionFocus()
     {
@@ -742,11 +743,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : (null, null);
         }
 
-        if (chosenChannelKey is { } channelKey
-            && wholeSnapshot.Channels.FirstOrDefault(channel => string.Equals(channel.Key, channelKey, StringComparison.Ordinal))
-                is { } chosen)
+        if (ChosenRow is { } row)
         {
-            return (new(chosen.Key, []), chosen.Name);
+            return (ChosenRowFocus(row.Row), row.Records.Label);
         }
 
         if (SelectedCluster is { } cluster)
@@ -3021,9 +3020,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             if (value is not null) ForgetRelationship();
-            chosenChannelKey = ladder.Current.Level == DetailLevel.ProcessInstance && value is not null
-                && wholeSnapshot.Channels.Any(channel => string.Equals(channel.Key, value.Key, StringComparison.Ordinal))
-                    ? value.Key : null;
             describesRow = false;
             if (value is not null && TryResolveProcess(value.Key, out ProcessNode? process))
             {
@@ -3087,6 +3083,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(DescribedRow));
         OnPropertyChanged(nameof(SelectionTitle));
         OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(EvidenceHeading));
+        OnPropertyChanged(nameof(EvidenceSummary));
+        FollowDescribedBytes();
         OnPropertyChanged(nameof(SelectionActions));
         OnPropertyChanged(nameof(HasSelectionActions));
         RaiseLineageChanged();
@@ -3950,9 +3949,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? "All · " + WorkspaceTime.FormatDuration(recording.SpanTicks, CultureInfo.CurrentCulture) + " recorded"
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
-    /// <summary>What the inspector's evidence line describes: the selected process, group or aggregate.</summary>
+    /// <summary>
+    /// What the inspector's evidence line describes: the chosen relationship, processes or row, or the selected aggregate,
+    /// group or process.
+    /// </summary>
     public string EvidenceHeading => selectedRelationship is not null ? "Selected relationship"
         : HasMultiSelection ? "Selected processes"
+        : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : SelectedCluster is not null ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : "Selected process";
@@ -3968,6 +3971,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 string counted = calls ? "linked RPC call records" : realOverview ? "paired TCP observations" : "observations";
                 return string.Create(CultureInfo.CurrentCulture, $"{chosen.ObservationCount:N0} {counted} · ")
                     + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
+            }
+
+            // A row chosen among a process's rows: its records, as E lists them.
+            if (ChosenRow is { } row)
+            {
+                return ChosenRowEvidence(row.Row);
             }
 
             if (SelectedCluster is { } cluster)
@@ -4240,8 +4249,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). It lists what the inspector's
     /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen;
-    /// a process selected at the machine rung or among a group's members; a group selected at the machine rung; and
-    /// otherwise the rung's own - named in the filter bar, where it can be removed.
+    /// a row chosen among a process's rows; a process selected at the machine rung or among a group's members; a group
+    /// selected at the machine rung; and otherwise the rung's own - named in the filter bar, where it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
@@ -4266,6 +4275,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         LadderDescent descent = realOverview && ChosenRelationshipRecords() is { } relationship
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, relationship,
                 $"Evidence was reached from the {rung} rung with this relationship chosen.")
+            : ChosenRow is { } row
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, row.Records,
+                $"Evidence was reached from the {rung} rung with {(HttpExchangeKeys.IsHttp(row.Row.Key) ? "its" : "this")} {ChosenRowNoun(row.Row)} chosen.")
             : realOverview && level is DetailLevel.Machine or DetailLevel.Group && selectedProcess is { } process
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.NameWithPid),
@@ -4419,13 +4431,26 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return true;
     }
 
+    /// <summary>
+    /// Chooses a process, as a click on its node does. Chosen again while a row is described - its own rung's process,
+    /// with one of its channels chosen - it is the selection again, so the card counts it and E lists its records.
+    /// </summary>
     public void SelectProcess(ProcessInstanceId processId)
     {
         ProcessNode? process = Snapshot.Processes.FirstOrDefault(candidate => candidate.Id == processId);
-        if (process is not null)
+        if (process is null)
         {
-            SelectedProcess = process;
+            return;
         }
+
+        if (describesRow && selectedProcess?.Id == processId)
+        {
+            describesRow = false;
+            RaiseGraphSelectionChanged();
+            return;
+        }
+
+        SelectedProcess = process;
     }
 
     public void SelectInterval(TimeRange interval) => selection.SelectInterval(interval);

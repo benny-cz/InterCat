@@ -37,11 +37,11 @@ public sealed partial class WorkspaceViewModel
     private bool ReadsBytes => realOverview && evidenceSource is not null;
 
     /// <summary>
-    /// Whether a description on screen needs bytes: a selected process, group or set, the relationship table, or the
-    /// channel a channel rung is focused on.
+    /// Whether a description on screen needs bytes: a selected process, group or set, the relationship table, the channel a
+    /// channel rung is focused on, or one chosen among a process's rows.
     /// </summary>
     private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null || HasMultiSelection || showTables
-        || FocusedRealChannel is not null || selectedRelationship is not null;
+        || FocusedRealChannel is not null || selectedRelationship is not null || ChosenRow is not null;
 
     /// <summary>
     /// What a description says where the scope's bytes are not known: that they are being read, that they could not be,

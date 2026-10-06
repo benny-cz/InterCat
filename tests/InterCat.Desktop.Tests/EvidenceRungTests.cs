@@ -769,8 +769,27 @@ public sealed class EvidenceRungTests
         Assert.Equal(90_000L, ranked.Source.Ranked!.Value);
         Assert.Equal(row.Key, workspace.RungRows[0].Key);
 
-        // Enter opens its records, and only its.
+        // Chosen, it is what the card counts, the timeline highlights and E lists: its own records, named where chosen.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
         workspace.SelectedRung = ranked;
+        await workspace.HighlightReady;
+        Assert.Equal(4, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal("Selected connection", workspace.EvidenceHeading);
+        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture,
+            $"4 records of one end, whose other end no record holds · {1_500:N0} B sent, {90_000:N0} B received"),
+            workspace.EvidenceSummary);
+        Assert.Equal("TCP to " + remote, workspace.TimelineHighlightName);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.StartsWith("Records of TCP to " + remote, workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Contains("from the process rung with this connection chosen",
+            Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        await workspace.ConnectionsReady;
+
+        // Enter opens its records, and only its.
+        workspace.SelectedRung = workspace.RungRows.Single(candidate => candidate.Key == row.Key);
         Assert.True(workspace.Descend());
         Assert.True(workspace.IsEvidenceRung);
         await workspace.EvidenceReady;
@@ -824,8 +843,26 @@ public sealed class EvidenceRungTests
         Assert.EndsWith(" · admitted paired TCP and its HTTP exchanges; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);
 
-        // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded.
+        // Chosen, the exchanges are what the card counts, the timeline highlights and E lists: their buffers alone.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
         workspace.SelectedRung = row;
+        await workspace.HighlightReady;
+        Assert.Equal(7, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal("Selected HTTP exchanges", workspace.EvidenceHeading);
+        Assert.Equal("7 buffer records · " + row.KnownBytes, workspace.EvidenceSummary);
+        Assert.EndsWith(" B received in HTTP messages", row.KnownBytes, StringComparison.Ordinal);
+        Assert.Equal(HttpChannelSummary.Name, workspace.TimelineHighlightName);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(7, workspace.RungRows.Count);
+        Assert.All(workspace.RungRows, buffer => Assert.StartsWith("HTTP ", buffer.Label, StringComparison.Ordinal));
+        Assert.Contains("from the process rung with its HTTP exchanges chosen",
+            Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        await workspace.HttpReady;
+
+        // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded.
+        workspace.SelectedRung = workspace.RungRows.Single(candidate => candidate.Label == "HTTP exchanges");
         Assert.True(workspace.Descend());
         Assert.True(workspace.IsHttpChannelRung);
         await workspace.HttpReady;
@@ -990,7 +1027,7 @@ public sealed class EvidenceRungTests
         Assert.Contains("this relationship chosen", workspace.Filters.Single().Reason, StringComparison.Ordinal);
     }
 
-    [Fact(DisplayName = "§6.4: below the machine rung E lists what the inspector counts: a process chosen among a group's members, a chosen relationship, else the rung's own records")]
+    [Fact(DisplayName = "§6.4: below the machine rung E lists what the inspector counts: a process chosen among a group's members, a chosen relationship, a channel chosen among a process's rows, else the rung's own records")]
     public async Task BelowTheMachineRungEListsWhatTheInspectorCounts()
     {
         using var session = new TemporarySession();
@@ -1029,14 +1066,77 @@ public sealed class EvidenceRungTests
             Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
         Assert.True(workspace.Ascend());
 
-        // At the server's own rung, its channel chosen among its rows: the card still counts the process, and so does E.
+        // At the server's own rung, its channel chosen among its rows: the card counts the channel's records at its two ends
+        // and what was sent across it, as the channel's own rung states them, the timeline highlights them, and E lists
+        // them, as the pairing's explanation says, naming where it was chosen.
+        // The server itself is not chosen there, so the bytes the card states are read for the channel alone, and the card
+        // is restated as the row is chosen, as the window shows it.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == server.Id.ToString());
         Assert.True(workspace.Descend());
+        workspace.ClearSelection();
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        var restated = new List<string?>();
+        workspace.PropertyChanged += (_, changed) => restated.Add(changed.PropertyName);
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == channel.Key);
+        Assert.Contains(nameof(WorkspaceViewModel.EvidenceHeading), restated);
+        Assert.Contains(nameof(WorkspaceViewModel.EvidenceSummary), restated);
+        Assert.Equal("Selected channel", workspace.EvidenceHeading);
+        await workspace.HighlightReady;
+        Assert.Equal(2 * Exchanges, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        await workspace.SelectionBytesReady;
+        Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture,
+            $"{2 * Exchanges:N0} observed records at its two ends · 7.7 KB sent across"), workspace.EvidenceSummary);
+        Assert.Equal(channel.Name, workspace.TimelineHighlightName);
+        Assert.Contains("E lists its records at both ends", workspace.Explanation, StringComparison.Ordinal);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal($"Paired TCP channel {channel.Name}", workspace.EvidenceScopeText);
+        Assert.Contains("from the process rung with this channel chosen",
+            Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
+
+        // Back at its rung the channel is chosen again, and still counted; the process chosen in its place is counted, and
+        // its own records listed, instead.
+        Assert.True(workspace.Ascend());
+        Assert.Equal(channel.Key, workspace.SelectedRung?.Key);
+        Assert.Equal("Selected channel", workspace.EvidenceHeading);
+        workspace.SelectProcess(server.Id);
         Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.Null(workspace.TimelineHighlightName);
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.StartsWith("Records owned by " + server.NameWithPid, workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.4: a channel chosen among a process's rows under a brush counts the brush's records and the bytes read for it, which E lists")]
+    public async Task AChosenChannelUnderABrushCountsTheBrush()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode server = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
+        DescendTo(workspace, server.GroupKey);
+        DescendTo(workspace, server.Id.ToString());
+
+        // Nothing chosen at the server's rung, a brush holds the first 25 exchanges: no description has read their bytes.
+        workspace.ClearSelection();
+        workspace.SelectInterval(new TimeRange(10, 60));
+        await workspace.IntervalReady;
+
+        // The channel chosen, the card counts its 50 records in the brush and reads what was sent across it there.
+        Channel channel = workspace.Snapshot.Channels.Single();
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == channel.Key);
+        await workspace.SelectionBytesReady;
+        Assert.Equal("50 observed records at its two ends · 1.6 KB sent across", workspace.EvidenceSummary);
+
+        // E lists those 50, as the card counts them.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        while (workspace.CanLoadMoreEvidence)
+        {
+            await workspace.LoadMoreEvidenceAsync();
+        }
+
+        Assert.Equal(50, workspace.RungRows.Count);
     }
 
     /// <summary>

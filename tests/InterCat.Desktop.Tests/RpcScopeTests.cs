@@ -311,6 +311,53 @@ public sealed class RpcScopeTests
     private static RungRow Scm(WorkspaceViewModel workspace) =>
         workspace.RungRows.Single(row => row.Label.StartsWith("svcctl", StringComparison.Ordinal));
 
+    [Fact(DisplayName = "§6.4: an RPC channel chosen among a process's rows is what the card counts, the timeline highlights and E lists")]
+    public void AChosenRpcChannelIsWhatEvidenceLists() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Calls());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+
+        // Its three calls to the service control manager, a start and a stop each, carry no size; the timeline highlights
+        // those six records.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        RungRow scm = Scm(workspace);
+        workspace.SelectedRung = scm;
+        Assert.Equal("Selected RPC channel", workspace.EvidenceHeading);
+        Assert.Equal("6 call records · an RPC call carries no size", workspace.EvidenceSummary);
+        Assert.Equal(scm.Source.Label, workspace.TimelineHighlightName);
+        await workspace.HighlightReady;
+        Assert.Equal(6, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+
+        // E lists those six, and not the call to the other interface, naming where the channel was chosen.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(6, workspace.RungRows.Count);
+        Assert.StartsWith("Records of " + scm.Source.Label, workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Contains("from the process rung with this RPC channel chosen",
+            Assert.Single(workspace.Filters, filter => filter.Field == "scope").Reason, StringComparison.Ordinal);
+
+        // The process chosen in its place, as its node's click chooses it, E lists its own records: its start, the six,
+        // and its call to the other interface.
+        Assert.True(workspace.Ascend());
+        await workspace.RpcReady;
+        workspace.SelectProcess(client.Id);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(8, workspace.RungRows.Count);
+    });
+
     /// <summary>
     /// PID 400 calls the service control manager three times - at 100, 200 and 300, the last failing - and starts a
     /// call to another interface at 400 that never ends; PID 1960 serves the three.
