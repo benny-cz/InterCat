@@ -3072,12 +3072,22 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             selectedRelationship = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(SelectedRelationshipExplanation));
+            OnPropertyChanged(nameof(HasSelectedRelationship));
             if (value is not null)
             {
                 SelectProcess(value.SourceId);
             }
         }
     }
+
+    /// <summary>
+    /// The selected relationship in words, beneath the table: what its evidence's tooltip says - the rule that derived it
+    /// and what it rests on - for a person who chose it by keyboard as for one who points at it (R4, §6.2).
+    /// </summary>
+    public string SelectedRelationshipExplanation => selectedRelationship?.Explanation ?? string.Empty;
+
+    public bool HasSelectedRelationship => selectedRelationship is not null;
 
     public IntervalRow? SelectedIntervalRow
     {

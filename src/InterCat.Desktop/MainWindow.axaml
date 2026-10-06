@@ -663,7 +663,7 @@
             Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Ink.Accent}" BorderThickness="1"
             IsVisible="{Binding ShowTables}">
-      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,*" Margin="16">
+      <Grid RowDefinitions="Auto,Auto,*,Auto,Auto,Auto,*" Margin="16">
         <!-- Below the machine rung the table lists what the rung's graph draws, and counts what it leaves out (R15). -->
         <Grid ColumnDefinitions="Auto,*">
           <TextBlock Text="RELATIONSHIP TABLE" Classes="eyebrow" VerticalAlignment="Center" />
@@ -700,7 +700,13 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
-        <Grid Grid.Row="3" Margin="0,16,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
+        <!-- The selected relationship in words: what its evidence's tooltip says, for a keyboard as for a pointer (R4). -->
+        <TextBlock x:Name="SelectedRelationshipText" Grid.Row="3" Margin="2,6,0,0" Classes="muted" FontSize="11"
+                   TextWrapping="Wrap" Text="{Binding SelectedRelationshipExplanation}"
+                   IsVisible="{Binding HasSelectedRelationship}"
+                   AutomationProperties.Name="The selected relationship, explained" />
+
+        <Grid Grid.Row="4" Margin="0,16,0,0" ColumnDefinitions="Auto,*,Auto,Auto">
           <TextBlock Text="INTERVAL TABLE" Classes="eyebrow" VerticalAlignment="Center" />
           <TextBlock Grid.Column="1" Margin="10,0" Text="{Binding IntervalTableScope}" Classes="muted"
                      FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
@@ -744,13 +750,13 @@
         </Grid>
         <!-- Bytes come last: a real session's timeline sums none per interval, so its rows' bytes are read once the table
              is shown, sent and received apart; a session with no directory to read them from leaves the column out. -->
-        <Grid Grid.Row="4" ColumnDefinitions="18,160,180,190,260" Margin="2,8,0,2">
+        <Grid Grid.Row="5" ColumnDefinitions="18,160,180,190,260" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Window" Classes="columnHeader" />
           <TextBlock Grid.Column="2" Text="Observations" Classes="columnHeader" />
           <TextBlock Grid.Column="3" Text="Coverage" Classes="columnHeader" />
           <TextBlock Grid.Column="4" Text="Bytes" Classes="columnHeader" IsVisible="{Binding IntervalTableShowsBytes}" />
         </Grid>
-        <ListBox x:Name="IntervalList" Grid.Row="5" Margin="0,4,0,0"
+        <ListBox x:Name="IntervalList" Grid.Row="6" Margin="0,4,0,0"
                  ItemsSource="{Binding Intervals}"
                  SelectedItem="{Binding SelectedIntervalRow, Mode=TwoWay}"
                  Background="Transparent" BorderThickness="0"
