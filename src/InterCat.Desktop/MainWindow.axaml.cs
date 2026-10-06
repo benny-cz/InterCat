@@ -690,11 +690,15 @@ public sealed partial class MainWindow : Window, IDisposable
         return result;
     }
 
-    private async Task<bool> ConfirmRedactedShareAsync()
+    private async Task<bool> ConfirmRedactedShareAsync() => await RedactedSharePrompt().ShowDialog<bool>(this);
+
+    /// <summary>What a redacted report keeps and leaves out, asked before its file is chosen; true to choose it.</summary>
+    internal static Window RedactedSharePrompt()
     {
         var prompt = new Window
         {
-            Title = "Share a redacted report?", Width = 540, Height = 360,
+            Title = "Share a redacted report?", Width = 540,
+            SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
@@ -728,7 +732,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
             },
         };
-        return await prompt.ShowDialog<bool>(this);
+        return prompt;
     }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
@@ -1708,12 +1712,16 @@ public sealed partial class MainWindow : Window, IDisposable
         return paragraphs;
     }
 
+    private async Task<bool> ShowOriginalResultAsync(OriginalEvidencePackageResult result) =>
+        await OriginalResultPrompt(result).ShowDialog<bool>(this);
+
     /// <summary>Says where the copy is and what verified it; true when the user wants to open it here.</summary>
-    private async Task<bool> ShowOriginalResultAsync(OriginalEvidencePackageResult result)
+    internal static Window OriginalResultPrompt(OriginalEvidencePackageResult result)
     {
         var prompt = new Window
         {
-            Title = result.Source.Redacted ? "Package copy saved" : "Original session saved", Width = 580, Height = 300,
+            Title = result.Source.Redacted ? "Package copy saved" : "Original session saved", Width = 580,
+            SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
@@ -1745,7 +1753,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
             },
         };
-        return await prompt.ShowDialog<bool>(this);
+        return prompt;
     }
 
     /// <summary>A new folder name under the chosen one: dated, and numbered rather than reusing an existing name.</summary>
@@ -1829,11 +1837,16 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    private async Task<bool> ConfirmRedactedPackageAsync(SessionOverviewBundle overview)
+    private async Task<bool> ConfirmRedactedPackageAsync(SessionOverviewBundle overview) =>
+        await RedactedPackagePrompt(overview).ShowDialog<bool>(this);
+
+    /// <summary>What a redacted session package keeps, replaces and leaves out, asked before its folder is chosen.</summary>
+    internal static Window RedactedPackagePrompt(SessionOverviewBundle overview)
     {
         var prompt = new Window
         {
-            Title = "Share a redacted session package?", Width = 580, Height = 470,
+            Title = "Share a redacted session package?", Width = 580,
+            SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
@@ -1870,15 +1883,19 @@ public sealed partial class MainWindow : Window, IDisposable
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
             },
         };
-        return await prompt.ShowDialog<bool>(this);
+        return prompt;
     }
 
+    private async Task<bool> ShowPackageResultAsync(RedactedSessionPackageResult result) =>
+        await RedactedPackageResultPrompt(result).ShowDialog<bool>(this);
+
     /// <summary>Says where the package is and what verified it; true when the user wants to open it here to review.</summary>
-    private async Task<bool> ShowPackageResultAsync(RedactedSessionPackageResult result)
+    internal static Window RedactedPackageResultPrompt(RedactedSessionPackageResult result)
     {
         var prompt = new Window
         {
-            Title = "Redacted session package saved", Width = 580, Height = 330,
+            Title = "Redacted session package saved", Width = 580,
+            SizeToContent = SizeToContent.Height,
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
@@ -1915,7 +1932,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { done, open } },
             },
         };
-        return await prompt.ShowDialog<bool>(this);
+        return prompt;
     }
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
@@ -2554,28 +2571,7 @@ public sealed partial class MainWindow : Window, IDisposable
         closingPrompt = true;
         try
         {
-            var prompt = new Window
-            {
-                Title = "Stop Explore?", Width = 410, Height = 180,
-                WindowStartupLocation = WindowStartupLocation.CenterOwner,
-                CanResize = false,
-            };
-            var stay = new Button { Content = "Keep recording" };
-            var stop = new Button { Content = "Stop, save, and close" };
-            stay.Click += (_, _) => prompt.Close(false);
-            stop.Click += (_, _) => prompt.Close(true);
-            prompt.Content = new StackPanel
-            {
-                Margin = new Avalonia.Thickness(20), Spacing = 16,
-                Children =
-                {
-                    new TextBlock { Text = "The broker will stop and finalize. All published evidence stays saved.",
-                        TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                    new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
-                        HorizontalAlignment = HorizontalAlignment.Right, Children = { stay, stop } },
-                },
-            };
-            if (await prompt.ShowDialog<bool>(this))
+            if (await StopExplorePrompt().ShowDialog<bool>(this))
             {
                 captureStop?.Cancel();
                 CaptureStatus.Text = "Stopping and saving before close";
@@ -2596,6 +2592,46 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             closingPrompt = false;
         }
+    }
+
+    /// <summary>
+    /// Asked when the window closes while Explore records; true to stop, save and close. Escape, like the focused first
+    /// button, keeps recording.
+    /// </summary>
+    internal static Window StopExplorePrompt()
+    {
+        var prompt = new Window
+        {
+            Title = "Stop Explore?", Width = 410,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var stay = new Button { Content = "Keep recording" };
+        var stop = new Button { Content = "Stop, save, and close" };
+        stay.Click += (_, _) => prompt.Close(false);
+        stop.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => stay.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 16,
+            Children =
+            {
+                new TextBlock { Text = "The broker will stop and finalize. All published evidence stays saved.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { stay, stop } },
+            },
+        };
+        return prompt;
     }
 
     private void OnThemeModeChanged(object? sender, EventArgs eventArgs)

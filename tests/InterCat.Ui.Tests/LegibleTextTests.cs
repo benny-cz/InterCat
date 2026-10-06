@@ -339,6 +339,63 @@ public sealed class LegibleTextTests
         return directory;
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: every prompt the windows build is as tall as what it says and cuts off no text, with the longest folder it can name")]
+    public async Task EveryPromptFitsWhatItSays()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 11)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+        ]);
+
+        // Packages saved several folders deep, each folder named as a person might name it.
+        using var root = new TemporaryDirectory();
+        string deep = Directory.CreateDirectory(Path.Combine(root.Path, "packages-shared-with-the-vendor-for-the-nightly-build-failure",
+            "the-build-server-and-its-database-during-the-integration-run", "reviewed-and-checked-before-sharing-on-2026-10-06")).FullName;
+        OriginalEvidencePackageResult original = OriginalEvidencePackage.Create(session.Store, Path.Combine(deep, "an-exact-copy-of-the-build-server-capture"));
+        RedactedSessionPackageResult redacted = RedactedSessionPackage.Create(session.Store,
+            Path.Combine(deep, "a-redacted-package-of-the-build-server-capture"), DateTimeOffset.UnixEpoch);
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, session.Path, Committed);
+        InvestigationPackageResult investigation = InvestigationPackage.Create(workspace, Path.Combine(deep, "the-investigation-with-its-sessions"));
+
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        var cut = new List<string>();
+        foreach ((string name, Window prompt) in new (string, Window)[]
+        {
+            ("redacted report", MainWindow.RedactedSharePrompt()),
+            ("original package", MainWindow.OriginalPackagePrompt(OriginalEvidencePackage.Preview(session.Store))),
+            ("original package saved", MainWindow.OriginalResultPrompt(original)),
+            ("redacted package", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store))),
+            ("redacted package saved", MainWindow.RedactedPackageResultPrompt(redacted)),
+            ("stop Explore", MainWindow.StopExplorePrompt()),
+            ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),
+        })
+        {
+            _ = prompt.ShowDialog<bool>(owner);
+            await Pause();
+            cut.AddRange(CutOff(prompt, name));
+
+            // A prompt sized for one length of words leaves a band empty below its buttons when they are shorter, and runs
+            // them past its foot when they are longer: each is as tall as what it says.
+            double says = Assert.IsAssignableFrom<Control>(prompt.Content).DesiredSize.Height;
+            if (Math.Abs(prompt.Bounds.Height - says) > 1)
+            {
+                cut.Add($"{name}: {prompt.Bounds.Height:0} px tall for {says:0} px of words and buttons.");
+            }
+
+            prompt.Close();
+        }
+
+        owner.Close();
+        Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
+    }
+
     private static async Task ShowAtItsMinimum(Window window)
     {
         window.Width = window.MinWidth;
@@ -358,9 +415,9 @@ public sealed class LegibleTextTests
     }
 
     /// <summary>
-    /// Each visible text the window cuts off where it stands: one its place leaves no room at all, one wider than its own box
-    /// that neither wraps nor ends in an ellipsis, one a clipping card or panel cuts, and one that ends in an ellipsis with no
-    /// tooltip to complete it.
+    /// Each visible text the window cuts off where it stands: one its place leaves no room at all, one wider or taller than
+    /// its own box shows that neither wraps nor ends in an ellipsis, one a clipping card, panel or the window itself cuts at
+    /// any edge, and one that ends in an ellipsis with no tooltip to complete it.
     /// </summary>
     private static IEnumerable<string> CutOff(Window window, string where)
     {
@@ -426,8 +483,10 @@ public sealed class LegibleTextTests
     }
 
     /// <summary>
-    /// The ancestor that clips the text at its left or right edge, in part or whole, when one does. A view that scrolls
-    /// sideways, as the crumb trail does, holds a text past its edges a scroll away rather than cutting it off.
+    /// The ancestor that clips the text at any edge, in part or whole, when one does: a card, a panel, or the window itself,
+    /// whose bottom edge a fixed-height prompt's last paragraph and buttons can run past. A view that scrolls holds a text
+    /// past its edges in that direction a scroll away - the crumb trail its first crumbs, a list its rows - but one it cuts
+    /// across its far edge sideways is still cut off where it stands.
     /// </summary>
     private static string? ClippedBy(TextBlock text, Window window)
     {
@@ -437,6 +496,9 @@ public sealed class LegibleTextTests
         }
 
         double right = origin.X + text.Bounds.Width;
+        double bottom = origin.Y + text.Bounds.Height;
+        bool sideways = true;
+        bool upright = true;
         foreach (Control ancestor in text.GetVisualAncestors().OfType<Control>())
         {
             if (ancestor.GetType().Name == "ScrollContentPresenter" || ancestor.TranslatePoint(new Point(0, 0), window) is not { } corner)
@@ -445,16 +507,25 @@ public sealed class LegibleTextTests
             }
 
             double edge = corner.X + ancestor.Bounds.Width;
+            double foot = corner.Y + ancestor.Bounds.Height;
             string name = $"{ancestor.GetType().Name} {ancestor.Name}".TrimEnd();
-
-            // A view that scrolls sideways holds a text wholly past its edges a scroll away, as the crumb trail holds its
-            // first crumbs; one it cuts across its far edge is still cut off where it stands.
-            if (ancestor is ScrollViewer { HorizontalScrollBarVisibility: not Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled })
+            if (ancestor is ScrollViewer viewer)
             {
-                return right > edge + 1 && origin.X < edge ? name : null;
+                if (sideways && viewer.HorizontalScrollBarVisibility != Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled)
+                {
+                    if (right > edge + 1 && origin.X < edge)
+                    {
+                        return name;
+                    }
+
+                    sideways = false;
+                }
+
+                upright &= viewer.VerticalScrollBarVisibility == Avalonia.Controls.Primitives.ScrollBarVisibility.Disabled;
             }
 
-            if (ancestor.ClipToBounds && (right > edge + 1 || origin.X < corner.X - 1))
+            if (ancestor.ClipToBounds && ((sideways && (right > edge + 1 || origin.X < corner.X - 1))
+                || (upright && (bottom > foot + 1 || origin.Y < corner.Y - 1))))
             {
                 return name;
             }

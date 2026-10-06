@@ -906,8 +906,14 @@ internal sealed class InvestigationWindow : Window, IDisposable
                 : string.Create(CultureInfo.CurrentCulture, $" {references:N0} sessions were not copied and stay references to relink."));
     }
 
-    /// <summary>Says where the package is and what verified it; true when the person wants to open it here.</summary>
-    private async Task<bool> ShowPackageResultAsync(InvestigationPackageResult result)
+    private async Task<bool> ShowPackageResultAsync(InvestigationPackageResult result) =>
+        await PackageResultPrompt(result, offersOpen: Owner is MainWindow).ShowDialog<bool>(this);
+
+    /// <summary>
+    /// Says where the package is and what verified it; true when the person wants to open it here, which it offers only
+    /// where a main window can open it.
+    /// </summary>
+    internal static Window PackageResultPrompt(InvestigationPackageResult result, bool offersOpen)
     {
         var prompt = new Window
         {
@@ -918,7 +924,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
         };
         var done = new Button { Content = "Done" };
-        var open = new Button { Content = "Open it here", IsVisible = Owner is MainWindow };
+        var open = new Button { Content = "Open it here", IsVisible = offersOpen };
         AutomationProperties.SetName(open, "Open the package's investigation in a window of its own");
         done.Click += (_, _) => prompt.Close(false);
         open.Click += (_, _) => prompt.Close(true);
@@ -952,7 +958,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             Children = { done, open },
         });
         prompt.Content = content;
-        return await prompt.ShowDialog<bool>(this);
+        return prompt;
     }
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = TextWrapping.Wrap };

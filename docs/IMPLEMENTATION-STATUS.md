@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 321 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 322 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 322 — every prompt is as tall as what it says (§6.8):**
+  - Five prompts held a fixed height: one had nine pixels to spare for a long path, and another left 122 empty below
+    its buttons. Each now sizes to its words, and the closing question keeps recording on Escape. A test draws all seven
+    prompts with a long path, refusing text cut at any edge.
 
 - **Revision 321 — the investigation window keeps its pages at its smallest size (§6.8):**
   - At 680 by 460 the timeline had no height and its chosen column no width, and the lists kept a row or less. Three
@@ -823,6 +828,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 322 was built and tested in the same Linux container: Debug and Release each ran **1,554 tests**, passing
+  **1,457 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of eight mutations: each of the five prompts back at its fixed height, the investigation's package result at one,
+  and the closing question with no Escape or no focused answer. With the prompts' own words no fixed height cut text off
+  in this container, so the test also holds each prompt to the height its words take; squeezed to 150 pixels, the
+  redacted report's prompt had its last paragraph and both buttons refused as cut off by the window's foot.
 - Revision 321 was built and tested in the same Linux container: Debug and Release each ran **1,551 tests**, passing
   **1,454 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of eighteen mutations, from a minimum back at 460 pixels and the lanes in words outside the chart's scroll to
