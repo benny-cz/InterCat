@@ -67,11 +67,13 @@ internal static class TimelineCommand
         long generation;
         IReadOnlyList<TimelineBucket> buckets;
         SessionIntervalByteMeasures? measured = null;
+        DateTimeOffset? began;
         long started = Stopwatch.GetTimestamp();
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
             (generation, buckets) = Count(store, interval.Value, columns, scope, cancellationToken);
+            began = Began(store);
             if (bytes)
             {
                 measured = SessionIntervalByteQuery.Measure(store, interval.Value, columns, scope, cancellationToken: cancellationToken);
@@ -105,6 +107,7 @@ internal static class TimelineCommand
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(generation));
         ConsoleUi.Field("Interval", WorkspaceTime.FormatRange(interval.Value, CultureInfo.CurrentCulture));
+        ConsoleUi.Field("Time base", WorkspaceTime.TimeBase(began, TimeZoneInfo.Local, CultureInfo.CurrentCulture));
         ConsoleUi.Field("Records", scope.Description);
         ConsoleUi.Field("Observed rows", ConsoleUi.Count(buckets.Sum(bucket => (long)bucket.ObservationCount)));
         ConsoleUi.Field("Counted in", $"{elapsed.TotalMilliseconds.ToString("N0", CultureInfo.CurrentCulture)} ms");
@@ -179,6 +182,18 @@ internal static class TimelineCommand
             : scope.End is { } end
             ? focused.ChannelEndLanes.Single(lane => lane.End == end).Buckets
             : focused.Focus);
+    }
+
+    /// <summary>
+    /// When the capture began by the wall clock it recorded, which the time base names as the Desktop's timeline does
+    /// (§6.2); null when it recorded none, as an import does.
+    /// </summary>
+    private static DateTimeOffset? Began(SessionStore store)
+    {
+        using EvidenceLease lease = store.AcquireLease();
+        return SessionSegments.SourceClock(store.Root, lease.Manifest) is { } clock
+            ? SessionRecording.Began(store.Root, lease.Manifest, clock)
+            : null;
     }
 
     /// <summary>The scope a lane of the interval table lists, from the options that name it; a problem when they cannot.</summary>

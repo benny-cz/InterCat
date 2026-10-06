@@ -517,6 +517,43 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "§6.2: icat timeline states the time base its intervals count in, as the window's axis does")]
+    public async Task TimelineStatesItsTimeBase()
+    {
+        // The shared session recorded no wall clock: its intervals are session time, and no moment is guessed.
+        (InterCatExitCode code, string text, string said) = await Run("timeline", session.Path, "--interval", "0:1000");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^\s*Time base\s+session time\r?$", RegexOptions.Multiline), text);
+
+        // A capture that recorded its wall clock says since when its session time counts, in the reader's zone with its
+        // offset from UTC, in the window's words.
+        var clock = new SourceClockDescriptor(TestSessions.Clock, HostId.Derive("cli-time-base"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 10_000_000, 1_000, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        DateTimeOffset noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store,
+            [Transfer(1_100, ObservationKind.Send, AccountingSide.SendSide, 10, 100).Between("192.168.1.5:61000", "8.8.8.8:53") with
+            {
+                Mechanism = Mechanism.Udp,
+                SessionRelativeTicks = 10_000,
+            }],
+            clock: clock,
+            calibration: new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = TestSessions.Capture.Value,
+                ClockId = clock.Id.Value,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = 1_500, Utc = noon.AddTicks(1_500), AcquisitionUncertaintyNanoseconds = 200 }],
+            });
+        calibrated.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("timeline", calibrated.Path, "--interval", "0:1000");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string since = WorkspaceTime.TimeBase(noon.AddTicks(1_000), TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture);
+        Assert.StartsWith("session time since ", since, StringComparison.Ordinal);
+        Assert.Matches(new Regex(@"^\s*Time base\s+" + Regex.Escape(since) + @"\r?$", RegexOptions.Multiline), text);
+    }
+
     [Fact(DisplayName = "R5: icat overview and icat processes number a reused PID's holders alike, as the window does")]
     public async Task AReusedPidsHoldersAreNumberedAlike()
     {

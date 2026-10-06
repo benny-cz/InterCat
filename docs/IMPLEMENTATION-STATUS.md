@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 350 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 351 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 351 — `icat timeline` states its time base too (§6.2):**
+  - Its text output gains a "Time base" field in the window's words; its JSON is unchanged. The plan's §6.7 row for
+    Esc, which contradicted §3.2 and the window, now says Esc ascends a rung and clears the selection at the machine
+    rung.
 
 - **Revision 350 — the timeline states its time base (§6.2):**
   - The axis read "10.0 µs" to "19.1 µs" with nothing to say what those count from. Between them it now says "session
@@ -929,7 +934,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      the same command restores the split the person dragged. The split and the expanded pane are not kept per workspace
      yet (§26.3).
    - §6.2's time base: done in revision 350. The axis says it counts session time, and since when by the wall clock the
-     capture recorded, in the reader's zone with its offset. A host-local wall-clock axis, and the date where a view
+     capture recorded, in the reader's zone with its offset; `icat timeline` says the same since revision 351. A host-local wall-clock axis, and the date where a view
      crosses a day, wait on a reason to read the session's instants in wall-clock time.
    - §6.2's normalization scope: done in revision 342. The legend keys the lanes' heights and offers each lane its own
      scale, which a newer publication keeps, and since revision 343 an investigation too (§26.3, `workspace-v14`). The
@@ -978,6 +983,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 351 was built and tested in the same Linux container: Debug and Release each ran **1,609 tests**, passing
+  **1,512 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  each of three mutations of `icat timeline`: no start read, no time base stated, and the start read of no
+  calibration. A first form of the last did not compile, since a constant null pattern never matches; its second was
+  caught. The plan's §6.7 change is to its words alone.
 - Revision 350 was built and tested in the same Linux container: Debug and Release each ran **1,608 tests**, passing
   **1,511 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The repaint
   allocation test still finds nothing allocated, the time base formatted once per session. Its tests caught each of
