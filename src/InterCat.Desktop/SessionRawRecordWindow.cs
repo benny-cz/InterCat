@@ -57,8 +57,11 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
 
         status.Text = "Locating the retained original record…";
 
-        // The record a screen reader lands on is named for it; the buttons are named by what they say.
+        // The record a screen reader lands on is named for it; the buttons are named by what they say. What the window
+        // finds is announced as its status line changes, rather than waiting to be read.
         AutomationProperties.SetName(detail, "The original journal record, field by field");
+        AutomationProperties.SetName(status, "Original record status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();

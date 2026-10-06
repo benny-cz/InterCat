@@ -272,6 +272,7 @@
                     Click="StartExploring" AutomationProperties.HelpText="Start the default Explore capture" />
             <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
+                       AutomationProperties.LiveSetting="Polite"
                        TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
             <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto"
                           AutomationProperties.Name="Capture status detail; scroll for the full reason">

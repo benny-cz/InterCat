@@ -52,6 +52,7 @@ internal sealed class InvestigationNoteWindow : Window
         TrimmedChoices.Apply(session);
         AutomationProperties.SetName(at, "The instant it is pinned at, in seconds of that session's time");
         AutomationProperties.SetName(status, "Note status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetHelpText(save, existing is null ? "Add the note" : "Save the note's new words");
         // The session takes the room the instant leaves it, so a long session name never pushes the instant out of the window.
         var atCaption = new TextBlock { Text = "at", VerticalAlignment = VerticalAlignment.Center };

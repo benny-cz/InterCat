@@ -76,6 +76,7 @@ internal sealed class InvestigationAlignWindow : Window
         AutomationProperties.SetName(secondReferenceAt, "The same second instant in the reference session, in seconds");
         AutomationProperties.SetName(note, "A note about this alignment");
         AutomationProperties.SetName(status, "Alignment status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(align, "Align this session");
 
         wallClockFields = Fields(

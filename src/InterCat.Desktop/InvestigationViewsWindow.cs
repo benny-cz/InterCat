@@ -50,6 +50,7 @@ internal sealed class InvestigationViewsWindow : Window
         AutomationProperties.SetName(name, "A name for the view shown now");
         AutomationProperties.SetHelpText(name, "Enter saves the interval the timeline shows now under this name.");
         AutomationProperties.SetName(status, "Saved views status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(show, "Show the selected view on the timeline");
         AutomationProperties.SetName(remove, "Remove the selected view");
         AutomationProperties.SetHelpText(save, "Save the interval the timeline shows now under this name");

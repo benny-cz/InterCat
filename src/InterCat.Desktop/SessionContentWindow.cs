@@ -92,6 +92,8 @@ internal sealed class SessionContentWindow : Window, IDisposable
             + "holds exactly the bytes you chose.";
 
         AutomationProperties.SetName(reveal, "Show the kept bytes");
+        AutomationProperties.SetName(status, "Content status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(first, "First byte of the range");
         AutomationProperties.SetName(last, "Last byte of the range");
         AutomationProperties.SetName(showRange, "Show this range of bytes");

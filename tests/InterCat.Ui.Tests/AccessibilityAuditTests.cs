@@ -148,7 +148,8 @@ public sealed partial class AccessibilityAuditTests
     /// What a screen reader cannot use in a window, walking the automation tree the window exposes: each element the reader
     /// lands on - one the keyboard can focus, or a list item - with no name, and any named by a record's fields. A control
     /// that shows a label is named by it first (WCAG 2.5.3), so a person who says what they see reaches it: its name begins
-    /// with what it shows, less a shortcut in brackets, a trailing ellipsis and an access key's underscore.
+    /// with what it shows, less a shortcut in brackets, a trailing ellipsis and an access key's underscore. And a status
+    /// line, a text named "... status", is a live region a screen reader announces as it changes.
     /// </summary>
     internal static List<string> Unheard(Control root, out int listItems)
     {
@@ -171,6 +172,14 @@ public sealed partial class AccessibilityAuditTests
             if (spoken is not null && RecordDump().IsMatch(spoken))
             {
                 problems.Add($"{type} {peer.GetClassName()} is named by its fields: {spoken}");
+            }
+
+            // A status line says what an action did or found; one that changes in silence goes unheard until it is read.
+            if (peer is ControlAutomationPeer { Owner: TextBlock line } && AutomationProperties.GetName(line) is { } status
+                && status.EndsWith("status", StringComparison.OrdinalIgnoreCase)
+                && peer.GetLiveSetting() == AutomationLiveSetting.Off)
+            {
+                problems.Add($"Status line \"{status}\" changes without being announced");
             }
 
             if (peer is ControlAutomationPeer { Owner: var owner } && VisibleLabel(owner) is { Length: > 0 } label

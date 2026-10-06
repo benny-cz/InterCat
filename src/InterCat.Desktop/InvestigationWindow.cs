@@ -152,11 +152,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(add, "Add sessions to this investigation");
         AutomationProperties.SetHelpText(refresh, "Look again where each session was last found");
         AutomationProperties.SetName(status, "Investigation status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(overlaps, "Sessions of one host that ran at once, or may have");
         AutomationProperties.SetName(candidates, "Candidate joins between the sessions; none is established");
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetHelpText(translations, "State or withdraw a known address translation between the sessions");
-        AutomationProperties.SetName(candidateSummary, "What finding candidate joins found");
+        AutomationProperties.SetName(candidateSummary, "Candidate joins status");
+        AutomationProperties.SetLiveSetting(candidateSummary, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
         AutomationProperties.SetHelpText(refreshTimeline, "Draw the investigation's timeline again");
         AutomationProperties.SetHelpText(compareInstants, "Compare an instant of one session with an instant of another");

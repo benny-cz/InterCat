@@ -79,6 +79,8 @@ internal sealed class SessionChannelWindow : Window, IDisposable
 
         // Enter opens the selected channel, as it opens a ranked row in the workspace; a double click does too.
         AutomationProperties.SetName(rows, "Paired TCP channels. Enter shows the selected channel's source records.");
+        AutomationProperties.SetName(status, "Channels status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         rows.KeyDown += (_, key) =>
         {
             if (key.Key == Key.Enter)

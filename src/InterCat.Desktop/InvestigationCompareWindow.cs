@@ -53,6 +53,7 @@ internal sealed class InvestigationCompareWindow : Window
         AutomationProperties.SetName(secondSession, "The second instant's session");
         AutomationProperties.SetName(secondAt, "The second instant, in seconds of its session's time");
         AutomationProperties.SetName(statement, "What may be said of their order");
+        AutomationProperties.SetLiveSetting(statement, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(placements, "Where each instant falls in the investigation's time");
         AutomationProperties.SetName(compare, "Compare the two instants");
         compare.Click += (_, _) => _ = CompareAsync();

@@ -47,6 +47,7 @@ internal sealed class InvestigationHostWindow : Window
         TrimmedChoices.Apply(other);
         AutomationProperties.SetName(note, "A note about this confirmation");
         AutomationProperties.SetName(status, "One host status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetHelpText(confirm, "Confirm that the two identities are one host");
         AutomationProperties.SetHelpText(withdraw, "Withdraw your confirmation that the two identities are one host");
         other.SelectionChanged += (_, _) => ShowChoice();

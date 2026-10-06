@@ -112,22 +112,24 @@ public sealed class SecondaryWindowAuditTests
                 .Single(list => AutomationProperties.GetName(list) == "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
             window.SelectNote(0);
             await Pause();
-            foreach ((string name, Window? dialog) in new (string, Window?)[]
+            // The package chooser restates what the package holds as its choices change, and reports its save in a prompt
+            // of its own; every other dialog says in a status line what it did.
+            foreach ((string name, Window? dialog, bool reports) in new (string, Window?, bool)[]
             {
-                ("align", window.AlignDialogForSelected()),
-                ("one host", window.HostDialogForSelected()),
-                ("compare", window.CompareDialog()),
-                ("add a note", window.NoteDialog(reword: false)),
-                ("reword a note", window.NoteDialog(reword: true)),
-                ("translations", window.TranslationsDialog()),
-                ("views", window.ViewsDialog()),
-                ("package", new InvestigationPackageWindow(InvestigationPackage.Preview(workspace))),
+                ("align", window.AlignDialogForSelected(), true),
+                ("one host", window.HostDialogForSelected(), true),
+                ("compare", window.CompareDialog(), true),
+                ("add a note", window.NoteDialog(reword: false), true),
+                ("reword a note", window.NoteDialog(reword: true), true),
+                ("translations", window.TranslationsDialog(), true),
+                ("views", window.ViewsDialog(), true),
+                ("package", new InvestigationPackageWindow(InvestigationPackage.Preview(workspace)), false),
             })
             {
                 Assert.NotNull(dialog);
                 dialog!.Show(window);
                 await Pause();
-                unheard.AddRange(Unheard(dialog, name));
+                unheard.AddRange(Unheard(dialog, name, reports));
                 dialog.Close();
             }
 
@@ -176,7 +178,7 @@ public sealed class SecondaryWindowAuditTests
         {
             _ = prompt.ShowDialog<bool>(owner);
             await Pause();
-            unheard.AddRange(Unheard(prompt, name));
+            unheard.AddRange(Unheard(prompt, name, reports: false));
             prompt.Close();
         }
 
@@ -184,9 +186,21 @@ public sealed class SecondaryWindowAuditTests
         Assert.True(unheard.Count == 0, string.Join(Environment.NewLine, unheard));
     }
 
-    /// <summary>What a screen reader cannot use in <paramref name="window"/>, each problem prefixed with where it was found.</summary>
-    private static IEnumerable<string> Unheard(Window window, string where) =>
-        AccessibilityAuditTests.Unheard(window, out _).Select(problem => $"{where}: {problem}");
+    /// <summary>
+    /// What a screen reader cannot use in <paramref name="window"/>, each problem prefixed with where it was found. A window
+    /// that <paramref name="reports"/> what its actions do has a status line, which the audit holds to being announced.
+    /// </summary>
+    private static List<string> Unheard(Window window, string where, bool reports = true)
+    {
+        List<string> problems = [.. AccessibilityAuditTests.Unheard(window, out _).Select(problem => $"{where}: {problem}")];
+        if (reports && !window.GetVisualDescendants().OfType<TextBlock>()
+            .Any(text => AutomationProperties.GetLiveSetting(text) != AutomationLiveSetting.Off))
+        {
+            problems.Add($"{where}: no status line announces what its actions do");
+        }
+
+        return problems;
+    }
 
     /// <summary>A session of <paramref name="records"/> datagrams, captured on <paramref name="host"/>.</summary>
     private static string Datagrams(string root, string name, int records, string host)

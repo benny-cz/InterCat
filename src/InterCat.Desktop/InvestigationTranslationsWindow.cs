@@ -47,6 +47,7 @@ internal sealed class InvestigationTranslationsWindow : Window
         AutomationProperties.SetName(actual, "The endpoint it is, as the other capture holds it");
         AutomationProperties.SetName(note, "A note about this translation");
         AutomationProperties.SetName(status, "Translation status");
+        AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetHelpText(state, "State that the seen endpoint is the other");
         AutomationProperties.SetName(withdraw, "Withdraw the selected translation");
         known.SelectionChanged += (_, _) => withdraw.IsEnabled = known.SelectedItem is TranslationRow && !busy;

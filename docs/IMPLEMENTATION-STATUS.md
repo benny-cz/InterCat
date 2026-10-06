@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 333 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 334 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 334 — status lines announce what they say (R15):**
+  - Every window's status line, a comparison's answer and the capture headline are polite live regions now, so a
+    screen reader announces a save, a refusal or a finished search as it happens. The audits require it.
 
 - **Revision 333 — a control is named by what it shows (R15, WCAG 2.5.3):**
   - About fifty controls were spoken as descriptions that left out their own label, which a voice user could not say.
@@ -878,6 +882,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 334 was built and tested in the same Linux container: Debug and Release each ran **1,580 tests**, passing
+  **1,483 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The audits caught
+  each of four mutations: the investigation window's status left silent, the content window with no status announced,
+  the capture headline left silent, and a comparison's answer not announced. Avalonia 11.3.22's own assemblies show
+  that what the audits require reaches a screen reader on Windows. A text block's automation peer raises a name change
+  with each change of its text, and the Windows provider raises UI Automation's live-region event for any element whose
+  name changes while its live setting is not off. Hearing it with Narrator and NVDA is still owed (open work item 2).
 - Revision 333 was built and tested in the same Linux container: Debug and Release each ran **1,580 tests**, passing
   **1,483 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The audits caught
   two of four mutations: a main-window button and a secondary window's button named by their old descriptions. The
