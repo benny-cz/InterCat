@@ -17,6 +17,12 @@ public sealed record ProcessGroup(
     string? Detail = null)
 {
     /// <summary>
+    /// The key of the group that holds every process no record names the executable of: together, rather than under a
+    /// guessed name.
+    /// </summary>
+    public const string UnwitnessedExecutableKey = "executable:unknown";
+
+    /// <summary>
     /// How long the group's completed RPC calls took over the ranked scope, its members' calls together, when an RPC call
     /// ranking read them (<see cref="SessionCallRanking"/>); null until one has.
     /// </summary>

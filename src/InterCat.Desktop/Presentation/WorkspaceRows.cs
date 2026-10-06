@@ -414,6 +414,29 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>
+    /// How an executable group was formed and counted, in words (§6.8: a group row is one action from what its total rests
+    /// on): by the executable its members' records name, or together when none names one, the rule that bound each
+    /// member's own records, what the evidence policy left out of its total, and the worst coverage among its members.
+    /// </summary>
+    public static string ExplainGrouping(ProcessGroup group, IReadOnlyCollection<ProcessNode> members)
+    {
+        ArgumentNullException.ThrowIfNull(group);
+        ArgumentNullException.ThrowIfNull(members);
+        string rule = DescribeRule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
+        string grouped = group.Key == ProcessGroup.UnwitnessedExecutableKey
+            ? "Grouped here because no record names the executable its members ran: none is given a guessed name."
+            : "Grouped by the executable its members' records name, compared without case.";
+        long withheld = members.Sum(member => member.WithheldRecords);
+        int holders = members.Count(member => member.WithheldRecords > 0);
+        string left = withheld == 0 ? string.Empty
+            : $" The evidence policy counts no candidate, so its total leaves out {Spoken.Count(withheld, "record")} bound to "
+                + $"{Spoken.Count(holders, "later holder of a reused PID", "later holders of reused PIDs")} among them.";
+        CoverageState coverage = members.Count == 0 ? CoverageState.UnknownCoverage : members.Max(member => member.Coverage);
+        return $"{grouped} Each member's own records are bound to it by {rule}.{left} "
+            + $"Coverage over the session: {CoverageWords(coverage)}.";
+    }
+
+    /// <summary>
     /// How a paired channel's two ends were paired, in words (§6.8: a channel row is one action from the rule, version,
     /// evidence key and coverage behind it): the rule and how strongly the pairing holds, whether the capture saw the
     /// connection open and close, the capture's coverage over the session, and the key E lists its records by.

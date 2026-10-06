@@ -21,7 +21,7 @@ public sealed class ExplanationWindowTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
-    [AvaloniaFact(DisplayName = "§6.8: a process chosen in the ranked table is explained in the inspector, a reused PID's later holder with what it left out")]
+    [AvaloniaFact(DisplayName = "§6.8: a group and a process chosen in the ranked table are explained in the inspector, with what a reused PID's later holder left out")]
     public async Task AChosenProcessIsExplained()
     {
         // PID 100 exits and is created again, and its second holder sends twice: candidates the default policy withholds.
@@ -44,14 +44,23 @@ public sealed class ExplanationWindowTests
         TextBlock explanation = window.GetControl<TextBlock>("ExplanationText");
         Assert.False(explanation.IsEffectivelyVisible);
 
-        // The client's group opens on its two processes, and the later holder chosen among them is explained beside them.
+        // Chosen, the client's group says how it was formed and what its total leaves out of the later holder.
+        TextBlock heading = Assert.IsType<TextBlock>(Assert.IsType<StackPanel>(explanation.Parent).Children[0]);
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Dispatch();
+        Assert.True(explanation.IsEffectivelyVisible);
+        Assert.Equal("How its processes are grouped", heading.Text);
+        Assert.Contains("its total leaves out 2 records bound to 1 later holder of a reused PID among them.", explanation.Text,
+            StringComparison.Ordinal);
+
+        // It opens on its two processes, and the later holder chosen among them is explained beside them.
         Assert.True(workspace.Descend());
         Dispatch();
         ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == later.Id.ToString());
         Dispatch();
         Assert.True(explanation.IsEffectivelyVisible);
+        Assert.Equal("How its records are counted", heading.Text);
         Assert.StartsWith("PID 100 was held by 2 processes in this capture, and this was the 2nd.", explanation.Text,
             StringComparison.Ordinal);
         Assert.Contains("leaving out 2 records bound to it over the session.", explanation.Text, StringComparison.Ordinal);

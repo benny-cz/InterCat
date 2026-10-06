@@ -10,12 +10,12 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Desktop.Tests;
 
 /// <summary>
-/// A process's count one action from the rule behind it (§6.8): the inspector says how the selected process's records
-/// were bound to it, how strongly, and what the evidence policy left out of its total. A reused PID's later holder binds
-/// its records only as candidates, which the default policy counts in no process, so its row would otherwise read as a
-/// quiet process.
+/// A ranked row's numbers one action from the rule behind them (§6.8): the inspector says how the selected process's
+/// records were bound to it and what the evidence policy left out of its total, how an executable group was formed, and
+/// how a channel's two ends were paired. A reused PID's later holder binds its records only as candidates, which the
+/// default policy counts in no process, so its row, and its group's, would otherwise read as quieter than they were.
 /// </summary>
-public sealed class BindingExplanationTests
+public sealed class ExplanationTests
 {
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
@@ -87,6 +87,50 @@ public sealed class BindingExplanationTests
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1");
         tour.SelectProcess(tour.Snapshot.Processes[0].Id);
         Assert.Equal(string.Empty, tour.BindingExplanation);
+    }
+
+    [Fact(DisplayName = "§6.8: a selected group says how its processes were grouped, and what its total leaves out of a reused PID's later holder")]
+    public void ASelectedGroupSaysHowItWasFormed()
+    {
+        // client.exe's PID is reused, and its second holder's two sends are candidates; server.exe is held once; PID 700
+        // names no executable, in any record.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(5, ObservationKind.Create, 200, 1) with { ResourceName = @"C:\Tools\server.exe" }),
+            Timed(Lifecycle(10, ObservationKind.Create, 100, 2) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(30, ObservationKind.Exit, 100, 3)),
+            Timed(Lifecycle(40, ObservationKind.Create, 100, 4) with { ResourceName = @"C:\Tools\CLIENT.EXE" }),
+            Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(55, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 6).Between(ServerEnd, ClientEnd)),
+            Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 7).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(70, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 8).Between("127.0.0.1:50009", "127.0.0.1:9999")),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        const string Bound = " Each member's own records are bound to it by process-binding, version 4.";
+        const string Coverage = " Coverage over the session: unknown.";
+
+        // Both holders of PID 100 ran one executable, named in two cases, and the group's total leaves out the second's sends.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.Equal(("How its processes are grouped", "Grouped by the executable its members' records name, compared "
+            + "without case." + Bound + " The evidence policy counts no candidate, so its total leaves out 2 records bound to "
+            + "1 later holder of a reused PID among them." + Coverage), (workspace.ExplanationHeading, workspace.Explanation));
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.Equal("Grouped by the executable its members' records name, compared without case." + Bound + Coverage,
+            workspace.Explanation);
+
+        // The process whose records name no executable is grouped apart, under no guessed name.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "Executable not witnessed");
+        Assert.Equal("Grouped here because no record names the executable its members ran: none is given a guessed name."
+            + Bound + Coverage, workspace.Explanation);
+
+        // The tour's groups illustrate, and no rule formed them.
+        using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1");
+        tour.SelectedRung = tour.RungRows[0];
+        Assert.NotNull(tour.SelectedGroup);
+        Assert.Equal(string.Empty, tour.Explanation);
     }
 
     [Fact(DisplayName = "§6.8: a channel chosen among a process's rows says how its ends were paired, whether the capture saw it open and close, and its key")]

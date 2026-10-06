@@ -111,7 +111,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§3.2: a rung's timeline counts the records E reads from it, over every record in the session")]
-    public async Task EachRungsTimelineCountsWhatItsEvidenceReads()
+    public void EachRungsTimelineCountsWhatItsEvidenceReads() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -183,7 +183,7 @@ public sealed class EvidenceRungTests
         Assert.Null(workspace.TimelineFocusBuckets);
         Assert.NotNull(workspace.TimelineDetail);
         Assert.StartsWith("Observed records", workspace.TimelineCaption, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: a focus the session cannot count says why and falls back to every record")]
     public async Task AFocusThatCannotBeCountedSaysWhy()
@@ -212,7 +212,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§3.2: a live refresh keeps the rung's timeline counts until its own arrive, and only for the same focus")]
-    public async Task ALiveRefreshKeepsTheTimelineFocusUntilItsOwnCountArrives()
+    public void ALiveRefreshKeepsTheTimelineFocusUntilItsOwnCountArrives() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -244,7 +244,7 @@ public sealed class EvidenceRungTests
         Assert.Null(machine.TimelineFocusBuckets);
         Assert.Null(machine.TimelineDirectionLanes);
         Assert.False(machine.TimelineShowsFocus);
-    }
+    });
 
     [Fact(DisplayName = "§6.2: a timeline bucket's hover states its interval, value, the focus's share, unmeasured part, coverage and scale")]
     public async Task ATimelineBucketsHoverStatesTheContract()
