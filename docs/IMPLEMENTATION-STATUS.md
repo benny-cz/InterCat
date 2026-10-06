@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 348 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 349 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 349 — the live preview on each lane's own scale, tested (§6.2, §12):**
+  - Revision 342 drew the live edge's bars against each lane's own peak, untested. A window test now reads from the
+    pixels that a preview stays on the published scale, that each lane's own scale lifts a quiet lane's preview to its
+    row's top, and that beside byte lanes the preview keeps its records scale.
 
 - **Revision 348 — a row chosen among a process's rows is what E lists (§6.4, I5):**
   - The inspector described a chosen channel, connection, RPC channel or HTTP exchanges, but the card counted the
@@ -920,7 +925,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      yet (§26.3).
    - §6.2's normalization scope: done in revision 342. The legend keys the lanes' heights and offers each lane its own
      scale, which a newer publication keeps, and since revision 343 an investigation too (§26.3, `workspace-v14`). The
-     live preview's bars, which follow it, have no test of their own for it.
+     live preview's bars follow it, tested in the window since revision 349.
    - §6.8's evidence policy: since revision 338 a reused PID's candidates are counted one action from the explanation
      that names what they left out, and the rail says so while they count. Direct evidence only, and conflicting bindings
      too, stay with `icat`'s `--evidence-policy`. A session opened on its own keeps the choice while it is open; since
@@ -965,6 +970,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 349 was built and tested in the same Linux container: Debug and Release each ran **1,605 tests**, passing
+  **1,508 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test, which
+  reads the live edge's bars from the pixels drawn, caught each of five mutations of the drawing: a lane's preview
+  ignoring its own peak, beside byte lanes reading their byte peaks or their bytes scale, one scale reading each lane's
+  peak, and a preview read against its own busiest bin instead of the published bars' peak. The last was missed at
+  first, since every bar the test read stood under its row's top either way; previewed sends at about half the
+  published rate now stand under it on one scale, where their own scale would lift them to it.
 - Revision 348 was built and tested in the same Linux container: Debug and Release each ran **1,604 tests**, passing
   **1,507 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of nineteen mutations. Eleven concerned the chosen row: one chosen at the wrong rung, a connection not chosen, the

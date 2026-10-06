@@ -193,6 +193,63 @@ public sealed class LaneScaleWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.2: the live preview's bars follow each lane's own scale, and beside byte lanes keep a records scale of their own")]
+    public async Task TheLivePreviewFollowsEachLanesScale()
+    {
+        // Two creations, then a client sending five times a tick for a hundred ticks: on one scale the lifecycle lane's
+        // records are a sliver beside the TCP lane's.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+            .. Enumerable.Range(0, 500).Select(index => Timed(Transfer(10 + (index / 5), ObservationKind.Send,
+                AccountingSide.SendSide, 64, 100, (ulong)(10 + index)).Between(BusyEnd, ServerEnd))),
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        CaptureUiUpdate published = Update(session) with { OverviewChunks = 2 };
+        window.ApplyCaptureUpdate(published);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+
+        // The broker previews the next chunk: forty creations in one bin of twenty ticks, sixty sends in the next.
+        var preview = new BrokerCapturePreview(20, 3, 1, 100, 100, 0,
+            [new(3, 6, Mechanism.ProcessLifecycle, 40), new(3, 7, Mechanism.Tcp, 60)]);
+        window.ApplyCaptureUpdate(published with { Overview = null, OverviewChunks = null, LivePreview = preview });
+        Dispatch();
+        LiveEdge edge = Assert.IsType<LiveEdge>(workspace.LiveEdge);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        List<MechanismTimelineLane> lanes = [.. workspace.Snapshot.MechanismLanes];
+        int lifecycle = lanes.FindIndex(lane => lane.Mechanism == Mechanism.ProcessLifecycle);
+        int tcp = lanes.FindIndex(lane => lane.Mechanism == Mechanism.Tcp);
+        LiveEdgeBin creations = edge.Bins.Single(bin => bin.CountOf(Mechanism.ProcessLifecycle) > 0);
+        LiveEdgeBin sends = edge.Bins.Single(bin => bin.CountOf(Mechanism.Tcp) > 0);
+
+        // On one scale the shared peak, the TCP lane's, keeps the previewed creations under their row's top, and the
+        // previewed sends, at about half its rate, under theirs: the preview is read on the published scale, not its own.
+        Render(window);
+        Assert.False(ReachesTop(window, timeline, lifecycle, timeline.PointOfLive(creations, lifecycle)!.Value.X));
+        Assert.False(ReachesTop(window, timeline, tcp, timeline.PointOfLive(sends, tcp)!.Value.X));
+
+        // On each lane's own they are busier than the lifecycle lane's own busiest bar, and reach its top.
+        window.GetControl<ToggleButton>("LaneScaleToggle").IsChecked = true;
+        Render(window);
+        Assert.True(workspace.ScalesEachLane);
+        Assert.True(ReachesTop(window, timeline, lifecycle, timeline.PointOfLive(creations, lifecycle)!.Value.X));
+        Save(window, "live-edge-each-lane-1456x939.png");
+
+        // Beside byte lanes a preview, which counts records, is read against its own busiest bin, never a lane's bytes:
+        // the previewed sends, its busiest, reach their row's top.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        Render(window);
+        Assert.NotNull(workspace.TimelineBytes);
+        Assert.True(ReachesTop(window, timeline, tcp, timeline.PointOfLive(sends, tcp)!.Value.X));
+        window.Close();
+    }
+
     private static CaptureUiUpdate Update(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
         "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
 
