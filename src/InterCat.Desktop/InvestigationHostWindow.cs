@@ -5,6 +5,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 
 namespace InterCat.Desktop;
 
@@ -43,6 +44,7 @@ internal sealed class InvestigationHostWindow : Window
         other.ItemsSource = choices;
         other.SelectedIndex = choices.Count > 0 ? 0 : -1;
         AutomationProperties.SetName(other, "The other host identity");
+        TrimmedChoices.Apply(other);
         AutomationProperties.SetName(note, "A note about this confirmation");
         AutomationProperties.SetName(status, "One host status");
         AutomationProperties.SetName(confirm, "Confirm that the two identities are one host");

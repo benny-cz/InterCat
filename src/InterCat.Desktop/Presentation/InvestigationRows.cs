@@ -237,7 +237,7 @@ public static class InvestigationRows
                 ? string.Create(culture, $" Read at its generation {entry.Generation:N0}.")
                 : string.Empty;
             sentences.Add((lane.Placed
-                ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} records, from ")
+                ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} {(lane.Records == 1 ? "record" : "records")}, from ")
                     + Seconds(lane.Extent!.Value.StartTicks * 100, culture) + " to " + Seconds(lane.Extent.Value.EndTicks * 100, culture)
                     + $" of the investigation's time, {place}."
                 : $"Session {Short(lane.SessionId)} ({host}): {place}.") + read);

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 320 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 321 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 321 — the investigation window keeps its pages at its smallest size (§6.8):**
+  - At 680 by 460 the timeline had no height and its chosen column no width, and the lists kept a row or less. Three
+    dialogs cut off a long session name, one pushing its instant out of the window. The minimum is now 680 by 600. The
+    timeline's tools wrap, its chart and words scroll together, its axis labels keep apart, and pickers trim with a
+    tooltip.
 
 - **Revision 320 — the secondary windows cut off no text (§6.8):**
   - The channel browser's rows ran a long process name past the list, losing a channel's endpoints and record count;
@@ -817,6 +823,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 321 was built and tested in the same Linux container: Debug and Release each ran **1,551 tests**, passing
+  **1,454 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
+  each of eighteen mutations, from a minimum back at 460 pixels and the lanes in words outside the chart's scroll to
+  colliding axis labels, an unbounded lane label, pickers that cut a name with no tooltip, and "1 records". The first
+  pass missed two, a readout given one pixel and a toolbar that does not wrap. They showed the legibility test blind to a
+  wrapped text kept short and to a text wholly past an edge, which it now refuses; revisions 319's and 320's mutations
+  stay caught.
 - Revision 320 was built and tested in the same Linux container: Debug and Release each ran **1,549 tests**, passing
   **1,452 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   both mutations: channel rows that never wrap, and a list that scrolls them sideways instead.

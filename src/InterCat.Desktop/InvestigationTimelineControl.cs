@@ -190,20 +190,17 @@ internal sealed class InvestigationTimelineControl : Control
         }
 
         double left = LabelWidth;
-        double width = Math.Max(Bounds.Width - LabelWidth - 12, 10);
+        double width = PlotWidth;
         double X(long ticks) => left + (width * (ticks - interval.StartTicks) / (double)(interval.EndTicks - interval.StartTicks));
-
-        // The axis: the investigation's time, in seconds of its reference session's clock, to the precision its ticks need.
-        double step = (interval.EndTicks - interval.StartTicks) / 4.0 / 10_000_000;
-        int decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(step)) + 1, 0, 7);
-        string format = decimals == 0 ? "0" : "0." + new string('0', decimals);
-        for (int tick = 0; tick <= 4; tick++)
+        for (int tick = 0; tick <= AxisTicks; tick++)
         {
-            long at = interval.StartTicks + ((interval.EndTicks - interval.StartTicks) * tick / 4);
-            double x = X(at);
+            double x = X(TickAt(interval, tick));
             context.DrawLine(divider, new Point(x, AxisHeight - 4), new Point(x, Bounds.Height - 4));
-            string label = (at / 10_000_000m).ToString(format, CultureInfo.CurrentCulture) + " s";
-            Text(context, label, 10, muted, new Point(tick == 4 ? x - 60 : x + 3, 6), 90);
+        }
+
+        foreach ((string label, Rect where) in AxisLabels())
+        {
+            Text(context, label, AxisFontSize, muted, where.TopLeft, where.Width + 1);
         }
 
         for (int index = 0; index < view.Lanes.Count; index++)
@@ -211,7 +208,8 @@ internal sealed class InvestigationTimelineControl : Control
             InvestigationLane lane = view.Lanes[index];
             double top = AxisHeight + (index * LaneHeight);
             context.DrawLine(divider, new Point(0, top), new Point(Bounds.Width, top));
-            Text(context, index < labels.Count ? labels[index] : string.Empty, 11, ink, new Point(10, top + 5), LabelWidth - 18);
+
+            context.DrawText(LaneLabel(index, ink), new Point(10, top + 5));
             if (!lane.Placed)
             {
                 continue;
@@ -346,12 +344,85 @@ internal sealed class InvestigationTimelineControl : Control
         public Pen NoteLine { get; } = new(new SolidColorBrush(ThemeResources.ToColor(ThemePalette.Surfaces(mode).Ink)), 1, new DashStyle([2, 2], 0));
     }
 
-    private static void Text(DrawingContext context, string text, double size, IBrush brush, Point at, double maximumWidth)
-    {
-        var formatted = new FormattedText(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, size, brush)
+    private static void Text(DrawingContext context, string text, double size, IBrush brush, Point at, double maximumWidth) =>
+        context.DrawText(Formatted(text, size, brush, maximumWidth), at);
+
+    private static FormattedText Formatted(string text, double size, IBrush brush, double maximumWidth) =>
+        new(text, CultureInfo.CurrentCulture, FlowDirection.LeftToRight, Typeface.Default, size, brush)
         {
             MaxTextWidth = Math.Max(maximumWidth, 10),
         };
-        context.DrawText(formatted, at);
+
+    /// <summary>
+    /// A lane's label as drawn, kept to its lane: a reason too long for it - why a session has no place - ends in an
+    /// ellipsis on the lane's last line rather than running into the next lane, and the words beside the chart say it whole.
+    /// </summary>
+    internal FormattedText LaneLabel(int index, IBrush brush)
+    {
+        FormattedText label = Formatted(index < labels.Count ? labels[index] : string.Empty, 11, brush, LabelWidth - 18);
+        label.MaxTextHeight = LaneHeight - 8;
+        label.Trimming = TextTrimming.CharacterEllipsis;
+        return label;
+    }
+
+    private const int AxisTicks = 4;
+    private const double AxisFontSize = 10;
+
+    /// <summary>The least room kept clear between two of the axis's labels.</summary>
+    private const double AxisLabelGap = 8;
+
+    private double PlotWidth => Math.Max(Bounds.Width - LabelWidth - 12, 10);
+
+    private static long TickAt(TimeRange interval, int tick) =>
+        interval.StartTicks + ((interval.EndTicks - interval.StartTicks) * tick / AxisTicks);
+
+    /// <summary>
+    /// The axis's labels where they are drawn: the investigation's time in seconds of its reference session's clock, to the
+    /// precision its ticks need. The interval's two ends are labelled, the first just after its tick and the last just
+    /// before it, and a tick between them only where its label keeps clear of both its neighbours, so no two labels run
+    /// together when the chart is narrow or the precision long. An axis too short for even one label has none.
+    /// </summary>
+    internal IReadOnlyList<(string Label, Rect Where)> AxisLabels()
+    {
+        if (view?.Interval is not { } interval)
+        {
+            return [];
+        }
+
+        double step = (interval.EndTicks - interval.StartTicks) / (double)AxisTicks / 10_000_000;
+        int decimals = Math.Clamp((int)Math.Ceiling(-Math.Log10(step)) + 1, 0, 7);
+        string format = decimals == 0 ? "0" : "0." + new string('0', decimals);
+        (string Label, Rect Where) Place(int tick)
+        {
+            long at = TickAt(interval, tick);
+            string label = (at / 10_000_000m).ToString(format, CultureInfo.CurrentCulture) + " s";
+            FormattedText formatted = Formatted(label, AxisFontSize, Brushes.Black, double.PositiveInfinity);
+            double x = LabelWidth + (PlotWidth * (at - interval.StartTicks) / (double)(interval.EndTicks - interval.StartTicks));
+            return (label, new Rect(tick == AxisTicks ? x - 3 - formatted.Width : x + 3, 6, formatted.Width, formatted.Height));
+        }
+
+        (string Label, Rect Where) start = Place(0);
+        if (start.Where.Right > LabelWidth + PlotWidth - 3)
+        {
+            return [];
+        }
+
+        var placed = new List<(string Label, Rect Where)> { start };
+        (string Label, Rect Where) last = Place(AxisTicks);
+        for (int tick = 1; tick < AxisTicks; tick++)
+        {
+            (string Label, Rect Where) between = Place(tick);
+            if (between.Where.Left >= placed[^1].Where.Right + AxisLabelGap && between.Where.Right + AxisLabelGap <= last.Where.Left)
+            {
+                placed.Add(between);
+            }
+        }
+
+        if (last.Where.Left >= placed[^1].Where.Right + AxisLabelGap)
+        {
+            placed.Add(last);
+        }
+
+        return placed;
     }
 }

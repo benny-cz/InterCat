@@ -47,6 +47,8 @@ internal sealed class InvestigationCompareWindow : Window
         firstSession.SelectedIndex = sessions.Count > 0 ? 0 : -1;
         secondSession.SelectedIndex = sessions.Count > 1 ? 1 : firstSession.SelectedIndex;
         AutomationProperties.SetName(firstSession, "The first instant's session");
+        TrimmedChoices.Apply(firstSession);
+        TrimmedChoices.Apply(secondSession);
         AutomationProperties.SetName(firstAt, "The first instant, in seconds of its session's time");
         AutomationProperties.SetName(secondSession, "The second instant's session");
         AutomationProperties.SetName(secondAt, "The second instant, in seconds of its session's time");

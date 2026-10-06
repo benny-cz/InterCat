@@ -2,6 +2,7 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -25,14 +26,24 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private readonly Func<string, Task<bool>>? openSession;
     private readonly Func<string, TimeRange, Task<bool>>? openSessionAt;
     private readonly CancellationTokenSource lifetime = new();
-    private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextTrimming = TextTrimming.PathSegmentEllipsis };
     private readonly TextBlock summary = new() { TextWrapping = TextWrapping.Wrap };
     private readonly TextBlock time = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly TextBlock overlaps = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Classes = { "caution" }, IsVisible = false };
+
+    /// <summary>The overlaps, scrolled within about three lines, so an investigation of many runs keeps room for its pages.</summary>
+    private readonly ScrollViewer overlapsView = new()
+    {
+        MaxHeight = 50,
+        IsVisible = false,
+        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+    };
     private readonly TextBlock caveats = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
     private readonly ListBox members = new() { SelectionMode = SelectionMode.Single };
-    private readonly TextBlock detail = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+    private readonly TextBlock detail = new() { FontSize = 12 };
+    private readonly TextBlock detailPath = new() { FontSize = 12, TextTrimming = TextTrimming.PathSegmentEllipsis };
     private readonly Button open = new() { Content = "Open in InterCat", IsEnabled = false };
     private readonly Button relink = new() { Content = "Relink…", IsEnabled = false };
     private readonly Button alignButton = new() { Content = "Align…", IsEnabled = false };
@@ -108,9 +119,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
         Width = 940;
         Height = 660;
         MinWidth = 680;
-        MinHeight = 460;
+        // The smallest size at which each page keeps two of its sessions, lanes or notes in view, with overlaps stated and a
+        // session missing above them.
+        MinHeight = 600;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
+        // The investigation's file in one line: a path too long for it gives up its middle folders, and its tooltip has it whole.
         heading.Text = this.path;
+        ToolTip.SetTip(heading, this.path);
 
         AutomationProperties.SetName(members, "Sessions of this investigation; press Enter to open the selected one");
         AutomationProperties.SetName(open, "Open the selected session in InterCat");
@@ -163,8 +178,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
             Spacing = 1,
             Children =
             {
-                new TextBlock { Text = row?.Title, FontWeight = FontWeight.SemiBold, TextTrimming = TextTrimming.CharacterEllipsis },
-                new TextBlock { Text = row?.Detail, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis },
+                new TextBlock { Text = row?.Title, FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap },
+                new TextBlock { Text = row?.Detail, FontSize = 11, TextWrapping = TextWrapping.Wrap },
                 new TextBlock { Text = row?.Time, FontSize = 11, TextWrapping = TextWrapping.Wrap, Classes = { "muted" } },
                 new TextBlock
                 {
@@ -251,13 +266,23 @@ internal sealed class InvestigationWindow : Window, IDisposable
         }
 
         var sessionsList = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = members, Padding = new Thickness(2) };
-        var sessionsPage = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+
+        // Where the selected session is, or was last found, in one line: the session whole, and its path giving up its middle
+        // folders where it is too long, with its tooltip whole; its row says the rest.
+        var where = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*"), ColumnSpacing = 4 };
+        Grid.SetColumn(detailPath, 1);
+        where.Children.Add(detail);
+        where.Children.Add(detailPath);
+        // What naming a session and grouping hosts can and cannot say stands with the sessions it is about.
+        var sessionsPage = new Grid { RowDefinitions = new RowDefinitions("*,Auto,Auto,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
         Grid.SetRow(sessionsList, 0);
-        Grid.SetRow(detail, 1);
+        Grid.SetRow(where, 1);
         Grid.SetRow(sessionActions, 2);
+        Grid.SetRow(caveats, 3);
         sessionsPage.Children.Add(sessionsList);
-        sessionsPage.Children.Add(detail);
+        sessionsPage.Children.Add(where);
         sessionsPage.Children.Add(sessionActions);
+        sessionsPage.Children.Add(caveats);
 
         var candidatesHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(0, 8, 0, 0) };
         Grid.SetColumn(translations, 1);
@@ -287,39 +312,39 @@ internal sealed class InvestigationWindow : Window, IDisposable
         candidatesPage.Children.Add(decisions);
         candidatesPage.Children.Add(candidateNotes);
 
-        var timelineHeader = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), Margin = new Thickness(0, 8, 0, 0) };
-        Grid.SetColumn(compareInstants, 1);
-        Grid.SetColumn(refreshTimeline, 2);
-        compareInstants.VerticalAlignment = VerticalAlignment.Top;
-        compareInstants.Margin = new Thickness(0, 0, 8, 0);
-        refreshTimeline.VerticalAlignment = VerticalAlignment.Top;
-        timelineIntro.Margin = new Thickness(0, 0, 12, 0);
-        timelineHeader.Children.Add(timelineIntro);
-        timelineHeader.Children.Add(compareInstants);
-        timelineHeader.Children.Add(refreshTimeline);
-        var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
-        var zooming = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto,Auto,Auto,Auto") };
-        columnReadout.Margin = new Thickness(0, 0, 12, 0);
-        zooming.Children.Add(columnReadout);
-        foreach ((Button button, int column) in new[] { (openColumn, 1), (zoomIn, 2), (zoomOut, 3), (zoomWhole, 4), (savedViews, 5) })
+        var timelineTools = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
+        foreach (Button button in new[] { zoomIn, zoomOut, zoomWhole, savedViews, compareInstants, refreshTimeline })
         {
-            Grid.SetColumn(button, column);
-            button.Margin = new Thickness(8, 0, 0, 0);
-            zooming.Children.Add(button);
+            button.Margin = new Thickness(8, 4, 0, 0);
+            timelineTools.Children.Add(button);
         }
+
+        // The chart and its lanes in words scroll together: where the page has room the chart is given all of it, and where
+        // it has not, the tools above and the chosen column below stay in view however many lanes and notes there are.
+        var drawing = new Grid { RowDefinitions = new RowDefinitions("*,Auto"), RowSpacing = 8 };
+        Grid.SetRow(timelineWords, 1);
+        drawing.Children.Add(new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = timelineChart });
+        drawing.Children.Add(timelineWords);
         var chart = new ScrollViewer
         {
-            Content = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = timelineChart },
-            VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto,
+            Content = drawing,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
         };
-        Grid.SetRow(timelineHeader, 0);
-        Grid.SetRow(chart, 1);
-        Grid.SetRow(zooming, 2);
-        Grid.SetRow(timelineWords, 3);
-        timelinePage.Children.Add(timelineHeader);
+        var chosenColumn = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto") };
+        columnReadout.Margin = new Thickness(0, 0, 12, 0);
+        Grid.SetColumn(openColumn, 1);
+        openColumn.VerticalAlignment = VerticalAlignment.Top;
+        chosenColumn.Children.Add(columnReadout);
+        chosenColumn.Children.Add(openColumn);
+        var timelinePage = new Grid { RowDefinitions = new RowDefinitions("Auto,Auto,*,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
+        Grid.SetRow(timelineTools, 1);
+        Grid.SetRow(chart, 2);
+        Grid.SetRow(chosenColumn, 3);
+        timelinePage.Children.Add(timelineIntro);
+        timelinePage.Children.Add(timelineTools);
         timelinePage.Children.Add(chart);
-        timelinePage.Children.Add(zooming);
-        timelinePage.Children.Add(timelineWords);
+        timelinePage.Children.Add(chosenColumn);
 
         var noteActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (Button button in new[] { addNote, rewordNote, removeNote, showNote })
@@ -349,17 +374,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
         };
         AutomationProperties.SetName(tabs, "Sessions, candidate joins, timeline and notes");
 
-        var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlaps, status } };
-        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto") };
-        Grid.SetColumn(package, 1);
-        Grid.SetColumn(close, 2);
-        package.VerticalAlignment = VerticalAlignment.Bottom;
-        package.Margin = new Thickness(0, 0, 8, 0);
-        close.VerticalAlignment = VerticalAlignment.Bottom;
-        caveats.Margin = new Thickness(0, 0, 12, 0);
-        footer.Children.Add(caveats);
-        footer.Children.Add(package);
-        footer.Children.Add(close);
+        overlapsView.Content = overlaps;
+        var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlapsView, status } };
+        var footer = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 8,
+            HorizontalAlignment = HorizontalAlignment.Right,
+            Children = { package, close },
+        };
         var grid = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10 };
         Grid.SetRow(header, 0);
         Grid.SetRow(tabs, 1);
@@ -554,7 +577,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             summary.Text = view.Summary;
             time.Text = view.Time;
             overlaps.Text = string.Join("\n", view.Overlaps ?? []);
-            overlaps.IsVisible = view.Overlaps is { Count: > 0 };
+            overlaps.IsVisible = overlapsView.IsVisible = view.Overlaps is { Count: > 0 };
             caveats.Text = string.Join(" ", view.Caveats);
             members.ItemsSource = view.Members;
             Guid? noted = (notesList.SelectedItem as InvestigationNoteRow)?.NoteId;
@@ -1128,8 +1151,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
         alignButton.IsEnabled = row is { IsTimeReference: false } && View is { Members.Count: > 1 };
         withdraw.IsEnabled = row is { IsAligned: true };
         oneHost.IsEnabled = row is not null && View is { } shown && shown.Members.Any(other => other.HostId != row.HostId);
-        detail.Text = row is null
-            ? string.Empty
-            : $"{row.Title}: {row.FullPath}. {row.Time}." + (row.Reason is null ? string.Empty : $" {row.Reason}");
+        detail.Text = row is null ? string.Empty : $"{row.Title.Split(',')[0]} {(row.HoldsItsCapture ? "is at" : "was last found at")}";
+        detailPath.Text = row?.FullPath;
+        ToolTip.SetTip(detailPath, row?.FullPath);
     }
 }

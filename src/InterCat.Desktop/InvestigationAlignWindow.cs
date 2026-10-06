@@ -62,6 +62,7 @@ internal sealed class InvestigationAlignWindow : Window
         reference.IsEnabled = references.Count > 1;
         byInstant.IsChecked = true;
         AutomationProperties.SetName(reference, "The session to align to: the investigation's clock, or a session placed in it");
+        TrimmedChoices.Apply(reference);
         AutomationProperties.SetName(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetName(byWallClock, "Align by the two captures' wall clocks");
         AutomationProperties.SetName(byInstant, "Align by one or two instants read in both sessions");
