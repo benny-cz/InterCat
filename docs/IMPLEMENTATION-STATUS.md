@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 360 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 361 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 361 — I18's reader test lets go of the guard from a thread of its own (§13.6):**
+  - Its writer let go of the guard from a thread-pool continuation, which runs only once a worker is free. Load
+    alone never delayed it in 45 runs; holding the pool's workers made the reader give up every time, with the
+    message revision 360's Release run failed with. A thread of its own lets go on time under the same hold, and
+    §13.6 now says a test acts that way.
 
 - **Revision 360 — an investigation keeps the window's panes (§6.1, §26.3, `workspace-v15`):**
   - The split dragged between the graph and the timeline, and the pane Expand or F11 let fill the column, lasted only
@@ -1042,14 +1048,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 361 was built and tested in a new Linux container. Its baseline at revision 360 ran **1,623 tests** in Debug
+  and Release, each passing **1,525 with 4 skipped**. Its 94 failures are the Windows and font-metric ones revision 293
+  leaves, with one font metric more than the last container's 93: here the header's title at 1080×700 has 121 px of the
+  150 its test asks, and the investigation window at its least height 162 of the 165 px its first two sessions need.
+  Revision 361's runs fail the same 94 in both configurations. Its test passed 8 runs out of 8 alone. In a probe since
+  removed, holding the pool, the old form failed 4 runs out of 4 and the new one passed 4 out of 4. It caught two of
+  three mutations of the wait it guards: a reader that does not wait, and a wait shorter than the 200 ms removal; a wait
+  without a bound hung it until it was killed at 120 s.
+
 - Revision 360 was built and tested in the same Linux container: Debug and Release each ran **1,623 tests**. Debug
   passed **1,526 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Release
   passed 1,525: it also failed I18's "a reader waits out a writer's removal instead of failing its lease" once, a
   storage test this slice does not touch, whose reader gave up after its 1 s wait. Run alone it passed 8 times out of 8.
   Its writer is a thread-pool continuation that releases the guard after 200 ms, so the likeliest cause is that the
-  whole suite's load delayed it past the reader's wait. Reproducing that under load, and releasing the guard from a
-  thread of the test's own, is owed. Its tests keep, replace, remove and refuse an investigation's panes, read a
-  version 14 file and state them in `icat workspace show`.
+  whole suite's load delayed it past the reader's wait. Revision 361 found that load alone did not, but a held pool
+  did, and releases the guard from a thread of the test's own. Its tests keep, replace, remove and refuse an
+  investigation's panes, read a version 14 file and state them in `icat workspace show`.
   In the window they drag the splitter, step it with a key and let the timeline fill the column. They open a session on
   its own, then one from the investigation, and drag each pane to its least height. At its least height the
   investigation's window keeps two sessions in view with the panes said beneath them. They caught each of 22 mutations:

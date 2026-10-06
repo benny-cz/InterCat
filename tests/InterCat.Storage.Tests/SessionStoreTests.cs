@@ -1003,7 +1003,7 @@ public sealed class SessionStoreTests
     }
 
     [Fact(DisplayName = "I18: a reader waits out a writer's removal instead of failing its lease")]
-    public async Task AReaderWaitsOutARemoval()
+    public void AReaderWaitsOutARemoval()
     {
         using var session = new TemporarySession();
         using (StoreStagingFile staged = Stage(session.Store, "segment-0001.icats", "rows"))
@@ -1012,18 +1012,28 @@ public sealed class SessionStoreTests
             _ = session.Store.Commit([staged], CommittedBoundary.None, Committed);
         }
 
-        // A writer removing files holds the guard exclusively, for a moment.
+        // A writer removing files holds the guard exclusively, for a moment. It lets go from a thread of its own: a
+        // continuation on the thread pool waits for a free worker, which a loaded suite, or the reader itself blocking
+        // one, can withhold for longer than the reader waits.
         string guard = Path.Combine(session.Path, SessionStore.EvidenceLeaseLockFileName);
         var removal = new FileStream(guard, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
-        Task released = Task.Delay(TimeSpan.FromMilliseconds(200)).ContinueWith(
-            _ => removal.Dispose(), CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
+        var writer = new Thread(() =>
+        {
+            Thread.Sleep(TimeSpan.FromMilliseconds(200));
+            removal.Dispose();
+        })
+        {
+            IsBackground = true,
+            Name = "Removing writer",
+        };
+        writer.Start();
 
         using (EvidenceLease lease = session.Store.AcquireLease())
         {
             Assert.Equal(1, lease.Manifest.Generation);
         }
 
-        await released;
+        writer.Join();
 
         // One that holds it far longer than any removal is reported, not waited on for ever.
         using (new FileStream(guard, FileMode.Open, FileAccess.ReadWrite, FileShare.None))
