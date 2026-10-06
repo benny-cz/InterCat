@@ -18,8 +18,9 @@ public sealed record WorkspacePin
 
 /// <summary>
 /// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where,
-/// what its rows are ranked by, and the evidence policy its records are counted under. It is a preference, not a finding,
-/// so a member has one, replaced as it changes rather than kept as revisions.
+/// what its rows are ranked by, the evidence policy its records are counted under, and the scale its timeline lanes are
+/// read against. It is a preference, not a finding, so a member has one, replaced as it changes rather than kept as
+/// revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -40,11 +41,20 @@ public sealed record WorkspaceLayout
     /// </summary>
     public EvidencePolicy? EvidencePolicy { get; init; }
 
+    /// <summary>
+    /// Whether each of the session's timeline lanes is read against its own busiest bar rather than one scale every lane
+    /// shares, the default (§6.2's normalization scope).
+    /// </summary>
+    public bool ScalesEachLane { get; init; }
+
     public required DateTimeOffset UpdatedUtc { get; init; }
 
-    /// <summary>Whether it keeps anything: a pin, a ranking other than records counted whole, or another evidence policy.</summary>
+    /// <summary>
+    /// Whether it keeps anything: a pin, a ranking other than records counted whole, another evidence policy, or each lane
+    /// on its own scale.
+    /// </summary>
     [JsonIgnore]
-    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond || EvidencePolicy is not null;
+    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond || EvidencePolicy is not null || ScalesEachLane;
 }
 
 public static partial class InvestigationWorkspace
@@ -57,9 +67,10 @@ public static partial class InvestigationWorkspace
 
     /// <summary>
     /// Keeps <paramref name="pins"/>, the ranking <paramref name="rankBy"/> read per second when
-    /// <paramref name="perSecond"/> says so, and the records counted under <paramref name="evidencePolicy"/>, as how member
+    /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, and each timeline
+    /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, as how member
     /// <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing, ranks by records
-    /// counted whole and counts correlated evidence removes it. Null when it is removed.
+    /// counted whole, counts correlated evidence and reads every lane on one scale removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -68,7 +79,8 @@ public static partial class InvestigationWorkspace
         DateTimeOffset now,
         RankingMetric rankBy = RankingMetric.Records,
         bool perSecond = false,
-        EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated)
+        EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated,
+        bool scalesEachLane = false)
     {
         ArgumentNullException.ThrowIfNull(pins);
         if (!Enum.IsDefined(rankBy))
@@ -101,6 +113,7 @@ public static partial class InvestigationWorkspace
             RankBy = rankBy == RankingMetric.Records ? null : rankBy,
             PerSecond = perSecond,
             EvidencePolicy = evidencePolicy == Domain.EvidencePolicy.IncludeCorrelated ? null : evidencePolicy,
+            ScalesEachLane = scalesEachLane,
             UpdatedUtc = now,
         };
         WorkspaceLayout? layout = kept.KeepsAnything ? kept : null;
@@ -127,7 +140,7 @@ public static partial class InvestigationWorkspace
         : pins.Any(pin => !new GraphPoint(pin.X, pin.Y).IsValid) ? "a node is pinned outside the graph"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v13.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v14.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -151,6 +164,12 @@ public static partial class InvestigationWorkspace
         if (VersionOf(workspace) < 13 && workspace.Layouts.Any(layout => layout.EvidencePolicy is not null))
         {
             return $"a {workspace.Contract} file counts no session's records under another evidence policy";
+        }
+
+        // Each lane on its own scale arrived with the fourteenth version (revision 343).
+        if (VersionOf(workspace) < 14 && workspace.Layouts.Any(layout => layout.ScalesEachLane))
+        {
+            return $"a {workspace.Contract} file reads no session's timeline lanes on scales of their own";
         }
 
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];

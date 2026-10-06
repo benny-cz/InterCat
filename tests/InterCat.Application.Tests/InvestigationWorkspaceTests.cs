@@ -679,6 +679,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         As(InvestigationWorkspace.TwelfthContract,
             () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.BytesSent, perSecond: true),
             read => read.Layouts.Single() is { Pins.Count: 0, RankBy: RankingMetric.BytesSent, PerSecond: true, EvidencePolicy: null });
+        As(InvestigationWorkspace.ThirteenthContract,
+            () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, evidencePolicy: EvidencePolicy.IncludeCandidates),
+            read => read.Layouts.Single() is { EvidencePolicy: EvidencePolicy.IncludeCandidates, ScalesEachLane: false });
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
@@ -686,7 +689,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal((InvestigationWorkspace.Contract, 1, 1), (rewritten.Contract, rewritten.Layouts.Count, rewritten.Notes.Count));
     }
 
-    [Fact(DisplayName = "R22: a member's layout is kept by node, ranking and evidence policy, replaced as it changes, and refused where it cannot be")]
+    [Fact(DisplayName = "R22: a member's layout is kept by node, ranking, evidence policy and lane scale, replaced as it changes, and refused where it cannot be")]
     public void AMembersLayoutIsKept()
     {
         string workspace = NewWorkspace();
@@ -791,6 +794,23 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
                 StringComparison.Ordinal);
         }
+
+        // A layout keeps each timeline lane on its own scale (§6.2) on its own; one scale for every lane keeps nothing.
+        File.WriteAllText(workspace, written);
+        WorkspaceLayout scaled = InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true)!;
+        Assert.True(scaled.ScalesEachLane);
+        Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
+        string lanes = File.ReadAllText(workspace);
+        Assert.Contains("\"scalesEachLane\": true", lanes, StringComparison.Ordinal);
+
+        // A file of a version before it reads every lane on one scale, and one saying otherwise is refused.
+        File.WriteAllText(workspace, lanes.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.ThirteenthContract}\"",
+            StringComparison.Ordinal));
+        Assert.Contains("reads no session's timeline lanes on scales of their own",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+        File.WriteAllText(workspace, lanes);
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

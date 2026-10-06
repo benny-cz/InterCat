@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v13.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v14.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v13.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v14.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,13 +59,14 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v13`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v14`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
 /// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
 /// aligned to the time reference itself, a `workspace-v6` file as one without host confirmations, a `workspace-v7` file
 /// as one without address translations, a `workspace-v8` file as one without notes, a `workspace-v9` file as one
 /// without saved views, a `workspace-v10` file as one without layouts, a `workspace-v11` file as one whose layouts
-/// rank nothing, and a `workspace-v12` file as one whose layouts count correlated evidence.
+/// rank nothing, a `workspace-v12` file as one whose layouts count correlated evidence, and a `workspace-v13` file as one
+/// whose layouts read every timeline lane on one scale.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -129,13 +130,19 @@ public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Gui
 }
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v13` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v14` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v13";
+    public const string Contract = "workspace-v14";
+
+    /// <summary>
+    /// The thirteenth version, revision 339's: layouts pin, rank and keep an evidence policy, and read every timeline lane
+    /// on one scale. It is read, and written as the current one.
+    /// </summary>
+    public const string ThirteenthContract = "workspace-v13";
 
     /// <summary>
     /// The twelfth version, revision 301's: layouts pin and rank, and count correlated evidence. It is read, and written as
@@ -348,7 +355,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v13.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v14.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -511,13 +518,13 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or TwelfthContract or EleventhContract or TenthContract or NinthContract
+        if (workspace.Contract is not (Contract or ThirteenthContract or TwelfthContract or EleventhContract or TenthContract or NinthContract
             or EighthContract or SeventhContract or SixthContract or FifthContract or FourthContract or ThirdContract or SecondContract
             or FirstContract))
         {
             return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
                 + $"{FifthContract}, {SixthContract}, {SeventhContract}, {EighthContract}, {NinthContract}, {TenthContract}, "
-                + $"{EleventhContract}, {TwelfthContract} or {Contract}";
+                + $"{EleventhContract}, {TwelfthContract}, {ThirteenthContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)

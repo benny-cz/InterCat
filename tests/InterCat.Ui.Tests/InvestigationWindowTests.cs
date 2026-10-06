@@ -92,7 +92,7 @@ public sealed class InvestigationWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins, ranking and evidence policy there, and gets them back when opened from it again")]
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, and gets them back when opened from it again")]
     public async Task AnInvestigationKeepsASessionsPins()
     {
         using var root = new TemporaryDirectory();
@@ -110,7 +110,7 @@ public sealed class InvestigationWindowTests
             Button open = Named<Button>(window, "Open in InterCat");
             open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
-            Assert.EndsWith("Its pins, ranking and evidence policy are kept in the investigation case.icat-workspace.",
+            Assert.EndsWith("Its pins and view settings are kept in the investigation case.icat-workspace.",
                 main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
 
             // A node pinned on its graph is kept in the investigation, where it was put.
@@ -142,12 +142,18 @@ public sealed class InvestigationWindowTests
             Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates, candidates.EvidencePolicy);
             Assert.Single(candidates.Pins);
 
+            // And so is reading each timeline lane on its own scale (§6.2).
+            counting.ScalesEachLane = true;
+            await main.PinsWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
+
             // Opened on its own, the session holds none of the investigation's pins, ranks by records, and counts correlated
             // evidence.
             Assert.True(await main.OpenSessionAsync(paired));
             var alone = (WorkspaceViewModel)main.DataContext!;
             Assert.False(alone.IsGraphNodePinned(key));
-            Assert.Equal((RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated), (alone.RankBy, alone.PerSecond, alone.EvidencePolicy));
+            Assert.Equal((RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false),
+                (alone.RankBy, alone.PerSecond, alone.EvidencePolicy, alone.ScalesEachLane));
             Assert.False(main.GetControl<StackPanel>("EvidencePolicyPanel").IsVisible);
 
             // Opened from the investigation again, its node is pinned where it was put, and its rows ranked as they were.
@@ -155,9 +161,10 @@ public sealed class InvestigationWindowTests
             WaitFor(() => ((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
             var again = (WorkspaceViewModel)main.DataContext!;
             Assert.Equal(place, again.GraphPins[key]);
-            Assert.Equal((RankingMetric.BytesSent, true, EvidencePolicy.IncludeCandidates), (again.RankBy, again.PerSecond, again.EvidencePolicy));
-            Assert.Contains("which put back 1 pin, its ranking by bytes sent per second and its counting of candidates.",
-                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.Equal((RankingMetric.BytesSent, true, EvidencePolicy.IncludeCandidates, true),
+                (again.RankBy, again.PerSecond, again.EvidencePolicy, again.ScalesEachLane));
+            Assert.Contains("which put back 1 pin, its ranking by bytes sent per second, its counting of candidates and each "
+                + "timeline lane on its own scale.", main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
             Assert.True(main.GetControl<StackPanel>("EvidencePolicyPanel").IsVisible);
 
             // Released, the pin is gone and the ranking kept; ranked by records again, the investigation keeps no layout of it.
@@ -171,6 +178,9 @@ public sealed class InvestigationWindowTests
             Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates,
                 InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.EvidencePolicy);
             Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated));
+            await main.PinsWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.ScalesEachLane);
+            ((WorkspaceViewModel)main.DataContext!).ScalesEachLane = false;
             await main.PinsWritten;
             Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
             window.Close();
