@@ -250,7 +250,7 @@ public sealed class LadderKeyboardTests
         AutomationPeer timelinePeer = ControlAutomationPeer.CreatePeerForElement(timeline);
         AutomationPeer minimapPeer = ControlAutomationPeer.CreatePeerForElement(window.GetControl<MinimapView>("MinimapSurface"));
         string whole = "the whole session in view, " + WorkspaceTime.FormatRange(viewModel.Snapshot.Extent, CultureInfo.CurrentCulture);
-        Assert.EndsWith(" · " + whole, timelinePeer.GetItemStatus(), StringComparison.Ordinal);
+        Assert.EndsWith(" · " + whole + " · session time", timelinePeer.GetItemStatus(), StringComparison.Ordinal);
         Assert.True(timeline.Focus());
 
         window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);

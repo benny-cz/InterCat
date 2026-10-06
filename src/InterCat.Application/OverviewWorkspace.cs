@@ -59,6 +59,7 @@ public static class OverviewWorkspace
             CoverageLedgerPublished = overview.CoverageLedgerPublished,
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Recording = overview.Recording,
+            Began = overview.Began,
         };
     }
 

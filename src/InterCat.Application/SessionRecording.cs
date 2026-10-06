@@ -83,6 +83,27 @@ public static class SessionRecording
                 : null;
     }
 
+    /// <summary>
+    /// When the capture began by the wall clock its calibration read (`contracts/clock-calibration-v1.md`): session time 0,
+    /// in UTC, as its first sample's wall-clock reading less that sample's session time. Null when the generation carries
+    /// no calibration of this clock - an import, or a capture before revision 255 - or its first sample has no session time.
+    /// </summary>
+    public static DateTimeOffset? Began(IOwnedDirectory root, SessionManifestV1 manifest, SourceClockDescriptor clock)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (ClockCalibrationV1.Read(root, manifest) is not { Samples.Count: > 0 } calibration || calibration.ClockId != clock.Id.Value)
+        {
+            return null;
+        }
+
+        ClockCalibrationSampleV1 first = calibration.Samples[0];
+        return SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, first.NativeTicks)).SessionTime
+            is { } since
+                ? first.Utc.ToUniversalTime().AddTicks(-(since.Nanoseconds / 100))
+                : null;
+    }
+
     private static TimeRange? Extent(SessionStore store, SessionManifestV1 manifest, CancellationToken cancellationToken)
     {
         long first = long.MaxValue;

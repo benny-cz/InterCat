@@ -318,6 +318,31 @@ public static class WorkspaceTime
             $"[{(range.StartTicks / divisor).ToString(format, provider)}{separator} {(range.EndTicks / divisor).ToString(format, provider)}) {unit}");
     }
 
+    /// <summary>What a session's instants are counted in, where the wall clock its capture began at is not known.</summary>
+    public const string SessionTimeWords = "session time";
+
+    /// <summary>
+    /// The time base a session's instants are counted in, as the timeline states it under its axis (§6.2): session time,
+    /// and, where the capture recorded its wall clock, the moment it counts from in <paramref name="zone"/> with its offset
+    /// from UTC, since a wall-clock time is never stated without one - "session time since 10/06/2026 14:03:12 UTC+02:00".
+    /// </summary>
+    public static string TimeBase(DateTimeOffset? began, TimeZoneInfo zone, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(zone);
+        if (began is not { } start)
+        {
+            return SessionTimeWords;
+        }
+
+        DateTimeOffset local = TimeZoneInfo.ConvertTime(start, zone);
+        TimeSpan offset = local.Offset;
+        string utc = offset == TimeSpan.Zero ? "UTC"
+            : string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"UTC{(offset < TimeSpan.Zero ? '-' : '+')}{offset:hh\\:mm}");
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return string.Create(provider, $"{SessionTimeWords} since {local.DateTime:d} {local.DateTime:T} {utc}");
+    }
+
     /// <summary>One instant, in the unit a visible span of <paramref name="span"/> ticks needs, as an axis labels its edges.</summary>
     public static string FormatInstant(long ticks, long span, IFormatProvider? culture = null)
     {
@@ -384,4 +409,10 @@ public sealed record WorkspaceSnapshot(
     /// null when the capture recorded no stop.
     /// </summary>
     public TimeRange? Recording { get; init; }
+
+    /// <summary>
+    /// When the session's capture began by the wall clock it recorded: session time 0, which the timeline's axis counts
+    /// from, in UTC; null when the capture recorded no wall clock, as an import does.
+    /// </summary>
+    public DateTimeOffset? Began { get; init; }
 }

@@ -51,6 +51,12 @@ public sealed record SessionOverviewBundle(
     /// <summary>The interval the capture recorded (<see cref="SessionRecording"/>); null when it recorded no stop.</summary>
     public TimeRange? Recording { get; init; }
 
+    /// <summary>
+    /// When the capture began by the wall clock it recorded: session time 0, in UTC (<see cref="SessionRecording.Began"/>);
+    /// null when it recorded none.
+    /// </summary>
+    public DateTimeOffset? Began { get; init; }
+
     /// <summary>The digest of the one generation's manifest the overview was built from (I16).</summary>
     public string? ManifestDigest { get; init; }
 
@@ -300,6 +306,7 @@ public static class SessionOverviewProjector
             Clock = clock,
             RowsNoProcessHolds = heldByNone,
             Recording = SessionRecording.Interval(store.Root, manifest, clock, extent),
+            Began = SessionRecording.Began(store.Root, manifest, clock),
             ManifestDigest = manifest.Digest,
             Policy = policy,
         };

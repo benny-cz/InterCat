@@ -132,7 +132,7 @@ public sealed partial class AccessibilityAuditTests
         foreach ((string name, string role, string? status) in new[]
         {
             ("GraphSurface", "graph", (string?)workspace.GraphSummary),
-            ("TimelineSurface", "timeline", workspace.TimelineCaption + " · " + inView),
+            ("TimelineSurface", "timeline", workspace.TimelineCaption + " · " + inView + " · " + WorkspaceTime.SessionTimeWords),
             ("MinimapSurface", "minimap", inView),
         })
         {

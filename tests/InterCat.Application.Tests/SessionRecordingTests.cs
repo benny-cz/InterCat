@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
@@ -136,6 +137,54 @@ public sealed class SessionRecordingTests
 
         // A 3 GHz reading is a third of a nanosecond.
         static ObservationRowV1 FastRecord(long nativeTicks) => Record(nativeTicks) with { SessionRelativeTicks = nativeTicks / 3 };
+    }
+
+    [Fact(DisplayName = "§6.2: a capture began, by the wall clock it recorded, at its first calibration sample less that sample's session time, and an import began at no wall-clock time")]
+    public void ACaptureBeganWhereItsCalibrationPlacesSessionTimeZero()
+    {
+        // The calibration read the clock 50 µs into the session, when the wall clock read 150 µs past noon: session time 0
+        // was 100 µs past noon, which the overview and every view of it carry.
+        DateTimeOffset began = Started.AddTicks(1_000);
+        using (var calibrated = new TemporarySession())
+        {
+            Publish(calibrated.Store, [Record(1_100)], clock: Clock, calibration: Calibration(1_500, 25_001_000));
+            Assert.Equal(began, SessionRecording.Began(calibrated.Store.Root, calibrated.Store.Current!, Clock));
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(calibrated.Store);
+            Assert.Equal(began, overview.Began);
+            Assert.Equal(began, OverviewWorkspace.From(overview).Began);
+
+            // A calibration of another clock places nothing on this one's time.
+            Assert.Null(SessionRecording.Began(calibrated.Store.Root, calibrated.Store.Current!, ClockFor(ClockId.New(), "elsewhere")));
+            calibrated.Store.ReleaseSegmentReaders();
+        }
+
+        // A capture's start alone still says when it began, though no stop says how long it recorded.
+        using (var started = new TemporarySession())
+        {
+            Publish(started.Store, [Record(1_100)], clock: Clock, calibration: Calibration(1_500, 25_001_000) with { Samples = [Sample(1_500)] });
+            Assert.Equal(began, SessionOverviewProjector.Project(started.Store).Began);
+            started.Store.ReleaseSegmentReaders();
+        }
+
+        using var imported = new TemporarySession();
+        Publish(imported.Store, [Record(1_100)], clock: Clock);
+        Assert.Null(SessionOverviewProjector.Project(imported.Store).Began);
+        imported.Store.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "§6.2: the time base names session time, and the wall-clock moment it counts from with its offset from UTC, in the reader's zone and culture")]
+    public void TheTimeBaseNamesItsWallClockWithItsOffset()
+    {
+        DateTimeOffset began = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        CultureInfo invariant = CultureInfo.InvariantCulture;
+        Assert.Equal("session time", WorkspaceTime.TimeBase(null, TimeZoneInfo.Utc, invariant));
+        Assert.Equal("session time since 09/29/2026 12:00:00 UTC", WorkspaceTime.TimeBase(began, TimeZoneInfo.Utc, invariant));
+        Assert.Equal("session time since 09/29/2026 14:00:00 UTC+02:00", WorkspaceTime.TimeBase(began,
+            TimeZoneInfo.CreateCustomTimeZone("east", TimeSpan.FromHours(2), "east", "east"), invariant));
+        Assert.Equal("session time since 09/29/2026 06:30:00 UTC-05:30", WorkspaceTime.TimeBase(began,
+            TimeZoneInfo.CreateCustomTimeZone("west", -TimeSpan.FromMinutes(330), "west", "west"), invariant));
+        Assert.Equal("session time since 29.09.2026 12:00:00 UTC", WorkspaceTime.TimeBase(began, TimeZoneInfo.Utc,
+            CultureInfo.GetCultureInfo("de-DE")));
     }
 
     private static TimeRange? RecordingOf(ObservationRowV1[] rows, ClockCalibrationV1? calibration)
