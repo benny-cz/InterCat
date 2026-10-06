@@ -3957,12 +3957,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : "All " + WorkspaceTime.FormatDuration(Snapshot.Extent.EndTicks - Snapshot.Extent.StartTicks, CultureInfo.CurrentCulture);
 
     /// <summary>
-    /// What the inspector's evidence line describes: the chosen relationship, processes or row, or the selected aggregate,
-    /// group or process; with nothing selected in a published session, the records E then lists, the rung's own.
+    /// What the inspector's evidence line describes: the chosen relationship, processes or row, the channel whose own rung
+    /// is shown, or the selected aggregate, group or process; with nothing selected in a published session, the records E
+    /// then lists, the rung's own.
     /// </summary>
     public string EvidenceHeading => selectedRelationship is not null ? "Selected relationship"
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
+        : OpenedChannel is { } opened ? opened.Heading
         : SelectedCluster is not null ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : RungRecords is not null ? "Records E lists"
@@ -3991,10 +3993,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
             }
 
-            // A row chosen among a process's rows: its records, as E lists them.
+            // A row chosen among a process's rows: its records, as E lists them; and on its own rung once opened.
             if (ChosenRow is { } row)
             {
                 return ChosenRowEvidence(row.Row);
+            }
+
+            if (OpenedChannel is { } opened)
+            {
+                return opened.Summary;
             }
 
             if (SelectedCluster is { } cluster)
@@ -5481,6 +5488,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
+        OnPropertyChanged(nameof(EvidenceHeading));
+        OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(CanLoadMore));
         OnPropertyChanged(nameof(ShowsLoadMore));
         OnPropertyChanged(nameof(LoadMoreLabel));

@@ -7,7 +7,8 @@ namespace InterCat.Desktop;
 /// <summary>
 /// A row chosen among a process's rows is the selection wherever the selection is read (§6.4, I5): the inspector describes
 /// it, so the evidence card counts its records, the timeline highlights them and E lists them - a paired channel's, a
-/// one-sided connection's, an RPC channel's calls' or the process's HTTP exchanges' - rather than the process's own.
+/// one-sided connection's, an RPC channel's calls' or the process's HTTP exchanges' - rather than the process's own. Opened,
+/// its own rung's card counts it alike, since E lists its records from there too.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -44,12 +45,12 @@ public sealed partial class WorkspaceViewModel
     {
         if (RpcChannelKeys.IsRpc(row.Key))
         {
-            return Spoken.Count(row.Source.ObservationCount, "call record") + " · an RPC call carries no size";
+            return CallRecords(row.Source.ObservationCount);
         }
 
         if (HttpExchangeKeys.IsHttp(row.Key))
         {
-            return Spoken.Count(row.Source.ObservationCount, "buffer record") + " · " + row.KnownBytes;
+            return BufferRecords(row.Source.ObservationCount, row.KnownBytes);
         }
 
         if (TransportConnection.IsKey(row.Key))
@@ -60,7 +61,34 @@ public sealed partial class WorkspaceViewModel
 
         return Snapshot.Channels.FirstOrDefault(channel => string.Equals(channel.Key, row.Key, StringComparison.Ordinal))
             is { } paired
-            ? Spoken.Count(paired.ObservationCount, "observed record") + " at its two ends · " + FocusedChannelBytes(paired)
+            ? PairedRecords(paired)
             : Spoken.Count(row.Source.ObservationCount, "record");
     }
+
+    /// <summary>
+    /// On a channel's own rung, the channel it opened, as the card heads and counts it: the records E lists from there and
+    /// the level line counts (§6.4, I5), in the words its row used where it was chosen, so opening a channel does not turn
+    /// the card back to the process it was opened from. Null at any other rung, in the tour, and while several processes
+    /// are chosen there, which the card then counts and E lists, as it does a chosen relationship before either.
+    /// </summary>
+    private (string Heading, string Summary)? OpenedChannel =>
+        !realOverview || HasMultiSelection ? null
+        : IsRpcChannelRung
+            ? ("This RPC channel", rpcCalls?.Channel is { } calls ? CallRecords(calls.Records) : RpcCallSummary(brief: true))
+        : IsHttpChannelRung
+            ? ("These HTTP exchanges", httpExchanges?.Channel is { } exchanges
+                ? BufferRecords(exchanges.Records, HttpBytes(exchanges))
+                : HttpExchangeSummary(brief: true))
+        : FocusedRealChannel is { } paired ? ("This channel", PairedRecords(paired))
+        : null;
+
+    /// <summary>An RPC channel's call records, which carry no size.</summary>
+    private static string CallRecords(long records) => Spoken.Count(records, "call record") + " · an RPC call carries no size";
+
+    /// <summary>HTTP exchanges' buffer records, with what their messages held.</summary>
+    private static string BufferRecords(long records, string bytes) => Spoken.Count(records, "buffer record") + " · " + bytes;
+
+    /// <summary>A paired channel's records at its two ends, and the bytes sent across it, as its own rung states them.</summary>
+    private string PairedRecords(Channel paired) =>
+        Spoken.Count(paired.ObservationCount, "observed record") + " at its two ends · " + FocusedChannelBytes(paired);
 }

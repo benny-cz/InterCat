@@ -606,8 +606,8 @@
                   <TextBlock x:Name="TimeScopeValue" Text="{Binding IntervalLabel}" TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Spacing="3">
-                  <TextBlock Text="{Binding EvidenceHeading}" Classes="muted" />
-                  <TextBlock Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
+                  <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />
+                  <TextBlock x:Name="EvidenceSummaryText" Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->

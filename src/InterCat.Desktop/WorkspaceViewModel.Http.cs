@@ -242,8 +242,7 @@ public sealed partial class WorkspaceViewModel
     private static RungRow HttpChannelRungRow(HttpChannelSummary channel, FamilyTokens tokens)
     {
         string detail = "HTTP client · " + channel.Outcome(CultureInfo.CurrentCulture);
-        string bytes = string.Create(CultureInfo.CurrentCulture,
-            $"{channel.RequestBytes:N0} B sent, {channel.ResponseBytes:N0} B received in HTTP messages");
+        string bytes = HttpBytes(channel);
         // The rail is narrow, so the row reads "HTTP exchanges"; its crumb, filter and records' scope say the whole name.
         LadderRow source = HttpChannelRow(channel.Key, HttpChannelSummary.Name, detail, channel.Records);
         return new(channel.Key, "HTTP exchanges", detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
@@ -253,6 +252,10 @@ public sealed partial class WorkspaceViewModel
                 + "Press Enter to list the exchanges.",
         };
     }
+
+    /// <summary>What a process's HTTP exchanges' messages held, as their row and the card state it.</summary>
+    private static string HttpBytes(HttpChannelSummary channel) => string.Create(CultureInfo.CurrentCulture,
+        $"{channel.RequestBytes:N0} B sent, {channel.ResponseBytes:N0} B received in HTTP messages");
 
     /// <summary>One exchange's row: how long it took, or why that is not known, and what was recorded of its parts.</summary>
     private static RungRow HttpExchangeRungRow(HttpExchangeRow row, FamilyTokens tokens)

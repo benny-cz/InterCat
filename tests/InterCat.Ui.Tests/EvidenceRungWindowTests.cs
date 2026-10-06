@@ -761,6 +761,10 @@ public sealed class EvidenceRungWindowTests
         Assert.True(loadMore.IsEffectivelyVisible);
         Assert.Equal("Load the next page of calls", AutomationProperties.GetName(loadMore));
         Assert.Equal("Channel: RPC calls to svcctl (Service Control Manager)", workspace.Crumbs[^1].Display);
+
+        // The inspector's card counts the channel it opened, whose records E lists from here, once its calls are read.
+        Assert.Equal(("This RPC channel", "240 call records · an RPC call carries no size"),
+            (window.GetControl<TextBlock>("EvidenceHeadingText").Text, window.GetControl<TextBlock>("EvidenceSummaryText").Text));
         Save(window.CaptureRenderedFrame()!, "l3-rpc-calls-1080x700.png");
 
         await workspace.LoadMoreAsync();
