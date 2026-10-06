@@ -46,7 +46,9 @@ internal sealed class InvestigationViewsWindow : Window
         CanResize = false;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         AutomationProperties.SetName(views, "Saved views of the investigation's time");
+        AutomationProperties.SetHelpText(views, "Enter or a double click shows the chosen view on the timeline.");
         AutomationProperties.SetName(name, "A name for the view shown now");
+        AutomationProperties.SetHelpText(name, "Enter saves the interval the timeline shows now under this name.");
         AutomationProperties.SetName(status, "Saved views status");
         AutomationProperties.SetName(show, "Show the selected view on the timeline");
         AutomationProperties.SetName(remove, "Remove the selected view");
@@ -62,9 +64,24 @@ internal sealed class InvestigationViewsWindow : Window
         close.Click += (_, _) => Close(null);
         KeyDown += (_, key) =>
         {
-            if (key.Key != Key.Escape) return;
-            Close(null);
-            key.Handled = true;
+            if (key.Key == Key.Escape)
+            {
+                Close(null);
+                key.Handled = true;
+            }
+            else if (key.Key == Key.Enter && views.IsKeyboardFocusWithin)
+            {
+                // Enter on a view shows it, as a double click does. The list has already chosen the row with the keyboard
+                // by the time the key reaches the window, so an unchosen row is shown as a chosen one is.
+                ShowSelected();
+                key.Handled = true;
+            }
+            else if (key.Key == Key.Enter && name.IsKeyboardFocusWithin && save.IsEnabled)
+            {
+                // Enter in the name saves the view shown under it, as the button beside it does.
+                _ = SaveAsync();
+                key.Handled = true;
+            }
         };
 
         Content = new StackPanel
@@ -103,6 +120,9 @@ internal sealed class InvestigationViewsWindow : Window
 
     /// <summary>The views listed, as the list holds them.</summary>
     internal IReadOnlyList<ViewRow> Listed => [.. (views.ItemsSource as IEnumerable<ViewRow>) ?? []];
+
+    /// <summary>What the dialog says of the last thing done or refused, as its status line shows it.</summary>
+    internal string Status => status.Text ?? string.Empty;
 
     /// <summary>Selects a listed view, as a click does; a test uses it.</summary>
     internal void Select(int index) => views.SelectedIndex = index;
@@ -176,11 +196,17 @@ internal sealed class InvestigationViewsWindow : Window
         }
     }
 
+    /// <summary>Shows the chosen view on the timeline, closing the dialog; one this time reference cannot show says why.</summary>
     private void ShowSelected()
     {
-        if (views.SelectedItem is ViewRow { Current: true } row)
+        switch (views.SelectedItem)
         {
-            Close(row.View.Interval);
+            case ViewRow { Current: true } row:
+                Close(row.View.Interval);
+                break;
+            case ViewRow row:
+                status.Text = $"'{row.View.Name}' was saved on another time reference, so this one cannot show it.";
+                break;
         }
     }
 

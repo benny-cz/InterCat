@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 327 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 328 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 328 — Enter shows a saved view, as a double click does (§8.4, R15):**
+  - Enter on a saved view shows it, and Enter in the name box saves the view shown. A view saved on another time
+    reference says why it cannot be shown, where it used to do nothing.
 
 - **Revision 327 — a relationship opens from the table as from its edge (§6.7, R15):**
   - Enter or a double click on a relationship in the table now opens it as a double click on its edge does, and the
@@ -853,6 +857,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 328 was built and tested in the same Linux container: Debug and Release each ran **1,575 tests**, passing
+  **1,478 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  four of five mutations. It caught Enter on a view left unhandled, Enter in the name box that does not save, and a view
+  of another time reference that shows nothing in silence or closes the dialog. The fifth survived because it changed
+  nothing. It removed a line that chose the view with the keyboard before showing it, and the list has always chosen
+  that view itself by the time the key reaches the window. The line was dead, and is gone.
 - Revision 327 was built and tested in the same Linux container: Debug and Release each ran **1,574 tests**, passing
   **1,477 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its tests caught
   each of fourteen mutations. An RPC relationship that stops at its source process was caught, as were one that opens

@@ -699,6 +699,68 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: in the saved views Enter in the name saves the view shown, and Enter on a view shows it as a double click does")]
+    public async Task SavedViewsAnswerEnter()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            TimeRange whole = window.Timeline!.Interval!.Value;
+            await window.ZoomToAsync(new TimeRange(whole.StartTicks, whole.StartTicks + ((whole.EndTicks - whole.StartTicks) / 4)));
+            TimeRange zoomed = window.Timeline!.Interval!.Value;
+
+            // Typed into the name box, Enter saves the view shown under that name.
+            InvestigationViewsWindow dialog = window.ViewsDialog();
+            Task<TimeRange?> shown = dialog.ShowDialog<TimeRange?>(window);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(dialog.GetVisualDescendants().OfType<TextBox>().Single().Focus());
+            dialog.NameIt("The first datagrams");
+            dialog.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => dialog.Listed.Count == 1);
+            Assert.Equal(("The first datagrams", zoomed), (dialog.Listed[0].View.Name, dialog.Listed[0].View.Interval!.Value));
+
+            // Enter on the view with the keyboard, chosen or not, shows it: the dialog answers with its interval.
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            ListBox listed = dialog.GetVisualDescendants().OfType<ListBox>().Single();
+            Assert.Null(listed.SelectedItem);
+            Assert.True(listed.ContainerFromIndex(0)!.Focus());
+            Assert.Null(listed.SelectedItem);
+            dialog.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => shown.IsCompleted);
+            Assert.Equal(zoomed, await shown);
+
+            // Once the time reference changes, the view is kept but is not of this time: Enter on it says so, and the
+            // dialog stays open rather than showing nothing.
+            InvestigationWorkspace.Withdraw(workspace, b, Committed);
+            InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 1, null, Committed);
+            InvestigationViewsWindow stale = window.ViewsDialog();
+            stale.Show(window);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.False(Assert.Single(stale.Listed).Current);
+            Assert.True(stale.GetVisualDescendants().OfType<ListBox>().Single().ContainerFromIndex(0)!.Focus());
+            stale.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Assert.True(stale.IsVisible);
+            Assert.Equal("'The first datagrams' was saved on another time reference, so this one cannot show it.", stale.Status);
+            stale.Close();
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {

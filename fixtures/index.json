@@ -1571,6 +1571,7 @@
         "R22: every capture on this machine records its installation's host, each on a clock of its own",
         "R22: hosts are one only by identity, and a name never makes two of them one",
         "R22: icat workspace show states what each session's layout keeps, its pins and its ranking",
+        "R22: in the saved views Enter in the name saves the view shown, and Enter on a view shows it as a double click does",
         "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",
         "R22: owner(P) keeps the calls P made or served, and a grouping by process partitions the count",
