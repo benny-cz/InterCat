@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 319 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 320 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -76,6 +76,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 320 — the secondary windows cut off no text (§6.8):**
+  - The channel browser's rows ran a long process name past the list, losing a channel's endpoints and record count;
+    they wrap now, and the content, raw-record and channel windows are tested at their minimum size.
 
 - **Revision 319 — no text in the main window is cut off (§6.8):**
   - An empty rung's step read "Show source records (E", and the rail's card headings lost letters at its narrowest.
@@ -813,6 +817,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 320 was built and tested in the same Linux container: Debug and Release each ran **1,549 tests**, passing
+  **1,452 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
+  both mutations: channel rows that never wrap, and a list that scrolls them sideways instead.
 - Revision 319 was built and tested in the same Linux container: Debug and Release each ran **1,548 tests**, passing
   **1,451 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. Its test caught
   each of three mutations: the empty rung's step back to words that cannot wrap, headings that never wrap, and a

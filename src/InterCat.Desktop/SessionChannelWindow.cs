@@ -2,6 +2,8 @@ using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
+using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
@@ -69,6 +71,11 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         caveat.Text = "This list is paired TCP only. One-sided and ambiguous observations remain in "
             + "whole-session source rows. Counts are observed records, not bytes or logical operations.";
         rows.SelectionChanged += (_, _) => UpdateSelection();
+
+        // A channel reads by the processes it joins, whose names can be long: a row wraps within the list rather than
+        // running past its edge, where the end of a name and the channel's records were cut off.
+        ScrollViewer.SetHorizontalScrollBarVisibility(rows, ScrollBarVisibility.Disabled);
+        rows.ItemTemplate = new FuncDataTemplate<string>((row, _) => new TextBlock { Text = row, TextWrapping = TextWrapping.Wrap });
 
         // Enter opens the selected channel, as it opens a ranked row in the workspace; a double click does too.
         AutomationProperties.SetName(rows, "Paired TCP channels. Enter shows the selected channel's source records.");

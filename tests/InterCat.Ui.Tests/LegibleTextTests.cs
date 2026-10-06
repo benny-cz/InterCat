@@ -1,13 +1,17 @@
+using System.Text;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 
@@ -71,6 +75,83 @@ public sealed class LegibleTextTests
             cut.AddRange(CutOff(window, $"{rail}, evidence"));
             window.Close();
             Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.8: the content, record and channel windows cut off no text at their minimum size, however long a name")]
+    public async Task NoSecondaryWindowCutsOffText()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            Lifecycle(1, ObservationKind.Inventory, 100, 1) with
+            {
+                ResourceName = @"C:\Program Files\Contoso Long Product Name\bin\client-with-a-long-name.exe", SessionRelativeTicks = 100,
+            },
+            Lifecycle(2, ObservationKind.Inventory, 200, 2) with { ResourceName = @"C:\Program Files\Fabrikam\server.exe", SessionRelativeTicks = 200 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 2_400, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 11)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+        ];
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 4_096),
+            [Content(rows[2], Encoding.UTF8.GetBytes(string.Concat(Enumerable.Repeat("GET /index.html HTTP/1.1\r\nHost: example\r\n", 60))), 4_096)]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, resolveOwners: true);
+        SessionEvidenceRecord sent = page.Records.Single(record => record.Observation.Kind == ObservationKind.Send);
+        var cut = new List<string>();
+
+        using (var content = new SessionContentWindow(session.Path, page.SessionId, sent))
+        {
+            await ShowAtItsMinimum(content);
+            cut.AddRange(CutOff(content, "content, before its bytes"));
+            content.GetVisualDescendants().OfType<Button>().Single(button => AutomationProperties.GetName(button) == "Show the kept bytes")
+                .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Pause();
+            cut.AddRange(CutOff(content, "content, with its bytes"));
+        }
+
+        using (var raw = new SessionRawRecordWindow(session.Path, page.SessionId, sent))
+        {
+            await ShowAtItsMinimum(raw);
+            cut.AddRange(CutOff(raw, "raw record"));
+        }
+
+        // The channel browser names each channel by the processes it joins, so its rows hold the longest names.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using (var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null,
+            id => snapshot.Processes.FirstOrDefault(process => process.Id == id)?.NameWithPid))
+        {
+            browser.Width = browser.MinWidth;
+            browser.Height = browser.MinHeight;
+            _ = browser.ShowDialog<Channel?>(owner);
+            await Pause();
+            Assert.Contains(browser.GetVisualDescendants().OfType<TextBlock>(), text => text.Text?.Contains("client-with-a-long-name.exe", StringComparison.Ordinal) == true);
+            cut.AddRange(CutOff(browser, "channels"));
+            browser.Close();
+        }
+
+        owner.Close();
+        Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
+    }
+
+    private static async Task ShowAtItsMinimum(Window window)
+    {
+        window.Width = window.MinWidth;
+        window.Height = window.MinHeight;
+        window.Show();
+        await Pause();
+    }
+
+    /// <summary>Lets a window read what it shows, on its own thread, and lay it out.</summary>
+    private static async Task Pause()
+    {
+        for (int wait = 0; wait < 40; wait++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await Task.Delay(20);
         }
     }
 
