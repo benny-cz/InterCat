@@ -94,9 +94,7 @@ public sealed partial class AccessibilityAuditTests
     /// <summary>Walks the window's automation tree and checks every element a screen reader lands on.</summary>
     private static void Audit(MainWindow window, WorkspaceViewModel workspace)
     {
-        var problems = new List<string>();
-        var listItems = 0;
-        Walk(ControlAutomationPeer.CreatePeerForElement(window));
+        List<string> problems = Unheard(window, out int listItems);
         Assert.True(problems.Count == 0, $"At {workspace.LevelBadge}:\n" + string.Join("\n", problems));
         Assert.True(listItems > 0, $"At {workspace.LevelBadge} no list item was reachable.");
 
@@ -144,12 +142,25 @@ public sealed partial class AccessibilityAuditTests
             Assert.False(string.IsNullOrWhiteSpace(peer.GetHelpText()), $"{name} has no help text.");
             Assert.Equal(status, peer.GetItemStatus());
         }
+    }
+
+    /// <summary>
+    /// What a screen reader cannot use in a window, walking the automation tree the window exposes: each element the reader
+    /// lands on - one the keyboard can focus, or a list item - with no name, and any named by a record's fields.
+    /// </summary>
+    internal static List<string> Unheard(Control root, out int listItems)
+    {
+        var problems = new List<string>();
+        int items = 0;
+        Walk(ControlAutomationPeer.CreatePeerForElement(root));
+        listItems = items;
+        return problems;
 
         void Walk(AutomationPeer peer)
         {
             string? spoken = peer.GetName();
             AutomationControlType type = peer.GetAutomationControlType();
-            if (type == AutomationControlType.ListItem) listItems++;
+            if (type == AutomationControlType.ListItem) items++;
             if ((peer.IsKeyboardFocusable() || type == AutomationControlType.ListItem) && string.IsNullOrWhiteSpace(spoken))
             {
                 problems.Add($"{type} {peer.GetClassName()} has no name");

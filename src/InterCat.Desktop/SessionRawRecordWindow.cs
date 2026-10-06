@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
@@ -55,6 +56,9 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
         status.Text = "Locating the retained original record…";
+
+        // The record a screen reader lands on is named for it; the buttons are named by what they say.
+        AutomationProperties.SetName(detail, "The original journal record, field by field");
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();

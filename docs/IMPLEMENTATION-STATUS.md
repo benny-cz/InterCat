@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 331 · Branch: `main`
+Updated: 2026-10-06 · Plan revision: 332 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 332 — every window beside the main one is heard (R15):**
+  - The screen-reader audit now covers the content, raw record and channel windows, the investigation window's pages
+    and dialogs, and every prompt. It found the raw record window's record unnamed, and names it.
 
 - **Revision 331 — R11's allocation test measures every thread (R11):**
   - The warm-aggregate test failed once by reading a worker's 18 KB tally as a per-row cost. It measured only the
@@ -870,6 +874,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 332 was built and tested in the same Linux container: Debug and Release each ran **1,580 tests**, passing
+  **1,483 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The audits caught
+  each of three mutations, one name removed from each family of window: the raw record, a saved view's name box, and
+  the content window's first byte. Two names first given to the raw record window were taken back. Its button already
+  speaks what it shows, and a name on its status would have replaced what the status says.
 - Revision 331 was built and tested in the same Linux container: Debug and Release each ran **1,577 tests**, passing
   **1,480 with 4 skipped**; the 93 failures are the Windows and font-metric ones revision 293 leaves. The allocation test
   passed in each of six runs of its project and in both suites. Two mutations checked that it still finds what it is for.
