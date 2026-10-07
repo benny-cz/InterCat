@@ -20,6 +20,27 @@ public sealed class RankingSelectorTests
 {
     private static readonly DateTimeOffset Exported = new(2026, 9, 27, 12, 0, 0, TimeSpan.Zero);
 
+    [Fact(DisplayName = "R21: the window says one direction's bytes in a connection's words, a count of no size agreeing with its noun, and none recorded as such")]
+    public void OneDirectionsBytesAreSaidInAConnectionsWords() =>
+        Assert.Equal(
+            [
+                $"{WorkspaceRowBuilder.DescribeSize(5_300)} sent (1 send unmeasured)",
+                $"{WorkspaceRowBuilder.DescribeSize(5_300)} sent (2 sends unmeasured)",
+                "2 receives unmeasured",
+                "1 receive unmeasured",
+                "no send recorded",
+                "0 B received",
+            ],
+            new[]
+            {
+                WorkspaceRowBuilder.Directional(5_300, 2, 1, "sent", "send"),
+                WorkspaceRowBuilder.Directional(5_300, 2, 2, "sent", "send"),
+                WorkspaceRowBuilder.Directional(0, 0, 2, "received", "receive"),
+                WorkspaceRowBuilder.Directional(0, 0, 1, "received", "receive"),
+                WorkspaceRowBuilder.Directional(0, 0, 0, "sent", "send"),
+                WorkspaceRowBuilder.Directional(0, 3, 0, "received", "receive"),
+            });
+
     [Fact(DisplayName = "§6.1: choosing bytes sent re-ranks the machine and group rungs once read, and says what it measured")]
     public void ChoosingBytesReRanksOnceRead() => SingleThreadedContext.Run(async () =>
     {
@@ -511,9 +532,9 @@ public sealed class RankingSelectorTests
         workspace.SelectProcess(client.Id);
         Assert.EndsWith("reading bytes…", workspace.EvidenceSummary, StringComparison.Ordinal);
         await workspace.SelectionBytesReady;
-        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent · no receive recorded", workspace.EvidenceSummary, StringComparison.Ordinal);
         workspace.SelectProcess(server.Id);
-        Assert.EndsWith($"nothing sent · {WorkspaceRowBuilder.DescribeSize(5_300)} received", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.EndsWith($"no send recorded · {WorkspaceRowBuilder.DescribeSize(5_300)} received", workspace.EvidenceSummary, StringComparison.Ordinal);
 
         // The relationship carries what was sent across it, each transfer counted once at its sender.
         Assert.Equal($"{WorkspaceRowBuilder.DescribeSize(5_300)} sent across", Assert.Single(workspace.Relationships).KnownBytes);
@@ -525,7 +546,7 @@ public sealed class RankingSelectorTests
         workspace.SelectInterval(new TimeRange(10, 20));
         await workspace.IntervalReady;
         await workspace.SelectionBytesReady;
-        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · nothing received", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.EndsWith($"{WorkspaceRowBuilder.DescribeSize(300)} sent · no receive recorded", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "R21: a channel rung states the bytes sent across it, and the tables read what a real session's timeline does not sum")]

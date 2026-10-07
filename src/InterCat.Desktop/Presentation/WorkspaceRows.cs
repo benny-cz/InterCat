@@ -260,9 +260,8 @@ public static class WorkspaceRowBuilder
             return "no transfer recorded";
         }
 
-        string text = Directional(bytes.SentBytes, bytes.SentMeasured, bytes.SentUnmeasured, "sent", "sends", "no send recorded")
-            + " · " + Directional(bytes.ReceivedBytes, bytes.ReceivedMeasured, bytes.ReceivedUnmeasured, "received", "receives",
-                "no receive recorded");
+        string text = Directional(bytes.SentBytes, bytes.SentMeasured, bytes.SentUnmeasured, "sent", "send")
+            + " · " + Directional(bytes.ReceivedBytes, bytes.ReceivedMeasured, bytes.ReceivedUnmeasured, "received", "receive");
         return !unsided ? text
             : text + " · " + (bytes.OtherMeasured > 0
                 ? DescribeSize(bytes.OtherBytes) + " with no side stated"
@@ -273,16 +272,15 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>
-    /// One direction's bytes in words: a measured sum, sizes not recorded, or, with no record in that direction,
-    /// <paramref name="none"/> ("nothing sent" unless another is given) (R21).
+    /// One direction's bytes in words, as a one-sided connection's are said (R5): a measured sum, with how many of its
+    /// records stated no size; only how many stated none, where none measured one; or, with no record that way, "no send
+    /// recorded" - of the records, never a claim that nothing was sent (R21, §10.3).
     /// </summary>
-    public static string Directional(long value, long measured, long unmeasured, string verb, string records, string? none = null) =>
+    public static string Directional(long value, long measured, long unmeasured, string verb, string noun) =>
         measured > 0
-            ? DescribeSize(value) + " " + verb
-                + (unmeasured > 0 ? string.Create(CultureInfo.CurrentCulture, $" ({unmeasured:N0} {records} unmeasured)") : string.Empty)
-            : unmeasured > 0
-                ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records} unmeasured")
-                : none ?? "nothing " + verb;
+            ? DescribeSize(value) + " " + verb + (unmeasured > 0 ? $" ({CountText.Of(unmeasured, noun)} unmeasured)" : string.Empty)
+            : unmeasured > 0 ? $"{CountText.Of(unmeasured, noun)} unmeasured"
+            : $"no {noun} recorded";
 
     /// <summary>
     /// A per-second value as the ranked table shows it: three significant figures and at most three decimals (§1.4),

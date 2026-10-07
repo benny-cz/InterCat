@@ -226,8 +226,10 @@ of one member is a candidate with a connection of another when:
 A mirrored pair whose lifetimes lie apart beyond their uncertainty is not proposed, and is counted. A candidate is never
 an established join: it states its evidence - the mirrored endpoints, whether the lifetimes overlap or cannot be
 compared and why, and the bytes each side measured of each direction, the same or not - and how many other candidates
-either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v4`: the
-rule, each candidate's two ends (session, key, protocol, endpoints, process, lifetime and bytes), its timing, its
+either connection has, so a connection with two is said to be ambiguous. `--json` prints `workspace-correlation-v5`: the
+rule, each candidate's two ends (session, key, protocol, endpoints, process and lifetime, and each direction's transfers,
+how many of them stated no size and the bytes the others measured - null where none measured one, which is not a
+transfer of none, since revision 382, where version 4 wrote 0), its timing, its
 alternatives, the decision in force, the translations it mirrors through, and its evidence; the mirrored pairs not
 proposed and the loopback pairs of two hosts, counted; the members not compared and why; the decisions in force whose
 pair is no candidate now, and why; caveats; and, since revision 277, the snapshot vector it answers (I16): each compared

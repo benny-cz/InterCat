@@ -732,6 +732,73 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R21: icat workspace correlate says an end's sends that measured no size are unmeasured, never 0 B, in the window's words")]
+    public async Task CorrelateSaysUnmeasuredBytes()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"))).FullName;
+        string workspace = Path.Combine(folder, "case.icat-workspace");
+        try
+        {
+            // The client's one send recorded no size, and two captures of a server - of two hosts - each hold its other end,
+            // receiving it with no size either and replying with 200 bytes and 50.
+            const string Client = "10.0.0.1:50000";
+            const string Server = "10.0.0.2:443";
+            string client = Held(folder, "client", "lab-1",
+            [
+                Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, null, 100, 1).Between(Client, Server) with { SessionRelativeTicks = 100_000 },
+                Transfer(1_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 200, 100, 2).Between(Client, Server) with { SessionRelativeTicks = 100_100 },
+                Transfer(1_002, ObservationKind.Receive, AccountingSide.ReceiveSide, 50, 100, 3).Between(Client, Server) with { SessionRelativeTicks = 100_200 },
+            ]);
+            ObservationRowV1[] served =
+            [
+                Transfer(1_000, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 1).Between(Server, Client) with { SessionRelativeTicks = 100_000 },
+                Transfer(1_001, ObservationKind.Send, AccountingSide.SendSide, 200, 200, 2).Between(Server, Client) with { SessionRelativeTicks = 100_100 },
+                Transfer(1_002, ObservationKind.Send, AccountingSide.SendSide, 50, 200, 3).Between(Server, Client) with { SessionRelativeTicks = 100_200 },
+            ];
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            foreach (string member in new[] { client, Held(folder, "server", "lab-2", served), Held(folder, "replica", "lab-3", served) })
+            {
+                Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, member)).Code);
+            }
+
+            (InterCatExitCode code, string text, string said) = await Run("workspace", "correlate", workspace);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("(PID 100): 1 send unmeasured, 250 B received; open before the capture and after it", text, StringComparison.Ordinal);
+            Assert.Contains("(PID 200): 250 B sent, 1 receive unmeasured; open before the capture and after it", text, StringComparison.Ordinal);
+            Assert.Contains(" · lifetimes not comparable · not the only match: 1 other candidate" + Environment.NewLine, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(": 0 B sent", text, StringComparison.Ordinal);
+
+            // Its document counts each direction's transfers and those of no size, and leaves out a sum none measured.
+            using JsonDocument answer = JsonDocument.Parse((await Run("workspace", "correlate", workspace, "--json")).Output);
+            Assert.Equal("workspace-correlation-v5", answer.RootElement.GetProperty("contract").GetString());
+            JsonElement candidate = answer.RootElement.GetProperty("candidates")[0];
+            JsonElement[] ends = [candidate.GetProperty("first"), candidate.GetProperty("second")];
+            (long, long, JsonValueKind, long, long, string) Counted(int pid)
+            {
+                JsonElement end = ends.Single(each => each.GetProperty("processId").GetInt32() == pid);
+                return (end.GetProperty("sends").GetInt64(), end.GetProperty("unmeasuredSends").GetInt64(), end.GetProperty("sentBytes").ValueKind,
+                    end.GetProperty("receives").GetInt64(), end.GetProperty("unmeasuredReceives").GetInt64(), end.GetProperty("receivedBytes").ToString());
+            }
+
+            Assert.Equal((1L, 1L, JsonValueKind.Null, 2L, 0L, "250"), Counted(100));
+            Assert.Equal((2L, 0L, JsonValueKind.Number, 1L, 1L, string.Empty), Counted(200));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>
+    private static string Held(string folder, string name, string host, ObservationRowV1[] rows)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(folder, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "command-line-tests");
+        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
     [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, ranking, evidence policy and lane scale, and the window's panes")]
     public async Task WorkspaceShowStatesEachLayout()
     {

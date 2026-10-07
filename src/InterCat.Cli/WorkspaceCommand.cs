@@ -207,8 +207,20 @@ internal sealed record CandidateEndDocument
     public required string? ImagePath { get; init; }
     public required long FirstNanoseconds { get; init; }
     public required long LastNanoseconds { get; init; }
-    public required long SentBytes { get; init; }
-    public required long ReceivedBytes { get; init; }
+
+    /// <summary>Its sends, and how many of them stated no size.</summary>
+    public required long Sends { get; init; }
+    public required long UnmeasuredSends { get; init; }
+
+    /// <summary>What its measured sends carried; null where none measured a size, which is not a send of none (R21).</summary>
+    public required long? SentBytes { get; init; }
+
+    /// <summary>Its receives, and how many of them stated no size.</summary>
+    public required long Receives { get; init; }
+    public required long UnmeasuredReceives { get; init; }
+
+    /// <summary>What its measured receives carried; null where none measured a size.</summary>
+    public required long? ReceivedBytes { get; init; }
     public required string Lifetime { get; init; }
 }
 
@@ -223,7 +235,7 @@ internal static partial class WorkspaceCommand
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
-    public const string CorrelationContract = "workspace-correlation-v4";
+    public const string CorrelationContract = "workspace-correlation-v5";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -698,17 +710,20 @@ internal static partial class WorkspaceCommand
             $"{result.Candidates.Count:N0}, {ambiguous:N0} of them not the only match of a connection"));
         ConsoleUi.Line();
         int number = 0;
-        foreach (CandidateDocument candidate in document.Candidates)
+        foreach ((CandidateDocument candidate, ConnectionCandidate found) in document.Candidates.Zip(result.Candidates))
         {
             number++;
             ConsoleUi.Line(string.Create(culture, $"  {number:N0}. {candidate.First.Protocol} {candidate.First.LocalEndpoint} ⇄ "
                 + $"{candidate.First.RemoteEndpoint} · ")
                 + (candidate.Timing == CandidateTiming.Overlapping ? "lifetimes overlap" : "lifetimes not comparable")
-                + (candidate.Alternatives > 0 ? string.Create(culture, $" · {candidate.Alternatives:N0} other candidates") : string.Empty));
-            foreach (CandidateEndDocument end in new[] { candidate.First, candidate.Second })
+                + (candidate.Alternatives > 0 ? " · not the only match: " + CountText.Of(candidate.Alternatives, "other candidate") : string.Empty));
+
+            // Each end's bytes in the words its rung and the investigation window say them in (R18): a direction none of
+            // whose transfers measured a size is unmeasured, never 0 B (R21).
+            foreach ((CandidateEndDocument end, WorkspaceConnection held) in new[] { (candidate.First, found.First), (candidate.Second, found.Second) })
             {
                 ConsoleUi.Line(string.Create(culture, $"     {Short(end.SessionId)} · {Image(end)} (PID {end.ProcessId}): ")
-                    + string.Create(culture, $"{end.SentBytes:N0} B sent, {end.ReceivedBytes:N0} B received; {end.Lifetime}"));
+                    + held.Connection.Summary.Transfers(culture) + "; " + end.Lifetime);
             }
 
             foreach (string line in candidate.Evidence)
@@ -806,8 +821,12 @@ internal static partial class WorkspaceCommand
             ImagePath = connection.Connection.Holder.ImagePath,
             FirstNanoseconds = connection.Connection.FirstNanoseconds,
             LastNanoseconds = connection.Connection.LastNanoseconds,
-            SentBytes = summary.SentBytes,
-            ReceivedBytes = summary.ReceivedBytes,
+            Sends = summary.Sends,
+            UnmeasuredSends = summary.UnmeasuredSends,
+            SentBytes = summary.Sends > summary.UnmeasuredSends ? summary.SentBytes : null,
+            Receives = summary.Receives,
+            UnmeasuredReceives = summary.UnmeasuredReceives,
+            ReceivedBytes = summary.Receives > summary.UnmeasuredReceives ? summary.ReceivedBytes : null,
             Lifetime = summary.Lifetime,
         };
     }

@@ -30,14 +30,14 @@ public sealed class AggregateEvidenceTests
         // At the machine rung the three quiet processes are one node: their three creations, with no relationship and no
         // byte between them.
         await AssertTheAggregateIsItsProcesses(workspace, GraphNodeKind.Quiet, 3,
-            "3 own records, all process lifecycle · no admitted paired TCP relationship · nothing sent · nothing received");
+            "3 own records, all process lifecycle · no admitted paired TCP relationship · no send recorded · no receive recorded");
 
         // At client.exe's rung everything else but its server is the context node: the quiet three and the peer, whose
         // own send to the server is the one relationship it holds.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
         Assert.True(workspace.Descend());
         await workspace.LayoutReady;
-        const string Context = "5 own records, mostly process lifecycle · 2 paired TCP observations on 1 relationship · 4 B sent · nothing received";
+        const string Context = "5 own records, mostly process lifecycle · 2 paired TCP observations on 1 relationship · 4 B sent · no receive recorded";
         await AssertTheAggregateIsItsProcesses(workspace, GraphNodeKind.Context, 5, Context);
 
         // On the client's channel to the server, the context node chosen is what the card counts, rather than the channel.

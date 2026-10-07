@@ -203,8 +203,8 @@ public sealed partial class WorkspaceViewModel
 
         TransportBytes sum = members.Aggregate(TransportBytes.None,
             (total, member) => total.Plus(bytes.ByProcess.GetValueOrDefault(member.Id) ?? TransportBytes.None));
-        return WorkspaceRowBuilder.Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "sends") + " · "
-            + WorkspaceRowBuilder.Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receives");
+        return WorkspaceRowBuilder.Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "send") + " · "
+            + WorkspaceRowBuilder.Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receive");
     }
 
     /// <summary>

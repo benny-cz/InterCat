@@ -1001,6 +1001,9 @@ public sealed class InvestigationWindowTests
             InvestigationCandidates found = window.Candidates!;
             InvestigationCandidateRow row = Assert.Single(found.Rows);
             Assert.Equal("TCP 10.0.0.1:50000 ⇄ 10.0.0.2:443 · lifetimes not comparable", row.Title);
+
+            // Each end says what its records measured each way, and a way they recorded nothing as such, never as 0 B (R21).
+            Assert.EndsWith("(PID 100), 64 B sent, no receive recorded, opened and closed in the capture", row.First, StringComparison.Ordinal);
             Assert.StartsWith("Candidate join: TCP 10.0.0.1:50000", row.AccessibleName, StringComparison.Ordinal);
             Assert.Equal("1 candidate join, none established by evidence; 0 not the only match of a connection.", found.Summary);
             Assert.Equal(found.Summary, Named<TextBlock>(window, "Candidate joins status").Text);

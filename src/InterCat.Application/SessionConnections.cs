@@ -42,14 +42,25 @@ public sealed record ConnectionSummary(
     /// <summary>The connection in words: "TCP to 142.250.186.36:443".</summary>
     public string Name => (Mechanism == Mechanism.Udp ? "UDP to " : "TCP to ") + RemoteEndpoint;
 
-    /// <summary>What its records measured, in one line: bytes each way, and how many transfers stated no size.</summary>
+    /// <summary>
+    /// What its records measured, in one line, each direction in the words an interval's row says it in (R5, R21): the
+    /// bytes its measured transfers carried, with how many stated no size; only how many stated none, where none measured
+    /// one; or that it recorded none that way. None of them is a zero its records did not measure.
+    /// </summary>
     public string Transfers(IFormatProvider? culture = null)
     {
         IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
-        string measured = string.Create(format, $"{SentBytes:N0} B sent, {ReceivedBytes:N0} B received");
-        return Unmeasured == 0
-            ? measured
-            : measured + string.Create(format, $"; {Unmeasured:N0} {(Unmeasured == 1 ? "transfer" : "transfers")} of no stated size");
+        return Direction(SentBytes, Sends, UnmeasuredSends, "sent", "send") + ", "
+            + Direction(ReceivedBytes, Receives, UnmeasuredReceives, "received", "receive");
+
+        string Direction(long bytes, long transfers, long unmeasured, string verb, string noun) =>
+            transfers > unmeasured
+                ? string.Create(format, $"{bytes:N0} B {verb}") + (unmeasured > 0 ? $" ({Unsized(unmeasured, noun)})" : string.Empty)
+                : unmeasured > 0 ? Unsized(unmeasured, noun)
+                : $"no {noun} recorded";
+
+        string Unsized(long count, string noun) =>
+            string.Create(format, $"{count:N0} {noun}{(count == 1 ? string.Empty : "s")} unmeasured");
     }
 
     /// <summary>Whether the capture saw it open and close, in words.</summary>
