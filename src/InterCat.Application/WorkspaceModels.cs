@@ -418,6 +418,9 @@ public sealed record WorkspaceSnapshot(
     /// </summary>
     public TimeRange? Recording { get; init; }
 
+    /// <summary>Whether the session is InterCat's generated demo (<see cref="DemoInvestigation"/>), which every view says.</summary>
+    public bool Demo { get; init; }
+
     /// <summary>
     /// When the session's capture began by the wall clock it recorded: session time 0, which the timeline's axis counts
     /// from, in UTC; null when the capture recorded no wall clock, as an import does.

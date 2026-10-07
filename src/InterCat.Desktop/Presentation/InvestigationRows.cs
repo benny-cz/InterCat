@@ -139,6 +139,8 @@ public static class InvestigationRows
             : "Time: none. No session is aligned to another, so no order, latency or pairing across sessions is stated.";
         return new(path, summary, time, rows,
         [
+            // A generated demo says so first, in the words its sessions and icat workspace show use.
+            .. resolutions.Any(resolution => resolution.Demo) ? new[] { DemoInvestigation.Disclosure } : [],
             "Each session is named by its identity and the capture its journal records; one capture is one member, and "
                 + "showing an investigation writes to no session.",
             "Hosts are grouped by identity, which is evidence of one host and never proof; no name or address makes two one.",

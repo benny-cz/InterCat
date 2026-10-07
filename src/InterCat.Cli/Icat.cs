@@ -66,6 +66,7 @@ internal static class Icat
                 "workspace" => await WorkspaceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "support" => await SupportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "demo" => await DemoCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 _ => UnknownCommand(args[0]),
             };
@@ -295,6 +296,10 @@ internal static class Icat
         ConsoleUi.Line("      align, compare and correlate place them in one time, which timeline draws; join,");
         ConsoleUi.Line("      same-host and translate keep a person's decisions; note and view annotate it; package");
         ConsoleUi.Line("      copies it with its sessions.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat demo <directory> [--json]");
+        ConsoleUi.Line("      Writes InterCat's generated demo: two hosts' sessions and the investigation that holds");
+        ConsoleUi.Line("      them, aligned. Nothing in it was captured, and every view of it says so.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

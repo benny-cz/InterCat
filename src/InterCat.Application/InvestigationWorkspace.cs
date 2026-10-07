@@ -122,6 +122,9 @@ public sealed record WorkspaceMemberResolution(
     long? CurrentGeneration,
     string? Reason)
 {
+    /// <summary>Whether the session found for the member is InterCat's generated demo, which every view of it says.</summary>
+    public bool Demo { get; init; }
+
     /// <summary>Whether the path holds the member's capture, at whichever generation.</summary>
     public bool HoldsItsCapture => State is WorkspaceMemberState.Present or WorkspaceMemberState.Advanced
         or WorkspaceMemberState.Replaced;
@@ -427,16 +430,17 @@ public static partial class InvestigationWorkspace
         string? rolledBack = found.RollbackReason is null
             ? null
             : $"Its current generation could not be read, so its last-known-good was: {found.RollbackReason}.";
+        bool demo = DemoInvestigation.IsDemo(manifest);
         if (manifest.Generation == member.Generation && manifest.Digest == member.ManifestDigest)
         {
-            return new(member, full, WorkspaceMemberState.Present, manifest.Generation, rolledBack);
+            return new(member, full, WorkspaceMemberState.Present, manifest.Generation, rolledBack) { Demo = demo };
         }
 
-        return manifest.Generation > member.Generation
-            ? new(member, full, WorkspaceMemberState.Advanced, manifest.Generation,
+        return (manifest.Generation > member.Generation
+            ? new WorkspaceMemberResolution(member, full, WorkspaceMemberState.Advanced, manifest.Generation,
                 $"The session has published generation {manifest.Generation} since generation {member.Generation} was "
                 + "selected. Relink the member to its own path to select it.")
-            : new(member, full, WorkspaceMemberState.Replaced, manifest.Generation, string.Join(' ', new[]
+            : new WorkspaceMemberResolution(member, full, WorkspaceMemberState.Replaced, manifest.Generation, string.Join(' ', new[]
             {
                 // An older generation is a copy put in its place, unless it is the one kept to fall back to, which the
                 // next sentence says.
@@ -446,7 +450,7 @@ public static partial class InvestigationWorkspace
                     : $"The path holds a generation {manifest.Generation} of this session derived apart from the one selected.",
                 rolledBack,
                 "Relink the member to its own path to select what is there.",
-            }.OfType<string>()));
+            }.OfType<string>()))) with { Demo = demo };
     }
 
     /// <summary>The member a session directory is, read from its current generation and its journal's capture and clock.</summary>

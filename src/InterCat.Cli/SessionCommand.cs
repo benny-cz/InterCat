@@ -322,6 +322,11 @@ internal static class SessionCommand
             notes.Add(SessionRedaction.Summary + " " + redaction.Warning);
         }
 
+        if (manifest is not null && DemoInvestigation.IsDemo(manifest))
+        {
+            notes.Add(DemoInvestigation.Disclosure);
+        }
+
         if (manifest is null)
         {
             notes.Add(SessionStore.NoGeneration);

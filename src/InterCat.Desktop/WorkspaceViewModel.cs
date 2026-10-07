@@ -286,9 +286,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : snapshot.Redaction is null
-                    ? OverviewWorkspace.DisclosureFor(snapshot)
-                    : OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.DisclosureFor(snapshot);
+                : snapshot.Redaction is not null
+                    ? OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.DisclosureFor(snapshot)
+                    : snapshot.Demo
+                        ? DemoInvestigation.Disclosure + " " + OverviewWorkspace.DisclosureFor(snapshot)
+                        : OverviewWorkspace.DisclosureFor(snapshot);
         // The drawn graph is projected from the whole session, so a brush re-counts it without re-clustering it (§6.4).
         this.graphIdentity = graphIdentity;
         relatedProcesses = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];

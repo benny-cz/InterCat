@@ -2,8 +2,9 @@ namespace InterCat.Application;
 
 /// <summary>
 /// The public providers InterCat's source catalog admits, by the identity every machine gives them: Microsoft's, and
-/// InterCat's own content fixture, whose identity is derived from its name. A record names its provider by that identity;
-/// a reader is told the name beside it, which discloses nothing about the machine.
+/// InterCat's own content fixture, whose identity is derived from its name; and the provider InterCat's generated demo
+/// names its records with, so a demo record never reads as a Windows provider's. A record names its provider by that
+/// identity; a reader is told the name beside it, which discloses nothing about the machine.
 /// </summary>
 public static class KnownProviders
 {
@@ -18,6 +19,7 @@ public static class KnownProviders
         [Guid.Parse("a70ff94f-570b-4979-ba5c-e59c9feab61b")] = "Microsoft-Windows-WinINet-Capture",
         [System.Diagnostics.Tracing.EventSource.GetGuid(typeof(InterCat.Domain.ContentFixtureEventSource))] =
             InterCat.Domain.ContentFixtureEventSource.ProviderName,
+        [DemoInvestigation.Provider] = DemoInvestigation.ProviderName,
     };
 
     /// <summary>A provider's public name, or null for one the catalog does not name.</summary>

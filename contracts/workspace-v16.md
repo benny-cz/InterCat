@@ -85,10 +85,11 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v18`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v19`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
-name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
-reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
+name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
+reference, nearest first) and, since revision 395, `demo` (whether the session found for it is InterCat's generated demo,
+`contracts/demo-investigation-v1.md`, which the text then says), the hosts with their members and the identities confirmed one host with each, the
 `timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision, the
 overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
 read to place them, with its session, the one generation read and its manifest's digest - the layouts and the panes

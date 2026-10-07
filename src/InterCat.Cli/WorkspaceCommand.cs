@@ -68,6 +68,10 @@ internal sealed record OverlapDocument
 internal sealed record WorkspaceMemberDocument
 {
     public required Guid SessionId { get; init; }
+
+    /// <summary>Whether the session found for it is InterCat's generated demo, which every view of it says.</summary>
+    public bool Demo { get; init; }
+
     public required Guid CaptureId { get; init; }
     public required string Path { get; init; }
     public required string FullPath { get; init; }
@@ -290,7 +294,7 @@ internal sealed record CandidateEndDocument
 /// </summary>
 internal static partial class WorkspaceCommand
 {
-    public const string ResolutionContract = "workspace-resolution-v18";
+    public const string ResolutionContract = "workspace-resolution-v19";
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
@@ -1124,6 +1128,7 @@ internal static partial class WorkspaceCommand
             {
                 SessionId = resolution.Member.SessionId,
                 CaptureId = resolution.Member.CaptureId,
+                Demo = resolution.Demo,
                 Path = resolution.Member.Path,
                 FullPath = resolution.FullPath,
                 State = resolution.State,
@@ -1207,6 +1212,12 @@ internal static partial class WorkspaceCommand
         foreach (WorkspaceMemberDocument member in document.Members.Where(member => member.Reason is not null))
         {
             ConsoleUi.Note($"{Short(member.SessionId)}: {member.Reason}");
+        }
+
+        // A generated demo says so, in the words its sessions and the investigation's window use.
+        if (document.Members.Any(member => member.Demo))
+        {
+            ConsoleUi.Note(DemoInvestigation.Disclosure);
         }
 
         WorkspaceAlignment[] inForce = [.. document.Members

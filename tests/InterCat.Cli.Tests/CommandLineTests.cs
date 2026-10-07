@@ -27,6 +27,7 @@ public sealed class CommandLineTests : IDisposable
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
         "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench", "support",
+        "demo",
     ];
 
     /// <summary>The fields of icat staging's preview, whose labels run past the column a short label takes.</summary>
@@ -1017,6 +1018,63 @@ public sealed class CommandLineTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat demo writes the demo saying it was generated, as icat session then says of each of its sessions")]
+    public async Task IcatDemoSaysItWasGenerated()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-demo-cli-" + Guid.NewGuid().ToString("N"));
+        string answered = folder + "-json";
+        try
+        {
+            // It says what it is before it writes, and where everything went after.
+            (InterCatExitCode code, string output, string said) = await Run("demo", folder);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.StartsWith("… " + DemoInvestigation.Disclosure, said, StringComparison.Ordinal);
+            Assert.Contains(DemoInvestigation.Disclosure, output, StringComparison.Ordinal);
+            string investigation = Path.Combine(folder, DemoInvestigation.WorkspaceFileName);
+            Assert.Matches($@"(?m)^  Investigation +{Regex.Escape(investigation)}\r?$", output);
+
+            // Each of its sessions says so wherever icat reads it.
+            foreach (string session in new[] { "demo-client", "demo-server" })
+            {
+                (code, output, said) = await Run("session", Path.Combine(folder, session));
+                Assert.True(code == InterCatExitCode.Success, said);
+                Assert.Contains(DemoInvestigation.Disclosure, output, StringComparison.Ordinal);
+            }
+
+            // Its investigation says so on a line of its own, apart from the note the demo writes in it.
+            (code, output, said) = await Run("workspace", "show", investigation);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches($@"(?m)^  {Regex.Escape(DemoInvestigation.Disclosure)}\r?$", output);
+            using (JsonDocument shown = JsonDocument.Parse((await Run("workspace", "show", investigation, "--json")).Output))
+            {
+                Assert.All(shown.RootElement.GetProperty("members").EnumerateArray(), member =>
+                    Assert.True(member.GetProperty("demo").GetBoolean()));
+            }
+
+            // A folder that holds anything is refused, with nothing written.
+            (code, _, said) = await Run("demo", folder);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("only into a new or empty folder", said, StringComparison.Ordinal);
+
+            // As JSON, one object naming its contract, the investigation and its two sessions, and what it is.
+            (code, output, said) = await Run("demo", answered, "--json");
+            Assert.True(code == InterCatExitCode.Success, said);
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement root = document.RootElement;
+            Assert.Equal((DemoInvestigation.SourceIdentity, DemoInvestigation.Disclosure),
+                (root.GetProperty("contract").GetString(), root.GetProperty("disclosure").GetString()));
+            Assert.All(root.GetProperty("sessions").EnumerateArray(), session => Assert.True(Directory.Exists(session.GetString())));
+            Assert.True(File.Exists(root.GetProperty("investigation").GetString()));
+        }
+        finally
+        {
+            foreach (string written in new[] { folder, answered })
+            {
+                if (Directory.Exists(written)) Directory.Delete(written, recursive: true);
+            }
+        }
+    }
+
     [Fact(DisplayName = "R18: icat session states a session's size on disk, bytes per record and tier in the window's words")]
     public async Task IcatSessionStatesItsSizeAsTheWindowDoes()
     {
@@ -1211,7 +1269,7 @@ public sealed class CommandLineTests : IDisposable
                 text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
-            Assert.Equal("workspace-resolution-v18", WorkspaceCommand.ResolutionContract);
+            Assert.Equal("workspace-resolution-v19", WorkspaceCommand.ResolutionContract);
             Assert.Matches(new Regex($"\"pinnedLanes\": \\[\\s*\"{lane}\"\\s*\\]"), json);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
             Assert.Contains("\"evidencePolicy\": null", json, StringComparison.Ordinal);

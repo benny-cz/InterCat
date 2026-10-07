@@ -67,6 +67,9 @@ public sealed record SessionOverviewBundle(
     /// </summary>
     public SessionSize? Size { get; init; }
 
+    /// <summary>Whether the session is InterCat's generated demo (<see cref="DemoInvestigation"/>), which every view says.</summary>
+    public bool Demo { get; init; }
+
     /// <summary>
     /// How strongly a record had to bind to a process to count as that process's, and a relationship to be drawn, in this
     /// overview: correlated evidence unless a person chose otherwise.
@@ -321,6 +324,7 @@ public static class SessionOverviewProjector
             Began = SessionRecording.Began(store.Root, manifest, clock),
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
+            Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
         };
 

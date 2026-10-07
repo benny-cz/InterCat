@@ -41,9 +41,9 @@ public static class OverviewWorkspace
     {
         ArgumentNullException.ThrowIfNull(overview);
         return new WorkspaceSnapshot(
-            overview.Redaction is null
-                ? $"Session · generation {overview.Generation:N0}"
-                : $"Redacted package · generation {overview.Generation:N0}",
+            overview.Redaction is not null ? $"Redacted package · generation {overview.Generation:N0}"
+                : overview.Demo ? $"Demo session · generation {overview.Generation:N0}"
+                : $"Session · generation {overview.Generation:N0}",
             overview.Extent ?? new TimeRange(0, 1),
             overview.Groups,
             overview.Nodes,
@@ -61,6 +61,7 @@ public static class OverviewWorkspace
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Recording = overview.Recording,
             Began = overview.Began,
+            Demo = overview.Demo,
         };
     }
 
