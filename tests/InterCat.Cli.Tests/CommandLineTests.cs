@@ -770,7 +770,7 @@ public sealed class CommandLineTests : IDisposable
 
             // Its document counts each direction's transfers and those of no size, and leaves out a sum none measured.
             using JsonDocument answer = JsonDocument.Parse((await Run("workspace", "correlate", workspace, "--json")).Output);
-            Assert.Equal("workspace-correlation-v5", answer.RootElement.GetProperty("contract").GetString());
+            Assert.Equal(WorkspaceCommand.CorrelationContract, answer.RootElement.GetProperty("contract").GetString());
             JsonElement candidate = answer.RootElement.GetProperty("candidates")[0];
             JsonElement[] ends = [candidate.GetProperty("first"), candidate.GetProperty("second")];
             (long, long, JsonValueKind, long, long, string) Counted(int pid)
@@ -789,12 +789,59 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R21: icat workspace correlate states what each compared capture covered of TCP and UDP, and that no candidate is then no proof")]
+    public async Task CorrelateStatesEachCapturesCoverage()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"))).FullName;
+        string workspace = Path.Combine(folder, "case.icat-workspace");
+        try
+        {
+            // Two hosts' captures whose connections mirror none of each other's: the first lost 2 events and collected no UDP,
+            // and the second covered both.
+            Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+            foreach (string member in new[]
+            {
+                Held(folder, "first", "lab-1",
+                    [Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 1).Between("10.0.0.1:50000", "10.0.0.2:443") with { SessionRelativeTicks = 100_000 }],
+                    TransportLedger(tcp: true, udp: false, lost: 2)),
+                Held(folder, "second", "lab-2",
+                    [Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 10, 200, 1).Between("10.0.0.3:50000", "10.0.0.4:443") with { SessionRelativeTicks = 100_000 }],
+                    TransportLedger(tcp: true, udp: true)),
+            })
+            {
+                Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, member)).Code);
+            }
+
+            (InterCatExitCode code, string text, string said) = await Run("workspace", "correlate", workspace);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"Coverage +[0-9a-f]{8}: TCP partial gap, not extrapolated · UDP not collected; [0-9a-f]{8}: TCP covered · UDP covered", text);
+            Assert.Contains(WorkspaceCorrelation.NoCandidate(coverageShort: true), text, StringComparison.Ordinal);
+            Assert.Contains(" has a partial gap in TCP (the session reported 2 lost events, which may be any mechanism's), so the mirror of a "
+                + "TCP connection may be among the records it lost.", text, StringComparison.Ordinal);
+            Assert.Contains(" did not collect UDP (no admitted descriptor records it), so it holds no mirror of a UDP connection.", text,
+                StringComparison.Ordinal);
+
+            // Its document gives each capture's state of each mechanism, and the fact behind it.
+            using JsonDocument answer = JsonDocument.Parse((await Run("workspace", "correlate", workspace, "--json")).Output);
+            Assert.Equal("workspace-correlation-v6", answer.RootElement.GetProperty("contract").GetString());
+            JsonElement coverage = answer.RootElement.GetProperty("coverage");
+            Assert.Equal(["Tcp PartialGap", "Udp NotCollected", "Tcp Covered", "Udp Covered"],
+                coverage.EnumerateArray().SelectMany(member => member.GetProperty("mechanisms").EnumerateArray()
+                    .Select(entry => entry.GetProperty("mechanism").GetString() + " " + entry.GetProperty("state").GetString())));
+            Assert.Equal("no admitted descriptor records it", coverage[0].GetProperty("mechanisms")[1].GetProperty("reason").GetString());
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>
-    private static string Held(string folder, string name, string host, ObservationRowV1[] rows)
+    private static string Held(string folder, string name, string host, ObservationRowV1[] rows, CoverageLedgerV1? coverage = null)
     {
         string directory = Directory.CreateDirectory(Path.Combine(folder, name)).FullName;
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "command-line-tests");
-        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host));
+        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host), coverage: coverage);
         store.ReleaseSegmentReaders();
         return directory;
     }

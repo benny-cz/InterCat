@@ -242,6 +242,46 @@ internal static class TestSessions
     };
 
     /// <summary>
+    /// A live capture's one-epoch ledger that collected a TCP descriptor, a UDP one, or both, each delivering 3 records, and
+    /// whose session lost <paramref name="lost"/> events: what decides a capture's coverage of a connection.
+    /// </summary>
+    public static CoverageLedgerV1 TransportLedger(bool tcp, bool udp, long lost = 0) => new()
+    {
+        Contract = CoverageLedgerV1.ContractName,
+        Epochs =
+        [
+            new CoverageEpochV1
+            {
+                Epoch = 1,
+                Acquisition = CoverageAcquisition.LiveCapture,
+                FirstDeliveredNativeTicks = 0,
+                LastDeliveredNativeTicks = 1_000_000,
+                Collected =
+                [
+                    .. new[] { (tcp, 10, Mechanism.Tcp), (udp, 11, Mechanism.Udp) }.Where(entry => entry.Item1).Select(entry => new CoverageCollectedV1
+                    {
+                        ProviderId = NetworkProvider, ProviderName = "network", EventId = entry.Item2, Version = 0, Mechanism = entry.Item3,
+                    }),
+                ],
+                Deliveries =
+                [
+                    .. new[] { (tcp, 10), (udp, 11) }.Where(entry => entry.Item1).Select(entry => new CoverageDeliveryV1
+                    {
+                        ProviderId = NetworkProvider, EventId = entry.Item2, Version = 0, Delivered = 3, Admitted = 3, Omitted = 0,
+                    }),
+                ],
+                Losses =
+                [
+                    new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost },
+                    new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+                    new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+                    new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+                ],
+            },
+        ],
+    };
+
+    /// <summary>
     /// An import's one-epoch ledger that collected RPC's call start, and ALPC's send when <paramref name="alpc"/> says so:
     /// what decides whether a generation's RPC calls are followed to their other ends (ADR-034).
     /// </summary>

@@ -63,6 +63,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
             + "their lifetimes can overlap in the investigation's time. Finding them reads every session's connections.",
     };
     private readonly TextBlock candidateNotes = new() { TextWrapping = TextWrapping.Wrap, FontSize = 11, Classes = { "muted" } };
+    private readonly TextBlock candidateCoverage = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, Classes = { "caution" }, IsVisible = false };
     private readonly Button find = new() { Content = "Find candidate joins" };
     private readonly Button translations = new() { Content = "Known translations…" };
     private readonly Button acceptJoin = new() { Content = "Accept as one connection", IsEnabled = false };
@@ -169,6 +170,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(find, "Find candidate joins between the sessions");
         AutomationProperties.SetHelpText(translations, "State or withdraw a known address translation between the sessions");
         AutomationProperties.SetName(candidateSummary, "Candidate joins status");
+        AutomationProperties.SetName(candidateCoverage, "What the compared captures did not cover");
         AutomationProperties.SetLiveSetting(candidateSummary, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(timelineWords, "The investigation's timeline, each session in words");
         AutomationProperties.SetHelpText(refreshTimeline, "Draw the investigation's timeline again");
@@ -326,14 +328,16 @@ internal sealed class InvestigationWindow : Window, IDisposable
             decisions.Children.Add(button);
         }
 
-        var candidatesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto"), RowSpacing = 8 };
+        var candidatesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto,Auto,Auto"), RowSpacing = 8 };
         Grid.SetRow(candidatesHeader, 0);
         Grid.SetRow(candidatesList, 1);
         Grid.SetRow(decisions, 2);
-        Grid.SetRow(candidateNotes, 3);
+        Grid.SetRow(candidateCoverage, 3);
+        Grid.SetRow(candidateNotes, 4);
         candidatesPage.Children.Add(candidatesHeader);
         candidatesPage.Children.Add(candidatesList);
         candidatesPage.Children.Add(decisions);
+        candidatesPage.Children.Add(candidateCoverage);
         candidatesPage.Children.Add(candidateNotes);
 
         var timelineTools = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
@@ -749,7 +753,12 @@ internal sealed class InvestigationWindow : Window, IDisposable
             candidates.ItemsSource = found.Rows;
             candidates.SelectedIndex = selected >= 0 && selected < found.Rows.Count ? selected : -1;
             candidateSummary.Text = found.Summary;
-            candidateNotes.Text = string.Join(" ", found.Notes);
+
+            // A capture that did not cover what a mirror is made of is said in the caution ink, before the rules every
+            // candidate follows; one that covered both is said among them (R21).
+            candidateCoverage.Text = found.CoverageShort ? string.Join(" ", found.Coverage) : null;
+            candidateCoverage.IsVisible = found.CoverageShort;
+            candidateNotes.Text = string.Join(" ", found.CoverageShort ? found.Notes : [.. found.Coverage, .. found.Notes]);
             ShowSelectedCandidate();
         }
         catch (OperationCanceledException) when (closed)

@@ -49,6 +49,12 @@ public sealed record UnmatchedDecision(WorkspaceJoin Join, string Why);
 /// <summary>A member an investigation could not compare, and why.</summary>
 public sealed record UnreadMember(Guid SessionId, string Reason);
 
+/// <summary>
+/// What a compared member's capture covered of TCP and UDP, the mechanisms a candidate joins, over the generation compared
+/// (R21): where it lost or never collected records, a connection's mirror may be missing from it.
+/// </summary>
+public sealed record MemberCoverage(Guid SessionId, IReadOnlyList<MechanismCoverage> Mechanisms);
+
 /// <summary>What comparing an investigation's members' one-sided connections found (`contracts/workspace-v15.md` §6).</summary>
 public sealed record WorkspaceCorrelationResult(
     string Rule,
@@ -64,6 +70,9 @@ public sealed record WorkspaceCorrelationResult(
     /// manifest's digest, ordered by capture.
     /// </summary>
     public IReadOnlyList<SnapshotEntry> Snapshot { get; init; } = [];
+
+    /// <summary>What each compared member's capture covered of TCP and UDP, in the order the members are listed (R21).</summary>
+    public IReadOnlyList<MemberCoverage> Coverage { get; init; } = [];
 }
 
 /// <summary>
@@ -225,6 +234,65 @@ public static class WorkspaceCorrelation
                         member.Index.ManifestDigest ?? string.Empty))
                     .OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal),
             ],
+            Coverage = [.. members.Select(member => new MemberCoverage(member.Member.SessionId, member.Index.Coverage))],
+        };
+    }
+
+    /// <summary>
+    /// What the compared captures covered of the mechanisms a candidate joins, as a person reads it beside the candidates
+    /// (R21): for each capture short of covered, how and why, and that a connection's mirror may be missing from it, so no
+    /// candidate is no proof there was no other end; or, when every one covered both, that a connection with no candidate
+    /// had no mirror in what they recorded. Nothing when no capture was compared.
+    /// </summary>
+    public static (IReadOnlyList<string> Sentences, bool Short) CoverageWords(IReadOnlyList<MemberCoverage> coverage)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+        // Each shortfall is said once, of every capture it is true of: two captures without a ledger are one sentence.
+        string[] shortfalls =
+        [
+            .. coverage
+                .SelectMany(member => member.Mechanisms
+                    .Where(entry => entry.State != CoverageState.Covered)
+                    .GroupBy(entry => (entry.State, entry.Reason))
+                    .Select(group => (member.SessionId, Mechanisms: group.Select(entry => entry.Mechanism).ToArray(), group.Key.State, group.Key.Reason)))
+                .GroupBy(shortfall => (shortfall.State, shortfall.Reason, Names: string.Join(",", shortfall.Mechanisms)))
+                .Select(group => Shortfall([.. group.Select(shortfall => shortfall.SessionId)], group.First().Mechanisms, group.Key.State,
+                    group.Key.Reason)),
+        ];
+        return shortfalls.Length > 0 ? (shortfalls, true)
+            : coverage.Count == 0 ? ([], false)
+            : (["Every compared capture covered TCP and UDP over what it recorded, so a connection with no candidate has no mirror "
+                + "in what they recorded."], false);
+    }
+
+    /// <summary>
+    /// That no candidate was found, in the words the window and <c>icat workspace correlate</c> both say it in (R18), and,
+    /// where a compared capture's coverage falls short, that this is no proof there was no other end (R21).
+    /// </summary>
+    public static string NoCandidate(bool coverageShort) =>
+        "No connection one session holds one end of has its mirrored end in another"
+            + (coverageShort ? ", but a compared capture's coverage falls short, so that is no proof there was none." : ".");
+
+    /// <summary>One shortfall of the captures it is true of, in a sentence that agrees with how many they are.</summary>
+    private static string Shortfall(Guid[] sessions, Mechanism[] mechanisms, CoverageState state, string reason)
+    {
+        string names = string.Join(" and ", mechanisms.Select(MechanismText.InSentence));
+        string connection = mechanisms.Length == 1 ? $"a {names} connection" : "a connection";
+        string[] named = [.. sessions.Select(session => session.ToString("N")[..8])];
+        bool one = named.Length == 1;
+        string listed = one ? named[0] : string.Join(", ", named[..^1]) + " and " + named[^1];
+        string who = (one ? "Session " : "Sessions ") + listed;
+        string they = one ? "it" : "they";
+        string them = one ? "it" : "them";
+        return state switch
+        {
+            CoverageState.NotCollected => $"{who} did not collect {names} ({reason}), so {they} {(one ? "holds" : "hold")} no mirror of {connection}.",
+            CoverageState.PartialGap => $"{who} {(one ? "has" : "have")} a partial gap in {names} ({reason}), so the mirror of {connection} may be "
+                + $"among the records {they} lost.",
+            CoverageState.ReducedFidelity => $"{who} recorded {names} at reduced fidelity ({reason}), so the mirror of {connection} may be missing "
+                + $"from {them}.",
+            _ => $"What {(one ? "session" : "sessions")} {listed} covered of {names} is unknown ({reason}), so the mirror of {connection} may be "
+                + $"missing from {them}.",
         };
     }
 

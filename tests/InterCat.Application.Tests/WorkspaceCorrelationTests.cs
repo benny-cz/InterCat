@@ -274,6 +274,81 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         Assert.Equal((500_000L, 500_400L), (after.FirstNanoseconds, after.LastNanoseconds));
     }
 
+    [Fact(DisplayName = "R21: candidate joins state what each compared capture covered of TCP and UDP, and that a mirror may be missing where one fell short")]
+    public void CandidateJoinsStateEachCapturesCoverage()
+    {
+        // The client's capture collected TCP alone and lost 2 events; the server's publishes no ledger.
+        string workspace = Workspace();
+        Guid a = InvestigationWorkspace.Add(workspace, Session("client", "lab-1", ClientRows(1_000), TransportLedger(tcp: true, udp: false, lost: 2)), Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session("server", "lab-2", ServerRows(5_000)), Now).SessionId;
+        WorkspaceCorrelationResult result = WorkspaceCorrelation.Candidates(workspace);
+        Assert.Single(result.Candidates);
+        Assert.Equal([a, b], result.Coverage.Select(member => member.SessionId));
+        Assert.Equal(
+            [(Mechanism.Tcp, CoverageState.PartialGap), (Mechanism.Udp, CoverageState.NotCollected),
+                (Mechanism.Tcp, CoverageState.UnknownCoverage), (Mechanism.Udp, CoverageState.UnknownCoverage)],
+            result.Coverage.SelectMany(member => member.Mechanisms.Select(entry => (entry.Mechanism, entry.State))));
+        (IReadOnlyList<string> said, bool coverageShort) = WorkspaceCorrelation.CoverageWords(result.Coverage);
+        Assert.True(coverageShort);
+        Assert.Equal(
+            [
+                $"Session {a.ToString("N")[..8]} has a partial gap in TCP (the session reported 2 lost events, which may be any mechanism's), "
+                    + "so the mirror of a TCP connection may be among the records it lost.",
+                $"Session {a.ToString("N")[..8]} did not collect UDP (no admitted descriptor records it), so it holds no mirror of a UDP connection.",
+                $"What session {b.ToString("N")[..8]} covered of TCP and UDP is unknown (this generation publishes no coverage ledger), so the "
+                    + "mirror of a connection may be missing from it.",
+            ],
+            said);
+        Assert.Equal(
+            ["No connection one session holds one end of has its mirrored end in another, but a compared capture's coverage falls short, so "
+                + "that is no proof there was none.", "No connection one session holds one end of has its mirrored end in another."],
+            [WorkspaceCorrelation.NoCandidate(true), WorkspaceCorrelation.NoCandidate(false)]);
+
+        // Captures that covered both say so; one that kept a mechanism at reduced fidelity says that; none compared, nothing.
+        string covered = Workspace("covered");
+        InvestigationWorkspace.Add(covered, Session("client-covered", "lab-1", ClientRows(1_000), TransportLedger(tcp: true, udp: true)), Now);
+        InvestigationWorkspace.Add(covered, Session("server-covered", "lab-2", ServerRows(5_000), TransportLedger(tcp: true, udp: true)), Now);
+        Assert.Equal(
+            ("Every compared capture covered TCP and UDP over what it recorded, so a connection with no candidate has no mirror in what "
+                + "they recorded.", false),
+            Words(WorkspaceCorrelation.Candidates(covered).Coverage));
+        Assert.Equal(
+            ($"Session {a.ToString("N")[..8]} recorded TCP at reduced fidelity (its records kept no endpoint), so the mirror of a TCP "
+                + "connection may be missing from it.", true),
+            Words([new MemberCoverage(a, [new MechanismCoverage(Mechanism.Tcp, CoverageState.ReducedFidelity, "its records kept no endpoint"),
+                new MechanismCoverage(Mechanism.Udp, CoverageState.Covered, "3 records from its 1 admitted descriptor, and nothing was reported lost")])]));
+        Assert.Equal((string.Empty, false), Words([]));
+
+        // A shortfall true of several captures is said once, of them all.
+        MechanismCoverage Unknown(Mechanism mechanism) => new(mechanism, CoverageState.UnknownCoverage, "this generation publishes no coverage ledger");
+        MechanismCoverage Uncollected(Mechanism mechanism) => new(mechanism, CoverageState.NotCollected, "no admitted descriptor records it");
+        MechanismCoverage Lossy(Mechanism mechanism) => new(mechanism, CoverageState.PartialGap, "the session reported 1 lost event, which may be any mechanism's");
+        Guid c = Guid.Parse("cccccccc-0000-0000-0000-000000000000");
+        (string a8, string b8) = (a.ToString("N")[..8], b.ToString("N")[..8]);
+        Assert.Equal(
+            ($"What sessions {a8}, {b8} and cccccccc covered of TCP and UDP is unknown (this generation publishes no coverage ledger), so the "
+                + "mirror of a connection may be missing from them.", true),
+            Words([new MemberCoverage(a, [Unknown(Mechanism.Tcp), Unknown(Mechanism.Udp)]), new MemberCoverage(b, [Unknown(Mechanism.Tcp),
+                Unknown(Mechanism.Udp)]), new MemberCoverage(c, [Unknown(Mechanism.Tcp), Unknown(Mechanism.Udp)])]));
+        Assert.Equal(
+            ($"Sessions {a8} and {b8} have a partial gap in TCP (the session reported 1 lost event, which may be any mechanism's), so the mirror "
+                + "of a TCP connection may be among the records they lost.\n"
+                + $"Sessions {a8} and {b8} did not collect UDP (no admitted descriptor records it), so they hold no mirror of a UDP connection.\n"
+                + $"Sessions {a8} and {b8} recorded TCP and UDP at reduced fidelity (no endpoint), so the mirror of a connection may be missing "
+                + "from them.", true),
+            Words([new MemberCoverage(a, [Lossy(Mechanism.Tcp), Uncollected(Mechanism.Udp)]), new MemberCoverage(b, [Lossy(Mechanism.Tcp),
+                Uncollected(Mechanism.Udp)]), new MemberCoverage(a, [new(Mechanism.Tcp, CoverageState.ReducedFidelity, "no endpoint"),
+                new(Mechanism.Udp, CoverageState.ReducedFidelity, "no endpoint")]), new MemberCoverage(b, [new(Mechanism.Tcp,
+                CoverageState.ReducedFidelity, "no endpoint"), new(Mechanism.Udp, CoverageState.ReducedFidelity, "no endpoint")])]));
+
+        // The sentences, one to a line, and whether any capture fell short.
+        static (string, bool) Words(IReadOnlyList<MemberCoverage> coverage)
+        {
+            (IReadOnlyList<string> sentences, bool isShort) = WorkspaceCorrelation.CoverageWords(coverage);
+            return (string.Join("\n", sentences), isShort);
+        }
+    }
+
     private string Workspace(string folder = "")
     {
         string path = Path.Combine(root, folder, "case" + InvestigationWorkspace.Extension);
@@ -281,11 +356,11 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         return path;
     }
 
-    private string Session(string name, string host, ObservationRowV1[] rows)
+    private string Session(string name, string host, ObservationRowV1[] rows, CoverageLedgerV1? coverage = null)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "correlation-tests");
-        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host));
+        Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), host), coverage: coverage);
         store.ReleaseSegmentReaders();
         return directory;
     }

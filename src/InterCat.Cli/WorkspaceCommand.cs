@@ -153,6 +153,9 @@ internal sealed record WorkspaceCorrelationDocument
 
     /// <summary>The snapshot vector the candidates answer (I16): each compared capture's one generation, by capture.</summary>
     public required IReadOnlyList<SnapshotEntryDocument> SnapshotVector { get; init; }
+
+    /// <summary>What each compared capture covered of TCP and UDP, each mechanism's state with the fact behind it (R21).</summary>
+    public required IReadOnlyList<MemberCoverage> Coverage { get; init; }
 }
 
 /// <summary>One capture's generation a workspace result was read from, as a query identity's snapshot vector names it.</summary>
@@ -235,7 +238,7 @@ internal static partial class WorkspaceCommand
 
     public const string ComparisonContract = "workspace-comparison-v1";
 
-    public const string CorrelationContract = "workspace-correlation-v5";
+    public const string CorrelationContract = "workspace-correlation-v6";
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
@@ -690,6 +693,7 @@ internal static partial class WorkspaceCommand
             DecidedElsewhere = [.. (result.DecidedElsewhere ?? []).Select(unmatched => DecisionOf(unmatched.Join, true, unmatched.Why))],
             Caveats = result.Caveats,
             SnapshotVector = SnapshotOf(path, result.Snapshot),
+            Coverage = result.Coverage,
         };
         if (json)
         {
@@ -705,6 +709,13 @@ internal static partial class WorkspaceCommand
             ? "no session"
             : string.Join("; ", document.SnapshotVector.Select(entry =>
                 string.Create(culture, $"{Short(entry.SessionId)} at generation {entry.Generation:N0}"))));
+        if (result.Coverage.Count > 0)
+        {
+            // Each compared capture's coverage of the mechanisms a candidate joins, in the window's words (R5, R21).
+            ConsoleUi.Field("Coverage", string.Join("; ", result.Coverage.Select(member => Short(member.SessionId) + ": "
+                + string.Join(" · ", member.Mechanisms.Select(entry => $"{MechanismText.InSentence(entry.Mechanism)} {CoverageStateText.Value(entry.State)}")))));
+        }
+
         int ambiguous = result.Candidates.Count(candidate => candidate.Ambiguous);
         ConsoleUi.Field("Candidates", string.Create(culture,
             $"{result.Candidates.Count:N0}, {ambiguous:N0} of them not the only match of a connection"));
@@ -732,9 +743,10 @@ internal static partial class WorkspaceCommand
             }
         }
 
+        (IReadOnlyList<string> coverage, bool coverageShort) = WorkspaceCorrelation.CoverageWords(result.Coverage);
         if (result.Candidates.Count == 0)
         {
-            ConsoleUi.Note("No connection one session holds one end of has its mirrored end in another.");
+            ConsoleUi.Note(WorkspaceCorrelation.NoCandidate(coverageShort));
         }
 
         ConsoleUi.Line();
@@ -755,7 +767,7 @@ internal static partial class WorkspaceCommand
                 + $"by a person, but {elsewhere.Why}.");
         }
 
-        foreach (string caveat in result.Caveats)
+        foreach (string caveat in coverage.Concat(result.Caveats))
         {
             ConsoleUi.Note(caveat);
         }

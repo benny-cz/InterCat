@@ -70,7 +70,17 @@ public sealed record InvestigationCandidateRow(
 }
 
 /// <summary>What looking for candidate joins found: its rows and, in words, what was not proposed or not compared.</summary>
-public sealed record InvestigationCandidates(IReadOnlyList<InvestigationCandidateRow> Rows, string Summary, IReadOnlyList<string> Notes);
+public sealed record InvestigationCandidates(IReadOnlyList<InvestigationCandidateRow> Rows, string Summary, IReadOnlyList<string> Notes)
+{
+    /// <summary>
+    /// What the compared captures covered of TCP and UDP (R21): how each that fell short did, or that every one covered
+    /// both. The window says a shortfall in the caution ink beside the candidates, since a mirror may be missing for it.
+    /// </summary>
+    public IReadOnlyList<string> Coverage { get; init; } = [];
+
+    /// <summary>Whether a compared capture's coverage of TCP or UDP falls short of covered.</summary>
+    public bool CoverageShort { get; init; }
+}
 
 /// <summary>
 /// Reads an investigation for its window: the workspace file, each member resolved where it was last found, its host and
@@ -191,8 +201,9 @@ public static class InvestigationRows
                     candidate.Decision?.Decision);
             }),
         ];
+        (IReadOnlyList<string> coverage, bool coverageShort) = WorkspaceCorrelation.CoverageWords(result.Coverage);
         string summary = rows.Length == 0
-            ? "No candidate join: no connection one session holds one end of has its mirrored end in another."
+            ? "No candidate join. " + WorkspaceCorrelation.NoCandidate(coverageShort)
             : string.Create(culture, $"{rows.Length:N0} candidate {(rows.Length == 1 ? "join" : "joins")}, none established by evidence; ")
                 + (rows.Any(row => row.Decision is not null)
                     ? string.Create(culture, $"{rows.Count(row => row.Decision == WorkspaceJoinDecision.Accepted):N0} accepted and ")
@@ -219,7 +230,7 @@ public static class InvestigationRows
         notes.AddRange((result.DecidedElsewhere ?? []).Select(unmatched => string.Create(culture,
             $"Join revision {unmatched.Join.Revision} is {unmatched.Join.Decision.ToString().ToLowerInvariant()} by a person, but {unmatched.Why}.")));
         notes.AddRange(result.Caveats);
-        return new(rows, summary, notes);
+        return new(rows, summary, notes) { Coverage = coverage, CoverageShort = coverageShort };
     }
 
     /// <summary>

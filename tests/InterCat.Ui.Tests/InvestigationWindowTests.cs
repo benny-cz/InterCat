@@ -981,6 +981,54 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R21: the investigation window says where every compared capture covered TCP and UDP, and in the caution ink where one fell short")]
+    public async Task TheWindowSaysTheComparedCapturesCoveredBoth()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100, TransportLedger(tcp: true, udp: true)), Committed);
+        InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.3:443", "10.0.0.1:50001"], 200, TransportLedger(tcp: true, udp: true)), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(1);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await window.FindCandidatesAsync();
+            Render(window);
+
+            // No connection mirrors another, and both captures covered both mechanisms: no caution, and the notes say why the
+            // absence means something.
+            Assert.Equal("No candidate join. " + WorkspaceCorrelation.NoCandidate(coverageShort: false), window.Candidates!.Summary);
+            Assert.False(window.Candidates.CoverageShort);
+            Assert.False(Named<TextBlock>(window, "What the compared captures did not cover").IsEffectivelyVisible);
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible
+                && text.Text?.StartsWith("Every compared capture covered TCP and UDP over what it recorded, so a connection with no candidate "
+                    + "has no mirror in what they recorded. ", StringComparison.Ordinal) == true);
+
+            // A third capture, with no ledger, leaves what it covered unknown: said in the caution ink, and no candidate is then
+            // no proof there was none.
+            Guid third = InvestigationWorkspace.Add(workspace, Session(root.Path, "third", ["10.0.0.5:443", "10.0.0.1:50002"], 300), Committed).SessionId;
+            await window.FindCandidatesAsync();
+            Render(window);
+            Assert.Equal("No candidate join. " + WorkspaceCorrelation.NoCandidate(coverageShort: true), window.Candidates!.Summary);
+            TextBlock coverage = Named<TextBlock>(window, "What the compared captures did not cover");
+            Assert.True(coverage.IsEffectivelyVisible);
+            Assert.Equal($"What session {Short(third)} covered of TCP and UDP is unknown (this generation publishes no coverage ledger), so the "
+                + "mirror of a connection may be missing from it.", coverage.Text);
+            Assert.DoesNotContain(window.GetVisualDescendants().OfType<TextBlock>(),
+                text => text.Text?.StartsWith("Every compared capture", StringComparison.Ordinal) == true);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window lists candidate joins with their evidence, none established")]
     public async Task TheWindowListsCandidateJoins()
     {
@@ -1007,6 +1055,16 @@ public sealed class InvestigationWindowTests
             Assert.StartsWith("Candidate join: TCP 10.0.0.1:50000", row.AccessibleName, StringComparison.Ordinal);
             Assert.Equal("1 candidate join, none established by evidence; 0 not the only match of a connection.", found.Summary);
             Assert.Equal(found.Summary, Named<TextBlock>(window, "Candidate joins status").Text);
+
+            // Neither capture has a ledger, so what each covered of TCP and UDP is unknown: said in the caution ink, since a
+            // mirror may be missing for that alone (R21).
+            TextBlock coverage = Named<TextBlock>(window, "What the compared captures did not cover");
+            Render(window);
+            Assert.True(found.CoverageShort && coverage.IsEffectivelyVisible);
+            Assert.Equal(string.Join(" ", found.Coverage), coverage.Text);
+            Assert.Matches("^What sessions [0-9a-f]{8} and [0-9a-f]{8} covered of TCP and UDP is unknown \\(this generation publishes no coverage "
+                + "ledger\\), so the mirror of a connection may be missing from them\\.$", Assert.Single(found.Coverage));
+            Assert.Equal(ThemeResources.ToColor(ThemePalette.Status(ThemeResources.CurrentMode).Caution), RenderedPixels.ColorOf(coverage.Foreground));
             ListBox list = Named<ListBox>(window, "Candidate joins between the sessions; none is established");
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Assert.Equal(row.AccessibleName, AutomationProperties.GetName(list.ContainerFromIndex(0)!));
@@ -1362,7 +1420,7 @@ public sealed class InvestigationWindowTests
         Math.Sqrt(Math.Pow(one.R - other.R, 2) + Math.Pow(one.G - other.G, 2) + Math.Pow(one.B - other.B, 2));
 
     /// <summary>A session whose one process holds one end of a TCP connection: it opens, sends and closes it.</summary>
-    private static string Session(string root, string name, string[] ends, int owner)
+    private static string Session(string root, string name, string[] ends, int owner, CoverageLedgerV1? coverage = null)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
@@ -1375,7 +1433,8 @@ public sealed class InvestigationWindowTests
                 Transfer(1_002, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, owner, 22).Between(ends[0], ends[1]) with { SessionRelativeTicks = 100_200 },
             ],
             capture: CaptureId.New(),
-            clock: ClockFor(ClockId.New(), "lab-" + name));
+            clock: ClockFor(ClockId.New(), "lab-" + name),
+            coverage: coverage);
         store.ReleaseSegmentReaders();
         return directory;
     }
