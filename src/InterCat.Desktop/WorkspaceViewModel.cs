@@ -64,6 +64,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="Forward">The rungs forward steps would re-enter, nearest first (§6.7).</param>
 /// <param name="RankBy">What the machine and group rungs rank by (§6.1's metric selector).</param>
 /// <param name="ReachedWith">The process selected when the current rung was reached, which a channel it opened is described over.</param>
+/// <param name="ExplainedCell">The lane a click chose the analysis interval's cell in, which the inspector explains it as (§6.8).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -80,7 +81,8 @@ public sealed record WorkspaceNavigationMemento(
     RankingMetric RankBy = RankingMetric.Records,
     bool PerSecond = false,
     bool ScalesEachLane = false,
-    ProcessInstanceId? ReachedWith = null);
+    ProcessInstanceId? ReachedWith = null,
+    TimelineCellLane? ExplainedCell = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1011,6 +1013,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (value is null || !directionLaneOptions.Contains(value) || selectedDirectionLane == value) return;
             selectedDirectionLane = value;
+
+            // A row chosen after a cell is the one explained (§6.8).
+            chosenCell = null;
             RefreshIntervalRows(timelineFocusBuckets);
             OnPropertyChanged();
             OnPropertyChanged(nameof(TimelineCaption));
@@ -1109,6 +1114,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         if (end is not (null or 0 or 1) || selectedChannelEnd == end) return;
         selectedChannelEnd = end;
+
+        // An end chosen after a cell is the one explained (§6.8).
+        chosenCell = null;
         RefreshIntervalRows(timelineFocusBuckets);
         OnPropertyChanged(nameof(SelectedChannelEnd));
         OnPropertyChanged(nameof(SelectedChannelEndOption));
@@ -1171,6 +1179,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (value is null || !timelineLaneOptions.Contains(value) || selectedTimelineLane == value) return;
             selectedTimelineLane = value;
+
+            // A lane chosen after a cell is the one explained (§6.8).
+            chosenCell = null;
             RefreshIntervalRows(timelineFocusBuckets);
             OnPropertyChanged();
             OnPropertyChanged(nameof(TimelineCaption));
@@ -1388,7 +1399,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
-        scalesEachLane, reachedWith);
+        scalesEachLane, reachedWith, chosenCell);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1543,6 +1554,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
                 SelectInterval(new(start, end));
             }
+        }
+
+        // The cell a click chose is explained again as a cell of the same lane, while this generation draws it there.
+        if (saved.ExplainedCell is { } cell)
+        {
+            chosenCell = cell;
+            RaiseCellExplanationChanged();
         }
 
         SearchText = saved.SearchText;
@@ -3342,6 +3360,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             selectedProcess = value;
+
+            // A process's lane chosen after a cell is the one explained (§6.8).
+            if (ShowsProcessLanes)
+            {
+                chosenCell = null;
+            }
+
             if (value is not null)
             {
                 selectedClusterKey = null;
@@ -3839,6 +3864,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} buckets over the whole session")));
         lines.Add(selectedInterval == bucket.Interval
             ? "This bucket is the analysis interval"
+            : realOverview
+            ? "Click makes it the analysis interval, explained in the inspector · Shift+drag brushes a range"
             : "Click makes it the analysis interval · Shift+drag brushes a range");
         return new(WorkspaceTime.FormatHalfOpenRange(bucket.Interval, CultureInfo.CurrentCulture), lines);
     }
@@ -4557,6 +4584,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         view = ProjectLadder();
         selectedRung = null;
         selectedCrumb = null;
+
+        // A chosen cell is a place in the rung's lanes, which the rung left takes with it.
+        chosenCell = null;
 
         // The process a rung was reached with is its context, not a choice made there: an opened channel is described
         // over it until another is chosen.
@@ -5867,6 +5897,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {
+        // A cell a click chose is explained until another interval is chosen, or another process's lane (§6.8).
+        if (!choosingCell && (changed.Interval != selectedInterval
+            || ShowsProcessLanes && changed.ProcessId != selectedProcess?.Id))
+        {
+            chosenCell = null;
+        }
+
         selectedInterval = changed.Interval;
         SyncIntervalScope();
         RaiseScopeChanged();
@@ -5914,6 +5951,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // The legend's height key follows the lanes drawn and what they plot (§6.2, §6.8).
             PropertyChanged?.Invoke(this, new(nameof(OffersLaneScale)));
             PropertyChanged?.Invoke(this, new(nameof(LaneScaleText)));
+        }
+
+        if (IsCellExplanationInput(propertyName))
+        {
+            // A chosen cell's explanation reads the interval, the lane selected and the lanes drawn (§6.8).
+            PropertyChanged?.Invoke(this, new(nameof(CellExplanation)));
+            PropertyChanged?.Invoke(this, new(nameof(HasCellExplanation)));
         }
     }
 }

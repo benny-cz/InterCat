@@ -1,6 +1,8 @@
+using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -73,6 +75,69 @@ public sealed class CoarserLanesWindowTests
             .DefaultIfEmpty(0)
             .Max() * WorkspaceTime.TicksPerSecond;
         Assert.Equal(ownPeak, timeline.RowScale(workspace.ProcessLaneDisplay.Count));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.8/R13: a click on a coarser lane's cell makes that cell the analysis interval, and the inspector says how it was counted")]
+    public async Task AClickOnACoarserLanesCellChoosesAndExplainsIt()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Pool(100));
+        var window = new MainWindow { Width = 3_600, Height = 1_400 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("pool.exe", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        Dispatch();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        TimeRange extent = workspace.Snapshot.Extent;
+        timeline.SetViewport(new TimeRange(extent.StartTicks + (extent.SpanTicks / 4), extent.EndTicks - (extent.SpanTicks / 4)));
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Assert.True(workspace.ProcessLaneDisplay[0].Buckets.Count < workspace.TimelineDetail!.Buckets.Count);
+
+        // A lane cell with records that no machine column matches: its hover names it, and a click chooses it whole, where
+        // the machine column beneath the pointer was chosen before.
+        (ProcessTimelineLane lane, TimelineBucket cell) = workspace.ProcessLaneDisplay
+            .SelectMany(candidate => candidate.Buckets.Select(bucket => (candidate, bucket)))
+            .First(pair => pair.bucket.ObservationCount > 0
+                && pair.bucket.Interval.StartTicks >= timeline.Viewport.StartTicks && pair.bucket.Interval.EndTicks <= timeline.Viewport.EndTicks
+                && !workspace.TimelineDetail.Buckets.Any(machine => machine.Interval == pair.bucket.Interval));
+        Point at = timeline.TranslatePoint(timeline.PointOf(lane.ProcessId, cell)!.Value, window)!.Value;
+        window.MouseMove(at);
+        Dispatch();
+        Assert.Equal(cell, timeline.HoveredBucket);
+        Assert.Equal("Click makes it the analysis interval, explained in the inspector · Shift+drag brushes a range",
+            Assert.IsType<HoverCard>(timeline.HoverCard).Lines[^1]);
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Dispatch();
+        Assert.Equal(cell.Interval, workspace.SelectedInterval);
+
+        // A press puts the card away; the pointer moved within the cell brings it back, saying it is chosen.
+        window.MouseMove(new Point(at.X + 1, at.Y));
+        Dispatch();
+        Assert.Equal(cell, timeline.HoveredBucket);
+        Assert.Equal("This bucket is the analysis interval", Assert.IsType<HoverCard>(timeline.HoverCard).Lines[^1]);
+
+        // The inspector says, beneath the time scope, whose records the cell counts and the columns they were counted in.
+        ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
+        TextBlock explanation = window.GetControl<TextBlock>("CellExplanationText");
+        Assert.True(explanation.IsEffectivelyVisible);
+        Assert.Contains($"bound to {owner.NameWithPid}, ", explanation.Text, StringComparison.Ordinal);
+        Assert.Contains("one of the lanes' own", explanation.Text, StringComparison.Ordinal);
+        Assert.Equal(workspace.CellExplanation, explanation.Text);
+
+        // A brushed range is no cell, and the explanation goes.
+        workspace.SelectInterval(new TimeRange(cell.Interval.StartTicks, cell.Interval.EndTicks + 1));
+        Dispatch();
+        Assert.False(explanation.IsEffectivelyVisible);
         window.Close();
     }
 

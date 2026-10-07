@@ -659,6 +659,12 @@
                              Classes="muted" Classes.caution="{Binding ScopeCoverageLimited}"
                              IsVisible="{Binding ShowsScopeCoverage}" />
                 </StackPanel>
+                <!-- §6.8: a timeline cell chosen by a click, a step or the interval table is one action from how it was
+                     counted: its lane's records and the rule behind them, what its bar plots, its column and its coverage. -->
+                <StackPanel Spacing="3" IsVisible="{Binding HasCellExplanation}">
+                  <TextBlock Text="How this cell was counted" Classes="muted" />
+                  <TextBlock x:Name="CellExplanationText" Text="{Binding CellExplanation}" TextWrapping="Wrap" />
+                </StackPanel>
                 <StackPanel Spacing="3">
                   <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock x:Name="EvidenceSummaryText" Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />

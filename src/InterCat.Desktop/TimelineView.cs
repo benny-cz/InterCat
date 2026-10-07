@@ -970,20 +970,30 @@ public sealed class TimelineView : Control, IHoverCardSource
                 return ShowingLanes ? null : BucketAt(viewModel, tick);
             }
 
-            if (FocusRows is { } rows)
-            {
-                return rows.Kind == FocusRowKind.Calls && index == 1
-                    ? null
-                    : BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
-            }
-
-            Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
-            IReadOnlyList<MechanismTimelineLane> lanes = viewModel.TimelineDetail is { } detail
-                && detail.Interval.Contains(tick)
-                && CoversEveryLane(detail, viewModel.Snapshot.MechanismLanes)
-                    ? detail.MechanismLanes : viewModel.Snapshot.MechanismLanes;
-            return BucketContaining(LaneOf(lanes, mechanism)?.Buckets, tick);
+            return LaneBucketAt(viewModel, index, tick);
         }
+    }
+
+    /// <summary>
+    /// The bucket lane <paramref name="index"/> draws at a tick: a focused rung's row - its machine context first - or a
+    /// mechanism's lane at the machine rung, from the zoomed detail where it covers every lane. Null on a call lane, whose
+    /// bars are calls.
+    /// </summary>
+    private TimelineBucket? LaneBucketAt(WorkspaceViewModel viewModel, int index, long tick)
+    {
+        if (FocusRows is { } rows)
+        {
+            return rows.Kind == FocusRowKind.Calls && index == 1
+                ? null
+                : BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
+        }
+
+        Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
+        IReadOnlyList<MechanismTimelineLane> lanes = viewModel.TimelineDetail is { } detail
+            && detail.Interval.Contains(tick)
+            && CoversEveryLane(detail, viewModel.Snapshot.MechanismLanes)
+                ? detail.MechanismLanes : viewModel.Snapshot.MechanismLanes;
+        return BucketContaining(LaneOf(lanes, mechanism)?.Buckets, tick);
     }
 
     private int? HoveredLaneIndex => HoverTick is not null ? LaneIndexAt(HoverPoint.Y) : null;
@@ -2662,15 +2672,32 @@ public sealed class TimelineView : Control, IHoverCardSource
                     RpcCallDensity.ColumnOf(density.Interval, density.Columns, anchor)));
             }
         }
+        else if (wasClick && LaneIndexAt(pressY) is { } lane && LaneBucketAt(viewModel, lane, anchor) is { } cell)
+        {
+            // A click chooses the cell it landed on - its lane's own, which a group's lanes counted coarser than the view
+            // hold wider than the machine column beneath - and the inspector explains it (§6.8, R13).
+            ChooseCell(viewModel, lane, cell);
+        }
         else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)
         {
-            viewModel.SelectInterval(bucket.Interval);
+            viewModel.ChooseTimelineCell(bucket);
         }
 
         pressedCall = null;
 
         InvalidateVisual();
         e.Handled = true;
+    }
+
+    /// <summary>Chooses a lane's cell by the lane it lies in, as its hover card names the lane.</summary>
+    private void ChooseCell(WorkspaceViewModel viewModel, int index, TimelineBucket cell)
+    {
+        FocusRowKind? kind = FocusRows?.Kind;
+        viewModel.ChooseTimelineCell(cell,
+            ShowingMechanismLanes ? viewModel.Snapshot.MechanismLanes[index].Mechanism : null,
+            kind == FocusRowKind.Owners && index > 0 ? OwnerOf(viewModel, index - 1) : null,
+            kind == FocusRowKind.Directions && index > 0 ? viewModel.TimelineDirectionLanes![index - 1].Direction : null,
+            kind == FocusRowKind.ChannelEnds && index > 0 ? viewModel.TimelineChannelEndLanes![index - 1] : null);
     }
 
     /// <summary>The finest bucket drawn at a tick: the zoomed detail where it has arrived, else the overview's.</summary>
