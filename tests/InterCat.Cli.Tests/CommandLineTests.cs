@@ -32,7 +32,7 @@ public sealed class CommandLineTests : IDisposable
     private static readonly string[] StagingFields =
         ["Session", "Abandoned staged files", "Marker-only files", "Active writer files", "Unmarked legacy files", "Files removed"];
 
-    /// <summary>The fields an export's report ends with.</summary>
+    /// <summary>The fields an export's report states before its caveats.</summary>
     private static readonly string[] ExportFields = ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Rows", "Complete"];
 
     /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
@@ -215,19 +215,25 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, previewed);
         Assert.Single(StagingFields.Select(label => ValueColumn(preview, label)).Distinct());
 
-        // An export's report ends with its fields, which nothing written after them would bring out.
+        // An export's fields line up, and its caveats follow them, the capture's coverage over its scope last (R21).
         string destination = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".csv");
         try
         {
             (InterCatExitCode exported, string report, _) = await Run("export", session.Path, "--output", destination);
             Assert.Equal(InterCatExitCode.Success, exported);
             Assert.Single(ExportFields.Select(label => ValueColumn(report, label)).Distinct());
-            Assert.EndsWith("yes", report.TrimEnd(), StringComparison.Ordinal);
+            Assert.EndsWith("Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof "
+                + "of inactivity", report.TrimEnd(), StringComparison.Ordinal);
         }
         finally
         {
             File.Delete(destination);
         }
+
+        // A checkpoint's report ends with its fields, which nothing written after them would bring out.
+        (InterCatExitCode checkpointed, string written, _) = await Run("checkpoint", session.Path);
+        Assert.Equal(InterCatExitCode.Success, checkpointed);
+        Assert.Matches(@"\n  Size +\S[^\n]*$", written.TrimEnd());
     }
 
     [Fact(DisplayName = "§20.4: a command answering from the last complete generation says so, with what kept the newest from verifying")]

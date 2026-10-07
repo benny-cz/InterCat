@@ -128,7 +128,7 @@ public static class SessionExport
             LadderView view = LadderProjection.Project(snapshot, ladder.Current, request.RankBy);
             RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
-                request.Interval, OverviewWorkspace.DisclosureFor(snapshot), exportedUtc, applied);
+                request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied);
             if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
             {
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };
@@ -159,7 +159,7 @@ public static class SessionExport
             read.NextCursor is null, OverviewWorkspace.DisclosureFor(snapshot),
             string.Create(CultureInfo.InvariantCulture,
                 $"Only the first {records.Count:N0} records of this scope are included; raise --limit for the rest."),
-            exportedUtc);
+            read.Coverage, exportedUtc);
         string evidenceContent = request.Redacted
             ? RedactedShareExport.Evidence(request.Format, context, records)
             : WorkspaceExport.Evidence(request.Format, context, records);

@@ -5731,13 +5731,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// The applied snapshot an export names: this generation, this rung and its filters, and the interval the shown
-    /// counts answer. At the evidence rung the scope is the records' own, and the export is complete only when every
-    /// page of that scope has been loaded (plan §6.4).
+    /// counts answer, with what the capture covered there, as the inspector states it beneath its time scope (R21). At
+    /// the evidence rung the scope is the records' own, and the export is complete only when every page of that scope
+    /// has been loaded (plan §6.4).
     /// </summary>
     public ExportContext DescribeExport(DateTimeOffset exportedUtc)
     {
         ExportContext context = WorkspaceExport.RankingContext(
-            evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure, exportedUtc,
+            evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure,
+            Snapshot.MechanismCoverage, exportedUtc,
             view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records);
 
         // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
@@ -5763,7 +5765,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 read.NextCursor is null, workspaceDisclosure,
                 string.Create(CultureInfo.InvariantCulture,
                     $"Only the first {read.Records.Count:N0} records of this scope are included; narrow it with a filter or a brushed interval, or use icat export --limit for more."),
-                exportedUtc);
+                read.Coverage, exportedUtc);
             if (EvidencePolicyCaveat is { } policy)
             {
                 context = context with { Caveats = [.. context.Caveats, policy] };

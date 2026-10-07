@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -16,7 +17,8 @@ public enum ExportFormat
 
 /// <summary>
 /// What one export names: the applied snapshot it was taken from and the scope its rows answer (plan §6.4). An export
-/// that holds fewer rows than its scope has says so rather than passing a loaded page off as the whole result.
+/// that holds fewer rows than its scope has says so rather than passing a loaded page off as the whole result, and one
+/// that names a session's capture states what that capture covered over its time scope (R21).
 /// </summary>
 public sealed record ExportContext(
     Guid? SessionId,
@@ -32,6 +34,12 @@ public sealed record ExportContext(
 {
     /// <summary>What a ranked export's rows are ordered by; records unless a byte ranking was applied (§5.2).</summary>
     public RankingMetric RankedBy { get; init; } = RankingMetric.Records;
+
+    /// <summary>
+    /// Each mechanism's coverage over the export's time scope, its interval or the whole session, with the fact behind
+    /// its state: whether a count of none in its rows could have been seen at all (R21). Empty for a view of no session.
+    /// </summary>
+    public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
 }
 
 /// <summary>
@@ -50,7 +58,7 @@ public static class WorkspaceExport
     /// A ranked rung's export context: its breadcrumb and filters, and the interval its counts answer, which is a
     /// brushed interval only once its counts have been applied. The Desktop and <c>icat export</c> both build it here,
     /// so the two name one snapshot the same way (R18). A byte ranking is named, with what it measures, beside the
-    /// disclosure.
+    /// disclosure, and the coverage of the counts' scope is said as the inspector says it beneath its time scope.
     /// </summary>
     public static ExportContext RankingContext(
         Guid? sessionId,
@@ -58,11 +66,13 @@ public static class WorkspaceExport
         DetailLadder ladder,
         TimeRange? appliedInterval,
         string disclosure,
+        IReadOnlyList<MechanismCoverage> coverage,
         DateTimeOffset exportedUtc,
         RankingMetric rankedBy = RankingMetric.Records)
     {
         ArgumentNullException.ThrowIfNull(ladder);
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
+        ArgumentNullException.ThrowIfNull(coverage);
         if (!Enum.IsDefined(rankedBy)) throw new ArgumentOutOfRangeException(nameof(rankedBy));
         return new(
             sessionId,
@@ -75,12 +85,19 @@ public static class WorkspaceExport
                 ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
                 : "Whole session",
             true,
-            rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)],
+            WithCoverage(
+                rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)],
+                coverage),
             exportedUtc)
         {
             RankedBy = rankedBy,
+            Coverage = coverage,
         };
     }
+
+    /// <summary>Caveats followed by what the capture covered over the export's scope, when it names a session's capture.</summary>
+    private static string[] WithCoverage(string[] caveats, IReadOnlyList<MechanismCoverage> coverage) =>
+        CoverageText.Describe(coverage) is { Length: > 0 } said ? [.. caveats, said] : caveats;
 
     /// <summary>
     /// What a byte or call ranking measures, as an export states it beside its rows. At a process's rung its rows are its
@@ -157,7 +174,8 @@ public static class WorkspaceExport
 
     /// <summary>
     /// An evidence export's context: the records' own scope, complete only when every record of it is included. An
-    /// incomplete export says what was left out and how to get the rest, in the words of whoever produced it.
+    /// incomplete export says what was left out and how to get the rest, in the words of whoever produced it. Every
+    /// record of a scope is not every record the machine made there: the capture's coverage over it says what could be.
     /// </summary>
     public static ExportContext EvidenceContext(
         Guid? sessionId,
@@ -167,12 +185,14 @@ public static class WorkspaceExport
         bool complete,
         string disclosure,
         string incompleteAdvice,
+        IReadOnlyList<MechanismCoverage> coverage,
         DateTimeOffset exportedUtc)
     {
         ArgumentNullException.ThrowIfNull(ladder);
         ArgumentNullException.ThrowIfNull(scope);
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
         ArgumentException.ThrowIfNullOrWhiteSpace(incompleteAdvice);
+        ArgumentNullException.ThrowIfNull(coverage);
         return new(
             sessionId,
             generation,
@@ -182,8 +202,11 @@ public static class WorkspaceExport
             scope.Interval,
             scope.Description,
             complete,
-            [disclosure, complete ? "Every record of this scope is included." : incompleteAdvice],
-            exportedUtc);
+            WithCoverage([disclosure, complete ? "Every record of this scope is included." : incompleteAdvice], coverage),
+            exportedUtc)
+        {
+            Coverage = coverage,
+        };
     }
 
     /// <summary>Ranked rows in the chosen format.</summary>
@@ -343,6 +366,10 @@ public static class WorkspaceExport
         context.Scope,
         context.Complete,
         context.Caveats,
+
+        // Each mechanism's own state over the scope, never one rolled up (metrics-v1 §7), named as the enumerations name
+        // them for a tool; the caveats say the same in words.
+        Coverage = context.Coverage.Select(entry => new { entry.Mechanism, entry.State, entry.Reason }),
         context.ExportedUtc,
         Content = "Normalized metadata and raw locators only; no payload or extended-data bytes.",
     };

@@ -156,7 +156,9 @@ internal static class ExportCommand
         ConsoleUi.Line("  at the other end of each process's records, a lower bound beside those left unresolved.");
         ConsoleUi.Line("  --evidence exports the rung's source records instead of its rows, up to --limit (100,000 by");
         ConsoleUi.Line("  default); an export that stops short says so and exits with the partial-result code. CSV");
-        ConsoleUi.Line("  neutralizes formula-like text.");
+        ConsoleUi.Line("  neutralizes formula-like text. The JSON's context, and this report, state what the capture covered");
+        ConsoleUi.Line("  over the export's scope, mechanism by mechanism, so a count of none it could not see is not read");
+        ConsoleUi.Line("  as no activity.");
         ConsoleUi.Line("  --share-redacted writes an allowlisted, pseudonymized report without raw IDs, names, addresses,");
         ConsoleUi.Line("  source files or record locators. This report is not anonymous or a reopenable session.");
     }

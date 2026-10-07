@@ -100,6 +100,57 @@ public sealed class SessionExportTests
         Assert.Contains(partial.Context.Caveats, caveat => caveat.Contains("--limit", StringComparison.Ordinal));
     }
 
+    [Fact(DisplayName = "R21: an export states what the capture covered over its scope, mechanism by mechanism, as the inspector does")]
+    public void AnExportStatesItsScopesCoverage()
+    {
+        using TemporarySession gapped = Gapped();
+        const string Unknown = "Coverage unknown: outside the readings the capture's sources delivered, so a count of none here "
+            + "is not proof of inactivity";
+
+        // Over the whole session the capture covered what it collected: the export lists each mechanism's state with the fact
+        // behind it, and its caveats end by saying so as the inspector does beneath its time scope.
+        SessionExportResult whole = SessionExport.Build(gapped.Store, new([], null, false, ExportFormat.Json), Exported);
+        Assert.Equal("Coverage: covered for TCP · no other mechanism collected", whole.Context.Caveats[^1]);
+        Assert.Equal(Enum.GetValues<Mechanism>(), whole.Context.Coverage.Select(entry => entry.Mechanism));
+        using (JsonDocument json = JsonDocument.Parse(whole.Content))
+        {
+            JsonElement[] coverage = [.. json.RootElement.GetProperty("context").GetProperty("coverage").EnumerateArray()];
+            Assert.Equal(Enum.GetValues<Mechanism>().Length, coverage.Length);
+            JsonElement tcp = coverage.Single(entry => entry.GetProperty("mechanism").GetString() == "Tcp");
+            Assert.Equal(("Covered", "2 records from its 1 admitted descriptor, and nothing was reported lost"),
+                (tcp.GetProperty("state").GetString(), tcp.GetProperty("reason").GetString()));
+            JsonElement udp = coverage.Single(entry => entry.GetProperty("mechanism").GetString() == "Udp");
+            Assert.Equal(("NotCollected", "no admitted descriptor records it"),
+                (udp.GetProperty("state").GetString(), udp.GetProperty("reason").GetString()));
+        }
+
+        // Ranked within a range the capture delivered nothing in, every row counts none, and the export says that is no
+        // proof of inactivity, for every mechanism.
+        SessionExportResult gap = SessionExport.Build(gapped.Store, new([], new TimeRange(25, 35), false, ExportFormat.Json), Exported);
+        Assert.NotEqual(0, gap.Rows);
+        using (JsonDocument json = JsonDocument.Parse(gap.Content))
+        {
+            Assert.All(json.RootElement.GetProperty("rows").EnumerateArray(),
+                row => Assert.Equal(0, row.GetProperty("observations").GetInt64()));
+        }
+
+        Assert.Equal(Unknown, gap.Context.Caveats[^1]);
+        Assert.All(gap.Context.Coverage, entry => Assert.Equal(
+            (CoverageState.UnknownCoverage, "outside the readings the capture's sources delivered"), (entry.State, entry.Reason)));
+
+        // Its evidence holds every record of the range, which is none: complete, and still said to be no proof of inactivity.
+        SessionExportResult evidence = SessionExport.Build(gapped.Store, new([], new TimeRange(25, 35), true, ExportFormat.Json), Exported);
+        Assert.Equal((0, true), (evidence.Rows, evidence.Context.Complete));
+        Assert.Equal(["Every record of this scope is included.", Unknown], evidence.Context.Caveats.Skip(1));
+        Assert.Equal(gap.Context.Coverage, evidence.Context.Coverage);
+
+        // A generation without a ledger has judged nothing, and its export says so.
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        Assert.Equal("Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of "
+            + "inactivity", SessionExport.Build(session.Store, new([], null, false, ExportFormat.Json), Exported).Context.Caveats[^1]);
+    }
+
     [Fact(DisplayName = "§6.4: a scope that cannot be read is refused with its reason, a page as a whole scope, never read as the whole session")]
     public void AnUnreadableScopeIsRefused()
     {
@@ -132,6 +183,45 @@ public sealed class SessionExportTests
                 .Between(OtherServer, OtherClient)),
         }),
     ];
+
+    /// <summary>A capture that delivered readings from 0 to 20 and from 40 to 60, and none between, and lost nothing.</summary>
+    private static TemporarySession Gapped()
+    {
+        var gapped = new TemporarySession();
+        Publish(gapped.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd)
+                with { SessionRelativeTicks = 1_000 },
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd)
+                with { SessionRelativeTicks = 5_000 },
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [TcpEpoch(1, 0, 20), TcpEpoch(2, 40, 60)],
+        });
+        return gapped;
+    }
+
+    /// <summary>A live epoch between two delivered readings that collected TCP, delivered two records and lost nothing.</summary>
+    private static CoverageEpochV1 TcpEpoch(int number, long first, long last) => new()
+    {
+        Epoch = number,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = first,
+        LastDeliveredNativeTicks = last,
+        Collected =
+        [
+            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+        ],
+        Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 2, Admitted = 2, Omitted = 0 }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }

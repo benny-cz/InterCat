@@ -130,6 +130,46 @@ public sealed class ScopeCoverageTests
         Assert.True(stopped.ScopeCoverageLimited);
     });
 
+    [Fact(DisplayName = "R18: a person's export states the coverage the inspector states for its scope, and icat export writes the same file")]
+    public void AnExportStatesTheInspectorsCoverage() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [Epoch(1, 0, 20, processes: 2, lost: 0), Epoch(2, 40, 60, processes: 0, lost: 1)],
+        });
+        using WorkspaceViewModel workspace = Open(session);
+        var at = new DateTimeOffset(2026, 10, 7, 12, 0, 0, TimeSpan.Zero);
+
+        // The whole session's ranked rows close their caveats with the words beneath the inspector's time scope.
+        SessionExportResult whole = await workspace.ExportAsync(ExportFormat.Json, at);
+        Assert.Equal(workspace.ScopeCoverage, whole.Context.Caveats[^1]);
+        Assert.Equal(workspace.Snapshot.MechanismCoverage, whole.Context.Coverage);
+        Assert.Equal(whole.Content, SessionExport.Build(session.Store, new([], null, false, ExportFormat.Json), at).Content);
+
+        // Brushed where the capture delivered nothing, the export says what the card says, as icat export --interval does.
+        var gap = new TimeRange(25, 35);
+        workspace.SelectInterval(gap);
+        await workspace.IntervalReady;
+        SessionExportResult brushed = await workspace.ExportAsync(ExportFormat.Json, at);
+        Assert.Equal(gap, brushed.Context.Interval);
+        Assert.StartsWith("Coverage unknown: outside the readings", workspace.ScopeCoverage, StringComparison.Ordinal);
+        Assert.Equal(workspace.ScopeCoverage, brushed.Context.Caveats[^1]);
+        Assert.Equal(brushed.Content, SessionExport.Build(session.Store, new([], gap, false, ExportFormat.Json), at).Content);
+
+        // The records of a range the capture covered are exported with its coverage there, not the whole session's.
+        var covered = new TimeRange(8, 15);
+        workspace.SelectInterval(covered);
+        await workspace.IntervalReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        SessionExportResult records = await workspace.ExportAsync(ExportFormat.Json, at);
+        Assert.Equal((DetailLevel.Evidence, 2), (records.Context.Rung, records.Rows));
+        Assert.Equal($"Coverage: covered for {Collected} · no other mechanism collected", records.Context.Caveats[^1]);
+        Assert.Equal(records.Content, SessionExport.Build(session.Store, new([], covered, true, ExportFormat.Json), at).Content);
+    });
+
     [Fact(DisplayName = "R21: a range that could not be counted has no coverage said for it, and the tour states none")]
     public void AnUncountedRangeHasNoCoverageSaid() => SingleThreadedContext.Run(async () =>
     {
