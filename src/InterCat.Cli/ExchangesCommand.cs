@@ -304,7 +304,7 @@ internal static class ExchangesCommand
             [.. document.Groups.Select(group => (IReadOnlyList<string>)
             [
                 group.Process is { } process
-                    ? string.Create(CultureInfo.InvariantCulture, $"{process.ImageName ?? "PID"} · {group.ProcessId}")
+                    ? string.Create(CultureInfo.InvariantCulture, $"{process.ImageName ?? "executable not witnessed"} · {group.ProcessId}")
                     : string.Create(CultureInfo.InvariantCulture,
                         $"PID {group.ProcessId} ({BindingText.Reason(Enum.Parse<ProcessBindingReason>(group.Unattributed!))})"),
                 ConsoleUi.Count(group.Exchanges),
@@ -312,7 +312,7 @@ internal static class ExchangesCommand
                 ConsoleUi.Count(group.Records),
                 ConsoleUi.Size(group.RequestBytes),
                 ConsoleUi.Size(group.ResponseBytes),
-                group.MedianDurationNanoseconds is { } median ? OperationText.Duration(median, CultureInfo.CurrentCulture) : "-",
+                group.MedianDurationNanoseconds is { } median ? OperationText.Duration(median, CultureInfo.CurrentCulture) : "untimed",
             ])]);
 
         foreach (ExchangesGroupDocument group in document.Groups.Where(group => group.List is { Count: > 0 }))

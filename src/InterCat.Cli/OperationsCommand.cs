@@ -448,7 +448,7 @@ internal static class OperationsCommand
                     Duration(group.DurationsNanoseconds?.Median),
                     Duration(group.DurationsNanoseconds?.Percentile95),
                     Duration(group.DurationsNanoseconds?.Maximum),
-                    OtherEnd(group),
+                    OtherEnd(group, document.AlpcRecords > 0),
                 ])]);
             if (shown.Count < document.Groups.Count)
             {
@@ -485,13 +485,14 @@ internal static class OperationsCommand
     /// A group's other end in a cell: for a client group, its most frequent server and how many of its calls were served;
     /// for a server group, how many client processes it served.
     /// </summary>
-    private static string OtherEnd(OperationsGroupDocument group)
+    private static string OtherEnd(OperationsGroupDocument group, bool followedAlpc)
     {
         OperationsOtherEndsDocument ends = group.OtherEnds;
         if (group.Side != "Client")
         {
+            // A server group no linked client call reached says why: there was no ALPC to follow, or none reached it.
             return ends.Peers.Count == 0
-                ? "-"
+                ? followedAlpc ? "not reached" : "no ALPC"
                 : string.Create(CultureInfo.CurrentCulture,
                     $"{ends.Linked:N0} for {ends.Peers.Count:N0} client {(ends.Peers.Count == 1 ? "process" : "processes")}");
         }
@@ -524,9 +525,10 @@ internal static class OperationsCommand
     private static string LocalSeconds(string seconds) => string.Create(CultureInfo.CurrentCulture,
         $"{decimal.Parse(seconds, NumberStyles.AllowDecimalPoint | NumberStyles.AllowLeadingSign, CultureInfo.InvariantCulture):0.000000} s");
 
+    /// <summary>A duration in a cell, or "untimed" where no call was timed: a call with no start or stop is never timed (R21).</summary>
     private static string Duration(long? nanoseconds) => nanoseconds is { } value
         ? OperationText.Duration(value, CultureInfo.CurrentCulture)
-        : "-";
+        : "untimed";
 
     private static void PrintHelp()
     {

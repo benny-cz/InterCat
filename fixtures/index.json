@@ -1510,6 +1510,7 @@
         "R21: host B receiving 0.2 ms before host A sends, within 3 ms, is no order and no latency, and no local span changes",
         "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words",
         "R21: icat export's CSV states what the capture covered on every line, and its sharing report keeps it",
+        "R21: icat operations and exchanges say a duration none was timed for, and a server call none reached, never a dash",
         "R21: icat operations, exchanges and channels say what the capture covered of what they list, never from a count of none",
         "R21: icat processes says a process's transport bytes are unmeasured, or that it made none, as the window's rows do",
         "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing",

@@ -85,6 +85,12 @@ internal sealed record ProcessPeerDocument
     public required string? Unresolved { get; init; }
     public required long? SentTo { get; init; }
     public required long? ReceivedFrom { get; init; }
+
+    /// <summary>The instance's send records to this end: measured, and those that recorded no size.</summary>
+    public required ProcessTransportRecordsDocument Sends { get; init; }
+
+    /// <summary>The instance's receive records from this end, as <see cref="Sends"/> counts them.</summary>
+    public required ProcessTransportRecordsDocument Receives { get; init; }
 }
 
 internal sealed record ProcessUnattributedDocument
@@ -351,20 +357,18 @@ internal static class ProcessesCommand
             Receiver = instance,
         }, Checkpointed(store, cancellationToken), cancellationToken);
 
-        var peers = new Dictionary<string, (ProcessInstance? Peer, ProcessBindingReason? Reason, long? Sent, long? Received)>(StringComparer.Ordinal);
+        // An answer with nothing measured is unavailable, and still holds each end's records, whose values are unknown: the
+        // ends are listed with their records unmeasured rather than left out, as if the instance had exchanged nothing.
+        var peers = new Dictionary<string, (ProcessInstance? Peer, ProcessBindingReason? Reason, MetricGroup? Sent, MetricGroup? Received)>(
+            StringComparer.Ordinal);
         foreach ((MetricResult result, bool sent) in new[] { (sentTo, true), (receivedFrom, false) })
         {
-            if (!result.IsAvailable)
-            {
-                continue;
-            }
-
             foreach (MetricGroup group in result.Groups.Concat(result.Unattributed))
             {
                 string key = group.Process?.Id.ToString() ?? $"reason/{group.Reason}";
-                (ProcessInstance? Peer, ProcessBindingReason? Reason, long? Sent, long? Received) entry =
+                (ProcessInstance? Peer, ProcessBindingReason? Reason, MetricGroup? Sent, MetricGroup? Received) entry =
                     peers.GetValueOrDefault(key, (group.Process, group.Reason, null, null));
-                peers[key] = sent ? entry with { Sent = group.Value } : entry with { Received = group.Value };
+                peers[key] = sent ? entry with { Sent = group } : entry with { Received = group };
             }
         }
 
@@ -372,14 +376,16 @@ internal static class ProcessesCommand
         [
             .. peers.Values
                 .OrderBy(entry => entry.Peer is null)
-                .ThenByDescending(entry => (entry.Sent ?? 0) + (entry.Received ?? 0))
+                .ThenByDescending(entry => (entry.Sent?.Value ?? 0) + (entry.Received?.Value ?? 0))
                 .ThenBy(entry => entry.Peer?.Id.ToString() ?? entry.Reason.ToString(), StringComparer.Ordinal)
                 .Select(entry => new ProcessPeerDocument
                 {
                     Peer = entry.Peer is { } peer ? ProcessInstanceDocument.From(peer, clock) : null,
                     Unresolved = entry.Reason?.ToString(),
-                    SentTo = entry.Sent,
-                    ReceivedFrom = entry.Received,
+                    SentTo = entry.Sent?.Value,
+                    ReceivedFrom = entry.Received?.Value,
+                    Sends = Records(entry.Sent),
+                    Receives = Records(entry.Received),
                 }),
         ];
     }
@@ -581,8 +587,8 @@ internal static class ProcessesCommand
 
         if (peers.Count == 0)
         {
-            ConsoleUi.Note("No transport byte it sent or received was measured in this session, which is not proof it "
-                + "sent or received none.");
+            ConsoleUi.Note("It made no transport send or receive record in this session, which is not proof it sent or "
+                + "received nothing.");
         }
         else
         {
@@ -595,8 +601,8 @@ internal static class ProcessesCommand
                         peer.Peer is { } other
                             ? string.Create(CultureInfo.InvariantCulture, $"PID {other.ProcessId} {other.ImageName ?? "(image not witnessed)"}")
                             : "unresolved: " + BindingText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
-                        peer.SentTo is { } sentTo ? ConsoleUi.Bytes(sentTo) : "-",
-                        peer.ReceivedFrom is { } receivedFrom ? ConsoleUi.Bytes(receivedFrom) : "-",
+                        Bytes(peer.SentTo, peer.Sends, "none"),
+                        Bytes(peer.ReceivedFrom, peer.Receives, "none"),
                     }),
                 ]);
         }

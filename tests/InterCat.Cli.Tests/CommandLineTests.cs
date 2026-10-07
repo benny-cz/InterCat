@@ -439,11 +439,21 @@ public sealed class CommandLineTests : IDisposable
                 (tcpCoverage.GetProperty("state").GetString(), tcpCoverage.GetProperty("reason").GetString()));
         }
 
-        // A process none of whose transport bytes was measured is not said to have sent or received none.
+        // A process whose one send recorded no size lists the end it sent to, its bytes unmeasured rather than none.
         (_, string idle, _) = await Run("processes", tcp.Path, "--pid", "300");
-        Assert.Contains("No transport byte it sent or received was measured in this session, which is not proof it sent or "
-            + "received none.", idle, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  unresolved: no record in this capture holds the other end \(a remote or unobserved peer\) +unmeasured +none\r?$",
+            idle);
         Assert.DoesNotContain("sent and received no transport bytes", idle, StringComparison.Ordinal);
+
+        // A receiver sent its sender nothing, which reads as none beside the bytes it received from it.
+        Assert.Matches(@"(?m)^  PID 100 \(image not witnessed\) +none +64 B\r?$", (await Run("processes", tcp.Path, "--pid", "200")).Output);
+
+        // One that made no transport record at all says so, which is not proof it was idle.
+        using var quiet = new TemporarySession();
+        Publish(quiet.Store, [Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\idle.exe" }]);
+        quiet.Store.ReleaseSegmentReaders();
+        Assert.Contains("It made no transport send or receive record in this session, which is not proof it sent or received "
+            + "nothing.", (await Run("processes", quiet.Path, "--pid", "400")).Output, StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -883,6 +893,44 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  receiver-accounted +no +1 +0 +64 B\r?$", answer);
         foreach (string name in new[] { "SourceObservations", "Source observations", "TransportObserved", "SendSide", "ReceiveSide" })
             Assert.DoesNotContain(name, answer, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R21: icat operations and exchanges say a duration none was timed for, and a server call none reached, never a dash")]
+    public async Task AnUntimedDurationIsSaid()
+    {
+        // A server call of PID 2020 that never stopped, and an exchange of PID 4242 whose response end was not recorded.
+        ObservationRowV1[] bodies = [Body(10, 1), Body(12, 2)];
+        using var open = new TemporarySession();
+        Publish(open.Store,
+        [
+            RpcCall(100, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 2_020, 3,
+                activity: Guid.Parse("21212121-2222-4333-8444-555555555555"), interfaceUuid: Guid.Parse("12345678-1234-4123-8123-123456789abc")),
+            .. bodies,
+        ], fields: [.. bodies.Select(row => Field(row, SourceField.HttpExchangeId, 4))]);
+        open.Store.ReleaseSegmentReaders();
+
+        // Its group's durations are untimed, and its other end is unknown for want of ALPC to follow.
+        (InterCatExitCode code, string calls, string said) = await Run("operations", open.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  .*2020 +server +.* untimed +untimed +untimed +no ALPC\r?$", calls);
+
+        // Where the capture collected ALPC to follow, a server group no client call reached says so instead.
+        (ObservationRowV1[] linkedRows, SourceFieldRowV1[] linkedFields) = LinkedRpcCalls();
+        using var linked = new TemporarySession();
+        Publish(linked.Store,
+        [
+            .. linkedRows,
+            RpcCall(400, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 2_020, 70,
+                activity: Guid.Parse("21212121-2222-4333-8444-555555555555"), interfaceUuid: Guid.Parse("12345678-1234-4123-8123-123456789abc")),
+        ], fields: linkedFields);
+        linked.Store.ReleaseSegmentReaders();
+        Assert.Matches(@"(?m)^  .*2020 +server +.* untimed +untimed +untimed +not reached\r?$", (await Run("operations", linked.Path)).Output);
+
+        // The exchange's median is untimed, and its process, whose image no record names, reads as a call's does.
+        (code, string exchanges, said) = await Run("exchanges", open.Path, "--pid", "4242");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  executable not witnessed · 4242 .* untimed\r?$", exchanges);
+        Assert.DoesNotMatch(@"(?m) - *\r?$", calls + exchanges);
     }
 
     [Fact(DisplayName = "R5: icat operations, exchanges and processes say why a group belongs to no process, in the window's words")]
