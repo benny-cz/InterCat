@@ -410,16 +410,22 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>
-    /// How an executable group was formed and counted, in words (§6.8: a group row is one action from what its total rests
-    /// on): by the executable its members' records name, or together when none names one, the rule that bound each
-    /// member's own records, what the evidence policy left out of its total, and the worst coverage among its members.
+    /// How a group was formed and counted, in words (§6.8: a group row is one action from what its total rests on): by the
+    /// executable its members' records name, or the terminal session their lifecycle records name, or together when none
+    /// names one, the rule that bound each member's own records, what the evidence policy left out of its total, and the
+    /// worst coverage among its members.
     /// </summary>
     public static string ExplainGrouping(ProcessGroup group, IReadOnlyCollection<ProcessNode> members)
     {
         ArgumentNullException.ThrowIfNull(group);
         ArgumentNullException.ThrowIfNull(members);
         string rule = DescribeRule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
-        string grouped = group.Key == ProcessGroup.UnwitnessedExecutableKey
+        string grouped = group.Kind == LaneGrouping.UserSession
+            ? group.Key == WorkspaceGrouping.UnrecordedSessionKey
+                ? "Grouped here because no lifecycle record names the terminal session its members ran in: none is "
+                    + "given a guessed one."
+                : "Grouped by the terminal session its members' lifecycle records name."
+            : group.Key == ProcessGroup.UnwitnessedExecutableKey
             ? "Grouped here because no record names the executable its members ran: none is given a guessed name."
             : "Grouped by the executable its members' records name, compared without case.";
         long withheld = members.Sum(member => member.WithheldRecords);

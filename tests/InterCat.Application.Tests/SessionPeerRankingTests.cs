@@ -9,21 +9,29 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Application.Tests;
 
 /// <summary>
-/// The ranked table's peer ranking counts what `icat metric --metric active-peers` counts for every process and every
-/// executable: the distinct process instances at the other end of their records, a lower bound beside the records whose
-/// other end is unresolved, and unmeasured rather than zero when none resolved (R18, metrics-v1 §6.1).
+/// The ranked table's peer ranking counts what `icat metric --metric active-peers` counts for every process, every
+/// executable and every terminal session: the distinct process instances at the other end of their records, a lower bound
+/// beside the records whose other end is unresolved, and unmeasured rather than zero when none resolved (R18, metrics-v1
+/// §6.1).
 /// </summary>
 public sealed class SessionPeerRankingTests
 {
-    [Fact(DisplayName = "R18: each process's and executable's peers are what active-peers grouped by process and by executable answers")]
+    [Fact(DisplayName = "R18: each process's, executable's and terminal session's peers are what active-peers grouped by process, executable and session answers")]
     public void PeersAreTheActivePeersMetrics()
     {
         for (int seed = 0; seed < 30; seed++)
         {
             var random = new Random(seed);
             List<ObservationRowV1> rows = RandomConversations(random);
+
+            // Each process's lifecycle record names one of three terminal sessions, or none.
+            var sessions = new Random(seed + 1_000);
+            SourceFieldRowV1[] fields = [.. rows.Where(row => row.Kind == ObservationKind.Create)
+                .Select(row => (Row: row, Session: sessions.Next(4)))
+                .Where(named => named.Session > 0)
+                .Select(named => Field(named.Row, SourceField.ProcessSessionId, named.Session - 1))];
             using var session = new TemporarySession();
-            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40));
+            Publish(session.Store, rows, rowsPerSegment: random.Next(3, 40), fields: fields);
             long end = rows.Max(row => row.NativeTicks) + 1;
             long from = random.Next(0, (int)end);
             var presentation = new TimeRange(from, from + random.Next(1, (int)end + 1));
@@ -62,6 +70,18 @@ public sealed class SessionPeerRankingTests
                         (group.Value, group.KnownContributions, group.UnknownContributions) == (count.Peers, count.Known, count.Unknown),
                         $"{context}: {group.Executable} metric ({group.Value}, {group.KnownContributions}, {group.UnknownContributions}) "
                             + $"and ranking ({count.Peers}, {count.Known}, {count.Unknown})");
+                }
+
+                // So is a terminal session's, under the key the window's session groups have.
+                MetricResult bySession = SessionMetrics.Evaluate(session.Store, Peers(LaneGrouping.UserSession, scope));
+                Assert.Equal(fields.Length == 0, bySession.Unavailable == MetricUnavailableReason.GroupingNotDerived);
+                foreach (MetricGroup group in bySession.Groups)
+                {
+                    PeerCount count = measured.ByGroup[WorkspaceGrouping.SessionKey(group.TerminalSession!.Value)];
+                    Assert.True(
+                        (group.Value, group.KnownContributions, group.UnknownContributions) == (count.Peers, count.Known, count.Unknown),
+                        $"{context}: session {group.TerminalSession} metric ({group.Value}, {group.KnownContributions}, "
+                            + $"{group.UnknownContributions}) and ranking ({count.Peers}, {count.Known}, {count.Unknown})");
                 }
             }
         }

@@ -144,7 +144,7 @@ public static class WorkspaceSearch
     {
         LaneGrouping.Executable => "Executable",
         LaneGrouping.ServiceContainer => "Service container",
-        LaneGrouping.UserSession => "User session",
+        LaneGrouping.UserSession => "Terminal session",
         LaneGrouping.Package => "Package",
         _ => "Group",
     };

@@ -115,6 +115,12 @@ public sealed record ProcessNode(
     /// <summary>How strongly <see cref="Parent"/> is established: Direct by start key, Correlated by PID and time.</summary>
     public RelationStrength? ParentBinding { get; init; }
 
+    /// <summary>
+    /// The terminal session the process ran in, as its lifecycle records name it; null when none named one. A grouping by
+    /// session reads it (<see cref="WorkspaceGrouping"/>), never guessing one.
+    /// </summary>
+    public uint? TerminalSession { get; init; }
+
     /// <summary>The records <see cref="Activity"/> counts.</summary>
     public long Records => Activity.Sum(entry => entry.Records);
 

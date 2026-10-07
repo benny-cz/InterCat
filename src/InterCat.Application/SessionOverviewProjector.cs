@@ -161,6 +161,7 @@ public static class SessionOverviewProjector
             WithheldRecords = activity.WithheldOf(positions[index], policy),
             CandidateRecords = activity.CandidatesOf(positions[index]),
             ParentProcessId = instance.ParentProcessId,
+            TerminalSession = instance.SessionId,
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
         })];

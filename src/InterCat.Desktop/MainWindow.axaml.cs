@@ -135,6 +135,12 @@ public sealed partial class MainWindow : Window, IDisposable
     /// thread reads it as each live publication is projected.
     /// </summary>
     private volatile EvidencePolicy evidencePolicy = EvidencePolicy.IncludeCorrelated;
+
+    /// <summary>
+    /// How the window groups a session's processes (§6.3): by executable, as projected, until a person chooses their terminal
+    /// session, and again for each session opened or captured after. Every publication of the session shown is grouped so.
+    /// </summary>
+    private LaneGrouping laneGrouping = LaneGrouping.Executable;
     private DateTimeOffset? lastPublicationUtc;
     private BrokerCaptureHealth? liveHealth;
 
@@ -2426,6 +2432,7 @@ public sealed partial class MainWindow : Window, IDisposable
         int run = ++captureRunId;
         ForgetDisplayedSession();
         evidencePolicy = EvidencePolicy.IncludeCorrelated;
+        laneGrouping = LaneGrouping.Executable;
         ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
             "Windows may ask for administrator approval to record system-wide events."));
         try
@@ -2794,11 +2801,78 @@ public sealed partial class MainWindow : Window, IDisposable
         return true;
     }
 
-    private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview)
+    /// <summary>
+    /// Groups the shown session's processes another way (§6.3): by executable, or by the terminal session their lifecycle
+    /// records name. The overview already projected is regrouped, so nothing is read again, and the view returns to the
+    /// machine rung, whose rows are the groups, keeping its time, selection, ranking, pins and scales. A live capture groups
+    /// each later publication so too, and a session opened afterwards starts grouped by executable. False when nothing is
+    /// shown, its processes do not offer the grouping, or it is chosen already.
+    /// </summary>
+    internal bool ChooseGrouping(LaneGrouping grouping)
+    {
+        if (displayedOverview is not { } shown || grouping == workspace.Grouping
+            || !workspace.GroupingOptions.Any(option => option.Grouping == grouping))
+        {
+            return false;
+        }
+
+        laneGrouping = grouping;
+        ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
+            SessionPath: currentSessionPath, Overview: shown, OverviewChunks: displayedChunks), shown, forceOverview: false,
+            regrouping: true);
+        return true;
+    }
+
+    /// <summary>
+    /// The Group by selector's choice, applied once the selector has finished changing, since applying it replaces the
+    /// workspace the selector's items come from. A choice that cannot be applied puts the selector back.
+    /// </summary>
+    private void GroupingChosen(object? sender, SelectionChangedEventArgs eventArgs)
+    {
+        if (GroupBySelector.SelectedItem is not GroupingOption chosen || chosen.Grouping == workspace.Grouping)
+        {
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed && !ChooseGrouping(chosen.Grouping))
+            {
+                GroupBySelector.SelectedItem = workspace.SelectedGrouping;
+            }
+        });
+    }
+
+    /// <summary>
+    /// The same view's navigation once its processes are regrouped: the groups are what changed, so it returns to the
+    /// machine rung, whose rows they are, with no way forward into a group that is gone and nothing chosen at a rung below.
+    /// Its time, selected process, search, ranking and scales stay.
+    /// </summary>
+    private static WorkspaceNavigationMemento Regrouped(WorkspaceNavigationMemento saved) => saved with
+    {
+        Breadcrumb = [saved.Breadcrumb[0]],
+        SelectedRungKey = null,
+        SelectedTimelineDirection = null,
+        SelectedChannelEnd = null,
+        Forward = null,
+        ReachedWith = null,
+    };
+
+    private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview,
+        bool regrouping = false)
     {
         WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
             ? workspace.CaptureNavigation() : null;
-        heldUpdate = null;
+        if (regrouping && savedNavigation is not null)
+        {
+            // A regrouped view is the generation already shown, so a newer one held while the view is paused still waits.
+            savedNavigation = Regrouped(savedNavigation);
+        }
+        else
+        {
+            heldUpdate = null;
+        }
+
         displayedSessionId = overview.SessionId;
         displayedGeneration = overview.Generation;
         displayedOverview = overview;
@@ -2822,6 +2896,7 @@ public sealed partial class MainWindow : Window, IDisposable
             keptLanes = null;
             keptSettings = null;
             keptPanes = null;
+            laneGrouping = LaneGrouping.Executable;
             if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
             {
                 // The window's panes are the investigation's, for every session opened from it: put back when it keeps them,
@@ -2845,7 +2920,12 @@ public sealed partial class MainWindow : Window, IDisposable
             keptPins = pins;
         }
 
-        var replacement = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, evidence,
+        // Each publication is grouped as its person chose, where its processes offer that grouping; the graph's identity
+        // names the grouping too, since its nodes are the groups.
+        WorkspaceSnapshot projected = OverviewWorkspace.From(overview);
+        LaneGrouping grouping = WorkspaceGrouping.Offered(projected).Contains(laneGrouping) ? laneGrouping : LaneGrouping.Executable;
+        var replacement = new WorkspaceViewModel(WorkspaceGrouping.Regroup(projected, grouping),
+            WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins);
         if (restored is { } settings)
         {

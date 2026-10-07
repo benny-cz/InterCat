@@ -22,8 +22,9 @@ public sealed record PeerCount(long? Peers, long Known, long Unknown)
 }
 
 /// <summary>
-/// Every process instance's and executable group's distinct peers over one scope of one generation. Distinct counts
-/// overlap - a record between two processes makes each the other's peer - so the rows never add up to a total.
+/// Every process instance's and group's distinct peers over one scope of one generation, its groups keyed as the ladder
+/// keys them under every grouping the window offers (<see cref="WorkspaceGrouping"/>). Distinct counts overlap - a record
+/// between two processes makes each the other's peer - so the rows never add up to a total.
 /// </summary>
 public sealed record SessionPeerMeasures(
     Guid SessionId,
@@ -40,9 +41,10 @@ public sealed record SessionPeerMeasures(
 }
 
 /// <summary>
-/// Reads each process's and each executable group's distinct peers for the ranked table: what `icat metric --metric
-/// active-peers --group-by process` answers for every instance, and `--group-by executable` for every group whose
-/// executable is known (R18), from the derivation the overview already holds rather than a derivation of its own.
+/// Reads each process's and each group's distinct peers for the ranked table: what `icat metric --metric active-peers
+/// --group-by process` answers for every instance, `--group-by executable` for every group whose executable is known and
+/// `--group-by session` for every terminal session named (R18), from the derivation the overview already holds rather
+/// than a derivation of its own.
 /// </summary>
 public static class SessionPeerRanking
 {
@@ -74,30 +76,35 @@ public static class SessionPeerRanking
             ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
             : interval is null ? generation.All : [];
 
-        // Each instance's group as the ladder keys it, as a dense index.
+        // Each instance's group as the ladder keys it under every grouping the window offers - by executable and by terminal
+        // session - as a dense index into one list of keys, which never collide, so a change of grouping reads nothing again.
         int instances = processes.Instances.Count;
+        IReadOnlyList<LaneGrouping> groupings = WorkspaceGrouping.All;
         var groupKeys = new List<string>();
         var groupIndex = new Dictionary<string, int>(StringComparer.Ordinal);
-        int[] groupOf = new int[instances];
+        int[][] groupOf = [.. groupings.Select(_ => new int[instances])];
         for (int instance = 0; instance < instances; instance++)
         {
-            string key = SessionOverviewProjector.GroupKey(processes.Instances[instance]);
-            if (!groupIndex.TryGetValue(key, out int index))
+            for (int grouping = 0; grouping < groupings.Count; grouping++)
             {
-                groupIndex[key] = index = groupKeys.Count;
-                groupKeys.Add(key);
-            }
+                string key = WorkspaceGrouping.KeyOf(processes.Instances[instance], groupings[grouping]);
+                if (!groupIndex.TryGetValue(key, out int index))
+                {
+                    groupIndex[key] = index = groupKeys.Count;
+                    groupKeys.Add(key);
+                }
 
-            groupOf[instance] = index;
+                groupOf[grouping][instance] = index;
+            }
         }
 
         // An interval no reading can fall in holds nothing, and no segment is read.
-        var total = new PeerTally(instances, groupKeys.Count);
+        var total = new PeerTally(instances, groupKeys.Count, groupings.Count);
         if (interval is null || native is not null)
         {
             SegmentPasses.Run(
                 segments,
-                () => new PeerTally(instances, groupKeys.Count),
+                () => new PeerTally(instances, groupKeys.Count, groupings.Count),
                 (segment, tally) => MeasureSegment(segment, native, policy, processes, relations, groupOf, tally),
                 total.Add,
                 cancellationToken);
@@ -113,12 +120,16 @@ public static class SessionPeerRanking
             }
         }
 
+        // A key is one grouping's, so only that grouping's tally counts anything under it.
         var byGroup = new Dictionary<string, PeerCount>(StringComparer.Ordinal);
-        for (int group = 0; group < groupKeys.Count; group++)
+        foreach (Grouping grouping in total.Groups)
         {
-            if (total.Groups.CountOf(group) is { } counted)
+            for (int group = 0; group < groupKeys.Count; group++)
             {
-                byGroup[groupKeys[group]] = counted;
+                if (grouping.CountOf(group) is { } counted)
+                {
+                    byGroup[groupKeys[group]] = counted;
+                }
             }
         }
 
@@ -140,7 +151,7 @@ public static class SessionPeerRanking
         EvidencePolicy policy,
         ProcessInstanceIndex processes,
         TransportRelationIndex relations,
-        int[] groupOf,
+        int[][] groupOf,
         PeerTally tally)
     {
         bool[] inScope = SegmentMeasurement.RowsInScope(segment, null, null, native);
@@ -160,7 +171,10 @@ public static class SessionPeerRanking
             int self = owner.IsAdmittedUnder(policy) ? owner.Instance : -1;
             int other = peer.IsAdmittedUnder(policy) ? peer.Instance : -1;
             tally.Processes.Add(self, other, self, other);
-            tally.Groups.Add(self < 0 ? -1 : groupOf[self], other < 0 ? -1 : groupOf[other], self, other);
+            for (int grouping = 0; grouping < groupOf.Length; grouping++)
+            {
+                tally.Groups[grouping].Add(self < 0 ? -1 : groupOf[grouping][self], other < 0 ? -1 : groupOf[grouping][other], self, other);
+            }
             if (self < 0 && other < 0)
             {
                 tally.Unattributed++;
@@ -168,19 +182,23 @@ public static class SessionPeerRanking
         }
     }
 
-    /// <summary>One worker's peers by process and by group, merged once it has no segment left.</summary>
-    private sealed class PeerTally(int instances, int groups)
+    /// <summary>One worker's peers by process and by each grouping's groups, merged once it has no segment left.</summary>
+    private sealed class PeerTally(int instances, int groups, int groupings)
     {
         public Grouping Processes { get; } = new(instances);
 
-        public Grouping Groups { get; } = new(groups);
+        public Grouping[] Groups { get; } = [.. Enumerable.Range(0, groupings).Select(_ => new Grouping(groups))];
 
         public long Unattributed { get; set; }
 
         public void Add(PeerTally other)
         {
             Processes.Add(other.Processes);
-            Groups.Add(other.Groups);
+            for (int grouping = 0; grouping < Groups.Length; grouping++)
+            {
+                Groups[grouping].Add(other.Groups[grouping]);
+            }
+
             Unattributed += other.Unattributed;
         }
     }

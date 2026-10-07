@@ -362,6 +362,47 @@ internal static class TestSessions
 
     private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
+    /// <summary>
+    /// A machine's processes in their terminal sessions (§6.3): client.exe in session 1 beside server.exe, to which it
+    /// sends, and again in session 2, sending to service.exe in session 0, to which server.exe sends too; tool.exe, whose
+    /// lifecycle records name no session, sends to an address nothing in the capture holds. The rows' session times are a
+    /// hundred times their readings.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) TerminalSessions()
+    {
+        ObservationRowV1[] processes =
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 101, 2) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 200 },
+            Lifecycle(3, ObservationKind.Create, 200, 3) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 300 },
+            Lifecycle(4, ObservationKind.Create, 300, 4) with { ResourceName = @"C:\Windows\service.exe", SessionRelativeTicks = 400 },
+            Lifecycle(5, ObservationKind.Create, 400, 5) with { ResourceName = @"C:\Tools\tool.exe", SessionRelativeTicks = 500 },
+        ];
+        return (
+        [
+            .. processes,
+            .. Exchange(100, "127.0.0.1:50000", 200, "127.0.0.1:8080", 10, 64, 10),
+            .. Exchange(101, "127.0.0.1:50001", 300, "127.0.0.1:9090", 20, 32, 20),
+            .. Exchange(200, "127.0.0.1:50002", 300, "127.0.0.1:9090", 30, 16, 30),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 8, 400, 40).Between("127.0.0.1:50003", "10.0.0.5:443")
+                with { SessionRelativeTicks = 4_000 },
+        ],
+        [
+            Field(processes[0], SourceField.ProcessSessionId, 1),
+            Field(processes[1], SourceField.ProcessSessionId, 2),
+            Field(processes[2], SourceField.ProcessSessionId, 1),
+            Field(processes[3], SourceField.ProcessSessionId, 0),
+        ]);
+
+        static ObservationRowV1[] Exchange(int client, string near, int server, string far, long ticks, long bytes, ulong ordinal) =>
+        [
+            Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, bytes, client, ordinal).Between(near, far)
+                with { SessionRelativeTicks = ticks * 100 },
+            Transfer(ticks + 1, ObservationKind.Receive, AccountingSide.ReceiveSide, bytes, server, ordinal + 1).Between(far, near)
+                with { SessionRelativeTicks = (ticks + 1) * 100 },
+        ];
+    }
+
     /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
     public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
     {

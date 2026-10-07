@@ -3064,7 +3064,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             else if (value is not null && ladder.Current.Level == DetailLevel.Machine
                 && wholeSnapshot.Groups.Any(group => group.Key == value.Key))
             {
-                // A machine-rung row is an executable group: the graph rings where its members are drawn.
+                // A machine-rung row is a group: the graph rings where its members are drawn.
                 SelectGroup(value.Key, syncRow: false);
             }
             else
@@ -3469,7 +3469,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             string what = node.Kind switch
             {
                 GraphNodeKind.Process => "Process instance · " + Counted(node.Relationships, "relationship", "relationships"),
-                GraphNodeKind.Group => Counted(node.Members.Count, "process", "processes") + " of this executable, drawn as one node · "
+                GraphNodeKind.Group => GroupMembers(node) + ", drawn as one node · "
                     + Counted(node.Relationships, "relationship", "relationships"),
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
                 GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
@@ -4363,7 +4363,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : machine && SelectedGroup is { } group
                 ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                     new(DetailLevel.Group, group.Key, group.Name),
-                    "Evidence was reached from the machine rung with this executable group selected.")
+                    $"Evidence was reached from the machine rung with this {GroupNoun(group)} selected.")
                 : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
         if (!TryDescend(descent))
         {
@@ -4585,6 +4585,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         SyncHttp();
         SyncConnections();
         RaiseRankingChanged();
+        OnPropertyChanged(nameof(ShowsGroupingChoice));
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));

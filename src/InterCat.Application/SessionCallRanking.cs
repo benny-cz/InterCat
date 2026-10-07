@@ -116,8 +116,8 @@ public sealed record SessionCallMeasures(
     public IReadOnlyDictionary<ProcessInstanceId, CallTimes> TimesByProcess { get; init; } = new Dictionary<ProcessInstanceId, CallTimes>();
 
     /// <summary>
-    /// Each executable group's call times, its members' calls together, keyed as the ladder keys its groups; a group with no
-    /// completed call in scope is absent.
+    /// Each group's call times, its members' calls together, keyed as the ladder keys its groups under every grouping the
+    /// window offers (<see cref="WorkspaceGrouping"/>); a group with no completed call in scope is absent.
     /// </summary>
     public IReadOnlyDictionary<string, CallTimes> TimesByGroup { get; init; } = new Dictionary<string, CallTimes>(StringComparer.Ordinal);
 
@@ -222,9 +222,13 @@ public static class SessionCallRanking
             List<long> ownMade = made[instance] ?? [];
             List<long> ownServed = served[instance] ?? [];
             timesByProcess[processes.Instances[instance].Id] = CallTimes.Of(ownMade, ownServed);
-            string group = SessionOverviewProjector.GroupKey(processes.Instances[instance]);
-            AddTo(groupMade, group, ownMade);
-            AddTo(groupServed, group, ownServed);
+            foreach (LaneGrouping grouping in WorkspaceGrouping.All)
+            {
+                string group = WorkspaceGrouping.KeyOf(processes.Instances[instance], grouping);
+                AddTo(groupMade, group, ownMade);
+                AddTo(groupServed, group, ownServed);
+            }
+
             allMade.AddRange(ownMade);
             allServed.AddRange(ownServed);
         }

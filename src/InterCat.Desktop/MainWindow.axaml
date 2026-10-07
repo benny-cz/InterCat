@@ -37,7 +37,7 @@
         <!-- The ranked table's heading, summary, hints and search, while a session is shown; with none, the saved sessions
              stand where the ranked table will be (section 3.1 step 1). -->
         <StackPanel x:Name="RankedTableHeader" Grid.Row="1" Margin="0,0,0,10" Spacing="5"
-                    IsVisible="{Binding ShowsRankedHeader}">
+                    IsVisible="{Binding ShowsRankedHeader}" Grid.IsSharedSizeScope="True">
           <!-- The rung's badge follows the heading, and wraps under it where the rail is too narrow for both: a long one,
                L4 · OPERATION, never lies over the heading (R15). -->
           <WrapPanel x:Name="RankedHeading" Orientation="Horizontal" ItemSpacing="10" LineSpacing="2">
@@ -50,7 +50,12 @@
           <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
                ranks a row whose records recorded no size after every measured row, never as zero (§5.2). -->
           <!-- The basis a ranking is on stays on screen beside it (§3.2): observations or operations, in full on hover. -->
-          <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
+          <Grid Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="SelectorLabel" />
+              <ColumnDefinition Width="*" />
+              <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
             <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
               <TextBlock Text="Rank by" Classes="muted" FontSize="11" />
               <TextBlock x:Name="RankingBasisText" Text="{Binding RankingBasis}" Classes="muted" FontSize="9"
@@ -85,6 +90,29 @@
                           IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
                           ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
                           AutomationProperties.Name="Per second: state each row's value per second over the interval the rows count" />
+          </Grid>
+          <!-- §6.3's grouping: by executable, or by the terminal session each process's lifecycle records name. It stands at
+               the machine rung, whose rows are the groups, once a session is named, its box beneath the ranking's; a choice
+               regroups the overview already projected and reads nothing again. -->
+          <Grid x:Name="GroupByRow" Margin="0,2,0,0" IsVisible="{Binding ShowsGroupingChoice}">
+            <Grid.ColumnDefinitions>
+              <ColumnDefinition Width="Auto" SharedSizeGroup="SelectorLabel" />
+              <ColumnDefinition Width="*" />
+            </Grid.ColumnDefinitions>
+            <TextBlock Text="Group by" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+            <ComboBox x:Name="GroupBySelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
+                      ItemsSource="{Binding GroupingOptions}"
+                      SelectedItem="{Binding SelectedGrouping, Mode=OneWay}"
+                      SelectionChanged="GroupingChosen"
+                      ToolTip.Tip="{x:Static local:WorkspaceViewModel.GroupingDefinition}"
+                      AutomationProperties.Name="Group processes by"
+                      AutomationProperties.HelpText="{x:Static local:WorkspaceViewModel.GroupingDefinition}">
+              <ComboBox.ItemTemplate>
+                <DataTemplate x:DataType="local:GroupingOption">
+                  <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                </DataTemplate>
+              </ComboBox.ItemTemplate>
+            </ComboBox>
           </Grid>
           <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding ShowsRankingNote}" ToolTip.Tip="{Binding RankingNoteDetail}"

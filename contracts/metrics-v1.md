@@ -241,7 +241,10 @@ A terminal session is the one an instance's own lifecycle records name (`Process
 never one guessed from a PID, a name or another process. An instance whose records name none contributes to
 `SessionUnknown`, an unattributed reason, and if no record named a session at all, session grouping is unavailable.
 A session group is `UserSession` in a result and carries the session's number; `icat metric --group-by session`
-names it "Terminal session N".
+names it "Terminal session N", and the window's machine rung, grouped by session (plan revision 405), names its rows so
+in the same words. The window gathers the instances that are `SessionUnknown` here into one row of their own,
+"Terminal session not recorded", as it gathers those with no witnessed path into one beside the executables; a result
+keeps them unattributed. A session row's distinct peers and call times are its members' together, as this grouping's.
 
 Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
 `BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it
