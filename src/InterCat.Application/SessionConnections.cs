@@ -176,20 +176,29 @@ public static class SessionConnections
 
         // Read under the same lease, the ledger is the generation's whose connections these are (I16).
         CoverageLedgerV1? coverage = ledger ? SessionSegments.CoverageLedger(store.Root, manifest) : null;
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        if (segments.Length == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
+        IReadOnlyList<string> names = SessionSegments.Names(manifest);
+        if (names.Count == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
         {
             return (manifest.SessionId, manifest.Generation, manifest.Digest, null, coverage, []);
         }
 
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        TransportRelationIndex relations = SessionDerivationCache.For(manifest).Relations(store.Root, segments, clock, fields, cancellationToken);
+        // The channels come from the derivation or the checkpoint where one holds them, opening no segment.
+        TransportRelationIndex relations = new GenerationSegments(store, manifest, clock).Relations(cancellationToken);
         TransportConnection[] held = [.. relations.OneSided.Where(connection =>
             selected(connection) && SessionOverviewProjector.Admitted(connection.Strength, policy))];
         if (held.Length == 0)
         {
             return (manifest.SessionId, manifest.Generation, manifest.Digest, clock, coverage, []);
         }
+
+        // A connection's records all read between its first and last readings, so only a segment whose readings meet a
+        // listed connection's lifetime - within the time scope's readings, when there is one - can hold any of them; the
+        // rest are passed over unopened (P25).
+        (long First, long Last)[] lifetimes = Merged(held.Select(connection => (connection.FirstNativeTicks, connection.LastNativeTicks)));
+        (long First, long End)? scope = interval is { } placed ? SessionNativeInterval.Readings(placed, clock) : null;
+        SegmentReaderV1[] segments = [.. names
+            .Where(name => Holds(SessionSegments.NativeRange(store, manifest, name)))
+            .Select(name => SessionSegments.Open(store, manifest, name))];
 
         // One pass over the segments counts every connection's records and bytes at once, by the channel each row names.
         var byChannel = new Dictionary<int, int>(held.Length);
@@ -271,5 +280,45 @@ public static class SessionConnections
                 .OrderByDescending(pair => pair.Item2.Records)
                 .ThenBy(pair => pair.Item2.Key, StringComparer.Ordinal),
         ]);
+
+        // Whether a segment's readings, first to last, meet a lifetime, and the time scope's readings when there are any.
+        bool Holds((long Min, long Max) span)
+        {
+            if (scope is { } within && !SessionNativeInterval.Meets(span, within))
+            {
+                return false;
+            }
+
+            // The first lifetime that ends at or after the segment's first reading: the merged lifetimes end in order.
+            int low = 0;
+            int high = lifetimes.Length;
+            while (low < high)
+            {
+                int middle = low + ((high - low) >> 1);
+                if (lifetimes[middle].Last < span.Min) low = middle + 1;
+                else high = middle;
+            }
+
+            return low < lifetimes.Length && lifetimes[low].First <= span.Max;
+        }
+    }
+
+    /// <summary>Spans of readings, both ends held, merged where they overlap or touch, in order.</summary>
+    private static (long First, long Last)[] Merged(IEnumerable<(long First, long Last)> spans)
+    {
+        var merged = new List<(long First, long Last)>();
+        foreach ((long first, long last) in spans.OrderBy(span => span.First))
+        {
+            if (merged.Count > 0 && first <= merged[^1].Last + (merged[^1].Last == long.MaxValue ? 0 : 1))
+            {
+                merged[^1] = (merged[^1].First, Math.Max(merged[^1].Last, last));
+            }
+            else
+            {
+                merged.Add((first, last));
+            }
+        }
+
+        return [.. merged];
     }
 }

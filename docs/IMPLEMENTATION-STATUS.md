@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 402 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 403 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 403 — a process's connections read only the segments their lifetimes meet (P25, §12.1 S3):**
+  - Its connection list counted every segment's rows. It now opens only the segments a listed connection's first to
+    last readings meet: a process with one brief connection at 1M rows fell from 127-221 ms to 8-64 ms.
 
 - **Revision 402 — an evidence page opens only the segments it reads (P25, §12.1 S3):**
   - A page opened every segment first, and a time scope's page walked every row of the session. It now opens a segment
@@ -1048,10 +1052,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers declare:
      a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since revision 401 a
      brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the checkpoint's instances
-     and channels, and since revision 402 an evidence page opens only the segments it reads and stops past its time
-     scope. A process's connections, the call ranking and a time scope's HTTP and RPC listings still read every
-     segment, and an RPC capture's first brush and a page of its calls pair them over every one (P25). A search reads
-     the overview, never a segment.
+     and channels; since revision 402 an evidence page opens only the segments it reads and stops past its time
+     scope, and since revision 403 a process's connections read only the segments their lifetimes meet. The call
+     ranking and a time scope's HTTP and RPC listings still read every segment, and an RPC capture's first brush and a
+     page of its calls pair them over every one (P25). A search reads the overview, never a segment.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1304,6 +1308,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 403 was built and tested in the same Linux container: Debug and Release each ran **1,724 tests**, passing
+  **1,626 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its test reopens a six-segment
+  session from its checkpoint and lists three processes' connections to other hosts: one whose connection ends at the
+  fourth segment's first record opens the third and the fourth, one whose connection starts at the fourth's last
+  record opens the last three, one holding a short connection inside a long one opens the four the long one meets,
+  and within a scope a process opens only the segments both meet - one, or none when its connection lies elsewhere -
+  each listing what one segment of the same records lists, and every process's together opening all six. On a
+  reopened session of 1,000,000 rows in 20 segments, the connections of a process whose one connection spans a
+  hundredth of it took 8-64 ms, opening 1 segment, where they took 127-221 ms opening 20. They caught each of 6
+  mutations, among them a lifetime that ends at a segment's first reading or starts at its last, and lifetimes left
+  unmerged.
 
 - Revision 402 was built and tested in the same Linux container: Debug and Release each ran **1,723 tests**, passing
   **1,625 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its test reopens a six-segment

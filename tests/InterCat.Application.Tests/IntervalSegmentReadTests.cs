@@ -171,6 +171,64 @@ public sealed class IntervalSegmentReadTests
         }
     }
 
+    [Fact(DisplayName = "§12.1: a process's connections open only the segments their lifetimes meet, within its time scope when it has one, and list what one segment of the same records lists")]
+    public void AProcessesConnectionsOpenOnlyTheSegmentsTheyLieIn()
+    {
+        // Three processes' connections to other hosts in six segments of a hundred records, segment k holding ticks
+        // 1,000k to 1,000k + 990. The first's runs through the third segment and ends at the fourth's first record; the
+        // second's starts at the fourth's last record and runs to the end; the third holds a short connection inside a
+        // long one, which takes every other record up to the fourth segment.
+        ObservationRowV1[] rows =
+        [
+            Timed(Lifecycle(0, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\first.exe" }),
+            Timed(Lifecycle(10, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\second.exe" }),
+            Timed(Lifecycle(20, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\third.exe" }),
+            .. Enumerable.Range(3, 597).Select(row => Timed(row switch
+            {
+                >= 200 and <= 300 => Transfer(row * 10L, ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(row + 1))
+                    .Between("127.0.0.1:50000", "10.0.0.5:443"),
+                >= 399 => Transfer(row * 10L, ObservationKind.Send, AccountingSide.SendSide, 20, 200, (ulong)(row + 1))
+                    .Between("127.0.0.1:50001", "10.0.0.6:443"),
+                >= 10 and < 20 => Transfer(row * 10L, ObservationKind.Receive, AccountingSide.ReceiveSide, 40, 300, (ulong)(row + 1))
+                    .Between("127.0.0.1:50003", "10.0.0.8:443"),
+                _ => Transfer(row * 10L, ObservationKind.Receive, AccountingSide.ReceiveSide, 30, 300, (ulong)(row + 1))
+                    .Between("127.0.0.1:50002", "10.0.0.7:443"),
+            })),
+        ];
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 100);
+        Publish(twin.Store, rows);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(twin.Store);
+        ProcessInstanceId Process(int id) => overview.Nodes.Single(node => node.ProcessId == id).Id;
+        _ = SessionOverviewProjector.Project(split.Store);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+
+        foreach ((int process, TimeRange? scope, int opened, long records) in new (int, TimeRange?, int, long)[]
+        {
+            (100, null, 2, 101),
+            (200, null, 3, 201),
+            (300, null, 4, 295),
+            (200, new TimeRange(4_500, 4_600), 1, 10),
+            (100, new TimeRange(4_500, 4_600), 0, 0),
+        })
+        {
+            SessionStore reopened = Reopened(split.Path);
+            ConnectionList listed = SessionConnections.OneSided(reopened, Process(process), scope);
+            Assert.Equal(opened, reopened.SegmentReaderCache.Entries);
+            Assert.Equal(records, listed.Connections.Sum(connection => connection.Records));
+            Assert.Equal(SessionConnections.OneSided(twin.Store, Process(process), scope).Connections, listed.Connections);
+            reopened.ReleaseSegmentReaders();
+        }
+
+        // Every process's connections together meet every segment.
+        SessionStore all = Reopened(split.Path);
+        Assert.Equal(SessionConnections.All(twin.Store).Connections.Select(held => held.Summary),
+            SessionConnections.All(all).Connections.Select(held => held.Summary));
+        Assert.Equal(6, all.SegmentReaderCache.Entries);
+        all.ReleaseSegmentReaders();
+    }
+
     /// <summary>Every interval read of the session, as one comparable text: its counts, byte rows, focus and rankings.</summary>
     private static string Answers(
         SessionStore store,
