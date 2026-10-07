@@ -1,6 +1,6 @@
 # Demo investigation contract, version 1
 
-Status: M5, revisions 395 and 396 (§14 M5's exit gate); the window's entry to it since 396
+Status: M5, revisions 395 and 396 (§14 M5's exit gate); the window's entry to it since 396, in its Investigation menu since 398
 Owner: `InterCat.Application` (`DemoInvestigation`)
 Produced by: `icat demo <directory> [--json]`, and the window's Explore the demo
 Read by: every reader of a session or an investigation, which says a demo session was generated
@@ -56,8 +56,9 @@ no value in it is evidence about Windows."
 
 ## 4. The window's demo
 
-The window offers Explore the demo beside its saved sessions and investigations, before any capture and whenever none
-runs. It keeps the demo in a folder of InterCat's own, `InterCat\Demo` in the user's local application data, beside
+The window offers Explore the demo in its Investigation menu, and on its capture card beside the saved sessions until a
+session is shown, whenever no capture runs; once one is shown the ranked list has the card's room (revision 398). It
+keeps the demo in a folder of InterCat's own, `InterCat\Demo` in the user's local application data, beside
 `InterCat\Sessions` and never in it, so the saved sessions list holds only what a person saved. The first time, it
 writes the demo into `Demo\demo`; afterwards it opens the demo found there as it is, without writing it again. A `demo`
 folder that holds anything else is left as it is, and the first of `demo-2` to `demo-100` that holds a demo or nothing

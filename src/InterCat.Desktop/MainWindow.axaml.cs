@@ -978,6 +978,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
         exploringDemo = true;
         ExploreDemoButton.IsEnabled = false;
+        ExploreDemoItem.IsEnabled = false;
         try
         {
             string root = DemoRoot ?? DemoPlace.Root();
@@ -1000,6 +1001,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             exploringDemo = false;
             ExploreDemoButton.IsEnabled = true;
+            ExploreDemoItem.IsEnabled = true;
         }
     }
 
@@ -1664,7 +1666,7 @@ public sealed partial class MainWindow : Window, IDisposable
         if (closed) return;
         recentSessions = rows;
         RecentSessionsList.ItemsSource = rows;
-        UpdateRecentSessionsVisibility();
+        UpdateBeforeSessionVisibility();
     }
 
     /// <summary>The least room the rail's list keeps beside its actions: a row or two of ranked rows or saved sessions.</summary>
@@ -1688,9 +1690,19 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>The saved sessions show only while no session is open and no capture is running, where the ranked table
     /// will be.</summary>
-    private void UpdateRecentSessionsVisibility() =>
-        RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && workspace.IsEmptyWorkspace
-            && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
+    /// <summary>
+    /// What the rail offers only before any session is shown and while no capture runs: the saved sessions, what exploring
+    /// records, and the demo to try (§14 M5). Once a session is shown the ranked list needs the rail's height - three rows
+    /// at the smallest window - and the demo waits in the Investigation menu.
+    /// </summary>
+    private void UpdateBeforeSessionVisibility()
+    {
+        bool idle = phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
+        bool first = workspace.IsEmptyWorkspace && idle;
+        RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && first;
+        CaptureIntro.IsVisible = first;
+        ExploreDemoButton.IsVisible = first;
+    }
 
     private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
 
@@ -2452,8 +2464,6 @@ public sealed partial class MainWindow : Window, IDisposable
         StartExploringButton.IsVisible = !busy;
         OpenSavedSessionButton.IsVisible = !busy;
         InvestigationButton.IsVisible = !busy;
-        ExploreDemoButton.IsVisible = !busy;
-        CaptureIntro.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
@@ -2501,7 +2511,7 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateHealthStrip();
         ToolTip.SetTip(HealthStateText, unavailable ? update.Detail : null);
         UpdateEvidenceAction();
-        UpdateRecentSessionsVisibility();
+        UpdateBeforeSessionVisibility();
     }
 
     /// <summary>
@@ -2528,7 +2538,7 @@ public sealed partial class MainWindow : Window, IDisposable
             workspace = new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace");
             workspace.PropertyChanged += OnWorkspaceChanged;
             DataContext = workspace;
-            UpdateRecentSessionsVisibility();
+            UpdateBeforeSessionVisibility();
             currentSessionPath = null;
             UpdateEvidenceAction();
             GraphSurface.InvalidateVisual();
@@ -2820,7 +2830,7 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace = replacement;
         workspace.PropertyChanged += OnWorkspaceChanged;
         DataContext = workspace;
-        UpdateRecentSessionsVisibility();
+        UpdateBeforeSessionVisibility();
         UpdateLivePreview();
         UpdateHeldBanner();
         UpdateEvidenceAction();

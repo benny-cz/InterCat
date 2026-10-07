@@ -312,23 +312,30 @@
                             AutomationProperties.HelpText="Open an investigation file" />
                   <MenuItem x:Name="NewInvestigationItem" Header="New investigation…" Click="NewInvestigation"
                             AutomationProperties.HelpText="Start a new investigation file" />
+                  <MenuItem x:Name="ExploreDemoItem" Header="Explore the demo" Click="ExploreDemo"
+                            AutomationProperties.HelpText="Open InterCat's generated demo investigation of two hosts; nothing in it was captured" />
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
-            <!-- §14 M5: InterCat's generated demo of two hosts, to try every view without capturing; it says what it is. -->
+            <!-- §14 M5: InterCat's generated demo of two hosts, to try every view without capturing; it says what it is. Offered
+                 here before any session is shown, and always in the Investigation menu, so it never takes the ranked list's room. -->
             <Button x:Name="ExploreDemoButton" Content="Explore the demo" FontSize="13" Click="ExploreDemo"
                     AutomationProperties.HelpText="Open InterCat's generated demo investigation of two hosts; nothing in it was captured" />
-            <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
+            <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. A line
+                 that says nothing takes no room from the ranked list. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
+                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
                        AutomationProperties.Name="How fresh the live view is" />
             <!-- §12.1 S5: growth is disclosed before it hurts - the session's size as measured, its tier, and while it
                  records, when its capture's limits stop it. Caution ink when that is a minute away or the size is past T3. -->
             <TextBlock x:Name="SessionGrowthText" Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="False"
                        AutomationProperties.Name="Session size and growth" />
-            <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto">
+            <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto"
+                          IsVisible="{Binding #CaptureSummary.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
               <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
             </ScrollViewer>
-            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextWrapping="Wrap" />
+            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextWrapping="Wrap"
+                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </Border>
         </StackPanel>

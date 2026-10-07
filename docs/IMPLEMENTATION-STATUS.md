@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 397 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 398 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 398 — the ranked list keeps the rail's room once a session is shown:**
+  - At the smallest window the capture card left the list under two rows. Its first-run sentence and demo button now
+    show only until a session is shown, the demo stays in the Investigation menu, and empty lines take no room.
 
 - **Revision 397 — a redacted package of an interval (§11.3):**
   - A session over ten million rows could not be shared redacted. `icat package --redacted --interval` holds an
@@ -1275,6 +1279,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 398 was built and tested in the same Linux container: Debug and Release each ran **1,717 tests**, passing
+  **1,619 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists, and the multi-selection test
+  revision 397's Release run failed passed in both. Measured at 1080 × 700 with a session of three processes, the card
+  wanted 323 px of the 311 it may have and left the list 120; it now wants 280 and leaves 163, two rows and the start
+  of a third, and at 760 px 223. Its window test opens a session at that size and finds the card's first-run sentence,
+  demo button and empty freshness line hidden, the card unscrolled, the three rows in view, and the Investigation
+  menu's Explore the demo opening the demo beside the session; before a session the sentence and button show and an
+  empty path takes no room. They caught each of 8 mutations.
 
 - Revision 397 was built and tested in the same Linux container: Debug ran **1,716 tests**, passing **1,618 with 4
   skipped**, and its 94 failures are the ones revision 361's baseline lists; Release ran the same and failed one more,
