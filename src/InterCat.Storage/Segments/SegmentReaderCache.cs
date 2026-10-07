@@ -88,6 +88,25 @@ internal sealed class SegmentReaderCache
     }
 
     /// <summary>
+    /// The cached reader of a segment, as <see cref="TryGet"/> finds it, without counting a hit or a miss: for a question
+    /// asked of a reader the store may already hold, such as the readings it spans, that opens nothing either way.
+    /// </summary>
+    public bool TryPeek(
+        StoreDependency segment,
+        SessionManifestV1 manifest,
+        out SegmentReaderV1 reader)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        ArgumentNullException.ThrowIfNull(manifest);
+        lock (gate)
+        {
+            bool held = entries.TryGetValue(segment.Name, out Entry? entry) && entry.Matches(segment, manifest);
+            reader = held ? entry!.Reader : null!;
+            return held;
+        }
+    }
+
+    /// <summary>
     /// Removes cached readers that the selected generation can no longer reach. Active queries keep their own reader
     /// references; pruning only releases the store cache's copy, so a retention publication does not leave released
     /// evidence resident merely because an earlier query touched it.

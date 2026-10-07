@@ -568,6 +568,21 @@ public sealed class SegmentReaderV1
     }
 
     /// <summary>
+    /// The native readings a segment's checksummed header declares its rows span, first and last, read without the rest
+    /// of the file: what a query asks to pass over a segment its interval does not meet, without opening it (§10.2). The
+    /// rows themselves are held to them when the segment is opened.
+    /// </summary>
+    public static (long Min, long Max) DeclaredNativeRange(ReadOnlySpan<byte> header)
+    {
+        _ = DeclaredRowCount(header);
+        long min = BinaryPrimitives.ReadInt64LittleEndian(header[72..]);
+        long max = BinaryPrimitives.ReadInt64LittleEndian(header[80..]);
+        return min <= max
+            ? (min, max)
+            : throw new InvalidDataException("A segment-v1 header declares its last reading before its first.");
+    }
+
+    /// <summary>
     /// A segment's minor version and where its two directories end, from its checksummed header alone: how much of a
     /// published file a reader must read before it can open it. The counts are held to their bounds, so a header
     /// cannot ask for more than a segment-v1 directory can be.

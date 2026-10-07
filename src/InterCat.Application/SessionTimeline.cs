@@ -263,9 +263,17 @@ public static class SessionTimelineQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its timeline cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
+        // A zoom reads only the segments its interval meets, by the readings their headers declare: the first zoom of a
+        // reopened session opened every segment and built every segment's tiles, wherever it was (P25, S4). A focus resolves
+        // its rows over the whole session, so it opens every segment, and counts only those its interval meets.
+        (long first, long end) = SessionNativeInterval.Readings(interval, clock);
+        IReadOnlyList<string> names = SessionSegments.Names(manifest);
+        SegmentReaderV1[] segments = [.. (focus is null
+                ? names.Where(name => Meets(SessionSegments.NativeRange(store, manifest, name)))
+                : names)
             .Select(name => SessionSegments.Open(store, manifest, name))];
         FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
+        SegmentReaderV1[] met = [.. segments.Where(segment => Meets((segment.MinNativeTicks, segment.MaxNativeTicks)))];
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         string? laneProblem = !groupFocus ? null
@@ -288,7 +296,7 @@ public static class SessionTimelineQuery
 
         // The whole timeline comes from each segment's tiles (S4), focused or not: only a tile a column boundary crosses
         // has its rows read.
-        foreach (SegmentReaderV1 segment in segments)
+        foreach (SegmentReaderV1 segment in met)
         {
             cancellationToken.ThrowIfCancellationRequested();
             SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
@@ -302,7 +310,7 @@ public static class SessionTimelineQuery
             int[]? laneOf = laneOwners.Length == 0 ? null : rows.LanesOf(laneOwners);
             total = new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation);
             SegmentPasses.Run(
-                segments,
+                met,
                 () => new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation),
                 (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
                 total.Add,
@@ -335,6 +343,9 @@ public static class SessionTimelineQuery
             OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture)),
             ProcessLaneProblem = laneProblem,
         };
+
+        // Whether a segment's rows, by the readings they span, can fall in the interval.
+        bool Meets((long Min, long Max) span) => span.Min < end && span.Max >= first;
     }
 
     /// <summary>

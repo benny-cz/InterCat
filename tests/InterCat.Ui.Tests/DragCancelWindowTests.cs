@@ -171,7 +171,7 @@ public sealed class DragCancelWindowTests
                     .Between(ClientEnd, ServerEnd),
                 Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(101 + (2 * index)))
                     .Between(ServerEnd, ClientEnd),
-            })).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L }),
+            })).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L }),
         ]);
         var window = new MainWindow { Width = 1456, Height = 939 };
         window.Show();

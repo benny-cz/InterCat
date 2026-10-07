@@ -1033,6 +1033,29 @@ public static class SessionSegments
     }
 
     /// <summary>
+    /// The native readings a published segment's rows span, first and last: the open reader's when the store holds one,
+    /// otherwise its checksummed header's, read without opening the segment. A query passes over a segment its interval
+    /// does not meet by it, so the first zoom of a reopened session opens only the segments it shows (P25, §10.2).
+    /// </summary>
+    public static (long Min, long Max) NativeRange(SessionStore store, SessionManifestV1 manifest, string segmentName)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(manifest);
+        OwnedFileName.Require(segmentName, nameof(segmentName));
+        StoreDependency dependency = SegmentDependency(manifest, segmentName);
+        if (store.SegmentReaders.TryPeek(dependency, manifest, out SegmentReaderV1 cached))
+        {
+            return (cached.MinNativeTicks, cached.MaxNativeTicks);
+        }
+
+        byte[] header = new byte[SegmentFormatV1.HeaderLength];
+        using FileStream stream = store.Root.OpenOwnedFile(
+            dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.None);
+        stream.ReadExactly(header);
+        return SegmentReaderV1.DeclaredNativeRange(header);
+    }
+
+    /// <summary>
     /// The rows a published segment's header declares, read without opening the whole file. It is for a total before a
     /// pass - a bound or a progress denominator - and is never a substitute for opening the segment to read its rows.
     /// </summary>

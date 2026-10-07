@@ -536,6 +536,57 @@ public sealed class SessionTimelineTests
 
     private static CoverageState StateAt(SessionMinimap minimap, long tick) => minimap.Capture[ColumnAt(minimap, tick)];
 
+    [Fact(DisplayName = "§12.1: a zoom opens only the segments its interval meets, and counts every row in it as a read of every segment does")]
+    public void AZoomOpensOnlyTheSegmentsItMeets()
+    {
+        // Six segments of a hundred sends each, one every ten ticks: segment k holds ticks 1,000k to 1,000k + 990.
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            Timed(Lifecycle(0, ObservationKind.Create, 100, 1)),
+            .. Enumerable.Range(1, 599).Select(index => Timed(Transfer(index * 10L, ObservationKind.Send, AccountingSide.SendSide,
+                8, 100, (ulong)(index + 1)).Between(ClientEnd, ServerEnd))),
+        ];
+        Publish(session.Store, rows, rowsPerSegment: 100);
+        Assert.Equal(6, SessionSegments.Names(session.Store.Current!).Count);
+
+        foreach ((TimeRange zoom, int opened) in new[]
+        {
+            (new TimeRange(2_050, 2_950), 1),
+            (new TimeRange(1_950, 2_050), 2),
+
+            // An interval ending where a segment's first row is leaves it shut; one starting at a segment's last row opens it.
+            (new TimeRange(2_050, 3_000), 1),
+            (new TimeRange(2_990, 3_010), 2),
+            (new TimeRange(6_000, 9_000), 0),
+            (new TimeRange(-500, 10_000), 6),
+        })
+        {
+            // A reopened session holds no reader yet: the zoom opens what it meets and nothing else.
+            SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+            SessionTimelineDetail detail = SessionTimelineQuery.Detail(reopened, zoom, 10);
+            Assert.Equal(opened, reopened.SegmentReaderCache.Entries);
+            Assert.Equal(rows.Count(row => zoom.Contains(row.SessionRelativeTicks!.Value / 100)),
+                detail.Buckets.Sum(bucket => bucket.ObservationCount));
+
+            // And it answers as one with every segment already open does, bucket for bucket.
+            foreach (string name in SessionSegments.Names(reopened.Current!)) _ = SessionSegments.Open(reopened, reopened.Current!, name);
+            Assert.Equal(detail.Buckets, SessionTimelineQuery.Detail(reopened, zoom, 10).Buckets);
+            reopened.ReleaseSegmentReaders();
+        }
+
+        // A focus resolves its process over every segment, and counts only what its interval meets, as without one.
+        ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single().Id;
+        SessionStore focused = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        SessionFocusedTimeline narrow = SessionTimelineQuery.Focused(focused, new TimeRange(2_050, 2_950), 10,
+            new TimelineFocus(null, [client]));
+        Assert.Equal(90, narrow.Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(90, narrow.Whole.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal([false, false, true, false, false, false], SessionSegments.Names(focused.Current!)
+            .Select(name => SegmentTimeTiles.IsBuilt(SessionSegments.Open(focused, focused.Current!, name))));
+        focused.ReleaseSegmentReaders();
+    }
+
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 
     private static CoverageLedgerV1 TwoEpochs() => new()

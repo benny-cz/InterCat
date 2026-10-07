@@ -96,6 +96,9 @@ internal sealed class SegmentTimeTiles
     internal (long Low, long High) Readings(int tile) => (lows[tile], highs[tile]);
 
     /// <summary>The tiles of a segment, built on first use and kept for as long as its reader is.</summary>
+    /// <summary>Whether a reader's tiles have been built: what a zoom's cost depends on, read only by tests of it.</summary>
+    internal static bool IsBuilt(SegmentReaderV1 segment) => Built.TryGetValue(segment, out _);
+
     public static SegmentTimeTiles Of(SegmentReaderV1 segment, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segment);

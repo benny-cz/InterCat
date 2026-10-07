@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 399 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 400 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 400 — a zoom reads only the segments it meets (P25, §12.1 S3/S4):**
+  - The first zoom of a reopened session opened every segment and built every segment's tiles. It now reads each
+    segment's header span and opens only those its interval meets: a 1% zoom at 1M rows fell from 86-237 ms to 3-17 ms.
 
 - **Revision 399 — the window shares a redacted package of its time scope (§11.3):**
   - Only `icat package --interval` made one. "Share redacted session…" now offers the inspector's time scope first,
@@ -1031,6 +1035,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      3. The working set still ends near 1.2 GB at 10M rows, where 284 MiB stays reachable.
    - A live session still counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
+     Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers declare:
+     a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. A brush's counts, an
+     evidence page and a search still read every segment (P25).
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1283,6 +1290,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 400 was built and tested in the same Linux container: Debug and Release each ran **1,720 tests**, passing
+  **1,622 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its first run failed `§6.2: a
+  zoomed mechanism lane hovers…` in both: its rows stretched their session times 500,000-fold and not their readings,
+  so the zoom met no segment; it and seven other window tests now stretch both. Its test opens a six-segment session
+  afresh for each zoom and finds it opened only the segments its interval meets - one, two across a boundary, one
+  ending at a segment's first row, two starting at one's last, none past every row, all six for the whole - counting
+  every row in it as a read of every segment does, and a focused zoom tiling only its met segment. Measured on a
+  reopened session of 1,000,000 rows in 20 segments, a zoom to a hundredth of it took 3-17 ms after the first pass,
+  opening 1 segment, where it took 86-237 ms opening 20. They caught each of 6 mutations; the one that tiled every
+  segment of a focused zoom first survived, changing no count, and the test now checks which segments were tiled.
 
 - Revision 399 was built and tested in the same Linux container: Debug and Release each ran **1,719 tests**, passing
   **1,621 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its window tests show the share

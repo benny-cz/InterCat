@@ -1843,8 +1843,8 @@
         "plannedBy": "IC-009"
       },
       "P25": {
-        "reason": "Whole-session interactive scans belong to M2 scale work.",
-        "plannedBy": "M2"
+        "reason": "Since revision 400 a zoom opens and counts only the segments its interval meets; a brush's counts, an evidence page and a search still read every segment, and a zoom builds a met segment's tiles from its rows.",
+        "plannedBy": "M5"
       }
     }
   }

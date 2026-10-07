@@ -241,7 +241,7 @@ public sealed partial class RedactedSessionPackageTests
             foreach ((long start, long end) in new[] { (44L, 48L), (0L, 1L), (-1L, 0L), (-3L, 2L), (-5L, -2L), (1L, 3L) })
             {
                 var range = new TimeRange(start, end);
-                (long first, long stop) = RedactedSessionPackage.NativeReadings(range, clock);
+                (long first, long stop) = SessionNativeInterval.Readings(range, clock);
                 for (long reading = SourceEpoch - 900; reading <= SourceEpoch + 900; reading++)
                 {
                     long at = SourceClockMath.ConvertToSession(clock, new(clock.Id, clock.Encoding, reading)).SessionTime!.Value

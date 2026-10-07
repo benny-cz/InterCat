@@ -253,7 +253,7 @@ public sealed class EvidenceRungWindowTests
     public void TheMinimapBrushFollowsAndMovesTheViewport()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -318,8 +318,9 @@ public sealed class EvidenceRungWindowTests
     public void MinimapWheelAndKeyboardNavigateOneViewport()
     {
         using var session = new TemporarySession();
+        // Ten seconds of exchanges: each reading spread 500,000 times, its session time the one its clock gives it.
         Publish(session.Store, [.. Exchange(0, 100).Select(row => row with
-        { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -357,7 +358,7 @@ public sealed class EvidenceRungWindowTests
     public async Task AZoomedTimelineDrawsItsOwnResolution()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -400,8 +401,9 @@ public sealed class EvidenceRungWindowTests
     public async Task AZoomedMechanismLaneUsesItsOwnBucket()
     {
         using var session = new TemporarySession();
+        // Ten seconds of exchanges: each reading spread 500,000 times, its session time the one its clock gives it.
         Publish(session.Store, [.. Exchange(0, 100).Select(row => row with
-        { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -1180,7 +1182,7 @@ public sealed class EvidenceRungWindowTests
     {
         using var session = new TemporarySession();
         // Exchanges 50 ms apart, so the session spans seconds and there is room to zoom and pan.
-        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -1220,7 +1222,7 @@ public sealed class EvidenceRungWindowTests
         using var session = new TemporarySession();
         // Two bursts far apart, so most of the session's buckets are empty between them.
         Publish(session.Store, [.. Exchange(0, 20).Concat(Exchange(400, 20))
-            .Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+            .Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -1307,7 +1309,7 @@ public sealed class EvidenceRungWindowTests
     public void APinchZoomsAgainstItsStartingViewport()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
@@ -1334,7 +1336,7 @@ public sealed class EvidenceRungWindowTests
     public void ADoubleClickZoomsInAtThePointer()
     {
         using var session = new TemporarySession();
-        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
         var window = new MainWindow();
         window.Show();
         window.ApplyCaptureUpdate(Update(session));
