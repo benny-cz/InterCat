@@ -276,7 +276,7 @@ public static class LadderProjection
             rows.Add(new LadderRow(
                 process.Id.ToString(),
                 process.Name,
-                $"{process.PidLabel} · {process.Role}",
+                process.Caption,
                 process.Records,
                 KnownBytes(edges),
                 Dominant([process]),

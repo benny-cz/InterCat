@@ -1,5 +1,6 @@
 using InterCat.Analysis;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Application;
 
@@ -57,6 +58,21 @@ public sealed record ProcessNode(
     /// this was - "PID 100 #2" for the second, as `icat processes` names it - since the two otherwise read alike.
     /// </summary>
     public string PidLabel => PidLabelOf(ProcessId, PidHolder, PidHolders);
+
+    /// <summary>
+    /// The part this process played in collecting the capture - InterCat's broker, the process that asked it to record, or
+    /// `icat record` - when the capture's collectors name it by PID and creation time (`collector-binding-v1`); null for
+    /// every other process, and for every process of a capture that names none.
+    /// </summary>
+    public CollectorRole? Collector { get; init; }
+
+    /// <summary>
+    /// The line beneath its name in a ranked row and the inspector: its PID, how it was seen to start and, for one of
+    /// InterCat's own, which it is - "PID 4120 · running at start · InterCat's broker".
+    /// </summary>
+    public string Caption => Collector is { } role
+        ? $"{PidLabel} · {Role} · {CollectorText.Label(role)}"
+        : $"{PidLabel} · {Role}";
 
     /// <summary>The name an instance gets when no executable was witnessed for it.</summary>
     public static string PidName(int processId) =>

@@ -39,6 +39,7 @@ public static class ProcessBindingText
                     ? "The evidence policy counts candidates, so its total includes the "
                         + $"{CountText.Of(process.CandidateRecords, "record")} bound to it over the session."
                     : "None is left out of its total.");
-        return $"{binding} Coverage over the session: {CoverageStateText.Value(process.Coverage)}.";
+        string collector = process.Collector is { } role ? " " + CollectorText.Sentence(role) : string.Empty;
+        return $"{binding}{collector} Coverage over the session: {CoverageStateText.Value(process.Coverage)}.";
     }
 }

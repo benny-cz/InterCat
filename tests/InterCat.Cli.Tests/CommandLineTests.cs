@@ -1197,6 +1197,51 @@ public sealed class CommandLineTests : IDisposable
         Assert.DoesNotContain("COLLECTED BY", output, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§19.5: icat processes labels InterCat's broker in the window's words and names its role in its document, and no other process")]
+    public async Task IcatProcessesLabelsTheCollector()
+    {
+        using var session = new TemporarySession();
+        PublishCollected(session.Store);
+        ProcessNode broker = SessionOverviewProjector.Project(session.Store).Nodes.Single(node => node.Collector is not null);
+        session.Store.ReleaseSegmentReaders();
+
+        // The list names it beside its executable, and asked about its PID, it says how it was counted.
+        (InterCatExitCode code, string text, string said) = await Run("processes", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("intercat-broker.exe (InterCat's broker)", text, StringComparison.Ordinal);
+        Assert.Equal(1, Regex.Count(text, "InterCat's broker"));
+        (code, text, said) = await Run("processes", session.Path, "--pid", "4120");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches("Counted +" + Regex.Escape(ProcessBindingText.Explain(broker)), text);
+
+        (code, text, said) = await Run("processes", session.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using JsonDocument document = JsonDocument.Parse(text);
+        JsonElement[] instances = [.. document.RootElement.GetProperty("instances").EnumerateArray()];
+        JsonElement labelled = Assert.Single(instances, instance => instance.GetProperty("collector").ValueKind != JsonValueKind.Null);
+        Assert.Equal(("Broker", 4120, 1, ProcessBindingText.Explain(broker)), (labelled.GetProperty("collector").GetString(),
+            labelled.GetProperty("process").GetProperty("processId").GetInt32(),
+            labelled.GetProperty("process").GetProperty("lifecycleEpoch").GetInt32(), labelled.GetProperty("binding").GetString()));
+
+        // The overview's document, the bundle the window projects, carries the same: which instance each collector is,
+        // and the collectors no instance is.
+        (code, text, said) = await Run("overview", session.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using JsonDocument overview = JsonDocument.Parse(text);
+        JsonElement bundle = overview.RootElement.GetProperty("bundle");
+        JsonElement node = Assert.Single(bundle.GetProperty("nodes").EnumerateArray(),
+            candidate => candidate.GetProperty("collector").ValueKind != JsonValueKind.Null);
+        Assert.Equal(("Broker", broker.Id.Value), (node.GetProperty("collector").GetString(),
+            node.GetProperty("id").GetProperty("value").GetGuid()));
+        JsonElement collectors = bundle.GetProperty("collectors");
+        Assert.True(collectors.GetProperty("recorded").GetBoolean());
+        JsonElement instance = Assert.Single(collectors.GetProperty("instances").EnumerateArray());
+        Assert.Equal((broker.Id.Value, "Broker"), (instance.GetProperty("instance").GetProperty("value").GetGuid(),
+            instance.GetProperty("role").GetString()));
+        Assert.Equal([7008, 4120], collectors.GetProperty("unfound").EnumerateArray()
+            .Select(collector => collector.GetProperty("processId").GetInt32()));
+    }
+
     [Fact(DisplayName = "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path")]
     public async Task ASupportBundleHoldsNoRecordsContent()
     {

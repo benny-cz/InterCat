@@ -3407,7 +3407,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : DescribesOpened ? OpenedSubtitle
         : selectedProcess is null
             ? "Choose a node, ranked row, or timeline bucket."
-            : $"{selectedProcess.PidLabel} · {selectedProcess.Role}";
+            : selectedProcess.Caption;
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
     /// <summary>What a multi-selection holds, by name, and the two gestures that change or apply it (§6.7).</summary>
@@ -3491,9 +3491,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             long scale = GraphEncoding.NodeScale(drawnDisplay);
             string title = node.Title;
+
+            // One of InterCat's own processes says which, as its row does (§19.5).
+            CollectorRole? collector = node.Kind == GraphNodeKind.Process && node.Members.Count == 1
+                ? Snapshot.Processes.FirstOrDefault(process => process.Id == node.Members[0])?.Collector
+                : null;
             string what = node.Kind switch
             {
-                GraphNodeKind.Process => "Process instance · " + Counted(node.Relationships, "relationship", "relationships"),
+                GraphNodeKind.Process => "Process instance · "
+                    + (collector is { } role ? CollectorText.Label(role) + " · " : string.Empty)
+                    + Counted(node.Relationships, "relationship", "relationships"),
                 GraphNodeKind.Group => GroupMembers(node) + ", drawn as one node · "
                     + Counted(node.Relationships, "relationship", "relationships"),
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",

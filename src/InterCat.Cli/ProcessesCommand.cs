@@ -84,6 +84,12 @@ internal sealed record ProcessActivityDocument
 
     /// <summary>How its records were bound to it, what the policy left out, and the coverage, in the inspector's words (R18).</summary>
     public required string Binding { get; init; }
+
+    /// <summary>
+    /// The part the instance played in collecting the capture - Broker, Client or Recorder - when the capture's collectors
+    /// name it (`collector-binding-v1`); null for every other process.
+    /// </summary>
+    public CollectorRole? Collector { get; init; }
 }
 
 /// <summary>An instance's transport records of one side: how many measured a size, and how many recorded none.</summary>
@@ -308,6 +314,7 @@ internal static class ProcessesCommand
                     CandidateRecords = nodes[group.Process!.Id].CandidateRecords,
                     WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
                     Binding = ProcessBindingText.Explain(nodes[group.Process!.Id]),
+                    Collector = nodes[group.Process!.Id].Collector,
                 })
                 .OrderByDescending(item => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0))
                 .ThenByDescending(item => item.Records)
@@ -522,7 +529,9 @@ internal static class ProcessesCommand
                         reusedPids.Contains(item.Process.ProcessId)
                             ? string.Create(CultureInfo.InvariantCulture, $"{item.Process.ProcessId} #{item.Process.LifecycleEpoch}")
                             : item.Process.ProcessId.ToString(CultureInfo.InvariantCulture),
-                        item.Process.ImageName ?? "not witnessed",
+                        // One of InterCat's own says which, as the window's row does (§19.5).
+                        (item.Process.ImageName ?? "not witnessed")
+                            + (item.Collector is { } collector ? $" ({CollectorText.Label(collector)})" : string.Empty),
                         Lifetime(item.Process, clock),
                         ConsoleUi.Count(item.Records),
                         Bytes(item.TransportBytesSent, item.Sends, "no sends"),

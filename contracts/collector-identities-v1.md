@@ -1,6 +1,6 @@
 # collector-identities-v1
 
-Status: revision 414 (§19.5); the broker's client since revision 415
+Status: revision 414 (§19.5); the broker's client since revision 415; labels since revision 416
 Owner: `InterCat.Storage` (`CollectorIdentitiesV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`)
 
 The processes that collected a capture, by the identity its own lifecycle records give them. InterCat's broker, the
@@ -59,8 +59,11 @@ outside its range, a role and PID named twice, an empty file or one over 4 KiB a
 ## 3. What a reader may say
 
 A process instance is a collector's when its PID is the collector's and its creation time, from its lifecycle records,
-is the one named (`collector-binding-v1`, revision 415): the start key a lifecycle record carries is the identity, and a
-PID alone, or an image name, is never taken for one. An instance whose lifecycle records carried no creation time, or a
-collector whose creation time was not read, is not labelled, and the reader says which collector it could not find
-rather than guess one. The records bound to a collector's instance are collector activity: counted, listed and
-exported as any record is, and labelled where they are shown.
+is the one named (`collector-binding-v1`, revision 416): the start key a lifecycle record carries is the identity, and a
+PID alone, or an image name, is never taken for one, so another holder of a collector's PID is never labelled. An
+instance whose lifecycle records carried no creation time, or a collector whose creation time was not read, is not
+labelled, and the reader keeps that collector as unfound rather than guess an instance for it. An instance named in two
+roles keeps the first the file names. The records bound to a collector's instance are collector activity: counted,
+listed and exported as any record is, and labelled where they are shown - its ranked row's caption ("PID 4120 · running
+at start · InterCat's broker"), the inspector's explanation, its graph node's card and `icat processes`, in one set of
+words (`CollectorText`).

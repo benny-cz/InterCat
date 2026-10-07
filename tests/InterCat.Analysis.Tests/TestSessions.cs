@@ -403,6 +403,53 @@ internal static class TestSessions
         ];
     }
 
+    /// <summary>When the broker <see cref="PublishCollected"/> names was created.</summary>
+    public static readonly DateTimeOffset CollectorBrokerCreated = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero).AddTicks(3);
+
+    /// <summary>
+    /// The broker, PID 4120, created at <see cref="CollectorBrokerCreated"/>, sends to the client, PID 7008, whose lifecycle
+    /// record carries no creation time, over one loopback connection; the broker then exits, and tool.exe takes its PID a
+    /// second later. Named, the collectors are the broker, the client, and a recorder of the broker's PID created when no
+    /// process holding it was.
+    /// </summary>
+    public static void PublishCollected(SessionStore store, bool named = true)
+    {
+        ObservationRowV1 broker = Lifecycle(1, ObservationKind.Create, 4120, 1) with
+        {
+            ResourceName = @"C:\Program Files\InterCat\intercat-broker.exe", SessionRelativeTicks = 100,
+        };
+        ObservationRowV1 client = Lifecycle(2, ObservationKind.Create, 7008, 2) with
+        {
+            ResourceName = @"C:\Program Files\InterCat\InterCat.exe", SessionRelativeTicks = 200,
+        };
+        ObservationRowV1 send = Transfer(3, ObservationKind.Send, AccountingSide.SendSide, 64, 4120, 3)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 300 };
+        ObservationRowV1 receive = Transfer(4, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 7008, 4)
+            .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 400 };
+        ObservationRowV1 exit = Lifecycle(5, ObservationKind.Exit, 4120, 5) with { SessionRelativeTicks = 500 };
+        ObservationRowV1 later = Lifecycle(6, ObservationKind.Create, 4120, 6) with
+        {
+            ResourceName = @"C:\Tools\tool.exe", SessionRelativeTicks = 600,
+        };
+        Publish(store, [broker, client, send, receive, exit, later],
+            fields:
+            [
+                Field(broker, SourceField.ProcessCreateTime, CollectorBrokerCreated.ToFileTime()),
+                Field(later, SourceField.ProcessCreateTime, CollectorBrokerCreated.AddSeconds(1).ToFileTime()),
+            ],
+            collectors: !named ? null : new CollectorIdentitiesV1
+            {
+                Contract = CollectorIdentitiesV1.ContractName,
+                CaptureId = Capture.Value,
+                Processes =
+                [
+                    new() { Role = CollectorRole.Broker, ProcessId = 4120, CreatedUtc = CollectorBrokerCreated },
+                    new() { Role = CollectorRole.Client, ProcessId = 7008 },
+                    new() { Role = CollectorRole.Recorder, ProcessId = 4120, CreatedUtc = CollectorBrokerCreated.AddSeconds(5) },
+                ],
+            });
+    }
+
     /// <summary>A source field of an observation, as a provider supplied it beside the row.</summary>
     public static SourceFieldRowV1 Field(ObservationRowV1 observation, SourceField code, long value) => new()
     {

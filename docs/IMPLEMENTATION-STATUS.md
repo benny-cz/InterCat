@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 415 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 416 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 416 — InterCat's own processes are labelled (§19.5, R5, R18):**
+  - A capture named its collectors, but no view said which processes they were. The instance whose PID and creation
+    time a collector names is now labelled in its row, the inspector, its graph card and `icat processes`; another
+    holder of its PID is not.
 
 - **Revision 415 — the broker names the client that asked it to record (§19.5):**
   - A broker's capture named the broker alone. The PID its control pipe names for its client, diagnostic only, now
@@ -1309,9 +1314,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §19.5's self-observation: since revision 414 a live capture names the process collecting it - its broker, or
      `icat record` - by PID and creation time (`collector-identities-v1`, dependency kind 11), carried, mirrored and
      never released, which `icat session` states; since revision 415 a broker names the client that asked it to record
-     too, by the PID its control pipe names. Next, in order: (1) a reader matches each collector to the instance whose
-     lifecycle records carry its PID and creation time, and the window, the graph and `icat processes` label that
-     instance's records as InterCat's own; (2) a visible view filter sets them aside, counting what it set aside.
+     too, by the PID its control pipe names; and since revision 416 the instance a collector is - its PID and the
+     creation time its lifecycle records carry (`collector-binding-v1`) - is labelled in its row, the inspector, its
+     graph card and `icat processes`. Next: a visible view filter that sets their records aside, counting what it set
+     aside; and a statement, in the inspector and `icat overview`, of a collector no instance is.
    - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
@@ -1388,6 +1394,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 416 was built and tested in the same Linux container: Debug and Release each ran **1,766 tests**, passing
+  **1,668 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests publish a capture
+  whose broker sends to its client and then exits, its PID taken by another process: the broker is labelled in its
+  caption and explanation, the later holder of its PID is not, and the client, whose creation time was not read, stays
+  unfound, as does a collector naming the broker's PID with a creation time no instance carries; a capture naming none
+  labels nothing. In the window's model the broker's row, the inspector's caption and explanation and its graph card
+  name it, and the later holder is described as any process is; `icat processes` names it beside its executable, says
+  how it was counted and names its role in its document, and `icat overview --json` writes the bundle with which
+  instance each collector is - which, written first as a map keyed by instance, could not be written at all, so it is
+  a list. They caught each of 16 mutations; one written so that it no longer built was rewritten until it did.
 
 - Revision 415 was built and tested in the same Linux container: Debug and Release each ran **1,763 tests**, passing
   **1,665 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests start a capture

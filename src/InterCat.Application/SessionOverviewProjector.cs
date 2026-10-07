@@ -59,6 +59,12 @@ public sealed record SessionOverviewBundle(
     public TimeRange? Recording { get; init; }
 
     /// <summary>
+    /// The process instances the capture's collectors are, InterCat's own (`collector-binding-v1`), and the collectors no
+    /// instance is; none recorded for a capture that names none.
+    /// </summary>
+    public CollectorMatch Collectors { get; init; } = CollectorMatch.NotRecorded;
+
+    /// <summary>
     /// When the capture began by the wall clock it recorded: session time 0, in UTC (<see cref="SessionRecording.Began"/>);
     /// null when it recorded none.
     /// </summary>
@@ -144,6 +150,9 @@ public static class SessionOverviewProjector
         // A row counts over the whole session, so it is as complete as the capture was over every epoch (§10.3): a
         // process's by everything the capture collected, since it could have made any of it, and a channel's by TCP.
         CoverageState captured = SessionCoverage.Capture(coverage);
+
+        // The instances that collected the capture, by the PID and creation time it names them by (collector-binding-v1).
+        CollectorMatch collectors = CollectorBinding.Match(processes.Instances, CollectorIdentitiesV1.Read(store.Root, manifest));
         CoverageState tcpCoverage = SessionCoverage.Of(coverage, Mechanism.Tcp).State;
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
@@ -164,6 +173,7 @@ public static class SessionOverviewProjector
             TerminalSession = instance.SessionId,
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
+            Collector = collectors.RoleOf(instance.Id),
         })];
 
         // Every row is held by at most one instance, so what no instance holds is the rest: rows naming no owner, naming
@@ -333,6 +343,7 @@ public static class SessionOverviewProjector
             Size = SessionGrowth.Measure(manifest, rows),
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
+            Collectors = collectors,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])
                 : null,
