@@ -199,6 +199,53 @@ public sealed class BrokerLifecycleCoordinatorTests
         Assert.Equal(2, runtime.StopCount);
     }
 
+    [Fact(DisplayName = "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership")]
+    public async Task OwnershipIsTheAuthenticatedIdentityAlone()
+    {
+        var clock = new ManualTimeProvider(StartTime);
+        var runtime = new BrokerFakeRuntime();
+        var registry = new PreparedPlanRegistry(clock);
+        using var coordinator = new BrokerLifecycleCoordinator(
+            registry,
+            new InMemoryBrokerLifecycleStore(),
+            runtime,
+            clock);
+
+        // A prepared token is a secret bound to the identity it was issued to: presented from the same user's other logon
+        // session it starts nothing, and it is still the owner's to use.
+        BrokerClientIdentity otherLogon = OwnerA with { LogonSessionId = OwnerA.LogonSessionId + 1 };
+        PreparedPlanGrant grant = registry.Issue(PreparedFocused(), OwnerA);
+        Assert.Equal(BrokerOperationCode.PreparedTokenRejected,
+            (await coordinator.StartAsync(grant.Token, Guid.NewGuid(), otherLogon)).Code);
+        BrokerStartOutcome started = await coordinator.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
+        Assert.Equal(BrokerOperationCode.Started, started.Code);
+        CaptureId captureId = started.CaptureId!.Value;
+
+        // Knowing the capture's ID is no proof either: another user, and the same user's other logon, read, renew and stop
+        // nothing, and are told nothing that says it exists.
+        foreach (BrokerClientIdentity stranger in new[] { OwnerB, otherLogon })
+        {
+            Assert.Null(await coordinator.GetStatusAsync(captureId, stranger));
+            Assert.Equal(BrokerOperationCode.CaptureUnavailable, (await coordinator.RenewOwnerLeaseAsync(captureId, stranger)).Code);
+            Assert.Equal(BrokerOperationCode.CaptureUnavailable,
+                (await coordinator.StopAsync(captureId, Guid.NewGuid(), stranger)).Code);
+        }
+
+        Assert.Equal(0, runtime.StopCount);
+
+        // The owner is its user and logon session as the token says them, however the SID is cased.
+        BrokerCaptureOwnership owned = Assert.IsType<BrokerCaptureOwnership>(
+            await coordinator.GetStatusAsync(captureId, OwnerA with { UserSid = OwnerA.UserSid.ToLowerInvariant() }));
+
+        // The session's name proves nothing without the secret it was made with: copied beside another token, it is no one's.
+        Assert.True(owned.Session.IsValidFor(captureId));
+        Assert.False((owned.Session with { OwnershipToken = Guid.NewGuid() }).IsValidFor(captureId));
+
+        // And an authenticated identity carries no process ID to be trusted: it is what the connected token says.
+        Assert.Equal(["IntegrityLevel", "IsElevated", "LogonSessionId", "Owner", "UserSid"],
+            typeof(BrokerClientIdentity).GetProperties().Select(property => property.Name).Order(StringComparer.Ordinal));
+    }
+
     [Fact]
     public async Task OtherOwnerCannotReadRenewOrStopCapture()
     {

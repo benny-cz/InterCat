@@ -1152,12 +1152,21 @@
       "P17": [
         "P17: a package labelled redacted carries none of its source's evidence: no journal, segment or plan of it"
       ],
+      "P18": [
+        "P18: the elevated broker can reach no importer, content view or UI, and its own code opens no ETL file"
+      ],
+      "P19": [
+        "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership"
+      ],
       "P2": [
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
         "P2: a buffer longer than a view shows at once is shown from its first byte, and the view says where it stopped",
         "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
         "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one"
+      ],
+      "P20": [
+        "P20: no product code reads another process's memory, duplicates its handles, or opens a pipe but the broker's"
       ],
       "P21": [
         "P21: a closed workspace applies nothing that was still being counted for it",
@@ -1823,18 +1832,6 @@
       "P13": {
         "reason": "Coverage epochs on a provider change arrive with IC-009.",
         "plannedBy": "IC-009"
-      },
-      "P18": {
-        "reason": "Broker isolation is asserted with IC-014.",
-        "plannedBy": "IC-014"
-      },
-      "P19": {
-        "reason": "Broker authentication is asserted with IC-014.",
-        "plannedBy": "IC-014"
-      },
-      "P20": {
-        "reason": "Intrusive peer resolution is asserted with IC-005.",
-        "plannedBy": "IC-005"
       },
       "P25": {
         "reason": "Whole-session interactive scans belong to M2 scale work.",
