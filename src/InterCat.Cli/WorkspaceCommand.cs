@@ -181,6 +181,62 @@ internal sealed record DecisionDocument
     public required string? Why { get; init; }
 }
 
+/// <summary>An investigation's merged time (`workspace-timeline-v1`), as its window draws and says it (R18).</summary>
+internal sealed record WorkspaceTimelineDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+
+    /// <summary>The investigation's time it spans, in 100-nanosecond ticks of its reference's clock; null when no lane has a place.</summary>
+    public required long? StartTicks { get; init; }
+    public required long? EndTicks { get; init; }
+    public required int Columns { get; init; }
+    public required IReadOnlyList<TimelineLaneDocument> Lanes { get; init; }
+
+    /// <summary>What the window says beside its lanes: the overlaps of one host's captures, and each note where it is pinned.</summary>
+    public required IReadOnlyList<string> Statements { get; init; }
+
+    /// <summary>The snapshot vector the lanes answer (I16): each read capture's one generation, by capture.</summary>
+    public required IReadOnlyList<SnapshotEntryDocument> SnapshotVector { get; init; }
+}
+
+/// <summary>One member's lane of the merged time: its place, its sentence, and each column's records and coverage.</summary>
+internal sealed record TimelineLaneDocument
+{
+    public required Guid SessionId { get; init; }
+    public required bool Placed { get; init; }
+
+    /// <summary>Where its records fall in the investigation's time, in ticks; null when it has no place.</summary>
+    public required long? ExtentStartTicks { get; init; }
+    public required long? ExtentEndTicks { get; init; }
+
+    /// <summary>The half-width of its placement's uncertainty; null when it is unknown or the lane has no place.</summary>
+    public required double? UncertaintyNanoseconds { get; init; }
+
+    /// <summary>What it lacks to be placed or compared: an alignment, a reference, or a stated drift.</summary>
+    public required WorkspaceTimeGap Gap { get; init; }
+
+    /// <summary>Why its session could not be read, when it could not.</summary>
+    public required string? Unread { get; init; }
+    public required long Records { get; init; }
+    public required string Sentence { get; init; }
+    public required IReadOnlyList<TimelineColumnDocument> Buckets { get; init; }
+}
+
+/// <summary>
+/// One column of a lane: its interval in the investigation's time and in the session's own, the records it holds, and
+/// what the capture covered there - a column of none that it did not cover is not an observed zero (R21).
+/// </summary>
+internal sealed record TimelineColumnDocument
+{
+    public required long StartTicks { get; init; }
+    public required long EndTicks { get; init; }
+    public required long OwnStartTicks { get; init; }
+    public required long OwnEndTicks { get; init; }
+    public required int Records { get; init; }
+    public required CoverageState Coverage { get; init; }
+}
+
 internal sealed record CandidateDocument
 {
     public required CandidateEndDocument First { get; init; }
@@ -240,6 +296,11 @@ internal static partial class WorkspaceCommand
 
     public const string CorrelationContract = "workspace-correlation-v6";
 
+    public const string TimelineContract = "workspace-timeline-v1";
+
+    /// <summary>The columns the investigation window's timeline draws, which the command line draws unless asked otherwise.</summary>
+    public const int TimelineColumns = 160;
+
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
 
@@ -259,6 +320,8 @@ internal static partial class WorkspaceCommand
         string? output = command.TakeOption("--output");
         string? pinned = command.TakeOption("--at");
         string? replacement = command.TakeOption("--replace");
+        string? columnsText = command.TakeOption("--columns");
+        string? intervalText = command.TakeOption("--interval");
         List<string> only = [];
         while (command.TakeOption("--only") is { } chosen)
         {
@@ -301,6 +364,7 @@ internal static partial class WorkspaceCommand
                 + "[<session>@<seconds> <reference>@<seconds>] --within <duration>"),
             "compare" => (2, 2, "icat workspace compare <workspace> <session>@<seconds> <session>@<seconds>"),
             "correlate" => (0, 0, "icat workspace correlate <workspace>"),
+            "timeline" => (0, 0, "icat workspace timeline <workspace> [--columns <1-2000>] [--interval <start>:<end>]"),
             "join" => (1, 1, "icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>]"),
             "same-host" => (2, 2, "icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>]"),
             "translate" => (2, 2, "icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>]"),
@@ -323,11 +387,13 @@ internal static partial class WorkspaceCommand
             || (drift is not null && !manual && !wallClock) || (wallClock && drift is null)
             || (note is not null && !(verb is "align" or "same-host" or "translate" && !withdraw) && verb != "join")
             || ((output is not null || only.Count > 0 || check) && verb != "package")
+            || ((columnsText is not null || intervalText is not null) && verb != "timeline")
             || (verb == "package" && output is null && !check);
         if (least < 0 || workspace is null || operands.Count < least || operands.Count > most || (manual && operands.Count == 3) || misplaced)
         {
             ConsoleUi.Failure(least < 0
-                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, join, same-host, translate, note, view or package"
+                ? "icat workspace expects new, add, show, relink, alias, align, compare, correlate, timeline, join, same-host, translate, note, view "
+                    + "or package"
                     + (verb is null ? "." : $"; '{verb}' is none of them.")
                 : $"Use {form}.");
             ConsoleUi.Explain(PrintHelp);
@@ -345,6 +411,11 @@ internal static partial class WorkspaceCommand
             if (verb == "correlate")
             {
                 return Correlate(path, json, cancellationToken);
+            }
+
+            if (verb == "timeline")
+            {
+                return Timeline(path, columnsText, intervalText, json, cancellationToken);
             }
 
             if (verb == "package")
@@ -775,6 +846,159 @@ internal static partial class WorkspaceCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// The investigation's merged time (§8.2) as its window draws and says it (R18): each member's lane over the columns of
+    /// the investigation's time - its records in each, where its alignment places them, and what its capture covered
+    /// there - in the window's words, with the snapshot vector it answers (I16).
+    /// </summary>
+    private static InterCatExitCode Timeline(string path, string? columnsText, string? intervalText, bool json,
+        CancellationToken cancellationToken)
+    {
+        int columns = TimelineColumns;
+        if (columnsText is not null && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns)
+            || columns is < 1 or > SessionTimelineQuery.MaximumColumns))
+        {
+            ConsoleUi.Failure(string.Create(CultureInfo.CurrentCulture, $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."));
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        TimeRange? interval = null;
+        if (intervalText is not null && (interval = TickInterval.Read(intervalText, out string? tooWide)) is null)
+        {
+            ConsoleUi.Failure(tooWide ?? $"--interval {intervalText} names no interval: give <start>:<end> in 100-nanosecond ticks of "
+                + "the investigation's time, its end after its start.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        InvestigationTimelineView view = InvestigationTimeline.Read(path, columns, interval, cancellationToken);
+        (_, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(InvestigationWorkspace.Read(path), view, culture);
+        var document = new WorkspaceTimelineDocument
+        {
+            Contract = TimelineContract,
+            Path = path,
+            StartTicks = view.Interval?.StartTicks,
+            EndTicks = view.Interval?.EndTicks,
+            Columns = view.Columns,
+            Lanes =
+            [
+                .. view.Lanes.Select((lane, index) => new TimelineLaneDocument
+                {
+                    SessionId = lane.SessionId,
+                    Placed = lane.Placed,
+                    ExtentStartTicks = lane.Extent?.StartTicks,
+                    ExtentEndTicks = lane.Extent?.EndTicks,
+                    UncertaintyNanoseconds = lane.Uncertainty?.HalfWidthNanoseconds,
+                    Gap = lane.Gap,
+                    Unread = lane.Unread,
+                    Records = lane.Records,
+                    Sentence = sentences[index],
+                    Buckets =
+                    [
+                        .. lane.Buckets.Select((bucket, column) => new TimelineColumnDocument
+                        {
+                            StartTicks = bucket.Interval.StartTicks,
+                            EndTicks = bucket.Interval.EndTicks,
+                            OwnStartTicks = lane.OwnIntervals[column].StartTicks,
+                            OwnEndTicks = lane.OwnIntervals[column].EndTicks,
+                            Records = bucket.ObservationCount,
+                            Coverage = bucket.Coverage,
+                        }),
+                    ],
+                }),
+            ],
+            Statements = [.. sentences.Skip(view.Lanes.Count)],
+            SnapshotVector = SnapshotOf(path, view.Snapshot),
+        };
+        if (json)
+        {
+            Console.Out.WriteLine(JsonSerializer.Serialize(document, JsonContracts.Indented));
+            return InterCatExitCode.Success;
+        }
+
+        ConsoleUi.Heading("Merged time");
+        ConsoleUi.Field("Investigation", path);
+        ConsoleUi.Field("Interval", view.Interval is { } shown
+            ? $"{Seconds(shown.StartTicks * 100)} to {Seconds(shown.EndTicks * 100)} of the investigation's time, in "
+                + CountText.Of(view.Columns, "column")
+            : "none: no session is placed in the investigation's time");
+        ConsoleUi.Field("Read", document.SnapshotVector.Count == 0
+            ? "no session"
+            : string.Join("; ", document.SnapshotVector.Select(entry =>
+                string.Create(culture, $"{Short(entry.SessionId)} at generation {entry.Generation:N0}"))));
+        for (int index = 0; index < view.Lanes.Count; index++)
+        {
+            InvestigationLane lane = view.Lanes[index];
+            ConsoleUi.Line();
+            ConsoleUi.Line("  " + sentences[index]);
+            if (!lane.Placed)
+            {
+                continue;
+            }
+
+            // The columns that hold its records, then the runs of columns its capture did not cover, which the window
+            // hatches: a column of none there is no proof of inactivity (R21).
+            IReadOnlyList<IReadOnlyList<string>> held =
+            [
+                .. lane.Buckets.Select((bucket, column) => (bucket, column)).Where(entry => entry.bucket.ObservationCount > 0)
+                    .Select(entry => (IReadOnlyList<string>)
+                    [
+                        (entry.column + 1).ToString("N0", culture),
+                        Seconds(entry.bucket.Interval.StartTicks * 100),
+                        Seconds(entry.bucket.Interval.EndTicks * 100),
+                        entry.bucket.ObservationCount.ToString("N0", culture),
+                        CoverageStateText.Value(entry.bucket.Coverage),
+                    ]),
+            ];
+            if (held.Count > 0)
+            {
+                ConsoleUi.Table(["Column", "From", "To", "Records", "Coverage"], held);
+            }
+
+            if (Uncovered(lane, culture) is { } runs)
+            {
+                ConsoleUi.Note("Not covered: " + runs + ".");
+            }
+        }
+
+        if (document.Statements.Count > 0)
+        {
+            ConsoleUi.Line();
+            foreach (string statement in document.Statements)
+            {
+                ConsoleUi.Note(statement);
+            }
+        }
+
+        return InterCatExitCode.Success;
+    }
+
+    /// <summary>
+    /// The runs of a lane's columns its capture did not cover, each with its state, as the window hatches them: "column 3
+    /// unknown; columns 120–160 partial gap, not extrapolated"; null when it covered every one.
+    /// </summary>
+    internal static string? Uncovered(InvestigationLane lane, CultureInfo culture)
+    {
+        var runs = new List<string>();
+        for (int first = 0, last; first < lane.Buckets.Count; first = last + 1)
+        {
+            CoverageState state = lane.Buckets[first].Coverage;
+            last = first;
+            while (last + 1 < lane.Buckets.Count && lane.Buckets[last + 1].Coverage == state)
+            {
+                last++;
+            }
+
+            if (state != CoverageState.Covered)
+            {
+                runs.Add((first == last ? string.Create(culture, $"column {first + 1:N0}") : string.Create(culture, $"columns {first + 1:N0}–{last + 1:N0}"))
+                    + " " + CoverageStateText.Value(state));
+            }
+        }
+
+        return runs.Count == 0 ? null : string.Join("; ", runs);
+    }
+
     private static InterCatExitCode Join(string path, string candidate, WorkspaceJoinDecision decision, string? note, bool json,
         CancellationToken cancellationToken)
     {
@@ -1187,6 +1411,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace align <workspace> <session> --withdraw [--json]");
         ConsoleUi.Line("icat workspace compare <workspace> <session>@<seconds> <session>@<seconds> [--json]");
         ConsoleUi.Line("icat workspace correlate <workspace> [--json]");
+        ConsoleUi.Line("icat workspace timeline <workspace> [--columns <1-2000>] [--interval <start>:<end>] [--json]");
         ConsoleUi.Line("icat workspace join <workspace> <candidate> (--accept | --reject | --withdraw) [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace same-host <workspace> <host> <other-host> [--withdraw] [--note <text>] [--json]");
         ConsoleUi.Line("icat workspace translate <workspace> <seen-endpoint> <endpoint> [--withdraw] [--note <text>] [--json]");
@@ -1227,6 +1452,10 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  correlate proposes candidate joins: a connection one session holds one end of, and another");
         ConsoleUi.Line("           session its mirrored end, where their lifetimes can overlap in the investigation's");
         ConsoleUi.Line("           time. A candidate is never established; its evidence and alternatives are listed.");
+        ConsoleUi.Line("  timeline draws the merged time as the Desktop's investigation window does: each member's records");
+        ConsoleUi.Line("           over --columns (160 unless given) of the investigation's time, or of --interval in its");
+        ConsoleUi.Line("           100-nanosecond ticks, where its alignment places them, with what its capture covered");
+        ConsoleUi.Line("           there, in the window's words; a member with no place says why.");
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
         ConsoleUi.Line("           alignments changed is flagged for review.");

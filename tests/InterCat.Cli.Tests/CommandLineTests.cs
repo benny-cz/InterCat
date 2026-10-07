@@ -836,6 +836,110 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: icat workspace timeline draws the merged time as the investigation window does, its lanes' records, places and coverage in its words")]
+    public async Task WorkspaceTimelineDrawsTheMergedTime()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"))).FullName;
+        string workspace = Path.Combine(folder, "case.icat-workspace");
+        try
+        {
+            // Alpha's capture covered its first readings, delivered none from 200 µs to 400 µs, and then lost 3 events; beta,
+            // aligned to it 50 µs later, has no ledger; gamma is aligned to nothing; and a note is about the whole.
+            ObservationRowV1[] Datagrams(params long[] ticks) =>
+            [
+                .. ticks.Select((at, index) => Transfer(at, ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(index + 1))
+                    .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = at * 100 }),
+            ];
+            CoverageEpochV1 covered = TransportLedger(tcp: false, udp: true).Epochs[0];
+            CoverageEpochV1 lossy = TransportLedger(tcp: false, udp: true, lost: 3).Epochs[0];
+            var ledger = new CoverageLedgerV1
+            {
+                Contract = CoverageLedgerV1.ContractName,
+                Epochs =
+                [
+                    covered with { FirstDeliveredNativeTicks = 0, LastDeliveredNativeTicks = 2_000 },
+                    lossy with { Epoch = 2, FirstDeliveredNativeTicks = 4_000, LastDeliveredNativeTicks = 6_000 },
+                ],
+            };
+            InvestigationWorkspace.Create(workspace, DateTimeOffset.UtcNow);
+            Guid alpha = InvestigationWorkspace.Add(workspace,
+                Held(folder, "alpha", "lab-1", Datagrams(1_000, 1_010, 1_020, 1_030, 5_000, 5_010, 5_020, 5_030), ledger), DateTimeOffset.UtcNow).SessionId;
+            Guid beta = InvestigationWorkspace.Add(workspace, Held(folder, "beta", "lab-2", Datagrams(1_000, 1_010)), DateTimeOffset.UtcNow).SessionId;
+            InvestigationWorkspace.Add(workspace, Held(folder, "gamma", "lab-3", Datagrams(1_000)), DateTimeOffset.UtcNow);
+            InvestigationWorkspace.Align(workspace, beta, 0, alpha, 50_000, 1_000, 0, null, DateTimeOffset.UtcNow);
+            InvestigationWorkspace.AddNote(workspace, "The retry storm begins here.", null, DateTimeOffset.UtcNow);
+
+            // The lanes are said in the window's words, then drawn: the columns that hold records, and the runs the window hatches.
+            InvestigationTimelineView view = InvestigationTimeline.Read(workspace, WorkspaceCommand.TimelineColumns);
+            (_, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(InvestigationWorkspace.Read(workspace), view, System.Globalization.CultureInfo.CurrentCulture);
+            (InterCatExitCode code, string text, string said) = await Run("workspace", "timeline", workspace);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("0.0001 s to 0.0005031 s of the investigation's time, in 160 columns", text, StringComparison.Ordinal);
+            Assert.All(sentences, sentence => Assert.Contains("  " + sentence + Environment.NewLine, text, StringComparison.Ordinal));
+            Assert.EndsWith("not placed: not aligned to the investigation's time.", sentences[2], StringComparison.Ordinal);
+            Assert.EndsWith(", about the whole investigation: The retry storm begins here.", sentences[3], StringComparison.Ordinal);
+            Assert.Contains(" Coverage over its 160 columns: ", sentences[0], StringComparison.Ordinal);
+            List<TimelineBucket> lane = [.. view.Lanes[0].Buckets];
+            int first = lane.FindIndex(bucket => bucket.ObservationCount > 0);
+            Assert.Matches($@"(?m)^\s+{first + 1}\s+0\.0001 s\s+\S+ s\s+{lane[first].ObservationCount}\s+covered\s*$", text);
+            Assert.DoesNotMatch($@"(?m)^\s+{first + 3}\s+\S+ s\s", text);
+            (int unknown, int gap) = (lane.FindIndex(bucket => bucket.Coverage == CoverageState.UnknownCoverage),
+                lane.FindIndex(bucket => bucket.Coverage == CoverageState.PartialGap));
+            Assert.Contains($"Not covered: columns {unknown + 1}–{gap} unknown; columns {gap + 1}–160 partial gap, not extrapolated.", text,
+                StringComparison.Ordinal);
+            Assert.Contains("Not covered: columns 1–160 unknown.", text, StringComparison.Ordinal);
+
+            // Its document carries every column of every lane, its records and coverage, and the lane's sentence.
+            using JsonDocument answer = JsonDocument.Parse((await Run("workspace", "timeline", workspace, "--json")).Output);
+            JsonElement root = answer.RootElement;
+            Assert.Equal(("workspace-timeline-v1", 160, 3), (root.GetProperty("contract").GetString(), root.GetProperty("columns").GetInt32(),
+                root.GetProperty("lanes").GetArrayLength()));
+            JsonElement first0 = root.GetProperty("lanes")[0];
+            Assert.Equal((sentences[0], 8L, 160), (first0.GetProperty("sentence").GetString(), first0.GetProperty("records").GetInt64(),
+                first0.GetProperty("buckets").GetArrayLength()));
+            Assert.Equal(lane.Select(bucket => bucket.Coverage.ToString()),
+                first0.GetProperty("buckets").EnumerateArray().Select(bucket => bucket.GetProperty("coverage").GetString()));
+            Assert.Equal(2, root.GetProperty("snapshotVector").GetArrayLength());
+            Assert.Equal([sentences[3]], root.GetProperty("statements").EnumerateArray().Select(statement => statement.GetString()));
+            JsonElement second = root.GetProperty("lanes")[1];
+            JsonElement unplaced = root.GetProperty("lanes")[2];
+            Assert.Equal((1_000L, true, 1_000d, "None"), (first0.GetProperty("extentStartTicks").GetInt64(), second.GetProperty("placed").GetBoolean(),
+                second.GetProperty("uncertaintyNanoseconds").GetDouble(), second.GetProperty("gap").GetString()));
+            JsonElement column = second.GetProperty("buckets")[0];
+            Assert.Equal(column.GetProperty("startTicks").GetInt64() - 500, column.GetProperty("ownStartTicks").GetInt64());
+            Assert.Equal((false, "NotAligned", 0, JsonValueKind.Null), (unplaced.GetProperty("placed").GetBoolean(), unplaced.GetProperty("gap").GetString(),
+                unplaced.GetProperty("buckets").GetArrayLength(), unplaced.GetProperty("extentStartTicks").ValueKind));
+
+            // Fewer columns, or an interval of the investigation's time, are drawn as asked; a wrong one is refused in words.
+            using JsonDocument narrow = JsonDocument.Parse((await Run("workspace", "timeline", workspace, "--columns", "20", "--interval", "1000:2000", "--json")).Output);
+            Assert.Equal((20, 1_000L, 2_000L, 20), (narrow.RootElement.GetProperty("columns").GetInt32(), narrow.RootElement.GetProperty("startTicks").GetInt64(),
+                narrow.RootElement.GetProperty("endTicks").GetInt64(), narrow.RootElement.GetProperty("lanes")[0].GetProperty("buckets").GetArrayLength()));
+            (InterCatExitCode refused, _, string why) = await Run("workspace", "timeline", workspace, "--columns", "0");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("--columns must be an integer from 1 to 2,000.", StringComparison.Ordinal)));
+            (refused, _, why) = await Run("workspace", "timeline", workspace, "--interval", "5:1");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("--interval 5:1 names no interval", StringComparison.Ordinal)));
+            (refused, _, why) = await Run("workspace", "show", workspace, "--columns", "5");
+            Assert.Equal((InterCatExitCode.InvalidInvocation, true), (refused, why.Contains("Use icat workspace show <workspace>.", StringComparison.Ordinal)));
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "R21: icat workspace timeline names each run of columns a capture did not cover, a single column as one, and none where it covered all")]
+    public void UncoveredRunsAreNamed()
+    {
+        static InvestigationLane Lane(params CoverageState[] states) => new(Guid.Empty, new TimeRange(0, states.Length),
+            [.. states.Select((state, column) => new TimelineBucket(new TimeRange(column, column + 1), 0, null, Mechanism.Udp, state))], null,
+            WorkspaceTimeGap.None, null);
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.InvariantCulture;
+        Assert.Equal("column 2 unknown; columns 4–5 partial gap, not extrapolated; column 6 not collected",
+            WorkspaceCommand.Uncovered(Lane(CoverageState.Covered, CoverageState.UnknownCoverage, CoverageState.Covered, CoverageState.PartialGap,
+                CoverageState.PartialGap, CoverageState.NotCollected), culture));
+        Assert.Null(WorkspaceCommand.Uncovered(Lane(CoverageState.Covered, CoverageState.Covered), culture));
+    }
+
     /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>
     private static string Held(string folder, string name, string host, ObservationRowV1[] rows, CoverageLedgerV1? coverage = null)
     {

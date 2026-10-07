@@ -287,12 +287,13 @@ internal static class Icat
         ConsoleUi.Line("      Lists the HTTP exchanges a content capture recorded through WinINet: each client process's");
         ConsoleUi.Line("      exchanges, what was recorded of each part, and how long each took, never their content.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|join|same-host|translate");
-        ConsoleUi.Line("                 |note|view|package> <workspace> ... [--json]");
+        ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|timeline|join|same-host");
+        ConsoleUi.Line("                 |translate|note|view|package> <workspace> ... [--json]");
         ConsoleUi.Line("      An investigation over separately captured sessions: one file naming each by identity, one");
         ConsoleUi.Line("      member per capture, never writing to a session. show says where each member stands;");
-        ConsoleUi.Line("      align, compare and correlate place them in one time; join, same-host and translate keep a");
-        ConsoleUi.Line("      person's decisions; note and view annotate it; package copies it with its sessions.");
+        ConsoleUi.Line("      align, compare and correlate place them in one time, which timeline draws; join,");
+        ConsoleUi.Line("      same-host and translate keep a person's decisions; note and view annotate it; package");
+        ConsoleUi.Line("      copies it with its sessions.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat verify <tcp|udp> --run <raw-run-dir> --output <curated-dir> [--overwrite] [--json]");
         ConsoleUi.Line("      Re-evaluates a run offline and writes only fixture-scoped shareable evidence.");

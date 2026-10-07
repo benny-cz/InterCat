@@ -209,6 +209,18 @@ different boots and seem to run at once **contradict** each other, which two boo
 wrong; and a pair of which not both have a place with a known uncertainty is **unknown**. Two hosts' captures are never
 compared: their records are two machines' events. `show` and the Desktop state each overlap in words.
 
+The merged time draws each member as a lane over one uniform grid of the investigation's time - its whole, from the
+earliest placed record to the latest, or an interval of it - read through the member's alignment in its own session
+time, so a lane's columns are its own records where the alignment puts them (I9). The investigation window draws it, and,
+since revision 384, `icat workspace timeline` does, in the same words (R18): each lane's place and records, what its
+capture covered over its columns (`coverage-v2`), or why it has no place; the overlaps; and the notes in force. Its
+`--json` prints `workspace-timeline-v1`: the interval in 100-nanosecond ticks of the investigation's time, or none when
+no member has a place, and the columns; each lane's session, whether it is placed, its extent, the half-width of its
+placement's uncertainty (null when unknown), its time gap, why it was not read, its records, its sentence, and every
+column's interval in the investigation's time and in its session's own, its records, and its coverage - a column of none
+that its capture did not cover is not an observed zero (R21); the overlaps' and notes' statements; and the snapshot
+vector it answers (I16).
+
 ## 6. Candidate joins
 
 `icat workspace correlate` proposes candidate joins between members (§8.3, ADR-041), under the rule
