@@ -444,23 +444,9 @@ public static class WorkspaceRowBuilder
     /// evidence key and coverage behind it): the rule and how strongly the pairing holds, whether the capture saw the
     /// connection open and close, the capture's coverage over the session, and the key E lists its records by.
     /// </summary>
-    public static string ExplainPairing(Channel channel)
-    {
-        ArgumentNullException.ThrowIfNull(channel);
-        if (channel.Rule is not { } rule)
-        {
-            throw new ArgumentException("A channel no rule paired has no pairing to explain.", nameof(channel));
-        }
-
-        string strength = channel.Strength == RelationStrength.Candidate
-            ? "as a candidate, since one end's records bind to their process only as candidates"
-            : "correlated";
-        string lifetime = ConnectionSummary.LifetimeWords(channel.OpenWitnessed, channel.CloseWitnessed);
+    public static string ExplainPairing(Channel channel) =>
         // The key comes last: it is what icat evidence --channel takes, and long enough to bury the sentence before it.
-        return $"Each end's records bind to one process and name the other end: paired by {DescribeRule(rule)}, {strength}. "
-            + $"{char.ToUpperInvariant(lifetime[0])}{lifetime[1..]}. Coverage over the session: {CoverageWords(channel.Coverage)}. "
-            + $"E lists its records at both ends, by its key {channel.Key}.";
-    }
+        ChannelPairingText.Explain(channel) + $" E lists its records at both ends, by its key {channel.Key}.";
 
     /// <summary>A coverage state as a sentence ends with it: "covered", "partial gap, not extrapolated", "unknown".</summary>
     private static string CoverageWords(CoverageState coverage) => CoverageStateText.Value(coverage);

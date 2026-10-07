@@ -1003,6 +1003,20 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words")]
+    public async Task ChannelsSayHowEachWasPaired()
+    {
+        // The fixture's one paired channel: a send and its receipt, neither end seen opening or closing it.
+        Channel channel = Assert.Single(SessionChannelQuery.Read(session.Store).Channels);
+        string paired = ChannelPairingText.Explain(channel);
+        Assert.Equal($"Each end's records bind to one process and name the other end: paired by {ProcessBindingText.Rule(channel.Rule!.Value)}, "
+            + "correlated. Open before the capture and after it. Coverage over the session: unknown.", paired);
+        (InterCatExitCode code, string text, string said) = await Run("channels", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains($"  {channel.Key} · {channel.Name} · 2 observed records{Environment.NewLine}    {paired}{Environment.NewLine}", text,
+            StringComparison.Ordinal);
+    }
+
     /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>
     private static string Held(string folder, string name, string host, ObservationRowV1[] rows, CoverageLedgerV1? coverage = null)
     {

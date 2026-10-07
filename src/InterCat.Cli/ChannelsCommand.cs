@@ -99,7 +99,15 @@ internal static class ChannelsCommand
 
         ConsoleUi.Field("Channels in scope", ConsoleUi.Count(page.TotalChannels));
         foreach (Channel channel in page.Channels)
-            ConsoleUi.Line($"  {channel.Key} · {channel.Name} · {channel.ObservationCount:N0} observed records");
+        {
+            ConsoleUi.Line($"  {channel.Key} · {channel.Name} · {CountText.Of(channel.ObservationCount, "observed record")}");
+
+            // How it was paired, in the inspector's words (R18): the rule and how strongly, its lifetime, and the coverage.
+            if (channel.Rule is not null)
+            {
+                ConsoleUi.Line("    " + ChannelPairingText.Explain(channel));
+            }
+        }
         // Whether a channel listed nowhere could have been seen at all is the ledger's to say (R21).
         ConsoleUi.Note(SessionCoverage.Sentence(page.Coverage[0], "the session"));
         ConsoleUi.Note(page.Caveat);
