@@ -62,6 +62,12 @@ public sealed record SessionOverviewBundle(
     public string? ManifestDigest { get; init; }
 
     /// <summary>
+    /// The generation's size on disk, as its manifest measured every file it names, and the records it holds (§12.1 S5);
+    /// null for an overview no generation was projected for.
+    /// </summary>
+    public SessionSize? Size { get; init; }
+
+    /// <summary>
     /// How strongly a record had to bind to a process to count as that process's, and a relationship to be drawn, in this
     /// overview: correlated evidence unless a person chose otherwise.
     /// </summary>
@@ -314,6 +320,7 @@ public static class SessionOverviewProjector
             Recording = SessionRecording.Interval(store.Root, manifest, clock, extent),
             Began = SessionRecording.Began(store.Root, manifest, clock),
             ManifestDigest = manifest.Digest,
+            Size = SessionGrowth.Measure(manifest, rows),
             Policy = policy,
         };
 

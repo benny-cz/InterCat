@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Runtime.Versioning;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.CaptureBroker;
 using InterCat.Domain;
@@ -190,7 +191,10 @@ internal static class CaptureCommand
         // finishes the session from it. Without a ticket only that shortcut is lost, never the capture.
         using LiveFollowHold? ticket = HoldTicket(captureId, evidencePath, sessionPath, status.LeaseExpiresAtUtc);
         (FollowStep? last, BrokerCaptureStatusResponse final, SessionStore? derived) =
-            await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, ticket, cancellationToken)
+            await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, ticket,
+                    new CaptureLimits(TimeSpan.FromSeconds(request.Quota.MaximumDurationSeconds),
+                        request.Quota.MaximumJournalBytes, request.Quota.MinimumFreeDiskBytes),
+                    cancellationToken)
                 .ConfigureAwait(false);
 
         // The follow returns only once the capture is closed, and a closed capture publishes nothing more: a session that
@@ -239,6 +243,32 @@ internal static class CaptureCommand
     }
 
     /// <summary>
+    /// The derived session's size and, while the capture records under <paramref name="limits"/>, when they stop it: the
+    /// window's words for the same facts (§12.1 S5, R18). A progress line never ends a follow: a size that cannot be read
+    /// just now is said to be, and the next publication states it.
+    /// </summary>
+    private static string Growth(SessionStore derived, long records, CaptureLimits? limits, string evidencePath, string sessionPath)
+    {
+        try
+        {
+            using EvidenceLease lease = derived.AcquireLease();
+            SessionManifestV1 manifest = lease.Manifest;
+            SessionSize size = SessionGrowth.Measure(manifest, records);
+            CaptureHeadroom? headroom = limits is not null
+                && SessionSegments.SourceClock(derived.Root, manifest) is { } clock
+                && SessionRecording.Began(derived.Root, manifest, clock) is { } began
+                    ? SessionGrowth.Headroom(size, began, DateTimeOffset.UtcNow, limits,
+                        RecordingVolume.Measure(evidencePath, sessionPath))
+                    : null;
+            return SessionGrowth.Statement(size, headroom);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
+        {
+            return "Its size could not be read just now: " + exception.Message;
+        }
+    }
+
+    /// <summary>
     /// Derives while the capture records, renewing the owner lease. Ctrl+C requests a stop and then keeps deriving until
     /// the capture is closed. The follow ends when every published chunk is derived and the broker reports the capture
     /// closed - finished, or interrupted with only a published prefix.
@@ -250,6 +280,7 @@ internal static class CaptureCommand
         string sessionPath,
         bool json,
         LiveFollowHold? ticket,
+        CaptureLimits limits,
         CancellationToken cancellationToken)
     {
         FollowStep? last = null;
@@ -294,7 +325,8 @@ internal static class CaptureCommand
                 {
                     ConsoleUi.Progress(
                         $"{ConsoleUi.Count(step.DerivedRecords)} records derived from {ConsoleUi.Count(step.DerivedChunks)} "
-                        + $"published chunk(s), generation {ConsoleUi.Count(step.DerivedGeneration ?? 0)}.");
+                        + $"published chunk(s), generation {ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
+                        + Growth(derived!, step.DerivedRecords, stopRequested ? null : limits, evidencePath, sessionPath));
                 }
 
                 last = step;

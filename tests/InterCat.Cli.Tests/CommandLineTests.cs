@@ -1017,6 +1017,37 @@ public sealed class CommandLineTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat session states a session's size on disk, bytes per record and tier in the window's words")]
+    public async Task IcatSessionStatesItsSizeAsTheWindowDoes()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 10) with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 100, 11) with { SessionRelativeTicks = 2_000 },
+        ]);
+
+        // What the window states of the generation it shows.
+        SessionSize shown = SessionOverviewProjector.Project(session.Store).Size!;
+        session.Store.ReleaseSegmentReaders();
+        Assert.Equal(3, shown.Records);
+
+        (InterCatExitCode code, string output, string said) = await Run("session", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches($@"(?m)^  On disk +{Regex.Escape(SessionGrowth.Describe(shown))}\r?$", output);
+
+        (code, output, said) = await Run("session", session.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using JsonDocument document = JsonDocument.Parse(output);
+        JsonElement size = document.RootElement.GetProperty("size");
+        Assert.Equal((shown.Bytes, shown.Files, shown.JournalBytes, shown.Records, shown.BytesPerRecord!.Value),
+            (size.GetProperty("bytes").GetInt64(), size.GetProperty("files").GetInt32(), size.GetProperty("journalBytes").GetInt64(),
+                size.GetProperty("records").GetInt64(), size.GetProperty("bytesPerRecord").GetInt64()));
+        Assert.Equal(("Interactive", SessionGrowth.Describe(shown)),
+            (size.GetProperty("tier").GetString(), size.GetProperty("statement").GetString()));
+    }
+
     [Fact(DisplayName = "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path")]
     public async Task ASupportBundleHoldsNoRecordsContent()
     {

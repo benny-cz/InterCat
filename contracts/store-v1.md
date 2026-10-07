@@ -62,6 +62,11 @@ revision 162), `DerivationPlan` (code 5,
 generation outside `1..9,999,999,999`, a previous generation that is not earlier, a duplicate dependency, or a
 dependency name that is not an owned file name are each refused — the manifest is not read at a guessed layout.
 
+A session's size on disk is the sum of the lengths its current manifest records: every file the generation names,
+measured before it was named, never estimated from a figure per record. Since revision 393 `icat session` (its `size`
+in `--json`) and the window state it with the records the generation holds, the bytes each takes, and §12.1's tier the
+size is in (S5).
+
 A `RedactionPolicy` dependency, `redaction-policy-<generation:D10>.json`, is published only by a redacted session
 package, at most once per generation. It is that package's provenance: it says the journal is synthetic and what was
 pseudonymized. Retention refuses to release it, and every later generation carries it, so a package never comes to read
@@ -470,6 +475,8 @@ A session written before this rule keeps its superseded manifests until its next
   nothing can fill.
 - Open-operation censoring at a capture or retention boundary (I20). It needs operations.
 - Rolling retention by time or size. Retention here is an explicit action on a named extent; the policy that
-  decides when to take it, and the disclosure S5 requires before it bites, are separate work.
+  decides when to take it is separate work. S5's disclosure exists for the policy captures have, which stops at its
+  limits: since revision 393 a recording says when its length, its journal or the disk's reserve stops it. A rolling
+  policy will owe the point at which it begins evicting in the same place.
 - Binding to the broker's validated root for live capture. The interface is shared; the composition
   belongs with the live runtime.

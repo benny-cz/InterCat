@@ -42,7 +42,7 @@ public sealed class RecentSessionsTests
         Assert.StartsWith("saved today at 16:00 · 1 record · ", rows[1].Detail, StringComparison.Ordinal);
         Assert.DoesNotContain("not finished", rows[1].Detail, StringComparison.Ordinal);
         Assert.StartsWith("saved yesterday at 18:00 · 2 records · ", rows[2].Detail, StringComparison.Ordinal);
-        Assert.Matches(@" · \d+ KB$", rows[2].Detail);
+        Assert.Matches(@" · \d+(\.\d)? KiB$", rows[2].Detail);
         Assert.Equal($"Explore capture, {rows[0].Detail}. Press Enter to open it.", rows[0].AccessibleName);
 
         Assert.Equal([newest], RecentSessions.Find(root.Path, Now, TimeZoneInfo.Utc, CultureInfo.InvariantCulture, maximum: 1)

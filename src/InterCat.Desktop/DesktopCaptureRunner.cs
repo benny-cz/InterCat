@@ -17,6 +17,10 @@ public enum CaptureUiPhase { Starting, Recording, Finishing, Complete, Unavailab
 /// The machine's QPC reading when a newly read preview was handed to the window; null on an update that only repeats the
 /// last one. Records carry readings of the same clock, so a record's delay to its first preview is exact.
 /// </param>
+/// <param name="Limits">The limits the capture stops at, once its plan is prepared (§12.1 S5); null otherwise.</param>
+/// <param name="Volume">
+/// The volume the broker records the capture's evidence to, as last measured while recording; null when it was not read.
+/// </param>
 public sealed record CaptureUiUpdate(
     CaptureUiPhase Phase,
     string Headline,
@@ -29,7 +33,9 @@ public sealed record CaptureUiUpdate(
     BrokerCaptureHealth? LiveHealth = null,
     BrokerCapturePreview? LivePreview = null,
     int? OverviewChunks = null,
-    long? PreviewObservedQpc = null);
+    long? PreviewObservedQpc = null,
+    CaptureLimits? Limits = null,
+    RecordingVolume? Volume = null);
 
 /// <summary>
 /// Elapsed time from the user's start action to each first-run step of section 3.1, so first feedback is measured
@@ -110,7 +116,7 @@ public static class DesktopCaptureRunner
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
         + $"up to {summary.Quota.MaximumDurationSeconds / 60:N0} min / "
-        + $"{summary.Quota.MaximumJournalBytes / (1024 * 1024):N0} MiB journal · "
+        + $"{ByteSizeText.Of(summary.Quota.MaximumJournalBytes)} journal · "
         + (summary.PublicationIntervalMilliseconds > 0
             ? $"first view within {BrokerJournalPublicationPolicy.FirstLivePublication.TotalSeconds:0.#} s, then every "
                 + $"{summary.PublicationIntervalMilliseconds / 1000d:0.#} s. "
@@ -130,6 +136,8 @@ public static class DesktopCaptureRunner
         CaptureUiUpdate? lastLive = null;
         BrokerCaptureHealth? health = null;
         BrokerCapturePreview? preview = null;
+        CaptureLimits? limits = null;
+        RecordingVolume? volume = null;
         report = update =>
         {
             // Only a recording has something to preview: once stopping begins, every chunk is on its way to the viewer.
@@ -138,6 +146,8 @@ public static class DesktopCaptureRunner
                 Milestones = milestones,
                 LiveHealth = update.LiveHealth ?? health,
                 LivePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview ?? preview : null,
+                Limits = update.Limits ?? limits,
+                Volume = update.Volume ?? volume,
             };
             if (update.Phase == CaptureUiPhase.Recording)
             {
@@ -197,6 +207,9 @@ public static class DesktopCaptureRunner
             }
 
             summary = Describe(prepared.Summary);
+            BrokerCaptureQuota quota = prepared.Summary.Quota;
+            limits = new(TimeSpan.FromSeconds(quota.MaximumDurationSeconds), quota.MaximumJournalBytes,
+                quota.MinimumFreeDiskBytes);
             milestones = milestones with
             {
                 Prepared = elapsed.Elapsed,
@@ -348,11 +361,15 @@ public static class DesktopCaptureRunner
 
                                 if (healthDue || previewDue)
                                 {
+                                    // Free disk is read as often as the counters are passed on, so the time the window
+                                    // says is left is never older than they are (§12.1 S5).
+                                    volume = RecordingVolume.Measure(evidencePath, sessionPath);
                                     report(recording with
                                     {
                                         LiveHealth = health,
                                         LivePreview = preview,
                                         PreviewObservedQpc = previewDue ? Stopwatch.GetTimestamp() : null,
+                                        Volume = volume,
                                     });
                                 }
                             }

@@ -318,6 +318,10 @@
             <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
                        AutomationProperties.Name="How fresh the live view is" />
+            <!-- §12.1 S5: growth is disclosed before it hurts - the session's size as measured, its tier, and while it
+                 records, when its capture's limits stop it. Caution ink when that is a minute away or the size is past T3. -->
+            <TextBlock x:Name="SessionGrowthText" Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="False"
+                       AutomationProperties.Name="Session size and growth" />
             <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto">
               <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
             </ScrollViewer>

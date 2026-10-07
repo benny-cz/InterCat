@@ -132,6 +132,12 @@ public sealed partial class MainWindow : Window, IDisposable
     private DateTimeOffset? lastPublicationUtc;
     private BrokerCaptureHealth? liveHealth;
 
+    // §12.1 S5: the session's size as its newest generation measured it, with the wall-clock moment its capture began,
+    // and the limits and volume of a capture that records, from which the window says when it stops.
+    private (SessionSize Size, DateTimeOffset? Began)? growth;
+    private CaptureLimits? captureLimits;
+    private RecordingVolume? recordingVolume;
+
     // The broker's latest live preview, and how many published chunks the displayed generation was derived from: the
     // preview draws the chunks after those (§12, §19.3).
     private BrokerCapturePreview? livePreview;
@@ -2343,10 +2349,12 @@ public sealed partial class MainWindow : Window, IDisposable
         lastPublicationUtc = null;
         livePreview = null;
         displayedChunks = 0;
+        growth = null;
         UpdateHeldBanner();
         UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
         CaptureSessionPath.Text = string.Empty;
+        UpdateSessionGrowth();
     }
 
     private void ReceiveCaptureUpdate(int run, CaptureUiUpdate update) =>
@@ -2406,6 +2414,15 @@ public sealed partial class MainWindow : Window, IDisposable
         FollowButton.IsVisible = IsLive;
         liveHealth = IsLive ? update.LiveHealth : null;
         livePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview : null;
+
+        // The newest generation measures the session, whether it is shown or held while the user reads records.
+        captureLimits = update.Limits;
+        recordingVolume = update.Volume;
+        if (update.Overview is { Size: { } measured } newest)
+        {
+            growth = (measured, newest.Began);
+        }
+
         if (!forceOverview && displayedOverview is null && update.Overview is null)
         {
             ShowAwaitingCapture(update.Phase);
@@ -2826,6 +2843,31 @@ public sealed partial class MainWindow : Window, IDisposable
         HealthFreshnessText.Text = IsLive && lastPublicationUtc is { } last
             ? admitted + $"last publication {Math.Max(0, (DateTimeOffset.UtcNow - last).TotalSeconds):0} s ago"
             : admitted.TrimEnd(' ', '·');
+        UpdateSessionGrowth();
+    }
+
+    /// <summary>
+    /// §12.1 S5: the session's size, bytes per record and tier, as its newest generation measured them, and while it
+    /// records, when its capture's limits stop it - in `icat session`'s and `icat capture`'s words (R18). It reads as a
+    /// caution when that stop is a minute away, or when the session is past the sizes any release is qualified at.
+    /// </summary>
+    private void UpdateSessionGrowth()
+    {
+        if (growth is not ({ } size, var began))
+        {
+            SessionGrowthText.Text = string.Empty;
+            SessionGrowthText.IsVisible = false;
+            SessionGrowthText.Classes.Set("caution", false);
+            return;
+        }
+
+        CaptureHeadroom? headroom = phase == CaptureUiPhase.Recording && captureLimits is { } limits && began is { } start
+            ? SessionGrowth.Headroom(size, start, DateTimeOffset.UtcNow, limits, recordingVolume)
+            : null;
+        SessionGrowthText.Text = SessionGrowth.Statement(size, headroom, stopOnItsOwnLine: true);
+        SessionGrowthText.IsVisible = true;
+        SessionGrowthText.Classes.Set("caution",
+            size.Tier == SessionSizeTier.Qualification || headroom?.Remaining <= SessionGrowth.Imminent);
     }
 
     /// <summary>

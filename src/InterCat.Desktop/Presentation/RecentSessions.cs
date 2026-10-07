@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text.Json;
 using InterCat.Application;
 using InterCat.Capture.Journal;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Desktop.Presentation;
@@ -119,12 +120,9 @@ internal static class RecentSessions
             : JsonSerializer.Deserialize<T>(File.ReadAllText(path), SessionManifestV1.Json);
     }
 
-    /// <summary>A size on disk as a person reads it: "812 KB", "4.2 MB", "37 MB", "1.3 GB".</summary>
-    internal static string Size(long bytes, CultureInfo culture) => bytes switch
-    {
-        < 1_000_000 => string.Create(culture, $"{Math.Max(1, bytes / 1_000):N0} KB"),
-        < 10_000_000 => string.Create(culture, $"{bytes / 1_000_000d:N1} MB"),
-        < 1_000_000_000 => string.Create(culture, $"{bytes / 1_000_000d:N0} MB"),
-        _ => string.Create(culture, $"{bytes / 1_000_000_000d:N1} GB"),
-    };
+    /// <summary>
+    /// A size on disk as a person reads it, in the units the session's own size and its capture's limits are stated in once
+    /// it is open (§12.1 S5): "812 KiB", "4.2 MiB", "1.3 GiB".
+    /// </summary>
+    internal static string Size(long bytes, CultureInfo culture) => ByteSizeText.Of(bytes, culture);
 }

@@ -50,6 +50,26 @@ internal sealed record SessionDocument
     public required SessionRecordingDocument? Recording { get; init; }
 
     public required IReadOnlyList<string> Notes { get; init; }
+
+    /// <summary>The generation's size on disk, with its tier, as the window states it (§12.1 S5); null before one is published.</summary>
+    public required SessionSizeDocument? Size { get; init; }
+}
+
+/// <summary>A generation's size on disk: every file it names at its measured length, its journal's part, and its records.</summary>
+internal sealed record SessionSizeDocument
+{
+    public required long Bytes { get; init; }
+    public required int Files { get; init; }
+    public required long JournalBytes { get; init; }
+    public required long Records { get; init; }
+
+    /// <summary>Bytes on disk for each record, to the nearest byte; null while it holds none.</summary>
+    public required long? BytesPerRecord { get; init; }
+
+    public required SessionSizeTier Tier { get; init; }
+
+    /// <summary>All of it in the words the window uses.</summary>
+    public required string Statement { get; init; }
 }
 
 /// <summary>
@@ -513,8 +533,20 @@ internal static class SessionCommand
             Redaction = redaction,
             Content = content,
             Notes = notes,
+            Size = manifest is null ? null : SizeOf(SessionGrowth.Measure(manifest, coverage!.RowCount)),
         };
     }
+
+    private static SessionSizeDocument SizeOf(SessionSize size) => new()
+    {
+        Bytes = size.Bytes,
+        Files = size.Files,
+        JournalBytes = size.JournalBytes,
+        Records = size.Records,
+        BytesPerRecord = size.BytesPerRecord,
+        Tier = size.Tier,
+        Statement = SessionGrowth.Describe(size),
+    };
 
     private static SessionSegmentDocument Describe(SegmentReaderV1 segment, string name) => new()
     {
@@ -649,6 +681,11 @@ internal static class SessionCommand
         }
 
         ConsoleUi.Heading("Published files");
+        if (document.Size is { } size)
+        {
+            ConsoleUi.Field("On disk", size.Statement);
+        }
+
         ConsoleUi.Table(
             ["File", "Kind", "Bytes"],
             [

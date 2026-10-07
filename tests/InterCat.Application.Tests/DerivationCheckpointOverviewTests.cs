@@ -887,6 +887,12 @@ public sealed class DerivationCheckpointOverviewTests
     /// What an overview shows, without the generation and identity that differ between two of the same records, and
     /// without its caveats, which each test compares itself.
     /// </summary>
-    private static string Comparable(SessionOverviewBundle overview) =>
-        JsonSerializer.Serialize(overview with { Generation = 0, ManifestDigest = null, GraphIdentity = string.Empty, Caveats = [] });
+    /// <summary>
+    /// What a derivation decides, without what names its generation: the generation, its manifest, the graph identity
+    /// built from them, the caveats, and the size the generation measured of its own files (§12.1 S5).
+    /// </summary>
+    private static string Comparable(SessionOverviewBundle overview) => JsonSerializer.Serialize(overview with
+    {
+        Generation = 0, ManifestDigest = null, GraphIdentity = string.Empty, Caveats = [], Size = null,
+    });
 }

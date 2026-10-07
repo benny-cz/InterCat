@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using InterCat.Domain;
 
 namespace InterCat.Cli;
 
@@ -182,22 +183,8 @@ internal static class ConsoleUi
     public static string Bytes(long? value) =>
         value is null ? "unknown" : $"{value.Value.ToString("N0", CultureInfo.CurrentCulture)} B";
 
-    /// <summary>A size for a person to read (1 GiB, 512 MiB), where the exact byte count adds nothing.</summary>
-    public static string Size(long value)
-    {
-        string[] units = ["B", "KiB", "MiB", "GiB", "TiB"];
-        double scaled = value;
-        int unit = 0;
-        while (scaled >= 1024 && unit < units.Length - 1)
-        {
-            scaled /= 1024;
-            unit++;
-        }
-
-        return unit == 0
-            ? $"{value.ToString("N0", CultureInfo.CurrentCulture)} B"
-            : $"{scaled.ToString(scaled % 1 == 0 ? "0" : "0.#", CultureInfo.CurrentCulture)} {units[unit]}";
-    }
+    /// <summary>A size for a person to read (1 GiB, 512 MiB), where the exact byte count adds nothing; the window's words.</summary>
+    public static string Size(long value) => ByteSizeText.Of(value);
 
     public static string Ratio(decimal? value) =>
         value is null ? "not measured" : value.Value.ToString("P1", CultureInfo.CurrentCulture);

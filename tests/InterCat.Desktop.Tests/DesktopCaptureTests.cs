@@ -97,7 +97,7 @@ public sealed class DesktopCaptureTests
         string review = DesktopCaptureRunner.Describe(summary);
         Assert.Contains("TCP", review, StringComparison.Ordinal);
         Assert.Contains("10 min", review, StringComparison.Ordinal);
-        Assert.Contains($"{1024:N0} MiB", review, StringComparison.Ordinal);
+        Assert.Contains("up to 10 min / 1 GiB journal", review, StringComparison.Ordinal);
         Assert.Contains($"first view within {0.5:0.#} s, then every 2 s", review, StringComparison.Ordinal);
         Assert.Contains("No payload contents", review, StringComparison.Ordinal);
     }

@@ -56,6 +56,8 @@ public sealed class InvestigationPackageTests : IDisposable
             said[0], StringComparison.Ordinal);
         Assert.Contains(said, paragraph => paragraph.StartsWith("Unredacted: ", StringComparison.Ordinal));
         Assert.Contains($"Hosts: 2, identified as {HostOf(alpha):N} and {b.HostId:N} (lab two).", said);
+        Assert.Contains(said, paragraph => paragraph.StartsWith("The copies hold ", StringComparison.Ordinal) && paragraph.Contains(
+            $" files ({ByteSizeText.Of(preview.Bytes, CultureInfo.InvariantCulture)}): ", StringComparison.Ordinal));
         Assert.Contains(said, paragraph => paragraph.Contains(
             "identities, one name given to a host, one alignment revision and one note written on them. Names and notes are "
             + "copied as they were written, never pseudonymized.", StringComparison.Ordinal));
