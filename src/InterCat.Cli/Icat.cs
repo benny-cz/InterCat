@@ -65,6 +65,7 @@ internal static class Icat
                 "exchanges" => await ExchangesCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "workspace" => await WorkspaceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "verify" => await VerifyCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "support" => await SupportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "bench" => await BenchCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 _ => UnknownCommand(args[0]),
             };
@@ -303,6 +304,11 @@ internal static class Icat
         ConsoleUi.Line("      Publishes the performance baseline: this machine against the section 12 reference,");
         ConsoleUi.Line("      every section 12 budget with what measured it, and the per-build validation");
         ConsoleUi.Line("      backlog. Starts no capture and needs no elevation.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat support [<session> ...] (--output <path> [--overwrite] | --json | --check)");
+        ConsoleUi.Line("      A support bundle: versions, this machine's capability report, and each session's files,");
+        ConsoleUi.Line("      rows, coverage and loss counters. It holds no content, endpoint, command line, raw record,");
+        ConsoleUi.Line("      name or path, and lists what it holds before it is written.");
         ConsoleUi.Line();
         ConsoleUi.Line("  Exit codes: 0 success, 1 partial result, 2 invalid invocation,");
         ConsoleUi.Line("              3 permission or capability failure, 4 corrupted input, 5 cancelled.");

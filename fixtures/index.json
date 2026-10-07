@@ -1142,6 +1142,9 @@
         "P15: a scoped content policy keeps the content of the sources it names, and of no other"
       ],
       "P16": [
+        "P16: a support bundle says a session it cannot read by its folder, in its reader's words, and a ledger it lacks as unknown",
+        "P16: icat support lists what a bundle holds before writing it, and says a session it cannot read by its folder",
+        "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path",
         "P16: persisted fixture evidence excludes unrelated whole-machine endpoints",
         "P16: starting a journal never replaces evidence that is already there"
       ],

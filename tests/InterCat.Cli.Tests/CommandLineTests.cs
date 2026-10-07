@@ -26,7 +26,7 @@ public sealed class CommandLineTests : IDisposable
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
         "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
-        "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench", "support",
     ];
 
     /// <summary>The fields of icat staging's preview, whose labels run past the column a short label takes.</summary>
@@ -1015,6 +1015,138 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains($"  {channel.Key} · {channel.Name} · 2 observed records{Environment.NewLine}    {paired}{Environment.NewLine}", text,
             StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path")]
+    public async Task ASupportBundleHoldsNoRecordsContent()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-support-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // A session whose records name a person's folder, a tool, two endpoints and a host, all of which a bundle leaves out.
+            CoverageLedgerV1 ledger = TestSessions.TransportLedger(tcp: true, udp: false, lost: 3);
+            string held = Held(folder, "case-session", "alice-laptop",
+            [
+                Lifecycle(1, ObservationKind.Create, 4_242, 1) with
+                {
+                    ResourceName = @"C:\Users\alice\Secret Tools\leaky-tool.exe", SessionRelativeTicks = 100,
+                },
+                Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 10)
+                    .Between("10.11.12.13:40404", "10.99.98.97:50505") with { SessionRelativeTicks = 1_000 },
+                Transfer(11, ObservationKind.Send, AccountingSide.SendSide, null, 4_242, 11)
+                    .Between("10.11.12.13:40404", "10.99.98.97:50505") with { SessionRelativeTicks = 1_100 },
+            ], ledger);
+            string bundle = Path.Combine(folder, "bundle.json");
+            (InterCatExitCode code, string text, string said) = await Run("support", held, "--output", bundle);
+            Assert.True(code == InterCatExitCode.Success, said);
+
+            // What it holds and leaves out is listed first, and the bundle says the same.
+            Assert.Contains("Holds: InterCat's version", text, StringComparison.Ordinal);
+            Assert.Contains("Leaves out: message content and payload bytes; endpoint addresses and ports; command lines;", text,
+                StringComparison.Ordinal);
+            string written = File.ReadAllText(bundle);
+            using JsonDocument document = JsonDocument.Parse(written);
+            JsonElement root = document.RootElement;
+            Assert.Equal(SupportBundle.Contract, root.GetProperty("contract").GetString());
+            Assert.Equal(SupportBundle.ProductVersion, root.GetProperty("version").GetString());
+            Assert.False(string.IsNullOrWhiteSpace(root.GetProperty("runtime").GetProperty("operatingSystem").GetString()));
+            Assert.Equal("2", root.GetProperty("capabilities").GetProperty("reportVersion").GetString());
+            Assert.Equal(SupportBundle.LeftOut, root.GetProperty("leftOut").EnumerateArray().Select(entry => entry.GetString()));
+
+            // The session by its folder's name: its rows by mechanism, with what the capture covered of each, its ledger's
+            // loss, its clock and its files.
+            JsonElement session = root.GetProperty("sessions").EnumerateArray().Single();
+            Assert.Equal("case-session", session.GetProperty("folder").GetString());
+            Assert.Equal(JsonValueKind.Null, session.GetProperty("problem").ValueKind);
+            Assert.Equal(3, session.GetProperty("rows").GetInt64());
+            Dictionary<string, (long Rows, string Coverage)> mechanisms = session.GetProperty("mechanisms").EnumerateArray()
+                .ToDictionary(entry => entry.GetProperty("mechanism").GetString()!,
+                    entry => (entry.GetProperty("rows").GetInt64(), entry.GetProperty("coverage").GetString()!));
+            (Mechanism mechanism, CoverageState state, string _) tcp = SessionCoverage.ByMechanism(ledger)
+                .Select(entry => (entry.Mechanism, entry.State, entry.Reason)).Single(entry => entry.Mechanism == Mechanism.Tcp);
+            Assert.Equal((2L, CoverageStateText.Value(tcp.state)), mechanisms[MechanismText.Name(Mechanism.Tcp)]);
+            Assert.Equal(1L, mechanisms[MechanismText.Name(Mechanism.ProcessLifecycle)].Rows);
+            Assert.Equal(3, session.GetProperty("ledger").GetProperty("epochs")[0].GetProperty("losses")[0].GetProperty("lost").GetInt64());
+            Assert.Equal(10_000_000, session.GetProperty("clock").GetProperty("ticksPerSecond").GetInt64());
+            Assert.Contains(session.GetProperty("dependencies").EnumerateArray(),
+                dependency => dependency.GetProperty("kind").GetString() == "Segment");
+
+            // Nothing a record holds, nor the host's name or the folders above the session.
+            foreach (string needle in new[] { "alice", "leaky-tool", "Secret Tools", "10.11.12.13", "40404", "10.99.98.97", "50505", folder })
+            {
+                Assert.DoesNotContain(needle, written, StringComparison.OrdinalIgnoreCase);
+            }
+
+            // Printed, the bundle is the answer on stdout, and its listing goes to stderr beside it.
+            (InterCatExitCode printed, string answer, string beside) = await Run("support", held, "--json");
+            Assert.Equal(InterCatExitCode.Success, printed);
+            Assert.Equal(SupportBundle.Contract, JsonDocument.Parse(answer).RootElement.GetProperty("contract").GetString());
+            Assert.Contains("Holds: InterCat's version", beside, StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact(DisplayName = "P16: icat support lists what a bundle holds before writing it, and says a session it cannot read by its folder")]
+    public async Task ASupportBundleIsListedFirstAndSaysWhatItCannotRead()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-support-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // --check lists, reads nothing and writes nothing.
+            string bundle = Path.Combine(folder, "bundle.json");
+            (InterCatExitCode checkedCode, string listed, string quiet) = await Run("support", session.Path, "--check");
+            Assert.Equal(InterCatExitCode.Success, checkedCode);
+            Assert.Empty(quiet);
+            Assert.DoesNotContain(Path.GetFileName(session.Path), listed, StringComparison.Ordinal);
+            Assert.Contains("Holds: InterCat's version, and this machine's operating system, architecture, runtime and processor "
+                + "count; this machine's capability report", listed, StringComparison.Ordinal);
+            Assert.Contains("1 session: its folder's name, generation and files with their sizes", listed, StringComparison.Ordinal);
+            Assert.Contains("Leaves out: " + string.Join("; ", SupportBundle.LeftOut) + ".", listed, StringComparison.Ordinal);
+            Assert.False(File.Exists(bundle));
+
+            // A bundle must be told where to go, once, and replaces nothing unless told to; a session must be a folder.
+            string[][] refused =
+            [
+                ["support", session.Path],
+                ["support", session.Path, "--check", "--json"],
+                ["support", session.Path, "--check", "--output", bundle],
+                ["support", Path.Combine(folder, "nowhere"), "--json"],
+            ];
+            foreach (string[] args in refused)
+            {
+                (InterCatExitCode code, string output, string error) = await Run(args);
+                Assert.True(code == InterCatExitCode.InvalidInvocation, $"icat {string.Join(' ', args)} exited {code}.");
+                Assert.Empty(output);
+                Assert.StartsWith("x ", error, StringComparison.Ordinal);
+            }
+
+            Directory.CreateDirectory(folder);
+            File.WriteAllText(bundle, "kept");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, (await Run("support", "--output", bundle)).Code);
+            Assert.Equal("kept", File.ReadAllText(bundle));
+            Assert.Equal(InterCatExitCode.Success, (await Run("support", "--output", bundle, "--overwrite")).Code);
+            Assert.Empty(JsonDocument.Parse(File.ReadAllText(bundle)).RootElement.GetProperty("sessions").EnumerateArray());
+
+            // A folder that holds no session is said to hold none, by its name, and the bundle is still made.
+            string empty = Directory.CreateDirectory(Path.Combine(folder, "not-a-session")).FullName;
+            (InterCatExitCode partial, string answer, _) = await Run("support", empty, session.Path, "--json");
+            Assert.Equal(InterCatExitCode.PartialResultSuccess, partial);
+            JsonElement[] sessions = [.. JsonDocument.Parse(answer).RootElement.GetProperty("sessions").EnumerateArray()];
+            Assert.Equal(("not-a-session", SessionStore.NoGeneration),
+                (sessions[0].GetProperty("folder").GetString(), sessions[0].GetProperty("problem").GetString()));
+            Assert.Equal(JsonValueKind.Null, sessions[1].GetProperty("problem").ValueKind);
+            Assert.DoesNotContain(folder, answer, StringComparison.OrdinalIgnoreCase);
+        }
+        finally
+        {
+            if (Directory.Exists(folder))
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+        }
     }
 
     /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>

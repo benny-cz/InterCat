@@ -30,10 +30,7 @@ internal static class CapabilitiesCommand
         }
 
         ConsoleUi.Progress("Reading provider registration and schema metadata. No capture is started.");
-        var host = new TraceEventSessionHost();
-        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
-        var probe = new CapabilityInventoryProbe(new TdhEtwMetadataSource());
-        CapabilityReport report = probe.Probe(environment);
+        CapabilityReport report = Probe();
         cancellationToken.ThrowIfCancellationRequested();
 
         string payload = JsonSerializer.Serialize(report, JsonContracts.Indented);
@@ -66,6 +63,14 @@ internal static class CapabilitiesCommand
         }
 
         return report.Diagnostics.Count == 0 ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>This machine's capability report: what each candidate source could supply, read without starting a capture.</summary>
+    internal static CapabilityReport Probe()
+    {
+        var host = new TraceEventSessionHost();
+        ProbeEnvironment environment = CapabilityInventoryProbe.DescribeEnvironment(host.IsElevated);
+        return new CapabilityInventoryProbe(new TdhEtwMetadataSource()).Probe(environment);
     }
 
     public static void Render(CapabilityReport report)
