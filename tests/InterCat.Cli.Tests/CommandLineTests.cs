@@ -1497,7 +1497,8 @@ public sealed class CommandLineTests : IDisposable
                 + "when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
-            Assert.Equal("workspace-resolution-v20", WorkspaceCommand.ResolutionContract);
+            Assert.Equal("workspace-resolution-v21", WorkspaceCommand.ResolutionContract);
+            Assert.Contains("\"collectorsAside\": false", json, StringComparison.Ordinal);
             Assert.Matches(new Regex($"\"pinnedLanes\": \\[\\s*\"{lane}\"\\s*\\]"), json);
             Assert.Contains("\"grouping\": \"UserSession\"", json, StringComparison.Ordinal);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);

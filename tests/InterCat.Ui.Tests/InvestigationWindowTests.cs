@@ -549,6 +549,61 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§19.5: a session opened from an investigation keeps InterCat's own processes set aside there, and opens so again")]
+    public async Task AnInvestigationKeepsInterCatsOwnSetAside()
+    {
+        using var root = new TemporaryDirectory();
+        string collected = Directory.CreateDirectory(Path.Combine(root.Path, "collected")).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(collected), Guid.NewGuid(), "investigation-window-tests");
+        PublishCollected(store);
+        store.ReleaseSegmentReaders();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, collected, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == collected);
+
+            // Set aside, the session keeps the choice in its investigation, whose window says so.
+            Assert.True(main.ChooseCollectorsAside(true));
+            await main.InvestigationWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.CollectorsAside);
+            const string Kept = "Opens with InterCat's own processes set aside, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Kept);
+            Assert.Equal(Kept, KeptLine(list).Text);
+
+            // Opened on its own, the session shows them.
+            Assert.True(await main.OpenSessionAsync(collected));
+            Assert.False(((WorkspaceViewModel)main.DataContext!).CollectorsSetAside);
+
+            // Opened from the investigation again, they are set aside from its first view, and its status says so.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.DataContext is WorkspaceViewModel { CollectorsSetAside: true });
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.DoesNotContain(again.RungRows, row => row.Label == "intercat-broker.exe");
+            Assert.Contains("which put back InterCat's own processes set aside.", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+
+            // Shown again, the investigation keeps nothing of the session.
+            Assert.True(main.ChooseCollectorsAside(false));
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+            WaitFor(() => window.View!.Members[0].Kept is null);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>Opens pool.exe's group in <paramref name="workspace"/>, its lanes counted.</summary>
     private static async Task OpenPoolGroupAsync(WorkspaceViewModel workspace)
     {

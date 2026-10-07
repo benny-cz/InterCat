@@ -97,19 +97,22 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// What a member keeps in its investigation beside its pins (§26.3): what its rows are ranked by and whether per
-    /// second, the evidence policy its records are counted under, whether each timeline lane has its own scale, and how its
-    /// processes are grouped.
+    /// second, the evidence policy its records are counted under, whether each timeline lane has its own scale, how its
+    /// processes are grouped, and whether InterCat's own processes are set aside (§19.5).
     /// </summary>
     private readonly record struct ViewSettings(RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy, bool ScalesEachLane,
-        LaneGrouping Grouping)
+        LaneGrouping Grouping, bool CollectorsAside = false)
     {
         /// <summary>What a session opened on its own starts with, and an investigation that keeps nothing of it puts back.</summary>
         public static ViewSettings Default =>
             new(RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, LaneGrouping.Executable);
 
-        /// <summary>What the shown workspace is set to now, grouped as its person chose (<paramref name="grouping"/>).</summary>
-        public static ViewSettings Of(WorkspaceViewModel workspace, LaneGrouping grouping) =>
-            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping);
+        /// <summary>
+        /// What the shown workspace is set to now, grouped as its person chose (<paramref name="grouping"/>), and with
+        /// InterCat's own processes set aside as they chose (<paramref name="collectorsAside"/>).
+        /// </summary>
+        public static ViewSettings Of(WorkspaceViewModel workspace, LaneGrouping grouping, bool collectorsAside) =>
+            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping, collectorsAside);
     }
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -1221,7 +1224,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 [.. (layout?.PinnedLanes ?? []).Select(lane => new ProcessInstanceId(lane))],
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
                     layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane,
-                    layout.Grouping ?? LaneGrouping.Executable),
+                    layout.Grouping ?? LaneGrouping.Executable, layout.CollectorsAside),
                 file.Panes);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -1239,7 +1242,7 @@ public sealed partial class MainWindow : Window, IDisposable
         WorkspaceLayout.Series(
         [
             .. WorkspaceLayout.Parts(pins, lanes, settings.Grouping, settings.RankBy, settings.PerSecond, settings.Policy,
-                settings.ScalesEachLane, CultureInfo.CurrentCulture),
+                settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside),
             .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
         ]) is { Length: > 0 } restored
             ? $", which put back {restored}."
@@ -1254,7 +1257,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
         ProcessInstanceId[] lanes = [.. workspace.PinnedLanes];
-        ViewSettings settings = ViewSettings.Of(workspace, laneGrouping);
+        ViewSettings settings = ViewSettings.Of(workspace, laneGrouping, collectorsAside);
         if (keptPins is { } kept && kept.Count == pins.Count
             && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value)
             && keptLanes is { } lanesKept && lanesKept.SequenceEqual(lanes)
@@ -1270,7 +1273,7 @@ public sealed partial class MainWindow : Window, IDisposable
         Guid[] pinnedLanes = [.. lanes.Select(lane => lane.Value)];
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
             layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-            pinnedLanes, settings.Grouping));
+            pinnedLanes, settings.Grouping, settings.CollectorsAside));
         _ = SayWhatIsKeptAsync(written, home);
     }
 
@@ -2796,6 +2799,13 @@ public sealed partial class MainWindow : Window, IDisposable
         ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
             SessionPath: currentSessionPath, Overview: shown, OverviewChunks: displayedChunks), shown, forceOverview: false,
             regrouping: true);
+
+        // A member opened from its investigation keeps the choice there, as it keeps its grouping (§26.3).
+        if (layoutHome is { } home)
+        {
+            KeepLayout(home);
+        }
+
         return true;
     }
 
@@ -2992,6 +3002,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 lanes = keptLanes = kept.Lanes;
                 restored = keptSettings = kept.Settings;
                 laneGrouping = kept.Settings.Grouping;
+                collectorsAside = kept.Settings.CollectorsAside;
                 keptPanes = kept.Panes is { } panes
                     ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded)
                     : (WorkspacePanes.EqualShare, null);
@@ -3002,7 +3013,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
                 pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(investigation)}"
                     + PutBack(kept.Pins.Count, kept.Lanes.Count,
-                        kept.Settings with { Policy = overview.Policy, Grouping = GroupingShown(projected, laneGrouping) },
+                        kept.Settings with
+                        {
+                            Policy = overview.Policy,
+                            Grouping = GroupingShown(projected, laneGrouping),
+                            // Said put back only where the session names some of InterCat's own to set aside.
+                            CollectorsAside = collectorsAside && projected.Processes.Any(process => process.Collector is not null),
+                        },
                         kept.Panes);
             }
 

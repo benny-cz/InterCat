@@ -1011,6 +1011,42 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             (rewritten.Contract, rewritten.Layouts.Single().Grouping));
     }
 
+    [Fact(DisplayName = "§19.5: a member's layout keeps InterCat's own processes set aside, which a file before version 18 cannot")]
+    public void AMembersCollectorsAsideIsKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+
+        // Kept, it is a layout of its own, said in the rail's words; shown again, the layout keeps nothing and is removed.
+        WorkspaceLayout kept = InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: true)!;
+        Assert.True(kept.CollectorsAside);
+        Assert.True(kept.KeepsAnything);
+        Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.CollectorsAside);
+        Assert.Equal("InterCat's own processes set aside", kept.Describe(CultureInfo.InvariantCulture));
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
+        Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
+        Assert.Equal("workspace-v18", InvestigationWorkspace.Contract);
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // A file of the version before sets none aside, and one that says otherwise is refused.
+        File.WriteAllText(workspace, written.Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.SeventeenthContract}\"", StringComparison.Ordinal));
+        Assert.Contains("file sets no session's InterCat processes aside",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+
+        // A file of the version before, setting none aside, reads as one that shows them, and is written as the current one.
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.SeventeenthContract}\"", StringComparison.Ordinal));
+        Assert.False(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.CollectorsAside);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true, collectorsAside: true);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, true), (rewritten.Contract, rewritten.Layouts.Single().CollectorsAside));
+    }
+
     [Fact(DisplayName = "§26.3: what the window's panes keep is said in one series, only what differs from equal halves with both shown")]
     public void ThePanesAreDescribedInOneSeries()
     {
@@ -1090,6 +1126,11 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal("each of its timeline lanes on its own scale",
             WorkspaceLayout.Describe(0, 0, LaneGrouping.Executable, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated,
                 true, culture));
+
+        // InterCat's own processes set aside are said last, after every setting of the rows that remain.
+        Assert.Equal("its rows ranked by bytes sent and InterCat's own processes set aside",
+            WorkspaceLayout.Describe(0, 0, LaneGrouping.Executable, RankingMetric.BytesSent, false, EvidencePolicy.IncludeCorrelated,
+                false, culture, collectorsAside: true));
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

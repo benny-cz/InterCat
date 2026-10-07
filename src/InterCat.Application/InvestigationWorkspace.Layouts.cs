@@ -60,15 +60,21 @@ public sealed record WorkspaceLayout
     /// </summary>
     public bool ScalesEachLane { get; init; }
 
+    /// <summary>
+    /// Whether InterCat's own processes are set aside from the session's rows, graph and channels (§19.5's view filter),
+    /// rather than shown, the default. A file of a version before 18 sets none aside.
+    /// </summary>
+    public bool CollectorsAside { get; init; }
+
     public required DateTimeOffset UpdatedUtc { get; init; }
 
     /// <summary>
     /// Whether it keeps anything: a pinned node or lane, a grouping by terminal session, a ranking other than records counted
-    /// whole, another evidence policy, or each lane on its own scale.
+    /// whole, another evidence policy, each lane on its own scale, or InterCat's own processes set aside.
     /// </summary>
     [JsonIgnore]
     public bool KeepsAnything => Pins.Count > 0 || PinnedLanes.Count > 0 || Grouping is not null || RankBy is not null
-        || PerSecond || EvidencePolicy is not null || ScalesEachLane;
+        || PerSecond || EvidencePolicy is not null || ScalesEachLane || CollectorsAside;
 
     /// <summary>
     /// What it keeps, in the words every place that says so uses - `icat workspace show`, the notice of a session opened
@@ -77,24 +83,25 @@ public sealed record WorkspaceLayout
     /// </summary>
     public string Describe(IFormatProvider culture) => Describe(Pins.Count, PinnedLanes.Count,
         Grouping ?? LaneGrouping.Executable, RankBy ?? RankingMetric.Records, PerSecond,
-        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
+        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture, CollectorsAside);
 
     /// <summary>
     /// What a layout that pins <paramref name="pins"/> nodes and <paramref name="lanes"/> process lanes, groups by
-    /// <paramref name="grouping"/>, ranks by <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/> and
-    /// reads each lane on its own scale or not keeps, in <see cref="Describe(IFormatProvider)"/>'s words: nothing of a
-    /// default, so what is said is only what differs from a session opened on its own.
+    /// <paramref name="grouping"/>, ranks by <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/>, reads
+    /// each lane on its own scale or not and sets InterCat's own processes aside or not keeps, in
+    /// <see cref="Describe(IFormatProvider)"/>'s words: nothing of a default, so what is said is only what differs from a
+    /// session opened on its own.
     /// </summary>
     public static string Describe(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
-        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture) =>
-        Series(Parts(pins, lanes, grouping, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
+        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false) =>
+        Series(Parts(pins, lanes, grouping, rankBy, perSecond, evidencePolicy, scalesEachLane, culture, collectorsAside));
 
     /// <summary>
-    /// Each thing <see cref="Describe(int, int, LaneGrouping, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/>
+    /// Each thing <see cref="Describe(int, int, LaneGrouping, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider, bool)"/>
     /// says such a layout keeps, in its order, so a notice can list it in one series with what else was put back.
     /// </summary>
     public static IReadOnlyList<string> Parts(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
-        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture) =>
+        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false) =>
     [
         .. new[]
         {
@@ -108,6 +115,7 @@ public sealed record WorkspaceLayout
                 : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
             evidencePolicy == Domain.EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null,
             scalesEachLane ? "each of its timeline lanes on its own scale" : null,
+            collectorsAside ? "InterCat's own processes set aside" : null,
         }.OfType<string>(),
     ];
 
@@ -134,10 +142,11 @@ public static partial class InvestigationWorkspace
     /// Keeps <paramref name="pins"/>, the ranking <paramref name="rankBy"/> read per second when
     /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, each timeline
     /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, the process lanes
-    /// <paramref name="pinnedLanes"/> pinned in their order, and the processes grouped by <paramref name="grouping"/>, as
-    /// how member <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing,
-    /// groups by executable, ranks by records counted whole, counts correlated evidence and reads every lane on one scale
-    /// removes it. Null when it is removed.
+    /// <paramref name="pinnedLanes"/> pinned in their order, the processes grouped by <paramref name="grouping"/>, and
+    /// InterCat's own processes set aside when <paramref name="collectorsAside"/> says so, as how member
+    /// <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing, groups by
+    /// executable, ranks by records counted whole, counts correlated evidence, reads every lane on one scale and shows
+    /// InterCat's own processes removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -149,7 +158,8 @@ public static partial class InvestigationWorkspace
         EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated,
         bool scalesEachLane = false,
         IReadOnlyList<Guid>? pinnedLanes = null,
-        LaneGrouping grouping = LaneGrouping.Executable)
+        LaneGrouping grouping = LaneGrouping.Executable,
+        bool collectorsAside = false)
     {
         ArgumentNullException.ThrowIfNull(pins);
         pinnedLanes ??= [];
@@ -192,6 +202,7 @@ public static partial class InvestigationWorkspace
             PerSecond = perSecond,
             EvidencePolicy = evidencePolicy == Domain.EvidencePolicy.IncludeCorrelated ? null : evidencePolicy,
             ScalesEachLane = scalesEachLane,
+            CollectorsAside = collectorsAside,
             UpdatedUtc = now,
         };
         WorkspaceLayout? layout = kept.KeepsAnything ? kept : null;
@@ -225,7 +236,7 @@ public static partial class InvestigationWorkspace
         : lanes.Distinct().Count() != lanes.Count ? "a lane is pinned twice"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v17.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v18.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -267,6 +278,12 @@ public static partial class InvestigationWorkspace
         if (VersionOf(workspace) < 17 && workspace.Layouts.Any(layout => layout.Grouping is not null))
         {
             return $"a {workspace.Contract} file groups no session's processes by terminal session";
+        }
+
+        // InterCat's own processes set aside arrived with the eighteenth version (revision 419).
+        if (VersionOf(workspace) < 18 && workspace.Layouts.Any(layout => layout.CollectorsAside))
+        {
+            return $"a {workspace.Contract} file sets no session's InterCat processes aside";
         }
 
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
