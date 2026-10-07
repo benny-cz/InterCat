@@ -1820,6 +1820,7 @@
         "R18: grouped by terminal session, the window's export of the machine rung, a session's rung and its records is icat export --group-by session's",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
         "R18: icat demo writes the demo saying it was generated, as icat session then says of each of its sessions",
+        "R18: icat evidence --from lists the rows from a moment on, placed as the window's search places it, on the wall clock or in session time",
         "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session",
         "R18: icat overview says what the capture covered over the session in the words the window's inspector uses",
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",

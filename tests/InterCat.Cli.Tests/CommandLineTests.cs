@@ -1537,6 +1537,94 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R18: icat evidence --from lists the rows from a moment on, placed as the window's search places it, on the wall clock or in session time")]
+    public async Task EvidenceStartsFromAMoment()
+    {
+        // Three UDP sends 10, 20 and 30 µs into a capture whose wall clock read noon 100 µs before its epoch's reading.
+        var clock = new SourceClockDescriptor(TestSessions.Clock, HostId.Derive("cli-at"), SourceClockKind.Monotonic,
+            TimestampEncoding.Qpc, 10_000_000, 1_000, TimestampRounding.NearestEven, SourceClockMath.SessionTicksPerSecond * 60);
+        DateTimeOffset noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store,
+        [
+            .. Enumerable.Range(1, 3).Select(index => Transfer(1_000L + (index * 100), ObservationKind.Send,
+                AccountingSide.SendSide, 10, 100, (ulong)index).Between("192.168.1.5:61000", "8.8.8.8:53") with
+            {
+                Mechanism = Mechanism.Udp,
+                SessionRelativeTicks = index * 10_000L,
+            }),
+        ],
+            clock: clock,
+            calibration: new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = TestSessions.Capture.Value,
+                ClockId = clock.Id.Value,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = 1_000, Utc = noon, AcquisitionUncertaintyNanoseconds = 200 }],
+            });
+        calibrated.Store.ReleaseSegmentReaders();
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentCulture;
+        var extent = new TimeRange(100, 301);
+        SessionClock wall = SessionClock.Wall(SessionRecording.WallClock(calibrated.Store)!, TimeZoneInfo.Local, extent);
+        calibrated.Store.ReleaseSegmentReaders();
+        string said = wall.Moment(20_000, culture) + " · session time "
+            + SessionClock.Session(TimeZoneInfo.Local).Record(20_000, culture);
+
+        // The time of day 20 µs in, as this computer's zone writes it, lists the second and third sends and says where it falls.
+        string typed = TimeZoneInfo.ConvertTime(noon.AddTicks(200), TimeZoneInfo.Local).ToString("HH:mm:ss.fffffff",
+            System.Globalization.CultureInfo.InvariantCulture);
+        (InterCatExitCode code, string text, string why) = await Run("evidence", calibrated.Path, "--from", typed);
+        Assert.True(code == InterCatExitCode.Success, why);
+        Assert.Matches(new Regex(@"^\s*From\s+" + Regex.Escape(said) + @"\r?$", RegexOptions.Multiline), text);
+        Assert.Matches(new Regex(@"^\s*Rows on page\s+2\r?$", RegexOptions.Multiline), text);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[200, 301\) · 100 ns ticks\r?$", RegexOptions.Multiline), text);
+
+        // Session time places it alike, and --json carries the instant in ticks and as the wall clock read it.
+        (code, text, why) = await Run("evidence", calibrated.Path, "--from", "0.00002 s", "--json");
+        Assert.True(code == InterCatExitCode.Success, why);
+        using (JsonDocument page = JsonDocument.Parse(text))
+        {
+            Assert.Equal("evidence-page-v5", page.RootElement.GetProperty("contract").GetString());
+            Assert.Equal(200, page.RootElement.GetProperty("from").GetProperty("ticks").GetInt64());
+            Assert.Equal(noon.AddTicks(200), page.RootElement.GetProperty("from").GetProperty("utc").GetDateTimeOffset());
+            Assert.Equal(2, page.RootElement.GetProperty("page").GetProperty("records").GetArrayLength());
+        }
+
+        // Within an interval asked for, it lists from the later of it and the interval's start to the interval's end, and
+        // at or after that end it is refused.
+        (code, text, why) = await Run("evidence", calibrated.Path, "--from", "0.00002 s", "--interval", "0:250");
+        Assert.True(code == InterCatExitCode.Success, why);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[200, 250\) · 100 ns ticks\r?$", RegexOptions.Multiline), text);
+        Assert.Matches(new Regex(@"^\s*Rows on page\s+1\r?$", RegexOptions.Multiline), text);
+        (code, text, why) = await Run("evidence", calibrated.Path, "--from", "0.00001 s", "--interval", "250:400");
+        Assert.True(code == InterCatExitCode.Success, why);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[250, 400\) · 100 ns ticks\r?$", RegexOptions.Multiline), text);
+        (code, _, why) = await Run("evidence", calibrated.Path, "--from", "0.00002 s", "--interval", "0:200");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("0.00002 s comes after --interval's end, so the interval holds no row from it on.", why, StringComparison.Ordinal);
+
+        // A finished session's persisted overview holds the same extent, and the moment is placed alike.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(calibrated.Store, noon.AddMinutes(1)).Outcome);
+        calibrated.Store.ReleaseSegmentReaders();
+        (code, text, why) = await Run("evidence", calibrated.Path, "--from", typed);
+        Assert.True(code == InterCatExitCode.Success, why);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[200, 301\) · 100 ns ticks\r?$", RegexOptions.Multiline), text);
+
+        // A moment the session cannot place is said as the window's search says it; text that is no moment is named.
+        (code, _, why) = await Run("evidence", calibrated.Path, "--from", "1 s");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("1 s is outside this session, which runs ", why, StringComparison.Ordinal);
+        (code, _, why) = await Run("evidence", session.Path, "--from", "12:00");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("This session recorded no wall clock, so 12:00 places nothing in it: type a session time, such as 312.5 s.",
+            why, StringComparison.Ordinal);
+        (code, _, why) = await Run("evidence", calibrated.Path, "--from", "client.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--from takes a moment: ", why, StringComparison.Ordinal);
+        Assert.Contains("'client.exe' is neither.", why, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "§6.2: icat timeline states the time base its intervals count in, as the window's axis does")]
     public async Task TimelineStatesItsTimeBase()
     {
@@ -1953,7 +2041,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         using (JsonDocument page = JsonDocument.Parse(answer))
         {
-            Assert.Equal("evidence-page-v4", page.RootElement.GetProperty("contract").GetString());
+            Assert.Equal("evidence-page-v5", page.RootElement.GetProperty("contract").GetString());
             Assert.Equal("Udp", page.RootElement.GetProperty("page").GetProperty("mechanism").GetString());
             Assert.Equal(4, page.RootElement.GetProperty("page").GetProperty("records").GetArrayLength());
         }
@@ -2013,7 +2101,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         using (JsonDocument page = JsonDocument.Parse(answer))
         {
-            Assert.Equal("evidence-page-v4", page.RootElement.GetProperty("contract").GetString());
+            Assert.Equal("evidence-page-v5", page.RootElement.GetProperty("contract").GetString());
             JsonElement coverage = page.RootElement.GetProperty("page").GetProperty("coverage");
             Assert.Equal(Enum.GetValues<Mechanism>().Length, coverage.GetArrayLength());
             Assert.All(coverage.EnumerateArray(), entry => Assert.Equal(

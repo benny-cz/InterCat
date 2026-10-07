@@ -135,6 +135,20 @@ public static class SessionRecording
             : null;
     }
 
+    /// <summary>
+    /// The current generation's timed records' extent in presentation ticks, as the window's overview counts it: a finished
+    /// session's persisted overview holds it, and any other's segments count it from their tiles. Null where no record
+    /// has a session time.
+    /// </summary>
+    public static TimeRange? RecordsExtent(SessionStore store, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        using EvidenceLease lease = store.AcquireLease();
+        return SessionDerivationCache.For(lease.Manifest).PersistedOverview(store.Root) is { } persisted
+            ? persisted.Extent
+            : Extent(store, lease.Manifest, cancellationToken);
+    }
+
     private static TimeRange? Extent(SessionStore store, SessionManifestV1 manifest, CancellationToken cancellationToken)
     {
         long first = long.MaxValue;

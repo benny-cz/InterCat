@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Application;
@@ -31,6 +32,7 @@ internal static class EvidenceCommand
         string? mechanismText = command.TakeOption("--mechanism");
         string? directionText = command.TakeOption("--direction");
         string? endText = command.TakeOption("--end");
+        string? fromText = command.TakeOption("--from");
         bool json = command.TryTakeFlag("--json");
         bool wallClock = command.TryTakeFlag("--wall-clock");
         string? directory = command.TakePositional();
@@ -78,20 +80,33 @@ internal static class EvidenceCommand
         bool rpc = RpcChannelKeys.IsRpc(channel);
         SessionEvidencePage page;
         SessionClock clock = SessionClock.Session(TimeZoneInfo.Local);
+        (long Ticks, string Said, DateTimeOffset? Utc)? from = null;
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            SessionWallClock? recorded = wallClock || fromText is not null ? SessionRecording.WallClock(store) : null;
             if (wallClock)
             {
                 // The wall clock its capture's machine read, as the window reads it (§6.2, R18); never guessed for a session
                 // that recorded none.
-                if (SessionRecording.WallClock(store) is not { } wall)
+                if (recorded is not { } wall)
                 {
                     ConsoleUi.Failure(SessionClock.NotRecorded);
                     return InterCatExitCode.InvalidInvocation;
                 }
 
                 clock = SessionClock.Wall(wall, TimeZoneInfo.Local, new TimeRange(0, 1));
+            }
+
+            // A moment, placed as the window's search places one (§6.2, §6.7, R18): the page lists the rows from it on.
+            if (fromText is not null)
+            {
+                if (!TryStartFrom(store, fromText, recorded, ref interval, out from, out string? problem, cancellationToken))
+                {
+                    ConsoleUi.Failure(problem);
+                    ConsoleUi.Explain(PrintHelp);
+                    return InterCatExitCode.InvalidInvocation;
+                }
             }
 
             page = SessionEvidenceQuery.Read(store,
@@ -115,7 +130,10 @@ internal static class EvidenceCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "evidence-page-v4", SessionPath = path, Page = page,
+                Contract = "evidence-page-v5",
+                SessionPath = path,
+                From = from is { } placed ? new { placed.Ticks, placed.Utc } : null,
+                Page = page,
             }, JsonContracts.Indented));
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
         }
@@ -131,6 +149,7 @@ internal static class EvidenceCommand
         if (page.Direction is { } way) ConsoleUi.Field("Source direction", ObservationText.DirectionOf(way));
         foreach (ProcessInstanceId owner in page.OwnerProcesses)
             ConsoleUi.Field("Canonical owner process", owner.ToString()!);
+        if (from is { } moment) ConsoleUi.Field("From", moment.Said);
         if (interval is { } range)
             ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks"
                 + (clock.IsWallClock ? " · " + clock.HalfOpenRange(range, CultureInfo.CurrentCulture) : string.Empty));
@@ -184,6 +203,49 @@ internal static class EvidenceCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// Places <paramref name="text"/> in the session as the window's search places a moment - a time of day on the wall
+    /// clock its capture's machine read, or session time with its unit - and narrows <paramref name="interval"/> to the
+    /// rows from it on, within the interval asked for where one was. False, with why, for text that is no moment, a moment
+    /// the session cannot place, or one after the interval asked for.
+    /// </summary>
+    private static bool TryStartFrom(SessionStore store, string text, SessionWallClock? wall, ref TimeRange? interval,
+        out (long Ticks, string Said, DateTimeOffset? Utc)? from, [NotNullWhen(false)] out string? problem,
+        CancellationToken cancellationToken)
+    {
+        from = null;
+        if (SessionRecording.RecordsExtent(store, cancellationToken) is not { } extent)
+        {
+            problem = $"No record of this session has a session time, so {text} places nothing in it.";
+            return false;
+        }
+
+        if (!SessionMoment.TryPlace(text, wall, TimeZoneInfo.Local, extent, CultureInfo.CurrentCulture, out long ticks,
+                out problem))
+        {
+            problem ??= "--from takes a moment: a time of day on the wall clock the capture's machine read, such as 14:32:05.120, "
+                + $"with its date or offset where needed, or session time with its unit, such as 312.5 s. '{text}' is neither.";
+            return false;
+        }
+
+        long start = Math.Max(ticks, interval?.StartTicks ?? ticks);
+        long end = interval?.EndTicks ?? extent.EndTicks;
+        if (start >= end)
+        {
+            problem = $"{text} comes after --interval's end, so the interval holds no row from it on.";
+            return false;
+        }
+
+        // Named where it falls on the wall clock, with its date and offset, and in session time, as the search's hit names it.
+        long nanoseconds = ticks * 100;
+        string session = "session time " + SessionClock.Session(TimeZoneInfo.Local).Record(nanoseconds, CultureInfo.CurrentCulture);
+        from = (ticks, wall is null ? session
+            : SessionClock.Wall(wall, TimeZoneInfo.Local, extent).Moment(nanoseconds, CultureInfo.CurrentCulture) + " · " + session,
+            wall?.At(ticks));
+        interval = new TimeRange(start, end);
+        return true;
+    }
+
     /// <summary>An enumeration's name as a person types it: "ProcessLifecycle" as "process-lifecycle".</summary>
     private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
         char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
@@ -191,8 +253,8 @@ internal static class EvidenceCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat evidence <session-directory> [--channel <key>] [--owner-process <instance-guid> ...]");
-        ConsoleUi.Line("              [--interval <start:end>] [--mechanism <name>] [--direction <name>] [--end <0|1>]");
-        ConsoleUi.Line("              [--page-size <1-200>]");
+        ConsoleUi.Line("              [--interval <start:end>] [--from <moment>] [--mechanism <name>] [--direction <name>]");
+        ConsoleUi.Line("              [--end <0|1>] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
@@ -202,6 +264,10 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
+        ConsoleUi.Line("  --from lists the rows from a moment on, read as the window's search reads one: a time of day on");
+        ConsoleUi.Line("  the wall clock the capture's machine read (14:32:05.120, with its date or offset where needed),");
+        ConsoleUi.Line("  or session time with its unit (312.5 s, 250 ms). A moment the session cannot place is refused,");
+        ConsoleUi.Line("  saying why.");
         ConsoleUi.Line("  --mechanism and --direction keep one mechanism's or one source direction's rows, and --end the");
         ConsoleUi.Line("  rows made at one end of a paired --channel: a timeline lane's records, as the window lists a");
         ConsoleUi.Line("  chosen cell's.");
