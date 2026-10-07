@@ -315,6 +315,9 @@
                 </MenuFlyout>
               </Button.Flyout>
             </Button>
+            <!-- §14 M5: InterCat's generated demo of two hosts, to try every view without capturing; it says what it is. -->
+            <Button x:Name="ExploreDemoButton" Content="Explore the demo" FontSize="13" Click="ExploreDemo"
+                    AutomationProperties.HelpText="Open InterCat's generated demo investigation of two hosts; nothing in it was captured" />
             <!-- First feedback is stated, not implied: how soon the first view arrived and how often it refreshes. -->
             <TextBlock x:Name="CaptureLatency" Classes="muted" FontSize="11" TextWrapping="Wrap"
                        AutomationProperties.Name="How fresh the live view is" />

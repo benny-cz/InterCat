@@ -47,6 +47,12 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>A support bundle is being saved, so a second click does not start another.</summary>
     private bool savingSupport;
 
+    /// <summary>The demo is being made or opened, so a second click does not start another.</summary>
+    private bool exploringDemo;
+
+    /// <summary>Where the demo is kept and made (§14 M5); InterCat's own folder beside its sessions unless a test says.</summary>
+    internal string? DemoRoot { get; set; }
+
     // The investigation a session is being opened from, while it is; then the one that keeps the shown session's pins
     // (§26.3), with the pins it last kept and the writes of them in order. A session opened on its own keeps none there.
     private string? openingFromInvestigation;
@@ -955,6 +961,46 @@ public sealed partial class MainWindow : Window, IDisposable
             },
         };
         return prompt;
+    }
+
+    private void ExploreDemo(object? sender, RoutedEventArgs eventArgs) => _ = ExploreDemoAsync();
+
+    /// <summary>
+    /// Opens InterCat's generated demo investigation (§14 M5) beside this window, making it the first time in a folder of
+    /// InterCat's own, and says what it is; null when it could not be, which the card then says.
+    /// </summary>
+    internal async Task<InvestigationWindow?> ExploreDemoAsync()
+    {
+        if (exploringDemo || closed)
+        {
+            return null;
+        }
+
+        exploringDemo = true;
+        ExploreDemoButton.IsEnabled = false;
+        try
+        {
+            string root = DemoRoot ?? DemoPlace.Root();
+            string workspace = await Task.Run(() => DemoPlace.Ensure(root));
+            if (closed)
+            {
+                return null;
+            }
+
+            CaptureDetail.Text = DemoInvestigation.Disclosure + " Its investigation is open beside this window; open either "
+                + "of its sessions from there.";
+            return ShowInvestigation(workspace);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            if (!closed) CaptureDetail.Text = "The demo could not be opened: " + exception.Message;
+            return null;
+        }
+        finally
+        {
+            exploringDemo = false;
+            ExploreDemoButton.IsEnabled = true;
+        }
     }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
@@ -2406,6 +2452,7 @@ public sealed partial class MainWindow : Window, IDisposable
         StartExploringButton.IsVisible = !busy;
         OpenSavedSessionButton.IsVisible = !busy;
         InvestigationButton.IsVisible = !busy;
+        ExploreDemoButton.IsVisible = !busy;
         CaptureIntro.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;

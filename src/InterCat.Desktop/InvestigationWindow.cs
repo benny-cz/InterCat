@@ -23,6 +23,9 @@ namespace InterCat.Desktop;
 internal sealed class InvestigationWindow : Window, IDisposable
 {
     private readonly string path;
+
+    /// <summary>The investigation file this window shows.</summary>
+    internal string WorkspacePath => path;
     private readonly Func<string, Task<bool>>? openSession;
     private readonly Func<string, TimeRange, Task<bool>>? openSessionAt;
     private readonly CancellationTokenSource lifetime = new();

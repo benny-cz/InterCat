@@ -161,7 +161,7 @@ public static class DesktopCaptureRunner
         if (!OperatingSystem.IsWindows())
         {
             report(new(CaptureUiPhase.Unavailable, "Live capture needs Windows",
-                "You can still open an existing session. No capture was started."));
+                "You can still open a saved session or explore the demo. No capture was started."));
             return;
         }
 
@@ -169,7 +169,8 @@ public static class DesktopCaptureRunner
         if (target is null)
         {
             report(new(CaptureUiPhase.Unavailable, "Capture broker is not installed",
-                "Install InterCat with its capture broker beside the Desktop app. Saved sessions remain available."));
+                "Install InterCat with its capture broker beside the Desktop app. Saved sessions and the demo remain "
+                    + "available."));
             return;
         }
 

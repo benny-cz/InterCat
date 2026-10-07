@@ -63,7 +63,8 @@ public static class DemoInvestigation
     /// <summary>
     /// Writes the demo into <paramref name="directory"/>, which must not exist or be empty: its two sessions, each
     /// published whole with its checkpoint, and the investigation that holds them, its hosts named, the server aligned
-    /// to the client by their wall clocks, and a note on what is there.
+    /// to the client by their wall clocks, and a note on what is there. The investigation file is made under another name
+    /// and takes its own last, so a folder that holds it holds the whole demo.
     /// </summary>
     public static DemoInvestigationResult Create(string directory, CancellationToken cancellationToken = default)
     {
@@ -81,19 +82,21 @@ public static class DemoInvestigation
         Write(server, Host.Server, cancellationToken);
 
         string workspace = Path.Combine(full, WorkspaceFileName);
+        string making = workspace + ".making";
         DateTimeOffset made = Began + Recorded + TimeSpan.FromMinutes(5);
-        InvestigationWorkspace.Create(workspace, made);
-        WorkspaceMember clientMember = InvestigationWorkspace.Add(workspace, client, made);
-        WorkspaceMember serverMember = InvestigationWorkspace.Add(workspace, server, made);
-        InvestigationWorkspace.Alias(workspace, clientMember.HostId, "demo client", made);
-        InvestigationWorkspace.Alias(workspace, serverMember.HostId, "demo server", made);
-        InvestigationWorkspace.AlignByWallClock(workspace, serverMember.SessionId, clientMember.SessionId,
+        InvestigationWorkspace.Create(making, made);
+        WorkspaceMember clientMember = InvestigationWorkspace.Add(making, client, made);
+        WorkspaceMember serverMember = InvestigationWorkspace.Add(making, server, made);
+        InvestigationWorkspace.Alias(making, clientMember.HostId, "demo client", made);
+        InvestigationWorkspace.Alias(making, serverMember.HostId, "demo server", made);
+        InvestigationWorkspace.AlignByWallClock(making, serverMember.SessionId, clientMember.SessionId,
             synchronizationNanoseconds: 2_000_000, driftPartsPerMillion: 0,
             "The demo's two hosts are stated to keep their wall clocks within 2 ms of each other.", made);
-        InvestigationWorkspace.AddNote(workspace, Disclosure + " Its client's browser and sync processes talk to its "
+        InvestigationWorkspace.AddNote(making, Disclosure + " Its client's browser and sync processes talk to its "
             + "server's api and files processes over TCP, and its server's api asks its db over loopback. The browser also "
             + "sends UDP to a host neither capture recorded. The server began recording 0.75 s after the client and lost "
             + "two records.", at: null, made);
+        File.Move(making, workspace);
         return new(full, workspace, client, server);
     }
 
