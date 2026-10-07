@@ -38,6 +38,12 @@ public sealed record SessionOverviewBundle(
     public IReadOnlyList<MechanismTimelineLane> MechanismLanes { get; init; } = [];
 
     /// <summary>
+    /// An interval package's coverage within its interval, where its ledger speaks (`redacted-session-v1` §11), whose
+    /// <see cref="MechanismCoverage"/> over its whole time is unknown; null for any other session.
+    /// </summary>
+    public IReadOnlyList<MechanismCoverage>? IntervalCoverage { get; init; }
+
+    /// <summary>
     /// The clock this generation's readings are on, which places anything else read on it - such as a live preview's
     /// bins - on the same presentation axis as the timeline.
     /// </summary>
@@ -277,7 +283,7 @@ public static class SessionOverviewProjector
                         + "process is omitted: every instance stays individual in the ranked table and every source "
                         + "relationship remains addressable.",
                 }),
-            .. (redaction is null ? [] : new[] { SessionRedaction.Summary + " " + redaction.Warning }),
+            .. (redaction is null ? [] : new[] { redaction.Statement(CultureInfo.CurrentCulture) }),
             .. (derivation.CheckpointProblem is not { } problem
                 ? []
                 : new[]
@@ -326,6 +332,9 @@ public static class SessionOverviewProjector
             Size = SessionGrowth.Measure(manifest, rows),
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
+            IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
+                ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])
+                : null,
         };
 
         SegmentReaderV1[] Segments() => opened ??=

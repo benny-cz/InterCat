@@ -80,6 +80,12 @@ internal sealed record SessionLedgerDocument
 {
     public required bool Published { get; init; }
     public required string Rule { get; init; }
+
+    /// <summary>
+    /// Whether <see cref="Mechanisms"/> hold within an interval package's interval, where its ledger speaks; over its whole
+    /// time its coverage is unknown (redacted-session-v1 §11).
+    /// </summary>
+    public bool WithinInterval { get; init; }
     public required IReadOnlyList<SessionMechanismCoverageDocument> Mechanisms { get; init; }
     public required CoverageLedgerV1? Ledger { get; init; }
 }
@@ -319,7 +325,7 @@ internal static class SessionCommand
             : null;
         if (redaction is not null)
         {
-            notes.Add(SessionRedaction.Summary + " " + redaction.Warning);
+            notes.Add(redaction.Statement(CultureInfo.CurrentCulture));
         }
 
         if (manifest is not null && DemoInvestigation.IsDemo(manifest))
@@ -387,13 +393,16 @@ internal static class SessionCommand
             };
 
             CoverageLedgerV1? published = SessionSegments.CoverageLedger(store.Root, manifest);
+            bool withinInterval = published is { HoldsRecordsOutsideItsEpochs: true };
             ledger = new()
             {
                 Published = published is not null,
                 Rule = SessionCoverage.Rule,
+                WithinInterval = withinInterval,
                 Mechanisms =
                 [
-                    .. SessionCoverage.ByMechanism(published).Select(entry => new SessionMechanismCoverageDocument
+                    .. SessionCoverage.ByMechanism(withinInterval ? published! with { HoldsRecordsOutsideItsEpochs = false } : published)
+                        .Select(entry => new SessionMechanismCoverageDocument
                     {
                         Mechanism = entry.Mechanism.ToString(),
                         State = entry.State.ToString(),
@@ -640,7 +649,11 @@ internal static class SessionCommand
         if (document.Redaction is { } redaction)
         {
             ConsoleUi.Field("Redacted package", string.Create(CultureInfo.InvariantCulture,
-                $"{redaction.Policy}, made {redaction.CreatedUtc:u}; pseudonymized, not anonymous"));
+                $"{redaction.Policy}, made {redaction.CreatedUtc:u}; pseudonymized, not anonymous")
+                + (redaction.Interval is { } interval
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"; an interval of its source, ticks {interval.StartTicks:N0} to {interval.EndTicks:N0}")
+                    : string.Empty));
         }
 
         ConsoleUi.Field("Manifest digest", generation.Digest);
@@ -930,6 +943,11 @@ internal static class SessionCommand
             .. ledger.Mechanisms.Where(entry => entry.State == nameof(CoverageState.NotCollected)).Select(entry => entry.Mechanism),
         ];
         // Mechanisms and states named as the window names them (R5); the document keeps the enumeration's names for a tool.
+        if (ledger.WithinInterval)
+        {
+            ConsoleUi.Line("  Within this package's interval, where its coverage speaks; outside it, coverage is unknown:");
+        }
+
         ConsoleUi.Table(["Mechanism", "Coverage", "Why"],
             [.. collected.Select(entry => new[] { MechanismLabel(entry.Mechanism), StateValue(entry.State), entry.Reason })]);
         if (notCollected.Count > 0)

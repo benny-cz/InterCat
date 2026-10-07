@@ -156,6 +156,12 @@ or over several mechanisms, rolls up to the **worst** state of what it spans on 
 ReducedFidelity < PartialGap < NotCollected < UnknownCoverage` (§10.3). It never takes an average. A legacy
 generation is `UnknownCoverage` everywhere, and says that it publishes no ledger.
 
+Coverage over a whole generation is its epochs' when its records lie within their readings, as a capture's and an
+import's always do. An interval package (`redacted-session-v1` §11) can hold lifecycle records from outside the
+interval its epochs speak for; its reader takes that from the package's policy, and the generation's coverage over
+its whole time is then `UnknownCoverage` for every mechanism, because "this package holds records from outside the
+interval its coverage speaks for". Nothing in this file changes for it.
+
 `Covered` states only what this evidence supports. For an import it means a collected descriptor of the mechanism
 delivered records and the file reported no loss. It does not prove the file's session was enabled before its first
 record or after its last, which is why an epoch is bounded by its readings.

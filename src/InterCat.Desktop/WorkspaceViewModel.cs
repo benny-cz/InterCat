@@ -286,8 +286,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? "Synthetic interaction tour; none of these values are Windows capture evidence."
             : graphIdentity == "empty-workspace"
                 ? "No live capture is running. Start exploring to see published evidence."
-                : snapshot.Redaction is not null
-                    ? OverviewWorkspace.RedactedDisclosure + " " + OverviewWorkspace.DisclosureFor(snapshot)
+                : snapshot.Redaction is { } redaction
+                    ? OverviewWorkspace.RedactedDisclosure
+                        + (redaction.Interval is { } interval ? " " + SessionRedaction.Holds(interval, CultureInfo.CurrentCulture) : string.Empty)
+                        + " " + OverviewWorkspace.DisclosureFor(snapshot)
                     : snapshot.Demo
                         ? DemoInvestigation.Disclosure + " " + OverviewWorkspace.DisclosureFor(snapshot)
                         : OverviewWorkspace.DisclosureFor(snapshot);

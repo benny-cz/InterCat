@@ -20,6 +20,12 @@ internal sealed record PackageDocument
     public required string PackageContract { get; init; }
     public required string Policy { get; init; }
     public required long Rows { get; init; }
+
+    /// <summary>The rows the source holds; <see cref="Rows"/> is what the package holds of them.</summary>
+    public required long SourceRows { get; init; }
+
+    /// <summary>The interval an interval package holds (redacted-session-v1 §11); null for a whole session's.</summary>
+    public required RedactedSessionInterval? Interval { get; init; }
     public required long SourceFieldRows { get; init; }
     public required long SourceFieldRowsRedacted { get; init; }
     public required bool CoverageLedger { get; init; }
@@ -104,18 +110,24 @@ internal static class PackageCommand
 
         string? outputOption = command.TakeOption("--output");
         string? reportOption = command.TakeOption("--report");
+        string? intervalText = command.TakeOption("--interval");
         string? sessionOption = command.TakePositional();
         bool redacted = command.TryTakeFlag("--redacted");
         bool original = command.TryTakeFlag("--original");
         bool check = command.TryTakeFlag("--check");
         bool overwrite = command.TryTakeFlag("--overwrite");
         bool json = command.TryTakeFlag("--json");
+        TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
         string? problem = command.TryReportUnknown(out string? unknown) ? CommandLine.Unknown(unknown!)
             : sessionOption is null ? "A session directory is required: icat package <directory> --redacted --output <new-directory>."
             : original && redacted ? "Choose one package: --redacted or --original."
             : !redacted && !original
                 ? "Choose what to package: --redacted writes a reopenable session with pseudonymized values; --original "
                     + "copies the session's evidence exactly, unredacted."
+            : intervalText is not null && !redacted
+                ? "--interval scopes a redacted package; an original package copies the session's whole generation."
+            : intervalText is not null && interval is null
+                ? tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
             : !check && outputOption is null
                 ? "--output <new-directory> is required; a package is written only where it is asked to be."
             : null;
@@ -166,13 +178,14 @@ internal static class PackageCommand
         {
             if (check)
             {
-                RedactedSessionPackagePreview preview = RedactedSessionPackage.Preview(store, progress, cancellationToken);
+                RedactedSessionPackagePreview preview = RedactedSessionPackage.Preview(store, interval, progress,
+                    cancellationToken);
                 document = Describe(session, preview, result: null);
             }
             else
             {
                 RedactedSessionPackageResult result = RedactedSessionPackage.Create(store, destination!,
-                    DateTimeOffset.UtcNow, progress, cancellationToken);
+                    DateTimeOffset.UtcNow, interval, progress, cancellationToken);
                 document = Describe(session, result.Source, result);
             }
         }
@@ -224,10 +237,20 @@ internal static class PackageCommand
             notes.Add("Review the package before sharing it. Deleting the source afterwards is not a secure erase on an SSD.");
         }
 
-        if (!source.CoverageLedger)
+        if (source.Interval is { } interval)
+        {
+            notes.Add(SessionRedaction.Holds(interval, CultureInfo.CurrentCulture));
+        }
+
+        if (!source.SourceCoverageLedger)
         {
             notes.Add("The source published no coverage ledger, so the package's coverage and loss are unknown, as the "
                 + "source's are.");
+        }
+        else if (!source.CoverageLedger)
+        {
+            notes.Add("No epoch of the source's coverage ledger spoke for any part of the interval, so the package's "
+                + "coverage and loss are unknown, as the source's are there.");
         }
 
         return new()
@@ -243,6 +266,8 @@ internal static class PackageCommand
             PackageContract = RedactedSessionPackage.Contract,
             Policy = RedactedSessionPackage.Policy,
             Rows = source.Rows,
+            SourceRows = source.SourceRows,
+            Interval = source.Interval,
             SourceFieldRows = source.SourceFieldRows,
             SourceFieldRowsRedacted = source.SourceFieldRowsRedacted,
             CoverageLedger = source.CoverageLedger,
@@ -297,12 +322,22 @@ internal static class PackageCommand
         ConsoleUi.Heading(document.Performed ? "Redacted session package" : "Redacted session package, measured only");
         ConsoleUi.Field("Source", $"{document.Source} · generation {ConsoleUi.Count(document.SourceGeneration)}");
         if (document.Directory is { } directory) ConsoleUi.Field("Written to", directory);
+        if (document.Interval is { } interval)
+        {
+            ConsoleUi.Field("Interval", string.Create(CultureInfo.CurrentCulture,
+                $"ticks {interval.StartTicks:N0} to {interval.EndTicks:N0} of the source's "
+                + $"{ConsoleUi.Count(document.SourceRows)} rows, with {ConsoleUi.Count(interval.LifecycleRowsOutside)} "
+                + $"lifecycle {(interval.LifecycleRowsOutside == 1 ? "record" : "records")} from outside it"));
+        }
+
         ConsoleUi.Field("Rows", ConsoleUi.Count(document.Rows)
             + (document.SourceFieldRows == 0 ? string.Empty
                 : $" · {ConsoleUi.Count(document.SourceFieldRows)} source fields, {ConsoleUi.Count(document.SourceFieldRowsRedacted)} redacted"));
         ConsoleUi.Field("Coverage ledger", document.CoverageLedger
-            ? "rewritten under pseudonymous providers; states and losses unchanged"
-            : "none in the source");
+            ? document.Interval is null
+                ? "rewritten under pseudonymous providers; states and losses unchanged"
+                : "rewritten under pseudonymous providers, speaking only for the interval; states and losses unchanged there"
+            : document.Interval is null ? "none in the source" : "none: no epoch of the source's spoke for the interval");
         ConsoleUi.Field("Left out", document.LeftOut.Description);
         if (document.Pseudonyms is { } counts)
         {
@@ -454,12 +489,16 @@ internal static class PackageCommand
         ConsoleUi.Line("  as the same session. It is unredacted: names, IDs, addresses, times and every admitted record");
         ConsoleUi.Line("  as captured. Each file is checked as it is copied and the package reopened before it appears.");
         ConsoleUi.Line("  A redacted package is copied as it is, pseudonymized: never an original or unredacted copy.");
-        ConsoleUi.Line("icat package <session-directory> --redacted --output <new-directory> [--check] [--json]");
-        ConsoleUi.Line("             [--report <path>] [--overwrite]");
+        ConsoleUi.Line("icat package <session-directory> --redacted --output <new-directory> [--interval <start:end>]");
+        ConsoleUi.Line("             [--check] [--json] [--report <path>] [--overwrite]");
         ConsoleUi.Line("  Writes a reopenable redacted session: a new session directory with fresh identities, whose");
         ConsoleUi.Line("  names, process and thread IDs, addresses, ports and identifiers are random pseudonyms and");
         ConsoleUi.Line("  whose records are synthetic metadata. It leaves out the original journal, bodies, extended");
         ConsoleUi.Line("  data, locators and absolute clock readings, and is verified before it is published.");
+        ConsoleUi.Line("  --interval holds only the records from start to end, in 100-nanosecond session ticks as");
+        ConsoleUi.Line("  icat evidence reads them, and from outside it the lifecycle records of the processes it holds,");
+        ConsoleUi.Line("  so they keep their names; its coverage outside the interval is unknown. It packages a session");
+        ConsoleUi.Line("  too large to package whole, an interval of at most 10,000,000 rows at a time.");
         ConsoleUi.Line("  --check measures what the package would hold and writes nothing. --report also writes the");
         ConsoleUi.Line("  JSON report to a file. Pseudonymized is not anonymous: review a package before sharing it.");
     }
@@ -497,6 +536,7 @@ internal static class PackageCommand
             tenth = now;
             string what = value.Stage switch
             {
+                RedactedPackageStage.Selecting => "Finding the interval's records and their processes",
                 RedactedPackageStage.Inspecting => "Reading the source's rows",
                 RedactedPackageStage.Writing => "Writing pseudonymized rows",
                 _ => "Reopening and verifying the package",

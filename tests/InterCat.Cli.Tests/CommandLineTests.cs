@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis;
@@ -1910,6 +1911,69 @@ public sealed class CommandLineTests : IDisposable
         }
 
         return column;
+    }
+
+    [Fact(DisplayName = "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words")]
+    public async Task AnIntervalPackageSaysWhatItHolds()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-interval-package-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // The client's send at tick 5,000 lies in the interval; its creation at tick 10 is its process's lifecycle
+            // record; its send at tick 100 and the other process's records lie outside it and are left out.
+            string held = Held(folder, "source", "interval-host",
+            [
+                Timed(Lifecycle(10, ObservationKind.Create, 4_242, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+                Timed(Lifecycle(20, ObservationKind.Create, 5_353, 2) with { ResourceName = @"C:\Tools\other.exe" }),
+                Timed(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 10).Between("10.0.0.1:40000", "10.0.0.2:443")),
+                Timed(Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 400, 4_242, 11).Between("10.0.0.1:40000", "10.0.0.2:443")),
+                Timed(Transfer(9_000, ObservationKind.Send, AccountingSide.SendSide, 500, 5_353, 12).Between("10.0.0.3:40001", "10.0.0.4:443")),
+            ], TestSessions.TransportLedger(tcp: true, udp: false));
+            string package = Path.Combine(folder, "package");
+            (InterCatExitCode code, string output, string said) = await Run("package", held, "--redacted", "--interval", "4000:6000",
+                "--output", package, "--json");
+            Assert.True(code == InterCatExitCode.Success, said);
+            using JsonDocument document = JsonDocument.Parse(output);
+            JsonElement root = document.RootElement;
+            Assert.Equal((2L, 5L), (root.GetProperty("rows").GetInt64(), root.GetProperty("sourceRows").GetInt64()));
+            JsonElement interval = root.GetProperty("interval");
+            Assert.Equal((4_000L, 6_000L, 1L), (interval.GetProperty("startTicks").GetInt64(), interval.GetProperty("endTicks").GetInt64(),
+                interval.GetProperty("lifecycleRowsOutside").GetInt64()));
+            var holds = new RedactedSessionInterval { StartTicks = 4_000, EndTicks = 6_000, LifecycleRowsOutside = 1 };
+            Assert.Contains(SessionRedaction.Holds(holds, CultureInfo.CurrentCulture),
+                root.GetProperty("notes").EnumerateArray().Select(note => note.GetString()));
+
+            // The package says what it holds wherever it is read, in the sentence the window shows.
+            SessionStore opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package));
+            SessionRedaction redaction = SessionRedaction.Read(opened.Root, opened.Current!)!;
+            opened.ReleaseSegmentReaders();
+            (InterCatExitCode shown, string text, string error) = await Run("session", package);
+            Assert.True(shown == InterCatExitCode.Success, error);
+            Assert.Contains(redaction.Statement(CultureInfo.CurrentCulture), text, StringComparison.Ordinal);
+            Assert.Contains(string.Create(CultureInfo.CurrentCulture, $"an interval of its source, ticks {4_000:N0} to {6_000:N0}"),
+                text, StringComparison.Ordinal);
+
+            // Its ledger's states are those within the interval, said to be, where its whole time's coverage is unknown.
+            Assert.Contains("Within this package's interval, where its coverage speaks; outside it, coverage is unknown:", text,
+                StringComparison.Ordinal);
+            Assert.Matches(@"(?m)^\s*TCP\s+covered\s", text);
+
+            // An original package copies the whole generation, and an interval is a start before an end.
+            (InterCatExitCode original, _, string refused) = await Run("package", held, "--original", "--interval", "4000:6000",
+                "--output", Path.Combine(folder, "original"));
+            Assert.Equal(InterCatExitCode.InvalidInvocation, original);
+            Assert.Contains("--interval scopes a redacted package", refused, StringComparison.Ordinal);
+            (InterCatExitCode reversed, _, string backwards) = await Run("package", held, "--redacted", "--interval", "6000:4000",
+                "--output", Path.Combine(folder, "reversed"));
+            Assert.Equal(InterCatExitCode.InvalidInvocation, reversed);
+            Assert.Contains("--interval must be start:end", backwards, StringComparison.Ordinal);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+
+        static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

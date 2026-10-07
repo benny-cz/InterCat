@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -100,6 +101,60 @@ public sealed class RedactedPackageWindowTests
             Assert.DoesNotContain(sources, source => source.Contains(PrivateProvider.ToString("D"), StringComparison.Ordinal));
             Dispatch();
             Save(window, "redacted-package-evidence-1456x939.png");
+        }
+        finally
+        {
+            window.Close();
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R18: an interval package opened in the window says what it holds in icat's words")]
+    public async Task AnIntervalPackageSaysWhatItHolds()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 1_000 },
+            Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 500_000 },
+            Transfer(9_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 900_000 },
+        ], coverage: TransportLedger(tcp: true, udp: false));
+        string destination = MainWindow.NewPackageDirectory(Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Packages"),
+            DateTimeOffset.Now);
+        RedactedSessionPackage.Create(session.Store, destination, Committed, new TimeRange(4_000, 6_000));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(destination));
+            Dispatch();
+            SessionStore opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(destination));
+            SessionRedaction redaction = SessionRedaction.Read(opened.Root, opened.Current!)!;
+            opened.ReleaseSegmentReaders();
+
+            // The window states the package as icat session's notes do: what it is, the part of its source it holds, and
+            // the warning, in one statement.
+            Assert.Equal(new RedactedSessionInterval { StartTicks = 4_000, EndTicks = 6_000, LifecycleRowsOutside = 1 }, redaction.Interval);
+            Assert.Equal("Redacted session package open", window.GetControl<TextBlock>("CaptureStatus").Text);
+            Assert.Equal(redaction.Statement(System.Globalization.CultureInfo.CurrentCulture),
+                window.GetControl<TextBlock>("CaptureDetail").Text);
+            Assert.Contains(SessionRedaction.Holds(redaction.Interval!, System.Globalization.CultureInfo.CurrentCulture),
+                window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+
+            // And beneath its views, wherever the status card has moved on, after what a package is.
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.StartsWith(OverviewWorkspace.RedactedDisclosure + " "
+                + SessionRedaction.Holds(redaction.Interval!, System.Globalization.CultureInfo.CurrentCulture) + " ",
+                workspace.WorkspaceDisclosure, StringComparison.Ordinal);
+
+            // Its health strip says what its ledger says within the interval, and that outside it nothing is known; the
+            // time scope of the whole of it says its coverage is unknown, and why.
+            Assert.Equal("No loss reported within this package's interval · coverage unknown outside it",
+                window.GetControl<TextBlock>("HealthLossText").Text);
+            Assert.Contains(SessionCoverage.OutsideItsEpochs, workspace.ScopeCoverage, StringComparison.Ordinal);
+            Assert.True(workspace.ScopeCoverageLimited);
         }
         finally
         {

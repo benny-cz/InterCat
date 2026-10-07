@@ -17,6 +17,10 @@ public static class SessionCoverage
     /// <summary>The rule these states follow; results name it beside the states they carry.</summary>
     public const string Rule = "coverage-v2";
 
+    /// <summary>Why a whole generation whose records reach outside its ledger's epochs has unknown coverage.</summary>
+    public const string OutsideItsEpochs =
+        "this package holds records from outside the interval its coverage speaks for";
+
     /// <summary>Every mechanism's coverage over an interval, or over every epoch when none is given.</summary>
     public static IReadOnlyList<MechanismCoverage> ByMechanism(CoverageLedgerV1? ledger, TimeRange? interval = null) =>
         ForMechanisms(ledger, Enum.GetValues<Mechanism>(), interval);
@@ -55,6 +59,13 @@ public static class SessionCoverage
         if (ledger is null)
         {
             return new(mechanism, CoverageState.UnknownCoverage, "this generation publishes no coverage ledger");
+        }
+
+        // A whole generation spans the records it holds, so it is no better covered than they are: an interval package's
+        // records from outside its interval lie where no epoch speaks.
+        if (interval is null && ledger.HoldsRecordsOutsideItsEpochs)
+        {
+            return new(mechanism, CoverageState.UnknownCoverage, OutsideItsEpochs);
         }
 
         List<CoverageEpochV1> spanned =
@@ -124,7 +135,7 @@ public static class SessionCoverage
     /// </summary>
     public static CoverageState Capture(CoverageLedgerV1? ledger)
     {
-        if (ledger is null)
+        if (ledger is null || ledger.HoldsRecordsOutsideItsEpochs)
         {
             return CoverageState.UnknownCoverage;
         }

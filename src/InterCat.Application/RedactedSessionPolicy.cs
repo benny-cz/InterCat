@@ -1,5 +1,7 @@
+using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using InterCat.Domain;
 using InterCat.Storage;
 
 namespace InterCat.Application;
@@ -43,6 +45,25 @@ public sealed record RedactedSessionCounts
 
     /// <summary>Connection, request-packet, file-object and file-key values.</summary>
     public required int KernelObjects { get; init; }
+}
+
+/// <summary>
+/// The part of its source's time an interval package holds (`contracts/redacted-session-v1.md` §11): the rows whose
+/// session time lies in it, half-open in 100-nanosecond ticks as every interval is read, and from outside it only the
+/// lifecycle records of the processes it holds.
+/// </summary>
+public sealed record RedactedSessionInterval
+{
+    public required long StartTicks { get; init; }
+
+    public required long EndTicks { get; init; }
+
+    /// <summary>The lifecycle records held from outside the interval, so the processes it holds keep their names.</summary>
+    public required long LifecycleRowsOutside { get; init; }
+
+    /// <summary>The interval as every view reads one.</summary>
+    [JsonIgnore]
+    public TimeRange Range => new(StartTicks, EndTicks);
 }
 
 /// <summary>
@@ -92,6 +113,13 @@ public sealed record RedactedSessionPolicyV1
     public required IReadOnlyList<string> FixedPoints { get; init; }
 
     public required RedactedSessionCounts Counts { get; init; }
+
+    /// <summary>
+    /// The interval an interval package holds; absent from a whole-session package, whose file is as it always was. A
+    /// reader that does not know it refuses the package rather than read it as its source's whole time.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public RedactedSessionInterval? Interval { get; init; }
 
     public byte[] Encode()
     {
@@ -153,6 +181,14 @@ public sealed record RedactedSessionPolicyV1
         {
             throw new InvalidDataException("The redaction policy's disclosures or counts are incomplete or out of range.");
         }
+
+        if (Interval is { } interval && (!TimeRange.TryCreate(interval.StartTicks, interval.EndTicks, out _)
+            || interval.LifecycleRowsOutside < 0 || interval.LifecycleRowsOutside >= Counts.Rows))
+        {
+            throw new InvalidDataException(
+                "The redaction policy's interval does not end after it starts, or holds more records from outside it than "
+                + "the package holds within it.");
+        }
     }
 }
 
@@ -173,6 +209,29 @@ public sealed record SessionRedaction(
         "Redacted session package: names, process and thread IDs, addresses, ports and identifiers are random "
         + "pseudonyms consistent only within this package, and its records are synthetic metadata with no original payload.";
 
+    /// <summary>The interval an interval package holds, or null for a package of its source's whole time.</summary>
+    public RedactedSessionInterval? Interval { get; init; }
+
+    /// <summary>
+    /// What every reader says of the package, in these words: what it is, the part of its source's time it holds when it
+    /// holds a part, and its warning.
+    /// </summary>
+    public string Statement(IFormatProvider? culture = null) => Interval is { } interval
+        ? Summary + " " + Holds(interval, culture) + " " + Warning
+        : Summary + " " + Warning;
+
+    /// <summary>What an interval package holds, said wherever it is read.</summary>
+    public static string Holds(RedactedSessionInterval interval, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(interval);
+        return $"It holds its source's records from {Seconds(interval.StartTicks, culture)} to "
+            + $"{Seconds(interval.EndTicks, culture)} and, outside that interval, only the lifecycle records of the "
+            + "processes it holds, so they keep their names; its coverage outside the interval is unknown.";
+    }
+
+    private static string Seconds(long ticks, IFormatProvider? culture) =>
+        (ticks / 10_000_000m).ToString("0.000######", culture ?? CultureInfo.CurrentCulture) + " s";
+
     /// <summary>The package's policy, or null when the generation names none (an ordinary session).</summary>
     public static SessionRedaction? Read(IOwnedDirectory directory, SessionManifestV1 manifest)
     {
@@ -184,6 +243,9 @@ public sealed record SessionRedaction(
         }
 
         RedactedSessionPolicyV1 policy = RedactedSessionPolicyV1.Decode(bytes);
-        return new(policy.Contract, policy.Policy, policy.CreatedUtc, policy.Warning, policy.PseudonymScope, policy.Counts);
+        return new(policy.Contract, policy.Policy, policy.CreatedUtc, policy.Warning, policy.PseudonymScope, policy.Counts)
+        {
+            Interval = policy.Interval,
+        };
     }
 }

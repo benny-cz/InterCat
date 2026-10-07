@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -11,6 +12,9 @@ public enum RedactedPackageStage
     Inspecting = 1,
     Writing = 2,
     Verifying = 3,
+
+    /// <summary>An interval package's first read: which processes the interval's records belong to (§11).</summary>
+    Selecting = 4,
 }
 
 /// <summary>How far one stage is: rows done of the rows it reads.</summary>
@@ -37,6 +41,17 @@ public sealed record RedactedSessionPackagePreview(
 
     /// <summary>What those chunks weigh.</summary>
     public long SourceContentBytes { get; init; }
+
+    /// <summary>
+    /// The rows the source holds. <see cref="Rows"/> is what the package holds: all of them, or an interval's (§11).
+    /// </summary>
+    public long SourceRows { get; init; }
+
+    /// <summary>Whether the source published a coverage ledger; <see cref="CoverageLedger"/> is whether the package carries one.</summary>
+    public bool SourceCoverageLedger { get; init; }
+
+    /// <summary>The interval an interval package holds, with the lifecycle records it holds from outside it; null for a whole one.</summary>
+    public RedactedSessionInterval? Interval { get; init; }
 }
 
 /// <summary>A published, verified package: where it is, its new identity, and what the verification covered.</summary>
@@ -97,12 +112,23 @@ public static class RedactedSessionPackage
     public static RedactedSessionPackagePreview Preview(
         SessionStore source,
         IProgress<RedactedPackageProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        Preview(source, interval: null, progress, cancellationToken);
+
+    /// <summary>
+    /// Measures what a package of this session would hold - of its whole time, or of <paramref name="interval"/> (§11) -
+    /// writing nothing. An interval's measure joins the fields of the rows it holds, as making the package does.
+    /// </summary>
+    public static RedactedSessionPackagePreview Preview(
+        SessionStore source,
+        TimeRange? interval,
+        IProgress<RedactedPackageProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(source);
         using EvidenceLease lease = source.AcquireLease();
-        SourceScan scan = Inspect(source.Root, lease.Manifest, new RedactedSessionPseudonyms(), progress, cancellationToken,
-            joinFields: false);
+        SourceScan scan = Inspect(source.Root, lease.Manifest, new RedactedSessionPseudonyms(), interval, progress,
+            cancellationToken, joinFields: false);
         return scan.Preview;
     }
 
@@ -114,6 +140,19 @@ public static class RedactedSessionPackage
         SessionStore source,
         string destination,
         DateTimeOffset createdUtc,
+        IProgress<RedactedPackageProgress>? progress = null,
+        CancellationToken cancellationToken = default) =>
+        Create(source, destination, createdUtc, interval: null, progress, cancellationToken);
+
+    /// <summary>
+    /// Builds, verifies and publishes a package of this session's whole time, or of <paramref name="interval"/> (§11):
+    /// the rows whose session time lies in it and, from outside it, the lifecycle records of the processes it holds.
+    /// </summary>
+    public static RedactedSessionPackageResult Create(
+        SessionStore source,
+        string destination,
+        DateTimeOffset createdUtc,
+        TimeRange? interval,
         IProgress<RedactedPackageProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
@@ -142,7 +181,7 @@ public static class RedactedSessionPackage
         using EvidenceLease lease = source.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         var pseudonyms = new RedactedSessionPseudonyms();
-        SourceScan scan = Inspect(source.Root, manifest, pseudonyms, progress, cancellationToken);
+        SourceScan scan = Inspect(source.Root, manifest, pseudonyms, interval, progress, cancellationToken);
         (RedactedPackageLeakScanner identities, RedactedPackageLeakScanner names) = Needles(source.Root, manifest, scan, pseudonyms);
 
         Directory.CreateDirectory(parent);
@@ -264,6 +303,9 @@ public static class RedactedSessionPackage
 
         private int IndexOf(RecordAddress address) => Array.BinarySearch(addresses, 0, Count, address);
 
+        /// <summary>Whether the observation at <paramref name="address"/> is one the join holds.</summary>
+        public bool Holds(RecordAddress address) => IndexOf(address) >= 0;
+
         /// <summary>
         /// Lets the join go once every field is written. Verification never reads it, and the scan that holds it lives
         /// on through verification, where the join was the largest thing still held.
@@ -296,6 +338,117 @@ public static class RedactedSessionPackage
             return ordinal != 0;
         }
     }
+
+    /// <summary>
+    /// The rows a package holds (§11): every row of its source, or the rows whose session time lies in an interval - its
+    /// presentation tick, truncated as every interval reads a row's - and, from outside it, every lifecycle record of each
+    /// PID a row in it belongs to (`entities-v1` §2, §2a). A PID's instances are derived from its lifecycle records alone,
+    /// so keeping all of them keeps its instances, their names and every binding of the interval's rows as the source
+    /// derives them: a reused PID's later holder stays a later holder.
+    /// </summary>
+    private sealed class Selection
+    {
+        private readonly HashSet<int> processes;
+
+        private Selection(TimeRange? interval, HashSet<int> processes, long rows, long lifecycleRowsOutside)
+        {
+            Interval = interval;
+            this.processes = processes;
+            Rows = rows;
+            LifecycleRowsOutside = lifecycleRowsOutside;
+        }
+
+        public TimeRange? Interval { get; }
+
+        /// <summary>The rows the package holds.</summary>
+        public long Rows { get; }
+
+        /// <summary>The lifecycle records held from outside the interval.</summary>
+        public long LifecycleRowsOutside { get; }
+
+        public static Selection Whole(long rows) => new(null, [], rows, 0);
+
+        public static Selection Of(TimeRange interval, HashSet<int> processes, long within, long lifecycleRowsOutside) =>
+            new(interval, processes, checked(within + lifecycleRowsOutside), lifecycleRowsOutside);
+
+        public bool Holds(ObservationRowV1 row) =>
+            Interval is not { } interval
+            || Within(interval, row.SessionRelativeTicks)
+            || (ProcessInstanceIndex.IsLifecycleRecord(row.Mechanism, row.Kind)
+                && RecordAttribution.OwnerOf(row.OwnerProcessId, row.Mechanism, row.HeaderProcessId) is { } owner
+                && processes.Contains(owner));
+
+        /// <summary>Whether a session time lies in the interval, read as `icat evidence` and `icat export` read one.</summary>
+        public static bool Within(TimeRange interval, long? nanoseconds) =>
+            nanoseconds is { } at && interval.Contains(at / 100);
+    }
+
+    /// <summary>
+    /// An interval package's first read (§11): how many rows lie in the interval, the PIDs they belong to, and how many
+    /// lifecycle records those PIDs have outside it. It reads five columns of each row and holds a PID's count, never a row.
+    /// </summary>
+    private static Selection Select(
+        IOwnedDirectory root,
+        SessionManifestV1 manifest,
+        IReadOnlyList<string> segmentNames,
+        TimeRange interval,
+        long total,
+        IProgress<RedactedPackageProgress>? progress,
+        CancellationToken cancellationToken)
+    {
+        long within = 0;
+        long read = 0;
+        var processes = new HashSet<int>();
+        var lifecycleOutside = new Dictionary<int, long>();
+        foreach (string name in segmentNames)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentReaderV1 segment = SessionSegments.Open(root, manifest, name);
+            SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
+            SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
+            SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
+            SegmentColumnSlice owners = segment.Slice(SegmentColumnId.OwnerProcessId);
+            SegmentColumnSlice headers = segment.Slice(SegmentColumnId.HeaderProcessId);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                if ((read & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                if (read % ProgressInterval == 0) progress?.Report(new(RedactedPackageStage.Selecting, read, total));
+                read++;
+                var mechanism = (Mechanism)mechanisms.UnsignedAt(row)!.Value;
+                int? owner = RecordAttribution.OwnerOf(owners.SignedAt(row) is { } payload ? (int)payload : null, mechanism,
+                    (int)headers.SignedAt(row)!.Value);
+                if (Selection.Within(interval, times.SignedAt(row)))
+                {
+                    within++;
+                    if (owner is { } process) processes.Add(process);
+                }
+                else if (owner is { } process
+                    && ProcessInstanceIndex.IsLifecycleRecord(mechanism, (ObservationKind)kinds.UnsignedAt(row)!.Value))
+                {
+                    lifecycleOutside[process] = lifecycleOutside.GetValueOrDefault(process) + 1;
+                }
+            }
+        }
+
+        progress?.Report(new(RedactedPackageStage.Selecting, read, total));
+        if (within == 0)
+        {
+            throw new InvalidOperationException(
+                $"No record of this session lies from {TickText(interval.StartTicks)} to {TickText(interval.EndTicks)}, so "
+                + "there is nothing to package. Nothing was written.");
+        }
+
+        long outside = processes.Sum(process => lifecycleOutside.GetValueOrDefault(process));
+        Selection selection = Selection.Of(interval, processes, within, outside);
+        return selection.Rows <= MaximumRows
+            ? selection
+            : throw new InvalidOperationException(
+                $"The interval holds {selection.Rows:N0} rows with its processes' lifecycle records; a redacted package holds "
+                + $"at most {MaximumRows:N0} in this version. Narrow the interval. Nothing was written.");
+    }
+
+    private static string TickText(long ticks) =>
+        (ticks / 10_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
 
     private readonly record struct Descriptor(Guid Provider, ushort EventId, byte Version, string Fingerprint);
 
@@ -337,6 +490,8 @@ public static class RedactedSessionPackage
     {
         public required SourceClockDescriptor Clock { get; init; }
 
+        public required Selection Selection { get; init; }
+
         public required CaptureId Capture { get; init; }
 
         public required NormalizerContractVersion Derivation { get; init; }
@@ -376,6 +531,7 @@ public static class RedactedSessionPackage
         IOwnedDirectory root,
         SessionManifestV1 manifest,
         RedactedSessionPseudonyms pseudonyms,
+        TimeRange? interval,
         IProgress<RedactedPackageProgress>? progress,
         CancellationToken cancellationToken,
         bool joinFields = true)
@@ -400,15 +556,24 @@ public static class RedactedSessionPackage
                 + "(icat follow), and its derived session is what a package is made from.");
         }
 
-        // The bound is checked from the segment headers alone, so a session too large to package is refused at once.
+        // A whole package's bound is checked from the segment headers alone, so a session too large to package is refused
+        // at once; an interval's, once its first read has counted the rows it holds.
         long total = segmentNames.Sum(name => (long)SessionSegments.DeclaredRowCount(root, manifest, name));
-        if (total > MaximumRows)
+        if (interval is null && total > MaximumRows)
         {
             throw new InvalidOperationException(
                 $"This session has {total:N0} rows; a redacted package holds at most {MaximumRows:N0} in this version. "
                 + "Nothing was written.");
         }
 
+        Selection selection = interval is { } range
+            ? Select(root, manifest, segmentNames, range, total, progress, cancellationToken)
+            : Selection.Whole(total);
+        bool scoped = selection.Interval is not null;
+
+        // An interval package's join is the rows it holds, sized by them: a field is carried when its row is.
+        RecordAddress[] held = scoped ? new RecordAddress[selection.Rows] : [];
+        int heldCount = 0;
         CaptureId? capture = null;
         NormalizerContractVersion? derivation = null;
         var tally = new PackageTally();
@@ -416,6 +581,7 @@ public static class RedactedSessionPackage
         var names = new HashSet<(RedactedNameKind Kind, string Key)>();
         Int128? earliest = null;
         long rows = 0;
+        long read = 0;
         foreach (string name in segmentNames)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -423,10 +589,27 @@ public static class RedactedSessionPackage
             RequireOneCapture(segment, clock, ref capture, ref derivation);
             for (int index = 0; index < segment.RowCount; index++)
             {
-                if ((rows & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                if (rows % ProgressInterval == 0) progress?.Report(new(RedactedPackageStage.Inspecting, rows, total));
-                rows++;
+                if ((read & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                if (read % ProgressInterval == 0) progress?.Report(new(RedactedPackageStage.Inspecting, read, total));
+                read++;
                 ObservationRowV1 row = segment.Row(index);
+                if (!selection.Holds(row))
+                {
+                    SeeLeftOut(row, pseudonyms);
+                    continue;
+                }
+
+                if (scoped)
+                {
+                    if (heldCount == held.Length)
+                    {
+                        throw new InvalidDataException("The source's rows changed while the package read them.");
+                    }
+
+                    held[heldCount++] = new(row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey);
+                }
+
+                rows++;
                 descriptors.Add(new(row.ProviderId, row.EventId, row.DescriptorVersion, row.SchemaFingerprint));
                 pseudonyms.SeeProvider(row.ProviderId);
                 pseudonyms.SeeFingerprint(row.SchemaFingerprint);
@@ -459,10 +642,18 @@ public static class RedactedSessionPackage
             }
         }
 
+        if (scoped && rows != selection.Rows)
+        {
+            throw new InvalidDataException("The source's rows changed while the package read them.");
+        }
+
         // The observations the fields belong to. A segment lists an observation's fields together, so a first pass counts
         // the runs of one address and the array is sized by owners, not by field rows, then filled once and never grown.
-        // A preview writes nothing and needs no join.
-        var fieldAddresses = joinFields ? new RecordAddress[FieldOwnerRuns(root, manifest, fieldNames, cancellationToken)] : [];
+        // A preview of a whole package writes nothing and needs no join; an interval's joins the rows it holds.
+        FieldOwners? heldOwners = scoped ? FieldOwners.From(held, heldCount) : null;
+        var fieldAddresses = !scoped && joinFields
+            ? new RecordAddress[FieldOwnerRuns(root, manifest, fieldNames, cancellationToken)]
+            : [];
         int filled = 0;
         long fieldRows = 0;
         long redactedFields = 0;
@@ -476,7 +667,12 @@ public static class RedactedSessionPackage
                 if ((index & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
                 SourceFieldRowV1 field = segment.FieldRow(index);
                 var address = new RecordAddress(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal, field.FactKey);
-                if (joinFields && (filled == 0 || !fieldAddresses[filled - 1].Equals(address)))
+                if (heldOwners is not null)
+                {
+                    // A field of a row the interval package leaves out goes with its row.
+                    if (!heldOwners.Holds(address)) continue;
+                }
+                else if (joinFields && (filled == 0 || !fieldAddresses[filled - 1].Equals(address)))
                 {
                     if (filled == fieldAddresses.Length)
                     {
@@ -512,7 +708,15 @@ public static class RedactedSessionPackage
             }
         }
 
-        CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(root, manifest);
+        // The source's ledger, as the package will state it: an interval package's epochs speak only for the interval.
+        CoverageLedgerV1? sourceLedger = SessionSegments.CoverageLedger(root, manifest);
+        CoverageLedgerV1? ledger = Clip(sourceLedger, selection.Interval, clock);
+        foreach (CoverageEpochV1 epoch in sourceLedger?.Epochs ?? [])
+        {
+            foreach (CoverageCollectedV1 collected in epoch.Collected) pseudonyms.SeeProvider(collected.ProviderId);
+            foreach (CoverageDeliveryV1 delivery in epoch.Deliveries) pseudonyms.SeeProvider(delivery.ProviderId);
+        }
+
         foreach (CoverageEpochV1 epoch in ledger?.Epochs ?? [])
         {
             foreach (long? reading in new[]
@@ -524,23 +728,21 @@ public static class RedactedSessionPackage
                 Int128 relative = (Int128)value - clock.CaptureEpochNativeTicks;
                 earliest = earliest is { } seen && seen <= relative ? seen : relative;
             }
-
-            foreach (CoverageCollectedV1 collected in epoch.Collected) pseudonyms.SeeProvider(collected.ProviderId);
-            foreach (CoverageDeliveryV1 delivery in epoch.Deliveries) pseudonyms.SeeProvider(delivery.ProviderId);
         }
 
         tally.Distinct("names", names.Count);
         StoreDependency[] journals = [.. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Journal)];
-        progress?.Report(new(RedactedPackageStage.Inspecting, rows, total));
+        progress?.Report(new(RedactedPackageStage.Inspecting, read, total));
         return new()
         {
             Clock = clock,
+            Selection = selection,
             Capture = capture!.Value,
             Derivation = derivation!.Value,
             Segments = segmentNames,
             FieldSegments = fieldNames,
             Rows = rows,
-            FieldOwners = FieldOwners.From(fieldAddresses, filled),
+            FieldOwners = heldOwners ?? FieldOwners.From(fieldAddresses, filled),
             Descriptors = [.. descriptors
                 .OrderBy(descriptor => descriptor.Provider)
                 .ThenBy(descriptor => descriptor.EventId)
@@ -565,8 +767,109 @@ public static class RedactedSessionPackage
                 SourceContentChunks = manifest.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Content),
                 SourceContentBytes = manifest.Dependencies
                     .Where(dependency => dependency.Kind == StoreDependencyKind.Content).Sum(dependency => dependency.LengthBytes),
+                SourceRows = read,
+                SourceCoverageLedger = sourceLedger is not null,
+                Interval = selection.Interval is { } kept
+                    ? new()
+                    {
+                        StartTicks = kept.StartTicks,
+                        EndTicks = kept.EndTicks,
+                        LifecycleRowsOutside = selection.LifecycleRowsOutside,
+                    }
+                    : null,
             },
         };
+    }
+
+    /// <summary>
+    /// What a row an interval package leaves out (§11) holds that no pseudonym may be and the byte scan looks for: its
+    /// names, process and thread ids, addresses, ports, provider and schema. No pseudonym is issued for it, so the
+    /// package's counts say nothing of the rows it leaves out. Its identifiers are not kept: a package's are random
+    /// version-4 identifiers, and a row's can be its own, so keeping them would grow with every row of the source.
+    /// </summary>
+    private static void SeeLeftOut(ObservationRowV1 row, RedactedSessionPseudonyms pseudonyms)
+    {
+        pseudonyms.SeeProvider(row.ProviderId);
+        pseudonyms.SeeFingerprint(row.SchemaFingerprint);
+        pseudonyms.SeeNumber(row.HeaderProcessId);
+        pseudonyms.SeeNumber(row.HeaderThreadId);
+        if (row.OwnerProcessId is { } owner) pseudonyms.SeeNumber(owner);
+        pseudonyms.SeeAddress(row.SourceEndpointAddress);
+        pseudonyms.SeeAddress(row.DestinationEndpointAddress);
+        pseudonyms.SeeAddress6(row.SourceEndpointAddressV6);
+        pseudonyms.SeeAddress6(row.DestinationEndpointAddressV6);
+        pseudonyms.SeePort(row.SourceEndpointPort);
+        pseudonyms.SeePort(row.DestinationEndpointPort);
+        if (row.ResourceName is { } resource) pseudonyms.SeeName(resource);
+    }
+
+    /// <summary>
+    /// The source's ledger as an interval package states it (§11): each epoch speaks only for the part of the interval its
+    /// readings spanned - its delivered readings when it delivered anything, its recorded ones when it stated them - with
+    /// every count, descriptor and loss kept; an epoch that spoke for none of it is left out and the rest numbered again
+    /// from 1; null when none spoke for any of it. A whole package's ledger is the source's.
+    /// </summary>
+    private static CoverageLedgerV1? Clip(CoverageLedgerV1? ledger, TimeRange? interval, SourceClockDescriptor clock)
+    {
+        if (ledger is null || interval is not { } range) return ledger;
+        (long first, long end) = NativeReadings(range, clock);
+        var kept = new List<CoverageEpochV1>();
+        foreach (CoverageEpochV1 epoch in ledger.Epochs)
+        {
+            if (Spoken(epoch) is not { } spoken) continue;
+            long from = Math.Max(spoken.First, first);
+            Int128 to = Int128.Min(spoken.Last, (Int128)end - 1);
+            if (from > to) continue;
+            kept.Add(epoch with
+            {
+                Epoch = kept.Count + 1,
+                FirstDeliveredNativeTicks = epoch.FirstDeliveredNativeTicks is null ? null : from,
+                LastDeliveredNativeTicks = epoch.LastDeliveredNativeTicks is null ? null : (long)to,
+                RecordedFromNativeTicks = epoch.RecordedFromNativeTicks is null ? null : from,
+                RecordedToNativeTicks = epoch.RecordedToNativeTicks is null ? null : (long)to,
+            });
+        }
+
+        return kept.Count == 0 ? null : ledger with { Epochs = kept };
+    }
+
+    /// <summary>
+    /// The readings an epoch speaks for (`coverage-v2` §2): from the earlier of its first delivered and its recorded start
+    /// to the later of its last delivered and its recorded stop; null when it states neither.
+    /// </summary>
+    private static (long First, long Last)? Spoken(CoverageEpochV1 epoch) =>
+        (epoch.FirstDeliveredNativeTicks, epoch.RecordedFromNativeTicks) switch
+        {
+            (null, null) => null,
+            _ => (Math.Min(epoch.FirstDeliveredNativeTicks ?? long.MaxValue, epoch.RecordedFromNativeTicks ?? long.MaxValue),
+                Math.Max(epoch.LastDeliveredNativeTicks ?? long.MinValue, epoch.RecordedToNativeTicks ?? long.MinValue)),
+        };
+
+    /// <summary>
+    /// The native readings whose session time an interval holds, [first, end): those whose nanoseconds over 100,
+    /// truncated toward zero as every interval reads a row's time, lie in it. That is from 100 times its start - less 99
+    /// when the start is not positive - to 100 times its end, less 99 when the end is not positive, and session time never
+    /// decreases with the reading (I3), so they are one run. A bound past the clock's range is the range's end.
+    /// </summary>
+    internal static (long First, long End) NativeReadings(TimeRange range, SourceClockDescriptor clock)
+    {
+        Int128 first = (Int128)range.StartTicks * 100 - (range.StartTicks > 0 ? 0 : 99);
+        Int128 end = (Int128)range.EndTicks * 100 - (range.EndTicks > 0 ? 0 : 99);
+        return (Native(first), Native(end));
+
+        long Native(Int128 nanoseconds)
+        {
+            if (nanoseconds < long.MinValue) return long.MinValue;
+            if (nanoseconds > long.MaxValue) return long.MaxValue;
+            try
+            {
+                return SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp((long)nanoseconds));
+            }
+            catch (OverflowException)
+            {
+                return nanoseconds < 0 ? long.MinValue : long.MaxValue;
+            }
+        }
     }
 
     private static void RequireOneCapture(
@@ -710,19 +1013,23 @@ public static class RedactedSessionPackage
             builder.Journal.WriteSchemas(schemas);
 
             ulong ordinal = 0;
+            long read = 0;
+            long sourceRows = scan.Preview.SourceRows;
             foreach (string name in scan.Segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 SegmentReaderV1 segment = SessionSegments.Open(root, manifest, name);
                 for (int index = 0; index < segment.RowCount; index++)
                 {
-                    if ((ordinal & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
-                    if ((long)ordinal % ProgressInterval == 0)
+                    if ((read & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if (read % ProgressInterval == 0)
                     {
-                        progress?.Report(new(RedactedPackageStage.Writing, (long)ordinal, scan.Rows));
+                        progress?.Report(new(RedactedPackageStage.Writing, read, sourceRows));
                     }
 
+                    read++;
                     ObservationRowV1 row = segment.Row(index);
+                    if (!scan.Selection.Holds(row)) continue;
                     ordinal++;
                     var address = new RecordAddress(row.RawStreamId, row.RawSourceEpoch, row.RawRecordOrdinal, row.FactKey);
                     if (!scan.FieldOwners.TryAssign(address, ordinal))
@@ -752,9 +1059,12 @@ public static class RedactedSessionPackage
                 {
                     if ((index & 4_095) == 0) cancellationToken.ThrowIfCancellationRequested();
                     SourceFieldRowV1 field = segment.FieldRow(index);
-                    if (!scan.FieldOwners.TryOwner(new(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal,
-                            field.FactKey), out ulong owner))
+                    var address = new RecordAddress(field.RawStreamId, field.RawSourceEpoch, field.RawRecordOrdinal,
+                        field.FactKey);
+                    if (!scan.FieldOwners.TryOwner(address, out ulong owner))
                     {
+                        // A field of a row an interval package leaves out goes with its row.
+                        if (scan.Selection.Interval is not null && !scan.FieldOwners.Holds(address)) continue;
                         throw new InvalidDataException(
                             "A source field names an observation this generation does not hold, so the package cannot "
                             + "attach it to a row.");
@@ -787,12 +1097,12 @@ public static class RedactedSessionPackage
                 StartSequences = pseudonyms.SequenceCount,
                 KernelObjects = pseudonyms.PointerCount,
             };
-            policyBytes = PolicyFor(createdUtc, counts).Encode();
+            policyBytes = PolicyFor(createdUtc, counts, scan.Preview.Interval).Encode();
             builder.StageRedactionPolicy(policyBytes);
             builder.Complete(createdUtc, cancellationToken);
         }
 
-        progress?.Report(new(RedactedPackageStage.Writing, scan.Rows, scan.Rows));
+        progress?.Report(new(RedactedPackageStage.Writing, scan.Preview.SourceRows, scan.Preview.SourceRows));
         return new(sessionId, capture, clock, scan.Derivation, ledgerBytes, policyBytes, counts);
     }
 
@@ -953,7 +1263,8 @@ public static class RedactedSessionPackage
         Body = BodyV1.None,
     };
 
-    internal static RedactedSessionPolicyV1 PolicyFor(DateTimeOffset createdUtc, RedactedSessionCounts counts) => new()
+    internal static RedactedSessionPolicyV1 PolicyFor(DateTimeOffset createdUtc, RedactedSessionCounts counts,
+        RedactedSessionInterval? interval = null) => new()
     {
         Contract = Contract,
         Policy = Policy,
@@ -975,7 +1286,9 @@ public static class RedactedSessionPackage
             "Event id, descriptor version and opcode of each row's descriptor",
             "Process terminal session, RPC procedure number and protocol sequence, file byte offset and ALPC message id fields",
             "An HTTP buffer's place in its message and whether it is the message's first or last",
-            "Coverage and loss facts, when the source published a coverage ledger",
+            interval is null
+                ? "Coverage and loss facts, when the source published a coverage ledger"
+                : "Coverage and loss facts over the interval, where an epoch of the source's coverage ledger spoke for it",
             "Whether a resource name was truncated",
         ],
         Pseudonymized =
@@ -999,6 +1312,13 @@ public static class RedactedSessionPackage
             "Original raw record locators, processor numbers and event header context",
             "The normalizer plan and the capture finalization marker",
             "The source session, capture, host and clock identities and the source's absolute clock readings",
+            .. (interval is null
+                ? Array.Empty<string>()
+                :
+                [
+                    "Every row whose session time lies outside the interval, but the lifecycle records of the processes "
+                        + "it holds, and every row with no session time that is not one of them",
+                ]),
         ],
         FixedPoints =
         [
@@ -1007,6 +1327,7 @@ public static class RedactedSessionPackage
             "The empty identifier and zero-valued start sequences and kernel object values",
         ],
         Counts = counts,
+        Interval = interval,
     };
 
     // ---------------------------------------------------------------------------------------------------------------

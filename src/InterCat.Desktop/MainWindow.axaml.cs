@@ -1486,7 +1486,7 @@ public sealed partial class MainWindow : Window, IDisposable
             heldUpdate = null;
             CaptureSummary.Text = string.Empty;
             (string headline, string detail) = overview.Redaction is { } redaction
-                ? ("Redacted session package open", SessionRedaction.Summary + " " + redaction.Warning)
+                ? ("Redacted session package open", redaction.Statement(CultureInfo.CurrentCulture))
                 : status ?? ("Saved session open",
                     overview.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc)
                         ? "This is a published generation. The graph contains admitted paired TCP and RPC calls linked "
@@ -2960,12 +2960,16 @@ public sealed partial class MainWindow : Window, IDisposable
             return IsLive ? LiveLossStatement(liveHealth) : "No coverage ledger · loss unknown";
         }
 
-        MechanismCoverage[] collected = [.. overview.MechanismCoverage
-            .Where(entry => entry.State != CoverageState.NotCollected)];
+        // An interval package's ledger speaks only within its interval: what it says there, and that outside it nothing is
+        // known, rather than every mechanism unknown over the whole time.
+        IReadOnlyList<MechanismCoverage> judged = overview.IntervalCoverage ?? overview.MechanismCoverage;
+        MechanismCoverage[] collected = [.. judged.Where(entry => entry.State != CoverageState.NotCollected)];
         MechanismCoverage[] affected = [.. collected.Where(entry => entry.State != CoverageState.Covered)];
-        return collected.Length == 0 ? "No mechanism was collected"
+        string statement = collected.Length == 0 ? "No mechanism was collected"
             : affected.Length == 0 ? "No loss reported"
             : string.Join(" · ", affected.Select(entry => $"{EvidenceRowText.MechanismName(entry.Mechanism)} {Describe(entry.State)}"));
+        return overview.IntervalCoverage is null ? statement
+            : statement + " within this package's interval · coverage unknown outside it";
 
         static string Describe(CoverageState state) => state switch
         {

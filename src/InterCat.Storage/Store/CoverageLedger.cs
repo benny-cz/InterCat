@@ -38,6 +38,14 @@ public sealed record CoverageLedgerV1
 
     public required IReadOnlyList<CoverageEpochV1> Epochs { get; init; }
 
+    /// <summary>
+    /// Whether its generation holds records at readings no epoch speaks for: an interval package's lifecycle records from
+    /// outside its interval (`contracts/redacted-session-v1.md` §11). It is not in the file; the generation's reader sets
+    /// it, and coverage over the whole generation is then unknown, never what the epochs alone would say.
+    /// </summary>
+    [JsonIgnore]
+    public bool HoldsRecordsOutsideItsEpochs { get; init; }
+
     public byte[] Encode()
     {
         Validate();

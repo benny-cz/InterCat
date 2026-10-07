@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Security.Cryptography;
+using System.Text.Json;
 using InterCat.Domain;
 
 namespace InterCat.Storage;
@@ -997,7 +998,38 @@ public static class SessionSegments
             stream.ReadExactly(bytes);
         }
 
-        return CoverageLedgerV1.Decode(bytes);
+        CoverageLedgerV1 ledger = CoverageLedgerV1.Decode(bytes);
+        return RedactionPolicy(directory, manifest) is { } policy && HoldsRecordsOutsideItsInterval(policy)
+            ? ledger with { HoldsRecordsOutsideItsEpochs = true }
+            : ledger;
+    }
+
+    /// <summary>
+    /// Whether a redaction policy names an interval with records held from outside it (`redacted-session-v1` §11): the one
+    /// thing a ledger's reader must know of it, since those records lie where no epoch of the package's ledger speaks. The
+    /// package's own reader validates the rest; a policy this cannot read is taken to, so its coverage is never overstated.
+    /// </summary>
+    private static bool HoldsRecordsOutsideItsInterval(byte[] policy)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(policy);
+            if (document.RootElement.ValueKind != JsonValueKind.Object
+                || !document.RootElement.TryGetProperty("interval", out JsonElement interval)
+                || interval.ValueKind == JsonValueKind.Null)
+            {
+                return false;
+            }
+
+            return interval.ValueKind != JsonValueKind.Object
+                || !interval.TryGetProperty("lifecycleRowsOutside", out JsonElement outside)
+                || !outside.TryGetInt64(out long held)
+                || held != 0;
+        }
+        catch (JsonException)
+        {
+            return true;
+        }
     }
 
     /// <summary>

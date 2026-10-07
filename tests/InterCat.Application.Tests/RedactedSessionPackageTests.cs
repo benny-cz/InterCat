@@ -15,7 +15,7 @@ namespace InterCat.Application.Tests;
 /// §11.3's redacted normalized session (I22): it reopens as a session, reproduces what every analysis concludes from its
 /// source, and holds none of the source's names, identities, locators, absolute readings or payload bytes.
 /// </summary>
-public sealed class RedactedSessionPackageTests
+public sealed partial class RedactedSessionPackageTests
 {
     // The source clock's epoch is a boot-relative reading two and a half hours in: the package must not reveal it.
     private const long SourceEpoch = 90_000_000_000;
@@ -666,7 +666,7 @@ public sealed class RedactedSessionPackageTests
 
     private static readonly Guid SecretBoot = Guid.Parse("b0070000-1111-4222-8333-444444444444");
 
-    private static void PublishRichSource(SessionStore store)
+    private static void PublishRichSource(SessionStore store, CoverageLedgerV1? coverage = null)
     {
         ObservationRowV1 system = At(Lifecycle(0, ObservationKind.Inventory, 4, 1) with { ResourceName = "System" }, 0);
         ObservationRowV1 agent = At(Lifecycle(0, ObservationKind.Create, 1200, 2) with { ResourceName = SecretPath }, 10);
@@ -768,7 +768,7 @@ public sealed class RedactedSessionPackageTests
             Field(rpc, SourceField.RpcProcedureNumber, 7),
             Field(rpc, SourceField.RpcProtocolSequence, 1),
         ];
-        Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: Ledger(), calibration: Calibration(),
+        Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: coverage ?? Ledger(), calibration: Calibration(),
             bodyForRow: _ => new BodyV1
             {
                 Classification = BodyClassificationV1.ApprovedMetadata,

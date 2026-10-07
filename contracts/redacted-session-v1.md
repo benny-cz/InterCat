@@ -5,7 +5,9 @@ Contract: `intercat-redacted-normalized-session-v1` · Policy: `normalized-sessi
 Status: **implemented and verified**: `RedactedSessionPackage` in `InterCat.Application`, `icat package --redacted`, and the
 Desktop's "Share redacted session…" action. It is the second of §11.3's three export presets. The first, the
 metadata-only report, is `intercat-share-report-v1` ([`SHARING-REPORT-REDACTION.md`](../docs/design/SHARING-REPORT-REDACTION.md)).
-The third, an explicitly unredacted original evidence package, is not implemented.
+The third, an explicitly unredacted original evidence package, is not implemented. Since revision 397 a package can hold
+an interval of its source (§11), `icat package --redacted --interval`, which is how a session above the row bound is
+shared.
 
 ## 1. What a package is
 
@@ -13,7 +15,8 @@ A package is a **new session directory** that every InterCat reader opens as an 
 session`, `overview`, `evidence`, `raw`, `metric`, `processes`, `export`, `compact` and the Desktop. It is built from one
 verified generation of a source session, and it reproduces what every analysis concludes from that source: the same
 process instances, parents, bindings, relations, channels, groupings, totals, timeline, coverage and loss. Only the
-values that name or locate something are replaced.
+values that name or locate something are replaced. An interval package (§11) does the same for the part of its source's
+time it holds.
 
 It is **not re-derivable**. Its journal holds synthetic records, not the source's evidence, and it carries no normalizer
 plan. Its rows are the package's evidence; `icat rederive` refuses it and says why.
@@ -156,9 +159,10 @@ unknown as the source's is.
 It names the contract and policy, when the package was made, its provenance ("made from a verified InterCat session",
 whose identity is deliberately not recorded), the warning, the pseudonym scope, `false` for original sources, raw
 locators, payload bytes and re-derivability, the retained, pseudonymized, redacted, omitted and fixed-point lists, and
-counts of rows, fields and pseudonyms issued per namespace. A reader refuses an unknown member, another contract or
-policy, and any claim that original sources, locators or payload are included. Retention cannot release the policy,
-and a replacement generation carries it (`store-v1`).
+counts of rows, fields and pseudonyms issued per namespace, and an interval package's `interval` (§11), which a
+whole-session package's file does not name. A reader refuses an unknown member, another contract or policy, and any
+claim that original sources, locators or payload are included. Retention cannot release the policy, and a replacement
+generation carries it (`store-v1`).
 
 ## 8. Verification before publication
 
@@ -173,10 +177,10 @@ the source untouched.
 3. **Every value**: each record and row value is a kept value, a fixed point or a pseudonym this package issued; every
    dictionary entry is an issued name or a package schema entry; every source field obeys §4; the ledger names only
    package providers; the policy's counts are the package's.
-4. **Reproduction**: the package reproduces the source's tallies - rows by classification, sums of every kept number,
-   presence of every pseudonymized value, the exact fixed points per row, and how many distinct values each namespace
-   holds, with IPv4 and IPv6 addresses counted as one namespace of hosts. A mapping that merged or split values, or moved
-   a fixed point, is caught here.
+4. **Reproduction**: the package reproduces the source's tallies over the rows it holds - rows by classification, sums
+   of every kept number, presence of every pseudonymized value, the exact fixed points per row, and how many distinct
+   values each namespace holds, with IPv4 and IPv6 addresses counted as one namespace of hosts. A mapping that merged or
+   split values, or moved a fixed point, is caught here.
 5. **Bytes**: every file except the policy (step 3 compares it byte for byte) is searched for the source's session,
    capture, clock, host and provider identities in binary and text forms, its manifest and file digests, its schema
    fingerprints and its source-identity text. Journal, segment and dictionary files are also searched for source names and
@@ -187,10 +191,12 @@ the source untouched.
 
 ## 9. Limits
 
-- At most 10,000,000 rows. Pseudonym tables grow with a session's distinct values. Memory grows with rows in two
-  places: joining each source field to its row (40 bytes an observation with fields, released once written) and
-  verification (12 bytes a row). A package of ten million rows, each with a source field, needs under 1 GiB. A larger
-  session is refused with the bound named, before anything is written. Its preview writes nothing and makes no join.
+- At most 10,000,000 rows held. Pseudonym tables grow with a session's distinct values. Memory grows with rows in two
+  places: joining each source field to its row (40 bytes an observation with fields, released once written; for an
+  interval package, 40 bytes a row it holds) and verification (12 bytes a row). A package of ten million rows, each with
+  a source field, needs under 1 GiB. A larger whole session is refused from its segment headers, and a larger interval
+  once its first read has counted it, both with the bound named and before anything is written. A whole session's
+  preview writes nothing and makes no join; an interval's joins the rows it holds, to count their fields.
 - One capture on one clock. A session whose segments name more than one is refused.
 - A package is not built from a package: the second would read as evidence of an unknown source.
 - An IPv6 address loses its scope: a link-local, unique-local or global address all become documentation-prefix
@@ -199,10 +205,57 @@ the source untouched.
 
 ## 10. Where it is made
 
-- `icat package <session> --redacted --output <new-directory> [--check] [--json] [--report <path>]`. `--check` measures
-  and writes nothing. The destination must not exist and must not overlap the source.
+- `icat package <session> --redacted --output <new-directory> [--interval <start:end>] [--check] [--json]
+  [--report <path>]`. `--check` measures and writes nothing. The destination must not exist and must not overlap the
+  source. `--interval` makes an interval package (§11); its document adds `sourceRows` and `interval`.
 - Desktop: "Share redacted session…" in the inspector, for a saved or stopped session. It states what is kept, replaced
   and left out, asks where to put the new folder (`intercat-redacted-session-<local time>`, numbered rather than reused),
   shows progress and can be cancelled from the same button, then offers to open the package to review what a recipient
   will see. An open package says so in the status card, the header, the health strip and the disclosure; the record
   action reads "Open synthetic record".
+
+## 11. An interval package
+
+`--interval start:end`, in 100-nanosecond session-relative ticks and half-open as `icat evidence` and `icat export` read
+one, scopes a package to that part of its source's time. It holds:
+
+- every row whose session time lies in the interval, read as those commands read it: its nanoseconds over 100, truncated
+  toward zero;
+- from outside it, every process lifecycle record (`entities-v1` §2: a creation, exit or inventory) of each PID that a
+  row in the interval belongs to (`entities-v1` §2a), timed or not, with its source fields.
+
+Nothing else: a row outside the interval that is not such a record, and a row with no session time that is not one, is
+left out with its source fields. A PID's instances are derived from its lifecycle records alone (`entities-v1` §3), so
+keeping all of them keeps its instances, their lifetimes and names, and every binding of the interval's rows exactly as
+the source derives them (`entities-v1` §4): a reused PID's later holder is still a later holder, and its records still
+candidates. A parent whose own PID owns no row in the interval is named by the creation record and not linked, as a
+parent outside a capture is. Everything else a derivation concludes, it concludes from the records the package holds: a
+connection the interval does not see open reads as open before them, and a call whose start lies before the interval has
+no start. The interval must hold a record, or nothing is written.
+
+Coverage: each epoch of the source's ledger speaks, in the package, only for the part of the interval it spoke for. Its
+acquisition, collected descriptors, deliveries, omissions and losses are kept; its delivered readings (when it delivered
+anything) and its recorded readings (when it stated them) become the first and last readings of the interval it spanned,
+so it speaks for exactly that part. An epoch that spoke for none of the interval is left out and the rest are numbered
+again from 1, and a package none of whose source epochs spoke for any of it publishes no ledger. Outside the interval a
+package's coverage is therefore unknown: its lifecycle records there are records, never a claim about what else
+happened. No loss is located in time (`coverage-v2` §3), so an epoch that lost records states a partial gap over all of
+the interval it speaks for. A package that holds lifecycle records from outside its interval spans more than its ledger
+speaks for, so its coverage over its whole time is unknown for every mechanism, as `coverage-v2` §4 states for such a
+generation: a whole-session statement, a process's or channel's count over the whole of it, and the window's time scope
+of all of it say so, with why. What its ledger says within the interval is said beside that: the window's health strip
+states it "within this package's interval · coverage unknown outside it", and `icat session` lists it under "Within this
+package's interval, where its coverage speaks; outside it, coverage is unknown" (`withinInterval` in its document).
+
+Pseudonyms are issued only for what the package holds, so its counts say nothing of the rest of its source. The rows it
+leaves out are still read, so that no pseudonym is one of their process or thread ids, ports or addresses, and the byte
+scan (§8 step 5) also searches for their names, providers and schema fingerprints. Their identifiers are not kept: a
+package's are random version-4 identifiers, and keeping a row's would grow with every row of the source.
+
+The policy file's `interval` states it: `startTicks`, `endTicks`, and `lifecycleRowsOutside`, the lifecycle records held
+from outside it, fewer than the rows the package holds. Its retained list says coverage is kept over the interval, and
+its omitted list names the rows left out. A reader that does not know the member refuses the package, which would
+otherwise read as its source's whole time. Every reader - `icat package` and `icat session`, and the window's status
+card and disclosure - says what an interval package holds in one sentence, after the package's own summary: "It holds
+its source's records from S to E and, outside that interval, only the lifecycle records of the processes it holds, so
+they keep their names; its coverage outside the interval is unknown."
