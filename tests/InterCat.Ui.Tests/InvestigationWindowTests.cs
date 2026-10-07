@@ -8,10 +8,12 @@ using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Interactivity;
+using Avalonia.Media;
 using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
+using InterCat.Desktop.Theme;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -703,7 +705,7 @@ public sealed class InvestigationWindowTests
 
             // The chosen column says its session, its time and its records; the cursor starts on the busiest.
             Assert.Contains($"Session {Short(a)}, column 1 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
-            Assert.EndsWith("4 records. Enter opens them in InterCat.", window.ColumnReadout, StringComparison.Ordinal);
+            Assert.EndsWith("4 records, coverage: unknown. Enter opens them in InterCat.", window.ColumnReadout, StringComparison.Ordinal);
 
             // The keyboard moves the cursor along a lane and to the next one: Right, End, Down.
             Control chart = window.GetVisualDescendants().OfType<InvestigationTimelineControl>().Single();
@@ -731,6 +733,8 @@ public sealed class InvestigationWindowTests
             // A column holding none of a session's records opens nothing, and says so.
             Assert.False(await window.OpenColumnAsync(new TimelineColumn(1, 0)));
             Assert.StartsWith("Column 1 holds no records of Session ", Named<TextBlock>(window, "Investigation status").Text, StringComparison.Ordinal);
+            Assert.EndsWith(", and what its capture covered there is unknown, so that is not proof of inactivity. There is nothing of it to open: "
+                + "choose a column with records.", Named<TextBlock>(window, "Investigation status").Text, StringComparison.Ordinal);
 
             // Only what the session holds of the column is selected: this one reaches back before beta's capture began.
             Assert.True(await window.OpenColumnAsync(new TimelineColumn(1, column)));
@@ -1049,8 +1053,8 @@ public sealed class InvestigationWindowTests
             InvestigationTimelineView timeline = window.Timeline!;
             Assert.Equal([true, true, false], timeline.Lanes.Select(lane => lane.Placed));
             Assert.Equal((4L, 6L), (timeline.Lanes[0].Records, timeline.Lanes[1].Records));
-            Assert.EndsWith("of the investigation's time, the investigation's own clock, exactly. Read at its generation 1.",
-                window.TimelineSentences[0], StringComparison.Ordinal);
+            Assert.EndsWith("of the investigation's time, the investigation's own clock, exactly. Coverage over its 160 columns: all unknown. "
+                + "Read at its generation 1.", window.TimelineSentences[0], StringComparison.Ordinal);
             Assert.Contains("records, from ", window.TimelineSentences[1], StringComparison.Ordinal);
             Assert.Contains("placed within ±", window.TimelineSentences[1], StringComparison.Ordinal);
             Assert.EndsWith("not placed: not aligned to the investigation's time.", window.TimelineSentences[2], StringComparison.Ordinal);
@@ -1064,6 +1068,134 @@ public sealed class InvestigationWindowTests
         {
             main.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "R21: the investigation's timeline hatches where a session's capture saw nothing, and says so of a column and a lane")]
+    public async Task TheTimelineHatchesWhereACaptureSawNothing()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Ledgered(root.Path, "alpha"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 2), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+
+            // The middle of each run of columns: of none where the capture covered them, past its readings, of none in its
+            // lossy epoch, and of its records there.
+            List<TimelineBucket> buckets = [.. window.Timeline!.Lanes[0].Buckets];
+            int Middle(Predicate<TimelineBucket> run) => (buckets.FindIndex(run) + buckets.FindLastIndex(run)) / 2;
+            int quiet = Middle(bucket => bucket is { ObservationCount: 0, Coverage: CoverageState.Covered });
+            int unknown = Middle(bucket => bucket.Coverage == CoverageState.UnknownCoverage);
+            int gap = Middle(bucket => bucket is { ObservationCount: 0, Coverage: CoverageState.PartialGap });
+            int seen = buckets.FindIndex(bucket => bucket is { ObservationCount: > 0, Coverage: CoverageState.PartialGap });
+            Assert.True(quiet > 0 && unknown > quiet && gap > unknown && seen > gap, $"{quiet}, {unknown}, {gap}, {seen}");
+            Assert.Equal((CoverageState.Covered, CoverageState.UnknownCoverage, CoverageState.PartialGap),
+                (buckets[quiet].Coverage, buckets[unknown].Coverage, buckets[gap].Coverage));
+
+            // A column the capture covered is drawn plain, though it holds none; one past its readings has a thin strip along
+            // the lane's foot, as the session's own timeline draws it; one where it lost records is hatched through the
+            // lane, over any records it did see there.
+            InvestigationTimelineControl chart = window.GetVisualDescendants().OfType<InvestigationTimelineControl>().Single();
+            const double Lane = InvestigationTimelineControl.LaneHeight;
+            Assert.Null(chart.CoverageCell(0, quiet));
+            Rect strip = chart.CoverageCell(0, unknown)!.Value;
+            Assert.Equal((InvestigationTimelineControl.AxisHeight + Lane - 9, 5d), (strip.Top, strip.Height));
+            Rect hatched = chart.CoverageCell(0, gap)!.Value;
+            Assert.Equal((InvestigationTimelineControl.AxisHeight + 4, Lane - 8), (hatched.Top, hatched.Height));
+            Assert.Equal(hatched.Height, chart.CoverageCell(0, seen)!.Value.Height);
+            double width = (chart.Bounds.Width - InvestigationTimelineControl.LabelWidth - 12) / buckets.Count;
+            Assert.Equal((InvestigationTimelineControl.LabelWidth + (unknown * width) + 0.5, width - 1), (strip.Left, strip.Width));
+            Assert.Equal((InvestigationTimelineControl.LabelWidth + (gap * width) + 0.5, width - 1), (hatched.Left, hatched.Width));
+            Assert.Equal([null, null, null], new[] { chart.CoverageCell(0, -1), chart.CoverageCell(0, buckets.Count), chart.CoverageCell(2, unknown) });
+
+            // Each run of such columns is hatched as one band, not a comb of columns: past the readings, then the lossy epoch;
+            // and the other session, which has no ledger, unknown across its lane.
+            Rect Spanning(int lane, CoverageState state) => chart.CoverageCell(lane, buckets.FindIndex(bucket => bucket.Coverage == state))!.Value
+                .Union(chart.CoverageCell(lane, buckets.FindLastIndex(bucket => bucket.Coverage == state))!.Value);
+            Assert.Equal([Spanning(0, CoverageState.UnknownCoverage), Spanning(0, CoverageState.PartialGap)], chart.CoverageRuns(0));
+            Assert.Equal([chart.CoverageCell(1, 0)!.Value.Union(chart.CoverageCell(1, buckets.Count - 1)!.Value)], chart.CoverageRuns(1));
+            Assert.Empty(chart.CoverageRuns(2));
+
+            // Drawn as it is said: the caution ink only at the strip's foot, through the gap's lane, and nowhere in the
+            // covered column.
+            Render(window);
+            Avalonia.Media.Imaging.WriteableBitmap frame = window.CaptureRenderedFrame()!;
+            Color caution = ThemeResources.ToColor(ThemePalette.Status(ThemeResources.CurrentMode).Caution);
+            Color extent = ThemeResources.ToColor(ThemePalette.Surfaces(ThemeResources.CurrentMode).Elevated);
+            int Cautious(int column, double from, double to)
+            {
+                int inked = 0;
+                for (double x = InvestigationTimelineControl.LabelWidth + (column * width) + 1.5; x < InvestigationTimelineControl.LabelWidth + ((column + 1) * width) - 1; x++)
+                {
+                    for (double y = InvestigationTimelineControl.AxisHeight + from; y < InvestigationTimelineControl.AxisHeight + to; y++)
+                    {
+                        Color pixel = RenderedPixels.At(frame, chart.TranslatePoint(new Point(x, y), window)!.Value);
+                        inked += Distance(pixel, caution) < Distance(pixel, extent) ? 1 : 0;
+                    }
+                }
+
+                return inked;
+            }
+
+            Assert.Equal(0, Cautious(quiet, 3, Lane - 3));
+            Assert.True(Cautious(unknown, Lane - 10, Lane - 3) > 0, "The strip is not drawn where the capture's coverage is unknown.");
+            Assert.Equal(0, Cautious(unknown, 3, Lane - 11));
+            Assert.True(Cautious(gap, 8, Lane - 12) > 0, "The lane is not hatched where the capture lost records.");
+            Save(window, "investigation-timeline-coverage.png");
+            Assert.Contains(window.GetVisualDescendants().OfType<TextBlock>(), text => text.IsEffectivelyVisible && text.Text?.Contains(
+                "Hatching marks where its capture lost records or collected none, and a thin hatched strip where what it covered is unknown, "
+                + "so an empty column there is no proof of inactivity.", StringComparison.Ordinal) == true);
+
+            // Said as it is drawn: of a column where the cursor stands, of a column of none opened, and of the whole lane.
+            window.ChooseColumn(0, quiet);
+            Assert.EndsWith(", 0 records, coverage: covered.", window.ColumnReadout, StringComparison.Ordinal);
+            window.ChooseColumn(0, unknown);
+            Assert.EndsWith(", 0 records, coverage: unknown.", window.ColumnReadout, StringComparison.Ordinal);
+            window.ChooseColumn(0, seen);
+            string records = buckets[seen].ObservationCount == 1 ? "1 record" : $"{buckets[seen].ObservationCount} records";
+            Assert.EndsWith($", {records}, coverage: partial gap, not extrapolated. Enter opens them in InterCat.", window.ColumnReadout, StringComparison.Ordinal);
+            Assert.False(await window.OpenColumnAsync(new TimelineColumn(0, quiet)));
+            Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Column {quiet + 1:N0} holds no records of Session {Short(a)}, so there is nothing of it to open: choose a column with records."),
+                Named<TextBlock>(window, "Investigation status").Text);
+            Assert.False(await window.OpenColumnAsync(new TimelineColumn(0, gap)));
+            Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"Column {gap + 1:N0} holds no records of Session {Short(a)}, and its capture has a partial gap there, so that is not proof of inactivity. There is nothing of it to open: choose a column with records."),
+                Named<TextBlock>(window, "Investigation status").Text);
+            int Columns(CoverageState state) => buckets.Count(bucket => bucket.Coverage == state);
+            Assert.Contains(string.Create(CultureInfo.CurrentCulture, $" Coverage over its 160 columns: {Columns(CoverageState.Covered):N0} covered; "
+                + $"{Columns(CoverageState.PartialGap):N0} partial gap, not extrapolated; {Columns(CoverageState.UnknownCoverage):N0} unknown. "),
+                window.TimelineSentences[0], StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [Fact(DisplayName = "R21: a column of none opened in the investigation says why that is no proof of inactivity, in each coverage state's words")]
+    public void AColumnOfNoneSaysWhatItsCaptureCovered()
+    {
+        string Said(CoverageState coverage) => InvestigationWindow.NothingToOpen(2, "Session 0a1b2c3d", coverage);
+        Assert.Equal("Column 3 holds no records of Session 0a1b2c3d, so there is nothing of it to open: choose a column with records.",
+            Said(CoverageState.Covered));
+        Assert.Equal(
+            [
+                "its capture was at reduced fidelity there",
+                "its capture has a partial gap there",
+                "its capture collected nothing there",
+                "what its capture covered there is unknown",
+                "what its capture covered there is unknown",
+            ],
+            new[] { CoverageState.ReducedFidelity, CoverageState.PartialGap, CoverageState.NotCollected, CoverageState.UnknownCoverage, (CoverageState)9 }
+                .Select(state => Said(state)["Column 3 holds no records of Session 0a1b2c3d, and ".Length..^", so that is not proof of inactivity. There is nothing of it to open: choose a column with records.".Length]));
     }
 
     [AvaloniaFact(DisplayName = "R22: the investigation window says when two captures of one host ran at once")]
@@ -1182,6 +1314,49 @@ public sealed class InvestigationWindowTests
         store.ReleaseSegmentReaders();
         return directory;
     }
+
+    /// <summary>
+    /// A session whose process 100 sends four datagrams 100 µs into its capture and four more 500 µs in, with its capture's
+    /// ledger: readings delivered to 200 µs with nothing lost, none from then to 400 µs, and to 600 µs with 3 events lost.
+    /// </summary>
+    private static string Ledgered(string root, string name)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                .. new long[] { 1_000, 1_010, 1_020, 1_030, 5_000, 5_010, 5_020, 5_030 }.Select((ticks, index) =>
+                    Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(index + 1))
+                        .Between("192.168.1.5:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = ticks * 100 }),
+            ],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name),
+            coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [Epoch(1, 0, 2_000, 0), Epoch(2, 4_000, 6_000, 3)] });
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>A live epoch between two delivered readings that collected the datagrams' one descriptor.</summary>
+    private static CoverageEpochV1 Epoch(int number, long first, long last, long lost) => new()
+    {
+        Epoch = number,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = first,
+        LastDeliveredNativeTicks = last,
+        Collected = [new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Udp }],
+        Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 4, Admitted = 4, Omitted = 0 }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
+
+    private static double Distance(Color one, Color other) =>
+        Math.Sqrt(Math.Pow(one.R - other.R, 2) + Math.Pow(one.G - other.G, 2) + Math.Pow(one.B - other.B, 2));
 
     /// <summary>A session whose one process holds one end of a TCP connection: it opens, sends and closes it.</summary>
     private static string Session(string root, string name, string[] ends, int owner)

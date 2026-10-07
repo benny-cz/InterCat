@@ -76,7 +76,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
         TextWrapping = TextWrapping.Wrap,
         FontSize = 12,
         Text = "Each session is a lane on the investigation's own time: its records where its alignment places them, each lane "
-            + "scaled to its own busiest column. A session with no alignment has no place.",
+            + "scaled to its own busiest column. Hatching marks where its capture lost records or collected none, and a thin hatched "
+            + "strip where what it covered is unknown, so an empty column there is no proof of inactivity. A session with no "
+            + "alignment has no place.",
     };
     private readonly Button refreshTimeline = new() { Content = "Refresh the timeline" };
     private readonly ListBox notesList = new() { SelectionMode = SelectionMode.Single };
@@ -534,6 +536,23 @@ internal sealed class InvestigationWindow : Window, IDisposable
     internal string ColumnReadout => columnReadout.Text ?? string.Empty;
 
     /// <summary>
+    /// Why a column of none opens nothing, and, where its session's capture did not cover it, that none there is not proof
+    /// of inactivity, as the session's own timeline hatches it (R21).
+    /// </summary>
+    internal static string NothingToOpen(int column, string name, CoverageState coverage) =>
+        string.Create(CultureInfo.CurrentCulture, $"Column {column + 1:N0} holds no records of {name}") + coverage switch
+        {
+            CoverageState.Covered => ", so there is nothing of it to open: choose a column with records.",
+            _ => ", and " + coverage switch
+            {
+                CoverageState.ReducedFidelity => "its capture was at reduced fidelity there",
+                CoverageState.PartialGap => "its capture has a partial gap there",
+                CoverageState.NotCollected => "its capture collected nothing there",
+                _ => "what its capture covered there is unknown",
+            } + ", so that is not proof of inactivity. There is nothing of it to open: choose a column with records.",
+        };
+
+    /// <summary>
     /// Opens a lane's column in InterCat's window: its session, its timeline zoomed to that column in the session's own
     /// time, and the column's interval selected, so its records are what the window shows.
     /// </summary>
@@ -551,8 +570,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         string name = row.Title.Split(',')[0];
         if (lane.Buckets[column.Column].ObservationCount == 0)
         {
-            status.Text = string.Create(CultureInfo.CurrentCulture, $"Column {column.Column + 1:N0} holds no records of {name}, ")
-                + "so there is nothing of it to open: choose a column with records.";
+            status.Text = NothingToOpen(column.Column, name, lane.Buckets[column.Column].Coverage);
             return false;
         }
 

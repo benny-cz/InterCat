@@ -263,7 +263,7 @@ public static class InvestigationRows
             sentences.Add((lane.Placed
                 ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} {(lane.Records == 1 ? "record" : "records")}, from ")
                     + Seconds(lane.Extent!.Value.StartTicks * 100, culture) + " to " + Seconds(lane.Extent.Value.EndTicks * 100, culture)
-                    + $" of the investigation's time, {place}."
+                    + $" of the investigation's time, {place}." + Coverage(lane, culture)
                 : $"Session {Short(lane.SessionId)} ({host}): {place}.") + read);
         }
 
@@ -271,6 +271,18 @@ public static class InvestigationRows
         sentences.AddRange(InvestigationWorkspace.NotesInForce(workspace).Select(note =>
             $"Note {Short(note.NoteId)}, {NotePlace(workspace, note, culture)}: {note.Text}"));
         return (view, labels, sentences);
+    }
+
+    /// <summary>
+    /// What a placed lane's capture covered over its columns, as its lane is hatched (R21): how many of them hold each
+    /// coverage state, so a lane of few records is not heard as a quiet session where its capture saw nothing.
+    /// </summary>
+    private static string Coverage(InvestigationLane lane, CultureInfo culture)
+    {
+        IGrouping<CoverageState, TimelineBucket>[] states = [.. lane.Buckets.GroupBy(bucket => bucket.Coverage).OrderBy(state => state.Key)];
+        return string.Create(culture, $" Coverage over its {lane.Buckets.Count:N0} columns: ") + (states.Length == 1
+            ? "all " + CoverageStateText.Value(states[0].Key)
+            : string.Join("; ", states.Select(state => string.Create(culture, $"{state.Count():N0} {CoverageStateText.Value(state.Key)}")))) + ".";
     }
 
     private static string End(WorkspaceConnection end, CultureInfo culture)

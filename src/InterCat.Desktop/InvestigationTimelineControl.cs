@@ -73,17 +73,76 @@ internal sealed class InvestigationTimelineControl : Control
         CursorMoved?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>The chosen column in words: its session, its time, and how many records it holds.</summary>
+    /// <summary>
+    /// The chosen column in words: its session, its time, how many records it holds, and what its capture covered there,
+    /// so a column of none the capture did not cover is not heard as a quiet one (R21). Only a column with records has
+    /// any to open.
+    /// </summary>
     internal string? Describe()
     {
         if (cursor is not { } at || view is null) return null;
         InvestigationLane lane = view.Lanes[at.Lane];
         TimelineBucket bucket = lane.Buckets[at.Column];
-        CultureInfo culture = CultureInfo.CurrentCulture;
         string span = $"{Seconds(bucket.Interval.StartTicks)} to {Seconds(bucket.Interval.EndTicks)} s of the investigation's time";
-        return string.Create(culture, $"Session {lane.SessionId.ToString("N")[..8]}, column {at.Column + 1:N0} of {lane.Buckets.Count:N0}: ")
-            + span + ", " + (bucket.ObservationCount == 1 ? "1 record" : string.Create(culture, $"{bucket.ObservationCount:N0} records"))
-            + ". Enter opens them in InterCat.";
+        return string.Create(CultureInfo.CurrentCulture, $"Session {lane.SessionId.ToString("N")[..8]}, column {at.Column + 1:N0} of {lane.Buckets.Count:N0}: ")
+            + span + ", " + Presentation.Spoken.Count(bucket.ObservationCount, "record")
+            + ", " + Presentation.Spoken.Coverage(CoverageStateText.Label(bucket.Coverage))
+            + (bucket.ObservationCount == 0 ? "." : ". Enter opens them in InterCat.");
+    }
+
+    /// <summary>
+    /// Where a column's coverage is drawn, as the session's own timeline draws it (R21): nothing where its capture covered
+    /// the column; a thin hatched strip along the lane's foot where nothing is known of it, as outside every reading the
+    /// capture delivered; and the whole lane hatched where the capture lost, or did not collect, what it could have seen.
+    /// </summary>
+    internal Rect? CoverageCell(int lane, int column)
+    {
+        if (view is null || !Placed(lane) || column < 0 || column >= view.Lanes[lane].Buckets.Count)
+        {
+            return null;
+        }
+
+        IReadOnlyList<TimelineBucket> buckets = view.Lanes[lane].Buckets;
+        CoverageState coverage = buckets[column].Coverage;
+        if (coverage == CoverageState.Covered)
+        {
+            return null;
+        }
+
+        double width = PlotWidth / buckets.Count;
+        double x = LabelWidth + (column * width) + 0.5;
+        double top = AxisHeight + (lane * LaneHeight);
+        return coverage == CoverageState.UnknownCoverage
+            ? new Rect(x, top + LaneHeight - 9, Math.Max(width - 1, 1), 5)
+            : new Rect(x, top + 4, Math.Max(width - 1, 1), LaneHeight - 8);
+    }
+
+    /// <summary>
+    /// A lane's hatching as it is drawn: each run of adjacent columns in one state other than covered as one cell, from its
+    /// first column's to its last's, so a stretch the capture did not cover reads as one band rather than a comb of columns.
+    /// </summary>
+    internal IReadOnlyList<Rect> CoverageRuns(int lane)
+    {
+        var runs = new List<Rect>();
+        IReadOnlyList<TimelineBucket> buckets = Placed(lane) ? view!.Lanes[lane].Buckets : [];
+        int first = 0;
+        while (first < buckets.Count)
+        {
+            int last = first;
+            while (last + 1 < buckets.Count && buckets[last + 1].Coverage == buckets[first].Coverage)
+            {
+                last++;
+            }
+
+            if (CoverageCell(lane, first) is { } start && CoverageCell(lane, last) is { } end)
+            {
+                runs.Add(start.Union(end));
+            }
+
+            first = last + 1;
+        }
+
+        return runs;
     }
 
     /// <summary>
@@ -224,21 +283,21 @@ internal sealed class InvestigationTimelineControl : Control
             }
 
             int busiest = lane.Buckets.Count == 0 ? 0 : lane.Buckets.Max(bucket => bucket.ObservationCount);
-            if (busiest == 0)
-            {
-                continue;
-            }
-
             for (int b = 0; b < lane.Buckets.Count; b++)
             {
                 int count = lane.Buckets[b].ObservationCount;
-                if (count == 0)
+                if (count > 0)
                 {
-                    continue;
+                    double height = Math.Max(2, (LaneHeight - 12) * count / busiest);
+                    context.FillRectangle(bar, new Rect(left + (b * column) + 0.5, top + LaneHeight - 6 - height, Math.Max(column - 1, 1), height));
                 }
+            }
 
-                double height = Math.Max(2, (LaneHeight - 12) * count / busiest);
-                context.FillRectangle(bar, new Rect(left + (b * column) + 0.5, top + LaneHeight - 6 - height, Math.Max(column - 1, 1), height));
+            // Coverage and records are separate facts: where the capture did not cover its columns they are hatched across
+            // any records it did see, so they never read as quiet ones, and never erase them (R21, P1).
+            foreach (Rect run in CoverageRuns(index))
+            {
+                TimelineView.DrawCoverageGap(context, run);
             }
         }
 
