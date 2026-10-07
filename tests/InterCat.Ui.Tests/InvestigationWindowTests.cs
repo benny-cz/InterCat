@@ -381,6 +381,93 @@ public sealed class InvestigationWindowTests
             : lines.Single(line => !line.IsVisible && line.Text is null && line.Classes.Contains("muted"));
     }
 
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pinned lanes there, in the order pinned, and gets them back")]
+    public async Task AnInvestigationKeepsASessionsPinnedLanes()
+    {
+        using var root = new TemporaryDirectory();
+        string pool = PoolSession(root.Path, "pool");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, pool, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == pool);
+
+            // Two lanes pinned, the quieter first, are kept in the order pinned, which is not their instances' order.
+            var shown = (WorkspaceViewModel)main.DataContext!;
+            ProcessInstanceId[] pinned = await PinLanesAsync(main, shown, 503, 501);
+            Assert.Equal([pinned[0].Value, pinned[1].Value],
+                InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.PinnedLanes);
+            const string Kept = "Opens with 2 process lanes pinned on its timeline, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Kept);
+            Assert.Equal(Kept, KeptLine(list).Text);
+
+            // Opened on its own, the session pins no lane.
+            Assert.True(await main.OpenSessionAsync(pool));
+            Assert.Empty(((WorkspaceViewModel)main.DataContext!).PinnedLanes);
+
+            // Opened from the investigation again, its lanes are pinned as they were, drawn first in the order pinned, and
+            // its status says what was put back.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => ((WorkspaceViewModel)main.DataContext!).PinnedLanes.Count == 2);
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.Equal(pinned, again.PinnedLanes);
+            Assert.Contains("which put back 2 process lanes pinned on its timeline.", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+            await OpenPoolGroupAsync(again);
+            Assert.Equal(pinned, again.ProcessLaneDisplay.Take(2).Select(lane => lane.ProcessId));
+
+            // Unpinned, both are gone from the investigation, which then keeps nothing of the session.
+            foreach (ProcessInstanceId lane in pinned)
+            {
+                again.SelectProcess(lane);
+                Assert.True(again.ToggleSelectedLanePin());
+            }
+
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+            WaitFor(() => window.View!.Members[0].Kept is null);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>Opens pool.exe's group in <paramref name="workspace"/>, its lanes counted.</summary>
+    private static async Task OpenPoolGroupAsync(WorkspaceViewModel workspace)
+    {
+        await workspace.LayoutReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("pool.exe", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        WaitFor(() => workspace.ShowsProcessLanes);
+        await workspace.TimelineDetailReady;
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
+    /// <summary>Pins the lanes of the pool.exe instances holding <paramref name="pids"/>, in that order, once kept.</summary>
+    private static async Task<ProcessInstanceId[]> PinLanesAsync(MainWindow main, WorkspaceViewModel workspace, params int[] pids)
+    {
+        await OpenPoolGroupAsync(workspace);
+        ProcessInstanceId[] lanes = [.. pids.Select(pid => workspace.Snapshot.Processes.Single(process => process.ProcessId == pid).Id)];
+        foreach (ProcessInstanceId lane in lanes)
+        {
+            workspace.SelectProcess(lane);
+            Assert.True(workspace.ToggleSelectedLanePin());
+        }
+
+        await main.InvestigationWritten;
+        return lanes;
+    }
+
     [AvaloniaFact(DisplayName = "R22: a new investigation starts empty, and an existing file is opened, never written over")]
     public void ANewInvestigationStartsEmpty()
     {
@@ -1466,6 +1553,26 @@ public sealed class InvestigationWindowTests
                     .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
                 Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 11)
                     .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+            ],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>A session of four pool.exe instances, the first sending most, in a folder of its own beneath <paramref name="root"/>.</summary>
+    private static string PoolSession(string root, string name)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                .. Enumerable.Range(0, 4).Select(index => Lifecycle(1 + index, ObservationKind.Create, 500 + index, (ulong)(1 + index))
+                    with { ResourceName = @"C:\Tools\pool.exe", SessionRelativeTicks = 100L * (1 + index) }),
+                .. Enumerable.Range(0, 4).SelectMany(index => Enumerable.Range(0, 4 - index).Select(send =>
+                    Transfer(100 + (index * 10) + send, ObservationKind.Send, AccountingSide.SendSide, 100, 500 + index,
+                        (ulong)(100 + (index * 10) + send)) with { SessionRelativeTicks = 100L * (100 + (index * 10) + send) })),
             ],
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name));

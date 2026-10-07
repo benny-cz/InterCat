@@ -685,6 +685,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         As(InvestigationWorkspace.FourteenthContract,
             () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true),
             read => read.Layouts.Single() is { ScalesEachLane: true } && read.Panes is null);
+        As(InvestigationWorkspace.FifteenthContract,
+            () =>
+            {
+                InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true);
+                InvestigationWorkspace.SetPanes(workspace, 0.25, null, Now);
+            },
+            read => read.Layouts.Single() is { ScalesEachLane: true, PinnedLanes.Count: 0 } && read.Panes is { GraphShare: 0.25 });
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
@@ -876,6 +883,76 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal((0.25, (WorkspacePane?)WorkspacePane.Graph), Kept(InvestigationWorkspace.Read(workspace).Panes));
     }
 
+    [Fact(DisplayName = "R22: a member's layout keeps its pinned timeline lanes in the order pinned, and refuses what no window can pin")]
+    public void AMembersPinnedLanesAreKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+
+        // The lanes keep the order they were pinned in, which no sort of theirs restores: the later sorts first.
+        Guid first = Guid.Parse("f0000000-0000-4000-8000-000000000001");
+        Guid second = Guid.Parse("10000000-0000-4000-8000-000000000002");
+        WorkspaceLayout kept = InvestigationWorkspace.SetLayout(workspace, a, [], Now, pinnedLanes: [first, second])!;
+        Assert.Equal([first, second], kept.PinnedLanes);
+        Assert.Equal([first, second], InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.PinnedLanes);
+        Assert.Equal("2 process lanes pinned on its timeline", kept.Describe(CultureInfo.InvariantCulture));
+        string written = File.ReadAllText(workspace);
+        Assert.Contains($"\"pinnedLanes\": [", written, StringComparison.Ordinal);
+        Assert.True(written.IndexOf(first.ToString(), StringComparison.Ordinal) < written.IndexOf(second.ToString(), StringComparison.Ordinal));
+
+        // Kept beside the graph's pins and the ranking, and replaced with them; a layout pinning no lane and nothing else is
+        // removed.
+        WorkspaceLayout both = InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }],
+            Now, RankingMetric.BytesSent, pinnedLanes: [second])!;
+        Assert.Equal((1, RankingMetric.BytesSent, second), (both.Pins.Count, both.RankBy!.Value, Assert.Single(both.PinnedLanes)));
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, pinnedLanes: []));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // Refused: a lane pinned twice, by no process instance, or past the most a layout pins.
+        foreach ((Guid[] lanes, string problem) in new (Guid[], string)[]
+        {
+            ([first, second, first], "a lane is pinned twice"),
+            ([first, Guid.Empty], "a lane is pinned by no process instance"),
+            ([.. Enumerable.Range(1, InvestigationWorkspace.MostPinnedLanes + 1).Select(index => new Guid(index, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))],
+                "it pins more than 1,024 lanes"),
+        })
+        {
+            Assert.Contains(problem, Assert.Throws<InvalidOperationException>(() =>
+                InvestigationWorkspace.SetLayout(workspace, a, [], Now, pinnedLanes: lanes)).Message, StringComparison.Ordinal);
+        }
+
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // A file of a version before them pins none, and one that says otherwise is refused, as is one pinning a lane twice,
+        // by no instance, or listing its lanes as null.
+        foreach ((string text, string problem) in new[]
+        {
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FifteenthContract}\"", StringComparison.Ordinal),
+                "file pins no session's timeline lanes"),
+            (written.Replace(second.ToString(), first.ToString(), StringComparison.Ordinal), "is refused: a lane is pinned twice"),
+            (written.Replace(second.ToString(), Guid.Empty.ToString(), StringComparison.Ordinal),
+                "is refused: a lane is pinned by no process instance"),
+            (System.Text.RegularExpressions.Regex.Replace(written, "\"pinnedLanes\": \\[[^\\]]*\\]", "\"pinnedLanes\": null"),
+                "its value at $.layouts[0].pinnedLanes is not of the kind that field holds"),
+        })
+        {
+            Assert.NotEqual(written, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A file of the version before, pinning none, reads as one that pins none, and is written as the current one.
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.FifteenthContract}\"", StringComparison.Ordinal));
+        Assert.Empty(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.PinnedLanes);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true, pinnedLanes: [first]);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, first), (rewritten.Contract, Assert.Single(rewritten.Layouts.Single().PinnedLanes)));
+    }
+
     [Fact(DisplayName = "§26.3: what the window's panes keep is said in one series, only what differs from equal halves with both shown")]
     public void ThePanesAreDescribedInOneSeries()
     {
@@ -902,7 +979,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal("1 node pinned on its graph, the timeline filling the column and the graph at 37% of the panes' height when "
             + "both are shown", WorkspaceLayout.Series(
             [
-                .. WorkspaceLayout.Parts(1, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture),
+                .. WorkspaceLayout.Parts(1, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture),
                 .. WorkspacePanes.Parts(0.3712, WorkspacePane.Timeline, culture),
             ]));
     }
@@ -912,10 +989,11 @@ public sealed class InvestigationWorkspaceTests : IDisposable
     {
         CultureInfo culture = CultureInfo.InvariantCulture;
         static WorkspaceLayout Layout(int pins, RankingMetric? rankBy = null, bool perSecond = false, EvidencePolicy? policy = null,
-            bool scales = false) => new()
+            bool scales = false, int lanes = 0) => new()
         {
             SessionId = Guid.Empty,
             Pins = [.. Enumerable.Range(0, pins).Select(index => new WorkspacePin { Key = $"group:{index}", X = 0.5, Y = 0.5 })],
+            PinnedLanes = [.. Enumerable.Range(1, lanes).Select(index => new Guid(index, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))],
             RankBy = rankBy,
             PerSecond = perSecond,
             EvidencePolicy = policy,
@@ -934,11 +1012,17 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             + "and each of its timeline lanes on its own scale",
             Layout(2, RankingMetric.RpcCallsMade, true, EvidencePolicy.IncludeCandidates, true).Describe(culture));
 
+        // Pinned lanes are said after the graph's pins, as the timeline is drawn beneath the graph.
+        Assert.Equal("1 process lane pinned on its timeline", Layout(0, lanes: 1).Describe(culture));
+        Assert.Equal("1 node pinned on its graph, 1,025 process lanes pinned on its timeline and each of its timeline lanes on its "
+            + "own scale", Layout(1, scales: true, lanes: 1_025).Describe(culture));
+
         // A default is not said: a session opened on its own ranks by records counted whole, under correlated evidence, on
         // one scale, as one opened from an investigation that keeps none of it.
-        Assert.Equal(string.Empty, WorkspaceLayout.Describe(0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture));
+        Assert.Equal(string.Empty,
+            WorkspaceLayout.Describe(0, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture));
         Assert.Equal("each of its timeline lanes on its own scale",
-            WorkspaceLayout.Describe(0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, true, culture));
+            WorkspaceLayout.Describe(0, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, true, culture));
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

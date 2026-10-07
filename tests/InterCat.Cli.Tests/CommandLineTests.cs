@@ -1027,7 +1027,7 @@ public sealed class CommandLineTests : IDisposable
         return directory;
     }
 
-    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, ranking, evidence policy and lane scale, and the window's panes")]
+    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, ranking, evidence policy and lane scale, and the window's panes")]
     public async Task WorkspaceShowStatesEachLayout()
     {
         string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
@@ -1035,15 +1035,19 @@ public sealed class CommandLineTests : IDisposable
         {
             Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
             Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "add", workspace, session.Path)).Code);
+            Guid lane = Guid.Parse("a1b2c3d4-0000-4000-8000-000000000001");
             InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }],
-                DateTimeOffset.UtcNow, RankingMetric.BytesSent, perSecond: true);
+                DateTimeOffset.UtcNow, RankingMetric.BytesSent, perSecond: true, pinnedLanes: [lane]);
 
             (InterCatExitCode shown, string text, string said) = await Run("workspace", "show", workspace);
             Assert.True(shown == InterCatExitCode.Success, said);
-            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": 1 node pinned on its graph and its rows ranked by "
-                + "bytes sent per second, put back when it is opened from this investigation.", text, StringComparison.Ordinal);
+            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": 1 node pinned on its graph, 1 process lane pinned "
+                + "on its timeline and its rows ranked by bytes sent per second, put back when it is opened from this investigation.",
+                text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
-            Assert.Contains("\"contract\": \"workspace-resolution-v17\"", json, StringComparison.Ordinal);
+            Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
+            Assert.Equal("workspace-resolution-v18", WorkspaceCommand.ResolutionContract);
+            Assert.Matches(new Regex($"\"pinnedLanes\": \\[\\s*\"{lane}\"\\s*\\]"), json);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
             Assert.Contains("\"evidencePolicy\": null", json, StringComparison.Ordinal);
             Assert.Contains("\"panes\": null", json, StringComparison.Ordinal);

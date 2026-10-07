@@ -1,7 +1,7 @@
-# Workspace contract, version 15
+# Workspace contract, version 16
 
-Status: M4, revision 360 (ADR-038 to ADR-042); versions 1 to 14 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
-270, 271, 280, 301, 339 and 343's, and packages revision 263's
+Status: M4, revision 388 (ADR-038 to ADR-042); versions 1 to 15 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
+270, 271, 280, 301, 339, 343 and 360's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | package`
 Read by: `icat workspace show | compare | correlate`
@@ -15,10 +15,11 @@ any member placed in the workspace's time, not only to its reference (§5). Vers
 two host identities are one host (§4), version 8 their statements of known address translations (§6), version 9 their
 notes (§7), version 10 their saved views (§7), version 11 how they laid out each session's graph (§7), version 12
 what they rank each session's rows by (§7), version 13 how strongly a record must bind to a process to count as its
-own there (§7), version 14 whether each of its timeline lanes is read against its own peak (§7), and version 15 how they
-left the window's two main panes (§7). An earlier version's file is read as one without what later versions added - a
-`workspace-v1` file holds members and host names and no time, a `workspace-v2` file manual alignments only, and a
-`workspace-v5` file members each aligned to the reference itself - and each is written as version 15. A kind of fact is
+own there (§7), version 14 whether each of its timeline lanes is read against its own peak (§7), version 15 how they
+left the window's two main panes (§7), and version 16 which process lanes they pinned at the top of each session's
+timeline (§7). An earlier version's file is read as one without what later versions added - a `workspace-v1` file holds
+members and host names and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each
+aligned to the reference itself - and each is written as version 16. A kind of fact is
 refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
 before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
 version appeared.
@@ -27,7 +28,7 @@ version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v15"` (`"workspace-v1"` to `"workspace-v14"` are read) |
+| `contract` | `"workspace-v16"` (`"workspace-v1"` to `"workspace-v15"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -39,7 +40,7 @@ version appeared.
 | `addressTranslations` | Every revision of a person's statement of a known address translation, in the order recorded (§6) |
 | `notes` | Every revision of a person's notes, in the order written (§7) |
 | `views` | Every revision of a person's saved views of the investigation's time, in the order saved (§7) |
-| `layouts` | How a person laid out each member's graph, ranked its rows and counted its records: at most one per member, replaced as it changes (§7) |
+| `layouts` | How a person laid out each member's graph and timeline, ranked its rows and counted its records: at most one per member, replaced as it changes (§7) |
 | `panes` | How a person left the window's two main panes while showing its sessions: the graph's share of their height and the pane filling the column; null when it keeps none (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
@@ -84,7 +85,7 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v17`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v18`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null) and `through` (the members it is aligned through to the
 reference, nearest first), the hosts with their members and the identities confirmed one host with each, the
@@ -323,28 +324,31 @@ investigation's time, and `<name> --remove` removes it; `show` lists those in fo
 show no interval, are in the clock of no member, or appear in a file before version 10, is refused.
 
 A layout is how a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its
-graph, where, what its rows are ranked by, the evidence policy its records are counted under, and the scale its timeline
-lanes are read against. It is a preference rather than a finding, so a member has one at most, replaced as it changes,
+graph, where, the process lanes they pinned on its timeline, what its rows are ranked by, the evidence policy its records
+are counted under, and the scale its timeline lanes are read against. It is a preference rather than a finding, so a member has one at most, replaced as it changes,
 and none is kept as a revision:
 
 | Layout field | Meaning |
 |---|---|
 | `sessionId` | The member whose graph it lays out |
 | `pins` | The pinned nodes, by key: `{ key, x, y }`, the node's stable graph key - a process instance, a group or an aggregate - at most 256 characters, and where it was put, each of `x` and `y` from 0 to 1 across and down the graph; at most 1,024, each key once |
+| `pinnedLanes` | The process instances whose lanes are pinned at the top of their group's lanes on the session's timeline (§6.2), by identity, in the order they were pinned, which is the order they are drawn in; at most 1,024, each once, none the empty identity. Empty when none is. Since version 16 |
 | `rankBy` | What the session's rows are ranked by (§6.1), when not by their own records: `BytesSent`, `BytesReceived`, `EndpointBytes`, `RpcCallsMade`, `RpcCallsServed`, `RpcErrors`, `RpcCallTime`, `RpcServeTime` or `ActivePeers`; null ranks by records. Since version 12 |
 | `perSecond` | Whether a count or sum it ranks by reads per second of the ranked interval. Since version 12 |
 | `evidencePolicy` | How strongly a record must bind to a process to count as that process's, when not by correlated evidence, the default: `IncludeCandidates`, which counts a reused PID's later holder's records as its own too, as candidates; null counts correlated evidence. No other policy is kept, since no view offers one to put back. Since version 13 |
 | `scalesEachLane` | Whether each of the session's timeline lanes is read against its own busiest bar rather than one scale every lane shares, the default (§6.2's normalization scope). Since version 14 |
 | `updatedUtc` | When it last changed |
 
-The Desktop keeps a session's pins, its ranking, its evidence policy and its lanes' scale in the investigation it was
-opened from, and puts them back when it is opened from it again, its records counted under the policy kept before its
-first view; a session opened on its own keeps them only while it is open. A layout that pins nothing, ranks by records,
-not per second, counts correlated evidence and reads every lane on one scale keeps nothing and is removed. A file whose
-layouts are of no member, keep nothing, pin a node twice, outside the graph or by no key, rank by `Records` by name or
+The Desktop keeps a session's pins, its pinned lanes, its ranking, its evidence policy and its lanes' scale in the
+investigation it was opened from, and puts them back when it is opened from it again, its records counted under the
+policy kept before its first view and its lanes pinned before any group's are drawn; a session opened on its own keeps
+them only while it is open. A pinned lane of an instance a later generation does not draw stays pinned, for when it is
+drawn. A layout that pins nothing, ranks by records, not per second, counts correlated evidence and reads every lane on
+one scale keeps nothing and is removed. A file whose layouts are of no member, keep nothing, pin a node twice, outside
+the graph or by no key, pin a lane twice, by the empty identity or more than 1,024 of them, rank by `Records` by name or
 by no metric §6.1 offers, count under `IncludeCorrelated` by name or under any policy but `IncludeCandidates`, appear in
-a file before version 11, rank in a file before version 12, name a policy in a file before version 13, or read each lane
-on its own scale in a file before version 14, is refused.
+a file before version 11, rank in a file before version 12, name a policy in a file before version 13, read each lane on
+its own scale in a file before version 14, or pin a lane in a file before version 16, is refused.
 
 The panes are how a person left the window's two main panes - the graph above the timeline - while showing the
 investigation's sessions (§6.1's persistence): the graph's share of the height the two share, and the pane filling the
@@ -385,7 +389,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `layouts` and `panes`. The file is written as
-  `workspace-v15`.
+  `workspace-v16`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or
@@ -404,8 +408,8 @@ member could not be copied.
 
 - Alignment from shared markers (§8.2's third mode).
 - Graph pins: a note pinned at an instant is the investigation's pin, and each session's graph keeps its own.
-- Lane grouping, pinned lanes and column widths (§6.1's persistence): the window offers no control for them yet, so
-  nothing of them is kept.
+- Lane grouping and column widths (§6.1's persistence): the window offers no control for them yet, so nothing of them is
+  kept.
 - Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
   257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
   session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.

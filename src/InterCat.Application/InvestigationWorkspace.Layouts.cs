@@ -17,10 +17,10 @@ public sealed record WorkspacePin
 }
 
 /// <summary>
-/// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where,
-/// what its rows are ranked by, the evidence policy its records are counted under, and the scale its timeline lanes are
-/// read against. It is a preference, not a finding, so a member has one, replaced as it changes rather than kept as
-/// revisions.
+/// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where, the
+/// process lanes they pinned on its timeline, what its rows are ranked by, the evidence policy its records are counted
+/// under, and the scale its timeline lanes are read against. It is a preference, not a finding, so a member has one,
+/// replaced as it changes rather than kept as revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -28,6 +28,12 @@ public sealed record WorkspaceLayout
 
     /// <summary>The pinned nodes, by key.</summary>
     public required IReadOnlyList<WorkspacePin> Pins { get; init; }
+
+    /// <summary>
+    /// The process instances whose timeline lanes are pinned at the top of their group's lanes (§6.2), in the order pinned;
+    /// empty when none is. A file of a version before 16 pins none.
+    /// </summary>
+    public IReadOnlyList<Guid> PinnedLanes { get; init; } = [];
 
     /// <summary>What the session's rows are ranked by (§6.1) when not by their own records; null ranks by records.</summary>
     public RankingMetric? RankBy { get; init; }
@@ -50,38 +56,44 @@ public sealed record WorkspaceLayout
     public required DateTimeOffset UpdatedUtc { get; init; }
 
     /// <summary>
-    /// Whether it keeps anything: a pin, a ranking other than records counted whole, another evidence policy, or each lane
-    /// on its own scale.
+    /// Whether it keeps anything: a pinned node or lane, a ranking other than records counted whole, another evidence
+    /// policy, or each lane on its own scale.
     /// </summary>
     [JsonIgnore]
-    public bool KeepsAnything => Pins.Count > 0 || RankBy is not null || PerSecond || EvidencePolicy is not null || ScalesEachLane;
+    public bool KeepsAnything => Pins.Count > 0 || PinnedLanes.Count > 0 || RankBy is not null || PerSecond
+        || EvidencePolicy is not null || ScalesEachLane;
 
     /// <summary>
     /// What it keeps, in the words every place that says so uses - `icat workspace show`, the notice of a session opened
     /// from its investigation and that investigation's window: "1 node pinned on its graph and its rows ranked by bytes
     /// sent per second". Empty when it keeps nothing.
     /// </summary>
-    public string Describe(IFormatProvider culture) => Describe(Pins.Count, RankBy ?? RankingMetric.Records, PerSecond,
-        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
+    public string Describe(IFormatProvider culture) => Describe(Pins.Count, PinnedLanes.Count, RankBy ?? RankingMetric.Records,
+        PerSecond, EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
 
     /// <summary>
-    /// What a layout that pins <paramref name="pins"/> nodes, ranks by <paramref name="rankBy"/>, counts under
-    /// <paramref name="evidencePolicy"/> and reads each lane on its own scale or not keeps, in <see cref="Describe(IFormatProvider)"/>'s
-    /// words: nothing of a default, so what is said is only what differs from a session opened on its own.
+    /// What a layout that pins <paramref name="pins"/> nodes and <paramref name="lanes"/> process lanes, ranks by
+    /// <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/> and reads each lane on its own scale or not
+    /// keeps, in <see cref="Describe(IFormatProvider)"/>'s words: nothing of a default, so what is said is only what differs
+    /// from a session opened on its own.
     /// </summary>
-    public static string Describe(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy, bool scalesEachLane,
-        IFormatProvider culture) => Series(Parts(pins, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
-
-    /// <summary>
-    /// Each thing <see cref="Describe(int, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/> says such a layout
-    /// keeps, in its order, so a notice can list it in one series with what else was put back.
-    /// </summary>
-    public static IReadOnlyList<string> Parts(int pins, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy,
+    public static string Describe(int pins, int lanes, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy,
         bool scalesEachLane, IFormatProvider culture) =>
+        Series(Parts(pins, lanes, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
+
+    /// <summary>
+    /// Each thing <see cref="Describe(int, int, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/> says such a
+    /// layout keeps, in its order, so a notice can list it in one series with what else was put back.
+    /// </summary>
+    public static IReadOnlyList<string> Parts(int pins, int lanes, RankingMetric rankBy, bool perSecond,
+        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture) =>
     [
         .. new[]
         {
             pins == 0 ? null : string.Create(culture, $"{pins:N0} {(pins == 1 ? "node" : "nodes")} pinned on its graph"),
+            lanes == 0
+                ? null
+                : string.Create(culture, $"{lanes:N0} {(lanes == 1 ? "process lane" : "process lanes")} pinned on its timeline"),
             rankBy == RankingMetric.Records && !perSecond
                 ? null
                 : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
@@ -106,12 +118,16 @@ public static partial class InvestigationWorkspace
     /// <summary>The longest a pinned node's key may be, in characters.</summary>
     public const int MostPinKeyCharacters = 256;
 
+    /// <summary>The most process lanes one member's layout pins.</summary>
+    public const int MostPinnedLanes = 1_024;
+
     /// <summary>
     /// Keeps <paramref name="pins"/>, the ranking <paramref name="rankBy"/> read per second when
-    /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, and each timeline
-    /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, as how member
-    /// <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing, ranks by records
-    /// counted whole, counts correlated evidence and reads every lane on one scale removes it. Null when it is removed.
+    /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, each timeline
+    /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, and the process lanes
+    /// <paramref name="pinnedLanes"/> pinned in their order, as how member <paramref name="sessionId"/>'s view is laid out,
+    /// replacing its earlier layout; one that pins nothing, ranks by records counted whole, counts correlated evidence and
+    /// reads every lane on one scale removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -121,9 +137,11 @@ public static partial class InvestigationWorkspace
         RankingMetric rankBy = RankingMetric.Records,
         bool perSecond = false,
         EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated,
-        bool scalesEachLane = false)
+        bool scalesEachLane = false,
+        IReadOnlyList<Guid>? pinnedLanes = null)
     {
         ArgumentNullException.ThrowIfNull(pins);
+        pinnedLanes ??= [];
         if (!Enum.IsDefined(rankBy))
         {
             throw new InvalidOperationException("The layout is refused: it ranks by no metric §6.1 offers.");
@@ -142,7 +160,7 @@ public static partial class InvestigationWorkspace
             throw new InvalidOperationException($"Session {sessionId:N} is not a member of this investigation, so it keeps no layout here.");
         }
 
-        if (PinsProblem(pins) is { } problem)
+        if ((PinsProblem(pins) ?? LanesProblem(pinnedLanes)) is { } problem)
         {
             throw new InvalidOperationException($"The layout is refused: {problem}.");
         }
@@ -151,6 +169,7 @@ public static partial class InvestigationWorkspace
         {
             SessionId = sessionId,
             Pins = [.. pins.OrderBy(pin => pin.Key, StringComparer.Ordinal)],
+            PinnedLanes = [.. pinnedLanes],
             RankBy = rankBy == RankingMetric.Records ? null : rankBy,
             PerSecond = perSecond,
             EvidencePolicy = evidencePolicy == Domain.EvidencePolicy.IncludeCorrelated ? null : evidencePolicy,
@@ -181,7 +200,14 @@ public static partial class InvestigationWorkspace
         : pins.Any(pin => !new GraphPoint(pin.X, pin.Y).IsValid) ? "a node is pinned outside the graph"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v15.md` §7).</summary>
+    /// <summary>What makes a layout's pinned lanes ones no window pins, or null: too many, the empty identity, or one twice.</summary>
+    private static string? LanesProblem(IReadOnlyList<Guid> lanes) =>
+        lanes.Count > MostPinnedLanes ? $"it pins more than {MostPinnedLanes:N0} lanes"
+        : lanes.Contains(Guid.Empty) ? "a lane is pinned by no process instance"
+        : lanes.Distinct().Count() != lanes.Count ? "a lane is pinned twice"
+        : null;
+
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v16.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -213,6 +239,12 @@ public static partial class InvestigationWorkspace
             return $"a {workspace.Contract} file reads no session's timeline lanes on scales of their own";
         }
 
+        // Pinned lanes arrived with the sixteenth version (revision 388).
+        if (VersionOf(workspace) < 16 && workspace.Layouts.Any(layout => layout.PinnedLanes.Count > 0))
+        {
+            return $"a {workspace.Contract} file pins no session's timeline lanes";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
@@ -225,11 +257,11 @@ public static partial class InvestigationWorkspace
         return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || !layout.KeepsAnything
             || layout.RankBy is { } rankBy && (rankBy == RankingMetric.Records || !Enum.IsDefined(rankBy))
             || layout.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
-            || PinsProblem(layout.Pins) is not null) is { } wrong
+            || PinsProblem(layout.Pins) is not null || LanesProblem(layout.PinnedLanes) is not null) is { } wrong
             ? $"the layout of session {wrong.SessionId:N} "
                 + (!members.Contains(wrong.SessionId) ? "is of no member"
                     : !wrong.KeepsAnything ? "keeps nothing"
-                    : PinsProblem(wrong.Pins) is { } problem ? "is refused: " + problem
+                    : (PinsProblem(wrong.Pins) ?? LanesProblem(wrong.PinnedLanes)) is { } problem ? "is refused: " + problem
                     : wrong.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
                         ? "counts its records under a policy no view offers, or under correlated evidence by name"
                     : "ranks by no metric §6.1 offers, or by records by name")

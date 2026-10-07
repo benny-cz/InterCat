@@ -50,6 +50,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private (string Workspace, Guid Session)? layoutHome;
     private IReadOnlyDictionary<string, GraphPoint>? keptPins;
 
+    /// <summary>The process lanes last kept pinned in the shown session's investigation, in the order pinned (§6.2).</summary>
+    private IReadOnlyList<ProcessInstanceId>? keptLanes;
+
     /// <summary>The view settings last kept in the shown session's investigation, or null when none were kept or read yet.</summary>
     private ViewSettings? keptSettings;
 
@@ -1028,13 +1031,13 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// What member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>: its pins, none when it keeps none,
-    /// its view settings, the defaults where it keeps none, and the window's panes the investigation keeps for all its
-    /// sessions, if any; null when the file cannot be read or does not name the session, which then keeps them only while it
-    /// is open.
+    /// What member <paramref name="sessionId"/> keeps in <paramref name="investigation"/>: its pins and pinned lanes, none
+    /// when it keeps none, its view settings, the defaults where it keeps none, and the window's panes the investigation
+    /// keeps for all its sessions, if any; null when the file cannot be read or does not name the session, which then keeps
+    /// them only while it is open.
     /// </summary>
-    private static (Dictionary<string, GraphPoint> Pins, ViewSettings Settings, WorkspacePanes? Panes)? LayoutKeptIn(
-        string investigation, Guid sessionId)
+    private static (Dictionary<string, GraphPoint> Pins, IReadOnlyList<ProcessInstanceId> Lanes, ViewSettings Settings,
+        WorkspacePanes? Panes)? LayoutKeptIn(string investigation, Guid sessionId)
     {
         try
         {
@@ -1046,6 +1049,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
             WorkspaceLayout? layout = InvestigationWorkspace.LayoutOf(file, sessionId);
             return ((layout?.Pins ?? []).ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal),
+                [.. (layout?.PinnedLanes ?? []).Select(lane => new ProcessInstanceId(lane))],
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
                     layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane),
                 file.Panes);
@@ -1057,14 +1061,14 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// What an investigation put back of a session's pins and view settings, and of the window's panes, ending its notice in
-    /// the words its window and `icat workspace show` say them in: ", which put back 2 nodes pinned on its graph and the
-    /// timeline filling the column."
+    /// What an investigation put back of a session's pins, pinned lanes and view settings, and of the window's panes, ending
+    /// its notice in the words its window and `icat workspace show` say them in: ", which put back 2 nodes pinned on its
+    /// graph and the timeline filling the column."
     /// </summary>
-    private static string PutBack(int pins, ViewSettings settings, WorkspacePanes? panes) =>
+    private static string PutBack(int pins, int lanes, ViewSettings settings, WorkspacePanes? panes) =>
         WorkspaceLayout.Series(
         [
-            .. WorkspaceLayout.Parts(pins, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
+            .. WorkspaceLayout.Parts(pins, lanes, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
                 CultureInfo.CurrentCulture),
             .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
         ]) is { Length: > 0 } restored
@@ -1072,26 +1076,31 @@ public sealed partial class MainWindow : Window, IDisposable
             : ".";
 
     /// <summary>
-    /// Keeps the shown session's pins and view settings in the investigation it was opened from, when they changed: one
-    /// write after another, off the UI thread, and a write that fails is said beside the session's status rather than lost
-    /// silently.
+    /// Keeps the shown session's pins, pinned lanes and view settings in the investigation it was opened from, when they
+    /// changed: one write after another, off the UI thread, and a write that fails is said beside the session's status
+    /// rather than lost silently.
     /// </summary>
     private void KeepLayout((string Workspace, Guid Session) home)
     {
         IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
+        ProcessInstanceId[] lanes = [.. workspace.PinnedLanes];
         ViewSettings settings = ViewSettings.Of(workspace);
         if (keptPins is { } kept && kept.Count == pins.Count
             && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value)
+            && keptLanes is { } lanesKept && lanesKept.SequenceEqual(lanes)
             && keptSettings == settings)
         {
             return;
         }
 
         keptPins = pins;
+        keptLanes = lanes;
         keptSettings = settings;
         WorkspacePin[] layout = [.. pins.Select(pin => new WorkspacePin { Key = pin.Key, X = pin.Value.X, Y = pin.Value.Y })];
+        Guid[] pinnedLanes = [.. lanes.Select(lane => lane.Value)];
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
-            layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane));
+            layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
+            pinnedLanes));
         _ = SayWhatIsKeptAsync(written, home);
     }
 
@@ -1232,6 +1241,7 @@ public sealed partial class MainWindow : Window, IDisposable
             if (!closed)
             {
                 keptPins = null;
+                keptLanes = null;
                 keptSettings = null;
                 CaptureDetail.Text += " The pins and view settings could not be kept in the investigation: " + exception.Message;
             }
@@ -2573,14 +2583,16 @@ public sealed partial class MainWindow : Window, IDisposable
             : null;
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
         IReadOnlyDictionary<string, GraphPoint>? pins = savedNavigation is null ? null : workspace.GraphPins;
+        IReadOnlyList<ProcessInstanceId> lanes = [];
         string? pinsNotice = null;
         ViewSettings? restored = null;
         if (savedNavigation is null)
         {
-            // A session opened from an investigation it is a member of keeps its pins and view settings there, and gets
-            // back those it kept (§26.3); any other session keeps them only while it is open. Its policy was put back
-            // before its overview was projected, under it.
+            // A session opened from an investigation it is a member of keeps its pins, pinned lanes and view settings there,
+            // and gets back those it kept (§26.3); any other session keeps them only while it is open. Its policy was put
+            // back before its overview was projected, under it.
             layoutHome = null;
+            keptLanes = null;
             keptSettings = null;
             keptPanes = null;
             if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
@@ -2589,6 +2601,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 // and left as they are, as for a session opened on its own, when it keeps none.
                 layoutHome = (investigation, overview.SessionId);
                 pins = kept.Pins;
+                lanes = keptLanes = kept.Lanes;
                 restored = keptSettings = kept.Settings;
                 keptPanes = kept.Panes is { } panes
                     ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded)
@@ -2599,7 +2612,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
 
                 pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(investigation)}"
-                    + PutBack(kept.Pins.Count, kept.Settings with { Policy = overview.Policy }, kept.Panes);
+                    + PutBack(kept.Pins.Count, kept.Lanes.Count, kept.Settings with { Policy = overview.Policy }, kept.Panes);
             }
 
             keptPins = pins;
@@ -2613,6 +2626,9 @@ public sealed partial class MainWindow : Window, IDisposable
             replacement.PerSecond = settings.PerSecond;
             replacement.ScalesEachLane = settings.ScalesEachLane;
         }
+
+        // The lanes its investigation kept pinned are pinned before any group's lanes are counted, so they are drawn first.
+        replacement.PinLanes(lanes);
 
         if (pinsNotice is not null)
         {
@@ -2824,8 +2840,8 @@ public sealed partial class MainWindow : Window, IDisposable
             KeepRailKeyboard();
         }
 
-        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) or nameof(WorkspaceViewModel.RankBy)
-                or nameof(WorkspaceViewModel.PerSecond) or nameof(WorkspaceViewModel.ScalesEachLane)
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) or nameof(WorkspaceViewModel.PinnedLanes)
+                or nameof(WorkspaceViewModel.RankBy) or nameof(WorkspaceViewModel.PerSecond) or nameof(WorkspaceViewModel.ScalesEachLane)
             && layoutHome is { } home)
         {
             KeepLayout(home);
