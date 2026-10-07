@@ -66,6 +66,24 @@ internal sealed record ProcessActivityDocument
     /// because deriving every instance's peers is a query per instance.
     /// </summary>
     public IReadOnlyList<ProcessPeerDocument>? Peers { get; init; }
+
+    /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
+    public required int PidHolders { get; init; }
+
+    /// <summary>
+    /// The records bound to it over the session only as candidates - a later holder's, which could be late records of an
+    /// earlier one - whether or not the evidence policy counts them.
+    /// </summary>
+    public required long CandidateRecords { get; init; }
+
+    /// <summary>
+    /// Of those, the records the evidence policy left out of <see cref="Records"/>: a later holder that counts only its
+    /// lifecycle records is not a quiet process (R21).
+    /// </summary>
+    public required long WithheldRecords { get; init; }
+
+    /// <summary>How its records were bound to it, what the policy left out, and the coverage, in the inspector's words (R18).</summary>
+    public required string Binding { get; init; }
 }
 
 /// <summary>An instance's transport records of one side: how many measured a size, and how many recorded none.</summary>
@@ -195,7 +213,11 @@ internal static class ProcessesCommand
 
         MetricResult sent = Grouped(store, Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide, policy, cancellationToken);
         MetricResult received = Grouped(store, Metric.BytesReceived, ByteDomain.TransportObserved, AccountingSide.ReceiveSide, policy, cancellationToken);
-        ProcessesDocument document = Describe(full, records, sent, received, policy);
+
+        // Each instance as the inspector explains it: the overview's own projection under the same policy (R18).
+        Dictionary<ProcessInstanceId, ProcessNode> nodes = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken)
+            .Nodes.ToDictionary(node => node.Id);
+        ProcessesDocument document = Describe(full, records, sent, received, policy, nodes);
         if (pid is { } selected)
         {
             ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with.");
@@ -264,7 +286,8 @@ internal static class ProcessesCommand
         MetricResult records,
         MetricResult sent,
         MetricResult received,
-        EvidencePolicy policy)
+        EvidencePolicy policy,
+        Dictionary<ProcessInstanceId, ProcessNode> nodes)
     {
         Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
         Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
@@ -281,6 +304,10 @@ internal static class ProcessesCommand
                     TransportBytesReceived = receivedBy.GetValueOrDefault(group.Process!.Id)?.Value,
                     Sends = Records(sentBy.GetValueOrDefault(group.Process!.Id)),
                     Receives = Records(receivedBy.GetValueOrDefault(group.Process!.Id)),
+                    PidHolders = nodes[group.Process!.Id].PidHolders,
+                    CandidateRecords = nodes[group.Process!.Id].CandidateRecords,
+                    WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
+                    Binding = ProcessBindingText.Explain(nodes[group.Process!.Id]),
                 })
                 .OrderByDescending(item => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0))
                 .ThenByDescending(item => item.Records)
@@ -504,6 +531,19 @@ internal static class ProcessesCommand
                 ]);
         }
 
+        // A later holder of a reused PID counts only its lifecycle records while the policy counts no candidate: it says so,
+        // and how to count them, so its row is not read as a quiet process (R21).
+        ProcessActivityDocument[] withheld = [.. shown.Where(item => item.WithheldRecords > 0)];
+        foreach (ProcessActivityDocument item in pid is null ? withheld : [])
+        {
+            ConsoleUi.Note(item.Binding);
+        }
+
+        if (pid is null && withheld.Length > 0)
+        {
+            ConsoleUi.Note("--evidence-policy IncludeCandidates counts them.");
+        }
+
         foreach (ProcessActivityDocument item in pid is null ? [] : shown)
         {
             RenderDetail(item, path);
@@ -553,6 +593,7 @@ internal static class ProcessesCommand
             CultureInfo.InvariantCulture,
             $"  PID {process.ProcessId}{epoch} {process.ImageName ?? "(image not witnessed)"}"));
         ConsoleUi.Field("Instance id", process.InstanceId);
+        ConsoleUi.Field("Counted", item.Binding + (item.WithheldRecords > 0 ? " --evidence-policy IncludeCandidates counts them." : string.Empty));
         ConsoleUi.Field("Identity from", Words(process.IdentityEvidence) + (process.StartSequence is { } sequence
             ? string.Create(CultureInfo.InvariantCulture, $", start sequence {sequence}")
             : string.Empty));

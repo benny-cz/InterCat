@@ -342,8 +342,7 @@ public static class WorkspaceRowBuilder
     }
 
     /// <summary>A rule as a person reads it: "transport-endpoint-relation, version 4".</summary>
-    public static string DescribeRule(RelationRule rule) =>
-        string.Create(CultureInfo.CurrentCulture, $"{rule.Identity}, version {rule.Version:N0}");
+    public static string DescribeRule(RelationRule rule) => ProcessBindingText.Rule(rule);
 
     /// <summary>
     /// How a relationship was made, in words (R4): its evidence, the rule and version that derived it, and what it rests on
@@ -393,27 +392,7 @@ public static class WorkspaceRowBuilder
     /// only as candidates, which a policy that admits none counts in no process; the explanation says so, and how many,
     /// so its row does not read as a quiet process (R21, R22).
     /// </summary>
-    public static string ExplainBinding(ProcessNode process)
-    {
-        ArgumentNullException.ThrowIfNull(process);
-        string rule = DescribeRule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
-        string pid = string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId}");
-        string holders = Spoken.Count(process.PidHolders, "process", "processes");
-        string binding = process.PidHolders <= 1
-            ? $"Each record naming {pid} while it ran is its own, correlated by {rule}: no other process held {pid} in this capture."
-            : process.PidHolder <= 1
-            ? $"Each record naming {pid} while it ran is its own, correlated by {rule}: it was the first of {holders} to hold {pid} in this capture."
-            : $"{pid} was held by {holders} in this capture, and this was the {Spoken.Ordinal(process.PidHolder)}. A record naming it "
-                + $"while this one ran could be a late record of an earlier one, so {rule}, binds it here only as a candidate. "
-                + (process.WithheldRecords > 0
-                    ? "The evidence policy counts no candidate, so its total counts only its lifecycle records, leaving out "
-                        + $"{Spoken.Count(process.WithheldRecords, "record")} bound to it over the session."
-                    : process.CandidateRecords > 0
-                    ? "The evidence policy counts candidates, so its total includes the "
-                        + $"{Spoken.Count(process.CandidateRecords, "record")} bound to it over the session."
-                    : "None is left out of its total.");
-        return $"{binding} Coverage over the session: {CoverageWords(process.Coverage)}.";
-    }
+    public static string ExplainBinding(ProcessNode process) => ProcessBindingText.Explain(process);
 
     /// <summary>
     /// Why a reused PID's later holder's rung lists no row while the evidence policy counts no candidate (§6.8), in the

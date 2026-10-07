@@ -940,6 +940,69 @@ public sealed class CommandLineTests : IDisposable
         Assert.Null(WorkspaceCommand.Uncovered(Lane(CoverageState.Covered, CoverageState.Covered), culture));
     }
 
+    [Fact(DisplayName = "R21: icat processes says how each instance's records were bound, and what the evidence policy left out of a reused PID's later holder, as the inspector does")]
+    public async Task ProcessesSayHowEachInstanceIsCounted()
+    {
+        string folder = Directory.CreateDirectory(Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"))).FullName;
+        try
+        {
+            // PID 100 runs first.exe, exits, and is created again running later.exe, whose two sends could be late records of
+            // first.exe, so they bind to it only as candidates.
+            string path = Held(folder, "reused", "lab-1",
+            [
+                Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\first.exe", SessionRelativeTicks = 1_000 },
+                Lifecycle(30, ObservationKind.Exit, 100, 2) with { SessionRelativeTicks = 3_000 },
+                Lifecycle(40, ObservationKind.Create, 100, 3) with { ResourceName = @"C:\Tools\later.exe", SessionRelativeTicks = 4_000 },
+                Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between("10.0.0.1:50000", "10.0.0.2:443") with { SessionRelativeTicks = 5_000 },
+                Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between("10.0.0.1:50000", "10.0.0.2:443") with { SessionRelativeTicks = 6_000 },
+            ]);
+            ProcessNode Holder(int holder, EvidencePolicy policy) => SessionOverviewProjector.Project(
+                SessionStore.OpenForViewing(LocalOwnedDirectory.Open(path)), policy).Nodes.Single(node => node.PidHolder == holder);
+            (ProcessNode first, ProcessNode later) = (Holder(1, EvidencePolicy.IncludeCorrelated), Holder(2, EvidencePolicy.IncludeCorrelated));
+            Assert.EndsWith("leaving out 2 records bound to it over the session. Coverage over the session: unknown.",
+                ProcessBindingText.Explain(later), StringComparison.Ordinal);
+
+            // The list says, beneath its table, what the policy left out of the later holder, in the inspector's words, and how
+            // to count it; the first holder left nothing out, so the list says nothing of it.
+            (InterCatExitCode code, string text, string said) = await Run("processes", path);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Contains("  " + ProcessBindingText.Explain(later) + Environment.NewLine, text, StringComparison.Ordinal);
+            Assert.Contains("  --evidence-policy IncludeCandidates counts them." + Environment.NewLine, text, StringComparison.Ordinal);
+            Assert.DoesNotContain(ProcessBindingText.Explain(first), text, StringComparison.Ordinal);
+
+            // Asked about the PID, each instance says how it was counted.
+            (code, text, said) = await Run("processes", path, "--pid", "100");
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches("Counted +" + Regex.Escape(ProcessBindingText.Explain(first)) + "\\r?\\n", text);
+            Assert.Matches("Counted +" + Regex.Escape(ProcessBindingText.Explain(later) + " --evidence-policy IncludeCandidates counts them."), text);
+
+            // Its document carries the facts behind the words, under either policy.
+            (long, int, long, long, string) Counted(string json, int epoch)
+            {
+                using JsonDocument answer = JsonDocument.Parse(json);
+                JsonElement item = answer.RootElement.GetProperty("instances").EnumerateArray()
+                    .Single(instance => instance.GetProperty("process").GetProperty("lifecycleEpoch").GetInt32() == epoch);
+                return (item.GetProperty("records").GetInt64(), item.GetProperty("pidHolders").GetInt32(), item.GetProperty("candidateRecords").GetInt64(),
+                    item.GetProperty("withheldRecords").GetInt64(), item.GetProperty("binding").GetString()!);
+            }
+
+            string withheld = (await Run("processes", path, "--json")).Output;
+            Assert.Equal((1L, 2, 2L, 2L, ProcessBindingText.Explain(later)), Counted(withheld, 2));
+            Assert.Equal((2L, 2, 0L, 0L, ProcessBindingText.Explain(first)), Counted(withheld, 1));
+            ProcessNode counted = Holder(2, EvidencePolicy.IncludeCandidates);
+            Assert.Contains("The evidence policy counts candidates, so its total includes the 2 records bound to it over the session.",
+                ProcessBindingText.Explain(counted), StringComparison.Ordinal);
+            Assert.Equal((3L, 2, 2L, 0L, ProcessBindingText.Explain(counted)),
+                Counted((await Run("processes", path, "--evidence-policy", "include-candidates", "--json")).Output, 2));
+            Assert.DoesNotContain("counts them.", (await Run("processes", path, "--evidence-policy", "include-candidates")).Output,
+                StringComparison.Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(folder, recursive: true);
+        }
+    }
+
     /// <summary>A session of one host whose rows these are, in a folder of its own beneath <paramref name="folder"/>.</summary>
     private static string Held(string folder, string name, string host, ObservationRowV1[] rows, CoverageLedgerV1? coverage = null)
     {

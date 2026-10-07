@@ -1516,6 +1516,7 @@
         "R21: icat operations and exchanges say a duration none was timed for, and a server call none reached, never a dash",
         "R21: icat operations, exchanges and channels say what the capture covered of what they list, never from a count of none",
         "R21: icat processes says a process's transport bytes are unmeasured, or that it made none, as the window's rows do",
+        "R21: icat processes says how each instance's records were bound, and what the evidence policy left out of a reused PID's later holder, as the inspector does",
         "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing",
         "R21: icat workspace correlate says an end's sends that measured no size are unmeasured, never 0 B, in the window's words",
         "R21: icat workspace correlate states what each compared capture covered of TCP and UDP, and that no candidate is then no proof",

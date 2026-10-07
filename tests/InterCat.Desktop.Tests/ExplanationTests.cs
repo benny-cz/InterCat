@@ -287,7 +287,7 @@ public sealed class ExplanationTests
     public void APositionReadsAsASentenceSaysIt() =>
         Assert.Equal(
             ["1st", "2nd", "3rd", "4th", "10th", "11th", "12th", "13th", "21st", "22nd", "23rd", "101st", "111th", "112th"],
-            Positions.Select(Spoken.Ordinal));
+            Positions.Select(CountText.Ordinal));
 
     /// <summary>A row whose session time is its reading in workspace ticks.</summary>
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

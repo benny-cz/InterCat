@@ -20,4 +20,12 @@ public static class CountText
 
     /// <summary>The word that agrees with <paramref name="count"/>: <paramref name="one"/> for one, <paramref name="many"/> otherwise.</summary>
     public static string Agree(long count, string one, string many) => count == 1 ? one : many;
+
+    /// <summary>A position as a sentence says it: "1st", "2nd", "3rd", "4th", "11th", "12th", "21st".</summary>
+    public static string Ordinal(int position)
+    {
+        string suffix = (position % 100) is 11 or 12 or 13 ? "th"
+            : (position % 10) switch { 1 => "st", 2 => "nd", 3 => "rd", _ => "th" };
+        return string.Create(CultureInfo.CurrentCulture, $"{position:N0}{suffix}");
+    }
 }
