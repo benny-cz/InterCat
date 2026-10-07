@@ -327,18 +327,23 @@ public static class WorkspaceTime
     {
         (decimal divisor, string unit, string format) = Unit(range.EndTicks - range.StartTicks);
         IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
-
-        // The bounds are parted by the culture's list separator: a comma-decimal culture writes "[0,5; 2,0)", so the
-        // separator never reads as a decimal comma. It is never the decimal separator itself.
-        System.Globalization.NumberFormatInfo number = System.Globalization.NumberFormatInfo.GetInstance(provider);
-        string separator = provider is System.Globalization.CultureInfo info ? info.TextInfo.ListSeparator : ",";
-        if (string.IsNullOrWhiteSpace(separator) || separator == number.NumberDecimalSeparator)
-        {
-            separator = number.NumberDecimalSeparator == "," ? ";" : ",";
-        }
-
+        string separator = BoundSeparator(provider);
         return string.Create(provider,
             $"[{(range.StartTicks / divisor).ToString(format, provider)}{separator} {(range.EndTicks / divisor).ToString(format, provider)}) {unit}");
+    }
+
+    /// <summary>
+    /// What parts a half-open range's bounds: the culture's list separator, so a comma-decimal culture writes "[0,5; 2,0)"
+    /// and the separator never reads as a decimal comma. It is never the decimal separator itself.
+    /// </summary>
+    public static string BoundSeparator(IFormatProvider provider)
+    {
+        ArgumentNullException.ThrowIfNull(provider);
+        System.Globalization.NumberFormatInfo number = System.Globalization.NumberFormatInfo.GetInstance(provider);
+        string separator = provider is System.Globalization.CultureInfo info ? info.TextInfo.ListSeparator : ",";
+        return string.IsNullOrWhiteSpace(separator) || separator == number.NumberDecimalSeparator
+            ? number.NumberDecimalSeparator == "," ? ";" : ","
+            : separator;
     }
 
     /// <summary>What a session's instants are counted in, where the wall clock its capture began at is not known.</summary>
@@ -358,12 +363,9 @@ public static class WorkspaceTime
         }
 
         DateTimeOffset local = TimeZoneInfo.ConvertTime(start, zone);
-        TimeSpan offset = local.Offset;
-        string utc = offset == TimeSpan.Zero ? "UTC"
-            : string.Create(System.Globalization.CultureInfo.InvariantCulture,
-                $"UTC{(offset < TimeSpan.Zero ? '-' : '+')}{offset:hh\\:mm}");
         IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
-        return string.Create(provider, $"{SessionTimeWords} since {local.DateTime:d} {local.DateTime:T} {utc}");
+        return string.Create(provider,
+            $"{SessionTimeWords} since {local.DateTime:d} {local.DateTime:T} {SessionClock.OffsetText(local.Offset)}");
     }
 
     /// <summary>One instant, in the unit a visible span of <paramref name="span"/> ticks needs, as an axis labels its edges.</summary>
@@ -462,4 +464,10 @@ public sealed record WorkspaceSnapshot(
     /// from, in UTC; null when the capture recorded no wall clock, as an import does.
     /// </summary>
     public DateTimeOffset? Began { get; init; }
+
+    /// <summary>
+    /// The wall clock the session's capture's machine read, placed against session time, which a view may read its
+    /// instants in (§6.2's time base); null when the capture recorded none.
+    /// </summary>
+    public SessionWallClock? WallClock { get; init; }
 }

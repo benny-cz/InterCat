@@ -582,7 +582,7 @@
               BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1" ClipToBounds="True">
         <Grid RowDefinitions="48,*,38">
           <Border Padding="14,9" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,0,0,1">
-            <Grid ColumnDefinitions="Auto,*,Auto,Auto" RowDefinitions="Auto,Auto">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto,Auto" RowDefinitions="Auto,Auto">
               <TextBlock Text="ACTIVITY TIMELINE" Classes="eyebrow" />
               <TextBlock Grid.Column="1" Margin="16,0,0,0"
                          Text="Wheel or double-click zooms · drag or ←→ pan · ↑↓ lanes · [ ] step · 0 fits"
@@ -599,7 +599,18 @@
                       IsVisible="{Binding OffersLanePin}" Content="{Binding LanePinLabel}"
                       ToolTip.Tip="Pin the selected process's lane at the top of the group's lanes, marked, in the order pinned, so the lanes being compared stay together; a process folded with a large group's least busy gets a lane of its own. Again to put it back in the ranked table's order. P does the same with the timeline focused."
                       AutomationProperties.Name="{Binding LanePinLabel}" />
-              <ToggleButton x:Name="TimelineExpandToggle" Grid.Column="3" Grid.RowSpan="2" Margin="12,0,0,0"
+              <!-- §6.2's time base: instants in session time, or on the wall clock the capture's machine read, where its
+                   capture recorded one; the axis, cards, time scope, interval table and evidence all follow it. -->
+              <ToggleButton x:Name="WallClockToggle" Grid.Column="3" Grid.RowSpan="2" Margin="12,0,0,0"
+                            FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
+                            VerticalContentAlignment="Center" IsVisible="{Binding OffersWallClock}"
+                            IsChecked="{Binding ReadsWallClock, Mode=TwoWay}"
+                            ToolTip.Tip="{Binding WallClockTip}"
+                            AutomationProperties.Name="Wall clock: read times on the clock the capture's machine kept, rather than in session time"
+                            AutomationProperties.HelpText="{Binding WallClockTip}">
+                <TextBlock Text="Wall clock" />
+              </ToggleButton>
+              <ToggleButton x:Name="TimelineExpandToggle" Grid.Column="4" Grid.RowSpan="2" Margin="12,0,0,0"
                             FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
                             VerticalContentAlignment="Center" IsCheckedChanged="TimelineExpandChanged"
                             ToolTip.Tip="Expand: let the timeline fill the column, the graph one click away (F11 with the timeline focused). Click again, or press F11, to give both their places back."

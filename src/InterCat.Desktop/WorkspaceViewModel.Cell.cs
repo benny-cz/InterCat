@@ -300,7 +300,7 @@ public sealed partial class WorkspaceViewModel
         {
             Viewport = viewport,
             Filters = [.. ladder.Current.Filters, .. cell.AddedFilters],
-        }).Description
+        }, TimeBase).Description
         : null;
 
     private void RaiseCellExplanationChanged()

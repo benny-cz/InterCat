@@ -101,7 +101,8 @@ public sealed record WorkspaceLayout
     /// says such a layout keeps, in its order, so a notice can list it in one series with what else was put back.
     /// </summary>
     public static IReadOnlyList<string> Parts(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
-        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false) =>
+        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false,
+        bool wallClock = false) =>
     [
         .. new[]
         {
@@ -116,6 +117,7 @@ public sealed record WorkspaceLayout
             evidencePolicy == Domain.EvidencePolicy.IncludeCandidates ? "its records counted with candidates" : null,
             scalesEachLane ? "each of its timeline lanes on its own scale" : null,
             collectorsAside ? "InterCat's own processes set aside" : null,
+            wallClock ? "its times read on the wall clock" : null,
         }.OfType<string>(),
     ];
 

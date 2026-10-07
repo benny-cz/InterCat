@@ -32,6 +32,7 @@ internal static class EvidenceCommand
         string? directionText = command.TakeOption("--direction");
         string? endText = command.TakeOption("--end");
         bool json = command.TryTakeFlag("--json");
+        bool wallClock = command.TryTakeFlag("--wall-clock");
         string? directory = command.TakePositional();
         int pageSize = SessionEvidenceQuery.DefaultPageSize;
         bool invalidSize = size is not null &&
@@ -76,9 +77,24 @@ internal static class EvidenceCommand
         // relationship's, channel's or call's, whose records the RPC calls name.
         bool rpc = RpcChannelKeys.IsRpc(channel);
         SessionEvidencePage page;
+        SessionClock clock = SessionClock.Session(TimeZoneInfo.Local);
         try
         {
-            page = SessionEvidenceQuery.Read(SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)),
+            SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            if (wallClock)
+            {
+                // The wall clock its capture's machine read, as the window reads it (§6.2, R18); never guessed for a session
+                // that recorded none.
+                if (SessionRecording.WallClock(store) is not { } wall)
+                {
+                    ConsoleUi.Failure(SessionClock.NotRecorded);
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                clock = SessionClock.Wall(wall, TimeZoneInfo.Local, new TimeRange(0, 1));
+            }
+
+            page = SessionEvidenceQuery.Read(store,
                 rpc ? null : channel, interval, pageSize: pageSize, cursor: cursor,
                 ownerProcesses: owners.Length == 0 ? null : owners, resolveOwners: true,
                 operationKey: rpc ? channel : null, mechanism: mechanism, direction: direction, end: end,
@@ -116,7 +132,18 @@ internal static class EvidenceCommand
         foreach (ProcessInstanceId owner in page.OwnerProcesses)
             ConsoleUi.Field("Canonical owner process", owner.ToString()!);
         if (interval is { } range)
-            ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks");
+            ConsoleUi.Field("Session-time interval", $"[{range.StartTicks}, {range.EndTicks}) · 100 ns ticks"
+                + (clock.IsWallClock ? " · " + clock.HalfOpenRange(range, CultureInfo.CurrentCulture) : string.Empty));
+        if (clock.IsWallClock)
+        {
+            // Every row's time is in the zone's offset at it, said once for the page, both where it changed between rows.
+            string offsets = clock.OffsetsAt(page.Records
+                .Select(record => record.Observation.SessionRelativeTicks)
+                .OfType<long>()
+                .Select(nanoseconds => nanoseconds / 100));
+            ConsoleUi.Field("Time base", SessionClock.WallClockWords + (offsets.Length == 0 ? string.Empty : ", " + offsets)
+                + ". " + clock.Basis(CultureInfo.CurrentCulture));
+        }
         if (page.RestartRequired)
         {
             ConsoleUi.Warn(page.RestartReason!);
@@ -134,7 +161,7 @@ internal static class EvidenceCommand
         foreach (SessionEvidenceRecord record in page.Records)
         {
             ObservationRowV1 row = record.Observation;
-            ConsoleUi.Line("  " + EvidenceRowText.Summary(record, CultureInfo.CurrentCulture));
+            ConsoleUi.Line("  " + EvidenceRowText.Summary(record, clock, CultureInfo.CurrentCulture, dated: true));
             ConsoleUi.Note($"    {EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)} · {row.ProviderId:N} event {row.EventId} "
                 + $"v{row.DescriptorVersion} · raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} "
                 + $"· {record.SegmentName} row {record.SegmentRow.ToString(CultureInfo.InvariantCulture)}");
@@ -166,7 +193,7 @@ internal static class EvidenceCommand
         ConsoleUi.Line("icat evidence <session-directory> [--channel <key>] [--owner-process <instance-guid> ...]");
         ConsoleUi.Line("              [--interval <start:end>] [--mechanism <name>] [--direction <name>] [--end <0|1>]");
         ConsoleUi.Line("              [--page-size <1-200>]");
-        ConsoleUi.Line("              [--cursor <token>] [--json]");
+        ConsoleUi.Line("              [--cursor <token>] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
@@ -179,6 +206,8 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  rows made at one end of a paired --channel: a timeline lane's records, as the window lists a");
         ConsoleUi.Line("  chosen cell's.");
 
+        ConsoleUi.Line("  --wall-clock states each row's time on the wall clock its capture's machine read, in this");
+        ConsoleUi.Line("  computer's zone, as the window's Wall clock does; a session that recorded none is refused.");
         ConsoleUi.Line("  Each page states what the capture covered over its time scope, mechanism by mechanism, so a");
         ConsoleUi.Line("  page without a row is not read as a quiet scope.");
         ConsoleUi.Line("  This is not a logical-operation pairing or a raw payload export.");

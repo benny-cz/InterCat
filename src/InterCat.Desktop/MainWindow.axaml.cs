@@ -2828,6 +2828,7 @@ public sealed partial class MainWindow : Window, IDisposable
         workspace.RankBy = defaults.RankBy;
         workspace.PerSecond = defaults.PerSecond;
         workspace.ScalesEachLane = defaults.ScalesEachLane;
+        workspace.ReadsWallClock = false;
 
         // Regrouped first, from the overview already projected, so a policy projected again afterwards is grouped by
         // executable too.

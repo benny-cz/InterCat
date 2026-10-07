@@ -30,14 +30,18 @@ public static class EvidenceRowText
     }
 
     /// <summary>The row's session-relative time in seconds, or why it has none.</summary>
-    public static string When(ObservationRowV1 row, IFormatProvider? culture = null)
+    public static string When(ObservationRowV1 row, IFormatProvider? culture = null) => When(row, SessionTime, culture);
+
+    /// <summary>The row's time in the time base a view reads (§6.2), or why it has none.</summary>
+    public static string When(ObservationRowV1 row, SessionClock clock, IFormatProvider? culture = null)
     {
         ArgumentNullException.ThrowIfNull(row);
-        return row.SessionRelativeTicks is { } nanoseconds
-            ? string.Create(culture ?? CultureInfo.CurrentCulture,
-                $"{(nanoseconds < 0 ? "−" : "+")}{Math.Abs((decimal)nanoseconds) / 1_000_000_000m:0.000000} s")
-            : "time unavailable";
+        ArgumentNullException.ThrowIfNull(clock);
+        return clock.Record(row.SessionRelativeTicks, culture);
     }
+
+    /// <summary>Session time, which a record's time is said in unless a view reads the wall clock.</summary>
+    private static readonly SessionClock SessionTime = SessionClock.Session(TimeZoneInfo.Utc);
 
     /// <summary>
     /// The record's own endpoint and the remote one, with the direction its kind states: an arrow for data sent or
@@ -153,11 +157,19 @@ public static class EvidenceRowText
     }
 
     /// <summary>One line for a list: time, what happened, size and endpoints where the record has them.</summary>
-    public static string Summary(SessionEvidenceRecord record, IFormatProvider? culture = null)
+    public static string Summary(SessionEvidenceRecord record, IFormatProvider? culture = null) =>
+        Summary(record, SessionTime, culture);
+
+    /// <summary>
+    /// One line for a list, its time in the time base the list reads (§6.2), on the wall clock with its date where
+    /// <paramref name="dated"/> asks, as a listing read without an axis does.
+    /// </summary>
+    public static string Summary(SessionEvidenceRecord record, SessionClock clock, IFormatProvider? culture = null, bool dated = false)
     {
         ArgumentNullException.ThrowIfNull(record);
+        ArgumentNullException.ThrowIfNull(clock);
         ObservationRowV1 row = record.Observation;
-        var parts = new List<string> { When(row, culture), Title(row) };
+        var parts = new List<string> { clock.Record(row.SessionRelativeTicks, culture, dated), Title(row) };
         if (Size(row, culture) is { } size) parts.Add(size);
         if (Endpoints(row) is { } endpoints) parts.Add(endpoints);
         return string.Join(" · ", parts);

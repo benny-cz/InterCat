@@ -169,12 +169,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     private readonly List<TimelineBucket> fineBuckets = [];
     private readonly Memo<long> generationNote = new();
     private readonly Memo<long> byteGenerationNote = new();
-    private readonly Memo<(long, long)> startLabel = new();
-    private readonly Memo<(long, long)> endLabel = new();
+    private readonly Memo<(long, long, SessionClock)> startLabel = new();
+    private readonly Memo<(long, long, SessionClock)> endLabel = new();
     private readonly Memo<double> rateLabel = new();
     private readonly Memo<double> byteRateLabel = new();
     private readonly Memo<(LiveEdge, IReadOnlyList<MechanismTimelineLane>, bool)> liveLabel = new();
-    private readonly Memo<DateTimeOffset?> timeBaseLabel = new();
+    private readonly Memo<(DateTimeOffset?, SessionClock, (long, long))> timeBaseLabel = new();
 
     /// <summary>A row's labels by the row they name; rows are immutable, so a label is formatted once per row.</summary>
     private static readonly Dictionary<(object Row, int Part), string> RowLabels = new(RowKeyComparer.Instance);
@@ -250,18 +250,22 @@ public sealed class TimelineView : Control, IHoverCardSource
         + "it. A search typed at a group marks the lanes it finds and shows the first. T shows the interval table, which "
         + "lists what the timeline draws.",
         () => DataContext is WorkspaceViewModel viewModel
-            ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent) + " · "
-                + WorkspaceTime.TimeBase(viewModel.Snapshot.Began, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
+            ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent, viewModel.TimeBase)
+                + " · " + viewModel.TimeBase.Base(Viewport, viewModel.Snapshot.Began, CultureInfo.CurrentCulture)
             : null);
 
     /// <summary>
     /// The range in view as the timeline and minimap say it: the whole session while it is fitted, else the range
-    /// shown and the session's own, so a zoom and a pan read as the axis draws them.
+    /// shown and the session's own, so a zoom and a pan read as the axis draws them - in the time base it reads (§6.2).
     /// </summary>
-    internal static string ViewportWords(TimeRange viewport, bool fit, TimeRange extent) => fit
-        ? "the whole session in view, " + WorkspaceTime.FormatRange(extent, CultureInfo.CurrentCulture)
-        : "in view " + WorkspaceTime.FormatRange(viewport, CultureInfo.CurrentCulture) + " of the session's "
-            + WorkspaceTime.FormatRange(extent, CultureInfo.CurrentCulture);
+    internal static string ViewportWords(TimeRange viewport, bool fit, TimeRange extent, SessionClock? clock = null)
+    {
+        SessionClock reads = clock ?? SessionClock.Session(TimeZoneInfo.Local);
+        return fit
+            ? "the whole session in view, " + reads.Range(extent, CultureInfo.CurrentCulture)
+            : "in view " + reads.Range(viewport, CultureInfo.CurrentCulture) + " of the session's "
+                + reads.Range(extent, CultureInfo.CurrentCulture);
+    }
 
     public TimelineView()
     {
@@ -884,21 +888,26 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             // Only the drawn ticks are formatted, and only when their instant or the span changes (§19.4); each is measured,
             // not estimated, so the end's last digit stays in the plot.
-            string start = startLabel.Get((visible.StartTicks, visible.SpanTicks), static instant =>
-                WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
+            SessionClock clock = viewModel.TimeBase;
+            string start = startLabel.Get((visible.StartTicks, visible.SpanTicks, clock), static instant =>
+                instant.Item3.Instant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             DrawText(context, start, new(left, bottom + 7));
-            string end = endLabel.Get((visible.EndTicks, visible.SpanTicks), static instant =>
-                WorkspaceTime.FormatInstant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
+            AxisStartText = start;
+            string end = endLabel.Get((visible.EndTicks, visible.SpanTicks, clock), static instant =>
+                instant.Item3.Instant(instant.Item1, instant.Item2, CultureInfo.CurrentCulture));
             double endWidth = Labels.Get(end, 10, TextBrush).Width;
             DrawText(context, end, new(right - endWidth, bottom + 7));
 
-            // Between them, the time base the instants count in, at all times (§6.2): with the wall clock the capture began
-            // at where it recorded one and there is room, else session time alone.
-            string timeBase = timeBaseLabel.Get(viewModel.Snapshot.Began, static began =>
-                WorkspaceTime.TimeBase(began, TimeZoneInfo.Local, CultureInfo.CurrentCulture));
+            // Between them, the time base the instants count in, at all times (§6.2): session time, with the wall clock the
+            // capture began at where it recorded one, or the wall clock with the days in view and its offset; where there
+            // is no room for all of it, its name alone. Session time's is formatted once; the wall clock's as the view moves.
+            string timeBase = timeBaseLabel.Get(
+                (viewModel.Snapshot.Began, clock, clock.IsWallClock ? (visible.StartTicks, visible.EndTicks) : (0L, 1L)),
+                static basis => basis.Item2.Base(new TimeRange(basis.Item3.Item1, basis.Item3.Item2), basis.Item1,
+                    CultureInfo.CurrentCulture));
             double from = left + Labels.Get(start, 10, TextBrush).Width + AxisLabelGap;
             double to = right - endWidth - AxisLabelGap;
-            TimeBaseText = FittingTimeBase(timeBase, to - from);
+            TimeBaseText = FittingTimeBase(timeBase, to - from, clock.Name);
             if (TimeBaseText is { } said)
             {
                 DrawText(context, said, new(((from + to) / 2) - (Labels.Get(said, 10, TextBrush).Width / 2), bottom + 7));
@@ -3144,6 +3153,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>What the axis said above the plot when last drawn: the shared peak rate, or that each lane has its own.</summary>
     internal string? AxisPeakText { get; private set; }
 
+    /// <summary>The instant the axis labels its start with, as last drawn, in the time base the view reads.</summary>
+    internal string? AxisStartText { get; private set; }
+
     /// <summary>The time base drawn under the axis, between its start and end, as last drawn; null where none fitted.</summary>
     internal string? TimeBaseText { get; private set; }
 
@@ -3152,11 +3164,12 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>
     /// What of <paramref name="timeBase"/> the axis has <paramref name="room"/> logical px for between its instants: all of
-    /// it, else session time alone, which every time base begins with, else nothing.
+    /// it, else its name alone (<paramref name="name"/>, session time unless the wall clock is read), which every time base
+    /// begins with, else nothing.
     /// </summary>
-    internal static string? FittingTimeBase(string timeBase, double room) =>
+    internal static string? FittingTimeBase(string timeBase, double room, string name = WorkspaceTime.SessionTimeWords) =>
         Labels.Get(timeBase, 10, TextBrush).Width <= room ? timeBase
-        : Labels.Get(WorkspaceTime.SessionTimeWords, 10, TextBrush).Width <= room ? WorkspaceTime.SessionTimeWords
+        : Labels.Get(name, 10, TextBrush).Width <= room ? name
         : null;
 
     /// <summary>

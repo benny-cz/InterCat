@@ -226,7 +226,7 @@ public sealed partial class WorkspaceViewModel
             ? [.. channels.Channels.Select(channel => HttpChannelRungRow(channel, tokens))]
             : [];
         httpExchangeRows = httpExchanges is { Channel: not null } exchanges
-            ? [.. exchanges.Exchanges.Select(exchange => HttpExchangeRungRow(exchange, tokens))]
+            ? [.. exchanges.Exchanges.Select(exchange => HttpExchangeRungRow(exchange, tokens, TimeBase))]
             : [];
         string? selectedKey = selectedRung?.Key;
         RaiseRpcChanged();
@@ -258,12 +258,10 @@ public sealed partial class WorkspaceViewModel
         $"{channel.RequestBytes:N0} B sent, {channel.ResponseBytes:N0} B received in HTTP messages");
 
     /// <summary>One exchange's row: how long it took, or why that is not known, and what was recorded of its parts.</summary>
-    private static RungRow HttpExchangeRungRow(HttpExchangeRow row, FamilyTokens tokens)
+    private static RungRow HttpExchangeRungRow(HttpExchangeRow row, FamilyTokens tokens, SessionClock clock)
     {
         HttpExchange exchange = row.Exchange;
-        string when = exchange.FirstNanoseconds is { } nanoseconds
-            ? string.Create(CultureInfo.CurrentCulture, $"+{nanoseconds / 1_000_000_000m:0.000000} s")
-            : "time unavailable";
+        string when = clock.Record(exchange.FirstNanoseconds, CultureInfo.CurrentCulture);
 
         // The row leads with how the exchange went, which is what a list of them is scanned for; the rung names the process.
         string label = exchange.DurationNanoseconds is { } duration
@@ -357,7 +355,7 @@ public sealed partial class WorkspaceViewModel
         return new(title,
         [
             string.Create(CultureInfo.CurrentCulture, $"Exchange {span.Number:N0} of its process"),
-            "Started " + WorkspaceTime.FormatInstant(span.FirstTicks, Math.Max(1, span.LastTicks - span.FirstTicks + 1),
+            "Started " + TimeBase.Instant(span.FirstTicks, Math.Max(1, span.LastTicks - span.FirstTicks + 1),
                 CultureInfo.CurrentCulture),
             string.Create(CultureInfo.CurrentCulture, $"{span.RequestBytes:N0} B sent, {span.ResponseBytes:N0} B received"),
             span.Complete ? "Recorded whole" : "Not recorded whole; its row says which part",
@@ -381,7 +379,7 @@ public sealed partial class WorkspaceViewModel
             lines.Add(string.Create(CultureInfo.CurrentCulture, $"{incomplete:N0} of them not recorded whole"));
         }
 
-        lines.Add("From " + WorkspaceTime.FormatInstant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
+        lines.Add("From " + TimeBase.Instant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
             + " for " + WorkspaceTime.FormatDuration(interval.SpanTicks, CultureInfo.CurrentCulture));
         lines.Add(string.Create(CultureInfo.CurrentCulture,
             $"The busiest column holds {density.Maximum:N0}; an exchange counts in every column it ran in"));

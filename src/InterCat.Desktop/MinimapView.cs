@@ -25,7 +25,8 @@ public sealed class MinimapView : Control
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "minimap",
         "The whole session: arrows pan the timeline's view, plus and minus zoom, Home and End jump to its edges, and 0 "
         + "fits the analysis interval, or the whole session when none is brushed.",
-        () => timeline is null ? null : TimelineView.ViewportWords(timeline.Viewport, timeline.IsFit, Extent));
+        () => timeline is null ? null : TimelineView.ViewportWords(timeline.Viewport, timeline.IsFit, Extent,
+            (timeline.DataContext as WorkspaceViewModel)?.TimeBase));
 
     // Brushes and pens are built once per theme mode and reused every frame (R11).
     private static readonly Dictionary<ThemeMode, Ink> Inks = [];

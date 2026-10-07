@@ -65,6 +65,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="RankBy">What the machine and group rungs rank by (§6.1's metric selector).</param>
 /// <param name="ReachedWith">The process selected when the current rung was reached, which a channel it opened is described over.</param>
 /// <param name="ExplainedCell">The lane a click chose the analysis interval's cell in, which the inspector explains it as (§6.8).</param>
+/// <param name="ReadsWallClock">Whether the view read its instants on the wall clock its capture's machine read (§6.2).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -82,7 +83,8 @@ public sealed record WorkspaceNavigationMemento(
     bool PerSecond = false,
     bool ScalesEachLane = false,
     ProcessInstanceId? ReachedWith = null,
-    TimelineCellLane? ExplainedCell = null);
+    TimelineCellLane? ExplainedCell = null,
+    bool ReadsWallClock = false);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -702,7 +704,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         intervalRowsBesideFocus = listsWhole && focus is not null;
         FollowIntervalBytes(listed);
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode, listsWhole ? focus : null,
-            IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null);
+            IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null, TimeBase);
         if (selectedIntervalRow is { } row)
         {
             // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
@@ -1115,7 +1117,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 $"Up to {unbinned.UnbinnedRecords:N0} previewed records fall outside the preview's bins"));
         }
 
-        return new(WorkspaceTime.FormatHalfOpenRange(bin.Interval, CultureInfo.CurrentCulture) + " · live preview", lines);
+        return new(TimeBase.HalfOpenRange(bin.Interval, CultureInfo.CurrentCulture) + " · live preview", lines);
     }
 
     /// <summary>The focused channel's two ends, first end first, held with their focus and generation.</summary>
@@ -1395,7 +1397,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         get
         {
             if (evidenceSource is null || scopedInterval is not { } interval) return string.Empty;
-            string range = WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture);
+            string range = TimeBase.Range(interval, CultureInfo.CurrentCulture);
             bool visible = selectedInterval is null;
             string where = visible ? $"the visible {range}" : range;
             return intervalProblem is { } problem ? $"Could not rank within {where}: {problem}"
@@ -1453,7 +1455,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
-        scalesEachLane, reachedWith, chosenCell);
+        scalesEachLane, reachedWith, chosenCell, ReadsWallClock);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1551,6 +1553,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RankBy = saved.RankBy;
         PerSecond = saved.PerSecond;
         ScalesEachLane = saved.ScalesEachLane;
+        ReadsWallClock = saved.ReadsWallClock;
         if (saved.SelectedTimelineMechanism is { } savedMechanism)
         {
             if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))
@@ -2724,7 +2727,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return timelineDetail is { } detail
                 && (!ShowsMechanismLanes || SelectedTimelineMechanism is null || HasCompleteLaneDetail)
                 ? string.Create(CultureInfo.CurrentCulture,
-                    $"Zoomed view {WorkspaceTime.FormatRange(detail.Interval, CultureInfo.CurrentCulture)} in {intervals.Count:N0} intervals{lane}")
+                    $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {intervals.Count:N0} intervals{lane}")
                 : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervals.Count:N0} intervals{lane}");
         }
     }
@@ -3537,8 +3540,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? "Basis: source observations · unit: observations · domain: paired TCP transport evidence · accounting: not applicable to a count; both witnessed endpoints contribute"
             : "Basis: source observations · unit: observations · domain: relationship evidence · accounting: not applicable to a count";
         string scope = appliedInterval is { } interval
-            ? "Scope: " + WorkspaceTime.FormatHalfOpenRange(interval, CultureInfo.CurrentCulture) + " · brushed interval"
-            : "Scope: " + WorkspaceTime.FormatHalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
+            ? "Scope: " + TimeBase.HalfOpenRange(interval, CultureInfo.CurrentCulture) + " · brushed interval"
+            : "Scope: " + TimeBase.HalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
         GraphDisplay drawnDisplay = GraphDisplay;
         string magnitude = drawnDisplay.Edges.Any(edge => edge.Magnitude is not null) ? "bytes sent across its relationships" : "records";
         if (drawnDisplay.Node(key) is { } node)
@@ -3965,7 +3968,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : realOverview
             ? "Click makes it the analysis interval, explained in the inspector · Shift+drag brushes a range"
             : "Click makes it the analysis interval · Shift+drag brushes a range");
-        return new(WorkspaceTime.FormatHalfOpenRange(bucket.Interval, CultureInfo.CurrentCulture), lines);
+        return new(TimeBase.HalfOpenRange(bucket.Interval, CultureInfo.CurrentCulture), lines);
     }
 
     private static CoverageState Worst(IEnumerable<CoverageState> states)
@@ -4096,8 +4099,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// recorded no time, so its placeholder extent is never read out as a duration.
     /// </summary>
     public string IntervalLabel => selectedInterval is { } interval
-        ? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture)
-        : VisibleScope is { } visible ? "Visible " + WorkspaceTime.FormatRange(visible, CultureInfo.CurrentCulture)
+        ? TimeBase.Range(interval, CultureInfo.CurrentCulture)
+        : VisibleScope is { } visible ? "Visible " + TimeBase.Range(visible, CultureInfo.CurrentCulture)
         : emptyWorkspace ? "No time recorded yet"
         : Snapshot.Recording is { } recording
             ? "All · " + WorkspaceTime.FormatDuration(recording.SpanTicks, CultureInfo.CurrentCulture) + " recorded"
@@ -4163,7 +4166,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
         && selectedRelationship is null && SelectedCluster is null && SelectedGroup is null && ChosenRow is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
-                ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport }).Description
+                ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport },
+                    TimeBase).Description
             : null;
 
     public string EvidenceSummary
@@ -4818,7 +4822,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ObservationRowV1 row = record.Observation;
             var fields = new List<EvidenceField>
             {
-                new("When", EvidenceRowText.When(row, CultureInfo.CurrentCulture)),
+                new("When", TimeBase.Moment(row.SessionRelativeTicks, CultureInfo.CurrentCulture)),
                 new("Owner", EvidenceRowText.Owner(record, CultureInfo.CurrentCulture)),
             };
             if (EvidenceRowText.Endpoints(row) is { } endpoints) fields.Add(new("Endpoints", endpoints));
@@ -4932,7 +4936,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return;
         }
 
-        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot, ladder.Current);
+        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot, ladder.Current, TimeBase);
         if (evidence is { } current && SameScope(current.Scope, scope))
         {
             return;
@@ -5051,17 +5055,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return;
         }
 
-        evidenceRows = [.. list.Records.Select(record => EvidenceRow(record, RecordNoun))];
+        evidenceRows = [.. list.Records.Select(record => EvidenceRow(record, RecordNoun, TimeBase))];
     }
 
-    private static RungRow EvidenceRow(SessionEvidenceRecord record, string recordNoun)
+    private static RungRow EvidenceRow(SessionEvidenceRecord record, string recordNoun, SessionClock timeBase)
     {
         ObservationRowV1 row = record.Observation;
         FamilyTokens tokens = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(row.Mechanism));
         string title = EvidenceRowText.Title(row);
         string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
         string ownership = EvidenceRowText.Ownership(record, CultureInfo.CurrentCulture);
-        string when = EvidenceRowText.When(row, CultureInfo.CurrentCulture);
+        string when = EvidenceRowText.When(row, timeBase, CultureInfo.CurrentCulture);
         string pid = EvidenceRowText.OwnerProcessId(row) is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
         // The rail is narrow: what happened and its size on the first line, when and whose on the second. Endpoints
         // and the full owner are the inspector's, where they fit without being cut.
@@ -5203,7 +5207,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? status == 0 ? "Succeeded" : string.Create(CultureInfo.CurrentCulture, $"Failed, status {status:N0}")
                 : "No status",
             span.StartTicks is { } began
-                ? "Started " + WorkspaceTime.FormatInstant(began, Math.Max(1, (span.EndTicks ?? began) - began + 1), CultureInfo.CurrentCulture)
+                ? "Started " + TimeBase.Instant(began, Math.Max(1, (span.EndTicks ?? began) - began + 1), CultureInfo.CurrentCulture)
                 : "Its start is not in the evidence",
         };
         if (span.Procedure is { } procedure) lines.Add(string.Create(CultureInfo.CurrentCulture, $"Procedure {procedure:N0}"));
@@ -5227,7 +5231,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             lines.Add(string.Create(CultureInfo.CurrentCulture, $"{failed:N0} of them failed"));
         }
 
-        lines.Add("From " + WorkspaceTime.FormatInstant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
+        lines.Add("From " + TimeBase.Instant(interval.StartTicks, interval.SpanTicks, CultureInfo.CurrentCulture)
             + " for " + WorkspaceTime.FormatDuration(interval.SpanTicks, CultureInfo.CurrentCulture));
         lines.Add(string.Create(CultureInfo.CurrentCulture, $"The busiest column holds {density.Maximum:N0}; a call counts in every column it ran in"));
         lines.Add("Click selects this interval; zoom in to see each call");
@@ -5553,7 +5557,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? [.. channels.Channels.Select(channel => RpcChannelRungRow(channel, tokens))]
             : [];
         rpcCallRows = rpcCalls is { Channel: { } summary } calls
-            ? [.. calls.Calls.Select(call => RpcCallRungRow(call, summary, tokens))]
+            ? [.. calls.Calls.Select(call => RpcCallRungRow(call, summary, tokens, TimeBase))]
             : [];
         string? selectedKey = selectedRung?.Key;
         RaiseRpcChanged();
@@ -5590,12 +5594,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         };
     }
 
-    private static RungRow RpcCallRungRow(RpcCallRow row, RpcChannelSummary channel, FamilyTokens tokens)
+    private static RungRow RpcCallRungRow(RpcCallRow row, RpcChannelSummary channel, FamilyTokens tokens, SessionClock clock)
     {
         RpcCall call = row.Call;
-        string when = (call.Start ?? call.Stop)!.SessionRelativeTicks is { } nanoseconds
-            ? string.Create(CultureInfo.CurrentCulture, $"+{nanoseconds / 1_000_000_000m:0.000000} s")
-            : "time unavailable";
+        string when = clock.Record((call.Start ?? call.Stop)!.SessionRelativeTicks, CultureInfo.CurrentCulture);
         string procedure = call.Procedure is { } number
             ? string.Create(CultureInfo.CurrentCulture, $" · procedure {number:N0}")
             : string.Empty;
@@ -5615,7 +5617,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // A linked call opens the call at its other end, on that call's own channel (operations-v1 §5c).
         RpcCallPeerView? linked = row.OtherEnd is { CallKey: not null, Process: not null } other ? other : null;
         string? otherWhen = linked?.FirstNanoseconds is { } otherNanoseconds
-            ? string.Create(CultureInfo.CurrentCulture, $"+{otherNanoseconds / 1_000_000_000m:0.000000} s")
+            ? clock.Record(otherNanoseconds, CultureInfo.CurrentCulture)
             : null;
         return new(row.Key, label, detail, records.ToString("N0", CultureInfo.CurrentCulture),
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
@@ -5746,7 +5748,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>The evidence rung's loaded rows for one scope. A new scope starts a new list and cancels the old read.</summary>
     private sealed class EvidenceList(EvidenceScope scope)
     {
-        public EvidenceScope Scope { get; } = scope;
+        /// <summary>What the list reads; its description is said again when the view's time base changes.</summary>
+        public EvidenceScope Scope { get; set; } = scope;
 
         public List<SessionEvidenceRecord> Records { get; } = [];
 

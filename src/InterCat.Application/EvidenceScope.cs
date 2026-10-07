@@ -121,21 +121,24 @@ public static class EvidenceScopes
         ? new(EndField, endpoint, reason) { Key = end.ToString(CultureInfo.InvariantCulture) }
         : throw new ArgumentOutOfRangeException(nameof(end), "A channel has two ends, 0 and 1.");
 
-    public static EvidenceScope Resolve(WorkspaceSnapshot snapshot, NavigationState rung)
+    public static EvidenceScope Resolve(WorkspaceSnapshot snapshot, NavigationState rung, SessionClock? clock = null)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         ArgumentNullException.ThrowIfNull(rung);
         TimeRange? interval = rung.Viewport == snapshot.Extent ? null : rung.Viewport;
-        return Narrowed(ResolveEntity(snapshot, rung, interval), rung.Filters);
+        return Narrowed(ResolveEntity(snapshot, rung, interval, clock), rung.Filters);
     }
 
     /// <summary>
     /// The scope the latest filter that names an entity decides: a process set, a group, a process, a channel, an
     /// operation, or else the whole session.
     /// </summary>
-    private static EvidenceScope ResolveEntity(WorkspaceSnapshot snapshot, NavigationState rung, TimeRange? interval)
+    private static EvidenceScope ResolveEntity(WorkspaceSnapshot snapshot, NavigationState rung, TimeRange? interval,
+        SessionClock? clock)
     {
-        string time = interval is { } range ? " · " + WorkspaceTime.FormatRange(range, CultureInfo.CurrentCulture) : string.Empty;
+        // The interval in the time base the view reads (§6.2), session time unless it reads the wall clock.
+        string time = interval is not { } range ? string.Empty
+            : " · " + (clock is null ? WorkspaceTime.FormatRange(range, CultureInfo.CurrentCulture) : clock.Range(range, CultureInfo.CurrentCulture));
 
         for (int index = rung.Filters.Count - 1; index >= 0; index--)
         {

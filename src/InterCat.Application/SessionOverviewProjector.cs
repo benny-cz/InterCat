@@ -70,6 +70,12 @@ public sealed record SessionOverviewBundle(
     /// </summary>
     public DateTimeOffset? Began { get; init; }
 
+    /// <summary>
+    /// The wall clock the capture's machine read, placed against session time (<see cref="SessionRecording.WallClock"/>);
+    /// null when it recorded none.
+    /// </summary>
+    public SessionWallClock? WallClock { get; init; }
+
     /// <summary>The digest of the one generation's manifest the overview was built from (I16).</summary>
     public string? ManifestDigest { get; init; }
 
@@ -339,6 +345,7 @@ public static class SessionOverviewProjector
             RowsNoProcessHolds = heldByNone,
             Recording = SessionRecording.Interval(store.Root, manifest, clock, extent),
             Began = SessionRecording.Began(store.Root, manifest, clock),
+            WallClock = SessionRecording.WallClock(store.Root, manifest, clock),
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
             Demo = DemoInvestigation.IsDemo(manifest),

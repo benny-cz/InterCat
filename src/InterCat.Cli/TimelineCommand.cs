@@ -37,6 +37,7 @@ internal static class TimelineCommand
         string? endText = command.TakeOption("--end");
         bool bytes = command.TryTakeFlag("--bytes");
         bool json = command.TryTakeFlag("--json");
+        bool wallClock = command.TryTakeFlag("--wall-clock");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
         int columns = DefaultColumns;
@@ -68,10 +69,24 @@ internal static class TimelineCommand
         IReadOnlyList<TimelineBucket> buckets;
         SessionIntervalByteMeasures? measured = null;
         DateTimeOffset? began;
+        SessionClock clock = SessionClock.Session(TimeZoneInfo.Local);
         long started = Stopwatch.GetTimestamp();
         try
         {
             SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            if (wallClock)
+            {
+                // The wall clock its capture's machine read, as the window's Wall clock reads it (§6.2, R18); never guessed
+                // for a session that recorded none.
+                if (SessionRecording.WallClock(store) is not { } wall)
+                {
+                    ConsoleUi.Failure(SessionClock.NotRecorded);
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                clock = SessionClock.Wall(wall, TimeZoneInfo.Local, interval.Value);
+            }
+
             (generation, buckets) = Count(store, interval.Value, columns, scope, cancellationToken);
             began = Began(store);
             if (bytes)
@@ -106,8 +121,13 @@ internal static class TimelineCommand
         ConsoleUi.Heading("Session timeline");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(generation));
-        ConsoleUi.Field("Interval", WorkspaceTime.FormatRange(interval.Value, CultureInfo.CurrentCulture));
-        ConsoleUi.Field("Time base", WorkspaceTime.TimeBase(began, TimeZoneInfo.Local, CultureInfo.CurrentCulture));
+        ConsoleUi.Field("Interval", clock.Range(interval.Value, CultureInfo.CurrentCulture));
+        ConsoleUi.Field("Time base", clock.Base(interval.Value, began, CultureInfo.CurrentCulture));
+        if (clock.IsWallClock)
+        {
+            ConsoleUi.Note(clock.Basis(CultureInfo.CurrentCulture));
+        }
+
         ConsoleUi.Field("Records", scope.Description);
         ConsoleUi.Field("Observed rows", ConsoleUi.Count(buckets.Sum(bucket => (long)bucket.ObservationCount)));
         ConsoleUi.Field("Counted in", $"{elapsed.TotalMilliseconds.ToString("N0", CultureInfo.CurrentCulture)} ms");
@@ -119,7 +139,7 @@ internal static class TimelineCommand
 
         ConsoleUi.Table(
             measured is null ? ["Interval", "Records", "Mostly", "Coverage"] : ["Interval", "Records", "Mostly", "Coverage", "Sent", "Received"],
-            [.. buckets.Select(bucket => Row(bucket, measured))]);
+            [.. buckets.Select(bucket => Row(bucket, measured, clock))]);
         ConsoleUi.Note("Rows without a usable session time have no place in any interval and are not counted.");
         ConsoleUi.Note("An empty bucket's coverage is the capture's there: covered means nothing it collects happened, a gap "
             + "that records were lost, unknown that the capture says nothing of it.");
@@ -139,12 +159,12 @@ internal static class TimelineCommand
         return InterCatExitCode.Success;
     }
 
-    /// <summary>One bucket as a table row, with its bytes when they were measured.</summary>
-    private static List<string> Row(TimelineBucket bucket, SessionIntervalByteMeasures? measured)
+    /// <summary>One bucket as a table row, its interval in the time base read, with its bytes when they were measured.</summary>
+    private static List<string> Row(TimelineBucket bucket, SessionIntervalByteMeasures? measured, SessionClock clock)
     {
         var cells = new List<string>(6)
         {
-            WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
+            clock.Range(bucket.Interval, CultureInfo.CurrentCulture),
             ConsoleUi.Count(bucket.ObservationCount),
             bucket.ObservationCount == 0 ? "-" : MechanismText.Name(bucket.DominantMechanism),
             CoverageStateText.Value(bucket.Coverage),
@@ -243,10 +263,12 @@ internal static class TimelineCommand
     {
         ConsoleUi.Line("icat timeline <session-directory> --interval <start:end> [--columns <1-2000>]");
         ConsoleUi.Line("    [--mechanism <name> | --process <instance-id> [--direction <name>] | --channel <key> [--end <0|1>]]");
-        ConsoleUi.Line("    [--bytes] [--json]");
+        ConsoleUi.Line("    [--bytes] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only, leased timeline over [start,end) in 100-nanosecond session ticks.");
         ConsoleUi.Line("  Buckets partition the interval exactly, as the Desktop's zoomed timeline draws them.");
         ConsoleUi.Line("  A scope lists the records one lane of the Desktop's interval table lists; --bytes adds what");
-        ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart.");
+        ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart. --wall-clock states");
+        ConsoleUi.Line("  the intervals on the wall clock its capture's machine read, in this computer's zone, as the");
+        ConsoleUi.Line("  window's Wall clock does; --json always states session ticks.");
     }
 }

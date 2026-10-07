@@ -104,6 +104,37 @@ public static class SessionRecording
                 : null;
     }
 
+    /// <summary>
+    /// The wall clock the capture's machine read, placed against session time by its calibration: the first sample's
+    /// reading at that sample's session time, and the rate between the first and the last sample where there are two.
+    /// Null where <see cref="Began"/> is.
+    /// </summary>
+    public static SessionWallClock? WallClock(IOwnedDirectory root, SessionManifestV1 manifest, SourceClockDescriptor clock)
+    {
+        ArgumentNullException.ThrowIfNull(root);
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (ClockCalibrationV1.Read(root, manifest) is not { Samples.Count: > 0 } calibration || calibration.ClockId != clock.Id.Value
+            || SourceClockMath.ConvertToSession(clock, new NativeTimestamp(clock.Id, clock.Encoding, calibration.Samples[0].NativeTicks))
+                .SessionTime is not { } since)
+        {
+            return null;
+        }
+
+        return new(since.Nanoseconds / 100, calibration.Samples[0].Utc.ToUniversalTime(),
+            ClockCalibrationFacts.Rate(calibration, clock.TicksPerSecond)?.PartsPerMillion,
+            calibration.Samples.Max(sample => sample.AcquisitionUncertaintyNanoseconds));
+    }
+
+    /// <summary>The wall clock the current generation's capture recorded, read under a lease of its own; null where none.</summary>
+    public static SessionWallClock? WallClock(SessionStore store)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        using EvidenceLease lease = store.AcquireLease();
+        return SessionSegments.SourceClock(store.Root, lease.Manifest) is { } clock
+            ? WallClock(store.Root, lease.Manifest, clock)
+            : null;
+    }
+
     private static TimeRange? Extent(SessionStore store, SessionManifestV1 manifest, CancellationToken cancellationToken)
     {
         long first = long.MaxValue;
@@ -123,4 +154,30 @@ public static class SessionRecording
 
     private static long NativeAt(SourceClockDescriptor clock, long nanoseconds) =>
         SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(nanoseconds));
+}
+
+/// <summary>
+/// The wall clock a capture's machine read, placed against session time by its clock calibration
+/// (`contracts/clock-calibration-v1.md`): the first sample's reading at that sample's session time and, from a second, the
+/// rate the wall clock ran at against the source clock between them, so an instant between the capture's start and its
+/// stop falls on the line through both readings and one beyond them on its extension. A sample bounds only how far apart
+/// its two readings were taken, never how right the wall clock was, so what this places is what that machine's clock
+/// read, not true time.
+/// </summary>
+/// <param name="AnchorTicks">The first sample's session time, in presentation ticks.</param>
+/// <param name="AnchorUtc">The wall clock's reading at the first sample, in UTC.</param>
+/// <param name="PartsPerMillion">
+/// How fast the wall clock ran against the source clock between the first and the last sample; null with one sample, when
+/// the wall clock is read at the source clock's own rate, which nothing measured.
+/// </param>
+/// <param name="UncertaintyNanoseconds">The widest acquisition uncertainty of the samples it rests on.</param>
+public sealed record SessionWallClock(long AnchorTicks, DateTimeOffset AnchorUtc, double? PartsPerMillion, long UncertaintyNanoseconds)
+{
+    /// <summary>What the wall clock read at an instant of session time, in presentation ticks, by the calibration's line.</summary>
+    public DateTimeOffset At(long ticks)
+    {
+        long elapsed = ticks - AnchorTicks;
+        long steered = PartsPerMillion is { } rate ? (long)Math.Round(elapsed * rate / 1e6) : 0;
+        return AnchorUtc.AddTicks(elapsed + steered);
+    }
 }

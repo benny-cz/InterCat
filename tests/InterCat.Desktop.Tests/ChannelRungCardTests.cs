@@ -139,6 +139,36 @@ public sealed class ChannelRungCardTests
     }
 
     /// <summary>Each kind of channel a process's rung lists, how it is named chosen and opened, and the records E lists.</summary>
+    [Fact(DisplayName = "§6.2: read on the wall clock, an HTTP exchange's row names the time of day it began")]
+    public async Task AnExchangeRowReadsTheWallClock()
+    {
+        using var session = new TemporarySession();
+        DateTimeOffset noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        PublishClient(session, new ClockCalibrationV1
+        {
+            Contract = ClockCalibrationV1.ContractName,
+            CaptureId = TestSessions.Capture.Value,
+            ClockId = TestClock.Id.Value,
+            WallClock = "test-wall-clock",
+            Samples = [new() { NativeTicks = 0, Utc = noon, AcquisitionUncertaintyNanoseconds = 200 }],
+        });
+        using WorkspaceViewModel workspace = Open(session);
+        await OpenClient(workspace);
+        workspace.SelectedRung = workspace.RungRows.Single(row => HttpExchangeKeys.IsHttp(row.Key));
+        Assert.True(workspace.Descend());
+        await workspace.HttpReady;
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentCulture;
+        string exchangeAt = " · exchange 1 · ";
+        Assert.StartsWith(SessionClock.Session(TimeZoneInfo.Local).Record(8_000, culture) + exchangeAt,
+            workspace.RungRows[0].Detail, StringComparison.Ordinal);
+
+        // Its first record was read 8 µs into the session, which the wall clock read 8 µs past noon.
+        workspace.ReadsWallClock = true;
+        SessionClock wall = SessionClock.Wall(workspace.Snapshot.WallClock!, TimeZoneInfo.Local, workspace.Snapshot.Extent);
+        Assert.StartsWith(wall.Record(8_000, culture) + exchangeAt, workspace.RungRows[0].Detail, StringComparison.Ordinal);
+        Assert.Equal("HTTP exchange at " + wall.Record(8_000, culture), workspace.RungRows[0].Source.Label);
+    }
+
     private static readonly (Func<RungRow, bool> IsKind, string Noun, string Heading, int Records)[] Kinds =
     [
         (row => row.Label == "↔ server.exe · PID 200", "channel", "This channel", 3),
@@ -167,7 +197,7 @@ public sealed class ChannelRungCardTests
     /// client.exe sends server.exe 8 bytes twice over one paired channel, calls the service control manager once over RPC,
     /// and makes one HTTP exchange.
     /// </summary>
-    private static void PublishClient(TemporarySession session)
+    private static void PublishClient(TemporarySession session, ClockCalibrationV1? calibration = null)
     {
         Guid activity = new(1, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
         ObservationRowV1[] http = [Http(80, 2001, 10, 181), Http(81, 2003, 11, 115), Http(82, 2004, 12, 7)];
@@ -182,7 +212,7 @@ public sealed class ChannelRungCardTests
             Timed(RpcCall(72, ObservationKind.RequestEnd, Direction.Outbound, 100, 9, activity, status: 0)),
             .. http,
         ];
-        Publish(session.Store, rows, coverage: RpcLedger(alpc: false), fields:
+        Publish(session.Store, rows, coverage: RpcLedger(alpc: false), calibration: calibration, fields:
         [
             .. rows.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
                 .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),

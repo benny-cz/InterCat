@@ -61,6 +61,7 @@ public static class OverviewWorkspace
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Recording = overview.Recording,
             Began = overview.Began,
+            WallClock = overview.WallClock,
             Demo = overview.Demo,
             Collectors = overview.Collectors,
         };

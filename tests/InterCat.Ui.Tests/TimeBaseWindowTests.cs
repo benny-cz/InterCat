@@ -1,6 +1,7 @@
 using System.Globalization;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using InterCat.Analysis.Tests;
@@ -70,6 +71,52 @@ public sealed class TimeBaseWindowTests
         Assert.Equal(WorkspaceTime.SessionTimeWords, timeline.TimeBaseText);
         Assert.EndsWith(" · session time", ControlAutomationPeer.CreatePeerForElement(timeline).GetItemStatus(),
             StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.2: where its capture recorded its wall clock, one toggle reads the timeline's instants on it, and the axis, its words and the time scope say so")]
+    public void TheWallClockToggleReadsTheAxisOnTheWallClock()
+    {
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store, Records(), clock: Clock, calibration: Calibration());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        Show(window, calibrated);
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ToggleButton toggle = window.GetControl<ToggleButton>("WallClockToggle");
+        Assert.True(toggle.IsEffectivelyVisible);
+        Assert.False(toggle.IsChecked);
+        Assert.StartsWith("session time since ", timeline.TimeBaseText, StringComparison.Ordinal);
+        Assert.Equal(workspace.WallClockTip, ToolTip.GetTip(toggle));
+
+        // Toggled, the axis names the wall clock's day and offset between instants read on it, as a screen reader hears.
+        toggle.IsChecked = true;
+        Render(window);
+        Assert.True(workspace.ReadsWallClock);
+        SessionClock wall = SessionClock.Wall(workspace.Snapshot.WallClock!, TimeZoneInfo.Local, workspace.Snapshot.Extent);
+        string named = wall.Base(timeline.Viewport, workspace.Snapshot.Began, CultureInfo.CurrentCulture);
+        Assert.StartsWith("wall clock on ", named, StringComparison.Ordinal);
+        Assert.Equal(named, timeline.TimeBaseText);
+        Assert.Equal(wall.Instant(timeline.Viewport.StartTicks, timeline.Viewport.SpanTicks, CultureInfo.CurrentCulture),
+            timeline.AxisStartText);
+        Assert.EndsWith(" · " + named, ControlAutomationPeer.CreatePeerForElement(timeline).GetItemStatus(), StringComparison.Ordinal);
+        Assert.Contains(wall.Range(workspace.Snapshot.Extent, CultureInfo.CurrentCulture),
+            ControlAutomationPeer.CreatePeerForElement(timeline).GetItemStatus(), StringComparison.Ordinal);
+        Assert.Contains("its times read on the wall clock", workspace.ChangedSettings);
+        Save(window, "time-base-wall-clock-1456x939.png");
+
+        // Restore defaults reads session time again.
+        Assert.True(window.RestoreDefaultViewAsync().Result);
+        Render(window);
+        Assert.False(toggle.IsChecked);
+        Assert.StartsWith("session time since ", timeline.TimeBaseText, StringComparison.Ordinal);
+
+        // An import recorded no wall clock: the toggle is not there.
+        using var imported = new TemporarySession();
+        Publish(imported.Store, Records(), clock: Clock);
+        Show(window, imported);
+        Assert.False(window.GetControl<ToggleButton>("WallClockToggle").IsEffectivelyVisible);
         window.Close();
     }
 

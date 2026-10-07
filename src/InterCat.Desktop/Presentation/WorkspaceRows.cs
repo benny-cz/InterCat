@@ -202,7 +202,7 @@ public static class WorkspaceRowBuilder
     /// </summary>
     public static IReadOnlyList<IntervalRow> Intervals(
         IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null,
-        bool sumsBytes = true, Func<TimelineBucket, string>? bytesOf = null)
+        bool sumsBytes = true, Func<TimelineBucket, string>? bytesOf = null, SessionClock? clock = null)
     {
         ArgumentNullException.ThrowIfNull(buckets);
 
@@ -221,7 +221,8 @@ public static class WorkspaceRowBuilder
 
             rows.Add(new(
                 bucket.Interval,
-                WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
+                clock?.Range(bucket.Interval, CultureInfo.CurrentCulture)
+                    ?? WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
                 observations,
                 bytesOf is null ? DescribeBytes(bucket.KnownBytes) : bytesOf(bucket),
                 tokens.Label,

@@ -1571,6 +1571,35 @@ public sealed class CommandLineTests : IDisposable
         string since = WorkspaceTime.TimeBase(noon.AddTicks(1_000), TimeZoneInfo.Local, System.Globalization.CultureInfo.CurrentCulture);
         Assert.StartsWith("session time since ", since, StringComparison.Ordinal);
         Assert.Matches(new Regex(@"^\s*Time base\s+" + Regex.Escape(since) + @"\r?$", RegexOptions.Multiline), text);
+
+        // --wall-clock reads it on the wall clock its capture's machine read, as the window's Wall clock does (R18): the
+        // interval, the time base with its day and offset, each row's interval, and how the clock was placed.
+        (code, text, said) = await Run("timeline", calibrated.Path, "--interval", "0:1000", "--wall-clock");
+        Assert.True(code == InterCatExitCode.Success, said);
+        var interval = new TimeRange(0, 1_000);
+        SessionClock wall = SessionClock.Wall(SessionRecording.WallClock(calibrated.Store)!, TimeZoneInfo.Local, interval);
+        calibrated.Store.ReleaseSegmentReaders();
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentCulture;
+        Assert.Matches(new Regex(@"^\s*Interval\s+" + Regex.Escape(wall.Range(interval, culture)) + @"\r?$", RegexOptions.Multiline), text);
+        Assert.Matches(new Regex(@"^\s*Time base\s+" + Regex.Escape(wall.Base(interval, noon.AddTicks(1_000), culture)) + @"\r?$",
+            RegexOptions.Multiline), text);
+        Assert.StartsWith("wall clock on ", wall.Base(interval, null, culture), StringComparison.Ordinal);
+        Assert.Contains(wall.Basis(culture), text, StringComparison.Ordinal);
+
+        // A session that recorded none is refused with why, never read on a guessed clock.
+        (code, _, said) = await Run("timeline", session.Path, "--interval", "0:1000", "--wall-clock");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains(SessionClock.NotRecorded, said, StringComparison.Ordinal);
+
+        // icat evidence lists each record's time on it, dated, and names the offset and how the clock was placed.
+        (code, text, said) = await Run("evidence", calibrated.Path, "--wall-clock");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^\s*Time base\s+wall clock, " + Regex.Escape(wall.OffsetsAt([100])) + @"\. ", RegexOptions.Multiline),
+            text);
+        Assert.Contains("  " + wall.Record(10_000, culture, dated: true) + " · UDP send", text, StringComparison.Ordinal);
+        (code, _, said) = await Run("evidence", session.Path, "--wall-clock");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains(SessionClock.NotRecorded, said, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§6.8: the command line says a count of one in the singular: one PID, one record, one record of neither side, one row without a peer")]

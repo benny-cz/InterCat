@@ -20,7 +20,7 @@ public sealed partial class WorkspaceViewModel
     public IReadOnlyList<string> ChangedSettings => !realOverview
         ? []
         : WorkspaceLayout.Parts(0, 0, Grouping, rankBy, perSecond && RankingMetrics.IsAdditive(rankBy), EvidencePolicy,
-            scalesEachLane, CultureInfo.CurrentCulture, CollectorsSetAside);
+            scalesEachLane, CultureInfo.CurrentCulture, CollectorsSetAside, ReadsWallClock);
 
     /// <summary>Whether any setting differs from its default, so the rail names it and offers the default view back.</summary>
     public bool DiffersFromDefaults => ChangedSettings.Count > 0;
