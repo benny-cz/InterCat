@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -94,6 +96,31 @@ public sealed record SupportSession
     public long ContentBytes { get; init; }
 }
 
+/// <summary>A support bundle as it is written (`contracts/support-bundle-v1.md`), by `icat support` or the window.</summary>
+public sealed record SupportBundleV1
+{
+    public required string Contract { get; init; }
+
+    public required DateTimeOffset CreatedUtc { get; init; }
+
+    public required string Version { get; init; }
+
+    public required SupportRuntime Runtime { get; init; }
+
+    /// <summary>
+    /// The machine's capability report (`capability-report-v1`), which names no machine, host or user; null where the
+    /// bundle was made by the window, which runs no probe and leaves it to `icat support`.
+    /// </summary>
+    public required CapabilityReport? Capabilities { get; init; }
+
+    public required IReadOnlyList<SupportSession> Sessions { get; init; }
+
+    /// <summary>What the bundle holds and what it leaves out, as its listing said before it was written.</summary>
+    public required IReadOnlyList<string> Holds { get; init; }
+
+    public required IReadOnlyList<string> LeftOut { get; init; }
+}
+
 /// <summary>
 /// §20.6's support bundle: InterCat's version, the machine's runtime, and for each session named, what support needs to
 /// see why a capture or a view went wrong - its files and their sizes, its rows by mechanism, its coverage and loss
@@ -116,6 +143,51 @@ public static class SupportBundle
         "full paths, which each session's folder name stands for",
         "the identity of the source a session was made from",
     ];
+
+    /// <summary>One serializer for every bundle, the command line's and the window's: by name, indented, nothing ignored.</summary>
+    private static readonly JsonSerializerOptions Json = CreateJson();
+
+    /// <summary>
+    /// The bundle of <paramref name="sessions"/>, with <paramref name="capabilities"/> when the maker ran the probe: what
+    /// <see cref="Holds"/> listed, made now.
+    /// </summary>
+    public static SupportBundleV1 Make(IReadOnlyList<string> sessions, CapabilityReport? capabilities,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(sessions);
+        return new()
+        {
+            Contract = Contract,
+            CreatedUtc = DateTimeOffset.UtcNow,
+            Version = ProductVersion,
+            Runtime = Runtime(),
+            Capabilities = capabilities,
+            Sessions = [.. sessions.Select(session => DescribeSession(session, cancellationToken))],
+            Holds = Holds(sessions.Count, capabilities is not null),
+            LeftOut = LeftOut,
+        };
+    }
+
+    /// <summary>The name a bundle's file is offered under, as the redacted report's is: no session's name is in it.</summary>
+    public const string SuggestedName = "intercat-support-bundle.json";
+
+    /// <summary>The bundle as its file holds it.</summary>
+    public static string Serialize(SupportBundleV1 bundle)
+    {
+        ArgumentNullException.ThrowIfNull(bundle);
+        return JsonSerializer.Serialize(bundle, Json);
+    }
+
+    private static JsonSerializerOptions CreateJson()
+    {
+        var options = new JsonSerializerOptions(JsonSerializerDefaults.Web)
+        {
+            WriteIndented = true,
+            DefaultIgnoreCondition = JsonIgnoreCondition.Never,
+        };
+        options.Converters.Add(new JsonStringEnumConverter());
+        return options;
+    }
 
     /// <summary>InterCat's version, as its build stamped it.</summary>
     public static string ProductVersion { get; } =

@@ -44,6 +44,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private bool choosingSession;
     private bool closed;
 
+    /// <summary>A support bundle is being saved, so a second click does not start another.</summary>
+    private bool savingSupport;
+
     // The investigation a session is being opened from, while it is; then the one that keeps the shown session's pins
     // (§26.3), with the pins it last kept and the writes of them in order. A session opened on its own keeps none there.
     private string? openingFromInvestigation;
@@ -842,6 +845,104 @@ public sealed partial class MainWindow : Window, IDisposable
                 new TextBlock { Text = "Omitted: capture and session IDs, process and resource names, addresses, ports, original files, raw record locators, and content bytes.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 new TextBlock { Text = "This is not anonymous: timing and workload patterns can still identify a system. Review the saved file before sharing.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
+                    HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },
+            },
+        };
+        return prompt;
+    }
+
+    /// <summary>
+    /// Saves a support bundle (§20.6): what it holds and leaves out is said first, then its file is chosen. It holds the
+    /// session shown, if any, by its folder's name, and nothing a record holds (P16).
+    /// </summary>
+    private async void SaveSupportBundle(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (savingSupport)
+        {
+            return;
+        }
+
+        savingSupport = true;
+        try
+        {
+            string[] sessions = currentSessionPath is { } shown ? [shown] : [];
+            if (!await SupportBundlePrompt(sessions.Length).ShowDialog<bool>(this) || closed)
+            {
+                return;
+            }
+
+            Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+            {
+                Title = "Save support bundle",
+                SuggestedFileName = SupportBundle.SuggestedName,
+                DefaultExtension = "json",
+                FileTypeChoices = [new("JSON support bundle") { Patterns = ["*.json"] }],
+            });
+            if (file is null || closed)
+            {
+                return;
+            }
+
+            string path = file.Path.LocalPath;
+            await WriteSupportBundleAsync(path, sessions);
+            if (!closed)
+            {
+                CaptureDetail.Text = $"Support bundle saved to {path}. It holds no name, address or content; review it before "
+                    + "sending it.";
+            }
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            if (!closed) CaptureDetail.Text = "Could not save the support bundle: " + exception.Message;
+        }
+        finally
+        {
+            savingSupport = false;
+        }
+    }
+
+    /// <summary>Writes the support bundle of <paramref name="sessions"/> to <paramref name="path"/>, off the UI thread.</summary>
+    internal static Task WriteSupportBundleAsync(string path, IReadOnlyList<string> sessions) => Task.Run(() =>
+        File.WriteAllText(path, SupportBundle.Serialize(SupportBundle.Make(sessions, capabilities: null))));
+
+    /// <summary>What a support bundle holds and leaves out, said before its file is chosen; true to choose it.</summary>
+    internal static Window SupportBundlePrompt(int sessions)
+    {
+        var prompt = new Window
+        {
+            Title = "Save a support bundle?", Width = 540,
+            SizeToContent = SizeToContent.Height,
+            WindowStartupLocation = WindowStartupLocation.CenterOwner,
+            CanResize = false,
+        };
+        var cancel = new Button { Content = "Cancel" };
+        var proceed = new Button { Content = "Choose bundle file" };
+        cancel.Click += (_, _) => prompt.Close(false);
+        proceed.Click += (_, _) => prompt.Close(true);
+        prompt.Opened += (_, _) => cancel.Focus();
+        prompt.KeyDown += (_, key) =>
+        {
+            if (key.Key == Key.Escape)
+            {
+                prompt.Close(false);
+                key.Handled = true;
+            }
+        };
+        prompt.Content = new StackPanel
+        {
+            Margin = new Avalonia.Thickness(20), Spacing = 12,
+            Children =
+            {
+                new TextBlock { Text = "A support bundle helps someone see why a capture or a view went wrong.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                // In the words icat support lists them in (R18).
+                new TextBlock { Text = "Holds: " + string.Join("; ", SupportBundle.Holds(sessions, capabilities: false)) + ".",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Leaves out: " + string.Join("; ", SupportBundle.LeftOut) + ".",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
+                new TextBlock { Text = "Made here, it holds no capability report: icat support adds this machine's.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
                     HorizontalAlignment = HorizontalAlignment.Right, Children = { cancel, proceed } },

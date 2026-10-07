@@ -1,8 +1,9 @@
 # Support bundle contract, version 1
 
-Status: M5, revision 391 (§20.6, P16)
+Status: M5, revisions 391 and 392 (§20.6, P16)
 Owner: `InterCat.Application` (`SupportBundle`), with the capability report from `InterCat.Capture.Windows`
-Produced by: `icat support [<session> ...] (--output <path> [--overwrite] | --json | --check)`
+Produced by: `icat support [<session> ...] (--output <path> [--overwrite] | --json | --check)`, and the window's
+"Save support bundle…" for the session it shows
 Read by: a person, or the people supporting them
 
 A support bundle is what §20.6 says support needs to see why a capture or a view went wrong: InterCat's version, the
@@ -15,7 +16,8 @@ pipe, resource, machine, host or user, and no full path. Its contents are listed
 
 Before it reads a session or writes a byte, `icat support` says what the bundle holds and what it leaves out, in the words
 the bundle then records in `holds` and `leftOut`. With `--check` it says so and does nothing else. With `--json`, where
-the bundle is the answer on stdout, the listing goes to stderr beside it.
+the bundle is the answer on stdout, the listing goes to stderr beside it. The window says the same words in a question
+before a file is chosen, and adds that a bundle made there holds no capability report, which `icat support` adds.
 
 It always leaves out: message content and payload bytes; endpoint addresses and ports; command lines; raw records and
 their source fields; process, executable, pipe and resource names; machine, host and user names; full paths, which each
@@ -29,7 +31,7 @@ session's folder name stands for; and the identity of the source a session was m
 | `createdUtc` | When it was made |
 | `version` | InterCat's version, as its build stamped it |
 | `runtime` | `operatingSystem`, `operatingSystemArchitecture`, `processArchitecture`, `framework` and `processors`: the machine as support needs it, with no machine or user name |
-| `capabilities` | The machine's capability report, as `icat capabilities --json` writes it (`capability-report-v1`): each candidate source's state and why it is not available. It names the operating system and its build, never the machine |
+| `capabilities` | The machine's capability report, as `icat capabilities --json` writes it (`capability-report-v1`): each candidate source's state and why it is not available. It names the operating system and its build, never the machine. Null when the window made the bundle: it runs no probe, and its `holds` then lists no report |
 | `sessions` | One entry per session named, in the order named (§3) |
 | `holds`, `leftOut` | What the listing said the bundle holds and leaves out |
 
@@ -56,7 +58,6 @@ session's folder name stands for; and the identity of the source a session was m
 
 ## 4. Not defined at this version
 
-- A bundle made from the Desktop. The command line makes it; the window does not offer it yet.
 - Timings of a live capture's publication, which no session records once its capture has ended.
 - Diagnostic logs: InterCat keeps counters rather than logs on its capture, decode, aggregate and paint paths (§20.6, R11),
   and those counters are in each session's ledger.

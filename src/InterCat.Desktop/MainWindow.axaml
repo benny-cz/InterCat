@@ -689,6 +689,9 @@
               <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
               <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
                       AutomationProperties.HelpText="Save an exact, unredacted copy of this session's evidence to share" />
+              <!-- §20.6: what support needs to see why a capture or a view went wrong, and nothing a record holds (P16). -->
+              <Button x:Name="SupportBundleButton" Content="Save support bundle…" Click="SaveSupportBundle"
+                      AutomationProperties.HelpText="Save InterCat's version and this session's files, counts and coverage for support, with no names, addresses or content" />
             </StackPanel>
             <StackPanel Margin="0,20,0,0" Spacing="8">
               <TextBlock Text="EVIDENCE QUALITY" Classes="eyebrow" />

@@ -1066,7 +1066,9 @@ public sealed class CommandLineTests : IDisposable
                 .Select(entry => (entry.Mechanism, entry.State, entry.Reason)).Single(entry => entry.Mechanism == Mechanism.Tcp);
             Assert.Equal((2L, CoverageStateText.Value(tcp.state)), mechanisms[MechanismText.Name(Mechanism.Tcp)]);
             Assert.Equal(1L, mechanisms[MechanismText.Name(Mechanism.ProcessLifecycle)].Rows);
-            Assert.Equal(3, session.GetProperty("ledger").GetProperty("epochs")[0].GetProperty("losses")[0].GetProperty("lost").GetInt64());
+            JsonElement loss = session.GetProperty("ledger").GetProperty("epochs")[0].GetProperty("losses")[0];
+            Assert.Equal(3, loss.GetProperty("lost").GetInt64());
+            Assert.Equal(JsonValueKind.String, loss.GetProperty("layer").ValueKind);
             Assert.Equal(10_000_000, session.GetProperty("clock").GetProperty("ticksPerSecond").GetInt64());
             Assert.Contains(session.GetProperty("dependencies").EnumerateArray(),
                 dependency => dependency.GetProperty("kind").GetString() == "Segment");

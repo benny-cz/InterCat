@@ -1,28 +1,8 @@
 using System.Globalization;
-using System.Text.Json;
 using InterCat.Application;
 using InterCat.Domain;
 
 namespace InterCat.Cli;
-
-/// <summary>A support bundle as `icat support` writes it (`contracts/support-bundle-v1.md`).</summary>
-internal sealed record SupportBundleDocument
-{
-    public required string Contract { get; init; }
-    public required DateTimeOffset CreatedUtc { get; init; }
-    public required string Version { get; init; }
-    public required SupportRuntime Runtime { get; init; }
-
-    /// <summary>This machine's capability report (`icat capabilities`), which names no machine, host or user.</summary>
-    public required CapabilityReport Capabilities { get; init; }
-
-    public required IReadOnlyList<SupportSession> Sessions { get; init; }
-
-    /// <summary>What the bundle holds and what it leaves out, as its listing said before it was written.</summary>
-    public required IReadOnlyList<string> Holds { get; init; }
-
-    public required IReadOnlyList<string> LeftOut { get; init; }
-}
 
 /// <summary>
 /// `icat support`: §20.6's support bundle. It lists what it holds and what it leaves out before it reads or writes
@@ -99,18 +79,8 @@ internal static class SupportCommand
         }
 
         ConsoleUi.Progress("Reading this machine's capability report and each session. No capture is started.");
-        var document = new SupportBundleDocument
-        {
-            Contract = SupportBundle.Contract,
-            CreatedUtc = DateTimeOffset.UtcNow,
-            Version = SupportBundle.ProductVersion,
-            Runtime = SupportBundle.Runtime(),
-            Capabilities = CapabilitiesCommand.Probe(),
-            Sessions = [.. sessions.Select(session => SupportBundle.DescribeSession(session, cancellationToken))],
-            Holds = holds,
-            LeftOut = SupportBundle.LeftOut,
-        };
-        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
+        SupportBundleV1 document = SupportBundle.Make(sessions, CapabilitiesCommand.Probe(), cancellationToken);
+        string payload = SupportBundle.Serialize(document);
         if (json)
         {
             Console.Out.WriteLine(payload);

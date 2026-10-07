@@ -384,6 +384,7 @@ public sealed class LegibleTextTests
             ("redacted package", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store))),
             ("redacted package saved", MainWindow.RedactedPackageResultPrompt(redacted)),
             ("stop Explore", MainWindow.StopExplorePrompt()),
+            ("support bundle", MainWindow.SupportBundlePrompt(1)),
             ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),
         })
         {
