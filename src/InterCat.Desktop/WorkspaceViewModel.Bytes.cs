@@ -72,6 +72,7 @@ public sealed partial class WorkspaceViewModel
     {
         RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
+        OnPropertyChanged(nameof(RelationshipsAbsent));
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(LevelSummary));
     }

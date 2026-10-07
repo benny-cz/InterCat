@@ -861,6 +861,12 @@
           </ListBox.ItemTemplate>
         </ListBox>
 
+        <!-- A table listing none says why in its place, as the graph's caption does (R21). -->
+        <TextBlock x:Name="RelationshipsAbsentText" Grid.Row="2" Margin="2,8,0,0" Classes="muted" FontSize="12"
+                   TextWrapping="Wrap" VerticalAlignment="Top" Text="{Binding RelationshipsAbsent}"
+                   IsVisible="{Binding RelationshipsAbsent, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                   AutomationProperties.Name="Why the relationship table lists none" />
+
         <!-- The selected relationship in words: what its evidence's tooltip says, for a keyboard as for a pointer (R4). -->
         <TextBlock x:Name="SelectedRelationshipText" Grid.Row="3" Margin="2,6,0,0" Classes="muted" FontSize="11"
                    TextWrapping="Wrap" Text="{Binding SelectedRelationshipExplanation}"

@@ -18,7 +18,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class LiveDerivationTests
 {
     [Fact(DisplayName = "§12: a live step before the broker publishes anything follows nothing and creates no session")]
-    public async Task AStepBeforeAnyPublicationFollowsNothing()
+    public void AStepBeforeAnyPublicationFollowsNothing() => SingleThreadedContext.Run(async () =>
     {
         using var evidence = new TemporarySession();
         using var user = new TemporarySession();
@@ -33,10 +33,10 @@ public sealed class LiveDerivationTests
         Assert.Null(derivation.Last);
         Assert.False(derivation.HasSession);
         Assert.False(Directory.Exists(sessionPath));
-    }
+    });
 
     [Fact(DisplayName = "§12: halting the live derivation settles a running step and runs no later one")]
-    public async Task HaltingSettlesARunningStepAndRunsNoLaterOne()
+    public void HaltingSettlesARunningStepAndRunsNoLaterOne() => SingleThreadedContext.Run(async () =>
     {
         using var evidence = new TemporarySession();
         using var user = new TemporarySession();
@@ -52,10 +52,10 @@ public sealed class LiveDerivationTests
         // Once halted, a step does nothing, even under a token that was never cancelled.
         await Assert.ThrowsAnyAsync<OperationCanceledException>(() => derivation.StepAsync(CancellationToken.None));
         Assert.Null(derivation.Last);
-    }
+    });
 
     [Fact(DisplayName = "§20.1: the store a capture derives into is its session's shared store, so the window reads through it")]
-    public async Task TheDerivedStoreIsTheSessionsSharedStore()
+    public void TheDerivedStoreIsTheSessionsSharedStore() => SingleThreadedContext.Run(async () =>
     {
         using var evidence = new TemporaryDirectory();
         using var user = new TemporarySession();
@@ -83,10 +83,10 @@ public sealed class LiveDerivationTests
         // Projecting the new generation read through that store, and the saved session no longer holds readers.
         Assert.NotEqual(0, derived.SegmentReaderCache.Entries);
         Assert.Equal(0, saved.SegmentReaderCache.Entries);
-    }
+    });
 
     [Fact(DisplayName = "§6.8: a live publication is projected under the evidence policy the window holds as it is projected")]
-    public async Task ALivePublicationIsProjectedUnderTheWindowsPolicy()
+    public void ALivePublicationIsProjectedUnderTheWindowsPolicy() => SingleThreadedContext.Run(async () =>
     {
         using var evidence = new TemporaryDirectory();
         using var user = new TemporarySession();
@@ -105,10 +105,10 @@ public sealed class LiveDerivationTests
         using var defaulted = new LiveDerivation(evidence.Path, Path.Combine(plain.Path, "explore"), Stopwatch.StartNew(),
             new SessionStoreRegistry(capacity: 4));
         Assert.Equal(EvidencePolicy.IncludeCorrelated, (await defaulted.StepAsync(CancellationToken.None)).Overview!.Policy);
-    }
+    });
 
     [Fact(DisplayName = "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation")]
-    public async Task AFinishedFollowPublishesTheCheckpoint()
+    public void AFinishedFollowPublishesTheCheckpoint() => SingleThreadedContext.Run(async () =>
     {
         using var evidence = new TemporaryDirectory();
         using var user = new TemporarySession();
@@ -129,5 +129,5 @@ public sealed class LiveDerivationTests
         LiveDerivationStep again = await derivation.StepAsync(CancellationToken.None);
         Assert.Null(again.Generation);
         Assert.Equal(checkpoint.PublishedGeneration, derivation.Store.Current!.Generation);
-    }
+    });
 }

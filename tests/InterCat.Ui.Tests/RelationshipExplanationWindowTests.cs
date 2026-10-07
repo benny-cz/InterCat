@@ -109,6 +109,71 @@ public sealed class RelationshipExplanationWindowTests
     }
 
     /// <summary>Two clients that each exchange records with one server, each over a connection of its own: two relationships.</summary>
+    [AvaloniaFact(DisplayName = "R15: a relationship table that lists none says why in its place, and says nothing while it lists any")]
+    public async Task AnEmptyRelationshipTableSaysWhy()
+    {
+        // One process's connection to another host relates no two of the session's processes.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 900 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 100)
+                .Between("10.0.0.10:50100", "10.0.0.20:443") with { SessionRelativeTicks = 1_000 },
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            await ShowTables(window, session);
+            TextBlock why = window.GetControl<TextBlock>("RelationshipsAbsentText");
+            Assert.Equal(0, window.GetControl<ListBox>("RelationshipList").ItemCount);
+            Assert.True(why.IsEffectivelyVisible);
+            Assert.Equal("No relationship here: no record pairs two of this session's processes. A connection whose other end "
+                + "is outside the session - on another host, or in a process it did not record - is listed on its process's "
+                + "rung, and every record is in the timeline.", why.Text);
+            Assert.Equal("Why the relationship table lists none", Avalonia.Automation.AutomationProperties.GetName(why));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // A table listing relationships says nothing in their place; at the rung of a process with none it says why, and
+        // back at the machine rung nothing again.
+        using var paired = new TemporarySession();
+        Publish(paired.Store, [.. TwoClients(), Lifecycle(5, ObservationKind.Create, 500, 5) with
+        {
+            ResourceName = @"C:\Tools\idle.exe", SessionRelativeTicks = 1_400,
+        }]);
+        var listing = new MainWindow { Width = 1456, Height = 939 };
+        listing.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await ShowTables(listing, paired);
+            TextBlock line = listing.GetControl<TextBlock>("RelationshipsAbsentText");
+            Assert.Equal(2, listing.GetControl<ListBox>("RelationshipList").ItemCount);
+            Assert.False(line.IsVisible);
+            ProcessNode idle = workspace.Snapshot.Processes.Single(node => node.ProcessId == 500);
+            foreach (string key in new[] { idle.GroupKey, idle.Id.ToString() })
+            {
+                workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+                Assert.True(workspace.Descend());
+            }
+
+            Dispatch();
+            Assert.Equal(0, listing.GetControl<ListBox>("RelationshipList").ItemCount);
+            Assert.True(line.IsEffectivelyVisible);
+            Assert.StartsWith("No relationship here: none has an end among the processes this rung draws.", line.Text, StringComparison.Ordinal);
+            workspace.ReturnTo(0);
+            Dispatch();
+            Assert.False(line.IsVisible);
+        }
+        finally
+        {
+            listing.Close();
+        }
+    }
+
     private static ObservationRowV1[] TwoClients() =>
     [
         Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 100)

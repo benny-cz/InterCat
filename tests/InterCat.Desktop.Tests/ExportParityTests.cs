@@ -17,7 +17,7 @@ public sealed class ExportParityTests
     private static readonly DateTimeOffset Exported = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
 
     [Fact(DisplayName = "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence")]
-    public async Task TheHeadlessExportIsTheDesktopExport()
+    public void TheHeadlessExportIsTheDesktopExport() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store,
@@ -78,10 +78,10 @@ public sealed class ExportParityTests
                 Assert.Equal(150, cliReport.RootElement.GetProperty("records").GetArrayLength());
             }
         }
-    }
+    });
 
     [Fact(DisplayName = "R18: grouped by terminal session, the window's export of the machine rung, a session's rung and its records is icat export --group-by session's")]
-    public async Task AGroupedExportIsTheHeadlessExport()
+    public void AGroupedExportIsTheHeadlessExport() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
@@ -140,7 +140,7 @@ public sealed class ExportParityTests
         Publish(unnamed.Store, rows);
         Assert.Contains("a session is never guessed", Assert.Throws<ArgumentException>(() =>
             SessionExport.Build(unnamed.Store, Headless([], false, ExportFormat.Json), Exported)).Message, StringComparison.Ordinal);
-    }
+    });
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }

@@ -733,10 +733,12 @@ public sealed class RankingSelectorTests
             Timed(Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\store.exe" }),
             Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 300, 50).Between("127.0.0.1:50010", "127.0.0.1:9090")),
             Timed(Transfer(51, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 400, 51).Between("127.0.0.1:9090", "127.0.0.1:50010")),
+            Timed(Lifecycle(5, ObservationKind.Create, 500, 5) with { ResourceName = @"C:\Tools\idle.exe" }),
         ]);
         using WorkspaceViewModel workspace = Open(session);
         Assert.Equal(2, workspace.Relationships.Count);
         Assert.Equal("Whole machine · 2 relationships", workspace.RelationshipTableScope);
+        Assert.Null(workspace.RelationshipsAbsent);
 
         // At the client's rung the graph draws the client and the server; agent.exe and store.exe are counted, not listed.
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
@@ -760,6 +762,18 @@ public sealed class RankingSelectorTests
 
         Assert.Equal(2, workspace.Relationships.Count);
         Assert.Equal("Whole machine · 2 relationships", workspace.RelationshipTableScope);
+
+        // A process with no relationship lists none at its rung, and the table says why in their place.
+        ProcessNode idle = workspace.Snapshot.Processes.Single(node => node.ProcessId == 500);
+        foreach (string key in new[] { idle.GroupKey, idle.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        Assert.Empty(workspace.Relationships);
+        Assert.Equal("No relationship here: none has an end among the processes this rung draws. The others are listed at the "
+            + "machine rung.", workspace.RelationshipsAbsent);
     });
 
     [Fact(DisplayName = "§6.3: under a byte ranking the graph's edges and nodes are sized by bytes, so the panes agree on magnitude")]

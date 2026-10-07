@@ -23,7 +23,7 @@ public sealed class EvidencePolicyTests
     private const string RemoteEnd = "10.0.0.9:443";
 
     [Fact(DisplayName = "§6.8: every read of an evidence source binds a reused PID's later holder's records as its policy says")]
-    public async Task EveryReadBindsAsItsPolicySays()
+    public void EveryReadBindsAsItsPolicySays() => SingleThreadedContext.Run(async () =>
     {
         // PID 100 exits and is created again, and its second holder sends twice, 8 bytes each: candidates that could be
         // late records of the first holder. The server receives one of them.
@@ -61,10 +61,10 @@ public sealed class EvidencePolicyTests
 
         Assert.Throws<ArgumentOutOfRangeException>(() =>
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation, (EvidencePolicy)0));
-    }
+    });
 
     [Fact(DisplayName = "§6.8: a reused PID's later holder's RPC calls, HTTP exchanges, one-sided connections, call and peer rankings and lanes are its own only where candidates count")]
-    public async Task ALaterHoldersRowsRankingsAndLanesFollowThePolicy()
+    public void ALaterHoldersRowsRankingsAndLanesFollowThePolicy() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishLaterHolder(session);
@@ -128,10 +128,10 @@ public sealed class EvidencePolicyTests
             SessionMechanismByteMeasures mechanisms = await source.LaneBytesAsync(extent, 4, [Mechanism.Tcp], CancellationToken.None);
             Assert.Equal(116, mechanisms.Of(Mechanism.Tcp)!.Columns.Sum(column => column.SentBytes));
         }
-    }
+    });
 
     [Fact(DisplayName = "§6.8: a reused PID's later holder's rung lists its rows where candidates count, and where none does says why beside the action that counts them")]
-    public async Task ALaterHoldersRungSaysWhyItListsNoRow()
+    public void ALaterHoldersRungSaysWhyItListsNoRow() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishLaterHolder(session);
@@ -198,7 +198,7 @@ public sealed class EvidencePolicyTests
         ProcessNode one = overview.Nodes.Single(node => node.PidHolder == 2) with { WithheldRecords = 1 };
         Assert.Contains(", so the 1 record bound to this one over the session is only a candidate, which ",
             WorkspaceRowBuilder.ExplainWithheldRung(one), StringComparison.Ordinal);
-    }
+    });
 
     /// <summary>The later holder's group, then its own rung, once every read of its rows has answered.</summary>
     private static async Task DescendToLaterHolder(WorkspaceViewModel workspace)

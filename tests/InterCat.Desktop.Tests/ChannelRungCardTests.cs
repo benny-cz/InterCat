@@ -19,7 +19,7 @@ public sealed class ChannelRungCardTests
     private const string ServerEnd = "127.0.0.1:8080";
 
     [Fact(DisplayName = "§6.4: on a channel's own rung the card counts the channel E lists, as its row did where it was chosen, not the process it was opened from")]
-    public async Task AChannelsOwnRungCountsTheChannel()
+    public void AChannelsOwnRungCountsTheChannel() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishClient(session);
@@ -64,10 +64,10 @@ public sealed class ChannelRungCardTests
         Assert.Equal("2 call records · an RPC call carries no size", workspace.EvidenceSummary);
         workspace.SelectedRung = workspace.RungRows.Single(Kinds[2].IsKind);
         Assert.Equal("3 buffer records · 181 B sent, 122 B received in HTTP messages", workspace.EvidenceSummary);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: on a channel's own rung a call or a process chosen leaves the card on the channel E lists, and a relationship or both ends chosen are what both read")]
-    public async Task WhatIsChosenOnAChannelsRungIsWhatELists()
+    public void WhatIsChosenOnAChannelsRungIsWhatELists() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishClient(session);
@@ -136,11 +136,11 @@ public sealed class ChannelRungCardTests
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.Single(workspace.RungRows);
-    }
+    });
 
     /// <summary>Each kind of channel a process's rung lists, how it is named chosen and opened, and the records E lists.</summary>
     [Fact(DisplayName = "§6.2: read on the wall clock, an HTTP exchange's row names the time of day it began")]
-    public async Task AnExchangeRowReadsTheWallClock()
+    public void AnExchangeRowReadsTheWallClock() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         DateTimeOffset noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
@@ -167,7 +167,7 @@ public sealed class ChannelRungCardTests
         SessionClock wall = SessionClock.Wall(workspace.Snapshot.WallClock!, TimeZoneInfo.Local, workspace.Snapshot.Extent);
         Assert.StartsWith(wall.Record(8_000, culture) + exchangeAt, workspace.RungRows[0].Detail, StringComparison.Ordinal);
         Assert.Equal("HTTP exchange at " + wall.Record(8_000, culture), workspace.RungRows[0].Source.Label);
-    }
+    });
 
     private static readonly (Func<RungRow, bool> IsKind, string Noun, string Heading, int Records)[] Kinds =
     [

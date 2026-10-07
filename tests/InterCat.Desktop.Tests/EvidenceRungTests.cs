@@ -20,7 +20,7 @@ public sealed class EvidenceRungTests
     private const int Exchanges = 120;
 
     [Fact]
-    public async Task TheWholeSessionLoadsInPagesAndTheViewHoldsItsGenerationWhileRead()
+    public void TheWholeSessionLoadsInPagesAndTheViewHoldsItsGenerationWhileRead() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Rows();
@@ -64,10 +64,10 @@ public sealed class EvidenceRungTests
         Assert.False(workspace.HoldsGeneration);
         Assert.False(workspace.HasSelectedEvidence);
         Assert.Empty(workspace.EvidenceMarkTicks);
-    }
+    });
 
     [Fact]
-    public async Task AChannelOffersItsRecordsAndRemovingFiltersWidensTheScopeOneStepAtATime()
+    public void AChannelOffersItsRecordsAndRemovingFiltersWidensTheScopeOneStepAtATime() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -108,7 +108,7 @@ public sealed class EvidenceRungTests
         RemoveFilter(workspace, "group");
         await workspace.EvidenceReady;
         Assert.StartsWith("Every admitted record", workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: a rung's timeline counts the records E reads from it, over every record in the session")]
     public void EachRungsTimelineCountsWhatItsEvidenceReads() => SingleThreadedContext.Run(async () =>
@@ -186,7 +186,7 @@ public sealed class EvidenceRungTests
     });
 
     [Fact(DisplayName = "§3.2: a focus the session cannot count says why and falls back to every record")]
-    public async Task AFocusThatCannotBeCountedSaysWhy()
+    public void AFocusThatCannotBeCountedSaysWhy() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -209,7 +209,7 @@ public sealed class EvidenceRungTests
         Assert.Contains("could not be counted: The focused process instance is not in this generation.",
             workspace.TimelineCaption, StringComparison.Ordinal);
         Assert.EndsWith("Every observed record is shown.", workspace.TimelineCaption, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: a live refresh keeps the rung's timeline counts until its own arrive, and only for the same focus")]
     public void ALiveRefreshKeepsTheTimelineFocusUntilItsOwnCountArrives() => SingleThreadedContext.Run(async () =>
@@ -247,7 +247,7 @@ public sealed class EvidenceRungTests
     });
 
     [Fact(DisplayName = "§6.2: a timeline bucket's hover states its interval, value, the focus's share, unmeasured part, coverage and scale")]
-    public async Task ATimelineBucketsHoverStatesTheContract()
+    public void ATimelineBucketsHoverStatesTheContract() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -279,10 +279,10 @@ public sealed class EvidenceRungTests
         // A bucket that is the analysis interval says so instead of offering the click that would make it one.
         workspace.SelectInterval(bucket.Interval);
         Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(bucket, 1_000).Lines[^1]);
-    }
+    });
 
     [Fact(DisplayName = "§3.2/§6.2: an instance's source-direction rows state their domain and scope the table, and survive a refresh")]
-    public async Task AnInstancesSourceDirectionRowsStateTheirDomainAndScopeTheTable()
+    public void AnInstancesSourceDirectionRowsStateTheirDomainAndScopeTheTable() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -358,10 +358,10 @@ public sealed class EvidenceRungTests
 
         int Total(Direction direction) => lanes.Single(lane => lane.Direction == direction).Buckets
             .Sum(bucket => bucket.ObservationCount);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: a channel's two ends are lanes with their own table focus, kept by a refresh and reset by another focus")]
-    public async Task AChannelsEndsScopeTheTableAndSurviveARefresh()
+    public void AChannelsEndsScopeTheTableAndSurviveARefresh() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -435,10 +435,10 @@ public sealed class EvidenceRungTests
         Assert.Null(workspace.SelectedChannelEndOption.End);
 
         static int Sum(IReadOnlyList<TimelineBucket> buckets) => buckets.Sum(bucket => bucket.ObservationCount);
-    }
+    });
 
     [Fact(DisplayName = "§6.2: a large group zoomed keeps its process lanes, counted in fewer columns, and says so")]
-    public async Task ALargeGroupZoomedKeepsItsLanesCountedCoarser()
+    public void ALargeGroupZoomedKeepsItsLanesCountedCoarser() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
 
@@ -476,13 +476,13 @@ public sealed class EvidenceRungTests
         ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
         Assert.Contains($"Resolution: the lanes' own count, 500 columns, coarser than the view's so the group's 40 lanes stay within {cells} cells",
             workspace.DescribeTimelineHover(bucket, 1, ownerLane: owner).Lines);
-    }
+    });
 
     private static int FocusTotal(WorkspaceViewModel workspace) =>
         Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineFocusBuckets).Sum(bucket => bucket.ObservationCount);
 
     [Fact]
-    public async Task ASelectedProcessAtMachineAndAChannelFromTheListScopeTheRungVisibly()
+    public void ASelectedProcessAtMachineAndAChannelFromTheListScopeTheRungVisibly() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -504,10 +504,10 @@ public sealed class EvidenceRungTests
         await workspace.EvidenceReady;
         Assert.StartsWith("Paired TCP channel", workspace.EvidenceScopeText, StringComparison.Ordinal);
         Assert.False(workspace.ShowChannelEvidence(channel));
-    }
+    });
 
     [Fact(DisplayName = "§3.2: E from the machine rung scopes to the selected process by name and PID, a reused PID's holder numbered, in its crumb and filter")]
-    public async Task EvidenceFromTheMachineRungNamesItsProcessApart()
+    public void EvidenceFromTheMachineRungNamesItsProcessApart() => SingleThreadedContext.Run(async () =>
     {
         // PID 100 is held twice, by client.exe both times.
         using var session = new TemporarySession();
@@ -527,10 +527,10 @@ public sealed class EvidenceRungTests
         Assert.Contains(workspace.Filters, filter => filter.Field == "scope" && filter.Label == "client.exe · PID 100 #2");
         Assert.EndsWith("client.exe · PID 100 #2", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
         Assert.StartsWith("Records owned by client.exe · PID 100 #2", workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact]
-    public async Task ANewerGenerationReplaysTheRungsScopeAndReselectsTheRecord()
+    public void ANewerGenerationReplaysTheRungsScopeAndReselectsTheRecord() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -555,10 +555,10 @@ public sealed class EvidenceRungTests
         Assert.StartsWith("Paired TCP channel", second.EvidenceScopeText, StringComparison.Ordinal);
         Assert.Equal(saved.SelectedRungKey, second.SelectedRung?.Key);
         Assert.True(second.HasSelectedEvidence);
-    }
+    });
 
     [Fact]
-    public async Task AScopeTheGenerationCannotReadIsStatedNotWidened()
+    public void AScopeTheGenerationCannotReadIsStatedNotWidened() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -572,10 +572,10 @@ public sealed class EvidenceRungTests
         Assert.Contains("not uniquely admitted", workspace.EmptyReason, StringComparison.Ordinal);
         Assert.Equal("Source records unavailable", workspace.EvidenceStatus);
         Assert.False(workspace.CanLoadMoreEvidence);
-    }
+    });
 
     [Fact(DisplayName = "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do")]
-    public async Task OwnRecordsRankTheRungsAndOrderTheLanes()
+    public void OwnRecordsRankTheRungsAndOrderTheLanes() => SingleThreadedContext.Run(async () =>
     {
         // The one-sided sender, PID 300, is the busiest process though it has no paired peer; one record names no owner.
         using var session = new TemporarySession();
@@ -609,10 +609,10 @@ public sealed class EvidenceRungTests
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
         DescendTo(workspace, client.Id.ToString());
         Assert.EndsWith(" · admitted paired TCP only; not all session observations", workspace.LevelSummary, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it")]
-    public async Task AnRpcServerIsTheProcessOfTheCallsItRaised()
+    public void AnRpcServerIsTheProcessOfTheCallsItRaised() => SingleThreadedContext.Run(async () =>
     {
         // The service host raised every server call and appears in no lifecycle record, as a long-running host does not.
         using var session = new TemporarySession();
@@ -644,10 +644,10 @@ public sealed class EvidenceRungTests
             Assert.StartsWith("RPC request ", row.Label, StringComparison.Ordinal);
             Assert.EndsWith("· PID 1960", row.Detail, StringComparison.Ordinal);
         });
-    }
+    });
 
     [Fact(DisplayName = "P8: a process's RPC calls are channels by interface, listed a page at a time, each call's records one step away")]
-    public async Task RpcCallsAreChannelsOfPagedCallsWithTheirRecordsOneStepAway()
+    public void RpcCallsAreChannelsOfPagedCallsWithTheirRecordsOneStepAway() => SingleThreadedContext.Run(async () =>
     {
         Guid serviceControl = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
         Guid other = Guid.Parse("0a74ef1c-41a4-4e06-83ae-dc74fb1cdd53");
@@ -727,12 +727,12 @@ public sealed class EvidenceRungTests
         await workspace.EvidenceReady;
         Assert.Equal(6, workspace.RungRows.Count);
         Assert.StartsWith("Records of RPC calls to svcctl", workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
     [Fact(DisplayName = "P7: a process's connections to ends no record holds are rows of its rung, each opening its own records")]
-    public async Task OneSidedConnectionsAreRowsOfTheProcessRung()
+    public void OneSidedConnectionsAreRowsOfTheProcessRung() => SingleThreadedContext.Run(async () =>
     {
         // Process 100 holds its paired channel with process 200, and a connection to another host no record's end holds.
         const string local = "192.168.1.5:52000";
@@ -795,10 +795,10 @@ public sealed class EvidenceRungTests
         await workspace.EvidenceReady;
         Assert.Equal(4, workspace.RungRows.Count);
         Assert.StartsWith("Records of TCP to " + remote, workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "I21: a process's HTTP exchanges are a row of its rung, listed with their parts, each exchange's buffers one step away")]
-    public async Task HttpExchangesAreARowOfTheProcessRung()
+    public void HttpExchangesAreARowOfTheProcessRung() => SingleThreadedContext.Run(async () =>
     {
         // Process 100 made two HTTP exchanges beside its paired channel: exchange 1 in four buffers, and exchange 2, whose
         // response body's last buffer was not recorded.
@@ -889,7 +889,7 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.Equal(7, workspace.RungRows.Count);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: an export from any evidence rung holds exactly the records it lists, an RPC or HTTP one's as a process's")]
     public void AnEvidenceExportHoldsExactlyTheRecordsTheRungLists() => SingleThreadedContext.Run(async () =>
@@ -1002,7 +1002,7 @@ public sealed class EvidenceRungTests
     });
 
     [Fact(DisplayName = "§6.4: with a relationship chosen at the machine rung, the inspector counts its records and bytes, and E lists them")]
-    public async Task EListsAChosenRelationshipsRecords()
+    public void EListsAChosenRelationshipsRecords() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -1029,7 +1029,7 @@ public sealed class EvidenceRungTests
 
         Assert.Equal(2 * Exchanges, workspace.RungRows.Count);
         Assert.Contains("this relationship chosen", workspace.Filters.Single().Reason, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: below the machine rung E lists what the inspector counts: a process chosen among a group's members, a chosen relationship, a channel chosen among a process's rows, else the rung's own records")]
     public void BelowTheMachineRungEListsWhatTheInspectorCounts() => SingleThreadedContext.Run(async () =>
@@ -1112,7 +1112,7 @@ public sealed class EvidenceRungTests
     });
 
     [Fact(DisplayName = "§6.4: with nothing selected the evidence card names the records E then lists, the rung's own, over the scope the rows count")]
-    public async Task WithNothingSelectedTheCardNamesWhatEListsNext()
+    public void WithNothingSelectedTheCardNamesWhatEListsNext() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -1141,7 +1141,7 @@ public sealed class EvidenceRungTests
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id);
         Assert.Equal("Selected process", workspace.EvidenceHeading);
         Assert.DoesNotContain("Every admitted record", workspace.EvidenceSummary, StringComparison.Ordinal);
-    }
+    });
 
     /// <summary>E from the rung shown lists exactly the records the card names, and the way back lands where it began.</summary>
     private static async Task AssertEListsWhatTheCardNames(WorkspaceViewModel workspace)
@@ -1157,7 +1157,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§6.4: a channel chosen among a process's rows under a brush counts the brush's records and the bytes read for it, which E lists")]
-    public async Task AChosenChannelUnderABrushCountsTheBrush()
+    public void AChosenChannelUnderABrushCountsTheBrush() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -1186,7 +1186,7 @@ public sealed class EvidenceRungTests
         }
 
         Assert.Equal(50, workspace.RungRows.Count);
-    }
+    });
 
     /// <summary>
     /// The evidence rung's export, in each format: complete, naming the rung's scope, and holding exactly the records the
@@ -1226,7 +1226,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact]
-    public async Task ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession()
+    public void ABrushedIntervalReRanksEveryRungAndClearingItRestoresTheWholeSession() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Rows();
@@ -1271,7 +1271,7 @@ public sealed class EvidenceRungTests
         Assert.Equal(workspace.WholeSnapshot, workspace.Snapshot);
         Assert.Equal((2 * Exchanges).ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
             workspace.RungRows.Single().Observations);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: with nothing brushed the ranking and E count the visible range, a brush wins, and keeping the range holds it")]
     public void TheVisibleRangeIsTheScopeWhenNothingIsBrushed() => SingleThreadedContext.Run(async () =>
@@ -1408,7 +1408,7 @@ public sealed class EvidenceRungTests
     });
 
     [Fact]
-    public async Task AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope()
+    public void AnExportNamesTheAppliedSnapshotAndSaysWhetherItIsTheWholeScope() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Rows();
@@ -1444,10 +1444,10 @@ public sealed class EvidenceRungTests
         Assert.Contains("Every record of this scope is included.", whole.Context.Caveats);
         string[] csv = whole.Content.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(rows.Length + 1, csv.Length);
-    }
+    });
 
     [Fact(DisplayName = "§3.7: a record whose content the capture kept says in the inspector how much of what it kept")]
-    public async Task TheInspectorStatesKeptContent()
+    public void TheInspectorStatesKeptContent() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         ObservationRowV1[] rows = Rows();
@@ -1484,10 +1484,10 @@ public sealed class EvidenceRungTests
         workspace.SelectedRung = workspace.RungRows[4];
         Assert.False(workspace.HasSelectedContent);
         Assert.EndsWith("Press Enter to open the original record.", workspace.RungRows[4].SpokenName, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "R3: a record without a size says why in the rail, its spoken name and the inspector, never as zero")]
-    public async Task ARecordWithoutASizeSaysWhyInTheWindow()
+    public void ARecordWithoutASizeSaysWhyInTheWindow() => SingleThreadedContext.Run(async () =>
     {
         // A receive whose source withheld its size, and one a package redacted.
         using var session = new TemporarySession();
@@ -1508,7 +1508,7 @@ public sealed class EvidenceRungTests
         Assert.Equal("TCP receive · size redacted", workspace.SelectedEvidenceTitle);
         Assert.Equal("redacted", workspace.SelectedEvidenceFields.Single(field => field.Label == "Size").Value);
         Assert.DoesNotContain(workspace.RungRows, row => row.Label.Contains(" B", StringComparison.Ordinal));
-    }
+    });
 
     private static WorkspaceViewModel Open(TemporarySession session)
     {

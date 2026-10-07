@@ -1311,6 +1311,7 @@
         "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's",
         "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard",
         "R15: a published session's channel and evidence rungs render at every supported size",
+        "R15: a relationship table that lists none says why in its place, and says nothing while it lists any",
         "R15: a scope no listing names, or one this generation cannot resolve, is refused rather than measured as nothing",
         "R15: a selected group highlights its members' records; the rung's own focus is not highlighted again",
         "R15: a selected process highlights exactly its own records in the timeline, until cleared",

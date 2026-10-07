@@ -18,7 +18,7 @@ public sealed class TimelineDetailTests
     private const string ServerEnd = "127.0.0.1:8080";
 
     [Fact]
-    public async Task AZoomedViewportGetsItsOwnResolutionAndTheWholeExtentNeedsNone()
+    public void AZoomedViewportGetsItsOwnResolutionAndTheWholeExtentNeedsNone() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store,
@@ -60,7 +60,7 @@ public sealed class TimelineDetailTests
         Assert.Null(workspace.TimelineDetail);
         Assert.Equal(workspace.Snapshot.Timeline.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
         Assert.StartsWith("Whole session in", workspace.IntervalTableScope, StringComparison.Ordinal);
-    }
+    });
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }

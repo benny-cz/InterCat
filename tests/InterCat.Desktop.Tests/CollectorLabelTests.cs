@@ -15,7 +15,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class CollectorLabelTests
 {
     [Fact(DisplayName = "§19.5: the window labels InterCat's broker in its row, the inspector and its graph card, and not the later holder of its PID")]
-    public async Task TheBrokerIsLabelledWhereverItIsDescribed()
+    public void TheBrokerIsLabelledWhereverItIsDescribed() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishCollected(session.Store);
@@ -49,10 +49,10 @@ public sealed class CollectorLabelTests
         Assert.DoesNotContain("InterCat", workspace.Explanation, StringComparison.Ordinal);
         GraphDisplayNode other = workspace.GraphDisplay.Nodes.Single(candidate => candidate.Members.Contains(later.Id));
         Assert.DoesNotContain("InterCat", workspace.DescribeGraphHover(other.Key)!.Lines[0], StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§19.5: the inspector says which collector a process's PID is named for when no instance is it, and the rail's tooltip says so too")]
-    public async Task AnUnfoundCollectorIsSaidWhereItsPidIsHeld()
+    public void AnUnfoundCollectorIsSaidWhereItsPidIsHeld() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishCollected(session.Store);
@@ -76,5 +76,5 @@ public sealed class CollectorLabelTests
         Assert.Equal("InterCat's own: intercat-broker.exe · PID 4120 #1", workspace.CollectorsLine);
         Assert.EndsWith("the timeline and the evidence still count theirs. " + client + " " + recorder, workspace.CollectorsText,
             StringComparison.Ordinal);
-    }
+    });
 }

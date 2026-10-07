@@ -27,7 +27,7 @@ public sealed class GraphLayoutIntegrationTests
     }
 
     [Fact(DisplayName = "§3.1: a zero-edge graph does not imply the timeline recorded nothing")]
-    public async Task ZeroEdgeGraphStillNamesObservedTimelineActivity()
+    public void ZeroEdgeGraphStillNamesObservedTimelineActivity() => SingleThreadedContext.Run(async () =>
     {
         WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
         {
@@ -39,10 +39,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("5 processes · no relationship drawn; observed records may still be in the timeline",
             viewModel.GraphSummary);
         Assert.NotEmpty(viewModel.Snapshot.Timeline);
-    }
+    });
 
     [Fact(DisplayName = "§19.4: a non-tour workspace labels its own extent and uses its own graph identity")]
-    public async Task NonTourWorkspaceUsesItsOwnExtentAndGraphIdentity()
+    public void NonTourWorkspaceUsesItsOwnExtentAndGraphIdentity() => SingleThreadedContext.Run(async () =>
     {
         WorkspaceSnapshot snapshot = SyntheticWorkspace.Create() with
         {
@@ -66,10 +66,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal(
             $"{10m.ToString("N3", CultureInfo.CurrentCulture)} – {12m.ToString("N3", CultureInfo.CurrentCulture)} s",
             viewModel.IntervalLabel);
-    }
+    });
 
     [Fact(DisplayName = "§6.8: an empty session workspace opens without a fabricated selected process")]
-    public async Task EmptyWorkspaceHasNoFabricatedSelection()
+    public void EmptyWorkspaceHasNoFabricatedSelection() => SingleThreadedContext.Run(async () =>
     {
         WorkspaceSnapshot empty = SyntheticWorkspace.Create() with
         {
@@ -82,10 +82,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Null(viewModel.SelectedProcess);
         Assert.Equal("Nothing selected", viewModel.SelectionTitle);
         Assert.Empty(viewModel.GraphPositions);
-    }
+    });
 
     [Fact(DisplayName = "R12: desktop graph reads stable layout coordinates instead of evidence-model positions")]
-    public async Task DesktopUsesSeparateGraphLayout()
+    public void DesktopUsesSeparateGraphLayout() => SingleThreadedContext.Run(async () =>
     {
         using var viewModel = new WorkspaceViewModel();
         await viewModel.LayoutReady;
@@ -100,10 +100,10 @@ public sealed class GraphLayoutIntegrationTests
 
         Assert.Contains(viewModel.Snapshot.Processes, node =>
             viewModel.GraphPositions[node.Id] != new GraphPoint(node.X, node.Y));
-    }
+    });
 
     [Fact(DisplayName = "§6.3: desktop opens a 534-process session clustered and expands one group without losing members")]
-    public async Task LargeSessionOpensClusteredAndGroupExpansionStaysBounded()
+    public void LargeSessionOpensClusteredAndGroupExpansionStaysBounded() => SingleThreadedContext.Run(async () =>
     {
         ProcessGroup[] groups = [.. Enumerable.Range(0, 6)
             .Select(index => new ProcessGroup($"g{index}", $"Group {index}", LaneGrouping.Executable))];
@@ -145,10 +145,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.False(viewModel.OpenGraphGroup(context.Key));
         // Its members talk only among themselves, so the focus claims no peers.
         Assert.Equal("Group 0: 89 processes drawn · 445 more in Rest of the machine", viewModel.GraphSummary);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: a selected group row rings where its members are drawn and scopes E to the group")]
-    public async Task GroupRowSelectionRingsWhereItsMembersAreDrawn()
+    public void GroupRowSelectionRingsWhereItsMembersAreDrawn() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, ProcessGroup busy, ProcessNode[] processes) = Mixed();
         using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -172,10 +172,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.True(viewModel.ShowEvidence());
         Assert.Contains(viewModel.Filters, filter => filter.Label == busy.Name
             && filter.Reason.Contains("executable group selected", StringComparison.Ordinal));
-    }
+    });
 
     [Fact(DisplayName = "§6.4: a selected quiet process marks its aggregate as holding part of the selection, not as it")]
-    public async Task SelectingAQuietProcessMarksItsAggregateAsPartlySelected()
+    public void SelectingAQuietProcessMarksItsAggregateAsPartlySelected() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
         using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -195,10 +195,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("Selected aggregate", viewModel.EvidenceHeading);
         Assert.StartsWith("3 processes with no admitted relationship", viewModel.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal("5 processes · 1 relationship among 2 of them", viewModel.GraphSummary);
-    }
+    });
 
     [Fact(DisplayName = "§6.3: a later publication of the session keeps each node that is still drawn where it was")]
-    public async Task ALaterPublicationKeepsNodesWhereTheyWere()
+    public void ALaterPublicationKeepsNodesWhereTheyWere() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
         using var first = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -227,10 +227,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Contains(newcomer.Id.ToString(), second.DisplayPositions.Keys);
         Assert.All(seen.Keys.Where(key => second.GraphDisplay.Node(key) is not null), key =>
             Assert.InRange(Distance(seen[key], second.DisplayPositions[key]), 0, 0.2));
-    }
+    });
 
     [Fact(DisplayName = "§6.3: on the way back up, nodes on screen stay put and a group that reappears returns to its place")]
-    public async Task AscendingKeepsNodesOnScreenAndReturnsAReappearingGroup()
+    public void AscendingKeepsNodesOnScreenAndReturnsAReappearingGroup() => SingleThreadedContext.Run(async () =>
     {
         ProcessGroup big = new("big", "big.exe", LaneGrouping.Executable);
         ProcessGroup small = new("small", "small.exe", LaneGrouping.Executable);
@@ -270,10 +270,10 @@ public sealed class GraphLayoutIntegrationTests
         layouts.Release();
         await viewModel.LayoutReady;
         Assert.Null(viewModel.GraphLayoutProblem);
-    }
+    });
 
     [Fact(DisplayName = "§6.3: a manual pin is a hard constraint through re-layout and a later publication")]
-    public async Task ManualPinSurvivesRelayoutAndLaterPublication()
+    public void ManualPinSurvivesRelayoutAndLaterPublication() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
         using var first = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -306,7 +306,7 @@ public sealed class GraphLayoutIntegrationTests
         await second.LayoutReady;
         Assert.DoesNotContain(key, second.GraphPins.Keys);
         Assert.Equal("Pin node (P)", second.PinActionLabel);
-    }
+    });
 
     [Fact(DisplayName = "§6.3: a hub label searches beyond four occupied sides instead of disappearing")]
     public void CrowdedHubStillGetsAClearLabelSlot()
@@ -366,7 +366,7 @@ public sealed class GraphLayoutIntegrationTests
     }
 
     [Fact(DisplayName = "R7: a selected aggregate is still selected after a later publication of the session")]
-    public async Task ASelectedAggregateSurvivesALaterPublication()
+    public void ASelectedAggregateSurvivesALaterPublication() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, _, _) = Mixed();
         using var first = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -379,10 +379,10 @@ public sealed class GraphLayoutIntegrationTests
 
         Assert.Equal(quiet, second.SelectedCluster?.Key);
         Assert.Equal("No relationships", second.SelectionTitle);
-    }
+    });
 
     [Fact(DisplayName = "§6.3: a graph hover card states half-open scope, semantics, value, unknowns, coverage and scale")]
-    public async Task HoverCardsStateTheContract()
+    public void HoverCardsStateTheContract() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
         using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -415,10 +415,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Contains("Direction: display order only, not who initiated or sent", edge.Lines);
         Assert.Equal("Double-click opens its source process", edge.Lines[^1]);
         Assert.Null(viewModel.DescribeGraphHover("no such mark"));
-    }
+    });
 
     [Fact(DisplayName = "§6.3: a reused PID's holders are numbered in their graph cards' titles, and their relationship's, as in their rows and lanes")]
-    public async Task AReusedPidsHoldersAreNumberedInTheirCards()
+    public void AReusedPidsHoldersAreNumberedInTheirCards() => SingleThreadedContext.Run(async () =>
     {
         // The pair's two ends held one PID in turn.
         (WorkspaceSnapshot snapshot, _, ProcessNode[] processes) = Mixed();
@@ -437,10 +437,10 @@ public sealed class GraphLayoutIntegrationTests
 
         // The relationship between them names each end the same way, so it never reads as one process talking to itself.
         Assert.Equal("Process 1 · PID 2001 #1 ↔ Process 2 · PID 2001 #2", viewModel.DescribeGraphHover("pair")!.Title);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: each rung draws its own neighbourhood, and a double click on an edge opens its channel")]
-    public async Task EachRungDrawsItsNeighbourhoodAndAnEdgeOpensItsChannel()
+    public void EachRungDrawsItsNeighbourhoodAndAnEdgeOpensItsChannel() => SingleThreadedContext.Run(async () =>
     {
         using var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
         await viewModel.LayoutReady;
@@ -505,10 +505,10 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("Size: fixed; the rest of the machine is not read on this focus's scale",
             viewModel.DescribeGraphHover(rest.Key)!.Lines[^1]);
         Assert.Equal(rest.Key, GraphView.Traversal(viewModel.GraphDisplay)[^1].Key);
-    }
+    });
 
     [Fact(DisplayName = "§6.7: a double click on an aggregate edge opens nothing, since it stands for several relationships")]
-    public async Task AnAggregateEdgeOpensNothing()
+    public void AnAggregateEdgeOpensNothing() => SingleThreadedContext.Run(async () =>
     {
         ProcessGroup pool = new("pool", "worker.exe", LaneGrouping.Executable);
         ProcessGroup queue = new("queue", "queue.exe", LaneGrouping.Executable);
@@ -528,10 +528,10 @@ public sealed class GraphLayoutIntegrationTests
         // A click on it chooses none of them either.
         Assert.False(viewModel.SelectGraphEdge(aggregate.Key));
         Assert.Null(viewModel.SelectedRelationship);
-    }
+    });
 
     [Fact(DisplayName = "§3.2: a focus claims peers only when it has some, and says when its processes are drawn as fewer nodes")]
-    public async Task FocusSummaryClaimsOnlyThePeersItHas()
+    public void FocusSummaryClaimsOnlyThePeersItHas() => SingleThreadedContext.Run(async () =>
     {
         (WorkspaceSnapshot snapshot, ProcessGroup busy, ProcessNode[] processes) = Mixed();
         using var viewModel = new WorkspaceViewModel(snapshot, "session:test:generation:1");
@@ -554,10 +554,10 @@ public sealed class GraphLayoutIntegrationTests
         await viewModel.LayoutReady;
         Assert.Equal("Process 1 · PID 2001 and its peers: 2 processes drawn · 3 more in Rest of the machine",
             viewModel.GraphSummary);
-    }
+    });
 
     [Fact(DisplayName = "R3: a process whose relationships measured no bytes reads bytes unknown, never 0 MB")]
-    public async Task UnmeasuredBytesAreUnknownNotZero()
+    public void UnmeasuredBytesAreUnknownNotZero() => SingleThreadedContext.Run(async () =>
     {
         using var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
         await viewModel.LayoutReady;
@@ -566,7 +566,7 @@ public sealed class GraphLayoutIntegrationTests
         viewModel.SelectProcess(new ProcessInstanceId(Guid.Parse("25ecf72c-7d72-4421-943e-eb6d66cd2fe8")));
         Assert.Equal("95 own records, mostly named pipe · 188 observations on 2 relationships · bytes unknown",
             viewModel.EvidenceSummary);
-    }
+    });
 
     /// <summary>
     /// Five processes: two members of <c>busy.exe</c> talk to each other, its third member and two <c>idle.exe</c> processes

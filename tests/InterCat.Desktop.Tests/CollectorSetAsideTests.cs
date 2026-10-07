@@ -16,7 +16,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class CollectorSetAsideTests
 {
     [Fact(DisplayName = "§19.5: the rail names InterCat's own processes, offers to set them aside, and says nothing for a capture naming none")]
-    public async Task TheRailNamesInterCatsOwn()
+    public void TheRailNamesInterCatsOwn() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishCollected(session.Store);
@@ -33,6 +33,7 @@ public sealed class CollectorSetAsideTests
             + string.Join(" ", workspace.Snapshot.Collectors.Unfound.Select(CollectorText.Unfound)), workspace.CollectorsText);
         Assert.Equal("Set aside", workspace.CollectorsCommand);
         Assert.Empty(workspace.ChangedSettings);
+        Assert.Null(workspace.RelationshipsAbsent);
         Assert.Contains(workspace.RungRows, row => row.Label == "intercat-broker.exe");
 
         using var unnamed = new TemporarySession();
@@ -46,10 +47,10 @@ public sealed class CollectorSetAsideTests
         // The synthetic tour is no session, so it names nothing either.
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "tour");
         Assert.False(tour.OffersCollectorsAside);
-    }
+    });
 
     [Fact(DisplayName = "§19.5: set aside, InterCat's own leave the rows, are counted in the rail, named as a changed setting and in an export, and leave a ranking's totals")]
-    public async Task SetAsideTheyAreCountedNotShown()
+    public void SetAsideTheyAreCountedNotShown() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishCollected(session.Store);
@@ -65,6 +66,11 @@ public sealed class CollectorSetAsideTests
         Assert.Equal("Show them", workspace.CollectorsCommand);
         Assert.Equal(["InterCat.exe", "tool.exe"], workspace.RungRows.Select(row => row.Label).Order());
         Assert.DoesNotContain(workspace.GraphDisplay.Nodes, node => node.Label.Contains("broker", StringComparison.Ordinal));
+
+        // The broker's one relationship is set aside with it, and the table says so in place of the rows it lists none of.
+        Assert.Empty(workspace.Relationships);
+        Assert.StartsWith("No relationship here: none pairs two of the processes shown, InterCat's own being set aside with every "
+            + "relationship they are an end of. A connection whose other end", workspace.RelationshipsAbsent, StringComparison.Ordinal);
 
         // The filter is a setting changed from its default, named as an investigation would name it.
         Assert.Equal(["InterCat's own processes set aside"], workspace.ChangedSettings);
@@ -86,7 +92,7 @@ public sealed class CollectorSetAsideTests
         Assert.Equal("2 processes have a peer", shown.RankingNote);
         Assert.Equal((0, 0L), (shown.DescribeExport(DateTimeOffset.UnixEpoch).SetAsideProcesses,
             shown.DescribeExport(DateTimeOffset.UnixEpoch).SetAsideRecords));
-    }
+    });
 
     [Fact(DisplayName = "§19.5: a process's lineage names a parent or child set aside as InterCat's own, never as missing from the capture")]
     public void LineageNamesWhatIsSetAside()

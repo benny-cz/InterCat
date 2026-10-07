@@ -134,7 +134,7 @@ public sealed class ExplanationTests
     }
 
     [Fact(DisplayName = "§6.8: what a reused PID's later holder left out is offered as candidates, and counted so it is said and read everywhere")]
-    public async Task CandidatesAreOfferedAndCounted()
+    public void CandidatesAreOfferedAndCounted() => SingleThreadedContext.Run(async () =>
     {
         // client.exe's PID is reused, and its second holder's two sends are candidates; server.exe is held once.
         using var session = new TemporarySession();
@@ -191,7 +191,7 @@ public sealed class ExplanationTests
         SessionEvidencePage records = await source.ReadScopeAsync(
             new EvidenceScope("Records owned by the later holder", null, [later.Id], null, null), 100, CancellationToken.None);
         Assert.Equal(3, records.Records.Count);
-    }
+    });
 
     [Fact(DisplayName = "§6.8: a channel chosen among a process's rows, or opened on its own rung, says how its ends were paired, whether the capture saw it open and close, and its key")]
     public void AChosenChannelSaysHowItWasPaired()

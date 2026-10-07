@@ -20,7 +20,7 @@ public sealed class GroupingTests
     private const string Coverage = " Coverage over the session: unknown.";
 
     [Fact(DisplayName = "§6.3: grouped by terminal session, a busy session folds into one graph node its card names, and the inspector, a search and the evidence step name the session")]
-    public async Task ASessionIsNamedWhereverItIsShown()
+    public void ASessionIsNamedWhereverItIsShown() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = Workers(30);
@@ -77,7 +77,7 @@ public sealed class GroupingTests
             workspace.Filters.Single().Reason);
         Assert.StartsWith("Records owned by the 1 instance of Terminal session 0", workspace.EvidenceScopeText, StringComparison.Ordinal);
         Assert.False(workspace.ShowsGroupingChoice);
-    }
+    });
 
     [Fact(DisplayName = "§6.3: the selector stands at the machine rung of a session that names a terminal session, and nowhere else")]
     public void TheSelectorStandsWhereTheGroupsAre() => SingleThreadedContext.Run(async () =>

@@ -17,7 +17,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class AggregateEvidenceTests
 {
     [Fact(DisplayName = "§6.4: an aggregate chosen in the graph is what the card counts, the timeline highlights and E lists: its processes' own records, at every rung")]
-    public async Task AnAggregateIsItsProcessesRecords()
+    public void AnAggregateIsItsProcessesRecords() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         PublishMachine(session);
@@ -49,7 +49,7 @@ public sealed class AggregateEvidenceTests
         await workspace.LayoutReady;
         Assert.Equal("This channel", workspace.EvidenceHeading);
         await AssertTheAggregateIsItsProcesses(workspace, GraphNodeKind.Context, 5, Context);
-    }
+    });
 
     /// <summary>
     /// The aggregate of <paramref name="kind"/> chosen: the card counts its processes' records and what they sent and

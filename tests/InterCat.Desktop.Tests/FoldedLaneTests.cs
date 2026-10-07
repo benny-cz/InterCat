@@ -16,7 +16,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class FoldedLaneTests
 {
     [Fact(DisplayName = "§6.2: a group past the lane bound draws its pinned and busiest lanes and folds the rest into one, explained and listed by E")]
-    public async Task AGroupPastTheBoundFoldsItsQuietestMembers()
+    public void AGroupPastTheBoundFoldsItsQuietestMembers() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Pool(230));
@@ -110,10 +110,10 @@ public sealed class FoldedLaneTests
         Assert.Equal(cell.ObservationCount, workspace.EvidenceMarkTicks.Count);
         Assert.Equal(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: cell.Interval, ownerProcesses: folded.Processes)
             .Records.Select(record => record.Observation.SessionRelativeTicks!.Value / 100).Order(), workspace.EvidenceMarkTicks.Order());
-    }
+    });
 
     [Fact(DisplayName = "§6.2: a group within the lane bound folds nothing, as before")]
-    public async Task AGroupWithinTheBoundFoldsNothing()
+    public void AGroupWithinTheBoundFoldsNothing() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Pool(12));
@@ -129,7 +129,7 @@ public sealed class FoldedLaneTests
         Assert.Null(workspace.FoldedLane);
         Assert.Equal(string.Empty, workspace.FoldedLaneLabel);
         Assert.DoesNotContain("folded", workspace.TimelineCaption, StringComparison.Ordinal);
-    }
+    });
 
     /// <summary>
     /// <paramref name="count"/> instances of pool.exe, the one at index i created and then sending i % 7 times across the

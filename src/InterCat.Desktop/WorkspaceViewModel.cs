@@ -2702,6 +2702,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
+    /// <summary>
+    /// Why the relationship table lists none, said in its place, so an empty table is never read as one still loading or as
+    /// processes that exchanged nothing (R21); null while it lists any. A connection whose other end the session does not
+    /// hold relates no two processes, so the sentence says where it is listed instead.
+    /// </summary>
+    public string? RelationshipsAbsent => relationships.Count > 0 ? null
+        : Snapshot.Edges.Count > 0
+            ? "No relationship here: none has an end among the processes this rung draws. The others are listed at the machine rung."
+            : (Snapshot.SetAside.Count > 0
+                ? "No relationship here: none pairs two of the processes shown, InterCat's own being set aside with every "
+                    + "relationship they are an end of."
+                : "No relationship here: no record pairs two of this session's processes.")
+                + " A connection whose other end is outside the session - on another host, or in a process it did not record - "
+                + "is listed on its process's rung, and every record is in the timeline.";
+
     /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
     /// <summary>
     /// The table equivalent of the timeline (R15): the buckets it draws, which are the zoomed viewport's own once they
@@ -4730,6 +4745,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
         OnPropertyChanged(nameof(RelationshipTableScope));
+        OnPropertyChanged(nameof(RelationshipsAbsent));
         UpdateTimelineFocus();
         UpdateHighlight();
         RefreshIntervalRows(timelineFocusBuckets);
@@ -5916,6 +5932,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseScopeCoverageChanged();
         RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
+        OnPropertyChanged(nameof(RelationshipsAbsent));
         OnPropertyChanged(nameof(RungRows));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));

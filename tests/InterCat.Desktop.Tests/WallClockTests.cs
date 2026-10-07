@@ -20,7 +20,7 @@ public sealed class WallClockTests
     private static readonly DateTimeOffset Noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
 
     [Fact(DisplayName = "§6.2: read on the wall clock, every instant the view states follows: the time scope, a card, the evidence and the inspector's record")]
-    public async Task EveryInstantFollowsTheWallClock()
+    public void EveryInstantFollowsTheWallClock() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Records(), calibration: Calibration());
@@ -75,10 +75,10 @@ public sealed class WallClockTests
             .Replace(culture.NumberFormat.NumberDecimalSeparator, ".", StringComparison.Ordinal));
         Assert.EndsWith(" · " + WorkspaceTime.FormatRange(interval, culture), workspace.EvidenceScopeText, StringComparison.Ordinal);
         Assert.Empty(workspace.ChangedSettings);
-    }
+    });
 
     [Fact(DisplayName = "§6.2: the wall clock is kept across a later publication of the session, and a session that recorded none never reads it")]
-    public async Task TheChoiceIsKeptAndNeverGuessed()
+    public void TheChoiceIsKeptAndNeverGuessed() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Records(), calibration: Calibration());
@@ -112,7 +112,7 @@ public sealed class WallClockTests
         // The tour is no session, and reads session time.
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "tour");
         Assert.False(tour.OffersWallClock);
-    }
+    });
 
     [Fact(DisplayName = "§6.2: read on the wall clock, an RPC call's row and the interval table's rows name their times on it")]
     public void CallsAndIntervalsFollowTheWallClock() => SingleThreadedContext.Run(async () =>
