@@ -42,9 +42,13 @@ public static class InvestigationTimelineText
             string read = view.Snapshot.FirstOrDefault(entry => entry.CaptureId.Value == member.CaptureId) is { } entry
                 ? string.Create(culture, $" Read at its generation {entry.Generation:N0}.")
                 : string.Empty;
+            // Its records from its first to its last, each at its own instant: the extent ends a tick past its last record, which
+            // no record is at.
             sentences.Add((lane.Placed
-                ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} {(lane.Records == 1 ? "record" : "records")}, from ")
-                    + Seconds(lane.Extent!.Value.StartTicks * 100, culture) + " to " + Seconds(lane.Extent.Value.EndTicks * 100, culture)
+                ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} {(lane.Records == 1 ? "record" : "records")}, ")
+                    + (lane.Extent!.Value.EndTicks - 1 <= lane.Extent.Value.StartTicks
+                        ? "at " + Seconds(lane.Extent.Value.StartTicks * 100, culture)
+                        : "from " + Seconds(lane.Extent.Value.StartTicks * 100, culture) + " to " + Seconds((lane.Extent.Value.EndTicks - 1) * 100, culture))
                     + $" of the investigation's time, {place}." + Coverage(lane, culture)
                 : $"Session {Short(lane.SessionId)} ({host}): {place}.") + read);
         }

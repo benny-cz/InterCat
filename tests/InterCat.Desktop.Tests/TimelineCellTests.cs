@@ -134,7 +134,7 @@ public sealed class TimelineCellTests
     });
 
     [Fact(DisplayName = "§6.8: a cell chosen in a group's process lane, counted coarser than the view, is the analysis interval and names its owner, the rule that bound its records and the columns it was counted in")]
-    public async Task AProcessLanesCellIsExplained()
+    public void AProcessLanesCellIsExplained() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Pool(40));
@@ -183,10 +183,10 @@ public sealed class TimelineCellTests
         Assert.Equal(cell.Interval, workspace.SelectedInterval);
         Assert.Null(workspace.CaptureNavigation().ExplainedCell);
         Assert.DoesNotContain("lanes' own", workspace.CellExplanation, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§6.8: a cell of a process's source-direction row and of a channel's end says which records it holds, the rule that bound or paired them, and is kept by a publication")]
-    public async Task DirectionAndEndCellsAreExplained()
+    public void DirectionAndEndCellsAreExplained() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -259,10 +259,10 @@ public sealed class TimelineCellTests
         Assert.StartsWith(Counted(machine.ObservationCount, "record") + " of any mechanism "
             + $"{Have(machine.ObservationCount)} a session time in this interval: the machine's own count, which no binding "
             + "or pairing rule narrows. Paired TCP channel", workspace.CellExplanation, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: E from a chosen timeline cell lists exactly its records, behind a filter whose removal widens it, as icat evidence lists them")]
-    public async Task EvidenceFromAChosenCellIsItsRecords()
+    public void EvidenceFromAChosenCellIsItsRecords() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -343,10 +343,10 @@ public sealed class TimelineCellTests
         Assert.DoesNotContain(workspace.Filters, filter => filter.Field is EvidenceScopes.MechanismField or EvidenceScopes.DirectionField
             or EvidenceScopes.EndField);
         Assert.StartsWith("Paired TCP channel", workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: E from a cell of a group's process lane lists that process's records in it, not the group's")]
-    public async Task EvidenceFromAProcessLanesCellIsItsProcesss()
+    public void EvidenceFromAProcessLanesCellIsItsProcesss() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Pool(40));
@@ -367,7 +367,7 @@ public sealed class TimelineCellTests
         Assert.Equal(cell.ObservationCount, workspace.EvidenceMarkTicks.Count);
         Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: cell.Interval, ownerProcesses: [owner.Id])),
             workspace.EvidenceMarkTicks.Order());
-    }
+    });
 
     private static long[] Ticks(SessionEvidencePage page) =>
         [.. page.Records.Select(record => record.Observation.SessionRelativeTicks!.Value / 100).Order()];

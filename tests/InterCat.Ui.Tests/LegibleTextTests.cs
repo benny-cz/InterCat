@@ -206,7 +206,7 @@ public sealed class LegibleTextTests
             Assert.True(lanes >= InvestigationTimelineControl.AxisHeight + (2 * InvestigationTimelineControl.LaneHeight),
                 $"The timeline shows {lanes:0} px of its lanes at the minimum size.");
             Assert.False(string.IsNullOrEmpty(window.ColumnReadout));
-            Assert.Contains(window.TimelineSentences, sentence => sentence.Contains(": 1 record, from ", StringComparison.Ordinal));
+            Assert.Contains(window.TimelineSentences, sentence => sentence.Contains(": 1 record, at ", StringComparison.Ordinal));
 
             // Every dialog the window opens names the long session, at its own fixed width.
             tabs.SelectedIndex = 0;
@@ -241,6 +241,62 @@ public sealed class LegibleTextTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.2: the investigation's axis names its ends in the digits its span needs and ticks round instants of the 1-2-5 ladder between them, each label at the instant it names")]
+    public void TheInvestigationAxisTicksRoundInstants()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4, "lab-1"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6, "lab-2"), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 2_000_000_000, a, 5_000_000_000, 500_000, 50, null, Committed);
+        CultureInfo culture = CultureInfo.CurrentCulture;
+
+        // The whole investigation, about 3 s of it, a zoom to about 98 ms, and one to a few microseconds.
+        foreach (TimeRange? zoom in new TimeRange?[] { null, new TimeRange(2_345, 987_654), new TimeRange(1_000, 1_031) })
+        {
+            (InvestigationTimelineView view, IReadOnlyList<string> labels, _) =
+                InvestigationRows.Timeline(workspace, culture, 160, zoom, CancellationToken.None);
+            var chart = new InvestigationTimelineControl();
+            chart.Show(view, labels);
+            TimeRange interval = view.Interval!.Value;
+            long span = interval.EndTicks - interval.StartTicks;
+            foreach (double width in new[] { 700d, 940d, 1_200d })
+            {
+                chart.Measure(new Size(width, 400));
+                chart.Arrange(new Rect(0, 0, width, 400));
+                double plot = width - InvestigationTimelineControl.LabelWidth - 12;
+                double X(long ticks) => InvestigationTimelineControl.LabelWidth + (plot * (ticks - interval.StartTicks) / span);
+                IReadOnlyList<(string Label, Rect Where, long Ticks)> shown = chart.AxisLabels();
+
+                // The ends are said as the session's timeline says its own.
+                Assert.Equal((WorkspaceTime.FormatInstant(interval.StartTicks, span, culture), interval.StartTicks), (shown[0].Label, shown[0].Ticks));
+                Assert.Equal((WorkspaceTime.FormatInstant(interval.EndTicks, span, culture), interval.EndTicks), (shown[^1].Label, shown[^1].Ticks));
+
+                // Between them, every tick is a multiple of one width of the ladder, a width apart, named to the width's digits
+                // and centred on the instant it names.
+                List<(string Label, Rect Where, long Ticks)> between = [.. shown.Skip(1).SkipLast(1)];
+                Assert.True(between.Count >= 2, $"At {width} px, {string.Join(", ", shown.Select(tick => tick.Label))} names too few ticks.");
+                long step = between[1].Ticks - between[0].Ticks;
+                Assert.Equal(WorkspaceTime.LadderWidth(step), step);
+                Assert.All(between.Zip(between.Skip(1)), pair => Assert.Equal(step, pair.Second.Ticks - pair.First.Ticks));
+                Assert.All(between, tick =>
+                {
+                    Assert.Equal(0, tick.Ticks % step);
+                    Assert.Equal(WorkspaceTime.FormatTick(tick.Ticks, step, span, culture), tick.Label);
+                    Assert.Equal(X(tick.Ticks), tick.Where.Center.X, 3);
+                });
+            }
+        }
+
+        Assert.Equal(new long[] { 1, 1, 2, 5, 5, 10, 20, 50, 100, 1_000_000_000 },
+            new long[] { 1, 1, 2, 3, 5, 6, 11, 21, 51, 600_000_001 }.Select(WorkspaceTime.LadderWidth));
+        Assert.Equal(("15 s", "1.5 s", "0.25 ms", "2,500 s"), (WorkspaceTime.FormatTick(150_000_000, 50_000_000, 600_000_000, CultureInfo.InvariantCulture),
+            WorkspaceTime.FormatTick(15_000_000, 5_000_000, 600_000_000, CultureInfo.InvariantCulture),
+            WorkspaceTime.FormatTick(2_500, 500, 50_000, CultureInfo.InvariantCulture),
+            WorkspaceTime.FormatTick(25_000_000_000, 10_000_000_000, 60_000_000_000, CultureInfo.InvariantCulture)));
+    }
+
     [AvaloniaFact(DisplayName = "§6.8: the investigation's timeline labels both ends of its axis and never runs two labels together, and a lane's label keeps to its lane")]
     public void TheInvestigationTimelineKeepsItsLabelsApart()
     {
@@ -263,7 +319,7 @@ public sealed class LegibleTextTests
             {
                 chart.Measure(new Size(width, 400));
                 chart.Arrange(new Rect(0, 0, width, 400));
-                IReadOnlyList<(string Label, Rect Where)> shown = chart.AxisLabels();
+                IReadOnlyList<(string Label, Rect Where, long Ticks)> shown = chart.AxisLabels();
                 double first = InvestigationTimelineControl.LabelWidth;
                 double last = width - 12;
                 if (shown.Count == 0)

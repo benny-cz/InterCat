@@ -135,8 +135,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
         MinWidth = 680;
         // The smallest size at which each page keeps two of its sessions, lanes or notes in view, with overlaps stated and a
         // session missing above them, and beneath its sessions the two lines that say what opening them puts back of the
-        // window's panes.
-        MinHeight = 640;
+        // window's panes. At 640 the sessions fell 3 px short of two whole rows.
+        MinHeight = 650;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
         // The investigation's file in one line: a path too long for it gives up its middle folders, and its tooltip has it whole.
         heading.Text = this.path;
@@ -586,15 +586,13 @@ internal sealed class InvestigationWindow : Window, IDisposable
         if (!closed)
         {
             status.Text = opened
-                ? $"Opened {name} in the InterCat window, zoomed to {Seconds(own.StartTicks)} to {Seconds(own.EndTicks)} s of its own "
-                    + "time, the column's interval selected."
+                ? $"Opened {name} in the InterCat window, zoomed to {WorkspaceTime.FormatRange(own, CultureInfo.CurrentCulture)} of its "
+                    + "own time, the column's interval selected."
                 : $"{row.FullPath} could not be opened.";
         }
 
         return opened;
     }
-
-    private static string Seconds(long ticks) => (ticks / 10_000_000m).ToString("0.0######", CultureInfo.CurrentCulture);
 
     /// <summary>Shows the sessions or the candidate joins, as choosing a tab does.</summary>
     internal void ShowTab(int index) => tabs.SelectedIndex = index;

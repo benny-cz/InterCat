@@ -1042,6 +1042,10 @@ public sealed class InvestigationWindowTests
             Assert.Contains($"Session {Short(a)}, column 1 of 160: ", window.ColumnReadout, StringComparison.Ordinal);
             Assert.EndsWith("4 records, coverage: unknown. Enter opens them in InterCat.", window.ColumnReadout, StringComparison.Ordinal);
 
+            // Its time is said as the session's timeline says an interval, in the digits its span needs.
+            Assert.Contains(": " + WorkspaceTime.FormatRange(window.Timeline.Lanes[0].Buckets[0].Interval, CultureInfo.CurrentCulture)
+                + " of the investigation's time, ", window.ColumnReadout, StringComparison.Ordinal);
+
             // The keyboard moves the cursor along a lane and to the next one: Right, End, Down.
             Control chart = window.GetVisualDescendants().OfType<InvestigationTimelineControl>().Single();
             chart.Focus();
@@ -1081,8 +1085,8 @@ public sealed class InvestigationWindowTests
             Assert.Equal(held, opened.SelectedInterval);
             TimeRange viewport = main.GetControl<TimelineView>("TimelineSurface").Viewport;
             Assert.True(viewport.StartTicks <= held.StartTicks && viewport.EndTicks >= held.EndTicks, $"viewport {viewport} held {held}");
-            Assert.StartsWith($"Opened Session {Short(b)} in the InterCat window, zoomed to ", Named<TextBlock>(window, "Investigation status").Text,
-                StringComparison.Ordinal);
+            Assert.Equal($"Opened Session {Short(b)} in the InterCat window, zoomed to {WorkspaceTime.FormatRange(own, CultureInfo.CurrentCulture)} "
+                + "of its own time, the column's interval selected.", Named<TextBlock>(window, "Investigation status").Text);
             window.Close();
         }
         finally
@@ -1284,6 +1288,11 @@ public sealed class InvestigationWindowTests
             dialog.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             WaitFor(() => dialog.Listed.Count == 1);
             Assert.Equal(("The first datagrams", zoomed), (dialog.Listed[0].View.Name, dialog.Listed[0].View.Interval!.Value));
+
+            // The dialog says the interval shown, and lists the view by its own, as the session's timeline says one.
+            string said = WorkspaceTime.FormatRange(zoomed, CultureInfo.CurrentCulture);
+            Assert.Equal("The first datagrams · " + said, dialog.Listed[0].ToString());
+            Assert.Contains(dialog.GetVisualDescendants().OfType<TextBlock>(), text => text.Text == $"The timeline shows {said} now.");
 
             // Enter on the view with the keyboard, chosen or not, shows it: the dialog answers with its interval.
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();

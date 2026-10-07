@@ -384,6 +384,40 @@ public static class WorkspaceTime
         return string.Create(provider, $"{(ticks / divisor).ToString(format, provider)} {unit}");
     }
 
+    /// <summary>
+    /// The narrowest width of §6.2's 1-2-5 ladder of at least <paramref name="least"/> ticks - 1, 2, 5, 10, 20, 50 and on -
+    /// so an axis's ticks fall on round instants.
+    /// </summary>
+    public static long LadderWidth(long least)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(least);
+        for (long decade = 1; ; decade = checked(decade * 10))
+        {
+            if (decade >= least) return decade;
+            if (decade * 2 >= least) return decade * 2;
+            if (decade * 5 >= least) return decade * 5;
+        }
+    }
+
+    /// <summary>
+    /// An axis tick's label: an instant on a multiple of the ladder's <paramref name="width"/>, in the unit a visible span of
+    /// <paramref name="span"/> ticks needs, to exactly the digits the width needs, so the label names the instant its tick
+    /// is drawn at: "15 s", "1.5 s", "0.25 ms".
+    /// </summary>
+    public static string FormatTick(long ticks, long width, long span, IFormatProvider? culture = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        (decimal divisor, string unit, _) = Unit(span);
+        int digits = 0;
+        for (decimal step = width / divisor; step != decimal.Truncate(step) && digits < 7; step *= 10)
+        {
+            digits++;
+        }
+
+        IFormatProvider provider = culture ?? System.Globalization.CultureInfo.CurrentCulture;
+        return string.Create(provider, $"{(ticks / divisor).ToString("N" + digits.ToString(System.Globalization.CultureInfo.InvariantCulture), provider)} {unit}");
+    }
+
     private static (decimal Divisor, string Unit, string Format) Unit(long span) => span switch
     {
         >= 10 * TicksPerSecond => (TicksPerSecond, "s", "N1"),

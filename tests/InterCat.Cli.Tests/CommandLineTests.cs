@@ -928,6 +928,11 @@ public sealed class CommandLineTests : IDisposable
             Assert.EndsWith("not placed: not aligned to the investigation's time.", sentences[2], StringComparison.Ordinal);
             Assert.EndsWith(", about the whole investigation: The retry storm begins here.", sentences[3], StringComparison.Ordinal);
             Assert.Contains(" Coverage over its 160 columns: ", sentences[0], StringComparison.Ordinal);
+
+            // A lane's records run from its first to its last, each at its own instant: never the tick past the last.
+            Assert.Contains($": 8 records, from {0.0001m.ToString("0.000######", System.Globalization.CultureInfo.CurrentCulture)} s to "
+                + $"{0.000503m.ToString("0.000######", System.Globalization.CultureInfo.CurrentCulture)} s of the investigation's time, ", sentences[0],
+                StringComparison.Ordinal);
             List<TimelineBucket> lane = [.. view.Lanes[0].Buckets];
             int first = lane.FindIndex(bucket => bucket.ObservationCount > 0);
             Assert.Matches($@"(?m)^\s+{first + 1}\s+0\.0001 s\s+\S+ s\s+{lane[first].ObservationCount}\s+covered\s*$", text);

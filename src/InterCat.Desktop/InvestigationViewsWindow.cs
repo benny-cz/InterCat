@@ -13,10 +13,8 @@ namespace InterCat.Desktop;
 /// <summary>A saved view as the dialog lists it: its name and interval, and whether it is of the investigation's time now.</summary>
 internal sealed record ViewRow(WorkspaceView View, bool Current)
 {
-    public override string ToString() => $"{View.Name} · {Seconds(View.Interval!.Value.StartTicks)} to {Seconds(View.Interval.Value.EndTicks)} s"
+    public override string ToString() => $"{View.Name} · {WorkspaceTime.FormatRange(View.Interval!.Value, CultureInfo.CurrentCulture)}"
         + (Current ? string.Empty : " · saved on another time reference, so not shown");
-
-    private static string Seconds(long ticks) => (ticks / 10_000_000m).ToString("0.0######", CultureInfo.CurrentCulture);
 }
 
 /// <summary>
@@ -102,7 +100,7 @@ internal sealed class InvestigationViewsWindow : Window
                 new TextBlock
                 {
                     Text = shown is { } now
-                        ? string.Create(CultureInfo.CurrentCulture, $"The timeline shows {(now.StartTicks / 10_000_000m):0.0######} to {(now.EndTicks / 10_000_000m):0.0######} s now.")
+                        ? $"The timeline shows {WorkspaceTime.FormatRange(now, CultureInfo.CurrentCulture)} now."
                         : "The timeline shows nothing yet, so there is no view to save.",
                     FontSize = 12,
                 },
