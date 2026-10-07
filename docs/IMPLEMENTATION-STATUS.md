@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 401 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 402 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 402 — an evidence page opens only the segments it reads (P25, §12.1 S3):**
+  - A page opened every segment first, and a time scope's page walked every row of the session. It now opens a segment
+    only when its merge reaches it and stops past its scope: a 1% scope's page at 1M rows fell from 171-244 ms to
+    10-22 ms.
 
 - **Revision 401 — a brush reads only the segments it meets (P25, §12.1 S3):**
   - A brush's counts, its lanes' bytes and a time scope's byte and peer rankings opened every segment of a reopened
@@ -1043,9 +1048,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers declare:
      a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since revision 401 a
      brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the checkpoint's instances
-     and channels. The call ranking, a time scope's HTTP and RPC listings and an evidence page still read every
-     segment, and an RPC capture's first brush pairs its calls over every one (P25). A search reads the overview, never
-     a segment.
+     and channels, and since revision 402 an evidence page opens only the segments it reads and stops past its time
+     scope. A process's connections, the call ranking and a time scope's HTTP and RPC listings still read every
+     segment, and an RPC capture's first brush and a page of its calls pair them over every one (P25). A search reads
+     the overview, never a segment.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1298,6 +1304,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 402 was built and tested in the same Linux container: Debug and Release each ran **1,723 tests**, passing
+  **1,625 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its test reopens a six-segment
+  session from its checkpoint: a first page of 150 records with their owners opens the two segments holding them and
+  the 151st, reading 151 rows; the next opens neither the first segment, which ends before its cursor, nor any after
+  the 151st's; a page's identity read from the segments' headers is the one their open readers give; and a page of a
+  time scope opens only the segments it meets and reads only its rows - 90 of a hundredth of the session, its owner's
+  45 and its channel's 90 among them, 10 across a boundary in two segments, none past every record - listing what one
+  segment of the same records lists. On a reopened session of 1,000,000 rows in 20 segments a page of a hundredth of
+  it took 10-22 ms (171-244 ms before) and its owner's page 9-15 ms (151-196 ms), each opening 1 segment where it
+  opened 20; a first or second page opened 1 too. They caught each of 9 mutations, among them a page that reads rows
+  before or past its scope, opens a segment before its cursor or outside its scope, and misreads a header's capture or
+  derivation.
 
 - Revision 401 was built and tested in the same Linux container: Debug and Release each ran **1,722 tests**, passing
   **1,623 with 4 skipped**; 94 failures are the ones revision 361's baseline lists. The 95th, `I14: a finished session

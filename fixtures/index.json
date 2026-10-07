@@ -1843,7 +1843,7 @@
         "plannedBy": "IC-009"
       },
       "P25": {
-        "reason": "Since revision 401 a zoom, a brush's counts, its lanes' bytes and a time scope's byte and peer rankings open only the segments their interval meets; the call ranking, a time scope's HTTP and RPC listings and an evidence page still read every segment, an RPC capture's first brush pairs its calls over every one, and a zoom builds a met segment's tiles from its rows.",
+        "reason": "Since revision 402 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings and an evidence page open only the segments they read; a process's connections, the call ranking and a time scope's HTTP and RPC listings still read every segment, an RPC capture's first brush and a page of its calls or of HTTP exchanges pair them over every one, and a zoom builds a met segment's tiles from its rows.",
         "plannedBy": "M5"
       }
     }

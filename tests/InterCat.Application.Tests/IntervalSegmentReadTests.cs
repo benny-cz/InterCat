@@ -116,6 +116,61 @@ public sealed class IntervalSegmentReadTests
         later.ReleaseSegmentReaders();
     }
 
+    [Fact(DisplayName = "§12.1: an evidence page opens only the segments it reads, none before its cursor or outside its time scope, reads no row past its scope, and pages as one segment of the same records does")]
+    public void AnEvidencePageOpensOnlyTheSegmentsItReads()
+    {
+        ObservationRowV1[] rows = Rows();
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 100);
+        Publish(twin.Store, rows);
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(twin.Store));
+        ProcessInstanceId client = whole.Processes.Single(node => node.ProcessId == 100).Id;
+        string channel = whole.Channels.Single().Key;
+        _ = SessionOverviewProjector.Project(split.Store);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+
+        // A first page of 150 records, each owner resolved from the checkpoint, opens the two segments holding them and
+        // the 151st that says there is more; the next page opens neither the first segment, which ends before its
+        // cursor, nor any after the one holding its 151st.
+        SessionStore reopened = Reopened(split.Path);
+        SessionEvidencePage first = SessionEvidenceQuery.Read(reopened, pageSize: 150, resolveOwners: true);
+        Assert.Equal((2, 151L), (reopened.SegmentReaderCache.Entries, first.RowsRead));
+        Assert.Equal(Records(SessionEvidenceQuery.Read(twin.Store, pageSize: 150, resolveOwners: true)), Records(first));
+        reopened = Reopened(split.Path);
+        SessionEvidencePage next = SessionEvidenceQuery.Read(reopened, pageSize: 150, cursor: first.NextCursor, resolveOwners: true);
+        Assert.Equal(3, reopened.SegmentReaderCache.Entries);
+        Assert.False(next.RestartRequired);
+        Assert.Equal(rows[150..300].Select(row => row.NativeTicks), next.Records.Select(record => record.Observation.NativeTicks));
+        Assert.All(next.Records, record => Assert.True(record.Owner!.AdmittedUnderPolicy));
+
+        // Its identity, read from the segments' headers, is the one their open readers give, so its cursor holds.
+        foreach (string name in SessionSegments.Names(reopened.Current!)) _ = SessionSegments.Open(reopened, reopened.Current!, name);
+        Assert.Equal(first.QueryIdentity, SessionEvidenceQuery.Read(reopened, pageSize: 150, resolveOwners: true).QueryIdentity);
+        reopened.ReleaseSegmentReaders();
+
+        // A page of a time scope opens only the segments it meets, starts at its first reading and stops at the first past
+        // it: of a hundredth of the session, 90 rows, whatever else its segment holds; across a boundary, two segments.
+        foreach ((TimeRange brush, ProcessInstanceId? owner, string? key, int opened, long read, int listed) in
+            new (TimeRange, ProcessInstanceId?, string?, int, long, int)[]
+            {
+                (new TimeRange(2_050, 2_950), null, null, 1, 90, 90),
+                (new TimeRange(1_950, 2_050), null, null, 2, 10, 10),
+                (new TimeRange(2_050, 2_950), client, null, 1, 90, 45),
+                (new TimeRange(2_050, 2_950), null, channel, 1, 90, 90),
+                (new TimeRange(6_000, 9_000), null, null, 0, 0, 0),
+            })
+        {
+            reopened = Reopened(split.Path);
+            SessionEvidencePage scoped = SessionEvidenceQuery.Read(reopened, key, brush, owner, pageSize: 200);
+            Assert.Equal((opened, read), (reopened.SegmentReaderCache.Entries, scoped.RowsRead));
+            Assert.Equal(listed, scoped.Records.Count);
+            Assert.Null(scoped.NextCursor);
+            Assert.Equal(Records(SessionEvidenceQuery.Read(twin.Store, key, brush, owner, pageSize: 200)), Records(scoped));
+            reopened.ReleaseSegmentReaders();
+        }
+    }
+
     /// <summary>Every interval read of the session, as one comparable text: its counts, byte rows, focus and rankings.</summary>
     private static string Answers(
         SessionStore store,
@@ -161,6 +216,17 @@ public sealed class IntervalSegmentReadTests
         ];
         return string.Join(" | ", parts);
     }
+
+    /// <summary>A viewer of the session that has derived nothing and opened no segment.</summary>
+    private static SessionStore Reopened(string path)
+    {
+        SessionDerivationCache.Clear();
+        return SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+    }
+
+    /// <summary>A page's records by their identity, reading and owner, wherever they are stored.</summary>
+    private static string[] Records(SessionEvidencePage page) =>
+        [.. page.Records.Select(record => $"{record.ObservationId} {record.Observation.NativeTicks} {record.Owner}")];
 
     private static string Columns(SessionIntervalByteMeasures measures) => string.Join(",", measures.Columns);
 

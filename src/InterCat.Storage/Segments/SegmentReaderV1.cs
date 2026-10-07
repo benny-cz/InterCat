@@ -9,6 +9,17 @@ namespace InterCat.Storage;
 public sealed record SegmentTimeBlockV1(int FirstRow, int RowCount, long MinNativeTicks, long MaxNativeTicks);
 
 /// <summary>
+/// What a segment's checksummed header declares of it: the capture and the derivation its rows were made under, and the
+/// native readings they span, first and last. A query names the evidence it reads, and passes over a segment, by them
+/// before opening one (§10.2); the rows themselves are held to them when the segment is opened.
+/// </summary>
+public readonly record struct SegmentDeclaration(
+    CaptureId CaptureId,
+    NormalizerContractVersion Derivation,
+    long MinNativeTicks,
+    long MaxNativeTicks);
+
+/// <summary>
 /// One column resolved once: its descriptor, its verified value bytes and its null bitmap. A caller that
 /// reads a column for every row takes a slice instead of resolving and re-checking the column per row.
 /// </summary>
@@ -581,6 +592,22 @@ public sealed class SegmentReaderV1
             ? (min, max)
             : throw new InvalidDataException("A segment-v1 header declares its last reading before its first.");
     }
+
+    /// <summary>
+    /// The capture, the derivation and the native readings a segment's checksummed header declares, read without the rest
+    /// of the file.
+    /// </summary>
+    public static SegmentDeclaration Declared(ReadOnlySpan<byte> header)
+    {
+        (long min, long max) = DeclaredNativeRange(header);
+        uint derivation = BinaryPrimitives.ReadUInt32LittleEndian(header[64..]);
+        return derivation != 0
+            ? new(new CaptureId(new Guid(header[32..48], bigEndian: true)), new NormalizerContractVersion(derivation), min, max)
+            : throw new InvalidDataException("A segment names the normalizer contract version it was derived under.");
+    }
+
+    /// <summary>What this open segment's header declared of it.</summary>
+    public SegmentDeclaration Declaration => new(CaptureId, Derivation, MinNativeTicks, MaxNativeTicks);
 
     /// <summary>
     /// A segment's minor version and where its two directories end, from its checksummed header alone: how much of a

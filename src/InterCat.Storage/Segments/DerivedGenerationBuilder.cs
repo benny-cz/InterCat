@@ -1039,20 +1039,30 @@ public static class SessionSegments
     /// </summary>
     public static (long Min, long Max) NativeRange(SessionStore store, SessionManifestV1 manifest, string segmentName)
     {
+        SegmentDeclaration declared = Declared(store, manifest, segmentName);
+        return (declared.MinNativeTicks, declared.MaxNativeTicks);
+    }
+
+    /// <summary>
+    /// What a published segment declares of itself - its capture, its derivation and the readings its rows span: the open
+    /// reader's when the store holds one, otherwise its checksummed header's, read without opening the segment.
+    /// </summary>
+    public static SegmentDeclaration Declared(SessionStore store, SessionManifestV1 manifest, string segmentName)
+    {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(manifest);
         OwnedFileName.Require(segmentName, nameof(segmentName));
         StoreDependency dependency = SegmentDependency(manifest, segmentName);
         if (store.SegmentReaders.TryPeek(dependency, manifest, out SegmentReaderV1 cached))
         {
-            return (cached.MinNativeTicks, cached.MaxNativeTicks);
+            return cached.Declaration;
         }
 
         byte[] header = new byte[SegmentFormatV1.HeaderLength];
         using FileStream stream = store.Root.OpenOwnedFile(
             dependency.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.None);
         stream.ReadExactly(header);
-        return SegmentReaderV1.DeclaredNativeRange(header);
+        return SegmentReaderV1.Declared(header);
     }
 
     /// <summary>

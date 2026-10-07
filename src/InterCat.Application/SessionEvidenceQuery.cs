@@ -84,6 +84,9 @@ public sealed record SessionEvidencePage(
     /// <summary>The coverage ledger the page's generation published, read with the page; null where it publishes none.</summary>
     internal CoverageLedgerV1? Ledger { get; init; }
 
+    /// <summary>The rows the page's merge read to answer it, whether its scope held them or not: what the page cost.</summary>
+    internal long RowsRead { get; init; }
+
     /// <summary>
     /// A record's mechanism's coverage where it was read: the epoch whose delivered readings hold its own reading, and the
     /// fact behind that state, which says whether the capture could have missed records beside it (R21). A generation
@@ -253,13 +256,17 @@ public static class SessionEvidenceQuery
         SessionContentIndex content = withContent && manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
             ? SessionDerivationCache.For(manifest).Content(store.Root, cancellationToken)
             : SessionContentIndex.Empty;
-        SegmentReaderV1[] segments = [.. names.Select(name => SessionSegments.Open(store, manifest, name))];
-        string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, operationKey);
+
+        // What each segment's header declares names the evidence a page reads and orders the merge, so a segment is opened
+        // only when the merge reaches it: a page of a reopened session read every segment first (P25).
+        SegmentDeclaration[] declared = [.. names.Select(name => SessionSegments.Declared(store, manifest, name))];
+        string identity = Identity(manifest.SessionId, declared, channelKey, interval, owners, policy, operationKey);
+        SourceClockDescriptor? sourceClock = SessionSegments.SourceClock(store.Root, manifest);
 
         // What the capture covered over the page's time scope, stated beside its records (R21): a page listing none is
         // not a quiet scope unless the capture covered it. Each record's own coverage is read from the same ledger.
         CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
-        IReadOnlyList<MechanismCoverage> coverage = CoverageText.Over(ledger, SessionSegments.SourceClock(store.Root, manifest), interval);
+        IReadOnlyList<MechanismCoverage> coverage = CoverageText.Over(ledger, sourceClock, interval);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
             new(identity, manifest.SessionId, manifest.Generation, channelKey,
@@ -279,18 +286,15 @@ public static class SessionEvidenceQuery
             return Page([], null, true, "This evidence cursor names another session, query, scope or derivation. "
                 + "Restart from the first page; no rows were silently shifted.", null);
 
-        SessionDerivation? derivation = null;
-        SourceClockDescriptor clock = default;
-        SegmentReaderV1[] fields = [];
-        if (channelKey is not null || owners.Length > 0 || operationKey is not null || (resolveOwners && segments.Length > 0))
+        // The instances and channels come from the derivation or the checkpoint where one holds them, opening no segment.
+        GenerationSegments? generation = null;
+        if (channelKey is not null || owners.Length > 0 || operationKey is not null || (resolveOwners && names.Length > 0))
         {
-            clock = SessionSegments.SourceClock(store.Root, manifest)
-                ?? throw new InvalidDataException("This generation has no source clock for process binding.");
-            fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-            derivation = SessionDerivationCache.For(manifest);
+            generation = new GenerationSegments(store, manifest, sourceClock
+                ?? throw new InvalidDataException("This generation has no source clock for process binding."));
         }
 
-        ProcessInstanceIndex? processes = derivation?.Processes(store.Root, segments, clock, fields, cancellationToken);
+        ProcessInstanceIndex? processes = generation?.Processes(cancellationToken);
         HashSet<int> selectedOwners = [];
         foreach (ProcessInstanceId owner in owners)
         {
@@ -307,7 +311,7 @@ public static class SessionEvidenceQuery
         int? selectedChannel = null;
         if (channelKey is not null)
         {
-            relations = derivation!.Relations(store.Root, segments, clock, fields, cancellationToken);
+            relations = generation!.Relations(cancellationToken);
             if (TransportConnection.IsKey(channelKey))
             {
                 // A one-sided connection is one process's channel: its records are the ones that name its channel.
@@ -335,39 +339,57 @@ public static class SessionEvidenceQuery
         if (operationKey is not null && HttpExchangeKeys.IsHttp(operationKey))
         {
             // A process's HTTP exchanges, or one exchange, are the buffers their exchange numbers group (ADR-037).
-            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, segments, operationKey, policy, cancellationToken)
+            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, generation!.All, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("These HTTP exchanges are not in the current generation under the "
                     + "evidence policy. Return to the process and select them again.");
         }
         else if (operationKey is not null)
         {
-            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, segments, operationKey, policy, cancellationToken)
+            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.All, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("This RPC channel, call or relationship is not in the current generation "
                     + "under the evidence policy. Return to the process or the graph and select it again.");
         }
 
-        // Segments join the merge in order of their earliest reading, and only once that reading could come next: every
-        // row of a segment not yet opened reads later than the head of the merge, so its keys are not read at all. A first
-        // page of a session published in chunks reads the first chunk's keys, where it read every segment's (revision
-        // 169), and a later page skips every segment that ends before its cursor.
-        var cursors = new SegmentCursor[segments.Length];
-        var queue = new PriorityQueue<int, RowKey>(segments.Length, RowKeyComparer.Instance);
-        int[] joining = [.. Enumerable.Range(0, segments.Length)
-            .OrderBy(index => segments[index].MinNativeTicks)
+        // The readings a time scope holds, where the clock places them: a segment holding none of them is passed over, its
+        // rows before them are sought past, and the page ends once the merge reaches the first reading after them, since
+        // no later reading's session time lies in the scope (I3).
+        (long First, long End)? readings = interval is { } scope && sourceClock is { } placing
+            ? SessionNativeInterval.Readings(scope, placing)
+            : null;
+
+        // Segments join the merge in order of their earliest reading, as their headers declare it, and only once that
+        // reading could come next: every row of a segment not yet joined reads later than the head of the merge, so it is
+        // not opened at all. A first page of a session published in chunks opens the first chunk alone, and a page opens
+        // no segment that ends before its cursor or holds no reading of its time scope.
+        var cursors = new SegmentCursor[names.Length];
+        var queue = new PriorityQueue<int, RowKey>(names.Length, RowKeyComparer.Instance);
+        int[] joining = [.. Enumerable.Range(0, names.Length)
+            .OrderBy(index => declared[index].MinNativeTicks)
             .ThenBy(index => index)];
         int joined = 0;
         void Join()
         {
             while (joined < joining.Length
-                && (!queue.TryPeek(out _, out RowKey head) || segments[joining[joined]].MinNativeTicks <= head.NativeTicks))
+                && (!queue.TryPeek(out _, out RowKey head) || declared[joining[joined]].MinNativeTicks <= head.NativeTicks))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 int index = joining[joined++];
-                var segmentCursor = new SegmentCursor(segments[index], names[index]);
-                int first = position is null ? 0
-                    : segments[index].MaxNativeTicks < position.Key.NativeTicks ? segments[index].RowCount
-                    : segments[index].MinNativeTicks > position.Key.NativeTicks ? 0
+                SegmentDeclaration span = declared[index];
+                if ((position is not null && span.MaxNativeTicks < position.Key.NativeTicks)
+                    || (readings is { } held && !SessionNativeInterval.Meets((span.MinNativeTicks, span.MaxNativeTicks), held)))
+                {
+                    continue;
+                }
+
+                var segmentCursor = new SegmentCursor(SessionSegments.Open(store, manifest, names[index]), names[index]);
+                int first = position is null || span.MinNativeTicks > position.Key.NativeTicks
+                    ? 0
                     : segmentCursor.FirstAfter(position.Key);
+                if (readings is { } start && span.MinNativeTicks < start.First)
+                {
+                    first = Math.Max(first, segmentCursor.FirstReadingAtOrAfter(start.First));
+                }
+
                 cursors[index] = segmentCursor;
                 if (segmentCursor.Seek(first))
                     queue.Enqueue(index, segmentCursor.Key);
@@ -383,7 +405,7 @@ public static class SessionEvidenceQuery
         while (true)
         {
             Join();
-            if (!queue.TryDequeue(out int index, out RowKey key))
+            if (!queue.TryDequeue(out int index, out RowKey key) || (readings is { } bound && key.NativeTicks >= bound.End))
             {
                 break;
             }
@@ -425,7 +447,7 @@ public static class SessionEvidenceQuery
         long? continuedFrom = position is not null && position.Generation != manifest.Generation ? position.Generation : null;
         return Page(records.AsReadOnly(),
             more && lastReturned is { } last ? Cursor(identity, manifest.Generation, last) : null,
-            false, null, continuedFrom);
+            false, null, continuedFrom) with { RowsRead = visited };
     }
 
     private static int IndexOf(ProcessInstanceIndex processes, ProcessInstanceId id)
@@ -446,7 +468,7 @@ public static class SessionEvidenceQuery
             binding.IsAdmittedUnder(policy));
     }
 
-    private static string Identity(Guid sessionId, IReadOnlyList<SegmentReaderV1> segments, string? channelKey,
+    private static string Identity(Guid sessionId, IReadOnlyList<SegmentDeclaration> segments, string? channelKey,
         TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? operationKey)
     {
         string timeScope = interval is { } range
@@ -548,6 +570,21 @@ public static class SessionEvidenceQuery
             {
                 int middle = low + ((high - low) >> 1);
                 if (RowKeyComparer.Instance.Compare(KeyAt(middle), cursor) <= 0) low = middle + 1;
+                else high = middle;
+            }
+
+            return low;
+        }
+
+        /// <summary>The first row whose native reading is at or after <paramref name="native"/>, found by search.</summary>
+        public int FirstReadingAtOrAfter(long native)
+        {
+            int low = 0;
+            int high = Reader.RowCount;
+            while (low < high)
+            {
+                int middle = low + ((high - low) >> 1);
+                if (Reader.SignedValue(SegmentColumnId.NativeTicks, middle)!.Value < native) low = middle + 1;
                 else high = middle;
             }
 
