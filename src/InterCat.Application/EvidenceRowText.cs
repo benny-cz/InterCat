@@ -7,7 +7,7 @@ namespace InterCat.Application;
 
 /// <summary>
 /// Plain-language text for one admitted evidence row, shared by the viewer and the command line so both describe a
-/// row the same way. It restates what the row records and nothing more: a missing size stays "not exposed", an
+/// row the same way. It restates what the row records and nothing more: a missing size says why it is missing, an
 /// unresolved owner says why, and a direction is the one the record's own kind states.
 /// </summary>
 public static class EvidenceRowText
@@ -64,24 +64,40 @@ public static class EvidenceRowText
         };
     }
 
-    /// <summary>The measured size with its unit, "size not exposed" when the source withholds it, or null when no size applies.</summary>
+    /// <summary>
+    /// The measured size with its unit, or why the record holds none - "size not exposed" when the source withholds it,
+    /// "size redacted", "size lost with its event" - or null when no size applies.
+    /// </summary>
     public static string? Size(ObservationRowV1 row, IFormatProvider? culture = null)
     {
         ArgumentNullException.ThrowIfNull(row);
         if (row.ByteValue is { } bytes)
             return string.Create(culture ?? CultureInfo.CurrentCulture, $"{bytes:N0} B");
-        return row.ByteAvailability == FieldAvailability.NotApplicable ? null : "size not exposed";
+        return Absent(row.ByteAvailability) is { } absent ? "size " + absent : null;
     }
 
     /// <summary>
+    /// Why a record holds no size, in <see cref="ObservationText.Absence"/>'s words, or null when no size applies. A size
+    /// said to be present that the record does not hold is not recorded, never read as zero.
+    /// </summary>
+    private static string? Absent(FieldAvailability availability) => availability switch
+    {
+        FieldAvailability.NotApplicable => null,
+        FieldAvailability.Present => "not recorded",
+        _ => ObservationText.Absence(availability),
+    };
+
+    /// <summary>
     /// The size with what it measures, in words (R5): "1,460 B carried by the transport", "604 B of the application's own
-    /// message". A size's domain says which bytes were counted, and one domain's bytes are never another's (P3).
+    /// message", or why there is none, "not exposed", where a label already says it is the size. A size's domain says
+    /// which bytes were counted, and one domain's bytes are never another's (P3).
     /// </summary>
     public static string? SizeWithDomain(ObservationRowV1 row, IFormatProvider? culture = null)
     {
         ArgumentNullException.ThrowIfNull(row);
+        if (row.ByteValue is null) return Absent(row.ByteAvailability);
         if (Size(row, culture) is not { } size) return null;
-        if (row.ByteValue is null || row.ByteDomain is not { } domain) return size;
+        if (row.ByteDomain is not { } domain) return size;
         return size + domain switch
         {
             ByteDomain.TransportObserved => " carried by the transport",
@@ -195,13 +211,8 @@ public static class EvidenceRowText
     /// <summary>A mechanism as a lane or a row names it (<see cref="MechanismText.Name"/>).</summary>
     public static string MechanismName(Mechanism mechanism) => MechanismText.Name(mechanism);
 
-    private static string Verb(ObservationKind kind) => kind switch
-    {
-        ObservationKind.RequestStart => "request start",
-        ObservationKind.RequestEnd => "request end",
-        ObservationKind.UnknownKind => "record",
-        _ => kind.ToString().ToLowerInvariant(),
-    };
+    /// <summary>A kind as a title's verb (<see cref="ObservationText.Kind"/>); a record of unknown kind is a record.</summary>
+    private static string Verb(ObservationKind kind) => kind == ObservationKind.UnknownKind ? "record" : ObservationText.Kind(kind);
 
     private static string Reason(ProcessBindingReason reason) => reason switch
     {

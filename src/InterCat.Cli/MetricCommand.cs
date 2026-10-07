@@ -1115,7 +1115,11 @@ internal static class MetricCommand
             "Projection",
             string.Join(
                 ", ",
-                new[] { request.Layer?.ToString(), request.Mechanism is { } mechanism ? MechanismText.Name(mechanism) : null }
+                new[]
+                    {
+                        request.Layer is { } layer ? ObservationText.Layer(layer) : null,
+                        request.Mechanism is { } mechanism ? MechanismText.Name(mechanism) : null,
+                    }
                     .Where(value => value is not null)
                     .DefaultIfEmpty("every layer and mechanism")));
 
@@ -1390,12 +1394,14 @@ internal static class MetricCommand
                 .. document.Evidence.Select(item => new[]
                 {
                     item.Seconds is null ? $"{item.NativeTicks:N0} ticks" : $"{item.Seconds} s",
-                    item.Mechanism,
-                    item.Kind,
+                    Enum.TryParse(item.Mechanism, out Mechanism mechanism) ? MechanismText.Name(mechanism) : item.Mechanism,
+                    Enum.TryParse(item.Kind, out ObservationKind kind) ? ObservationText.Kind(kind) : item.Kind,
                     item.OwnerProcessId?.ToString(CultureInfo.CurrentCulture) ?? "unknown",
                     item.ByteValue is { } value
                         ? value.ToString("N0", CultureInfo.CurrentCulture)
-                        : item.ByteAvailability == nameof(FieldAvailability.NotApplicable) ? "n/a" : $"unknown ({item.ByteAvailability})",
+                        : !Enum.TryParse(item.ByteAvailability, out FieldAvailability availability) ? $"unknown ({item.ByteAvailability})"
+                        : availability == FieldAvailability.NotApplicable ? "n/a"
+                        : $"unknown ({ObservationText.Absence(availability)})",
                     item.AccountingSide ?? "n/a",
                     item.JournalRecordIndex?.ToString("N0", CultureInfo.CurrentCulture) ?? "none",
                 }),

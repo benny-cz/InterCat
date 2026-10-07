@@ -887,7 +887,7 @@ public sealed class CommandLineTests : IDisposable
             answer);
     }
 
-    [Fact(DisplayName = "R5: icat's tables name a mechanism and a coverage state as the window does, never by the enumeration")]
+    [Fact(DisplayName = "R5: icat's tables name a mechanism, a record's kind and layer, a coverage state and a capability as the window does, never by the enumeration")]
     public async Task TablesNameMechanismsAndCoverageInWords()
     {
         using TemporarySession gapped = Gapped();
@@ -902,28 +902,59 @@ public sealed class CommandLineTests : IDisposable
         (code, answer, _) = await Run("session", gapped.Path, "--rows", "2");
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Matches(@"(?m)^  Mechanisms +TCP$", answer);
+        Assert.Matches(@"(?m)^  Layers +transport$", answer);
         Assert.Matches(@"(?m)^  TCP +covered +2 records from its 1 admitted descriptor", answer);
         Assert.Contains("says nothing about their activity: process lifecycle, thread lifecycle, UDP, Unix socket, named pipe,",
             answer, StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  Epoch 1 reported lost +Source session 0 records", answer);
         Assert.Matches(@"(?m)^  Epoch 2 undecodable +0$", answer);
-        Assert.Matches(@"(?m)^  10 +TCP +Send +100 ", answer);
+        Assert.Matches(@"(?m)^  10 +TCP +send +100 ", answer);
 
-        // A machine's mechanisms, and a content request's.
+        // A record without a size says why, as the window does: its source withheld it, or a package redacted it.
+        using var unsized = new TemporarySession();
+        Publish(unsized.Store,
+        [
+            Transfer(10, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 1).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { ByteAvailability = FieldAvailability.Redacted },
+        ]);
+        (code, answer, _) = await Run("session", unsized.Path, "--rows", "2");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  10 +TCP +receive +200 +unknown \(not exposed\) ", answer);
+        Assert.Matches(@"(?m)^  11 +TCP +receive +200 +unknown \(redacted\) ", answer);
+        (code, answer, _) = await Run("metric", unsized.Path, "--metric", "observations", "--evidence", "2", "--layer", "transport");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  \S.* +TCP +receive +200 +unknown \(redacted\) ", answer);
+        Assert.Matches(@"(?m)^  Projection +transport$", answer);
+
+        // A machine's sources and mechanisms, whatever this machine reports of them, read in words; and a content request's.
         (_, answer, _) = await Run("capabilities");
-        Assert.Matches(@"(?m)^  TCP +\S+ +\S+ +unknown +none$", answer);
+        string[] tcp = Regex.Split(answer.Split('\n').Single(line => line.StartsWith("  TCP ", StringComparison.Ordinal)).Trim(), " {2,}");
+        Assert.Equal(5, tcp.Length);
+        Assert.Contains(tcp[1], Enum.GetValues<CapabilityState>().Select(CapabilityText.State));
+        Assert.Contains(tcp[2], Enum.GetValues<CapabilityTier>().Select(CapabilityText.Tier));
+        Assert.Contains(tcp[3], Enum.GetValues<CoverageState>().Select(CoverageStateText.Value));
+        Assert.All(answer.Split('\n').Where(line => line.StartsWith("  etw/", StringComparison.Ordinal) && line.Contains("  ", StringComparison.Ordinal)
+            && Regex.Split(line.Trim(), " {2,}").Length == 5), line =>
+        {
+            string[] source = Regex.Split(line.Trim(), " {2,}");
+            Assert.Contains(source[1], Enum.GetValues<CapabilityState>().Select(CapabilityText.State));
+            Assert.Contains(source[2], Enum.GetValues<OverheadClass>().Select(CapabilityText.Overhead));
+        });
         Assert.Matches(@"(?m)^  Named pipe +", answer);
         (_, answer, _) = await Run("profiles", "content", "--source", "etw/manifest/Microsoft-Windows-WinINet-Capture",
             "--mechanism", "http", "--pid", "1234", "--channel", "*", "--max-record-bytes", "4096", "--max-session-bytes", "65536",
             "--retention", "stop-at-limit", "--inspection", "hex-text");
         Assert.Matches(@"(?m)^  Mechanism +HTTP$", answer);
 
-        // None of them names a mechanism or a state by its enumeration.
+        // None of them names a mechanism, a kind, a layer, a size's reason or a state by its enumeration.
         foreach (string[] asked in (string[][])[["timeline", gapped.Path, "--interval", "0:60", "--columns", "6"], ["session", gapped.Path, "--rows", "2"],
-            ["capabilities"]])
+            ["session", unsized.Path, "--rows", "2"],
+            ["metric", unsized.Path, "--metric", "observations", "--evidence", "2", "--layer", "transport"], ["capabilities"]])
         {
             (_, answer, _) = await Run(asked);
-            Assert.DoesNotMatch(@"\b(Tcp|Udp|NamedPipe|ProcessLifecycle|UnknownCoverage|PartialGap|NotCollected)\b", answer);
+            Assert.DoesNotMatch(@"\b(Tcp|Udp|NamedPipe|ProcessLifecycle|UnknownCoverage|PartialGap|NotCollected|Send|Receive|Transport|NotExposed"
+                + @"|Redacted|DisabledByProfile|PermissionDenied|TrafficVisualization|Unsupported|Unmeasured|Moderate)\b", answer);
         }
     }
 

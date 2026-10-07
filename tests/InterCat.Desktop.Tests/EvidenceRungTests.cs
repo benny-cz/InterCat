@@ -1482,6 +1482,30 @@ public sealed class EvidenceRungTests
         Assert.EndsWith("Press Enter to open the original record.", workspace.RungRows[4].SpokenName, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R3: a record without a size says why in the rail, its spoken name and the inspector, never as zero")]
+    public async Task ARecordWithoutASizeSaysWhyInTheWindow()
+    {
+        // A receive whose source withheld its size, and one a package redacted.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Transfer(10, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 1).Between("127.0.0.1:8080", "127.0.0.1:50000")),
+            Timed(Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { ByteAvailability = FieldAvailability.Redacted }),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+
+        // The rail and a screen reader say the size's reason after what happened; the inspector's Size field says it alone.
+        Assert.Equal(["TCP receive · size not exposed", "TCP receive · size redacted"], workspace.RungRows.Select(row => row.Label));
+        Assert.StartsWith("TCP receive, size redacted, at ", workspace.RungRows[1].SpokenName, StringComparison.Ordinal);
+        workspace.SelectedRung = workspace.RungRows[1];
+        Assert.Equal("TCP receive · size redacted", workspace.SelectedEvidenceTitle);
+        Assert.Equal("redacted", workspace.SelectedEvidenceFields.Single(field => field.Label == "Size").Value);
+        Assert.DoesNotContain(workspace.RungRows, row => row.Label.Contains(" B", StringComparison.Ordinal));
+    }
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

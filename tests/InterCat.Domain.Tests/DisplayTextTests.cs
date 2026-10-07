@@ -44,4 +44,36 @@ public sealed class DisplayTextTests
             ["covered", "reduced fidelity", "partial gap, not extrapolated", "not collected", "unknown coverage"],
             Enum.GetValues<CoverageState>().Select(CoverageStateText.Label));
     }
+
+    [Fact(DisplayName = "R5: a record's kind and layer, a missing field's reason and a capability's state, tier and overhead each read as words")]
+    public void RecordAndCapabilityDimensionsReadAsWords()
+    {
+        // A kind is a word or two, a layer one; neither is an enumeration's identifier run together.
+        Assert.Equal(("send", "request start", "unknown kind"), (ObservationText.Kind(ObservationKind.Send),
+            ObservationText.Kind(ObservationKind.RequestStart), ObservationText.Kind(ObservationKind.UnknownKind)));
+        Assert.All(Enum.GetValues<ObservationKind>(), kind => Assert.Matches("^[a-z]+( [a-z]+)?$", ObservationText.Kind(kind)));
+        Assert.Equal(["transport", "application", "resource", "lifecycle", "collector"],
+            Enum.GetValues<ObservationLayer>().Select(ObservationText.Layer));
+
+        // Why a field holds no value: what the source withheld is not what the profile left out, was denied, or was lost.
+        Assert.Equal(
+            ["present", "not exposed", "not collected by the profile", "denied", "lost with its event", "not decoded: schema unknown",
+                "redacted", "not applicable"],
+            Enum.GetValues<FieldAvailability>().Select(ObservationText.Absence));
+
+        // A capability's state, tier and overhead, the tiers as §14.2 names them.
+        Assert.Equal(["available", "experimental", "unsupported", "permission denied", "disabled by the profile", "schema unknown",
+            "provider failed"], Enum.GetValues<CapabilityState>().Select(CapabilityText.State));
+        Assert.Equal(["traffic visualization", "topology only", "experimental evidence", "unsupported"],
+            Enum.GetValues<CapabilityTier>().Select(CapabilityText.Tier));
+        Assert.Equal(["unmeasured", "low", "moderate", "high"], Enum.GetValues<OverheadClass>().Select(CapabilityText.Overhead));
+
+        // A value this version does not know is named by its number, never guessed.
+        Assert.Equal(["kind 42", "layer 9", "availability 0", "state 0", "tier 9", "overhead 0"],
+        [
+            ObservationText.Kind((ObservationKind)42), ObservationText.Layer((ObservationLayer)9),
+            ObservationText.Absence((FieldAvailability)0), CapabilityText.State((CapabilityState)0),
+            CapabilityText.Tier((CapabilityTier)9), CapabilityText.Overhead((OverheadClass)0),
+        ]);
+    }
 }

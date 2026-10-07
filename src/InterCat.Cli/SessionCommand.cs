@@ -672,7 +672,7 @@ internal static class SessionCommand
                     ? "none"
                     : $"[{coverage.MinNativeTicks:N0}, {coverage.MaxNativeTicks:N0}] source ticks");
             ConsoleUi.Field("Mechanisms", coverage.Mechanisms.Count == 0 ? "none" : string.Join(", ", coverage.Mechanisms.Select(MechanismLabel)));
-            ConsoleUi.Field("Layers", coverage.Layers.Count == 0 ? "none" : string.Join(", ", coverage.Layers));
+            ConsoleUi.Field("Layers", coverage.Layers.Count == 0 ? "none" : string.Join(", ", coverage.Layers.Select(LayerLabel)));
         }
 
         if (document.CoverageLedger is { } ledger)
@@ -950,6 +950,9 @@ internal static class SessionCommand
     private static string MechanismInSentence(string name) =>
         Enum.TryParse(name, out Mechanism mechanism) ? MechanismText.InSentence(mechanism) : name;
 
+    /// <summary>A layer the document names by its enumeration, as a word: "transport", "lifecycle".</summary>
+    private static string LayerLabel(string name) => Enum.TryParse(name, out ObservationLayer layer) ? ObservationText.Layer(layer) : name;
+
     /// <summary>A coverage state the document names by its enumeration, as the window says it: "partial gap, not extrapolated".</summary>
     private static string StateValue(string name) => Enum.TryParse(name, out CoverageState state) ? CoverageStateText.Value(state) : name;
 
@@ -991,13 +994,13 @@ internal static class SessionCommand
                     {
                         row.NativeTicks.ToString("N0", CultureInfo.CurrentCulture),
                         MechanismText.Name(row.Mechanism),
-                        row.Kind.ToString(),
+                        ObservationText.Kind(row.Kind),
                         EvidenceRowText.OwnerProcessId(row)?.ToString(CultureInfo.CurrentCulture) ?? "unknown",
                         row.ByteValue is { } value
                             ? value.ToString("N0", CultureInfo.CurrentCulture)
                             : row.ByteAvailability == FieldAvailability.NotApplicable
                                 ? "n/a"
-                                : $"unknown ({row.ByteAvailability})",
+                                : $"unknown ({ObservationText.Absence(row.ByteAvailability)})",
                         Endpoint(row),
                     };
                 }),

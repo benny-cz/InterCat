@@ -40,6 +40,40 @@ public sealed class EvidenceRowTextTests
             EvidenceRowText.Summary(Record(send), Invariant));
     }
 
+    [Fact(DisplayName = "R3: a record without a size says why it has none, and never reads as a size of zero")]
+    public void ARecordWithoutASizeSaysWhy()
+    {
+        ObservationRowV1 receive = Transfer(2, ObservationKind.Receive, AccountingSide.ReceiveSide, null, 200)
+            .Between("127.0.0.1:8080", "127.0.0.1:50000");
+
+        // Its source withheld it, the capture's profile left it out, the capture was denied it, a lost event took it, its
+        // schema could not be read, or a package redacted it: each is said, none as 0 B.
+        FieldAvailability[] missing =
+        [
+            FieldAvailability.NotExposed, FieldAvailability.ProfileDisabled, FieldAvailability.Denied, FieldAvailability.EventLost,
+            FieldAvailability.SchemaUnknown, FieldAvailability.Redacted,
+        ];
+        Assert.Equal(
+            ["size not exposed", "size not collected by the profile", "size denied", "size lost with its event",
+                "size not decoded: schema unknown", "size redacted"],
+            missing.Select(availability => EvidenceRowText.Size(receive with { ByteAvailability = availability }, Invariant)));
+
+        // Where a label already names the size, the reason stands alone.
+        Assert.Equal("redacted", EvidenceRowText.SizeWithDomain(receive with { ByteAvailability = FieldAvailability.Redacted }, Invariant));
+        Assert.Equal("1,024 B carried by the transport", EvidenceRowText.SizeWithDomain(
+            receive with { ByteValue = 1_024, ByteAvailability = FieldAvailability.Present, ByteDomain = ByteDomain.TransportObserved }, Invariant));
+
+        // A size said to be present that the record does not hold is not recorded; one that does not apply is not mentioned.
+        Assert.Equal("size not recorded", EvidenceRowText.Size(receive with { ByteAvailability = FieldAvailability.Present }, Invariant));
+        Assert.Equal("not recorded", EvidenceRowText.SizeWithDomain(receive with { ByteAvailability = FieldAvailability.Present }, Invariant));
+        Assert.Null(EvidenceRowText.Size(receive with { ByteAvailability = FieldAvailability.NotApplicable }, Invariant));
+        Assert.Null(EvidenceRowText.SizeWithDomain(receive with { ByteAvailability = FieldAvailability.NotApplicable }, Invariant));
+
+        // A record's kind reads as the window and the command line say it; one of no known kind is a record.
+        Assert.Equal("TCP request start", EvidenceRowText.Title(receive with { Kind = ObservationKind.RequestStart }));
+        Assert.Equal("TCP record", EvidenceRowText.Title(receive with { Kind = ObservationKind.UnknownKind }));
+    }
+
     [Fact]
     public void ARecordsQualityReadsAsWordsNotEnumerationNames()
     {

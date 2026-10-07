@@ -91,8 +91,8 @@ internal static class CapabilitiesCommand
             sourceRows.Add(
             [
                 source.SourceId,
-                source.State.ToString(),
-                source.Overhead.ToString(),
+                CapabilityText.State(source.State),
+                CapabilityText.Overhead(source.Overhead),
                 DescribeChecks(source),
                 source.Events.Count.ToString(CultureInfo.CurrentCulture),
             ]);
@@ -122,15 +122,15 @@ internal static class CapabilitiesCommand
             mechanismRows.Add(
             [
                 MechanismText.Name(mechanism.Mechanism),
-                mechanism.State.ToString(),
-                mechanism.Tier.ToString(),
+                CapabilityText.State(mechanism.State),
+                CapabilityText.Tier(mechanism.Tier),
                 CoverageStateText.Value(mechanism.Coverage),
                 mechanism.Measurement is null ? "none" : mechanism.Measurement.FixtureId,
             ]);
         }
 
         ConsoleUi.Table(["Mechanism", "State", "Tier", "Coverage", "Fixture"], mechanismRows);
-        ConsoleUi.Note("A tier is computed from fixture measurements only. Unsupported here means not yet measured.");
+        ConsoleUi.Note("A tier is computed from fixture measurements only; unsupported here means not yet measured.");
 
         if (report.Diagnostics.Count > 0)
         {
