@@ -388,10 +388,21 @@ public static class SessionHttpExchanges
     }
 
     /// <summary>
-    /// The records an HTTP channel or exchange key scopes, by segment name and row in the leased generation, for an evidence
-    /// page; null when the generation holds no such channel or exchange.
+    /// The records an HTTP channel or exchange key scopes, by segment and row in the leased generation, for an evidence page
+    /// or a timeline focus: gathered once per generation from its exchanges, and kept with them while the key is among the
+    /// last few asked for. Null when the generation holds no such channel or exchange under the policy.
     /// </summary>
-    internal static HashSet<(string Segment, int Row)>? RecordsOf(
+    internal static OperationRecords? RecordsOf(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        IReadOnlyList<SegmentReaderV1> segments,
+        string httpKey,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken) =>
+        SessionDerivationCache.For(manifest).Operation(httpKey, policy,
+            () => Gather(store, manifest, segments, httpKey, policy, cancellationToken));
+
+    private static OperationRecords? Gather(
         SessionStore store,
         SessionManifestV1 manifest,
         IReadOnlyList<SegmentReaderV1> segments,
@@ -428,7 +439,8 @@ public static class SessionHttpExchanges
             }
         }
 
-        return [.. index.RecordsOf(group, position).Select(record => (index.SegmentNames[record.Segment] ?? string.Empty, record.Row))];
+        return OperationRecords.Of(index.RecordsOf(group, position)
+            .Select(record => (index.SegmentNames[record.Segment] ?? string.Empty, record.Row)));
     }
 
     /// <summary>The group's summary, of its exchanges counted within <paramref name="native"/> when <paramref name="scoped"/>.</summary>

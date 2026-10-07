@@ -113,6 +113,11 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private string? overviewProblem;
     private SessionContentIndex? content;
 
+    // The records the last few operation scopes asked for named, most recent first: each zoom or page of a busy channel's
+    // calls otherwise gathered them anew from its pairs.
+    private readonly List<(string Key, EvidencePolicy Policy, OperationRecords? Records)> operations = [];
+    private const int KeptOperations = 4;
+
     /// <summary>The generation these derivations are of.</summary>
     public SessionManifestV1 Manifest { get; } = manifest;
 
@@ -317,6 +322,44 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             Volatile.Write(ref content, read);
             return read;
         }
+    }
+
+    /// <summary>
+    /// The records an operation scope names under a policy - an RPC channel's, call's or relationship's, or HTTP exchanges'
+    /// - gathered once by <paramref name="gather"/> from the generation's pairs and kept for the last few scopes asked for,
+    /// since the pairs they are read from never change within a generation. Null where the generation holds no such
+    /// operation under the policy.
+    /// </summary>
+    internal OperationRecords? Operation(string key, EvidencePolicy policy, Func<OperationRecords?> gather)
+    {
+        ArgumentNullException.ThrowIfNull(gather);
+        lock (gate)
+        {
+            int index = operations.FindIndex(entry => entry.Key == key && entry.Policy == policy);
+            if (index >= 0)
+            {
+                (string, EvidencePolicy, OperationRecords? Records) kept = operations[index];
+                operations.RemoveAt(index);
+                operations.Insert(0, kept);
+                return kept.Records;
+            }
+        }
+
+        // Gathered outside the lock, which the pairs it reads take; two queries racing gather the same records twice.
+        OperationRecords? gathered = gather();
+        lock (gate)
+        {
+            if (!operations.Exists(entry => entry.Key == key && entry.Policy == policy))
+            {
+                operations.Insert(0, (key, policy, gathered));
+                if (operations.Count > KeptOperations)
+                {
+                    operations.RemoveAt(operations.Count - 1);
+                }
+            }
+        }
+
+        return gathered;
     }
 
     /// <summary>

@@ -175,6 +175,75 @@ public sealed class IntervalSegmentReadTests
         zoom.ReleaseSegmentReaders();
     }
 
+    [Fact(DisplayName = "§12.1: an RPC channel's records are gathered once and kept for the generation's next page and zoom of them, and each reads only the channel's rows of the segments it opens")]
+    public void AChannelsRecordsAreKeptAndReadAlone()
+    {
+        // Two processes' calls, alternating, in segments of ten records: the client's channel holds every other call, so
+        // nearly half of each segment's rows are the other process's. Its twin holds them in one segment.
+        ObservationRowV1[] rows = AlternatingCalls(30);
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 10, coverage: RpcLedger(alpc: false));
+        Publish(twin.Store, rows, coverage: RpcLedger(alpc: false));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+        ProcessInstanceId client = SessionOverviewProjector.Project(twin.Store).Nodes.Single(node => node.ProcessId == 400).Id;
+        SessionStore store = Reopened(split.Path);
+        string channel = Assert.Single(SessionRpcCalls.Channels(store, client).Channels).Key;
+
+        // A page of the channel's records reads its rows alone: ten, and the eleventh that says there is more, however
+        // many of the other process's lie between them. Its next page continues from there, and the last ends the list.
+        SessionEvidencePage first = SessionEvidenceQuery.Read(store, operationKey: channel, pageSize: 10);
+        SessionEvidencePage next = SessionEvidenceQuery.Read(store, operationKey: channel, pageSize: 10, cursor: first.NextCursor);
+        SessionEvidencePage last = SessionEvidenceQuery.Read(store, operationKey: channel, pageSize: 10, cursor: next.NextCursor);
+        Assert.Equal((11L, 11L, 10L), (first.RowsRead, next.RowsRead, last.RowsRead));
+        Assert.Null(last.NextCursor);
+        string[] listed = Records(SessionEvidenceQuery.Read(twin.Store, operationKey: channel, pageSize: 100));
+        Assert.Equal(30, listed.Length);
+        string[] paged = [.. Records(first), .. Records(next), .. Records(last)];
+        Assert.Equal(listed, paged);
+
+        // The records were gathered once, for the first page, and the generation keeps them: a zoom of the channel counts
+        // the kept ones, its own rows alone, as the twin's zoom counts them.
+        SessionDerivation derivation = SessionDerivationCache.For(store.Current!);
+        OperationRecords kept = derivation.Operation(channel, EvidencePolicy.IncludeCorrelated,
+            () => throw new InvalidOperationException("The channel's records were gathered again."))!;
+        Assert.Equal(30, kept.Count);
+        var extent = new TimeRange(0, 200);
+        SessionFocusedTimeline zoomed = SessionTimelineQuery.Focused(store, extent, 12, new TimelineFocus(null, [], channel));
+        Assert.Equal(SessionTimelineQuery.Focused(twin.Store, extent, 12, new TimelineFocus(null, [], channel)).Focus, zoomed.Focus);
+        Assert.Equal(30, zoomed.Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Same(kept, derivation.Operation(channel, EvidencePolicy.IncludeCorrelated, () => null));
+
+        // The generation keeps the records of the last four operations asked for, a policy's apart from another's: the
+        // channel's, asked for again after three of its calls', outlast a fourth call's, and once its records under another
+        // policy and three calls' more have been asked for, they are gathered anew.
+        OperationRecords Kept(string key) => derivation.Operation(key, EvidencePolicy.IncludeCorrelated,
+            () => throw new InvalidOperationException("The records were gathered again."))!;
+        void Page(RpcCallRow call) => Assert.Equal(2, SessionEvidenceQuery.Read(store, operationKey: call.Key).Records.Count);
+        RpcCallRow[] calls = [.. SessionRpcCalls.Calls(store, channel).Calls.Take(4)];
+        foreach (RpcCallRow call in calls[..3]) Page(call);
+        Assert.Same(kept, Kept(channel));
+        Page(calls[3]);
+        Assert.Same(kept, Kept(channel));
+        OperationRecords direct = OperationRecords.Of([]);
+        Assert.Same(direct, derivation.Operation(channel, EvidencePolicy.DirectOnly, () => direct));
+        foreach (RpcCallRow call in calls[..3]) Page(call);
+        Assert.Equal(2, Kept(calls[2].Key).Count);
+        Assert.NotSame(kept, derivation.Operation(channel, EvidencePolicy.IncludeCorrelated, () => OperationRecords.Of([])));
+        store.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "§12.1: an operation's records are held by segment, each once, its rows ascending")]
+    public void AnOperationsRecordsAreHeldBySegment()
+    {
+        OperationRecords records = OperationRecords.Of([("b", 5), ("a", 3), ("b", 1), ("b", 5)]);
+        Assert.Equal(3, records.Count);
+        Assert.True(records.Holds("a"));
+        Assert.False(records.Holds("c"));
+        Assert.Equal("1 5", string.Join(' ', records.RowsIn("b").ToArray()));
+        Assert.True(records.RowsIn("c").IsEmpty);
+    }
+
     [Fact(DisplayName = "§12.1: once a generation's HTTP exchanges are grouped, a process's exchanges and their spans open no segment, and an exchange's evidence only the segment holding its buffers")]
     public void GroupedExchangesAreReadWithoutTheirSegments()
     {
@@ -210,10 +279,12 @@ public sealed class IntervalSegmentReadTests
         Assert.Equal(SessionHttpExchanges.Spans(twin.Store, channel, late).Total, spans.Total);
         later.ReleaseSegmentReaders();
 
-        // The exchange's evidence opens the one segment holding its three buffers.
+        // The exchange's evidence opens the one segment holding its three buffers, which the generation keeps.
         SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
         SessionEvidencePage records = SessionEvidenceQuery.Read(evidence, operationKey: all.Exchanges[3].Key);
         Assert.Equal((1, 3), (evidence.SegmentReaderCache.Entries, records.Records.Count));
+        Assert.Equal(3, SessionDerivationCache.For(evidence.Current!).Operation(all.Exchanges[3].Key,
+            EvidencePolicy.IncludeCorrelated, () => throw new InvalidOperationException("The buffers were gathered again."))!.Count);
         Assert.Equal(Records(SessionEvidenceQuery.Read(twin.Store, operationKey: all.Exchanges[3].Key)), Records(records));
         evidence.ReleaseSegmentReaders();
     }
@@ -405,6 +476,23 @@ public sealed class IntervalSegmentReadTests
         .. Enumerable.Range(2, 598).Select(row => Timed(row % 2 == 0
             ? Transfer(row * 10L, ObservationKind.Send, AccountingSide.SendSide, 100, 100, (ulong)(row + 1)).Between(ClientEnd, ServerEnd)
             : Transfer(row * 10L, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, (ulong)(row + 1)).Between(ServerEnd, ClientEnd))),
+    ];
+
+    /// <summary>
+    /// The client's and another process's lifecycle records, then calls to the service control manager four ticks apart,
+    /// each a request and its response two ticks later: the client's the even calls, the other process's the odd.
+    /// </summary>
+    private static ObservationRowV1[] AlternatingCalls(int calls) =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 400, 1)),
+        Timed(Lifecycle(2, ObservationKind.Create, 500, 2)),
+        .. Enumerable.Range(0, calls).SelectMany(call => new[]
+        {
+            Timed(RpcCall(10 + (4L * call), ObservationKind.RequestStart, Direction.Outbound, call % 2 == 0 ? 400 : 500,
+                (ulong)(10 + (2 * call)), new Guid(call + 1, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1), ServiceControlInterface)),
+            Timed(RpcCall(12 + (4L * call), ObservationKind.RequestEnd, Direction.Outbound, call % 2 == 0 ? 400 : 500,
+                (ulong)(11 + (2 * call)), new Guid(call + 1, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1), status: 0)),
+        }),
     ];
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

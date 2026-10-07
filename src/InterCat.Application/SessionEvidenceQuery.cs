@@ -377,24 +377,21 @@ public static class SessionEvidenceQuery
         }
 
         // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls: once they
-        // are paired, without opening a segment (P25).
-        HashSet<(string Segment, int Row)>? rpcRecords = null;
+        // are paired, without opening a segment, and kept for the generation's next page or zoom of them (P25).
+        OperationRecords? operationRecords = null;
         if (operationKey is not null && HttpExchangeKeys.IsHttp(operationKey))
         {
             // A process's HTTP exchanges, or one exchange, are the buffers their exchange numbers group (ADR-037).
-            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
+            operationRecords = SessionHttpExchanges.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("These HTTP exchanges are not in the current generation under the "
                     + "evidence policy. Return to the process and select them again.");
         }
         else if (operationKey is not null)
         {
-            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
+            operationRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("This RPC channel, call or relationship is not in the current generation "
                     + "under the evidence policy. Return to the process or the graph and select it again.");
         }
-
-        // An operation's records lie in the segments its calls or exchanges were grouped from, so no other is opened.
-        HashSet<string>? operationSegments = rpcRecords is null ? null : [.. rpcRecords.Select(record => record.Segment)];
 
         // The readings a time scope holds, where the clock places them: a segment holding none of them is passed over, its
         // rows before them are sought past, and the page ends once the merge reaches the first reading after them, since
@@ -407,6 +404,7 @@ public static class SessionEvidenceQuery
         // reading could come next: every row of a segment not yet joined reads later than the head of the merge, so it is
         // not opened at all. A first page of a session published in chunks opens the first chunk alone, and a page opens
         // no segment that ends before its cursor, holds no reading of its time scope or none of its operation's records.
+        // In a segment holding an operation's records the page reads those rows alone, however many others it holds.
         var cursors = new SegmentCursor[names.Length];
         var queue = new PriorityQueue<int, RowKey>(names.Length, RowKeyComparer.Instance);
         int[] joining = [.. Enumerable.Range(0, names.Length)
@@ -423,12 +421,13 @@ public static class SessionEvidenceQuery
                 SegmentDeclaration span = declared[index];
                 if ((position is not null && span.MaxNativeTicks < position.Key.NativeTicks)
                     || (readings is { } held && !SessionNativeInterval.Meets((span.MinNativeTicks, span.MaxNativeTicks), held))
-                    || (operationSegments is not null && !operationSegments.Contains(names[index])))
+                    || (operationRecords is not null && !operationRecords.Holds(names[index])))
                 {
                     continue;
                 }
 
-                var segmentCursor = new SegmentCursor(SessionSegments.Open(store, manifest, names[index]), names[index]);
+                var segmentCursor = new SegmentCursor(SessionSegments.Open(store, manifest, names[index]), names[index],
+                    operationRecords?.RowsIn(names[index]));
                 int first = position is null || span.MinNativeTicks > position.Key.NativeTicks
                     ? 0
                     : segmentCursor.FirstAfter(position.Key);
@@ -476,7 +475,6 @@ public static class SessionEvidenceQuery
                 && segment.Reader.UnsignedValue(SegmentColumnId.Mechanism, row) != (ulong)mechanism) continue;
             if (narrowing.Direction is { } direction
                 && segment.Reader.UnsignedValue(SegmentColumnId.Direction, row) != (ulong)direction) continue;
-            if (rpcRecords is not null && !rpcRecords.Contains((segment.Name, row))) continue;
             ProcessBinding? binding = needOwners ? segment.OwnerOf(row, processes!) : null;
             if (selectedOwners.Count > 0
                 && (!selectedOwners.Contains(binding!.Value.Instance) || !binding.Value.IsAdmittedUnder(policy))) continue;
@@ -605,7 +603,11 @@ public static class SessionEvidenceQuery
     /// One segment's position in the merge. A segment is sorted by the row key (the reader verified it), so its first
     /// row after a cursor is found by search, and bindings are computed only for a segment the merge reaches.
     /// </summary>
-    private sealed class SegmentCursor(SegmentReaderV1 reader, string name)
+    /// <summary>
+    /// A segment's rows in canonical order as the merge reads them: each row, or only <paramref name="only"/>, an
+    /// operation's rows of the segment, ascending.
+    /// </summary>
+    private sealed class SegmentCursor(SegmentReaderV1 reader, string name, ReadOnlyMemory<int>? only = null)
     {
         private PackedChannels? channels;
         private PackedOwners? owners;
@@ -619,8 +621,16 @@ public static class SessionEvidenceQuery
 
         public RowKey Key { get; private set; }
 
+        /// <summary>Moves to the first row read at or after <paramref name="row"/>, and says whether there is one.</summary>
         public bool Seek(int row)
         {
+            if (only is { } rows)
+            {
+                int next = rows.Span.BinarySearch(row);
+                if (next < 0) next = ~next;
+                row = next < rows.Length ? rows.Span[next] : Reader.RowCount;
+            }
+
             Row = row;
             if (row >= Reader.RowCount) return false;
             Key = KeyAt(row);

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 411 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 412 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 412 — an operation's records are kept and read alone (P25, §12.1 S3):**
+  - Each page or zoom of an RPC channel's, call's or relationship's records, or of HTTP exchanges', gathered them anew
+    and tested every row beside them. The generation now keeps them by segment, and a page or a zoom reads their rows
+    alone: a busy channel's zoom fell from 123-167 ms to 4-9 ms.
 
 - **Revision 411 — E from a chosen cell lists exactly its records (§6.4, R18):**
   - E from a chosen cell listed its rung's records within it. It now lists the cell's own, a lane's narrowing shown as
@@ -1092,10 +1097,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      stops past its time scope, and since revision 403 a process's connections read only the segments their lifetimes
      meet. Since revision 408 the call ranking and a process's RPC and HTTP listings read the calls and exchanges once
      paired or grouped, opening no segment, and a call's or an exchange's evidence opens only the segments holding its
-     records. An RPC capture's first brush, ranking or listing still pairs its calls over every segment, since a
-     call's request and response can lie in different ones, and nothing persists the pairs (P25); a focus on a busy
-     channel's calls gathers their records anew at every zoom, about 110 ms at 250,000 calls. A search reads the
-     overview, never a segment.
+     records. Since revision 412 the generation keeps an operation's records by segment, and a page or a zoom of them
+     reads their rows alone: a busy channel's zoom takes 4 to 9 ms after the first, where it took 123 to 167. An RPC
+     capture's first brush, ranking or listing still pairs its calls over every segment, since a call's request and
+     response can lie in different ones, and nothing persists the pairs (P25). A search reads the overview, never a
+     segment.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1357,6 +1363,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 412 was built and tested in the same Linux container: Debug and Release each ran **1,753 tests**, passing
+  **1,655 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests page through an RPC
+  channel whose process's calls alternate with another's in segments of ten records: each page of ten reads 11 rows
+  and the last 10, listing what one segment of the same records lists. The records gathered for the first page are the
+  ones the generation keeps, which a zoom of the channel counts as the one segment's zoom does; kept while among the
+  last four operations asked for, a policy's apart from another's, they are gathered anew after four others. An
+  exchange's buffers are kept too, and an operation's records are held by segment, each once, rows ascending. A probe,
+  removed before committing, measured the zooms and pages on a reopened session of 500,000 calls in Release, against
+  the same probe at revision 411. They caught each of 15 mutations; one written so that it no longer built was
+  rewritten until it did.
 
 - Revision 411 was built and tested in the same Linux container: Debug and Release each ran **1,751 tests**, passing
   **1,653 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests choose a TCP lane's

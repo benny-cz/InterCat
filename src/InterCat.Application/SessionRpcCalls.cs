@@ -558,10 +558,21 @@ public static class SessionRpcCalls
     }
 
     /// <summary>
-    /// The records an RPC channel, call or relationship key scopes, by segment name and row in the leased generation, for
-    /// an evidence page; null when the generation holds no such channel, call or relationship under the policy.
+    /// The records an RPC channel, call or relationship key scopes, by segment and row in the leased generation, for an
+    /// evidence page or a timeline focus: gathered once per generation from its pairs, and kept with them while the key is
+    /// among the last few asked for. Null when the generation holds no such channel, call or relationship under the policy.
     /// </summary>
-    internal static HashSet<(string Segment, int Row)>? RecordsOf(
+    internal static OperationRecords? RecordsOf(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        IReadOnlyList<SegmentReaderV1> segments,
+        string operationKey,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken) =>
+        SessionDerivationCache.For(manifest).Operation(operationKey, policy,
+            () => Gather(store, manifest, segments, operationKey, policy, cancellationToken));
+
+    private static OperationRecords? Gather(
         SessionStore store,
         SessionManifestV1 manifest,
         IReadOnlyList<SegmentReaderV1> segments,
@@ -575,8 +586,8 @@ public static class SessionRpcCalls
         {
             RpcPeerIndex linked = Peers(store, manifest, segments, cancellationToken);
             IReadOnlyList<ProcessInstance> instances = linked.Calls.Processes.Instances;
-            HashSet<(string Segment, int Row)> joined = [.. linked.LinkedRecords(link => RpcPeerEdges.Joins(link, instances, one, other, policy))
-                .Select(record => (linked.Calls.SegmentNames[record.Segment] ?? string.Empty, record.Row))];
+            OperationRecords joined = OperationRecords.Of(linked.LinkedRecords(link => RpcPeerEdges.Joins(link, instances, one, other, policy))
+                .Select(record => (linked.Calls.SegmentNames[record.Segment] ?? string.Empty, record.Row)));
             return joined.Count == 0 ? null : joined;
         }
 
@@ -609,7 +620,8 @@ public static class SessionRpcCalls
             }
         }
 
-        return [.. calls.RecordsOf(group, position).Select(record => (calls.SegmentNames[record.Segment] ?? string.Empty, record.Row))];
+        return OperationRecords.Of(calls.RecordsOf(group, position)
+            .Select(record => (calls.SegmentNames[record.Segment] ?? string.Empty, record.Row)));
     }
 
     /// <summary>

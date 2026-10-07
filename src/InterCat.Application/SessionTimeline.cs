@@ -410,9 +410,16 @@ public static class SessionTimelineQuery
             ? segment.Slice(SegmentColumnId.Direction)
             : default;
         using FocusRows.SegmentRows inFocus = rows.Of(segment);
-        for (int row = 0; row < segment.RowCount; row++)
+
+        // An operation's focus visits its own rows of the segment alone, none of a segment holding none of them: a call of
+        // a busy channel is counted from its records, not by testing every row beside them (P25).
+        bool operationFocus = inFocus.OperationRows is not null;
+        ReadOnlySpan<int> operationRows = operationFocus ? inFocus.OperationRows!.Value.Span : default;
+        int visits = operationFocus ? operationRows.Length : segment.RowCount;
+        for (int visit = 0; visit < visits; visit++)
         {
-            if ((row & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            if ((visit & 4095) == 0) cancellationToken.ThrowIfCancellationRequested();
+            int row = operationFocus ? operationRows[visit] : visit;
             if (times.SignedAt(row) is not { } nanoseconds || tally.Focused.ColumnOf(nanoseconds / 100) is not { } column
                 || !inFocus.Includes(row))
             {
@@ -575,11 +582,11 @@ internal sealed class FocusRows
     /// <summary>Whether each instance position is a focused owner; null when the focus names no owner.</summary>
     private readonly bool[]? members;
 
-    /// <summary>An operation focus's records by segment name and row; null for any other focus.</summary>
-    private readonly HashSet<(string Segment, int Row)>? operationRecords;
+    /// <summary>An operation focus's records by segment and row; null for any other focus.</summary>
+    private readonly OperationRecords? operationRecords;
 
     private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
-        TransportRelation? relation, int? channel, HashSet<(string Segment, int Row)>? operationRecords, EvidencePolicy policy,
+        TransportRelation? relation, int? channel, OperationRecords? operationRecords, EvidencePolicy policy,
         TimelineFocus focus)
     {
         mechanism = focus.Mechanism;
@@ -695,8 +702,8 @@ internal sealed class FocusRows
         }
 
         // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group:
-        // once they are paired, named without opening a segment (P25).
-        HashSet<(string Segment, int Row)>? operationRecords = focus.OperationKey is not { } operation ? null
+        // once they are paired, named without opening a segment, and kept for the generation's next zoom of them (P25).
+        OperationRecords? operationRecords = focus.OperationKey is not { } operation ? null
             : (HttpExchangeKeys.IsHttp(operation)
                 ? SessionHttpExchanges.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken)
                 : SessionRpcCalls.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken))
@@ -720,28 +727,13 @@ internal sealed class FocusRows
             TransportRelationIndex.EndsOf(segment, ends.Value.Span);
         }
 
-        // An operation's records in this segment, by row; a segment holding none of them includes no row.
-        bool[]? operationRows = null;
-        if (operationRecords is not null)
-        {
-            operationRows = new bool[segment.RowCount];
-            string name = segment.Published?.Name ?? string.Empty;
-            foreach ((string recordSegment, int row) in operationRecords)
-            {
-                if (string.Equals(recordSegment, name, StringComparison.Ordinal) && row < operationRows.Length)
-                {
-                    operationRows[row] = true;
-                }
-            }
-        }
-
         return new(
             this,
             channel is null ? null : SegmentBindings.ChannelsOf(segment, relations!),
             owners.Count > 0 ? SegmentBindings.OwnersOf(segment, processes!) : null,
             ends)
         {
-            OperationRows = operationRows,
+            OperationRows = operationRecords?.RowsIn(segment.Published?.Name ?? string.Empty),
             Segment = segment,
         };
     }
@@ -783,19 +775,17 @@ internal sealed class FocusRows
             ? throw new InvalidOperationException("Only a channel focus has ends.")
             : ends[row];
 
-        /// <summary>For an operation focus, whether each row of the segment is one of its records; null otherwise.</summary>
-        public bool[]? OperationRows { get; init; }
+        /// <summary>
+        /// For an operation focus, its records' rows of the segment, ascending, which alone are counted; null for any other
+        /// focus, whose every row is tested.
+        /// </summary>
+        public ReadOnlyMemory<int>? OperationRows { get; init; }
 
         /// <summary>The segment whose rows are tested, read for a focus narrowed to one mechanism or source direction.</summary>
         public required SegmentReaderV1 Segment { get; init; }
 
         public bool Includes(int row)
         {
-            if (OperationRows is { } operation && !operation[row])
-            {
-                return false;
-            }
-
             if (hasChannels && channels[row].Channel != scope.channel)
             {
                 return false;
