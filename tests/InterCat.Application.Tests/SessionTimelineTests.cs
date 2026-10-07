@@ -575,7 +575,7 @@ public sealed class SessionTimelineTests
             reopened.ReleaseSegmentReaders();
         }
 
-        // A focus resolves its process over every segment, and counts only what its interval meets, as without one.
+        // A focus resolves its process over the whole session, and counts only what its interval meets, as without one.
         ProcessInstanceId client = SessionOverviewProjector.Project(session.Store).Nodes.Single().Id;
         SessionStore focused = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
         SessionFocusedTimeline narrow = SessionTimelineQuery.Focused(focused, new TimeRange(2_050, 2_950), 10,

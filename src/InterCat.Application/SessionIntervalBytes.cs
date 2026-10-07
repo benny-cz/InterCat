@@ -205,9 +205,11 @@ public static class SessionIntervalByteQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        FocusRows rows = FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(null, [owner]), policy,
-            cancellationToken);
+        // Its rows are resolved over the whole generation, from the derivation or the checkpoint where one holds them, and
+        // measured only in the segments the interval meets (P25).
+        FocusRows rows = FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock),
+            new TimelineFocus(null, [owner]), policy, cancellationToken);
+        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
         var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
         int count = layout.Counts.Count;
         int directions = SessionTimelineQuery.LaneDirections.Count;
@@ -320,9 +322,9 @@ public static class SessionIntervalByteQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        FocusRows rows = FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(null, owners), policy,
-            cancellationToken);
+        FocusRows rows = FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock),
+            new TimelineFocus(null, owners), policy, cancellationToken);
+        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
         int[] laneOf = rows.LanesOf(owners);
         var machine = new TimelineColumns(interval, columns, tallyMechanisms: false);
         var lanes = new TimelineColumns(interval, laneColumns, tallyMechanisms: false);
@@ -440,7 +442,7 @@ public static class SessionIntervalByteQuery
 
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
-        _ = SessionSegments.SourceClock(store.Root, manifest)
+        SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
         Func<int, int, TransportBytes> bytesOf;
         int count;
@@ -455,7 +457,7 @@ public static class SessionIntervalByteQuery
         }
         else
         {
-            SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
+            SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
             var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
             TransportByteTally total = TallyLanes(segments, layout, mechanisms, cancellationToken);
             count = layout.Counts.Count;
@@ -614,15 +616,17 @@ public static class SessionIntervalByteQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
 
         // A process or channel scope reads its rows by the evidence rung's own rules, as the lanes that list them count
-        // them; one this generation cannot resolve is refused with the rung's reason rather than measured as nothing.
+        // them; one this generation cannot resolve is refused with the rung's reason rather than measured as nothing. Only
+        // the segments the interval meets are read (P25).
+        var generation = new GenerationSegments(store, manifest, clock);
         FocusRows? rows = scope.Owner is { } owner
-            ? FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(null, [owner]), policy, cancellationToken)
+            ? FocusRows.Resolve(store, manifest, generation, new TimelineFocus(null, [owner]), policy, cancellationToken)
             : scope.ChannelKey is { } key
-            ? FocusRows.Resolve(store, manifest, segments, clock, new TimelineFocus(key, []), policy, cancellationToken)
+            ? FocusRows.Resolve(store, manifest, generation, new TimelineFocus(key, []), policy, cancellationToken)
             : null;
+        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
         var layout = new TimelineColumns(interval, columns, tallyMechanisms: false);
         int count = layout.Counts.Count;
 

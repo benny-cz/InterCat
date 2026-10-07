@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 400 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 401 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 401 — a brush reads only the segments it meets (P25, §12.1 S3):**
+  - A brush's counts, its lanes' bytes and a time scope's byte and peer rankings opened every segment of a reopened
+    session. They now take the checkpoint's instances and channels and read only the segments the interval meets: a
+    1% brush's byte ranking at 1M rows fell from 99-133 ms to 10-23 ms.
 
 - **Revision 400 — a zoom reads only the segments it meets (P25, §12.1 S3/S4):**
   - The first zoom of a reopened session opened every segment and built every segment's tiles. It now reads each
@@ -1036,8 +1041,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - A live session still counts its overview from tiles until its writer finishes.
    - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
      Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers declare:
-     a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. A brush's counts, an
-     evidence page and a search still read every segment (P25).
+     a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since revision 401 a
+     brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the checkpoint's instances
+     and channels. The call ranking, a time scope's HTTP and RPC listings and an evidence page still read every
+     segment, and an RPC capture's first brush pairs its calls over every one (P25). A search reads the overview, never
+     a segment.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1290,6 +1298,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 401 was built and tested in the same Linux container: Debug and Release each ran **1,722 tests**, passing
+  **1,623 with 4 skipped**; 94 failures are the ones revision 361's baseline lists. The 95th, `I14: a finished session
+  keeps each overview column's bytes per mechanism…`, gave two sends session times their readings could not give, so
+  the lanes' read of the extent met no segment holding them; they now have their readings' times, and the Application
+  tests then passed all 323 in both. Its tests reopen a six-segment session from its checkpoint and find a brush's
+  counts, its lanes' and scopes' bytes, a focus and a time scope's byte and peer rankings opening only the segments the
+  interval meets - one, two across a boundary, one ending at a segment's first record, two starting at one's last, none
+  past every record, all six for the whole - whether the channels or the instances are asked for first, and answering
+  as one segment of the same records does; a session without a checkpoint derives from every segment once, and a
+  later brush opens only what it meets; an RPC capture's first brush pairs its calls over all five of its segments,
+  and a later one opens only the two its interval meets. On a reopened session of 1,000,000 rows in 20 segments a
+  brush over a hundredth of it opened 1 segment where it opened 20: its counts took 11-64 ms (39-105 ms before), its
+  bytes 5-26 ms (20-126 ms), a process's bytes 9-24 ms (33-53 ms), the byte ranking 10-23 ms (99-133 ms) and the peer
+  ranking 12-42 ms (70-175 ms). They caught each of 14 mutations; the one that took the instances from every segment
+  instead of the checkpoint first survived, since the first read asked for the channels, which bring the instances
+  with them, and each brush is now read both ways.
 
 - Revision 400 was built and tested in the same Linux container: Debug and Release each ran **1,720 tests**, passing
   **1,622 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its first run failed `§6.2: a

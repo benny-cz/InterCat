@@ -63,13 +63,14 @@ public static class SessionIntervalQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so an interval cannot be placed.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
-        SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
-        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+
+        // A brush counts only the segments its interval meets, with the instances and channels the derivation or the
+        // checkpoint holds: a reopened session's first brush opened every segment, wherever it was (P25). Only a
+        // derivation neither holds opens the rest.
+        var generation = new GenerationSegments(store, manifest, clock);
+        ProcessInstanceIndex processes = generation.Processes(cancellationToken);
+        TransportRelationIndex relations = generation.Relations(cancellationToken);
+        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
 
         // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits. Each
         // gets a dense slot, so a row's count is an array index rather than a key hashed per row (R11).
@@ -133,7 +134,7 @@ public static class SessionIntervalQuery
         long rpcRecords = 0;
         if (native is { } range && RpcPeerEdges.Collected(ledger))
         {
-            foreach (RpcPeerEdge edge in RpcPeerEdges.Of(derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken), policy, range))
+            foreach (RpcPeerEdge edge in RpcPeerEdges.Of(generation.RpcPeers(cancellationToken), policy, range))
             {
                 if (edge.Records > 0)
                 {

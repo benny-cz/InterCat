@@ -427,12 +427,13 @@ public sealed class DerivationCheckpointOverviewTests
         }
 
         // A send that declared a size it did not record, and one of nothing: each is counted, and neither summed as a size.
+        // Their session times are the ones the clock gives their readings, as every writer makes them (I3).
         Publish(session.Store,
         [
             Transfer(900, ObservationKind.Send, AccountingSide.SendSide, null, 100, 9_001)
-                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 450 },
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 90_000 },
             Transfer(901, ObservationKind.Send, AccountingSide.SendSide, 0, 100, 9_002)
-                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 460 },
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 90_100 },
         ]);
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         var extent = new TimeRange(overview.Timeline[0].Interval.StartTicks, overview.Timeline[^1].Interval.EndTicks);

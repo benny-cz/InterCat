@@ -1,0 +1,185 @@
+using InterCat.Analysis.Tests;
+using InterCat.Application;
+using InterCat.Domain;
+using InterCat.Storage;
+using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
+
+namespace InterCat.Application.Tests;
+
+/// <summary>
+/// §12.1 S3's reads of one interval: a brush's counts, its byte rows, a focus's timeline and a time scope's byte and peer
+/// rankings open only the segments the interval meets, with the instances and channels the checkpoint or the derivation
+/// already holds, and answer as a read of every segment does (P25). They clear the shared derivation cache, so they run
+/// alone.
+/// </summary>
+[Collection(SharedDerivationCache.Name)]
+public sealed class IntervalSegmentReadTests
+{
+    private const string ClientEnd = "127.0.0.1:50000";
+    private const string ServerEnd = "127.0.0.1:8080";
+
+    [Fact(DisplayName = "§12.1: a brush's counts, an interval's bytes, a focus and a time scope's byte and peer rankings open only the segments the interval meets, and answer as one segment of the same records does")]
+    public void AnIntervalOpensOnlyTheSegmentsItMeets()
+    {
+        // Six hundred records ten ticks apart in six segments of a hundred, so segment k holds ticks 1,000k to 1,000k + 990;
+        // its twin holds the same records in one segment, which every query reads.
+        ObservationRowV1[] rows = Rows();
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 100);
+        Publish(twin.Store, rows);
+        Assert.Equal(6, SessionSegments.Names(split.Store.Current!).Count);
+        Assert.Single(SessionSegments.Names(twin.Store.Current!));
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(twin.Store));
+        ProcessInstanceId client = whole.Processes.Single(node => node.ProcessId == 100).Id;
+        ProcessInstanceId server = whole.Processes.Single(node => node.ProcessId == 200).Id;
+        string channel = whole.Channels.Single().Key;
+
+        // A session no checkpoint names derives its instances and channels from every segment once; a brush after that,
+        // from a reader that has opened none, opens only what it meets.
+        var brushed = new TimeRange(2_050, 2_950);
+        SessionDerivationCache.Clear();
+        SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        Assert.Equal(Answers(twin.Store, brushed, client, server, channel), Answers(first, brushed, client, server, channel));
+        Assert.Equal(6, first.SegmentReaderCache.Entries);
+        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        Assert.Equal(Answers(twin.Store, brushed, client, server, channel), Answers(later, brushed, client, server, channel));
+        Assert.Equal(1, later.SegmentReaderCache.Entries);
+        first.ReleaseSegmentReaders();
+        later.ReleaseSegmentReaders();
+
+        // A finished session's checkpoint holds them, and a reopened viewer's every read of an interval opens only the
+        // segments it meets.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+        foreach ((TimeRange brush, int opened) in new[]
+        {
+            (brushed, 1),
+            (new TimeRange(1_950, 2_050), 2),
+
+            // An interval ending where a segment's first record is leaves it shut; one starting at its last opens it.
+            (new TimeRange(2_050, 3_000), 1),
+            (new TimeRange(2_990, 3_010), 2),
+            (new TimeRange(6_000, 9_000), 0),
+            (new TimeRange(-500, 10_000), 6),
+        })
+        {
+            // Whichever a reader asks for first, the channels or the instances, both come from the checkpoint.
+            foreach (bool channelsFirst in new[] { true, false })
+            {
+                SessionDerivationCache.Clear();
+                SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+                string answered = Answers(reopened, brush, client, server, channel, channelsFirst);
+                Assert.Equal(opened, reopened.SegmentReaderCache.Entries);
+                Assert.Equal(Answers(twin.Store, brush, client, server, channel), answered);
+                reopened.ReleaseSegmentReaders();
+            }
+        }
+
+        // The answers are the records': the brush holds 45 of the client's sends and 45 of the server's receives, 100 B each.
+        SessionByteMeasures ranked = SessionByteRanking.Measure(twin.Store, brushed);
+        Assert.Equal(new TransportBytes(4_500, 45, 0, 0, 0, 0), ranked.ByProcess[client]);
+        Assert.Equal(new TransportBytes(0, 0, 0, 4_500, 45, 0), ranked.ByProcess[server]);
+        SessionIntervalCounts counted = SessionIntervalQuery.Count(twin.Store, brushed);
+        Assert.Equal((90, 90), (counted.ObservedRows, counted.ChannelRecords[channel]));
+    }
+
+    [Fact(DisplayName = "§12.1: a brush on a capture of RPC calls pairs them over every segment once, and a later brush opens only the segments it meets")]
+    public void ABrushPairsRpcCallsOnce()
+    {
+        // The service control manager's linked calls in three segments of six records, cut as they arrived: the first spans
+        // ticks 1 to 210, the second 105 to 340 and the third 102 to 330. Its twin holds them in one.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 6, fields: fields, coverage: RpcLedger(alpc: true));
+        Publish(twin.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        Assert.Equal((3, 2), (SessionSegments.Names(split.Store.Current!).Count, SessionSegments.FieldNames(split.Store.Current!).Count));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+        string edge = Assert.Single(SessionOverviewProjector.Project(twin.Store).Edges, edge => edge.Mechanism == Mechanism.Rpc).Key;
+
+        // A call's request and response can lie in different segments, so the first brush pairs the calls over all of
+        // them and their source fields, even with the checkpoint's instances; a later one reads the pairs it made, and
+        // only the segments it meets: the third call's, from tick 300, lie in the second and the third.
+        var early = new TimeRange(0, 150);
+        var late = new TimeRange(250, 400);
+        SessionDerivationCache.Clear();
+        SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        Assert.Equal(4, SessionIntervalQuery.Count(first, early).EdgeRecords[edge]);
+        Assert.Equal(5, first.SegmentReaderCache.Entries);
+        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        SessionIntervalCounts counted = SessionIntervalQuery.Count(later, late);
+        Assert.Equal(2, later.SegmentReaderCache.Entries);
+        Assert.Equal(4, counted.EdgeRecords[edge]);
+        Assert.Equal(Text(SessionIntervalQuery.Count(twin.Store, late).EdgeRecords), Text(counted.EdgeRecords));
+        first.ReleaseSegmentReaders();
+        later.ReleaseSegmentReaders();
+    }
+
+    /// <summary>Every interval read of the session, as one comparable text: its counts, byte rows, focus and rankings.</summary>
+    private static string Answers(
+        SessionStore store,
+        TimeRange interval,
+        ProcessInstanceId client,
+        ProcessInstanceId server,
+        string channel,
+        bool channelsFirst = true)
+    {
+        // A channel's end is measured before the counts, which ask for the instances first, or after them.
+        IntervalByteScope channelEnd = new() { ChannelKey = channel, End = 1 };
+        SessionIntervalByteMeasures? end = channelsFirst ? SessionIntervalByteQuery.Measure(store, interval, 10, channelEnd) : null;
+        SessionIntervalCounts counts = SessionIntervalQuery.Count(store, interval);
+        end ??= SessionIntervalByteQuery.Measure(store, interval, 10, channelEnd);
+        SessionByteMeasures bytes = SessionByteRanking.Measure(store, interval);
+        SessionPeerMeasures peers = SessionPeerRanking.Measure(store, interval);
+        SessionOwnerByteMeasures lanes = SessionIntervalByteQuery.MeasureByOwner(store, interval, 10, 10, [client, server]);
+        SessionDirectionByteMeasures directions = SessionIntervalByteQuery.MeasureByDirection(store, interval, 10, client);
+        SessionMechanismByteMeasures mechanisms = SessionIntervalByteQuery.MeasureByMechanism(
+            store, interval, 10, [Mechanism.Tcp, Mechanism.ProcessLifecycle]);
+        SessionFocusedTimeline focused = SessionTimelineQuery.Focused(store, interval, 10, new TimelineFocus(null, [client]));
+        string[] parts =
+        [
+            $"{counts.ObservedRows} {counts.GraphRows}",
+            Text(counts.EdgeRecords),
+            Text(counts.ChannelRecords),
+            Text(counts.ProcessRecords.ToDictionary(pair => pair.Key, pair => string.Join(",", pair.Value))),
+            Text(bytes.ByProcess),
+            Text(bytes.ByChannelEnd),
+            bytes.Unattributed.ToString(),
+            Text(peers.ByProcess),
+            Text(peers.ByGroup),
+            $"{peers.WithPeers} {peers.Unattributed}",
+            Columns(SessionIntervalByteQuery.Measure(store, interval, 10, IntervalByteScope.Whole)),
+            Columns(SessionIntervalByteQuery.Measure(store, interval, 10, new() { Owner = server })),
+            Columns(end),
+            Columns(lanes.Machine),
+            .. lanes.Lanes.Select(Columns),
+            .. directions.Lanes.Select(Columns),
+            .. mechanisms.Lanes.Select(Columns),
+            string.Join(",", focused.Focus.Select(bucket => bucket.ObservationCount)),
+            string.Join(",", focused.Whole.Buckets.Select(bucket => bucket.ObservationCount)),
+        ];
+        return string.Join(" | ", parts);
+    }
+
+    private static string Columns(SessionIntervalByteMeasures measures) => string.Join(",", measures.Columns);
+
+    private static string Text<TKey, TValue>(IReadOnlyDictionary<TKey, TValue> values)
+        where TKey : notnull =>
+        string.Join("; ", values.Select(pair => $"{pair.Key}={pair.Value}").Order(StringComparer.Ordinal));
+
+    /// <summary>
+    /// The client's and the server's lifecycle records, then sends of 100 B from the client at even rows and the
+    /// server's receives of them at odd rows, all on one connection: row r at tick 10r.
+    /// </summary>
+    private static ObservationRowV1[] Rows() =>
+    [
+        Timed(Lifecycle(0, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+        Timed(Lifecycle(10, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+        .. Enumerable.Range(2, 598).Select(row => Timed(row % 2 == 0
+            ? Transfer(row * 10L, ObservationKind.Send, AccountingSide.SendSide, 100, 100, (ulong)(row + 1)).Between(ClientEnd, ServerEnd)
+            : Transfer(row * 10L, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, (ulong)(row + 1)).Between(ServerEnd, ClientEnd))),
+    ];
+
+    private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+}

@@ -142,11 +142,15 @@ public static class SessionByteRanking
             return answered;
         }
 
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
-        TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+        // A time scope reads only the segments holding a reading in it, with the instances and channels the derivation or
+        // the checkpoint holds (P25); the whole session reads every segment.
+        var generation = new GenerationSegments(store, manifest, clock);
+        ProcessInstanceIndex processes = generation.Processes(cancellationToken);
+        TransportRelationIndex relations = generation.Relations(cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
+        SegmentReaderV1[] segments = native is { } readings
+            ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
+            : interval is null ? generation.All : [];
 
         // The channels the overview draws, each with a dense slot and the instance holding each of its ends.
         int instances = processes.Instances.Count;

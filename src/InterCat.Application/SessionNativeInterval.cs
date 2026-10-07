@@ -1,4 +1,5 @@
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Application;
 
@@ -34,4 +35,31 @@ internal static class SessionNativeInterval
             }
         }
     }
+
+    /// <summary>
+    /// The segments of a generation that can hold a row whose session time the interval holds, opened in the
+    /// generation's order. Any other holds none (I3), and is passed over by the readings its header declares, or its open
+    /// reader's, without being opened: a query of an interval costs what the interval holds, not what the session does
+    /// (P25, §10.2).
+    /// </summary>
+    public static SegmentReaderV1[] Segments(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimeRange interval,
+        SourceClockDescriptor clock) =>
+        Segments(store, manifest, Readings(interval, clock));
+
+    /// <summary>The segments of a generation holding a native reading in [first, end), opened in the generation's order.</summary>
+    public static SegmentReaderV1[] Segments(SessionStore store, SessionManifestV1 manifest, (long First, long End) readings) =>
+        [.. SessionSegments.Names(manifest)
+            .Where(name => Meets(SessionSegments.NativeRange(store, manifest, name), readings))
+            .Select(name => SessionSegments.Open(store, manifest, name))];
+
+    /// <summary>The open segments holding a native reading in [first, end), in their order.</summary>
+    public static SegmentReaderV1[] Of(IEnumerable<SegmentReaderV1> segments, (long First, long End) readings) =>
+        [.. segments.Where(segment => Meets((segment.MinNativeTicks, segment.MaxNativeTicks), readings))];
+
+    /// <summary>Whether a segment whose rows' readings run from its first to its last, both held, has one in [first, end).</summary>
+    public static bool Meets((long Min, long Max) span, (long First, long End) readings) =>
+        span.Min < readings.End && span.Max >= readings.First;
 }

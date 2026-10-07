@@ -265,15 +265,11 @@ public static class SessionTimelineQuery
             ?? throw new InvalidDataException("This generation names no source clock, so its timeline cannot be placed.");
         // A zoom reads only the segments its interval meets, by the readings their headers declare: the first zoom of a
         // reopened session opened every segment and built every segment's tiles, wherever it was (P25, S4). A focus resolves
-        // its rows over the whole session, so it opens every segment, and counts only those its interval meets.
-        (long first, long end) = SessionNativeInterval.Readings(interval, clock);
-        IReadOnlyList<string> names = SessionSegments.Names(manifest);
-        SegmentReaderV1[] segments = [.. (focus is null
-                ? names.Where(name => Meets(SessionSegments.NativeRange(store, manifest, name)))
-                : names)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
-        FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, segments, clock, focus, policy, cancellationToken);
-        SegmentReaderV1[] met = [.. segments.Where(segment => Meets((segment.MinNativeTicks, segment.MaxNativeTicks)))];
+        // its rows over the whole session, from the derivation or the checkpoint where one holds them, and is counted only
+        // in the segments its interval meets.
+        FocusRows? rows = focus is null ? null
+            : FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock), focus, policy, cancellationToken);
+        SegmentReaderV1[] met = SessionNativeInterval.Segments(store, manifest, interval, clock);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         string? laneProblem = !groupFocus ? null
@@ -343,9 +339,6 @@ public static class SessionTimelineQuery
             OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture)),
             ProcessLaneProblem = laneProblem,
         };
-
-        // Whether a segment's rows, by the readings they span, can fall in the interval.
-        bool Meets((long Min, long Max) span) => span.Min < end && span.Max >= first;
     }
 
     /// <summary>
@@ -595,23 +588,23 @@ internal sealed class FocusRows
     /// <summary>The one admitted paired incarnation a channel focus reads; null for an owner-only focus.</summary>
     public TransportRelation? Relation { get; }
 
+    /// <summary>
+    /// The rows a focus names, resolved over the whole generation: its instances and channels as the derivation or the
+    /// checkpoint holds them, opening no segment when one does (P25), and an operation's records from every segment.
+    /// </summary>
     public static FocusRows Resolve(
         SessionStore store,
         SessionManifestV1 manifest,
-        SegmentReaderV1[] segments,
-        SourceClockDescriptor clock,
+        GenerationSegments generation,
         TimelineFocus focus,
         EvidencePolicy policy,
         CancellationToken cancellationToken)
     {
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest)
-            .Select(name => SessionSegments.Open(store, manifest, name))];
-        SessionDerivation derivation = SessionDerivationCache.For(manifest);
         ProcessInstanceIndex? processes = null;
         HashSet<int> owners = [];
         if (focus.OwnerProcesses.Count > 0)
         {
-            processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
+            processes = generation.Processes(cancellationToken);
             var indexes = new Dictionary<ProcessInstanceId, int>(processes.Instances.Count);
             for (int index = 0; index < processes.Instances.Count; index++)
             {
@@ -637,7 +630,7 @@ internal sealed class FocusRows
         if (focus.ChannelKey is { } key && TransportConnection.IsKey(key))
         {
             // A one-sided connection is one process's channel: its rows are the ones naming its channel, all at one end.
-            relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            relations = generation.Relations(cancellationToken);
             TransportConnection[] held = [.. relations.OneSided.Where(candidate =>
                 candidate.StableKey == key && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
             if (held.Length != 1)
@@ -649,7 +642,7 @@ internal sealed class FocusRows
         }
         else if (focus.ChannelKey is { } pairedKey)
         {
-            relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
+            relations = generation.Relations(cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(candidate =>
                 candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == pairedKey
                 && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
@@ -666,8 +659,8 @@ internal sealed class FocusRows
         // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group.
         HashSet<(string Segment, int Row)>? operationRecords = focus.OperationKey is not { } operation ? null
             : (HttpExchangeKeys.IsHttp(operation)
-                ? SessionHttpExchanges.RecordsOf(store, manifest, segments, operation, policy, cancellationToken)
-                : SessionRpcCalls.RecordsOf(store, manifest, segments, operation, policy, cancellationToken))
+                ? SessionHttpExchanges.RecordsOf(store, manifest, generation.All, operation, policy, cancellationToken)
+                : SessionRpcCalls.RecordsOf(store, manifest, generation.All, operation, policy, cancellationToken))
                 ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
 
         return new(processes, relations, owners, relation, channel, operationRecords, policy);
