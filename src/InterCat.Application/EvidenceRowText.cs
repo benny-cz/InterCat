@@ -98,16 +98,7 @@ public static class EvidenceRowText
         if (row.ByteValue is null) return Absent(row.ByteAvailability);
         if (Size(row, culture) is not { } size) return null;
         if (row.ByteDomain is not { } domain) return size;
-        return size + domain switch
-        {
-            ByteDomain.TransportObserved => " carried by the transport",
-            ByteDomain.RequestedIo => " requested by an I/O",
-            ByteDomain.CompletedIo => " completed by an I/O",
-            ByteDomain.ApplicationPayload => " of the application's own message",
-            ByteDomain.CapturedContent => " of captured content",
-            ByteDomain.Capacity => ", a capacity rather than a transfer",
-            _ => string.Empty,
-        };
+        return size + (domain == ByteDomain.Capacity ? ", " : " ") + MeasurementText.Domain(domain);
     }
 
     /// <summary>

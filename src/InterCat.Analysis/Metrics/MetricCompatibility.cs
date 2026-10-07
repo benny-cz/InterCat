@@ -393,16 +393,28 @@ public static class MetricCompatibility
         _ => throw new ArgumentOutOfRangeException(nameof(accounting), accounting, "An accounting side is a §23 code."),
     };
 
-    /// <summary>What an accounting means, in one line a caller can show beside a total.</summary>
-    public static string Describe(AccountingSide accounting) => accounting switch
+    /// <summary>
+    /// An accounting as a label names it, in the window's words (R5): "sender-accounted", "receiver-accounted", "endpoint
+    /// activity" or "canonical owner"; one this version does not know by its number.
+    /// </summary>
+    public static string Label(AccountingSide accounting) => accounting switch
     {
-        AccountingSide.SendSide => "sender-accounted: each transfer is measured at its sending end",
-        AccountingSide.ReceiveSide => "receiver-accounted: each transfer is measured at its receiving end",
+        AccountingSide.SendSide => "sender-accounted",
+        AccountingSide.ReceiveSide => "receiver-accounted",
+        AccountingSide.EndpointActivity => "endpoint activity",
+        AccountingSide.CanonicalOwner => "canonical owner",
+        _ => string.Create(System.Globalization.CultureInfo.InvariantCulture, $"accounting {(int)accounting}"),
+    };
+
+    /// <summary>What an accounting means, in one line a caller can show beside a total: its label, then what it measures.</summary>
+    public static string Describe(AccountingSide accounting) => Label(accounting) + accounting switch
+    {
+        AccountingSide.SendSide => ": each transfer is measured at its sending end",
+        AccountingSide.ReceiveSide => ": each transfer is measured at its receiving end",
         AccountingSide.EndpointActivity =>
-            "endpoint activity: every measurement at the endpoint that recorded it, so a local transfer counts at both ends",
-        AccountingSide.CanonicalOwner =>
-            "canonical owner: each proven transfer association is measured once, by its owning contribution",
-        _ => accounting.ToString(),
+            ": every measurement at the endpoint that recorded it, so a local transfer counts at both ends",
+        AccountingSide.CanonicalOwner => ": each proven transfer association is measured once, by its owning contribution",
+        _ => string.Empty,
     };
 
     /// <summary>

@@ -1042,15 +1042,16 @@ internal static class MetricCommand
             document.FromLastKnownGood
                 ? $"{ConsoleUi.Count(document.Generation)} (the retained last-known-good)"
                 : ConsoleUi.Count(document.Generation));
-        ConsoleUi.Field("Basis", Words(request.Basis.ToString()));
+        // Each in the words the window says it in (R5); the JSON keeps the names --basis, --byte-domain and --side take.
+        ConsoleUi.Field("Basis", MeasurementText.Basis(request.Basis));
         if (request.ByteDomain is { } domain)
         {
-            ConsoleUi.Field("Byte domain", domain.ToString());
+            ConsoleUi.Field("Byte domain", MeasurementText.Domain(domain));
         }
 
         if (request.AccountingSide is { } side)
         {
-            ConsoleUi.Field("Accounting", $"{side} - {MetricCompatibility.Describe(side)}");
+            ConsoleUi.Field("Accounting", MetricCompatibility.Describe(side));
         }
 
         ConsoleUi.Field("Scope", Scope(result, document.Specification.Interval is { WholeRecording: true }));
@@ -1307,13 +1308,15 @@ internal static class MetricCommand
         }
 
         ConsoleUi.Line();
-        ConsoleUi.Line($"  Contributions in {result.Request.ByteDomain}, by the side each record measured:");
+        ConsoleUi.Line(result.Request.ByteDomain is { } domain and not ByteDomain.Capacity
+            ? $"  Contributions of bytes {MeasurementText.Domain(domain)}, by the side each record measured:"
+            : "  Contributions, by the side each record measured:");
         ConsoleUi.Table(
             ["Side", "Taken", "Known", "Unknown", "Bytes"],
             [
                 .. document.Contributions.BySide.Select(side => new[]
                 {
-                    side.Side,
+                    Enum.TryParse(side.Side, out AccountingSide measured) ? MetricCompatibility.Label(measured) : side.Side,
                     side.Taken ? "yes" : "no",
                     ConsoleUi.Count(side.Known),
                     ConsoleUi.Count(side.Unknown),

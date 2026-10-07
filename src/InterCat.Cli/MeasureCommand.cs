@@ -450,7 +450,7 @@ internal static partial class MeasureCommand
         ConsoleUi.Line();
         ConsoleUi.Table(["Criterion", "Counted", "Measured", "Result"], criteriaRows);
         ConsoleUi.Line();
-        ConsoleUi.Field("Computed tier", run.Coverage.Assessment.Tier.ToString());
+        ConsoleUi.Field("Computed tier", CapabilityText.Tier(run.Coverage.Assessment.Tier));
         foreach (string gap in run.Coverage.Assessment.Gaps)
         {
             ConsoleUi.Bullet(gap);
@@ -506,7 +506,7 @@ internal static partial class MeasureCommand
                     ? coverage.Assessment.Gaps.Count == 0 ? CheckOutcome.Passed : CheckOutcome.Inconclusive
                     : CheckOutcome.NotAttempted,
                 network
-                    ? $"Measured against {fixtureId}: tier {coverage.Assessment.Tier}."
+                    ? $"Measured against {fixtureId}: tier {CapabilityText.Tier(coverage.Assessment.Tier)}."
                     : "No truth workload targets this source in this run.",
                 network ? [fixtureId] : [],
                 provider.Enabled ? null : provider.FailureReason));

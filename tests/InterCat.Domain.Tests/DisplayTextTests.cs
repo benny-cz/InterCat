@@ -77,6 +77,20 @@ public sealed class DisplayTextTests
         ]);
     }
 
+    [Fact(DisplayName = "R5: a measurement's basis and byte domain each read in one set of words, an unknown one by its number")]
+    public void AMeasurementsBasisAndDomainReadInWords()
+    {
+        Assert.Equal(["source observations", "logical operations", "resource topology"],
+            Enum.GetValues<AnalysisBasis>().Select(MeasurementText.Basis));
+        Assert.Equal("basis 9", MeasurementText.Basis((AnalysisBasis)9));
+        Assert.Equal(
+        [
+            "carried by the transport", "requested by an I/O", "completed by an I/O", "of the application's own message",
+            "of captured content", "a capacity rather than a transfer",
+        ], Enum.GetValues<ByteDomain>().Select(MeasurementText.Domain));
+        Assert.Equal("byte domain 9", MeasurementText.Domain((ByteDomain)9));
+    }
+
     [Fact(DisplayName = "R5: a direction reads as one word, one its source never stated as unknown and one none applies to as no data direction")]
     public void ADirectionReadsAsOneWord()
     {

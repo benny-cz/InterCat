@@ -63,6 +63,12 @@ public sealed class EvidenceRowTextTests
         Assert.Equal("1,024 B carried by the transport", EvidenceRowText.SizeWithDomain(
             receive with { ByteValue = 1_024, ByteAvailability = FieldAvailability.Present, ByteDomain = ByteDomain.TransportObserved }, Invariant));
 
+        // A capacity is set apart from its size, since it moved nothing; any other domain says which bytes were counted.
+        Assert.Equal("1,024 B, a capacity rather than a transfer", EvidenceRowText.SizeWithDomain(
+            receive with { ByteValue = 1_024, ByteAvailability = FieldAvailability.Present, ByteDomain = ByteDomain.Capacity }, Invariant));
+        Assert.Equal("1,024 B of the application's own message", EvidenceRowText.SizeWithDomain(
+            receive with { ByteValue = 1_024, ByteAvailability = FieldAvailability.Present, ByteDomain = ByteDomain.ApplicationPayload }, Invariant));
+
         // A size said to be present that the record does not hold is not recorded; one that does not apply is not mentioned.
         Assert.Equal("size not recorded", EvidenceRowText.Size(receive with { ByteAvailability = FieldAvailability.Present }, Invariant));
         Assert.Equal("not recorded", EvidenceRowText.SizeWithDomain(receive with { ByteAvailability = FieldAvailability.Present }, Invariant));

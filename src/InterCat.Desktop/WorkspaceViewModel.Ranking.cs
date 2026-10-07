@@ -20,9 +20,9 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
     public bool OpensBasis { get; init; }
 
     /// <summary>The heading above the first choice on a basis (§5.3's `EN-Basis`).</summary>
-    public string BasisHeading => RankingMetrics.BasisOf(Metric) == AnalysisBasis.LogicalOperations
-        ? "LOGICAL OPERATIONS · RPC CALLS"
-        : "SOURCE OBSERVATIONS";
+    public string BasisHeading => RankingMetrics.BasisOf(Metric) is var basis && basis == AnalysisBasis.LogicalOperations
+        ? MeasurementText.Basis(basis).ToUpperInvariant() + " · RPC CALLS"
+        : MeasurementText.Basis(basis).ToUpperInvariant();
 
     public string AccessibleName => Metric switch
     {
@@ -193,10 +193,11 @@ public sealed partial class WorkspaceViewModel
     public string RankingBasis => RankingMetrics.BasisOf(rankBy) == AnalysisBasis.LogicalOperations ? "operations" : "observations";
 
     /// <summary>The basis in full, for the caption's tooltip and a screen reader.</summary>
-    public string RankingBasisDetail => RankingMetrics.BasisOf(rankBy) == AnalysisBasis.LogicalOperations
-        ? "Basis: logical operations. Each RPC call is paired from its start and stop records (rpc-call-operation-v1) and "
-            + "counted by the record that puts it in scope; the records beneath a call add no operation."
-        : "Basis: source observations. Each record counts as the capture recorded it, as the rung's own totals do.";
+    public string RankingBasisDetail => RankingMetrics.BasisOf(rankBy) is var basis && basis == AnalysisBasis.LogicalOperations
+        ? $"Basis: {MeasurementText.Basis(basis)}. Each RPC call is paired from its start and stop records "
+            + "(rpc-call-operation-v1) and counted by the record that puts it in scope; the records beneath a call add no "
+            + "operation."
+        : $"Basis: {MeasurementText.Basis(basis)}. Each record counts as the capture recorded it, as the rung's own totals do.";
 
     /// <summary>Whether the rail states what a ranking measures, or why it does not rank yet, or what a rate divides by.</summary>
     public bool ShowsRankingNote => ShowsRankingChoice && (rankBy != RankingMetric.Records || (perSecond && OffersPerSecond));

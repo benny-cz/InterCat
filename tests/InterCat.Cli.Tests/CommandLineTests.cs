@@ -823,6 +823,24 @@ public sealed class CommandLineTests : IDisposable
         Assert.Contains("100 #2", processes, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R5: icat metric names its basis, byte domain and accounting in the words the window uses, never by the enumeration")]
+    public async Task AMetricNamesWhatItCountsInWords()
+    {
+        (InterCatExitCode code, string answer, string said) = await Run("metric", session.Path, "--metric", "bytes-sent",
+            "--byte-domain", "TransportObserved", "--side", "SendSide");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Basis +source observations\r?$", answer);
+        Assert.Matches(@"(?m)^  Byte domain +carried by the transport\r?$", answer);
+        Assert.Matches(@"(?m)^  Accounting +sender-accounted: each transfer is measured at its sending end\r?$", answer);
+
+        // The records' sides, the one taken and the one left out, are named as the accounting is.
+        Assert.Matches(@"(?m)^  Contributions of bytes carried by the transport, by the side each record measured:\r?$", answer);
+        Assert.Matches(@"(?m)^  sender-accounted +yes +1 +0 +64 B\r?$", answer);
+        Assert.Matches(@"(?m)^  receiver-accounted +no +1 +0 +64 B\r?$", answer);
+        foreach (string name in new[] { "SourceObservations", "Source observations", "TransportObserved", "SendSide", "ReceiveSide" })
+            Assert.DoesNotContain(name, answer, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R5: icat operations, exchanges and processes say why a group belongs to no process, in the window's words")]
     public async Task AnUnattributedGroupSaysWhyInWords()
     {

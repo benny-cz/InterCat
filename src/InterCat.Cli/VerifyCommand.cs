@@ -198,7 +198,7 @@ internal static class VerifyCommand
             ConsoleUi.Success(
                 $"Verified {truth.Count} truth records against {observations.Count} observations; "
                 + $"wrote {scoped.Count} scoped observations.");
-            ConsoleUi.Field("Computed tier", coverage.Assessment.Tier.ToString());
+            ConsoleUi.Field("Computed tier", CapabilityText.Tier(coverage.Assessment.Tier));
             ConsoleUi.Field(
                 "Excluded unrelated records",
                 (observations.Count - scoped.Count).ToString(CultureInfo.CurrentCulture));
