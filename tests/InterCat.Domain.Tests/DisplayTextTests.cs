@@ -76,4 +76,12 @@ public sealed class DisplayTextTests
             CapabilityText.Tier((CapabilityTier)9), CapabilityText.Overhead((OverheadClass)0),
         ]);
     }
+
+    [Fact(DisplayName = "R5: a direction reads as one word, one its source never stated as unknown and one none applies to as no data direction")]
+    public void ADirectionReadsAsOneWord()
+    {
+        Assert.Equal(["unknown direction", "outbound", "inbound", "bidirectional", "no data direction"],
+            Enum.GetValues<Direction>().Select(ObservationText.DirectionOf));
+        Assert.Equal("direction 9", ObservationText.DirectionOf((Direction)9));
+    }
 }

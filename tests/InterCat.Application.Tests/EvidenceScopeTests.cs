@@ -74,8 +74,11 @@ public sealed class EvidenceScopeTests
         LadderRow channel = Assert.Single(LadderProjection.Project(Snapshot, ladder.Current).Rows);
         Assert.Equal("TCP · paired endpoints; direction varies by observation", channel.Detail);
 
-        WorkspaceSnapshot outbound = Snapshot with { Channels = [Snapshot.Channels[0] with { Direction = Direction.Outbound }] };
-        Assert.Equal("TCP · outbound", Assert.Single(LadderProjection.Project(outbound, ladder.Current).Rows).Detail);
+        // Every other direction in the one word the timeline's lanes use too, and a code no version knows by its number.
+        Assert.Equal(["TCP · outbound", "TCP · inbound", "TCP · bidirectional", "TCP · no data direction", "TCP · direction 9"],
+            new[] { Direction.Outbound, Direction.Inbound, Direction.Bidirectional, Direction.DirectionNotApplicable, (Direction)9 }
+                .Select(direction => Assert.Single(LadderProjection.Project(
+                    Snapshot with { Channels = [Snapshot.Channels[0] with { Direction = direction }] }, ladder.Current).Rows).Detail));
     }
 
     [Fact(DisplayName = "§6.5: a process whose executable was not witnessed is named by its PID once")]

@@ -3825,15 +3825,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return worst;
     }
 
-    /// <summary>The name an L2 source-direction row, its selector entry and its table scope share.</summary>
-    internal static string DirectionLabel(Direction direction) => direction switch
+    /// <summary>
+    /// The name an L2 source-direction row, its selector entry and its table scope share: the direction's one word, as a
+    /// label (R5), so a direction the source never stated is unknown, never "no data direction".
+    /// </summary>
+    internal static string DirectionLabel(Direction direction)
     {
-        Direction.Outbound => "Outbound",
-        Direction.Inbound => "Inbound",
-        Direction.Bidirectional => "Bidirectional",
-        Direction.UnknownDirection => "Unknown direction",
-        _ => "No data direction",
-    };
+        string words = ObservationText.DirectionOf(direction);
+        return char.ToUpperInvariant(words[0]) + words[1..];
+    }
 
     /// <summary>Which of the instance's records an L2 row holds, as the basis line's domain.</summary>
     private static string SourceDirectionDomain(Direction direction) => direction switch

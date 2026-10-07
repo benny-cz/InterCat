@@ -127,15 +127,6 @@ public static class LadderProjection
     /// The descent a row implies, one rung down. The caller supplies the viewport it wants preserved,
     /// because the ladder restores a viewport rather than recomputing one.
     /// </summary>
-    /// <summary>A channel's one data direction in words, as its row states it.</summary>
-    private static string DirectionWords(Direction direction) => direction switch
-    {
-        Direction.Outbound => "outbound",
-        Direction.Inbound => "inbound",
-        Direction.Bidirectional => "both directions",
-        _ => "no data direction",
-    };
-
     public static LadderDescent DescentFor(LadderRow row, NavigationState from, TimeRange viewport)
     {
         ArgumentNullException.ThrowIfNull(row);
@@ -330,7 +321,7 @@ public static class LadderProjection
                 // Words, not enumeration names: the one display mapping names the mechanism here as everywhere else (R5).
                 channel.Direction == Direction.UnknownDirection
                     ? $"{EvidenceRowText.MechanismName(channel.Mechanism)} · paired endpoints; direction varies by observation"
-                    : $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {DirectionWords(channel.Direction)}",
+                    : $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ObservationText.DirectionOf(channel.Direction)}",
                 channel.ObservationCount,
                 channel.KnownBytes,
                 channel.Mechanism,
@@ -372,9 +363,7 @@ public static class LadderProjection
                 mark => string.Equals(mark.OperationKey, operation.Key, StringComparison.Ordinal));
             rows.Add(new(
                 operation.Key,
-                string.Create(
-                    CultureInfo.InvariantCulture,
-                    $"{operation.Kind} {operation.Direction} · {operation.Interval.StartTicks / WorkspaceTime.TicksPerSecond} s"),
+                Title(operation),
                 Describe(operation),
                 records,
                 operation.CompletedBytes,
@@ -487,9 +476,21 @@ public static class LadderProjection
     }
 
     /// <summary>
+    /// What an operation did, which way, and when, in the words a record's kind and direction read everywhere (R5):
+    /// "Send · outbound · 2 s".
+    /// </summary>
+    private static string Title(ChannelOperation operation)
+    {
+        string kind = ObservationText.Kind(operation.Kind);
+        return string.Create(CultureInfo.InvariantCulture,
+            $"{char.ToUpperInvariant(kind[0])}{kind[1..]} · {ObservationText.DirectionOf(operation.Direction)} · "
+            + $"{operation.Interval.StartTicks / WorkspaceTime.TicksPerSecond} s");
+    }
+
+    /// <summary>
     /// Requested and completed sizes stay separate and an absent one reads as unknown, never as zero
     /// (P3, R3). The text is kept short because a row's detail line is narrow; the full sentence lives in
-    /// the row's accessible name.
+    /// the row's accessible name. Its state is said in words: "open at capture end", never as an enumeration.
     /// </summary>
     private static string Describe(ChannelOperation operation)
     {
@@ -500,8 +501,8 @@ public static class LadderProjection
             ? done.ToString("N0", CultureInfo.InvariantCulture)
             : "?";
         return operation.RequestedBytes is null && operation.CompletedBytes is null
-            ? string.Create(CultureInfo.InvariantCulture, $"{operation.State} · no byte domain")
-            : string.Create(CultureInfo.InvariantCulture, $"{operation.State} · {completed} of {requested} B");
+            ? $"{OperationText.State(operation.State)} · no byte domain"
+            : $"{OperationText.State(operation.State)} · {completed} of {requested} B";
     }
 
     /// <summary>

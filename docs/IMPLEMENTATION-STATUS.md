@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 368 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 369 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 369 — a direction and an operation's state read in one set of words (R5):**
+  - A channel row said "both directions" where the direction rows said "Bidirectional", and the rows named a code no
+    version knows "No data direction". The tour's operations read "Send Outbound · 2 s" and "OpenAtBoundary". Every
+    direction now reads "bidirectional", "unknown direction" and so on, an unknown code by its number, and the tour's
+    operations "Send · outbound · 2 s", "open at capture end", in the words a real RPC call's state uses.
 
 - **Revision 368 — a record's kind, a missing size's reason and a capability read in words (R5, R3):**
   - The window called every missing size "size not exposed", whatever withheld it; it now says why, "size redacted",
@@ -1064,9 +1070,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      for a coverage state's label and value (`CoverageStateText`), which the window's rows and hover cards and the
      command line's tables read, and in revision 368 for a record's kind and layer, the reason a field holds no
      value, and a capability's state, tier and overhead (`ObservationText`, `CapabilityText`). JSON documents keep
-     the enumerations' names for a tool, as §23 now says. The tour's operation rows still print an operation's kind,
-     direction and state by their names ("Send Outbound", "OpenAtBoundary"), and a direction has its words only in
-     the timeline's lane names.
+     the enumerations' names for a tool, as §23 now says. Revision 369 did the same for a direction and an operation's
+     state (`ObservationText.DirectionOf`, `OperationText.State`), which a channel row, the timeline's direction rows
+     and the tour's operations read.
 6. M4, multi-machine investigation. Revision 253 made its persistence: the workspace file, its members by identity and
    their resolution, and host names. Revision 254 added §8.2's model and its manual mode: a person aligns members to one
    member's clock with stated bounds, and an order across members is stated only beyond their uncertainty
@@ -1105,6 +1111,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 369 was built and tested in the same Linux container: Debug and Release each ran **1,642 tests**, passing
+  **1,544 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read every direction
+  and operation state in words, a code no version knows by its number, an operation's state as a real call's for the
+  two states both name, a channel row in every direction, the window's direction-row options, and the tour's operations
+  on its HTTPS, RPC and shared-section channels: what each did, which way and when, and how it ended. They caught each
+  of 14 mutations:
+  - bidirectional said as "both directions", an unstated direction said to carry no data, an unknown code guessed as
+    no data direction, and no data direction said as "none";
+  - an operation open at capture end, without its start, or failed said otherwise, and an unknown state by its
+    enumeration;
+  - a channel's or an operation's direction, or an operation's state, sized or not, by its enumeration, and a title or
+    a direction row's label not raised.
 
 - Revision 368 was built and tested in the same Linux container: Debug and Release each ran **1,639 tests**, passing
   **1,541 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read every kind,

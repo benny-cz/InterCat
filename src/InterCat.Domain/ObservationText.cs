@@ -3,9 +3,10 @@ using System.Globalization;
 namespace InterCat.Domain;
 
 /// <summary>
-/// A record's kind and layer, and why one of its fields holds no value, as InterCat names them to a person, one mapping
-/// for every layer (R5): the window's rows and inspector and the command line's tables say "request start" where the
-/// enumeration says <c>RequestStart</c>. A value this version does not know is named by its number, never guessed.
+/// A record's kind, layer and direction, and why one of its fields holds no value, as InterCat names them to a person,
+/// one mapping for every layer (R5): the window's rows, lanes and inspector and the command line's tables say "request
+/// start" where the enumeration says <c>RequestStart</c>. A value this version does not know is named by its number,
+/// never guessed.
 /// </summary>
 public static class ObservationText
 {
@@ -44,6 +45,21 @@ public static class ObservationText
         ObservationLayer.Lifecycle => "lifecycle",
         ObservationLayer.Collector => "collector",
         _ => string.Create(CultureInfo.InvariantCulture, $"layer {(int)layer}"),
+    };
+
+    /// <summary>
+    /// A record's or a channel's direction as its source marks it: "outbound", "inbound", "bidirectional", "unknown
+    /// direction" where the source stated none, and "no data direction" where none applies, such as a process's start.
+    /// A label raises its first letter: "Unknown direction".
+    /// </summary>
+    public static string DirectionOf(Direction direction) => direction switch
+    {
+        Direction.Outbound => "outbound",
+        Direction.Inbound => "inbound",
+        Direction.Bidirectional => "bidirectional",
+        Direction.UnknownDirection => "unknown direction",
+        Direction.DirectionNotApplicable => "no data direction",
+        _ => string.Create(CultureInfo.InvariantCulture, $"direction {(int)direction}"),
     };
 
     /// <summary>

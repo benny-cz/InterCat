@@ -1,5 +1,6 @@
 using System.Globalization;
 using InterCat.Analysis;
+using InterCat.Domain;
 
 namespace InterCat.Application;
 
@@ -66,6 +67,24 @@ public static class OperationText
         RpcCallState.NoActivityId => "no activity id",
         RpcCallState.Ambiguous => "ambiguous: its activity id was reused before its stop",
         _ => throw new ArgumentOutOfRangeException(nameof(state), state, "No call is in this state."),
+    };
+
+    /// <summary>
+    /// An operation's state (<c>EN-OperationState</c>) in the words a call's state reads (R5): "started", "completed",
+    /// "failed", "start not observed", "open at capture end", censored rather than failed, "ambiguous", and "evicted
+    /// unresolved" where the bounded pending state gave it up before it paired. A state this version does not know is
+    /// named by its number, never guessed.
+    /// </summary>
+    public static string State(OperationState state) => state switch
+    {
+        OperationState.Started => "started",
+        OperationState.Completed => "completed",
+        OperationState.ExplicitlyFailed => "failed",
+        OperationState.OrphanCompletion => "start not observed",
+        OperationState.OpenAtBoundary => "open at capture end",
+        OperationState.Ambiguous => "ambiguous",
+        OperationState.EvictedUnresolved => "evicted unresolved",
+        _ => string.Create(CultureInfo.InvariantCulture, $"state {(int)state}"),
     };
 
     /// <summary>What a client call's other end is, in words (`contracts/operations-v1.md` §5c).</summary>
