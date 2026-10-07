@@ -34,12 +34,12 @@ public sealed partial class WorkspaceViewModel
         : string.Empty;
 
     /// <summary>
-    /// How the paired channel the inspector describes was paired: one chosen among a process's rows. Empty for any other
-    /// row and for a channel no rule paired, as the tour's. The explanation follows the inspector's selection, so on a
-    /// channel's own rung, where the inspector still describes the process it was opened from, the process's is stated.
+    /// How the paired channel the inspector describes was paired: one chosen among a process's rows, or the one its own
+    /// rung opened, which the inspector describes there as the card counts it. Empty for any other row and for a channel
+    /// no rule paired, as the tour's.
     /// </summary>
-    public string PairingExplanation => DescribedRow is { } row
-        && wholeSnapshot.Channels.FirstOrDefault(channel => string.Equals(channel.Key, row.Key, StringComparison.Ordinal))
+    public string PairingExplanation => (DescribedRow?.Key ?? (DescribesOpened ? FocusedRealChannel?.Key : null)) is { } key
+        && wholeSnapshot.Channels.FirstOrDefault(channel => string.Equals(channel.Key, key, StringComparison.Ordinal))
             is { Rule: not null } paired
         ? WorkspaceRowBuilder.ExplainPairing(paired)
         : string.Empty;

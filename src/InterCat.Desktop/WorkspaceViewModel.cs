@@ -63,6 +63,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="SelectedChannelEnd">The L3 end chosen for the table and stepping: 0 the channel's first end, 1 its second.</param>
 /// <param name="Forward">The rungs forward steps would re-enter, nearest first (§6.7).</param>
 /// <param name="RankBy">What the machine and group rungs rank by (§6.1's metric selector).</param>
+/// <param name="ReachedWith">The process selected when the current rung was reached, which a channel it opened is described over.</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -78,7 +79,8 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState>? Forward = null,
     RankingMetric RankBy = RankingMetric.Records,
     bool PerSecond = false,
-    bool ScalesEachLane = false);
+    bool ScalesEachLane = false,
+    ProcessInstanceId? ReachedWith = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1379,7 +1381,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
-        scalesEachLane);
+        scalesEachLane, reachedWith);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1500,6 +1502,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // Evidence rows arrive after the first page loads; the selection follows them if the row is still there.
             pendingEvidenceKey = saved.SelectedRungKey;
         }
+        // The rung was reached with the same process as before, so a channel it opened is still described over that process.
+        reachedWith = ladder.Depth == old.Length - 1 ? saved.ReachedWith : null;
         ProcessNode? process = Snapshot.Processes.FirstOrDefault(node => node.Id == saved.SelectedProcess);
         SelectedProcess = process;
         if (saved.SelectedProcess is not null && process is null)
@@ -2648,11 +2652,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             .. httpChannelRows.Select(RankedHttpChannel)]);
 
     /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
-    private IReadOnlyList<RungRow> LadderRows()
+    private IReadOnlyList<RungRow> LadderRows() => LadderRows(view, ladder.Current);
+
+    /// <summary>
+    /// The rows a rung shows in <paramref name="state"/>, projected as <paramref name="shown"/>: the current one's, or the
+    /// process rung an opened channel was chosen on, whose row names it there.
+    /// </summary>
+    private IReadOnlyList<RungRow> LadderRows(LadderView shown, NavigationState state)
     {
-        IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(view, ThemeResources.CurrentMode, !ReadsBytes, RateSeconds);
-        if (!realOverview || ladder.Current.Level != DetailLevel.ProcessInstance
-            || ladder.Current.Focus is not { } focus || !Guid.TryParse(focus.Key, out Guid id))
+        IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(shown, ThemeResources.CurrentMode, !ReadsBytes, RateSeconds);
+        if (!realOverview || state.Level != DetailLevel.ProcessInstance
+            || state.Focus is not { } focus || !Guid.TryParse(focus.Key, out Guid id))
         {
             return rows;
         }
@@ -3344,6 +3354,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
         : SelectedCluster is { } cluster ? cluster.Label
         : SelectedGroup is { } group ? group.Name
+        : DescribesOpened ? OpenedTitle!
         : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
 
     public string SelectionSubtitle => selectedRelationship is { } chosen ? $"{chosen.Mechanism} · {chosen.Explanation}"
@@ -3351,6 +3362,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : HasMultiSelection ? DescribeChosen()
         : SelectedCluster is { } cluster ? DescribeCluster(cluster)
         : SelectedGroup is { } group ? DescribeGroup(group)
+        : DescribesOpened ? OpenedSubtitle
         : selectedProcess is null
             ? "Choose a node, ranked row, or timeline bucket."
             : $"{selectedProcess.PidLabel} · {selectedProcess.Role}";
@@ -4529,6 +4541,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedRung = null;
         selectedCrumb = null;
 
+        // The process a rung was reached with is its context, not a choice made there: an opened channel is described
+        // over it until another is chosen.
+        reachedWith = selectedProcess?.Id;
+
         // A group selected by its row is left with that row; a descent into it makes it the ladder's focus instead.
         selectedGroupKey = null;
         chosenChannelKey = null;
@@ -5518,6 +5534,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ShowsLoadMore));
         OnPropertyChanged(nameof(LoadMoreLabel));
         OnPropertyChanged(nameof(LoadMoreName));
+
+        // An opened RPC channel's or HTTP exchanges' row is read with its rung: the inspector names it once it is.
+        OnPropertyChanged(nameof(SelectionTitle));
+        OnPropertyChanged(nameof(SelectionSubtitle));
+        RaiseLineageChanged();
     }
 
     /// <summary>One process's RPC channels as read for its rung.</summary>

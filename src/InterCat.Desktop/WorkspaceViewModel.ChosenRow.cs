@@ -1,6 +1,8 @@
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
+using InterCat.Desktop.Theme;
+using InterCat.Domain;
 
 namespace InterCat.Desktop;
 
@@ -82,6 +84,62 @@ public sealed partial class WorkspaceViewModel
                 : HttpExchangeSummary(brief: true))
         : FocusedRealChannel is { } paired ? ("This channel", PairedRecords(paired))
         : null;
+
+    /// <summary>
+    /// On a channel's own rung, the row it was chosen as among its process's rows, rebuilt in that rung's words: the
+    /// inspector names the channel there as it named it when chosen, so opening it turns neither the card nor the
+    /// inspector back to the process (§6.4, I5). Null where <see cref="OpenedChannel"/> is, while an RPC channel's or HTTP
+    /// exchanges' read is under way, and on a channel reached from no process's rung.
+    /// </summary>
+    private RungRow? OpenedRow
+    {
+        get
+        {
+            if (OpenedChannel is null)
+            {
+                return null;
+            }
+
+            if (IsRpcChannelRung)
+            {
+                return rpcCalls?.Channel is { } calls ? RpcChannelRungRow(calls, Tokens(Mechanism.Rpc)) : null;
+            }
+
+            if (IsHttpChannelRung)
+            {
+                return httpExchanges?.Channel is { } exchanges ? HttpChannelRungRow(exchanges, Tokens(Mechanism.Http)) : null;
+            }
+
+            return FocusedRealChannel is { } channel && ladder.Breadcrumb is [.., { Level: DetailLevel.ProcessInstance } chosenOn, _]
+                ? LadderRows(LadderProjection.Project(Snapshot, chosenOn), chosenOn)
+                    .FirstOrDefault(row => string.Equals(row.Key, channel.Key, StringComparison.Ordinal))
+                : null;
+        }
+    }
+
+    /// <summary>The process selected when the current rung was reached, which an opened channel is described over.</summary>
+    private ProcessInstanceId? reachedWith;
+
+    /// <summary>
+    /// Whether the inspector describes the channel its rung opened rather than a process: no process is chosen there but the
+    /// one the rung was reached with, which is its context, so a process chosen afterwards, as in the graph, is described.
+    /// </summary>
+    private bool DescribesOpened => OpenedTitle is not null && (selectedProcess is null || selectedProcess.Id == reachedWith);
+
+    /// <summary>What the inspector names an opened channel by: its row's own name, or its crumb's until that row is read.</summary>
+    private string? OpenedTitle => OpenedChannel is null ? null : OpenedRow?.Source.Label ?? ladder.Current.Focus?.Label;
+
+    /// <summary>
+    /// The opened channel as its row described it where it was chosen: whom it connects and how, and its coverage. A
+    /// channel reached from no process's rung says its mechanism and coverage; a read under way says nothing yet.
+    /// </summary>
+    private string OpenedSubtitle => OpenedRow is { } row ? DescribeRow(row)
+        : FocusedRealChannel is { } channel
+            ? $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {CoverageStateText.Label(channel.Coverage)}"
+            : string.Empty;
+
+    private static FamilyTokens Tokens(Mechanism mechanism) =>
+        ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(mechanism));
 
     /// <summary>An RPC channel's call records, which carry no size.</summary>
     private static string CallRecords(long records) => Spoken.Count(records, "call record") + " · an RPC call carries no size";

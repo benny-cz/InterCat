@@ -140,9 +140,20 @@ public sealed class RpcScopeTests
         Assert.Equal("Enter lists its calls", workspace.SelectionActions);
         Assert.False(workspace.ShowsLineage);
 
-        // A call's row: how long it took and its procedure, how it ended and who served it, and what O opens.
+        // Opened, its own rung's inspector names the channel as its row did, as the card counts it, until a call is chosen;
+        // the row is read with the rung, and the window is told when it is.
+        string scm = workspace.SelectionSubtitle;
+        var raised = new List<string?>();
+        workspace.PropertyChanged += (_, changed) => raised.Add(changed.PropertyName);
         Assert.True(workspace.Descend());
+        raised.Clear();
         await workspace.RpcReady;
+        Assert.Contains(nameof(WorkspaceViewModel.SelectionSubtitle), raised);
+        Assert.Equal("This RPC channel", workspace.EvidenceHeading);
+        Assert.Equal(("RPC calls to svcctl (Service Control Manager)", scm), (workspace.SelectionTitle, workspace.SelectionSubtitle));
+        Assert.False(workspace.ShowsLineage);
+
+        // A call's row: how long it took and its procedure, how it ended and who served it, and what O opens.
         RungRow first = workspace.RungRows[0];
         workspace.SelectedRung = first;
         Assert.StartsWith("RPC call at +", workspace.SelectionTitle, StringComparison.Ordinal);

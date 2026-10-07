@@ -861,11 +861,15 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.Ascend());
         await workspace.HttpReady;
 
-        // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded.
+        // Enter lists the exchanges, each leading with how long it took, or that its end was not recorded; the inspector names
+        // them there as it did when they were chosen, as the card counts them.
         workspace.SelectedRung = workspace.RungRows.Single(candidate => candidate.Label == "HTTP exchanges");
+        (string Title, string Subtitle) chosen = (workspace.SelectionTitle, workspace.SelectionSubtitle);
         Assert.True(workspace.Descend());
         Assert.True(workspace.IsHttpChannelRung);
         await workspace.HttpReady;
+        Assert.Equal("These HTTP exchanges", workspace.EvidenceHeading);
+        Assert.Equal(chosen, (workspace.SelectionTitle, workspace.SelectionSubtitle));
         Assert.Equal(["600 ns", "response end not recorded"], workspace.RungRows.Select(exchange => exchange.Label));
         Assert.Contains("exchange 2 · request 181 B · response 115 B + 50 B · not recorded whole: response body",
             workspace.RungRows[1].Detail.Replace(' ', ' '), StringComparison.Ordinal);

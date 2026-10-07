@@ -193,7 +193,7 @@ public sealed class ExplanationTests
         Assert.Equal(3, records.Records.Count);
     }
 
-    [Fact(DisplayName = "§6.8: a channel chosen among a process's rows says how its ends were paired, whether the capture saw it open and close, and its key")]
+    [Fact(DisplayName = "§6.8: a channel chosen among a process's rows, or opened on its own rung, says how its ends were paired, whether the capture saw it open and close, and its key")]
     public void AChosenChannelSaysHowItWasPaired()
     {
         // The client connects to the server twice. The capture sees the first connection open and close at both ends,
@@ -252,12 +252,32 @@ public sealed class ExplanationTests
             Assert.Equal(string.Empty, tour.Explanation);
         }
 
-        // On its own rung the inspector describes the process it was opened from, and the explanation follows it.
+        // On its own rung the inspector names the channel as it did when the channel was chosen, as the card counts it, and
+        // still says how it was paired: the process it was opened from is its context, whose lineage steps aside.
+        (string Title, string Subtitle, string Explanation) chosen = (workspace.SelectionTitle, workspace.SelectionSubtitle,
+            workspace.Explanation);
+        Assert.Equal(unseen.Name, chosen.Title);
         Assert.True(workspace.Descend());
         Assert.StartsWith("Channel", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
-        Assert.Equal("client.exe", workspace.SelectionTitle);
+        Assert.Equal("This channel", workspace.EvidenceHeading);
+        Assert.Equal(chosen, (workspace.SelectionTitle, workspace.SelectionSubtitle, workspace.Explanation));
+        Assert.Equal("How it was paired", workspace.ExplanationHeading);
+        Assert.False(workspace.ShowsLineage);
+
+        // A newer publication of the session, restored where this one stood, describes the channel too.
+        using (var newer = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation)))
+        {
+            Assert.Null(newer.RestoreNavigation(workspace.CaptureNavigation()));
+            Assert.Equal(chosen, (newer.SelectionTitle, newer.SelectionSubtitle, newer.Explanation));
+        }
+
+        // A process chosen there, as in the graph, is described instead, with its lineage and how its records are counted.
+        workspace.SelectedProcess = workspace.Snapshot.Processes.Single(process => process.ProcessId == 200);
+        Assert.Equal("server.exe", workspace.SelectionTitle);
         Assert.Equal("How its records are counted", workspace.ExplanationHeading);
-        Assert.StartsWith("Each record naming PID 100 while it ran is its own", workspace.Explanation, StringComparison.Ordinal);
+        Assert.StartsWith("Each record naming PID 200 while it ran is its own", workspace.Explanation, StringComparison.Ordinal);
+        Assert.True(workspace.ShowsLineage);
     }
 
     /// <summary>Positions whose ordinal suffix differs from their last digit's, and the ones around them.</summary>
