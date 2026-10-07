@@ -81,7 +81,7 @@ public sealed class LaneScaleWindowTests
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
         Assert.True(workspace.Descend());
         await Until(() => workspace.ShowsProcessLanes && workspace.ProcessLaneDisplay.Count == 2);
-        await Settle(window, timeline, workspace);
+        Render(window);
         int busy = 1 + Lane(workspace, 100);
         int quiet = 1 + Lane(workspace, 101);
         ProcessTimelineLane quietLane = workspace.ProcessLaneDisplay[quiet - 1];
@@ -137,7 +137,7 @@ public sealed class LaneScaleWindowTests
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == quietLane.ProcessId.ToString());
         Assert.True(workspace.Descend());
         await Until(() => workspace.ShowsDirectionLanes);
-        await Settle(window, timeline, workspace);
+        Render(window);
         IReadOnlyList<DirectionTimelineLane> directions = workspace.TimelineDirectionLanes!;
         Assert.All(Enumerable.Range(0, directions.Count), index =>
             Assert.Equal(PeakPerSecond(directions[index].Buckets, timeline.Viewport), timeline.RowScale(index + 1)));
@@ -151,7 +151,7 @@ public sealed class LaneScaleWindowTests
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == workspace.Snapshot.Channels.Single().Key);
         Assert.True(workspace.Descend());
         await Until(() => workspace.ShowsChannelEndLanes);
-        await Settle(window, timeline, workspace);
+        Render(window);
         IReadOnlyList<ChannelEndTimelineLane> ends = workspace.TimelineChannelEndLanes!;
         Assert.Equal(2, ends.Count);
         Assert.All(Enumerable.Range(0, ends.Count), index => Assert.Equal(
@@ -303,10 +303,16 @@ public sealed class LaneScaleWindowTests
         return SameInk(window, timeline, new Point(x, bandTop + 2), new Point(x, middle - 3));
     }
 
-    /// <summary>Whether two points of the timeline were drawn in one colour.</summary>
+    /// <summary>
+    /// Whether two points of the timeline were drawn in one colour, read with the pointer off the timeline. A card drawn
+    /// beside a resting pointer lies over the plot, and whether one is still drawn after the window was resized depends
+    /// on when the pointer's place is read again, which other tests running on the UI thread move.
+    /// </summary>
     private static bool SameInk(Window window, TimelineView timeline, Point first, Point second)
     {
+        window.MouseMove(new Point(1, 1));
         Avalonia.Media.Imaging.WriteableBitmap frame = Frame(window);
+        Assert.Null(timeline.HoverCard);
         return RenderedPixels.At(frame, timeline.TranslatePoint(first, window)!.Value)
             == RenderedPixels.At(frame, timeline.TranslatePoint(second, window)!.Value);
     }
@@ -333,19 +339,6 @@ public sealed class LaneScaleWindowTests
 
     /// <summary>Draws the window, so the timeline's scales are those of what it shows.</summary>
     private static void Render(Window window) => _ = Frame(window);
-
-    /// <summary>
-    /// Asks at once for the detail the timeline's resting viewport needs, and waits for it, so a rung's lanes are counted
-    /// on the columns the timeline draws before any of their pixels is read. Otherwise the timeline's own request, 150 ms
-    /// after a descent resizes it, can count them again on other columns between finding a lane's busiest bar and
-    /// reading it.
-    /// </summary>
-    private static async Task Settle(Window window, TimelineView timeline, WorkspaceViewModel workspace)
-    {
-        timeline.RequestDetailNow();
-        await workspace.TimelineDetailReady;
-        Render(window);
-    }
 
     private static Avalonia.Media.Imaging.WriteableBitmap Frame(Window window)
     {

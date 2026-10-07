@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-06 · Plan revision: 365 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 366 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 366 — the lane-scale window test reads its pixels with the pointer off the timeline (§13.6):**
+  - It rested the pointer on the machine row for a card, then resized the window; whether the card was still drawn
+    afterwards depended on other window tests sharing the UI thread, and the card then covered the bar a pixel check
+    read. Three copies run together failed 2 rounds out of 15; with the pointer taken off the timeline before each
+    read they passed 45 out of 45. Revision 357's wait for the timeline's detail, which could not have helped, is gone.
 
 - **Revision 365 — the command line's tables name mechanisms and states as the window does (R5):**
   - `icat timeline`, `session`, `capabilities` and a content request's preview printed "Tcp", "PartialGap" and
@@ -1083,6 +1089,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 
 ## Verification and cautions
 
+- Revision 366 was built and tested in the same Linux container: Debug and Release each ran **1,634 tests**, passing
+  **1,536 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Run alone, the lane-scale test
+  passed 12 runs pinned to one processor shared with six busy loops and 60 runs in one process, and five runs of the
+  whole window suite beside three other suites looping never failed it. Three copies of it running together, in a probe
+  since removed, failed 2 rounds out of 15 in two runs, each at the check after the descent to a process's direction
+  rows, with the pointer still on the timeline and a hover card over the bar it read; with the pointer taken off first,
+  three copies passed 45 rounds out of 45. Leaving the pointer where it was now fails the test at its first check after a
+  card was read, since the test says first that no card is drawn.
+
 - Revision 365 was built and tested in the same Linux container: Debug and Release each ran **1,634 tests**, Debug
   passing **1,536 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read every
   mechanism's name for a lane and for a sentence and every state's value and label, and the command line's tables over a
@@ -1101,7 +1116,7 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   Release passed 1,535: it also failed revision 342's lane-scale window test once, at its pixel check after a descent,
   the second recorded failure and the first since revision 357 made it wait for the timeline's detail after each
   descent. It passed six runs alone and a rerun of the whole Release window suite, so it is intermittent and not this
-  slice's; revision 366 takes it up.
+  slice's; revision 366 found its cause, a hover card left over the bar it read, and took it away.
 
 - Revision 364 was built and tested in the same Linux container: Debug and Release each ran **1,632 tests**,
   passing **1,534 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests read the
