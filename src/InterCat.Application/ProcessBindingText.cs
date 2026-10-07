@@ -1,6 +1,7 @@
 using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Application;
 
@@ -18,9 +19,10 @@ public static class ProcessBindingText
     /// How a process's own records were bound to it over the session: the rule that bound them and how strongly, what the
     /// evidence policy left out of its total, and the capture's coverage. A later holder of a reused PID binds its records
     /// only as candidates, which a policy that admits none counts in no process; the explanation says so, and how many,
-    /// so it does not read as a quiet process (R21, R22).
+    /// so it does not read as a quiet process (R21, R22). A collector the capture names by its PID that no instance is
+    /// (<paramref name="unfound"/>, §19.5) is said too, so the process is not taken for it.
     /// </summary>
-    public static string Explain(ProcessNode process)
+    public static string Explain(ProcessNode process, IReadOnlyList<CollectorProcessV1>? unfound = null)
     {
         ArgumentNullException.ThrowIfNull(process);
         string rule = Rule(RelationRule.Parse(ProcessInstanceIndex.BindingRule));
@@ -40,6 +42,9 @@ public static class ProcessBindingText
                         + $"{CountText.Of(process.CandidateRecords, "record")} bound to it over the session."
                     : "None is left out of its total.");
         string collector = process.Collector is { } role ? " " + CollectorText.Sentence(role) : string.Empty;
-        return $"{binding}{collector} Coverage over the session: {CoverageStateText.Value(process.Coverage)}.";
+        // A collector the capture names by this PID that no instance is: said where a person would take this for it.
+        string named = string.Concat((unfound ?? []).Where(other => other.ProcessId == process.ProcessId)
+            .Select(other => " " + CollectorText.Unfound(other)));
+        return $"{binding}{collector}{named} Coverage over the session: {CoverageStateText.Value(process.Coverage)}.";
     }
 }

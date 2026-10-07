@@ -221,9 +221,9 @@ internal static class ProcessesCommand
         MetricResult received = Grouped(store, Metric.BytesReceived, ByteDomain.TransportObserved, AccountingSide.ReceiveSide, policy, cancellationToken);
 
         // Each instance as the inspector explains it: the overview's own projection under the same policy (R18).
-        Dictionary<ProcessInstanceId, ProcessNode> nodes = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken)
-            .Nodes.ToDictionary(node => node.Id);
-        ProcessesDocument document = Describe(full, records, sent, received, policy, nodes);
+        SessionOverviewBundle projected = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken);
+        Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
+        ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound);
         if (pid is { } selected)
         {
             ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with.");
@@ -293,7 +293,8 @@ internal static class ProcessesCommand
         MetricResult sent,
         MetricResult received,
         EvidencePolicy policy,
-        Dictionary<ProcessInstanceId, ProcessNode> nodes)
+        Dictionary<ProcessInstanceId, ProcessNode> nodes,
+        IReadOnlyList<CollectorProcessV1> unfound)
     {
         Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
         Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
@@ -313,7 +314,7 @@ internal static class ProcessesCommand
                     PidHolders = nodes[group.Process!.Id].PidHolders,
                     CandidateRecords = nodes[group.Process!.Id].CandidateRecords,
                     WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
-                    Binding = ProcessBindingText.Explain(nodes[group.Process!.Id]),
+                    Binding = ProcessBindingText.Explain(nodes[group.Process!.Id], unfound),
                     Collector = nodes[group.Process!.Id].Collector,
                 })
                 .OrderByDescending(item => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0))

@@ -451,6 +451,13 @@ public sealed record WorkspaceSnapshot(
     public IReadOnlyList<ProcessNode> SetAside { get; init; } = [];
 
     /// <summary>
+    /// The processes the capture names as its collectors (`collector-identities-v1`), which instance each is and those no
+    /// instance is (`collector-binding-v1`), so a view can say of a process holding such a PID that it is not taken for
+    /// one; <see cref="CollectorMatch.NotRecorded"/> for a capture that names none, and a snapshot not projected from one.
+    /// </summary>
+    public CollectorMatch Collectors { get; init; } = CollectorMatch.NotRecorded;
+
+    /// <summary>
     /// When the session's capture began by the wall clock it recorded: session time 0, which the timeline's axis counts
     /// from, in UTC; null when the capture recorded no wall clock, as an import does.
     /// </summary>

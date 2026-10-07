@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using InterCat.Application;
 using InterCat.Domain;
@@ -75,6 +76,24 @@ internal static class OverviewCommand
         ConsoleUi.Field("Graph-eligible rows", ConsoleUi.Count(overview.GraphEligibleRows));
         ConsoleUi.Field("Rows held by none", ConsoleUi.Count(overview.RowsNoProcessHolds));
 
+        // Which processes collected the capture: each by the instance it is, as the window labels it, or why none is it
+        // (collector-binding-v1, §19.5). A capture that names none says nothing of them, rather than that it had none.
+        if (overview.Collectors.Recorded)
+        {
+            ConsoleUi.Heading("Collected by");
+            foreach (CollectorInstance collector in overview.Collectors.Instances)
+            {
+                ConsoleUi.Field(CollectorText.RoleName(collector.Role),
+                    overview.Nodes.First(node => node.Id == collector.Instance).NameWithPid);
+            }
+
+            foreach (CollectorProcessV1 collector in overview.Collectors.Unfound)
+            {
+                ConsoleUi.Field(CollectorText.RoleName(collector.Role),
+                    string.Create(CultureInfo.InvariantCulture, $"PID {collector.ProcessId}: ") + CollectorText.UnfoundReason(collector));
+            }
+        }
+
         // What the capture covered over the session, mechanism by mechanism, in the words the window's inspector states
         // beneath its time scope (R18, R21): a generation without a ledger says it judged nothing.
         if (CoverageText.Describe(overview.MechanismCoverage) is { Length: > 0 } coverage) ConsoleUi.Note(coverage);
@@ -90,7 +109,7 @@ internal static class OverviewCommand
             ConsoleUi.Table(
                 ["Busiest process", "Own records", "Mostly"],
                 [.. busiest.Select(node => (IReadOnlyList<string>)
-                    [node.NameWithPid, ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
+                    [CollectorText.Named(node), ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
         }
 
         foreach (string caveat in overview.Caveats) ConsoleUi.Note(caveat);

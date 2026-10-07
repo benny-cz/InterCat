@@ -40,7 +40,8 @@ public sealed partial class WorkspaceViewModel
             : "InterCat's own processes, which collected this capture: "
                 + WorkspaceLayout.Series([.. OwnProcesses.Select(CollectorText.Named)]) + ". Set aside, they leave the ranked "
                 + "rows, the graph and the channels, with the channels they are an end of; no record is removed, and the "
-                + "timeline and the evidence still count theirs.";
+                + "timeline and the evidence still count theirs."
+            + string.Concat(wholeSnapshot.Collectors.Unfound.Select(collector => " " + CollectorText.Unfound(collector)));
 
     /// <summary>The command beside the line: set them aside, or show them again.</summary>
     public string CollectorsCommand => CollectorsSetAside ? "Show them" : "Set aside";

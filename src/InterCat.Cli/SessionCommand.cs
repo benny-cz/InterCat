@@ -892,12 +892,7 @@ internal static class SessionCommand
         ConsoleUi.Heading("Collected by");
         foreach (CollectorProcessV1 process in collectors.Processes)
         {
-            ConsoleUi.Field(process.Role switch
-            {
-                CollectorRole.Broker => "Broker",
-                CollectorRole.Client => "Its client",
-                _ => "Recorder",
-            }, string.Create(CultureInfo.CurrentCulture, $"PID {process.ProcessId}, ") + (process.CreatedUtc is { } created
+            ConsoleUi.Field(CollectorText.RoleName(process.Role), string.Create(CultureInfo.CurrentCulture, $"PID {process.ProcessId}, ") + (process.CreatedUtc is { } created
                 ? string.Create(CultureInfo.CurrentCulture, $"created {created.UtcDateTime:yyyy-MM-dd HH:mm:ss.fffffff} UTC")
                 : "its creation time unread, so no instance of the capture can be shown to be it"));
         }

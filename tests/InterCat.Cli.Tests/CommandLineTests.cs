@@ -1213,14 +1213,16 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(1, Regex.Count(text, "InterCat's broker"));
         (code, text, said) = await Run("processes", session.Path, "--pid", "4120");
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches("Counted +" + Regex.Escape(ProcessBindingText.Explain(broker)), text);
+        IReadOnlyList<CollectorProcessV1> unfound = SessionOverviewProjector.Project(session.Store).Collectors.Unfound;
+        session.Store.ReleaseSegmentReaders();
+        Assert.Matches("Counted +" + Regex.Escape(ProcessBindingText.Explain(broker, unfound)), text);
 
         (code, text, said) = await Run("processes", session.Path, "--json");
         Assert.True(code == InterCatExitCode.Success, said);
         using JsonDocument document = JsonDocument.Parse(text);
         JsonElement[] instances = [.. document.RootElement.GetProperty("instances").EnumerateArray()];
         JsonElement labelled = Assert.Single(instances, instance => instance.GetProperty("collector").ValueKind != JsonValueKind.Null);
-        Assert.Equal(("Broker", 4120, 1, ProcessBindingText.Explain(broker)), (labelled.GetProperty("collector").GetString(),
+        Assert.Equal(("Broker", 4120, 1, ProcessBindingText.Explain(broker, unfound)), (labelled.GetProperty("collector").GetString(),
             labelled.GetProperty("process").GetProperty("processId").GetInt32(),
             labelled.GetProperty("process").GetProperty("lifecycleEpoch").GetInt32(), labelled.GetProperty("binding").GetString()));
 
@@ -1241,6 +1243,38 @@ public sealed class CommandLineTests : IDisposable
             instance.GetProperty("role").GetString()));
         Assert.Equal([7008, 4120], collectors.GetProperty("unfound").EnumerateArray()
             .Select(collector => collector.GetProperty("processId").GetInt32()));
+    }
+
+    [Fact(DisplayName = "§19.5: icat overview names each collector by the instance it is or why none is, and icat processes says it of a process holding its PID")]
+    public async Task IcatOverviewNamesItsCollectors()
+    {
+        using var session = new TemporarySession();
+        PublishCollected(session.Store);
+        IReadOnlyList<CollectorProcessV1> unfound = SessionOverviewProjector.Project(session.Store).Collectors.Unfound;
+        session.Store.ReleaseSegmentReaders();
+
+        // Each collector by the instance it is, or by its PID and why no instance is it, in icat session's role names.
+        (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("COLLECTED BY", text, StringComparison.Ordinal);
+        Assert.Matches(new Regex(@"\n  Broker +intercat-broker\.exe · PID 4120 #1\r?\n"), text);
+        Assert.Matches(new Regex(@"\n  Its client +PID 7008: its creation time was not read, so no process can be shown to be it\r?\n"), text);
+        Assert.Matches(new Regex(@"\n  Recorder +PID 4120: no lifecycle record of PID 4120 carries the creation time it names, so no process here is it\r?\n"), text);
+        Assert.Contains("intercat-broker.exe · PID 4120 #1 (InterCat's broker)", text, StringComparison.Ordinal);
+
+        // The process holding the client's PID is explained as the inspector explains it: not taken for the client.
+        (code, text, said) = await Run("processes", session.Path, "--pid", "7008");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains(CollectorText.Unfound(unfound[0]), text, StringComparison.Ordinal);
+
+        // A capture that names no collector says nothing of them.
+        using var plain = new TemporarySession();
+        PublishCollected(plain.Store, named: false);
+        plain.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("overview", plain.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.DoesNotContain("COLLECTED BY", text, StringComparison.Ordinal);
+        Assert.DoesNotContain("(InterCat's broker)", text, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§19.5: icat export --set-aside-collectors sets InterCat's own processes aside from the rows, as the window does, and says what it set aside")]

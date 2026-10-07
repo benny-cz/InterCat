@@ -62,6 +62,7 @@ public static class OverviewWorkspace
             Recording = overview.Recording,
             Began = overview.Began,
             Demo = overview.Demo,
+            Collectors = overview.Collectors,
         };
     }
 

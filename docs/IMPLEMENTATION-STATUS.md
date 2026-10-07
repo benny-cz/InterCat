@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 417 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 418 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 418 — a collector no process is, said where its PID is held (§19.5, R5, R18):**
+  - A collector the capture named but no instance was - its creation time unread, or carried by no lifecycle record -
+    was said nowhere a person looks. The inspector's and `icat processes`' explanation of a process holding its PID,
+    the rail's tooltip and `icat overview` now say which, and why none is it.
 
 - **Revision 417 — InterCat's own processes can be set aside (§19.5, §6.8, R18):**
   - The rail named InterCat's own processes but offered no way to leave them out of a view. One command now sets them
@@ -1327,8 +1332,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      records, which the timeline and the evidence still count. It is named among the settings changed from their
      defaults; a ranking's totals over the rows shown, a process's lineage and an export follow it, and `icat export
      --set-aside-collectors` builds the same file (R18). Exploration shows them by default (plan revision 417 says
-     why). Next: a statement, in the inspector and `icat overview`, of a collector no instance is; and an
-     investigation keeping the choice, which needs a workspace contract revision.
+     why). Since revision 418 a collector the capture names that no instance is - its creation time unread, or carried
+     by no lifecycle record of its PID - is said where a process holding its PID is explained, in the inspector and
+     `icat processes`, in the rail's tooltip and in `icat overview`. Next: an investigation keeping the set-aside
+     choice, which needs a workspace contract revision.
    - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
@@ -1405,6 +1412,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 418 was built and tested in the same Linux container: Debug and Release each ran **1,780 tests**, passing
+  **1,682 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests publish the capture
+  whose client's creation time was not read and whose recorder names the broker's PID with a creation time no instance
+  carries: the process holding the client's PID is explained as not taken for it, each holder of the broker's PID, the
+  broker among them, as not the recorder, and no other process is; a process explained without the capture's
+  collectors, or of a capture naming none, is explained as before. In the window's model the inspector says it of the
+  process holding the client's PID, which bears no label, and the rail's tooltip ends with both sentences; `icat
+  overview` names the broker's instance and why the other two are none under Collected by, and labels the broker among
+  its busiest processes; `icat processes` explains as the inspector does. They caught each of 14 mutations.
 
 - Revision 417 was built and tested in the same Linux container: Debug and Release each ran **1,777 tests**, passing
   **1,679 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests set the tour's

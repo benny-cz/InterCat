@@ -4,6 +4,7 @@ using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Desktop.Presentation;
 
@@ -392,7 +393,8 @@ public static class WorkspaceRowBuilder
     /// only as candidates, which a policy that admits none counts in no process; the explanation says so, and how many,
     /// so its row does not read as a quiet process (R21, R22).
     /// </summary>
-    public static string ExplainBinding(ProcessNode process) => ProcessBindingText.Explain(process);
+    public static string ExplainBinding(ProcessNode process, IReadOnlyList<CollectorProcessV1>? unfound = null) =>
+        ProcessBindingText.Explain(process, unfound);
 
     /// <summary>
     /// Why a reused PID's later holder's rung lists no row while the evidence policy counts no candidate (§6.8), in the

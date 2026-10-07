@@ -20,7 +20,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public string BindingExplanation => ShowsLineage && selectedProcess is { } selected
         && wholeSnapshot.Processes.FirstOrDefault(process => process.Id == selected.Id) is { } whole
-        ? WorkspaceRowBuilder.ExplainBinding(whole)
+        ? WorkspaceRowBuilder.ExplainBinding(whole, wholeSnapshot.Collectors.Unfound)
         : string.Empty;
 
     /// <summary>

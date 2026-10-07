@@ -1,6 +1,6 @@
 # collector-identities-v1
 
-Status: revision 414 (§19.5); the broker's client since revision 415; labels since revision 416; a view filter since revision 417
+Status: revision 414 (§19.5); the broker's client since revision 415; labels since revision 416; a view filter since revision 417; unfound collectors said since revision 418
 Owner: `InterCat.Storage` (`CollectorIdentitiesV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`)
 
 The processes that collected a capture, by the identity its own lifecycle records give them. InterCat's broker, the
@@ -62,11 +62,13 @@ A process instance is a collector's when its PID is the collector's and its crea
 is the one named (`collector-binding-v1`, revision 416): the start key a lifecycle record carries is the identity, and a
 PID alone, or an image name, is never taken for one, so another holder of a collector's PID is never labelled. An
 instance whose lifecycle records carried no creation time, or a collector whose creation time was not read, is not
-labelled, and the reader keeps that collector as unfound rather than guess an instance for it. An instance named in two
-roles keeps the first the file names. The records bound to a collector's instance are collector activity: counted,
-listed and exported as any record is, and labelled where they are shown - its ranked row's caption ("PID 4120 · running
-at start · InterCat's broker"), the inspector's explanation, its graph node's card and `icat processes`, in one set of
-words (`CollectorText`).
+labelled, and the reader keeps that collector as unfound rather than guess an instance for it - and since revision 418
+says so where each process holding its PID is explained, in the inspector and `icat processes`, and in `icat overview`:
+that the capture names the collector by that PID, why no instance is it, and that none is labelled as it. An instance
+named in two roles keeps the first the file names. The records bound to a collector's instance are collector activity:
+counted, listed and exported as any record is, and labelled where they are shown - its ranked row's caption ("PID 4120 ·
+running at start · InterCat's broker"), the inspector's explanation, its graph node's card and `icat processes`, in one
+set of words (`CollectorText`).
 
 A view may set the collectors' instances aside (§19.5's view filter, revision 417): out of its ranked rows, its graph
 and its channels, with every relationship and channel one of them is an end of and a group left with none, while it

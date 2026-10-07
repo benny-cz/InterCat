@@ -82,6 +82,14 @@ public static class CollectorText
         _ => "InterCat (icat record)",
     };
 
+    /// <summary>The part a collector played, as a field of `icat session` and `icat overview` names it: "Broker".</summary>
+    public static string RoleName(CollectorRole role) => role switch
+    {
+        CollectorRole.Broker => "Broker",
+        CollectorRole.Client => "Its client",
+        _ => "Recorder",
+    };
+
     /// <summary>The collector in a sentence, as an explanation states it, with the rule that named it.</summary>
     public static string Sentence(CollectorRole role) => role switch
     {
@@ -90,6 +98,38 @@ public static class CollectorText
         _ => "It is icat record, which recorded this capture",
     } + $", as the capture's collectors name it by PID and creation time ({CollectorBinding.Rule}): its records are "
         + "InterCat's own activity, counted as any process's are.";
+
+    /// <summary>
+    /// Why no process instance is a collector the capture names (`collector-binding-v1`): its creation time was not read,
+    /// so no instance can be shown to be it, or no lifecycle record of its PID carries the creation time it names. A PID
+    /// alone is never taken for one.
+    /// </summary>
+    public static string UnfoundReason(CollectorProcessV1 collector)
+    {
+        ArgumentNullException.ThrowIfNull(collector);
+        return collector.CreatedUtc is null
+            ? "its creation time was not read, so no process can be shown to be it"
+            : string.Create(CultureInfo.InvariantCulture,
+                $"no lifecycle record of PID {collector.ProcessId} carries the creation time it names, so no process here is it");
+    }
+
+    /// <summary>
+    /// A collector the capture names that no process instance is, as an explanation of a process holding its PID says it:
+    /// "The capture names InterCat's broker as PID 4120, but its creation time was not read, so no process can be shown to
+    /// be it, and none is labelled as it (collector-binding-v1)."
+    /// </summary>
+    public static string Unfound(CollectorProcessV1 collector)
+    {
+        ArgumentNullException.ThrowIfNull(collector);
+        string named = collector.Role switch
+        {
+            CollectorRole.Broker => "InterCat's broker",
+            CollectorRole.Client => "the InterCat process that asked to record",
+            _ => "icat record",
+        };
+        return string.Create(CultureInfo.InvariantCulture, $"The capture names {named} as PID {collector.ProcessId}, but ")
+            + UnfoundReason(collector) + $", and none is labelled as it ({CollectorBinding.Rule}).";
+    }
 
     /// <summary>
     /// A collector as a list of them names it: "intercat-broker.exe · PID 4120 (InterCat's broker)".

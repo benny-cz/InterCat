@@ -26,9 +26,11 @@ public sealed class CollectorSetAsideTests
         Assert.True(workspace.OffersCollectorsAside);
         Assert.False(workspace.CollectorsSetAside);
         Assert.Equal("InterCat's own: intercat-broker.exe · PID 4120 #1", workspace.CollectorsLine);
+        // Its tooltip ends with the collectors the capture names that no instance is (revision 418).
         Assert.Equal("InterCat's own processes, which collected this capture: intercat-broker.exe · PID 4120 #1 (InterCat's "
             + "broker). Set aside, they leave the ranked rows, the graph and the channels, with the channels they are an end "
-            + "of; no record is removed, and the timeline and the evidence still count theirs.", workspace.CollectorsText);
+            + "of; no record is removed, and the timeline and the evidence still count theirs. "
+            + string.Join(" ", workspace.Snapshot.Collectors.Unfound.Select(CollectorText.Unfound)), workspace.CollectorsText);
         Assert.Equal("Set aside", workspace.CollectorsCommand);
         Assert.Empty(workspace.ChangedSettings);
         Assert.Contains(workspace.RungRows, row => row.Label == "intercat-broker.exe");

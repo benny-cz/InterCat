@@ -50,4 +50,31 @@ public sealed class CollectorLabelTests
         GraphDisplayNode other = workspace.GraphDisplay.Nodes.Single(candidate => candidate.Members.Contains(later.Id));
         Assert.DoesNotContain("InterCat", workspace.DescribeGraphHover(other.Key)!.Lines[0], StringComparison.Ordinal);
     }
+
+    [Fact(DisplayName = "§19.5: the inspector says which collector a process's PID is named for when no instance is it, and the rail's tooltip says so too")]
+    public async Task AnUnfoundCollectorIsSaidWhereItsPidIsHeld()
+    {
+        using var session = new TemporarySession();
+        PublishCollected(session.Store);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        string client = CollectorText.Unfound(overview.Collectors.Unfound[0]);
+        string recorder = CollectorText.Unfound(overview.Collectors.Unfound[1]);
+
+        // The client's PID is held by InterCat.exe, which is not taken for it: no label, and the explanation says why.
+        ProcessNode holder = workspace.Snapshot.Processes.Single(process => process.ProcessId == 7008);
+        Assert.Null(holder.Collector);
+        workspace.SelectProcess(holder.Id);
+        Assert.Equal("PID 7008 · created during capture", workspace.SelectionSubtitle);
+        Assert.Contains(client, workspace.BindingExplanation, StringComparison.Ordinal);
+        Assert.Equal(workspace.BindingExplanation, workspace.Explanation);
+        Assert.DoesNotContain(recorder, workspace.Explanation, StringComparison.Ordinal);
+
+        // The rail's line names the broker alone, and its tooltip ends with the two it could not find.
+        Assert.Equal("InterCat's own: intercat-broker.exe · PID 4120 #1", workspace.CollectorsLine);
+        Assert.EndsWith("the timeline and the evidence still count theirs. " + client + " " + recorder, workspace.CollectorsText,
+            StringComparison.Ordinal);
+    }
 }
