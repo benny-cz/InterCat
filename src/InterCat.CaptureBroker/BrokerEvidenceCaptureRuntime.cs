@@ -188,6 +188,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     publishFirstAfter: plan.FirstPublication,
                     healthProbe: probe,
                     calibration: ClockCalibrationSource.Local,
+                    collectors: [CollectorProcesses.Current(CollectorRole.Broker)],
                     cancellationToken: capture.Stop.Token);
                 _ = capture.Run.ContinueWith(
                     _ => health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _),

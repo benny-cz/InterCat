@@ -1153,6 +1153,50 @@ public sealed class CommandLineTests : IDisposable
             (size.GetProperty("tier").GetString(), size.GetProperty("statement").GetString()));
     }
 
+    [Fact(DisplayName = "§19.5: icat session names the processes that collected a capture by role, PID and creation time, and nothing of a session naming none")]
+    public async Task IcatSessionNamesItsCollectors()
+    {
+        using var session = new TemporarySession();
+        DateTimeOffset created = new DateTimeOffset(2026, 10, 7, 9, 0, 0, TimeSpan.Zero).AddTicks(3);
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 }],
+            collectors: new CollectorIdentitiesV1
+            {
+                Contract = CollectorIdentitiesV1.ContractName,
+                CaptureId = TestSessions.Capture.Value,
+                Processes =
+                [
+                    new() { Role = CollectorRole.Broker, ProcessId = 4_120, CreatedUtc = created },
+                    new() { Role = CollectorRole.Client, ProcessId = 7_008 },
+                ],
+            });
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output, string said) = await Run("session", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^COLLECTED BY\r?$", output);
+        Assert.Matches(@"(?m)^  Broker +PID 4120, created 2026-10-07 09:00:00\.0000003 UTC\r?$", output);
+        Assert.Matches(@"(?m)^  Its client +PID 7008, its creation time unread, so no instance of the capture can be shown to be it\r?$",
+            output);
+
+        (code, output, said) = await Run("session", session.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument document = JsonDocument.Parse(output))
+        {
+            JsonElement processes = document.RootElement.GetProperty("collectors").GetProperty("processes");
+            Assert.Equal(("Broker", 4_120, created), (processes[0].GetProperty("role").GetString(),
+                processes[0].GetProperty("processId").GetInt32(), processes[0].GetProperty("createdUtc").GetDateTimeOffset()));
+            Assert.Equal(JsonValueKind.Null, processes[1].GetProperty("createdUtc").ValueKind);
+        }
+
+        // A session that names none says nothing of them, rather than that it had none.
+        using var plain = new TemporarySession();
+        Publish(plain.Store, [Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 }]);
+        plain.Store.ReleaseSegmentReaders();
+        (code, output, said) = await Run("session", plain.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.DoesNotContain("COLLECTED BY", output, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path")]
     public async Task ASupportBundleHoldsNoRecordsContent()
     {

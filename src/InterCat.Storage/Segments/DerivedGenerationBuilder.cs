@@ -102,6 +102,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private bool ledgerStaged;
     private bool finalizationStaged;
     private bool calibrationStaged;
+    private bool collectorsStaged;
     private bool redactionPolicyStaged;
     private bool contentStaged;
     private bool disposed;
@@ -295,6 +296,36 @@ public sealed class DerivedGenerationBuilder : IDisposable
 
     /// <summary>The published name of a generation's clock calibration.</summary>
     public static string ClockCalibrationFileName(long generation) => $"clock-calibration-{generation:D10}.json";
+
+    /// <summary>
+    /// Stages the processes that collected the capture (`contracts/collector-identities-v1.md`): evidence about it, which
+    /// the generations after this one carry unchanged.
+    /// </summary>
+    public void StageCollectorIdentities(CollectorIdentitiesV1 collectors)
+    {
+        ArgumentNullException.ThrowIfNull(collectors);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || collectorsStaged)
+        {
+            throw new InvalidOperationException("A generation stages its collector identities once, before publication.");
+        }
+
+        if (collectors.CaptureId != identity.CaptureId.Value)
+        {
+            throw new ArgumentException(
+                "Collector identities must name the capture this generation belongs to.", nameof(collectors));
+        }
+
+        Stage(CollectorIdentitiesFileName(generation), StoreDependencyKind.CollectorIdentities, collectors.Encode());
+        collectorsStaged = true;
+    }
+
+    /// <summary>Retains already-published collector identities while mirroring evidence; they are decoded and checked first.</summary>
+    public void StageCollectorIdentities(ReadOnlySpan<byte> bytes) =>
+        StageCollectorIdentities(CollectorIdentitiesV1.Decode(bytes));
+
+    /// <summary>The published name of a generation's collector identities.</summary>
+    public static string CollectorIdentitiesFileName(long generation) => $"collector-identities-{generation:D10}.json";
 
     /// <summary>
     /// Stages the content a capture kept of this generation's journal records (`contracts/content-v1.md`, ADR-036):

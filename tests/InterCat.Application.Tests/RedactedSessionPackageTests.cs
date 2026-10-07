@@ -126,18 +126,32 @@ public sealed partial class RedactedSessionPackageTests
         using var source = new TemporarySession();
         PublishRichSource(source.Store);
         using var package = new PackageDirectory();
-        _ = RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+        RedactedSessionPackageResult created = RedactedSessionPackage.Create(source.Store, package.Path, Committed);
+
+        // The collectors' file's digest is a needle the package's leak scan looks for, in either case, beyond those a source
+        // naming none gives it.
+        using (var unnamed = new TemporarySession())
+        using (var unnamedPackage = new PackageDirectory())
+        {
+            PublishRichSource(unnamed.Store, collectors: false);
+            Assert.Equal(RedactedSessionPackage.Create(unnamed.Store, unnamedPackage.Path, Committed).IdentityNeedles + 2,
+                created.IdentityNeedles);
+        }
 
         SessionManifestV1 original = source.Store.Current!;
         SessionManifestV1 manifest = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package.Path)).Current!;
         StoreDependency[] evidence = [.. original.Dependencies.Where(dependency => dependency.Kind is StoreDependencyKind.Journal
             or StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Index
-            or StoreDependencyKind.DerivationPlan or StoreDependencyKind.ClockCalibration)];
+            or StoreDependencyKind.DerivationPlan or StoreDependencyKind.ClockCalibration
+            or StoreDependencyKind.CollectorIdentities)];
         Assert.NotEmpty(evidence);
 
-        // The source's clock calibration - its wall-clock readings and its boot - is not the package's.
+        // The source's clock calibration - its wall-clock readings and its boot - is not the package's, nor are the PIDs
+        // and creation times of the processes that collected it.
         Assert.Contains(evidence, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
         Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.ClockCalibration);
+        Assert.Contains(evidence, dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
+        Assert.DoesNotContain(manifest.Dependencies, dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
 
         // Not one of them is a dependency of the package, and no package file holds one's bytes - a package file may share
         // a conventional name, such as its own synthetic journal's, but never the content: the package is built from
@@ -666,7 +680,15 @@ public sealed partial class RedactedSessionPackageTests
 
     private static readonly Guid SecretBoot = Guid.Parse("b0070000-1111-4222-8333-444444444444");
 
-    private static void PublishRichSource(SessionStore store, CoverageLedgerV1? coverage = null)
+    /// <summary>The rich source's collectors: their PIDs and creation times would link a package to its machine.</summary>
+    private static CollectorIdentitiesV1 Collectors() => new()
+    {
+        Contract = CollectorIdentitiesV1.ContractName,
+        CaptureId = Capture.Value,
+        Processes = [new() { Role = CollectorRole.Recorder, ProcessId = 1200, CreatedUtc = Committed.AddTicks(-7) }],
+    };
+
+    private static void PublishRichSource(SessionStore store, CoverageLedgerV1? coverage = null, bool collectors = true)
     {
         ObservationRowV1 system = At(Lifecycle(0, ObservationKind.Inventory, 4, 1) with { ResourceName = "System" }, 0);
         ObservationRowV1 agent = At(Lifecycle(0, ObservationKind.Create, 1200, 2) with { ResourceName = SecretPath }, 10);
@@ -769,6 +791,7 @@ public sealed partial class RedactedSessionPackageTests
             Field(rpc, SourceField.RpcProtocolSequence, 1),
         ];
         Publish(store, rows, rowsPerSegment: 5, clock: SourceClock, fields: fields, coverage: coverage ?? Ledger(), calibration: Calibration(),
+            collectors: collectors ? Collectors() : null,
             bodyForRow: _ => new BodyV1
             {
                 Classification = BodyClassificationV1.ApprovedMetadata,

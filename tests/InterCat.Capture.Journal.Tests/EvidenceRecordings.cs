@@ -43,7 +43,8 @@ internal static class EvidenceRecordings
         string directory,
         int[] ordinals,
         bool failLossRead = false,
-        ClockCalibrationSource? calibration = null)
+        ClockCalibrationSource? calibration = null,
+        IReadOnlyList<CollectorProcessV1>? collectors = null)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
         var host = new ScriptedHost { FailLossRead = failLossRead };
@@ -77,7 +78,8 @@ internal static class EvidenceRecordings
             DateTimeOffset.UtcNow,
             publishEvery: TimeSpan.FromMilliseconds(100),
             output: LiveRecordingOutput.EvidenceOnly,
-            calibration: calibration);
+            calibration: calibration,
+            collectors: collectors);
     }
 
     /// <summary>

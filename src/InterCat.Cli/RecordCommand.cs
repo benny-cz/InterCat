@@ -282,6 +282,7 @@ internal static class RecordCommand
             publishEvery: publishSeconds > 0 ? TimeSpan.FromSeconds(publishSeconds) : null,
             output: evidenceOnly ? LiveRecordingOutput.EvidenceOnly : LiveRecordingOutput.Session,
             calibration: ClockCalibrationSource.Local,
+            collectors: [CollectorProcesses.Current(CollectorRole.Recorder)],
             cancellationToken: cancellationToken).ConfigureAwait(false);
         if (!result.Start.Started)
         {

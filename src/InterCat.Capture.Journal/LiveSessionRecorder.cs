@@ -64,6 +64,9 @@ public sealed record LiveRecordingResult
 
     /// <summary>The clock calibration published with the last chunk; null when none was asked for.</summary>
     public ClockCalibrationV1? Calibration { get; init; }
+
+    /// <summary>The processes that collected the capture, published with its first generation; null when none were named.</summary>
+    public CollectorIdentitiesV1? Collectors { get; init; }
 }
 
 /// <summary>
@@ -92,6 +95,10 @@ public static class LiveSessionRecorder
     /// <param name="calibration">
     /// Where to read the capture's clock against the wall clock, and its boot, published with the last chunk; null records none.
     /// </param>
+    /// <param name="collectors">
+    /// The processes collecting the capture, published with its first generation (`contracts/collector-identities-v1.md`);
+    /// null records none.
+    /// </param>
     public static async Task<LiveRecordingResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -103,6 +110,7 @@ public static class LiveSessionRecorder
         CompactionOptions? compaction = null,
         LiveRecordingOutput output = LiveRecordingOutput.Session,
         ClockCalibrationSource? calibration = null,
+        IReadOnlyList<CollectorProcessV1>? collectors = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -130,6 +138,7 @@ public static class LiveSessionRecorder
                 ? clock => derivation = new RowDerivation(clock, store, bounds, compaction ?? CompactionOptions.Default)
                 : null,
             calibration: calibration,
+            collectors: collectors,
             cancellationToken: cancellationToken).ConfigureAwait(false);
         return new()
         {
@@ -145,6 +154,7 @@ public static class LiveSessionRecorder
             ContentKeptBytes = captured.ContentKeptBytes,
             ContentLimitReached = captured.ContentLimitReached,
             Calibration = captured.Calibration,
+            Collectors = captured.Collectors,
         };
     }
 

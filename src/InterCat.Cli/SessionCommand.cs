@@ -40,6 +40,9 @@ internal sealed record SessionDocument
     /// <summary>The capture's clock against the wall clock, and its boot (`clock-calibration-v1`); null when it records none.</summary>
     public required ClockCalibrationV1? ClockCalibration { get; init; }
 
+    /// <summary>The processes that collected the capture (`collector-identities-v1`); null when it names none.</summary>
+    public required CollectorIdentitiesV1? Collectors { get; init; }
+
     /// <summary>How fast the wall clock ran against the source clock between the first and last sample; null when unknown.</summary>
     public required WallClockRate? WallClockRate { get; init; }
 
@@ -315,6 +318,7 @@ internal static class SessionCommand
         SessionCoverageDocument? coverage = null;
         SessionLedgerDocument? ledger = null;
         ClockCalibrationV1? calibration = null;
+        CollectorIdentitiesV1? collectors = null;
         WallClockRate? rate = null;
         SessionRecordingDocument? recording = null;
         SessionRedaction? redaction = manifest is null ? null : SessionRedaction.Read(store.Root, manifest);
@@ -419,6 +423,7 @@ internal static class SessionCommand
             }
 
             calibration = ClockCalibrationV1.Read(store.Root, manifest);
+            collectors = CollectorIdentitiesV1.Read(store.Root, manifest);
             if (calibration is not null && SessionSegments.SourceClock(store.Root, manifest) is { } clock)
             {
                 rate = ClockCalibrationFacts.Rate(calibration, clock.TicksPerSecond);
@@ -542,6 +547,7 @@ internal static class SessionCommand
             Coverage = coverage,
             CoverageLedger = ledger,
             ClockCalibration = calibration,
+            Collectors = collectors,
             WallClockRate = rate,
             Recording = recording,
             Redaction = redaction,
@@ -740,6 +746,11 @@ internal static class SessionCommand
             RenderCalibration(calibration, document.WallClockRate, document.Recording);
         }
 
+        if (document.Collectors is { } collectors)
+        {
+            RenderCollectors(collectors);
+        }
+
         if (document.FieldSegments.Count > 0)
         {
             ConsoleUi.Heading("Source correlation and object fields");
@@ -870,6 +881,26 @@ internal static class SessionCommand
             + (retention.ReleasedFiles.Count > listed
                 ? string.Create(culture, $" and {ConsoleUi.Count(retention.ReleasedFiles.Count - listed)} more")
                 : string.Empty));
+    }
+
+    /// <summary>
+    /// The processes that collected the capture, each by its role, PID and creation time, which is what a lifecycle record of
+    /// the same instance carries: never by a name (`collector-identities-v1` §3).
+    /// </summary>
+    private static void RenderCollectors(CollectorIdentitiesV1 collectors)
+    {
+        ConsoleUi.Heading("Collected by");
+        foreach (CollectorProcessV1 process in collectors.Processes)
+        {
+            ConsoleUi.Field(process.Role switch
+            {
+                CollectorRole.Broker => "Broker",
+                CollectorRole.Client => "Its client",
+                _ => "Recorder",
+            }, string.Create(CultureInfo.CurrentCulture, $"PID {process.ProcessId}, ") + (process.CreatedUtc is { } created
+                ? string.Create(CultureInfo.CurrentCulture, $"created {created.UtcDateTime:yyyy-MM-dd HH:mm:ss.fffffff} UTC")
+                : "its creation time unread, so no instance of the capture can be shown to be it"));
+        }
     }
 
     private static void RenderCalibration(ClockCalibrationV1 calibration, WallClockRate? rate, SessionRecordingDocument? recording)

@@ -60,6 +60,9 @@ public sealed class LiveSessionFollower
 
     // The digest of the calibration the derived session holds, which a mirror is byte for byte of the evidence's.
     private string? mirroredCalibration;
+
+    // Whether the capture's collectors are mirrored: they are published once, with its first generation.
+    private bool mirroredCollectors;
     private ulong journalIndex;
     private int smallUnits;
 
@@ -205,6 +208,7 @@ public sealed class LiveSessionFollower
         using EvidenceLease lease = derived.AcquireLease();
         mirroredCalibration = lease.Manifest.Dependencies
             .SingleOrDefault(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)?.Digest;
+        mirroredCollectors = lease.Manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
         foreach (StoreDependency chunk in Chunks(lease.Manifest))
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -342,8 +346,17 @@ public sealed class LiveSessionFollower
             builder.StageClockCalibration(Read(evidence, calibration));
         }
 
+        // The capture's collectors, published with its first generation, are mirrored with the first chunk that has them.
+        StoreDependency? collectors = mirroredCollectors ? null : source.Dependencies.SingleOrDefault(dependency =>
+            dependency.Kind == StoreDependencyKind.CollectorIdentities);
+        if (collectors is not null)
+        {
+            builder.StageCollectorIdentities(Read(evidence, collectors));
+        }
+
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);
         mirroredCalibration = calibration?.Digest ?? mirroredCalibration;
+        mirroredCollectors |= collectors is not null;
 
         // Only a published chunk moves the follow on: a refused one leaves it where it was.
         foreach (KeyValuePair<(uint Stream, uint Epoch), ulong> pair in reached)

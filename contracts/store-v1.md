@@ -57,8 +57,9 @@ A dependency kind is `Journal`, `Segment`, `Dictionary`, `Index` (code 4, `contr
 revision 162), `DerivationPlan` (code 5,
 `contracts/normalizer-plan-v1.md`), `CoverageLedger` (code 6, `contracts/coverage-v2.md`),
 `CaptureFinalization` (code 7, `contracts/capture-finalization-v1.md`), `RedactionPolicy` (code 8,
-`contracts/redacted-session-v1.md`), `Content` (code 9, `contracts/content-v1.md`, revision 234) or `ClockCalibration`
-(code 10, `contracts/clock-calibration-v1.md`, revision 255). An unknown kind, an unreadable format version, a
+`contracts/redacted-session-v1.md`), `Content` (code 9, `contracts/content-v1.md`, revision 234), `ClockCalibration`
+(code 10, `contracts/clock-calibration-v1.md`, revision 255) or `CollectorIdentities` (code 11,
+`contracts/collector-identities-v1.md`, revision 414). An unknown kind, an unreadable format version, a
 generation outside `1..9,999,999,999`, a previous generation that is not earlier, a duplicate dependency, or a
 dependency name that is not an owned file name are each refused — the manifest is not read at a guessed layout.
 

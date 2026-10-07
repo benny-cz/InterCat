@@ -54,6 +54,14 @@ public enum StoreDependencyKind
     /// evidence about the capture that no journal holds, carried unchanged and never released. Never in a redacted package.
     /// </summary>
     ClockCalibration = 10,
+
+    /// <summary>
+    /// The processes that collected a live capture - its broker and the client that asked for it, or `icat record` - by
+    /// PID and creation time (`contracts/collector-identities-v1.md`), so a reader can label their own activity in it
+    /// (§19.5): evidence about the capture that no journal holds, carried unchanged and never released. Never in a
+    /// redacted package.
+    /// </summary>
+    CollectorIdentities = 11,
 }
 
 /// <summary>

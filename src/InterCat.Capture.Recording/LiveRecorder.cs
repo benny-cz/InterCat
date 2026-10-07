@@ -74,6 +74,9 @@ public sealed record LiveCaptureResult
 
     /// <summary>The clock calibration published with the last chunk; null when none was asked for.</summary>
     public ClockCalibrationV1? Calibration { get; init; }
+
+    /// <summary>The processes that collected the capture, published with its first generation; null when none were named.</summary>
+    public CollectorIdentitiesV1? Collectors { get; init; }
 }
 
 /// <summary>
@@ -112,6 +115,11 @@ public static class LiveRecorder
     /// Where to read the capture's clock against the wall clock, and its boot, when the capture starts and when it stops;
     /// the calibration is published with the last chunk. Null records none.
     /// </param>
+    /// <param name="collectors">
+    /// The processes collecting the capture - its broker and the client that asked for it, or the recorder itself - published
+    /// with its first generation (`contracts/collector-identities-v1.md`), so a reader can label their own activity in it.
+    /// Null records none.
+    /// </param>
     public static async Task<LiveCaptureResult> RecordAsync(
         OwnedSessionPlan plan,
         IEtwSessionHost host,
@@ -127,12 +135,30 @@ public static class LiveRecorder
         TimeSpan? publishFirstAfter = null,
         LiveHealthProbe? healthProbe = null,
         ClockCalibrationSource? calibration = null,
+        IReadOnlyList<CollectorProcessV1>? collectors = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(host);
         ArgumentNullException.ThrowIfNull(store);
         ArgumentNullException.ThrowIfNull(recordUntil);
+
+        // Checked before the capture starts, so collectors no file can hold refuse it rather than its first publication.
+        CollectorIdentitiesV1? collected = collectors is null or { Count: 0 } ? null : new()
+        {
+            Contract = CollectorIdentitiesV1.ContractName,
+            CaptureId = plan.Identity.CaptureId.Value,
+            Processes = [.. collectors],
+        };
+        try
+        {
+            collected?.Validate();
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new ArgumentException(exception.Message, nameof(collectors), exception);
+        }
+
         if (publishEvery is { } interval && interval <= TimeSpan.Zero)
         {
             throw new ArgumentOutOfRangeException(nameof(publishEvery), "A publication interval is positive.");
@@ -221,7 +247,8 @@ public static class LiveRecorder
                     BootCount = boot.Count,
                     WallClock = calibration.WallClock,
                     Samples = [startSample],
-                });
+                },
+            collected);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -334,6 +361,7 @@ public static class LiveRecorder
             ContentKeptBytes = chunks.ContentKeptBytes,
             ContentLimitReached = chunks.ContentLimitReached,
             Calibration = calibrated,
+            Collectors = collected,
         };
     }
 
@@ -374,6 +402,10 @@ public static class LiveRecorder
         // that ends before its last publication still names its boot and its start; the last replaces it
         // (clock-calibration-v1 §1).
         private ClockCalibrationV1? started;
+
+        // The processes collecting the capture, published with its first generation, whichever chunk that is
+        // (collector-identities-v1 §1).
+        private CollectorIdentitiesV1? collectors;
         private readonly Stopwatch sincePublished = Stopwatch.StartNew();
         private DerivedGenerationBuilder builder;
         private readonly long emptyChunkBytes;
@@ -409,10 +441,12 @@ public static class LiveRecorder
             LiveDiskFloor? diskFloor,
             Action onAcquisitionLimit,
             LivePreviewTally? preview,
-            ClockCalibrationV1? started)
+            ClockCalibrationV1? started,
+            CollectorIdentitiesV1? collectors)
         {
             this.session = session;
             this.started = started;
+            this.collectors = collectors;
             this.preview = preview;
             this.plan = plan;
             this.store = store;
@@ -498,6 +532,7 @@ public static class LiveRecorder
                 builder.StageClockCalibration(calibration);
             }
 
+            StageCollectors();
             StageContent();
             DateTimeOffset finalizedUtc = DateTimeOffset.UtcNow;
             builder.StageCaptureFinalization(new CaptureFinalizationV1
@@ -515,6 +550,16 @@ public static class LiveRecorder
         }
 
         public void Dispose() => builder.Dispose();
+
+        /// <summary>Stages the capture's collectors in the first generation published, which every later one carries.</summary>
+        private void StageCollectors()
+        {
+            if (collectors is { } named)
+            {
+                builder.StageCollectorIdentities(named);
+                collectors = null;
+            }
+        }
 
         /// <summary>
         /// Whether a timed rollover can happen at all now. When it cannot, the writer waits only for records rather than
@@ -781,6 +826,7 @@ public static class LiveRecorder
                 started = null;
             }
 
+            StageCollectors();
             DerivedGenerationResult published = builder.Complete(DateTimeOffset.UtcNow, CancellationToken.None);
             builder.Dispose();
             publishedJournalBytes = checked(publishedJournalBytes + published.JournalBytes);

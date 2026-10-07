@@ -431,7 +431,8 @@ internal static class TestSessions
         DateTimeOffset? committedUtc = null,
         (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null,
         ClockCalibrationV1? calibration = null,
-        bool finished = false)
+        bool finished = false,
+        CollectorIdentitiesV1? collectors = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -490,6 +491,11 @@ internal static class TestSessions
         if (calibration is not null)
         {
             builder.StageClockCalibration(calibration);
+        }
+
+        if (collectors is not null)
+        {
+            builder.StageCollectorIdentities(collectors);
         }
 
         // A capture that reached its last publication says so, as a recorder's final generation does.

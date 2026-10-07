@@ -699,8 +699,8 @@ public sealed class SessionStore
                 }
 
                 // The admitted evidence - every journal chunk and the content kept beside it - and the plan, optional
-                // coverage ledger, finalization marker, clock calibration and redaction policy that describe the capture
-                // are not derivations of it, so replacement carries them unchanged. Carrying every journal means no
+                // coverage ledger, finalization marker, clock calibration, collectors and redaction policy that describe
+                // the capture are not derivations of it, so replacement carries them unchanged. Carrying every journal means no
                 // chunk's evidence is ever dropped by replacing the rows derived from it, and carrying a redaction policy
                 // means a package never loses its provenance (I22).
                 carried =
@@ -710,6 +710,7 @@ public sealed class SessionStore
                             or StoreDependencyKind.CoverageLedger
                             or StoreDependencyKind.CaptureFinalization
                             or StoreDependencyKind.ClockCalibration
+                            or StoreDependencyKind.CollectorIdentities
                             or StoreDependencyKind.RedactionPolicy
                             or StoreDependencyKind.Journal
                             or StoreDependencyKind.Content),
@@ -1088,6 +1089,14 @@ public sealed class SessionStore
                     throw new ArgumentException(
                         "A clock calibration pairs the capture's clock with the wall clock and names its boot. No journal "
                         + "holds those facts, so it is not a rebuildable index and retention cannot release it.",
+                        nameof(names));
+                }
+
+                if (dependency.Kind == StoreDependencyKind.CollectorIdentities)
+                {
+                    throw new ArgumentException(
+                        "Collector identities name the processes that collected the capture. No journal holds them, so "
+                        + "they are not a rebuildable index and retention cannot release them.",
                         nameof(names));
                 }
 
