@@ -130,6 +130,9 @@ public sealed record FilterRow(string Field, string Label, string Reason) : IAcc
         "channel" => "Channel",
         "operation" => "Operation",
         "scope" => "Records of",
+        EvidenceScopes.MechanismField => "Mechanism",
+        EvidenceScopes.DirectionField => "Direction",
+        EvidenceScopes.EndField => "End",
         _ => Field,
     };
 }

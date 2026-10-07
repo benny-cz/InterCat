@@ -228,6 +228,117 @@ public sealed class TimelineCellTests
             + "or pairing rule narrows. Paired TCP channel", workspace.CellExplanation, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§6.4: E from a chosen timeline cell lists exactly its records, behind a filter whose removal widens it, as icat evidence lists them")]
+    public async Task EvidenceFromAChosenCellIsItsRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+
+        // A TCP cell: the card names its records, and E lists exactly them, behind a filter naming the mechanism.
+        TimelineBucket tcp = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 1);
+        workspace.ChooseTimelineCell(tcp, Mechanism.Tcp);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+        Assert.EndsWith(" · TCP records only", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal("Mechanism: TCP", Assert.Single(workspace.Filters, filter => filter.Field == EvidenceScopes.MechanismField).Chip);
+        Assert.EndsWith(" · TCP records only", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: tcp.Interval, mechanism: Mechanism.Tcp)),
+            workspace.EvidenceMarkTicks.Order());
+        Assert.Equal(tcp.ObservationCount, workspace.EvidenceMarkTicks.Count);
+
+        // The rung's timeline counts what E lists, the mechanism's records, in the cell as in every column; the filter
+        // removed, E lists every record of the interval again.
+        await workspace.TimelineDetailReady;
+        Assert.Equal(tcp.ObservationCount,
+            workspace.TimelineFocusBuckets!.Single(bucket => bucket.Interval == tcp.Interval).ObservationCount);
+        Assert.Equal(Lane(workspace, Mechanism.Tcp).Sum(bucket => bucket.ObservationCount),
+            workspace.TimelineFocusBuckets!.Sum(bucket => bucket.ObservationCount));
+        workspace.SelectedFilter = workspace.Filters.Single(filter => filter.Field == EvidenceScopes.MechanismField);
+        Assert.True(workspace.RemoveSelectedFilter());
+        await workspace.EvidenceReady;
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: tcp.Interval)), workspace.EvidenceMarkTicks.Order());
+        workspace.ReturnTo(0);
+
+        // A brushed range is no cell: E from it lists the rung's records, whichever lane is selected.
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        workspace.SelectInterval(new TimeRange(tcp.Interval.StartTicks, tcp.Interval.EndTicks + 1));
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.DoesNotContain(workspace.Filters, filter => filter.Field == EvidenceScopes.MechanismField);
+        workspace.ReturnTo(0);
+        workspace.SelectTimelineLane(null);
+
+        // A process's outbound row: its records marked outbound.
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+        TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.EndsWith(" · records marked outbound only", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: sent.Interval, ownerProcesses: [client.Id],
+            direction: Direction.Outbound)), workspace.EvidenceMarkTicks.Order());
+        Assert.Equal(sent.ObservationCount, workspace.EvidenceMarkTicks.Count);
+        Assert.True(workspace.Ascend());
+
+        // A channel's end: the records made there.
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        ChannelEndTimelineLane end = workspace.TimelineChannelEndLanes!.Single(candidate => candidate.Endpoint == ServerEnd);
+        TimelineBucket made = end.Buckets.First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(made, endLane: end);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal($"End: {ServerEnd}", Assert.Single(workspace.Filters, filter => filter.Field == EvidenceScopes.EndField).Chip);
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, channel.Key, made.Interval, end: end.End)),
+            workspace.EvidenceMarkTicks.Order());
+        Assert.Equal(made.ObservationCount, workspace.EvidenceMarkTicks.Count);
+        Assert.True(workspace.Ascend());
+
+        // The machine row's cell draws the rung's own records over the machine's: E lists the rung's own, as before.
+        TimelineBucket context = workspace.Snapshot.Timeline.First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(context);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.DoesNotContain(workspace.Filters, filter => filter.Field is EvidenceScopes.MechanismField or EvidenceScopes.DirectionField
+            or EvidenceScopes.EndField);
+        Assert.StartsWith("Paired TCP channel", workspace.EvidenceScopeText, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.4: E from a cell of a group's process lane lists that process's records in it, not the group's")]
+    public async Task EvidenceFromAProcessLanesCellIsItsProcesss()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Pool(40));
+        using WorkspaceViewModel workspace = Open(session);
+        string group = workspace.Snapshot.Processes.First(node => node.ProcessId == 2_000).GroupKey;
+        TimeRange extent = workspace.Snapshot.Extent;
+        DescendTo(workspace, group);
+        workspace.RequestTimelineDetail(new TimeRange(extent.StartTicks + 1, extent.EndTicks), 1_000);
+        await workspace.TimelineDetailReady;
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        TimelineBucket cell = lane.Buckets.First(bucket => bucket.ObservationCount > 0);
+        ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
+        workspace.ChooseTimelineCell(cell, ownerLane: owner);
+        Assert.StartsWith($"Records owned by {owner.NameWithPid}", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith($"Records owned by {owner.NameWithPid}", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.Equal(cell.ObservationCount, workspace.EvidenceMarkTicks.Count);
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: cell.Interval, ownerProcesses: [owner.Id])),
+            workspace.EvidenceMarkTicks.Order());
+    }
+
+    private static long[] Ticks(SessionEvidencePage page) =>
+        [.. page.Records.Select(record => record.Observation.SessionRelativeTicks!.Value / 100).Order()];
+
     private static string Counted(int count, string noun) =>
         string.Create(CultureInfo.CurrentCulture, $"{count:N0} {noun}{(count == 1 ? string.Empty : "s")}");
 

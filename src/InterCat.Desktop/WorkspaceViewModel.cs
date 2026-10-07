@@ -4064,7 +4064,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
         && selectedRelationship is null && SelectedCluster is null && SelectedGroup is null && ChosenRow is null
-            ? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport }).Description
+            ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
+                ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport }).Description
             : null;
 
     public string EvidenceSummary
@@ -4391,7 +4392,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                     new(DetailLevel.Group, group.Key, group.Name),
                     $"Evidence was reached from the machine rung with this {GroupNoun(group)} selected.")
-                : LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+                : CellEvidenceDescent(viewport) ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
         if (!TryDescend(descent))
         {
             return false;
@@ -5955,9 +5956,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         if (IsCellExplanationInput(propertyName))
         {
-            // A chosen cell's explanation reads the interval, the lane selected and the lanes drawn (§6.8).
+            // A chosen cell's explanation reads the interval, the lane selected and the lanes drawn (§6.8), and so does
+            // what E lists from it.
             PropertyChanged?.Invoke(this, new(nameof(CellExplanation)));
             PropertyChanged?.Invoke(this, new(nameof(HasCellExplanation)));
+            PropertyChanged?.Invoke(this, new(nameof(EvidenceSummary)));
         }
     }
 }

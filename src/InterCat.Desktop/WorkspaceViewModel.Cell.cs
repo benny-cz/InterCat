@@ -233,10 +233,53 @@ public sealed partial class WorkspaceViewModel
         _ => "These are process lifecycle records, disconnects and other records that carry no data.",
     };
 
+    /// <summary>
+    /// E's step from the cell the analysis interval is, with nothing else selected (§6.4: selecting a timeline cell opens
+    /// the exact contributing evidence): a process's lane's records are that process's, and a mechanism's lane, a source
+    /// direction's row or a channel end's lane narrows the rung's own records by a visible filter its removal widens. Null
+    /// for a brushed range, which is no cell, and for the machine row, whose cell draws the rung's own records over the
+    /// machine's and so lists the rung's, as before.
+    /// </summary>
+    private LadderDescent? CellEvidenceDescent(TimeRange viewport)
+    {
+        TimelineCellLane lane = ExplainedLane;
+        if (!realOverview || lane == MachineRow || selectedInterval is not { } interval || CellOf(lane, interval) is null)
+        {
+            return null;
+        }
+
+        string reason = $"Evidence was reached from the {NavigationState.Name(ladder.Current.Level).ToLowerInvariant()} rung "
+            + "with a timeline cell chosen: its own records.";
+        if (lane.Owner is { } owner)
+        {
+            string name = wholeSnapshot.Processes.FirstOrDefault(process => process.Id == owner)?.NameWithPid
+                ?? "instance " + owner.ToString()[..8];
+            return LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                new(DetailLevel.ProcessInstance, owner.ToString(), name), reason);
+        }
+
+        LadderDescent rung = LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+        ImpliedFilter narrowing = lane.Mechanism is { } mechanism ? EvidenceScopes.MechanismFilter(mechanism, reason)
+            : lane.Direction is { } direction ? EvidenceScopes.DirectionFilter(direction, reason)
+            : EvidenceScopes.EndFilter(lane.End!.Value,
+                timelineChannelEnds!.First(candidate => candidate.End == lane.End).Endpoint, reason);
+        return rung with { AddedFilters = [.. rung.AddedFilters, narrowing] };
+    }
+
+    /// <summary>The records E lists from the cell the analysis interval is, as its step resolves them; null without one.</summary>
+    private string? CellRecords(TimeRange viewport) => CellEvidenceDescent(viewport) is { } cell
+        ? EvidenceScopes.Resolve(Snapshot, ladder.Current with
+        {
+            Viewport = viewport,
+            Filters = [.. ladder.Current.Filters, .. cell.AddedFilters],
+        }).Description
+        : null;
+
     private void RaiseCellExplanationChanged()
     {
         OnPropertyChanged(nameof(CellExplanation));
         OnPropertyChanged(nameof(HasCellExplanation));
+        OnPropertyChanged(nameof(EvidenceSummary));
     }
 
     /// <summary>What the cell's explanation reads, by the name its change is raised under.</summary>
