@@ -327,6 +327,32 @@ public sealed class CommandLineTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat overview says what the capture covered over the session in the words the window's inspector uses")]
+    public async Task TheOverviewSaysWhatTheCaptureCovered()
+    {
+        using var tcp = new TemporarySession();
+        Publish(tcp.Store,
+        [
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 10_000 },
+        ], coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [TcpEpoch()] });
+        tcp.Store.ReleaseSegmentReaders();
+
+        // The window states beneath its time scope the words its snapshot's coverage reads as, the overview's own list.
+        foreach ((TemporarySession held, string said) in new[]
+        {
+            (tcp, "Coverage: covered for TCP · no other mechanism collected"),
+            (session, "Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof of "
+                + "inactivity"),
+        })
+        {
+            Assert.Equal(said, CoverageText.Describe(OverviewWorkspace.From(SessionOverviewProjector.Project(held.Store)).MechanismCoverage));
+            (InterCatExitCode code, string overview, string error) = await Run("overview", held.Path);
+            Assert.True(code == InterCatExitCode.Success, error);
+            Assert.Contains("  " + said + "\n", overview.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        }
+    }
+
     [Fact(DisplayName = "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing")]
     public async Task ProcessesSayWhatTheCaptureCovered()
     {

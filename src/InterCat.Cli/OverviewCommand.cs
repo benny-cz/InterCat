@@ -74,7 +74,10 @@ internal static class OverviewCommand
         ConsoleUi.Field("Observed rows", ConsoleUi.Count(overview.ObservationRows));
         ConsoleUi.Field("Graph-eligible rows", ConsoleUi.Count(overview.GraphEligibleRows));
         ConsoleUi.Field("Rows held by none", ConsoleUi.Count(overview.RowsNoProcessHolds));
-        ConsoleUi.Field("Coverage ledger", overview.CoverageLedgerPublished ? "published" : "not published");
+
+        // What the capture covered over the session, mechanism by mechanism, in the words the window's inspector states
+        // beneath its time scope (R18, R21): a generation without a ledger says it judged nothing.
+        if (CoverageText.Describe(overview.MechanismCoverage) is { Length: > 0 } coverage) ConsoleUi.Note(coverage);
 
         // The Desktop's ranked table in brief: the busiest instances by their own records (process-activity-v1).
         ProcessNode[] busiest = [.. overview.Nodes
@@ -100,5 +103,7 @@ internal static class OverviewCommand
         ConsoleUi.Line("icat overview <session-directory> [--json]");
         ConsoleUi.Line("  Read-only, leased process graph, admitted paired TCP channels and all-observations timeline.");
         ConsoleUi.Line("  The graph is narrower than the session. --json returns the Desktop's exact numeric bundle.");
+        ConsoleUi.Line("  It says what the capture covered, mechanism by mechanism, in the words the window's inspector");
+        ConsoleUi.Line("  uses beneath its time scope.");
     }
 }

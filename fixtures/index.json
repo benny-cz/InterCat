@@ -1771,6 +1771,7 @@
         "R18: each process's calls made and served add up to what the operations metric counts for it, whole or in an interval",
         "R18: each process's ranked bytes are what the metric grouped by process answers, whole or in an interval",
         "R18: every command's --json answer is one JSON object on stdout naming its contract, whatever its exit code",
+        "R18: icat overview says what the capture covered over the session in the words the window's inspector uses",
         "R18: icat's overview names every command and every form of it its own help gives, and capture says what it needs",
         "R18: lanes measured together in one pass each hold what the byte measure answers over their mechanism's records",
         "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",
