@@ -1,6 +1,6 @@
 # collector-identities-v1
 
-Status: revision 414 (§19.5)
+Status: revision 414 (§19.5); the broker's client since revision 415
 Owner: `InterCat.Storage` (`CollectorIdentitiesV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`)
 
 The processes that collected a capture, by the identity its own lifecycle records give them. InterCat's broker, the
@@ -47,8 +47,8 @@ The UTF-8 JSON object is at most 4 KiB:
   (`GetNamedPipeClientProcessId`, which `contracts/broker-v1.md` keeps out of every authorization decision); `Recorder`
   is `icat record`, which owns its trace session itself.
 - `processes` holds 1 to 8 processes, no two naming one role and one PID. A capture recorded by a broker names its
-  broker, and `icat record` names itself. `Client` is kept for the process that asked a broker to record, which the
-  broker does not name yet: its control pipe knows the client's PID, which is to be carried to the recorder first.
+  broker, and since revision 415 the client that asked it to record, when its control pipe named one; `icat record`
+  names itself.
 - `createdUtc` is the process's creation time as the operating system keeps it (`GetProcessTimes`), at its 100 ns
   resolution: the instant a lifecycle record's creation time of the same instance carries. It is absent when the process
   could not be opened to read it, as a client that exited before the capture started cannot.

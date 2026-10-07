@@ -18,6 +18,16 @@ public static class CollectorProcesses
     }
 
     /// <summary>
+    /// The processes collecting a capture a broker records: the broker, which is this process, and the client whose request
+    /// started it, by the PID its control pipe named, when one did.
+    /// </summary>
+    public static IReadOnlyList<CollectorProcessV1> ForBroker(int? clientProcessId) =>
+    [
+        Current(CollectorRole.Broker),
+        .. clientProcessId is { } client ? [Of(client, CollectorRole.Client)] : Array.Empty<CollectorProcessV1>(),
+    ];
+
+    /// <summary>
     /// Another process, by the PID it was named by, collecting in <paramref name="role"/>: its creation time is read when it
     /// can be opened, and left out when it has exited or cannot be, as the contract allows.
     /// </summary>

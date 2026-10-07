@@ -37,7 +37,7 @@ public sealed class BrokerEvidenceFollowTests
         };
         await using (var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host))
         {
-            Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+            Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
             await Task.Delay(TimeSpan.FromSeconds(2.5));
             Assert.True((await runtime.StopAsync(ownership, CancellationToken.None)).Milestones.FullyFinalized);
         }

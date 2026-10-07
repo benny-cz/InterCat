@@ -59,12 +59,15 @@ public sealed class BrokerLifecycleCoordinatorTests
             TimeSpan.FromSeconds(20));
         Guid requestId = Guid.NewGuid();
 
-        BrokerStartOutcome first = await coordinator.StartAsync(grant.Token, requestId, OwnerA);
-        BrokerStartOutcome duplicate = await coordinator.StartAsync(grant.Token, requestId, OwnerA);
+        BrokerStartOutcome first = await coordinator.StartAsync(grant.Token, requestId, OwnerA, clientProcessId: 4_242);
+        BrokerStartOutcome duplicate = await coordinator.StartAsync(grant.Token, requestId, OwnerA, clientProcessId: 5_353);
 
         Assert.Equal(BrokerOperationCode.Started, first.Code);
         Assert.Equal(first, duplicate);
         Assert.Equal(1, runtime.StartCount);
+
+        // The runtime is told the client that started the capture, once: a replayed request starts nothing again.
+        Assert.Equal([4_242], runtime.StartedClients);
         BrokerCaptureOwnership status = Assert.IsType<BrokerCaptureOwnership>(
             await coordinator.GetStatusAsync(first.CaptureId!.Value, OwnerA));
         Assert.Equal(CaptureLifecycle.Recording, status.State);

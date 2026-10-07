@@ -20,7 +20,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         PreparedCapturePlan plan = SmallPlan();
         BrokerCaptureOwnership ownership = Ownership(plan);
 
-        BrokerRuntimeStartOutcome started = await runtime.StartAsync(ownership, plan, CancellationToken.None);
+        BrokerRuntimeStartOutcome started = await runtime.StartAsync(ownership, plan, null, CancellationToken.None);
         Assert.True(started.Started, started.FailureReason);
         Assert.Equal([ownership.Session.SessionName], host.Active);
         Assert.Equal([ownership.Session.SessionName], host.Created);
@@ -47,7 +47,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.Null(runtime.ReadHealth(ownership.CaptureId));
         Assert.Null(runtime.ReadPreview(ownership.CaptureId));
 
-        Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+        Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
         BrokerCaptureHealth live = Assert.IsType<BrokerCaptureHealth>(runtime.ReadHealth(ownership.CaptureId));
         Assert.Equal(0, live.ApplicationDrops);
         Assert.Equal(0, live.ProviderReportedLoss);
@@ -108,7 +108,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
 
         await using (var first = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host))
         {
-            Assert.True((await first.StartAsync(ownership, plan, CancellationToken.None)).Started);
+            Assert.True((await first.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
             await Task.Delay(TimeSpan.FromSeconds(2));
         }
 
@@ -239,7 +239,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
             temporary.Root, host, host, _ => new VolumeSpace(reserve + 1, 4_096));
         BrokerCaptureOwnership ownership = Ownership(plan);
 
-        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, CancellationToken.None);
+        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, null, CancellationToken.None);
 
         Assert.False(outcome.Started);
         Assert.Contains("to finish the recording", outcome.FailureReason, StringComparison.Ordinal);
@@ -258,7 +258,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         await using var runtime = new BrokerEvidenceCaptureRuntime(
             temporary.Root, host, host, _ => new VolumeSpace(Interlocked.Read(ref free), 4_096));
         BrokerCaptureOwnership ownership = Ownership(plan);
-        Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+        Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
 
         // Another program fills the volume; InterCat is writing nothing, so only the idle monitor can notice.
         Interlocked.Exchange(ref free, plan.Quota.MinimumFreeDiskBytes - 1);
@@ -284,7 +284,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         BrokerCaptureOwnership ownership = Ownership(plan);
         using WindowsBrokerRoot existing = temporary.Root.OpenCaptureDirectory(ownership.CaptureId);
 
-        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, CancellationToken.None);
+        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, null, CancellationToken.None);
 
         Assert.False(outcome.Started);
         Assert.Contains("already exists", outcome.FailureReason, StringComparison.Ordinal);
@@ -299,7 +299,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host);
         PreparedCapturePlan plan = SmallPlan(seconds: 1);
         BrokerCaptureOwnership ownership = Ownership(plan);
-        Assert.True((await runtime.StartAsync(ownership, plan, CancellationToken.None)).Started);
+        Assert.True((await runtime.StartAsync(ownership, plan, null, CancellationToken.None)).Started);
 
         await Task.Delay(TimeSpan.FromSeconds(2));
         BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);

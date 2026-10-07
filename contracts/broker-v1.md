@@ -256,7 +256,10 @@ canonical user SID, authentication LUID/logon-session ID, mandatory integrity le
 The SID and logon session must both match the configured owner. Anonymous impersonation is refused.
 `RevertToSelf` is mandatory on every path; inability to revert after an authentication failure terminates
 the process rather than continuing under the client token. `GetNamedPipeClientProcessId` is recorded only
-as diagnostic data and never participates in authorization.
+as diagnostic data and never participates in authorization. Since revision 415 a capture the client starts
+names that PID, and its creation time where the broker can read it, as the client that asked for the capture
+(`contracts/collector-identities-v1.md`): a label for its activity in the capture, never an identity it is
+trusted by.
 
 The authenticated connection processor reads only the bounded v1 frame codec and writes one correlated
 response at a time. A connection is bounded by its request rate, not by a total: 256 requests at once and 64 a

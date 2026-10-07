@@ -90,5 +90,10 @@ public sealed class CollectorRecordingTests
         Assert.Equal(self with { Role = CollectorRole.Client }, CollectorProcesses.Of(process.Id, CollectorRole.Client));
         Assert.Null(CollectorProcesses.Of(int.MaxValue - 3, CollectorRole.Client).CreatedUtc);
         Assert.Throws<ArgumentOutOfRangeException>(() => CollectorProcesses.Of(0, CollectorRole.Client));
+
+        // A broker names itself, and the client that asked it to record when its control pipe named one.
+        Assert.Equal([self with { Role = CollectorRole.Broker }], CollectorProcesses.ForBroker(null));
+        Assert.Equal([self with { Role = CollectorRole.Broker }, self with { Role = CollectorRole.Client }],
+            CollectorProcesses.ForBroker(process.Id));
     }
 }

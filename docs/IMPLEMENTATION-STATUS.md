@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 414 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 415 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 415 — the broker names the client that asked it to record (§19.5):**
+  - A broker's capture named the broker alone. The PID its control pipe names for its client, diagnostic only, now
+    reaches the capture, which names it with its creation time as its `Client` collector.
 
 - **Revision 414 — a capture names the processes that collected it (§19.5):**
   - Nothing in a session said which processes were InterCat's own. A live capture now publishes its broker, or `icat
@@ -1304,11 +1308,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      are the window's, not the view's, and stay as chosen.
    - §19.5's self-observation: since revision 414 a live capture names the process collecting it - its broker, or
      `icat record` - by PID and creation time (`collector-identities-v1`, dependency kind 11), carried, mirrored and
-     never released, which `icat session` states. Next, in order: (1) the broker names its client from the control
-     pipe's client process, carried from the dispatcher to the recorder; (2) a reader matches each collector to the
-     instance whose lifecycle records carry its PID and creation time, and the window, the graph and `icat processes`
-     label that instance's records as InterCat's own; (3) a visible view filter sets them aside, counting what it set
-     aside.
+     never released, which `icat session` states; since revision 415 a broker names the client that asked it to record
+     too, by the PID its control pipe names. Next, in order: (1) a reader matches each collector to the instance whose
+     lifecycle records carry its PID and creation time, and the window, the graph and `icat processes` label that
+     instance's records as InterCat's own; (2) a visible view filter sets them aside, counting what it set aside.
    - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
@@ -1385,6 +1388,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 415 was built and tested in the same Linux container: Debug and Release each ran **1,763 tests**, passing
+  **1,665 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests start a capture
+  through a connection whose pipe named its client's PID, which reaches the capture's runtime, once however often the
+  request is replayed; refuse a PID that is not positive; and have a broker name itself and the client it was given,
+  by PID and creation time, or itself alone. Reading the pipe's PID, and the broker's own runtime, run only on Windows
+  and are untested here. They caught each of 4 mutations.
 
 - Revision 414 was built and tested in the same Linux container: Debug and Release each ran **1,762 tests**, passing
   **1,664 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests round-trip a

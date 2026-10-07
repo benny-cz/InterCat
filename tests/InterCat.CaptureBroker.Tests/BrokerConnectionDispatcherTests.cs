@@ -26,6 +26,15 @@ public sealed class BrokerConnectionDispatcherTests
     }
 
     [Fact]
+    public void AClientProcessIdIsPositive()
+    {
+        var source = new FakePlanSource();
+        using var preparation = new BrokerPreparationCoordinator(source, new(), Runtime);
+        using var lifecycle = new BrokerLifecycleCoordinator(new(), new InMemoryBrokerLifecycleStore(), new BrokerFakeRuntime());
+        Assert.Throws<ArgumentOutOfRangeException>(() => CreateDispatcher(OwnerA, preparation, lifecycle, clientProcessId: 0));
+    }
+
+    [Fact]
     public async Task HelloThenCapabilitiesPreservesCorrelationAndReturnsReviewedCatalog()
     {
         var source = new FakePlanSource();
@@ -77,7 +86,7 @@ public sealed class BrokerConnectionDispatcherTests
         var counters = new BrokerCaptureHealth(12, 15, 1, 2, 0, 3, 64);
         var preview = new BrokerCapturePreview(1_000_000, 2, 1, 12, 12, 0,
             [new(2, 40, Mechanism.Tcp, 9), new(1, 38, Mechanism.Tcp, 3)]);
-        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters, _ => preview);
+        var dispatcher = CreateDispatcher(OwnerA, preparation, lifecycle, _ => counters, _ => preview, clientProcessId: 4_242);
         await CompleteHello(dispatcher);
 
         var prepareRequest = new BrokerPrepareCaptureRequest(
@@ -101,6 +110,9 @@ public sealed class BrokerConnectionDispatcherTests
             new BrokerStartCaptureRequest(prepared.Grant.Token, Guid.NewGuid())));
         Assert.Equal(BrokerOperationCode.Started, started.Code);
         CaptureId captureId = Assert.IsType<CaptureId>(started.CaptureId);
+
+        // The capture is told the PID the pipe named for the client that asked for it, to name it as its collector.
+        Assert.Equal([4_242], runtime.StartedClients);
 
         var status = Assert.IsType<BrokerCaptureStatusResponse>(await Dispatch(
             dispatcher,
@@ -341,7 +353,8 @@ public sealed class BrokerConnectionDispatcherTests
         BrokerPreparationCoordinator preparation,
         BrokerLifecycleCoordinator lifecycle,
         Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null,
-        Func<CaptureId, BrokerCapturePreview?>? livePreview = null) =>
+        Func<CaptureId, BrokerCapturePreview?>? livePreview = null,
+        int? clientProcessId = null) =>
         new(
             owner,
             preparation,
@@ -349,7 +362,8 @@ public sealed class BrokerConnectionDispatcherTests
             Guid.Parse("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"),
             "fixture-1",
             liveHealth: liveHealth,
-            livePreview: livePreview);
+            livePreview: livePreview,
+            clientProcessId: clientProcessId);
 
     private static async Task CompleteHello(BrokerConnectionDispatcher dispatcher)
     {

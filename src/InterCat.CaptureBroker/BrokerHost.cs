@@ -302,7 +302,8 @@ public sealed class BrokerHost
             settings.ServerVersion,
             evidenceDirectory,
             liveHealth,
-            livePreview);
+            livePreview,
+            client.DiagnosticProcessId is > 0 and <= int.MaxValue ? (int)client.DiagnosticProcessId : null);
         try
         {
             await BrokerPipeConnectionProcessor.ProcessAsync(pipe.Stream, dispatcher, cancellationToken)

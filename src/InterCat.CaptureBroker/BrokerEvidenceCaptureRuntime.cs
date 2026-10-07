@@ -107,6 +107,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
     public async Task<BrokerRuntimeStartOutcome> StartAsync(
         BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
+        int? clientProcessId,
         CancellationToken cancellationToken)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -188,7 +189,7 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     publishFirstAfter: plan.FirstPublication,
                     healthProbe: probe,
                     calibration: ClockCalibrationSource.Local,
-                    collectors: [CollectorProcesses.Current(CollectorRole.Broker)],
+                    collectors: CollectorProcesses.ForBroker(clientProcessId),
                     cancellationToken: capture.Stop.Token);
                 _ = capture.Run.ContinueWith(
                     _ => health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _),

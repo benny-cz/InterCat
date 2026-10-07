@@ -140,9 +140,15 @@ public sealed record BrokerSessionOwnership(string SessionName, Guid OwnershipTo
 /// <summary>Future ETW/journal integration plugs in here; tests use a deterministic fake.</summary>
 public interface IBrokerCaptureRuntime
 {
+    /// <param name="clientProcessId">
+    /// The PID the control pipe names for the client whose request started the capture, diagnostic only: never
+    /// authentication or ownership (`contracts/broker-v1.md`). The capture names it as its client
+    /// (`contracts/collector-identities-v1.md`); null when no pipe named one.
+    /// </param>
     Task<BrokerRuntimeStartOutcome> StartAsync(
         BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
+        int? clientProcessId,
         CancellationToken cancellationToken);
 
     Task<BrokerRuntimeStopOutcome> StopAsync(

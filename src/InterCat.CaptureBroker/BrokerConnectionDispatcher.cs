@@ -17,6 +17,10 @@ public sealed class BrokerConnectionDispatcher
     private readonly Func<CaptureId, string?>? evidenceDirectory;
     private readonly Func<CaptureId, BrokerCaptureHealth?>? liveHealth;
     private readonly Func<CaptureId, BrokerCapturePreview?>? livePreview;
+
+    // The PID the control pipe names for this connection's client: diagnostic only, never authentication or ownership,
+    // and recorded with a capture it starts as the client that asked for it (collector-identities-v1).
+    private readonly int? clientProcessId;
     private readonly Lock stateGate = new();
     private readonly HashSet<Guid> inFlight = [];
     private ConnectionState state;
@@ -29,8 +33,12 @@ public sealed class BrokerConnectionDispatcher
         string serverVersion,
         Func<CaptureId, string?>? evidenceDirectory = null,
         Func<CaptureId, BrokerCaptureHealth?>? liveHealth = null,
-        Func<CaptureId, BrokerCapturePreview?>? livePreview = null)
+        Func<CaptureId, BrokerCapturePreview?>? livePreview = null,
+        int? clientProcessId = null)
     {
+        this.clientProcessId = clientProcessId is null or > 0
+            ? clientProcessId
+            : throw new ArgumentOutOfRangeException(nameof(clientProcessId), "A client process ID is positive.");
         this.evidenceDirectory = evidenceDirectory;
         this.liveHealth = liveHealth;
         this.livePreview = livePreview;
@@ -185,7 +193,7 @@ public sealed class BrokerConnectionDispatcher
                 await preparation.PrepareAsync(prepare, client, cancellationToken).ConfigureAwait(false),
             BrokerStartCaptureRequest start =>
                 ToResponse(await lifecycle
-                    .StartAsync(start.PreparedToken, start.RequestId, client, cancellationToken)
+                    .StartAsync(start.PreparedToken, start.RequestId, client, clientProcessId, cancellationToken)
                     .ConfigureAwait(false)),
             BrokerGetStatusRequest status =>
                 ToResponse(

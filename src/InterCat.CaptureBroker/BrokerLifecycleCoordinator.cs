@@ -46,6 +46,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         string preparedToken,
         Guid requestId,
         BrokerClientIdentity client,
+        int? clientProcessId = null,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -159,7 +160,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             try
             {
                 runtimeOutcome = await runtime
-                    .StartAsync(ownership, resolution.Plan, CancellationToken.None)
+                    .StartAsync(ownership, resolution.Plan, clientProcessId, CancellationToken.None)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
