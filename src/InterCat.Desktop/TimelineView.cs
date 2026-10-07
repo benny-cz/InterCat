@@ -366,7 +366,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                 : viewModel.ShowsRpcCallLane ? viewModel.RpcCallSpans
                 : viewModel.ShowsHttpExchangeLane ? viewModel.HttpExchangeSpans
                 : null;
-            var key = new FocusRowsKey(viewModel, lanes, viewModel.TimelineDetail, viewModel.Snapshot.Timeline, Viewport);
+            var key = new FocusRowsKey(viewModel, lanes, viewModel.TimelineDetail, viewModel.Snapshot.Timeline, Viewport,
+                viewModel.ShowsProcessLanes ? viewModel.FoldedLane : null);
             if (focusRowsKey != key)
             {
                 focusRowsKey = key;
@@ -381,10 +382,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     private FocusRowSet? focusRows;
 
     /// <summary>What <see cref="FocusRows"/> depends on, by identity: each is replaced, never changed in place.</summary>
-    private readonly record struct FocusRowsKey(object ViewModel, object? Lanes, object? Detail, object Timeline, TimeRange Visible)
+    private readonly record struct FocusRowsKey(object ViewModel, object? Lanes, object? Detail, object Timeline, TimeRange Visible,
+        object? Folded)
     {
         public bool Equals(FocusRowsKey other) => ReferenceEquals(ViewModel, other.ViewModel) && ReferenceEquals(Lanes, other.Lanes)
-            && ReferenceEquals(Detail, other.Detail) && ReferenceEquals(Timeline, other.Timeline) && Visible == other.Visible;
+            && ReferenceEquals(Detail, other.Detail) && ReferenceEquals(Timeline, other.Timeline) && Visible == other.Visible
+            && ReferenceEquals(Folded, other.Folded);
 
         public override int GetHashCode() => HashCode.Combine(Visible);
     }
@@ -392,7 +395,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     private FocusRowSet? ComputeFocusRows(WorkspaceViewModel viewModel)
     {
         (FocusRowKind Kind, IReadOnlyList<TimelineBucket>[] Rows)? found =
-            viewModel.ShowsProcessLanes ? (FocusRowKind.Owners, [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets)])
+            viewModel.ShowsProcessLanes
+                ? (FocusRowKind.Owners,
+                    [.. viewModel.ProcessLaneDisplay.Select(lane => lane.Buckets), .. viewModel.FoldedLane is { } folded ? [folded.Buckets] : Array.Empty<IReadOnlyList<TimelineBucket>>()])
             : viewModel.ShowsDirectionLanes ? (FocusRowKind.Directions, [.. viewModel.TimelineDirectionLanes!.Select(lane => lane.Buckets)])
             : viewModel.ShowsChannelEndLanes ? (FocusRowKind.ChannelEnds, [.. viewModel.TimelineChannelEndLanes!.Select(end => end.Buckets)])
             : viewModel.ShowsRpcCallLane || viewModel.ShowsHttpExchangeLane
@@ -1119,7 +1124,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 ? viewModel.TimelineChannelEndLanes![index.Value - 1] : null;
             cardKey = key;
             card = viewModel.DescribeTimelineHover(bucket, peak * WorkspaceTime.TicksPerSecond,
-                mechanism, owner, direction, end);
+                mechanism, owner, direction, end, foldedLane: index is { } hovered && IsFoldedRow(viewModel, kind, hovered));
             return card;
         }
     }
@@ -1130,9 +1135,19 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private static ProcessNode? OwnerOf(WorkspaceViewModel viewModel, int row)
     {
+        if (row >= viewModel.ProcessLaneDisplay.Count)
+        {
+            // The folded lane's row, past every lane of its own.
+            return null;
+        }
+
         ProcessInstanceId id = viewModel.ProcessLaneDisplay[row].ProcessId;
         return viewModel.Snapshot.Processes.FirstOrDefault(process => process.Id == id);
     }
+
+    /// <summary>Whether lane row <paramref name="index"/> of a group's rows, row 0 its machine context, is its folded lane.</summary>
+    private static bool IsFoldedRow(WorkspaceViewModel viewModel, FocusRowKind? kind, int index) =>
+        kind == FocusRowKind.Owners && viewModel.FoldedLane is not null && index > viewModel.ProcessLaneDisplay.Count;
 
     private CardKey? cardKey;
     private HoverCard? card;
@@ -1190,6 +1205,12 @@ public sealed class TimelineView : Control, IHoverCardSource
     internal Point? PointOf(ProcessInstanceId processId, TimelineBucket bucket) =>
         DataContext is WorkspaceViewModel viewModel
             ? RowPoint(FocusRowKind.Owners, viewModel.ProcessLaneDisplay.ToList().FindIndex(lane => lane.ProcessId == processId), bucket)
+            : null;
+
+    /// <summary>Where a bucket of a group's folded lane is drawn, the row after every lane of its own (§6.2: collapse groups).</summary>
+    internal Point? PointOfFolded(TimelineBucket bucket) =>
+        DataContext is WorkspaceViewModel { FoldedLane: not null } viewModel
+            ? RowPoint(FocusRowKind.Owners, viewModel.ProcessLaneDisplay.Count, bucket)
             : null;
 
     /// <summary>The direction names the row, because empty buckets of two rows over one interval are equal values.</summary>
@@ -1895,7 +1916,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ProcessTimelineLane> lanes, BarScale scale,
         ProcessLaneByteLayer? bytes, ReadOnlySpan<double> peaks, RowBand band)
     {
-        int count = lanes.Count + 1;
+        FoldedProcessLane? folded = viewModel.FoldedLane;
+        int count = lanes.Count + 1 + (folded is null ? 0 : 1);
         bool coverageOnly = bytes is not null;
         int drawn = 0;
         for (int index = 0; index < count; index++)
@@ -1923,6 +1945,20 @@ public sealed class TimelineView : Control, IHoverCardSource
 
                 DrawLaneSeries(context, viewModel, null,
                     machine, rowScale, row, contextRow: true, coverageOnly: coverageOnly);
+                continue;
+            }
+
+            if (index > lanes.Count && folded is not null)
+            {
+                // The members past the lanes drawn, together beneath them (§6.2: collapse groups), named by how many.
+                DrawText(context, viewModel.FoldedLaneLabel, new(9, row.Center.Y - 7));
+                if (bytes is not null)
+                {
+                    // A byte ranking measures each lane's own process; the folded members' bytes are summed in no lane.
+                    DrawText(context, "Bytes not plotted for folded members", new(9, row.Center.Y + 4));
+                }
+
+                DrawLaneSeries(context, viewModel, null, folded.Buckets, rowScale, row, coverageOnly: coverageOnly);
                 continue;
             }
 
@@ -2509,6 +2545,9 @@ public sealed class TimelineView : Control, IHoverCardSource
                 case FocusRowKind.Owners when laneIndex == 0:
                     viewModel.ClearProcessLaneFocus();
                     break;
+                case FocusRowKind.Owners when laneIndex > viewModel.ProcessLaneDisplay.Count:
+                    // The folded lane's name selects no process: it stands for many.
+                    break;
                 case FocusRowKind.Owners:
                     ProcessInstanceId processId = viewModel.ProcessLaneDisplay[laneIndex - 1].ProcessId;
                     viewModel.SelectedRung = viewModel.RungRows.FirstOrDefault(row => row.Key == processId.ToString());
@@ -2697,7 +2736,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             ShowingMechanismLanes ? viewModel.Snapshot.MechanismLanes[index].Mechanism : null,
             kind == FocusRowKind.Owners && index > 0 ? OwnerOf(viewModel, index - 1) : null,
             kind == FocusRowKind.Directions && index > 0 ? viewModel.TimelineDirectionLanes![index - 1].Direction : null,
-            kind == FocusRowKind.ChannelEnds && index > 0 ? viewModel.TimelineChannelEndLanes![index - 1] : null);
+            kind == FocusRowKind.ChannelEnds && index > 0 ? viewModel.TimelineChannelEndLanes![index - 1] : null,
+            foldedLane: IsFoldedRow(viewModel, kind, index));
     }
 
     /// <summary>The finest bucket drawn at a tick: the zoomed detail where it has arrived, else the overview's.</summary>
@@ -3190,7 +3230,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                     PeakRate(viewModel.TimelineChannelEndLanes![index - 1].Outbound, visible),
                     PeakRate(viewModel.TimelineChannelEndLanes![index - 1].Inbound, visible)),
                 FocusRowKind.Owners when groupBytes is not null =>
-                    groupBytes.Measures.Of(viewModel.ProcessLaneDisplay[index - 1].ProcessId) is { } owner
+                    index <= viewModel.ProcessLaneDisplay.Count
+                        && groupBytes.Measures.Of(viewModel.ProcessLaneDisplay[index - 1].ProcessId) is { } owner
                         ? BytePeak(owner, groupBytes.Metric, visible, null) : 0,
                 FocusRowKind.Directions when directionBytes is not null =>
                     directionBytes.Measures.Of(viewModel.TimelineDirectionLanes![index - 1].Direction) is { } direction

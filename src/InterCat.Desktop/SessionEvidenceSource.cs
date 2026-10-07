@@ -143,15 +143,20 @@ public sealed class SessionEvidenceSource(
             columns,
             cancellationToken), cancellationToken);
 
-    /// <summary>The timeline over a viewport together with the records a focused rung reads, counted in one pass.</summary>
+    /// <summary>
+    /// The timeline over a viewport together with the records a focused rung reads, counted in one pass; a group past the
+    /// lane bound draws the members <paramref name="lanes"/> names in lanes of their own and folds the rest into one.
+    /// </summary>
     public Task<SessionFocusedTimeline> FocusedTimelineAsync(
-        TimeRange interval, int columns, TimelineFocus focus, CancellationToken cancellationToken) =>
+        TimeRange interval, int columns, TimelineFocus focus, CancellationToken cancellationToken,
+        IReadOnlyList<ProcessInstanceId>? lanes = null) =>
         Task.Run(() => SessionTimelineQuery.Focused(
             Store(),
             interval,
             columns,
             focus,
             policy: Policy,
+            lanes: lanes,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>

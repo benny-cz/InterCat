@@ -73,6 +73,13 @@ public sealed record SessionTimelineDetail(
 public sealed record ProcessTimelineLane(ProcessInstanceId ProcessId, IReadOnlyList<TimelineBucket> Buckets);
 
 /// <summary>
+/// A group's members past the lanes a view draws, counted together in one lane on the lanes' own columns (§6.2: collapse
+/// groups): exact, so the drawn lanes and this one partition the group's records, and no member's are dropped.
+/// </summary>
+/// <param name="Processes">The members folded together, in the focus's stable order.</param>
+public sealed record FoldedProcessLane(IReadOnlyList<ProcessInstanceId> Processes, IReadOnlyList<TimelineBucket> Buckets);
+
+/// <summary>
 /// One L2 owner's source-reported direction, including unknown and not-applicable rather than silently folding
 /// either into inbound or outbound. These rows partition the owner's admitted timed records.
 /// </summary>
@@ -226,6 +233,12 @@ public sealed record SessionFocusedTimeline(SessionTimelineDetail Whole, IReadOn
 
     /// <summary>Why L1 rows were not made; the aggregate focus count remains available and exact.</summary>
     public string? ProcessLaneProblem { get; init; }
+
+    /// <summary>
+    /// The group's members past the lanes the view named, counted together on the lanes' columns; null when every member
+    /// has a lane of its own. With <see cref="ProcessLanes"/> it partitions Focus.
+    /// </summary>
+    public FoldedProcessLane? FoldedLane { get; init; }
 }
 
 public static class SessionTimelineQuery
@@ -255,12 +268,15 @@ public static class SessionTimelineQuery
         TimeRange interval,
         int columns,
         CancellationToken cancellationToken = default) =>
-        Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, cancellationToken).Whole;
+        Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, null, cancellationToken).Whole;
 
     /// <summary>
     /// <see cref="Detail"/> together with the rows <paramref name="focus"/> reads, under the evidence rung's own rules and
     /// policy. A focus this generation cannot resolve - an instance it does not hold, a channel it does not admit
-    /// uniquely - is refused with the evidence rung's reason rather than counted as nothing.
+    /// uniquely - is refused with the evidence rung's reason rather than counted as nothing. A group's members are each
+    /// counted in a lane of their own while they fit <see cref="MaximumProcessLanes"/>; <paramref name="lanes"/> names the
+    /// members a view draws so - its pinned and busiest, at most <see cref="MaximumProcessLanes"/> lanes with the fold -
+    /// and the rest are counted together in one folded lane (§6.2: collapse groups).
     /// </summary>
     public static SessionFocusedTimeline Focused(
         SessionStore store,
@@ -268,10 +284,11 @@ public static class SessionTimelineQuery
         int columns,
         TimelineFocus focus,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        IReadOnlyList<ProcessInstanceId>? lanes = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(focus);
-        return Count(store, interval, columns, focus, policy, cancellationToken);
+        return Count(store, interval, columns, focus, policy, lanes, cancellationToken);
     }
 
     /// <summary>The whole timeline and, with a focus, its count and lanes; without one, Focus is empty.</summary>
@@ -281,6 +298,7 @@ public static class SessionTimelineQuery
         int columns,
         TimelineFocus? focus,
         EvidencePolicy policy,
+        IReadOnlyList<ProcessInstanceId>? lanes,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -301,17 +319,13 @@ public static class SessionTimelineQuery
         SegmentReaderV1[] met = SessionNativeInterval.Segments(store, manifest, interval, clock);
         var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
-        string? laneProblem = !groupFocus ? null
-            : focus!.OwnerProcesses.Count > MaximumProcessLanes
-                ? $"This group needs {focus.OwnerProcesses.Count:N0} process lanes; the current bound is "
-                    + $"{MaximumProcessLanes:N0} lanes. Its aggregate timeline remains exact. A bounded grouping or paging "
-                    + "control is required to inspect these process rows; the query does not silently drop them."
-                : null;
-        ProcessInstanceId[] laneOwners = groupFocus && laneProblem is null ? [.. focus!.OwnerProcesses] : [];
+        (ProcessInstanceId[] laneOwners, ProcessInstanceId[] folded, string? laneProblem) =
+            groupFocus ? LanesOf(focus!, lanes) : ([], [], null);
 
-        // The lanes share one cell budget: past it they are counted in fewer, wider columns of the same interval (§6.2),
-        // exact at that resolution, rather than refused.
-        int laneColumns = LaneColumnsFor(laneOwners.Length, columns, interval);
+        // The lanes share one cell budget, the folded lane among them: past it they are counted in fewer, wider columns
+        // of the same interval (§6.2), exact at that resolution, rather than refused.
+        int laneCount = laneOwners.Length + (folded.Length > 0 ? 1 : 0);
+        int laneColumns = LaneColumnsFor(laneCount, columns, interval);
 
         // At most five direction codes and 2,000 columns: no extra segment pass or unbounded owner-by-peer matrix.
         bool directionLanes = focus is { ChannelKey: null, OwnerProcesses.Count: 1 };
@@ -332,11 +346,11 @@ public static class SessionTimelineQuery
         FocusTally? total = null;
         if (rows is not null)
         {
-            int[]? laneOf = laneOwners.Length == 0 ? null : rows.LanesOf(laneOwners);
-            total = new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation);
+            int[]? laneOf = laneCount == 0 ? null : rows.LanesOf(laneOwners, folded);
+            total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
             SegmentPasses.Run(
                 met,
-                () => new FocusTally(interval, columns, laneOwners.Length, laneColumns, directionLanes, endRelation),
+                () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation),
                 (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
                 total.Add,
                 cancellationToken);
@@ -359,8 +373,10 @@ public static class SessionTimelineQuery
         return new(whole, total is null ? [] : Array.AsReadOnly(total.Focused.Buckets(coverage, clock, capture)))
         {
             FocusLanes = total is null ? [] : Array.AsReadOnly(total.Focused.MechanismLanes(coverage, clock)),
-            ProcessLanes = total?.Lanes is not { } lanes ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
-                new ProcessTimelineLane(owner, Array.AsReadOnly(lanes[lane].Buckets(laneCapture!))))]),
+            ProcessLanes = total?.Lanes is not { } counts ? [] : Array.AsReadOnly([.. laneOwners.Select((owner, lane) =>
+                new ProcessTimelineLane(owner, Array.AsReadOnly(counts[lane].Buckets(laneCapture!))))]),
+            FoldedLane = folded.Length == 0 || total?.Lanes is not { } all ? null
+                : new FoldedProcessLane(Array.AsReadOnly(folded), Array.AsReadOnly(all[laneOwners.Length].Buckets(laneCapture!))),
             DirectionLanes = total?.Directions is not { } directions ? [] : Array.AsReadOnly([.. LaneDirections.Select(
                 (direction, slot) => new DirectionTimelineLane(direction, Array.AsReadOnly(directions[slot].Buckets(capture))))]),
             ChannelEndLanes = total?.Ends is not { } ends ? []
@@ -368,6 +384,35 @@ public static class SessionTimelineQuery
             OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture)),
             ProcessLaneProblem = laneProblem,
         };
+    }
+
+    /// <summary>
+    /// The members a group focus counts in lanes of their own, those it folds into one, and why it counts none: every
+    /// member while they fit <see cref="MaximumProcessLanes"/>; past it the members <paramref name="lanes"/> names, the rest
+    /// folded, or none, said, when no view named them. A named member the group does not hold is no lane of it.
+    /// </summary>
+    private static (ProcessInstanceId[] Lanes, ProcessInstanceId[] Folded, string? Problem) LanesOf(
+        TimelineFocus focus, IReadOnlyList<ProcessInstanceId>? lanes)
+    {
+        if (lanes is null)
+        {
+            return focus.OwnerProcesses.Count <= MaximumProcessLanes
+                ? ([.. focus.OwnerProcesses], [], null)
+                : ([], [], $"This group needs {focus.OwnerProcesses.Count:N0} process lanes; the current bound is "
+                    + $"{MaximumProcessLanes:N0} lanes. Its aggregate timeline remains exact. Name the lanes to draw and the "
+                    + "rest are counted together in one; the query does not silently drop them.");
+        }
+
+        HashSet<ProcessInstanceId> members = [.. focus.OwnerProcesses];
+        ProcessInstanceId[] drawn = [.. lanes.Distinct().Where(members.Contains)];
+        ProcessInstanceId[] folded = [.. focus.OwnerProcesses.Where(owner => !drawn.Contains(owner))];
+        if (drawn.Length + (folded.Length > 0 ? 1 : 0) > MaximumProcessLanes)
+        {
+            throw new ArgumentException(
+                $"A group's lanes, its folded lane among them, are at most {MaximumProcessLanes:N0}.", nameof(lanes));
+        }
+
+        return (drawn, folded, null);
     }
 
     /// <summary>
@@ -611,14 +656,23 @@ internal sealed class FocusRows
         }
     }
 
-    /// <summary>For each instance position, the lane of <paramref name="lanes"/> its records are drawn in, or -1.</summary>
-    public int[] LanesOf(IReadOnlyList<ProcessInstanceId> lanes)
+    /// <summary>
+    /// For each instance position, the lane of <paramref name="lanes"/> its records are drawn in, the one after them for a
+    /// member of <paramref name="folded"/>, or -1.
+    /// </summary>
+    public int[] LanesOf(IReadOnlyList<ProcessInstanceId> lanes, IReadOnlyCollection<ProcessInstanceId>? folded = null)
     {
         ArgumentNullException.ThrowIfNull(lanes);
         var laneOf = new Dictionary<ProcessInstanceId, int>(lanes.Count);
         for (int lane = 0; lane < lanes.Count; lane++)
         {
             laneOf[lanes[lane]] = lane;
+        }
+
+        // The members folded together share the one lane after every lane of its own.
+        foreach (ProcessInstanceId member in folded ?? [])
+        {
+            laneOf[member] = lanes.Count;
         }
 
         int[] positions = new int[processes?.Instances.Count ?? 0];

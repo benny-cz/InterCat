@@ -596,8 +596,8 @@
               <Button x:Name="LanePinButton" Grid.Column="2" Grid.RowSpan="2" Margin="12,0,0,0"
                       FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
                       VerticalContentAlignment="Center" Click="ToggleLanePin"
-                      IsVisible="{Binding HasSelectedProcessLane}" Content="{Binding LanePinLabel}"
-                      ToolTip.Tip="Pin the selected process's lane at the top of the group's lanes, marked, in the order pinned, so the lanes being compared stay together; again to put it back in the ranked table's order. P does the same with the timeline focused."
+                      IsVisible="{Binding OffersLanePin}" Content="{Binding LanePinLabel}"
+                      ToolTip.Tip="Pin the selected process's lane at the top of the group's lanes, marked, in the order pinned, so the lanes being compared stay together; a process folded with a large group's least busy gets a lane of its own. Again to put it back in the ranked table's order. P does the same with the timeline focused."
                       AutomationProperties.Name="{Binding LanePinLabel}" />
               <ToggleButton x:Name="TimelineExpandToggle" Grid.Column="3" Grid.RowSpan="2" Margin="12,0,0,0"
                             FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"

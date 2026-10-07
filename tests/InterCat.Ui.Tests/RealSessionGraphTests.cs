@@ -240,9 +240,14 @@ public sealed class RealSessionGraphTests
             }
             else
             {
-                Assert.Empty(viewModel.TimelineProcessLanes!);
-                Assert.NotNull(viewModel.ProcessLaneProblem);
-                report.AppendLine(CultureInfo.InvariantCulture, $"L1 lane bound: {viewModel.ProcessLaneProblem}");
+                // Past the lane bound its pinned and busiest members are lanes of their own and the rest are counted
+                // together in one folded lane beneath them (§6.2: collapse groups).
+                Assert.Null(viewModel.ProcessLaneProblem);
+                Assert.Equal(SessionTimelineQuery.MaximumProcessLanes - 1, viewModel.TimelineProcessLanes!.Count);
+                FoldedProcessLane folded = Assert.IsType<FoldedProcessLane>(viewModel.FoldedLane);
+                Assert.Equal(members.Count - viewModel.TimelineProcessLanes.Count, folded.Processes.Count);
+                report.AppendLine(CultureInfo.InvariantCulture,
+                    $"L1 lanes past the bound: {viewModel.TimelineProcessLanes.Count} of their own, {folded.Processes.Count} folded into one");
             }
         }
         report.AppendLine(CultureInfo.InvariantCulture,

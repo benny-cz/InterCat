@@ -11,7 +11,8 @@ namespace InterCat.Desktop;
 /// machine rung, one process's lane among a group's, one source direction's row of a process, or one end of a channel.
 /// </summary>
 public sealed record TimelineCellLane(
-    Mechanism? Mechanism = null, ProcessInstanceId? Owner = null, Direction? Direction = null, int? End = null);
+    Mechanism? Mechanism = null, ProcessInstanceId? Owner = null, Direction? Direction = null, int? End = null,
+    bool Folded = false);
 
 /// <summary>
 /// A timeline cell's own explanation (§6.8: every visual claim is one action from the rule, version and coverage that
@@ -35,13 +36,13 @@ public sealed partial class WorkspaceViewModel
     /// the machine row's.
     /// </summary>
     public void ChooseTimelineCell(TimelineBucket bucket, Mechanism? lane = null, ProcessNode? ownerLane = null,
-        Direction? directionLane = null, ChannelEndTimelineLane? endLane = null)
+        Direction? directionLane = null, ChannelEndTimelineLane? endLane = null, bool foldedLane = false)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         choosingCell = true;
         try
         {
-            chosenCell = new TimelineCellLane(lane, ownerLane?.Id, directionLane, endLane?.End);
+            chosenCell = new TimelineCellLane(lane, ownerLane?.Id, directionLane, endLane?.End, foldedLane);
             SelectInterval(bucket.Interval);
         }
         finally
@@ -106,6 +107,8 @@ public sealed partial class WorkspaceViewModel
 
         IReadOnlyList<TimelineBucket>? buckets = lane.Owner is { } owner
                 ? ShowsProcessLanes ? processLaneDisplay.FirstOrDefault(candidate => candidate.ProcessId == owner)?.Buckets : null
+            : lane.Folded
+                ? FoldedLane?.Buckets
             : lane.Direction is { } direction
                 ? ShowsDirectionLanes ? timelineDirectionLanes!.FirstOrDefault(candidate => candidate.Direction == direction)?.Buckets : null
             : lane.End is { } end
@@ -152,6 +155,23 @@ public sealed partial class WorkspaceViewModel
                     + $"{(count == 1 ? "is" : "are")} bound to {process}, {(count == 1 ? "its" : "their")} canonical owner, "
                     + $"by {binding}.";
             bytes = processLaneBytes?.Metric;
+        }
+        else if (lane.Folded && FoldedLane is { } folded)
+        {
+            // Past the lane bound a group's least busy members are counted together (§6.2: collapse groups).
+            string members = $"the {FoldedLaneLabel} of this group";
+            held = (count == 0
+                    ? $"No record bound to {members} has a session time in this interval."
+                    : $"{Counted(count, "record", "records")} {Have(count)} a session time in this interval and "
+                        + $"{(count == 1 ? "is" : "are")} bound to one of {members}, {(count == 1 ? "its" : "their")} canonical "
+                        + $"owners, by {binding}.")
+                + string.Create(CultureInfo.CurrentCulture,
+                    $" They are folded into one lane past the {SessionTimelineQuery.MaximumProcessLanes:N0}-lane bound, ")
+                + string.Create(CultureInfo.CurrentCulture,
+                    $"its {folded.Processes.Count:N0} least busy members, so none of their records is dropped.");
+
+            // A byte ranking plots each lane's own process: the folded lane's bar is its records'.
+            bytes = null;
         }
         else if (lane.Direction is { } direction)
         {
@@ -200,7 +220,7 @@ public sealed partial class WorkspaceViewModel
         string plots = count == 0 ? string.Empty
             : bytes is { } metric ? $" Its bar plots their {Phrase(metric)} per second, from those that recorded a size."
             : " Its bar plots their count per second.";
-        string column = lane.Owner is not null && CoarserLaneColumns is { } laneColumns
+        string column = (lane.Owner is not null || lane.Folded) && CoarserLaneColumns is { } laneColumns
             ? string.Create(CultureInfo.CurrentCulture,
                 $"one of the lanes' own {laneColumns:N0}, coarser than the view's so the group's {processLaneDisplay.Count:N0} ")
                 + string.Create(CultureInfo.CurrentCulture, $"lanes stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
@@ -258,6 +278,14 @@ public sealed partial class WorkspaceViewModel
                 new(DetailLevel.ProcessInstance, owner.ToString(), name), reason);
         }
 
+        if (lane.Folded && FoldedLane is { } folded)
+        {
+            // The folded members are a set of their own, as a multi-selection is: E lists exactly theirs.
+            return LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                new(DetailLevel.Group, ProcessSetFilter.KeyOf(folded.Processes),
+                    $"{ladder.Current.Focus?.Label ?? "this group"}'s folded lane"), reason);
+        }
+
         LadderDescent rung = LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
         ImpliedFilter narrowing = lane.Mechanism is { } mechanism ? EvidenceScopes.MechanismFilter(mechanism, reason)
             : lane.Direction is { } direction ? EvidenceScopes.DirectionFilter(direction, reason)
@@ -285,7 +313,7 @@ public sealed partial class WorkspaceViewModel
     /// <summary>What the cell's explanation reads, by the name its change is raised under.</summary>
     private static bool IsCellExplanationInput(string? propertyName) => propertyName is nameof(SelectedInterval)
         or nameof(SelectedProcess) or nameof(SelectedTimelineLane) or nameof(SelectedDirectionLane)
-        or nameof(SelectedChannelEnd) or nameof(TimelineDetail) or nameof(ProcessLaneDisplay)
+        or nameof(SelectedChannelEnd) or nameof(TimelineDetail) or nameof(ProcessLaneDisplay) or nameof(FoldedLane)
         or nameof(TimelineDirectionLanes) or nameof(TimelineChannelEndLanes) or nameof(TimelineFocusBuckets)
         or nameof(ShowsMechanismLanes) or nameof(ShowsProcessLanes) or nameof(ShowsDirectionLanes)
         or nameof(ShowsChannelEndLanes) or nameof(TimelineBytes) or nameof(ProcessLaneBytes) or nameof(DirectionLaneBytes)

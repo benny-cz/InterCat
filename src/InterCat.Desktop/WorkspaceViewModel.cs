@@ -114,6 +114,7 @@ public sealed record TimelineCarry(
     IReadOnlyList<DirectionTimelineLane>? DirectionLanes = null,
     IReadOnlyList<ChannelEndTimelineLane>? ChannelEndLanes = null,
     string? HighlightKey = null,
+    FoldedProcessLane? FoldedLane = null,
     IReadOnlyList<TimelineBucket>? Highlight = null,
     IReadOnlyList<MechanismTimelineLane>? HighlightLanes = null,
     SessionMechanismByteMeasures? LaneBytes = null,
@@ -208,7 +209,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     // The count the timeline last asked for, and the viewport and columns the view last drew, which a new rung replays
     // with its own focus.
-    private (TimeRange Viewport, int Columns, string? Focus)? requestedTimeline;
+    private (TimeRange Viewport, int Columns, string? Focus, string? Lanes)? requestedTimeline;
     private (TimeRange Viewport, int Columns)? drawnTimeline;
     private SessionTimelineDetail? timelineDetail;
 
@@ -224,6 +225,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private int? selectedChannelEnd;
     private IReadOnlyList<ProcessTimelineLane> processLaneDisplay = [];
     private string? processLaneProblem;
+
+    // A group's members past the lanes drawn, counted together in one lane (§6.2: collapse groups); null when every member
+    // has a lane of its own.
+    private FoldedProcessLane? timelineFoldedLane;
     private bool timelineFocusLoading;
     private string? timelineFocusProblem;
 
@@ -493,7 +498,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             columns = wholeSnapshot.Timeline.Count;
         }
 
-        (TimeRange, int, string?) request = (viewport, columns, timelineFocus?.Key);
+        // A group past the lane bound draws the members its pins and records name (§6.2: collapse groups), so a pin that
+        // changes them counts the lanes again.
+        IReadOnlyList<ProcessInstanceId>? lanes = LanesToDraw(timelineFocus);
+        (TimeRange, int, string?, string?) request = (viewport, columns, timelineFocus?.Key,
+            lanes is null ? null : string.Join(',', lanes));
         if (requestedTimeline == request)
         {
             return;
@@ -512,7 +521,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         var query = new CancellationTokenSource();
         timelineQuery = query;
-        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, whole, timelineFocus, query);
+        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, whole, timelineFocus, lanes, query);
     }
 
     private async Task LoadTimelineDetailAsync(
@@ -521,6 +530,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         int columns,
         bool whole,
         TimelineFocus? focus,
+        IReadOnlyList<ProcessInstanceId>? lanes,
         CancellationTokenSource query)
     {
         if (focus is not null)
@@ -542,7 +552,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
-            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token)
+            SessionFocusedTimeline counted = await source.FocusedTimelineAsync(viewport, columns, focus, query.Token, lanes)
                 .AnsweredLater();
             if (!disposed && ReferenceEquals(timelineQuery, query))
             {
@@ -551,7 +561,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
                 SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null,
                     sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null,
-                    sameSession ? counted.DirectionLanes : null, sameSession ? counted.ChannelEndLanes : null);
+                    sameSession ? counted.DirectionLanes : null, sameSession ? counted.ChannelEndLanes : null,
+                    sameSession ? counted.FoldedLane : null);
                 SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
             }
         }
@@ -576,12 +587,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private void SetTimelineDetail(SessionTimelineDetail? detail, IReadOnlyList<TimelineBucket>? focus,
         IReadOnlyList<ProcessTimelineLane>? processLanes = null, string? laneProblem = null,
         IReadOnlyList<DirectionTimelineLane>? directionLanes = null,
-        IReadOnlyList<ChannelEndTimelineLane>? channelEnds = null)
+        IReadOnlyList<ChannelEndTimelineLane>? channelEnds = null,
+        FoldedProcessLane? foldedLane = null)
     {
         if (ReferenceEquals(timelineDetail, detail) && ReferenceEquals(timelineFocusBuckets, focus)
             && ReferenceEquals(timelineProcessLanes, processLanes) && processLaneProblem == laneProblem
             && ReferenceEquals(timelineDirectionLanes, directionLanes)
-            && ReferenceEquals(timelineChannelEnds, channelEnds))
+            && ReferenceEquals(timelineChannelEnds, channelEnds)
+            && ReferenceEquals(timelineFoldedLane, foldedLane))
         {
             return;
         }
@@ -589,6 +602,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         timelineDetail = detail;
         timelineFocusBuckets = focus;
         timelineProcessLanes = processLanes;
+        timelineFoldedLane = processLanes is null ? null : foldedLane;
         timelineDirectionLanes = directionLanes;
         if (!ReferenceEquals(timelineChannelEnds, channelEnds))
         {
@@ -612,6 +626,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(TimelineChannelEndLanes));
         OnPropertyChanged(nameof(ShowsChannelEndLanes));
         OnPropertyChanged(nameof(ProcessLaneDisplay));
+        OnPropertyChanged(nameof(FoldedLane));
+        OnPropertyChanged(nameof(FoldedLaneLabel));
         OnPropertyChanged(nameof(ShowsProcessLanes));
         OnPropertyChanged(nameof(HasSelectedProcessLane));
         OnPropertyChanged(nameof(ProcessLaneProblem));
@@ -626,16 +642,33 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// the table, not the lanes, and the timeline keeps its shape (§6.4); a lane of an instance the snapshot does not name
     /// goes last.
     /// </summary>
-    private IReadOnlyList<ProcessTimelineLane> OrderProcessLanes(IReadOnlyList<ProcessTimelineLane> lanes)
+    private IReadOnlyList<ProcessTimelineLane> OrderProcessLanes(IReadOnlyList<ProcessTimelineLane> lanes) =>
+        [.. InLaneOrder(lanes, lane => lane.ProcessId)];
+
+    /// <summary>
+    /// Items in lane order: the pinned first, in the order pinned, then by their process's own records over the whole
+    /// session, most first, a process the snapshot does not name last, then by instance.
+    /// </summary>
+    private IOrderedEnumerable<T> InLaneOrder<T>(IEnumerable<T> items, Func<T, ProcessInstanceId> processOf)
     {
         Dictionary<ProcessInstanceId, long> records = wholeSnapshot.Processes
             .ToDictionary(process => process.Id, process => process.Records);
-        return [.. lanes
-            .OrderBy(lane => pinnedLanes.IndexOf(lane.ProcessId) is var pinned and >= 0 ? pinned : int.MaxValue)
-            .ThenBy(lane => records.ContainsKey(lane.ProcessId) ? 0 : 1)
-            .ThenByDescending(lane => records.GetValueOrDefault(lane.ProcessId))
-            .ThenBy(lane => lane.ProcessId.ToString(), StringComparer.Ordinal)];
+        return items
+            .OrderBy(item => pinnedLanes.IndexOf(processOf(item)) is var pinned and >= 0 ? pinned : int.MaxValue)
+            .ThenBy(item => records.ContainsKey(processOf(item)) ? 0 : 1)
+            .ThenByDescending(item => records.GetValueOrDefault(processOf(item)))
+            .ThenBy(item => processOf(item).ToString(), StringComparer.Ordinal);
     }
+
+    /// <summary>
+    /// The members of a group focus counted in lanes of their own when the group has more than the lane bound (§6.2:
+    /// collapse groups): its pinned lanes, in the order pinned, then its busiest, as the ranked table orders them, one
+    /// short of the bound, so the rest are counted together in the last. Null for a focus whose every member has a lane.
+    /// </summary>
+    private IReadOnlyList<ProcessInstanceId>? LanesToDraw(TimelineFocus? focus) =>
+        focus is { ChannelKey: null, OperationKey: null } && focus.OwnerProcesses.Count > SessionTimelineQuery.MaximumProcessLanes
+            ? [.. InLaneOrder(focus.OwnerProcesses, process => process).Take(SessionTimelineQuery.MaximumProcessLanes - 1)]
+            : null;
 
     private bool HasCompleteLaneDetail => timelineDetail is { } detail
         && detail.MechanismLanes.Count == wholeSnapshot.MechanismLanes.Count
@@ -957,8 +990,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>What this workspace's timeline drew, for the next publication of the same session to show until its own counts arrive.</summary>
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
-        highlight?.Key, highlightBuckets, highlightLanes, overviewLaneBytes?.Measures, zoomedLaneBytes?.Measures,
-        ownerLaneBytes?.Measures, directionLaneBytes?.Measures);
+        highlight?.Key, timelineFoldedLane, highlightBuckets, highlightLanes, overviewLaneBytes?.Measures,
+        zoomedLaneBytes?.Measures, ownerLaneBytes?.Measures, directionLaneBytes?.Measures);
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -972,7 +1005,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         bool sameFocus = carry.FocusKey is not null && carry.FocusKey == timelineFocus?.Key;
         SetTimelineDetail(carry.Detail, focus, sameFocus ? carry.ProcessLanes : null,
             sameFocus ? carry.ProcessLaneProblem : null, sameFocus ? carry.DirectionLanes : null,
-            sameFocus ? carry.ChannelEndLanes : null);
+            sameFocus ? carry.ChannelEndLanes : null, sameFocus ? carry.FoldedLane : null);
 
         // The selection's highlight stands in the same way, for the same selection only, until its own count arrives.
         if (carry.HighlightKey is not null && carry.HighlightKey == highlight?.Key && highlightBuckets is null)
@@ -1141,6 +1174,27 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         && timelineFocusProblem is null;
 
     /// <summary>
+    /// The group's members past the lanes drawn, counted together in one lane beneath them (§6.2: collapse groups): its
+    /// least busy, past the lane bound, so none of its records is dropped. Null when every member has a lane of its own,
+    /// and wherever process lanes are not drawn.
+    /// </summary>
+    public FoldedProcessLane? FoldedLane => ShowsProcessLanes ? timelineFoldedLane : null;
+
+    /// <summary>
+    /// The folded lane's name, as its row and a screen reader say it: "312 other members", the words the graph names an
+    /// opened group's members not drawn on their own with (R5).
+    /// </summary>
+    public string FoldedLaneLabel => FoldedLane is { } folded
+        ? CountText.Of(folded.Processes.Count, "other member", "other members")
+        : string.Empty;
+
+    /// <summary>What the lanes' caption adds when some members are folded together: how many, and where.</summary>
+    private string FoldedLaneNote => FoldedLane is { } folded
+        ? string.Create(CultureInfo.CurrentCulture,
+            $", and the other {folded.Processes.Count:N0}, least busy, folded into one lane beneath them")
+        : string.Empty;
+
+    /// <summary>
     /// The columns the process lanes were counted in when fewer than the view draws: past the cell budget a group's lanes
     /// are counted coarser rather than dropped (§6.2); null when they share the view's columns.
     /// </summary>
@@ -1247,7 +1301,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
-                ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + PinnedLanesNote
+                ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + FoldedLaneNote + PinnedLanesNote
                     + SearchedLanesNote + LaneResolutionNote + ProcessLaneBytesNote + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction" + DirectionLaneBytesNote + " · machine context above"
@@ -3696,12 +3750,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public HoverCard DescribeTimelineHover(TimelineBucket bucket, double peakPerSecond,
         Mechanism? lane = null, ProcessNode? ownerLane = null, Direction? directionLane = null,
-        ChannelEndTimelineLane? endLane = null)
+        ChannelEndTimelineLane? endLane = null, bool foldedLane = false)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         if (endLane is not null)
         {
             return DescribeChannelEndHover(bucket, peakPerSecond, endLane);
+        }
+
+        if (foldedLane && FoldedLane is { } folded)
+        {
+            return DescribeFoldedHover(bucket, peakPerSecond, folded);
         }
 
         if (lane is { } byteLane && timelineBytes is { } plotted && ownerLane is null && directionLane is null)
@@ -3807,6 +3866,38 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
+    /// The folded lane's card (§6.2: collapse groups): its records, the members it folds and why, read against the lanes'
+    /// shared scale. A byte ranking measures each lane's own process, so the folded members' bytes are summed in no lane.
+    /// </summary>
+    private HoverCard DescribeFoldedHover(TimelineBucket bucket, double peakPerSecond, FoldedProcessLane folded)
+    {
+        double perSecond = (double)bucket.ObservationCount * WorkspaceTime.TicksPerSecond / Math.Max(1, bucket.Interval.SpanTicks);
+        var lines = new List<string>
+        {
+            bucket.ObservationCount == 0
+                ? bucket.Coverage == CoverageState.Covered
+                    ? "No record observed · the capture covered this interval, so nothing it collects happened here"
+                    : "No record observed · an empty bucket is not proof of inactivity"
+                : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · folded lane: {FoldedLaneLabel}",
+            "Basis: source observations · unit: records · domain: records canonically owned by the "
+                + $"{FoldedLaneLabel} of this group, its least busy, folded into one lane past the "
+                + string.Create(CultureInfo.CurrentCulture, $"{SessionTimelineQuery.MaximumProcessLanes:N0}-lane bound")
+                + " · accounting: one owner per record",
+            $"Rate: {TimelineView.RateText(perSecond)} · "
+                + HeightAgainst("the busiest visible lane including machine context", TimelineView.RateText(peakPerSecond)),
+        };
+        bool zoomed = timelineDetail is not null && folded.Buckets.Contains(bucket);
+        return FinishTimelineHover(bucket, zoomed, lines, new(), CoarserLaneColumns is { } laneColumns
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"Resolution: the lanes' own count, {laneColumns:N0} columns, coarser than the view's so the group's "
+                    + $"{processLaneDisplay.Count + 1:N0} lanes stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
+                : null,
+            bytes: processLaneBytes is not null
+                ? "Bytes: not plotted for the folded members · a byte ranking plots each lane's own process"
+                : "Bytes: not summed for a folded lane");
+    }
+
+    /// <summary>
     /// An L3 end lane's card. The end's records are split by source direction around its midline, so the card gives the
     /// bucket's outbound, inbound and undirected counts and where each is drawn; the channel's count spans both ends.
     /// </summary>
@@ -3853,14 +3944,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// records and interval.
     /// </summary>
     private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope,
-        string? resolution = null, string? unmeasured = null, TransportBytes? plotted = null)
+        string? resolution = null, string? unmeasured = null, TransportBytes? plotted = null, string? bytes = null)
     {
         lines.Add(unmeasured ?? "Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
-        lines.Add(bucket.KnownBytes is { } bytes ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(bytes)
+        lines.Add(bytes ?? (bucket.KnownBytes is { } known ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(known)
             : plotted is not null ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(plotted)
             : ReadBytesOf(scope, bucket.Interval) is { } read ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(read)
             : ReadsBytes ? "Bytes: not summed by the timeline · the interval table (T) reads those of what it lists"
-            : "Bytes: unknown · this timeline counts records");
+            : "Bytes: unknown · this timeline counts records"));
         lines.Add("Coverage: " + CoverageStateText.Value(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));
         lines.Add(resolution ?? (zoomed
@@ -5950,9 +6041,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
         else if (propertyName == nameof(HasSelectedProcessLane))
         {
-            // The lane pin control acts on the selected process's lane, and says what it would do to it.
+            // The lane pin control acts on the selected process's lane, or its folded records, and says what it would do.
             PropertyChanged?.Invoke(this, new(nameof(IsSelectedLanePinned)));
             PropertyChanged?.Invoke(this, new(nameof(LanePinLabel)));
+            PropertyChanged?.Invoke(this, new(nameof(OffersLanePin)));
         }
         else if (propertyName is nameof(ShowsMechanismLanes) or nameof(ShowsProcessLanes) or nameof(ShowsDirectionLanes)
             or nameof(ShowsChannelEndLanes) or nameof(TimelineBytes) or nameof(ProcessLaneBytes) or nameof(DirectionLaneBytes))

@@ -366,6 +366,54 @@ public sealed class SessionTimelineTests
                 pair.Second.Buckets.Select(bucket => (bucket.ObservationCount, bucket.Coverage))));
     }
 
+    [Fact(DisplayName = "§6.2: past the lane bound, the lanes a view names are counted each on its own and the rest in one folded lane, exactly")]
+    public void PastTheBoundTheRestFoldIntoOneLane()
+    {
+        // 250 processes, the one at index i sending i % 4 times after its creation.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(1, 250).SelectMany(index => new[]
+        {
+            Timed(Lifecycle(index * 10, ObservationKind.Create, 1_000 + index, (ulong)(index * 10))),
+        }.Concat(Enumerable.Range(1, index % 4).Select(step =>
+            Timed(Transfer((index * 10) + step, ObservationKind.Send, AccountingSide.SendSide, 8, 1_000 + index,
+                (ulong)((index * 10) + step))))))]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        TimeRange extent = overview.Extent!.Value;
+        ProcessInstanceId[] owners = [.. overview.Nodes.Select(node => node.Id)];
+        var focus = new TimelineFocus(null, owners);
+        Dictionary<ProcessInstanceId, long> records = overview.Nodes.ToDictionary(node => node.Id, node => node.Records);
+
+        // The view names 199 lanes, in its own order, and one stranger the group does not hold, which draws nothing.
+        ProcessInstanceId[] named = [.. owners.OrderByDescending(owner => records[owner]).ThenBy(owner => owner.ToString(),
+            StringComparer.Ordinal).Take(SessionTimelineQuery.MaximumProcessLanes - 1)];
+        SessionFocusedTimeline folded = SessionTimelineQuery.Focused(session.Store, extent, 16, focus,
+            lanes: [new ProcessInstanceId(Guid.NewGuid()), .. named]);
+        Assert.Null(folded.ProcessLaneProblem);
+        Assert.Equal(named, folded.ProcessLanes.Select(lane => lane.ProcessId));
+        FoldedProcessLane rest = Assert.IsType<FoldedProcessLane>(folded.FoldedLane);
+        Assert.Equal([.. focus.OwnerProcesses.Where(owner => !named.Contains(owner))], rest.Processes);
+        Assert.Equal(51, rest.Processes.Count);
+
+        // The lanes and the folded one partition the group's records, column by column, and the fold holds its members' own.
+        Assert.All(folded.Focus.Select((bucket, column) => (bucket, column)), pair => Assert.Equal(pair.bucket.ObservationCount,
+            folded.ProcessLanes.Sum(lane => lane.Buckets[pair.column].ObservationCount) + rest.Buckets[pair.column].ObservationCount));
+        Assert.Equal(rest.Processes.Sum(owner => records[owner]), rest.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(folded.Focus.Select(bucket => bucket.Interval), rest.Buckets.Select(bucket => bucket.Interval));
+
+        // A smaller group may fold too; a view that names as many lanes as the bound, with members left to fold, is refused.
+        SessionFocusedTimeline few = SessionTimelineQuery.Focused(session.Store, extent, 16, new TimelineFocus(null, owners.Take(64).ToArray()),
+            lanes: [.. owners.Take(10)]);
+        Assert.Equal((10, 54), (few.ProcessLanes.Count, few.FoldedLane!.Processes.Count));
+        Assert.Contains("at most 200", Assert.Throws<ArgumentException>(() => SessionTimelineQuery.Focused(session.Store, extent, 16,
+            focus, lanes: [.. owners.Take(SessionTimelineQuery.MaximumProcessLanes)])).Message, StringComparison.Ordinal);
+
+        // Naming every member folds none.
+        SessionFocusedTimeline all = SessionTimelineQuery.Focused(session.Store, extent, 16, new TimelineFocus(null, owners.Take(64).ToArray()),
+            lanes: [.. owners.Take(64)]);
+        Assert.Equal(64, all.ProcessLanes.Count);
+        Assert.Null(all.FoldedLane);
+    }
+
     [Fact(DisplayName = "§6.2: process lane and cell caps report fallback without dropping focused records")]
     public void ProcessLaneBudgetFallsBackToAnExactAggregate()
     {
