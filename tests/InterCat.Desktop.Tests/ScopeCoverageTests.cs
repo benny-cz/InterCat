@@ -170,6 +170,41 @@ public sealed class ScopeCoverageTests
         Assert.Equal(records.Content, SessionExport.Build(session.Store, new([], covered, true, ExportFormat.Json), at).Content);
     });
 
+    [Fact(DisplayName = "R21: a selected record states its mechanism's coverage where it was read, so a loss beside it is said")]
+    public void ASelectedRecordStatesItsCoverage() => SingleThreadedContext.Run(async () =>
+    {
+        // The capture delivered readings from 0 to 20 and from 40 to 60, and its second epoch's session lost an event.
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(), coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [Epoch(1, 0, 20, processes: 2, lost: 0), Epoch(2, 40, 60, processes: 0, lost: 1)],
+        });
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        string CoverageOf(int index)
+        {
+            workspace.SelectedRung = workspace.RungRows[index];
+            return workspace.SelectedEvidenceFields.Single(field => field.Label == "Coverage").Value;
+        }
+
+        // A send read where the capture covered TCP, and one read in the epoch that lost an event, which may have been
+        // a record beside it.
+        Assert.Equal("covered: 2 records from its 1 admitted descriptor, and nothing was reported lost", CoverageOf(2));
+        Assert.Equal($"partial gap, not extrapolated: {Lost}", CoverageOf(4));
+
+        // A generation that publishes no ledger judged nothing, and says so beside each record.
+        using var unjudged = new TemporarySession();
+        Publish(unjudged.Store, Rows());
+        using WorkspaceViewModel plain = Open(unjudged);
+        Assert.True(plain.ShowEvidence());
+        await plain.EvidenceReady;
+        plain.SelectedRung = plain.RungRows[2];
+        Assert.Equal("unknown coverage: this generation publishes no coverage ledger",
+            plain.SelectedEvidenceFields.Single(field => field.Label == "Coverage").Value);
+    });
+
     [Fact(DisplayName = "R21: a range that could not be counted has no coverage said for it, and the tour states none")]
     public void AnUncountedRangeHasNoCoverageSaid() => SingleThreadedContext.Run(async () =>
     {

@@ -4683,6 +4683,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             fields.Add(new("Source", string.Create(CultureInfo.InvariantCulture,
                 $"{EvidenceRowText.ProviderName(row.ProviderId, wholeSnapshot.Redaction is not null)} · event {row.EventId} v{row.DescriptorVersion}")));
             fields.Add(new("Quality", EvidenceRowText.Quality(row)));
+
+            // Where the record was read, whether the capture could have missed records beside it (R21).
+            if (evidence?.Latest is { } page)
+            {
+                MechanismCoverage coverage = page.CoverageOf(row);
+                fields.Add(new("Coverage", $"{CoverageStateText.Label(coverage.State)}: {coverage.Reason}"));
+            }
             fields.Add(new("Record", string.Create(CultureInfo.InvariantCulture,
                 $"raw {row.RawStreamId}/{row.RawSourceEpoch}/{row.RawRecordOrdinal} · {record.SegmentName} row {record.SegmentRow}")));
             return fields;
@@ -4827,6 +4834,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             list.Records.AddRange(page.Records);
             list.NextCursor = page.NextCursor;
+            list.Latest = page;
             if (page.Generation != source.Generation)
             {
                 list.ContinuedIn = page.Generation;
@@ -5603,6 +5611,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         /// <summary>The newer generation a page was read from, when the list continued past the workspace's own.</summary>
         public long? ContinuedIn { get; set; }
+
+        /// <summary>
+        /// The latest page read, whose generation's ledger says where each listed record was read what the capture covered:
+        /// a later ledger only adds epochs, so it holds every earlier page's records' epochs too.
+        /// </summary>
+        public SessionEvidencePage? Latest { get; set; }
 
         public CancellationTokenSource Cancellation { get; } = new();
     }

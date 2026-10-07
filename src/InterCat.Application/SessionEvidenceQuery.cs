@@ -80,6 +80,21 @@ public sealed record SessionEvidencePage(
     /// decided it (`coverage-v2` §4): whether a scope could have held a record it lists none of (R21).
     /// </summary>
     public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
+
+    /// <summary>The coverage ledger the page's generation published, read with the page; null where it publishes none.</summary>
+    internal CoverageLedgerV1? Ledger { get; init; }
+
+    /// <summary>
+    /// A record's mechanism's coverage where it was read: the epoch whose delivered readings hold its own reading, and the
+    /// fact behind that state, which says whether the capture could have missed records beside it (R21). A generation
+    /// that publishes no ledger has judged nothing.
+    /// </summary>
+    public MechanismCoverage CoverageOf(ObservationRowV1 row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        long reading = Math.Min(row.NativeTicks, long.MaxValue - 1);
+        return SessionCoverage.Of(Ledger, row.Mechanism, new TimeRange(reading, reading + 1));
+    }
 }
 
 public static class SessionEvidenceQuery
@@ -242,9 +257,9 @@ public static class SessionEvidenceQuery
         string identity = Identity(manifest.SessionId, segments, channelKey, interval, owners, policy, operationKey);
 
         // What the capture covered over the page's time scope, stated beside its records (R21): a page listing none is
-        // not a quiet scope unless the capture covered it.
-        IReadOnlyList<MechanismCoverage> coverage = CoverageText.Over(
-            SessionSegments.CoverageLedger(store.Root, manifest), SessionSegments.SourceClock(store.Root, manifest), interval);
+        // not a quiet scope unless the capture covered it. Each record's own coverage is read from the same ledger.
+        CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
+        IReadOnlyList<MechanismCoverage> coverage = CoverageText.Over(ledger, SessionSegments.SourceClock(store.Root, manifest), interval);
         SessionEvidencePage Page(IReadOnlyList<SessionEvidenceRecord> records, string? next, bool restart,
             string? reason, long? continuedFrom) =>
             new(identity, manifest.SessionId, manifest.Generation, channelKey,
@@ -254,6 +269,7 @@ public static class SessionEvidenceQuery
                 ContinuedFromGeneration = continuedFrom,
                 OperationKey = operationKey,
                 Coverage = coverage,
+                Ledger = ledger,
             };
 
         if (position is { Legacy: true })

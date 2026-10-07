@@ -13,6 +13,61 @@ public sealed class SessionEvidencePagingTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
+    [Fact(DisplayName = "R21: a listed record's coverage is its mechanism's where it was read, which says whether the capture could have missed records beside it")]
+    public void ARecordsCoverageIsItsMechanismsWhereItWasRead()
+    {
+        // The capture delivered readings from 0 to 20 and from 40 to 60; its second epoch's session lost an event.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd),
+        ], coverage: new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [TcpEpoch(1, 0, 20, lost: 0), TcpEpoch(2, 40, 60, lost: 1)],
+        });
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, pageSize: 10, cursor: null);
+        Assert.Equal(
+        [
+            (CoverageState.Covered, "2 records from its 1 admitted descriptor, and nothing was reported lost"),
+            (CoverageState.PartialGap, "the session reported 1 lost event, which may be any mechanism's"),
+        ], page.Records.Select(record => page.CoverageOf(record.Observation)).Select(coverage => (coverage.State, coverage.Reason)));
+
+        // A record of a mechanism its epoch did not collect says so, one read past every delivered reading - even at the last
+        // tick there is - is unknown rather than failing, and a generation that publishes no ledger judged nothing.
+        Assert.Equal(CoverageState.NotCollected, page.CoverageOf(page.Records[0].Observation with { Mechanism = Mechanism.Udp }).State);
+        Assert.Equal((CoverageState.UnknownCoverage, "outside the readings the capture's sources delivered"),
+            (page.CoverageOf(page.Records[0].Observation with { NativeTicks = long.MaxValue }).State,
+                page.CoverageOf(page.Records[0].Observation with { NativeTicks = long.MaxValue }).Reason));
+        using var unjudged = new TemporarySession();
+        Publish(unjudged.Store, [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd)]);
+        SessionEvidencePage plain = SessionEvidenceQuery.Read(unjudged.Store, pageSize: 10, cursor: null);
+        Assert.Equal((CoverageState.UnknownCoverage, "this generation publishes no coverage ledger"),
+            (plain.CoverageOf(plain.Records[0].Observation).State, plain.CoverageOf(plain.Records[0].Observation).Reason));
+    }
+
+    /// <summary>A live epoch between two delivered readings that collected TCP, delivered two records and lost what it says.</summary>
+    private static CoverageEpochV1 TcpEpoch(int number, long first, long last, long lost) => new()
+    {
+        Epoch = number,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = first,
+        LastDeliveredNativeTicks = last,
+        Collected =
+        [
+            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+        ],
+        Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 2, Admitted = 2, Omitted = 0 }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = lost },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
+
     [Fact]
     public void PagesFollowTheCanonicalRowOrderEvenWhenSegmentsOverlapInTime()
     {
