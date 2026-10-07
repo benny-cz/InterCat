@@ -459,28 +459,32 @@ public static class SessionHttpExchanges
             ? RankingScope.NativeInterval(clock, presentation)
             : null;
 
+    /// <summary>
+    /// The leased generation's exchanges: those the derivation already grouped, read without opening a segment (P25), or
+    /// else grouped over every segment.
+    /// </summary>
     private static (SessionManifestV1 Manifest, HttpExchangeIndex? Index) Derive(
         SessionStore store,
         EvidenceLease lease,
         CancellationToken cancellationToken)
     {
         SessionManifestV1 manifest = lease.Manifest;
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        return (manifest, segments.Length == 0 ? null : Index(store, manifest, segments, cancellationToken));
+        return SessionSegments.Names(manifest).Count == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock
+            ? (manifest, null)
+            : (manifest, new GenerationSegments(store, manifest, clock).HttpExchanges(cancellationToken));
     }
 
+    /// <summary>
+    /// The generation's exchanges, grouped once over <paramref name="segments"/> and their source fields, each opened only
+    /// when the grouping first reads it, and then read without opening one; null when the generation names no source clock.
+    /// </summary>
     private static HttpExchangeIndex? Index(
         SessionStore store,
         SessionManifestV1 manifest,
         IReadOnlyList<SegmentReaderV1> segments,
-        CancellationToken cancellationToken)
-    {
-        if (SessionSegments.SourceClock(store.Root, manifest) is not { } clock)
-        {
-            return null;
-        }
-
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        return SessionDerivationCache.For(manifest).HttpExchanges(store.Root, segments, clock, fields, cancellationToken);
-    }
+        CancellationToken cancellationToken) =>
+        SessionSegments.SourceClock(store.Root, manifest) is not { } clock
+            ? null
+            : SessionDerivationCache.For(manifest).HttpExchanges(store.Root, segments, clock,
+                new SegmentsOnDemand(store, manifest, SessionSegments.FieldNames(manifest)), cancellationToken);
 }

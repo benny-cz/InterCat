@@ -116,6 +116,108 @@ public sealed class IntervalSegmentReadTests
         later.ReleaseSegmentReaders();
     }
 
+    [Fact(DisplayName = "§12.1: once a generation's RPC calls are paired, its call ranking, a process's RPC channels and their spans open no segment, and a page of calls only the segments holding its calls and their other ends")]
+    public void PairedCallsAreReadWithoutTheirSegments()
+    {
+        // The service control manager's linked calls in three segments of six records, cut as they arrived, each at its
+        // session time; its twin holds them in one. The client's third call, from tick 300 to 340, lies in the second, and
+        // the call that served it, from 305 to 330, in the third.
+        (ObservationRowV1[] linked, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        ObservationRowV1[] rows = [.. linked.Select(Timed)];
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 6, fields: fields, coverage: RpcLedger(alpc: true));
+        Publish(twin.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+        ProcessInstanceId client = SessionOverviewProjector.Project(twin.Store).Nodes.Single(node => node.ProcessId == 400).Id;
+        var late = new TimeRange(250, 400);
+
+        // The first ranking pairs the calls over every segment and their source fields, and the first listing follows their
+        // other ends over the same.
+        SessionDerivationCache.Clear();
+        SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        _ = SessionCallRanking.Measure(first, null);
+        Assert.Equal(5, first.SegmentReaderCache.Entries);
+        string channel = Assert.Single(SessionRpcCalls.Channels(first, client).Channels).Key;
+        first.ReleaseSegmentReaders();
+
+        // Later, the ranking of a time scope, the process's channels and their calls' spans read the pairs and open none.
+        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        SessionCallMeasures scoped = SessionCallRanking.Measure(later, late);
+        RpcChannelList channels = SessionRpcCalls.Channels(later, client, late);
+        RpcCallSpanPage spans = SessionRpcCalls.Spans(later, channel, late);
+        Assert.Equal(0, later.SegmentReaderCache.Entries);
+        Assert.Equal(Text(SessionCallRanking.Measure(twin.Store, late).ByProcess), Text(scoped.ByProcess));
+        Assert.Equal(Assert.Single(SessionRpcCalls.Channels(twin.Store, client, late).Channels).Counts,
+            Assert.Single(channels.Channels).Counts);
+        Assert.Equal(1, spans.Total);
+
+        // A page of the calls the scope holds opens the segment its one call lies in and the one its other end does.
+        RpcCallPage page = SessionRpcCalls.Calls(later, channel, interval: late);
+        Assert.Equal(2, later.SegmentReaderCache.Entries);
+        RpcCallRow shown = Assert.Single(page.Calls);
+        RpcCallRow expected = Assert.Single(SessionRpcCalls.Calls(twin.Store, channel, interval: late).Calls);
+        Assert.Equal((expected.Key, expected.OtherEnd?.Process?.ProcessId), (shown.Key, shown.OtherEnd?.Process?.ProcessId));
+        later.ReleaseSegmentReaders();
+
+        // The call's evidence opens only the segment holding its two records, and a zoom of its channel only the segments
+        // the zoom meets.
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        SessionEvidencePage records = SessionEvidenceQuery.Read(evidence, operationKey: shown.Key);
+        Assert.Equal((1, 2), (evidence.SegmentReaderCache.Entries, records.Records.Count));
+        Assert.Equal(Records(SessionEvidenceQuery.Read(twin.Store, operationKey: shown.Key)), Records(records));
+        evidence.ReleaseSegmentReaders();
+        SessionStore zoom = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        SessionFocusedTimeline zoomed = SessionTimelineQuery.Focused(zoom, late, 15, new TimelineFocus(null, [], channel));
+        Assert.Equal(2, zoom.SegmentReaderCache.Entries);
+        Assert.Equal(SessionTimelineQuery.Focused(twin.Store, late, 15, new TimelineFocus(null, [], channel)).Focus, zoomed.Focus);
+        Assert.Equal(2, zoomed.Focus.Sum(bucket => bucket.ObservationCount));
+        zoom.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "§12.1: once a generation's HTTP exchanges are grouped, a process's exchanges and their spans open no segment, and an exchange's evidence only the segment holding its buffers")]
+    public void GroupedExchangesAreReadWithoutTheirSegments()
+    {
+        // A process's WinINet buffers in four segments of six records, cut as they arrived; its twin holds them in one.
+        // Exchange 1's second use, its buffers at ticks 100 to 102, lies in the third.
+        ObservationRowV1[] rows = SessionHttpExchangesTests.Rows(out SourceFieldRowV1[] fields);
+        using var split = new TemporarySession();
+        using var twin = new TemporarySession();
+        Publish(split.Store, rows, rowsPerSegment: 6, fields: fields);
+        Publish(twin.Store, rows, fields: fields);
+        Assert.Equal(4, SessionSegments.Names(split.Store.Current!).Count);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
+        ProcessInstanceId client = SessionHttpExchangesTests.Client(twin.Store);
+        string channel = HttpExchangeKeys.Channel(client);
+        var late = new TimeRange(90, 200);
+
+        // The first read groups the exchanges over every segment and their source fields.
+        SessionDerivationCache.Clear();
+        SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        HttpExchangePage all = SessionHttpExchanges.Exchanges(first, channel);
+        Assert.Equal(4 + SessionSegments.FieldNames(split.Store.Current!).Count, first.SegmentReaderCache.Entries);
+        first.ReleaseSegmentReaders();
+
+        // Later, the process's exchanges, a time scope's and their spans read the groups and open none.
+        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        HttpChannelSummary scoped = Assert.Single(SessionHttpExchanges.Channels(later, client, late).Channels);
+        HttpExchangePage page = SessionHttpExchanges.Exchanges(later, channel, interval: late);
+        HttpExchangeSpanPage spans = SessionHttpExchanges.Spans(later, channel, late);
+        Assert.Equal(0, later.SegmentReaderCache.Entries);
+        Assert.Equal(Assert.Single(SessionHttpExchanges.Channels(twin.Store, client, late).Channels), scoped);
+        Assert.Equal((1L, 3L), (scoped.Exchanges, scoped.Records));
+        Assert.Equal(all.Exchanges[3].Key, Assert.Single(page.Exchanges).Key);
+        Assert.Equal(SessionHttpExchanges.Spans(twin.Store, channel, late).Total, spans.Total);
+        later.ReleaseSegmentReaders();
+
+        // The exchange's evidence opens the one segment holding its three buffers.
+        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        SessionEvidencePage records = SessionEvidenceQuery.Read(evidence, operationKey: all.Exchanges[3].Key);
+        Assert.Equal((1, 3), (evidence.SegmentReaderCache.Entries, records.Records.Count));
+        Assert.Equal(Records(SessionEvidenceQuery.Read(twin.Store, operationKey: all.Exchanges[3].Key)), Records(records));
+        evidence.ReleaseSegmentReaders();
+    }
+
     [Fact(DisplayName = "§12.1: an evidence page opens only the segments it reads, none before its cursor or outside its time scope, reads no row past its scope, and pages as one segment of the same records does")]
     public void AnEvidencePageOpensOnlyTheSegmentsItReads()
     {

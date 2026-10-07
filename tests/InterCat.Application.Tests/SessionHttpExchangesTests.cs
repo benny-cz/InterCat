@@ -162,7 +162,7 @@ public sealed class SessionHttpExchangesTests
         Assert.NotNull(SessionHttpExchanges.Spans(session.Store, HttpExchangeKeys.Channel(other), new TimeRange(0, 400)).Problem);
     }
 
-    private static ProcessInstanceId Client(SessionStore store) =>
+    internal static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 
     /// <summary>
@@ -171,7 +171,7 @@ public sealed class SessionHttpExchangesTests
     /// 3, whose response body's last buffer was not recorded; exchange 1's number again; and exchange 3's again, its request
     /// head lost. Process 7 made none.
     /// </summary>
-    private static ObservationRowV1[] Rows(out SourceFieldRowV1[] fields)
+    internal static ObservationRowV1[] Rows(out SourceFieldRowV1[] fields)
     {
         (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes)[] buffers =
         [

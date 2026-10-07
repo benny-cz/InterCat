@@ -131,9 +131,6 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// <summary>Each instance's records, once counted.</summary>
     public ProcessActivityIndex? DerivedActivity => Volatile.Read(ref activity);
 
-    /// <summary>The other ends of the RPC calls, once followed.</summary>
-    public RpcPeerIndex? DerivedRpcPeers => Volatile.Read(ref rpcPeers);
-
     /// <summary>Whether the counts were extended from an earlier generation's rather than counted in full.</summary>
     internal bool ActivityExtended { get; private set; }
 

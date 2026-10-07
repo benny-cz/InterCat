@@ -150,10 +150,10 @@ public static class SessionCallRanking
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its RPC calls cannot be derived.");
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        SessionDerivation derivation = SessionDerivationCache.For(manifest);
-        ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
+        // The instances and the calls the derivation or the checkpoint holds are read without opening a segment (P25); the
+        // calls are paired over every segment once per generation, since a call's request and response can lie apart.
+        var generation = new GenerationSegments(store, manifest, clock);
+        ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
         MechanismCoverage coverage = interval is not null && native is null
             ? new(Mechanism.Rpc, CoverageState.UnknownCoverage, "no source reading falls in this interval")
@@ -168,7 +168,7 @@ public static class SessionCallRanking
         var served = new List<long>?[instances];
         if (interval is null || native is not null)
         {
-            RpcCallIndex calls = derivation.RpcCalls(store.Root, segments, clock, fields, cancellationToken);
+            RpcCallIndex calls = generation.RpcCalls(cancellationToken);
             foreach (RpcCallOutcome call in calls.Outcomes())
             {
                 if (call.Stop is not { } stop || native is { } range && !range.Contains(stop.NativeTicks))

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 407 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 408 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 408 — paired calls and grouped exchanges are read without their segments (P25, §12.1 S3):**
+  - Each query of a generation's RPC calls or HTTP exchanges opened every segment, though they were already paired.
+    They now open none, and one call's evidence only the segment holding it: at 1M records it fell from 421-656 ms to
+    21-29 ms.
 
 - **Revision 407 — `icat export --group-by session` (R18, §6.3):**
   - A session's rung exported from the window alone. `icat export` now groups as the window does before reading a row
@@ -1066,14 +1071,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         large groups wait on §6.2's density regime.
      3. The working set still ends near 1.2 GB at 10M rows, where 284 MiB stays reachable.
    - A live session still counts its overview from tiles until its writer finishes.
-   - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next level.
-     Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers declare:
-     a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since revision 401 a
-     brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the checkpoint's instances
-     and channels; since revision 402 an evidence page opens only the segments it reads and stops past its time
-     scope, and since revision 403 a process's connections read only the segments their lifetimes meet. The call
-     ranking and a time scope's HTTP and RPC listings still read every segment, and an RPC capture's first brush and a
-     page of its calls pair them over every one (P25). A search reads the overview, never a segment.
+   - A zoom still builds a segment's tiles from its rows when first drawn. Persisting them is the pyramid's next
+     level. Since revision 400 it opens and tiles only the segments its interval meets, by the readings their headers
+     declare: a hundredth of a reopened 1M-row session in twenty segments drew in 3-17 ms, from 86-237 ms. Since
+     revision 401 a brush's counts, its lanes' bytes and a time scope's byte and peer rankings do too, with the
+     checkpoint's instances and channels; since revision 402 an evidence page opens only the segments it reads and
+     stops past its time scope, and since revision 403 a process's connections read only the segments their lifetimes
+     meet. Since revision 408 the call ranking and a process's RPC and HTTP listings read the calls and exchanges once
+     paired or grouped, opening no segment, and a call's or an exchange's evidence opens only the segments holding its
+     records. An RPC capture's first brush, ranking or listing still pairs its calls over every segment, since a
+     call's request and response can lie in different ones, and nothing persists the pairs (P25); a focus on a busy
+     channel's calls gathers their records anew at every zoom, about 110 ms at 250,000 calls. A search reads the
+     overview, never a segment.
    - A focused count still reads its rows (§10.3: a filter is not what tiles hold).
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
@@ -1328,6 +1337,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 408 was built and tested in the same Linux container: Debug and Release each ran **1,740 tests**, passing
+  **1,642 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests cut a capture's
+  linked RPC calls into three segments and a process's WinINet buffers into four, each beside a twin holding them in
+  one. Once the calls are paired, the call ranking of a time scope, the client's RPC channels and their spans open no
+  segment, a page of the scope's one call opens the two holding it and its other end, its evidence the one holding its
+  two records, and a zoom of its channel the two the zoom meets, each answering as the twin does. Once the exchanges
+  are grouped, a process's exchanges, a time scope's and their spans open none, and an exchange's evidence the one
+  segment holding its three buffers. A probe of 500,000 calls in twenty-one segments, deleted after measuring, gave
+  the times the plan states. They caught each of 12 mutations.
 
 - Revision 407 was built and tested in the same Linux container: Debug and Release each ran **1,738 tests**, passing
   **1,640 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests export a session of

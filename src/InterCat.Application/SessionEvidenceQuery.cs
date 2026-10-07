@@ -334,21 +334,25 @@ public static class SessionEvidenceQuery
             }
         }
 
-        // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls.
+        // An RPC channel's or call's records are the ones its calls paired, found through the generation's calls: once they
+        // are paired, without opening a segment (P25).
         HashSet<(string Segment, int Row)>? rpcRecords = null;
         if (operationKey is not null && HttpExchangeKeys.IsHttp(operationKey))
         {
             // A process's HTTP exchanges, or one exchange, are the buffers their exchange numbers group (ADR-037).
-            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, generation!.All, operationKey, policy, cancellationToken)
+            rpcRecords = SessionHttpExchanges.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("These HTTP exchanges are not in the current generation under the "
                     + "evidence policy. Return to the process and select them again.");
         }
         else if (operationKey is not null)
         {
-            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.All, operationKey, policy, cancellationToken)
+            rpcRecords = SessionRpcCalls.RecordsOf(store, manifest, generation!.OnDemand, operationKey, policy, cancellationToken)
                 ?? throw new InvalidOperationException("This RPC channel, call or relationship is not in the current generation "
                     + "under the evidence policy. Return to the process or the graph and select it again.");
         }
+
+        // An operation's records lie in the segments its calls or exchanges were grouped from, so no other is opened.
+        HashSet<string>? operationSegments = rpcRecords is null ? null : [.. rpcRecords.Select(record => record.Segment)];
 
         // The readings a time scope holds, where the clock places them: a segment holding none of them is passed over, its
         // rows before them are sought past, and the page ends once the merge reaches the first reading after them, since
@@ -360,7 +364,7 @@ public static class SessionEvidenceQuery
         // Segments join the merge in order of their earliest reading, as their headers declare it, and only once that
         // reading could come next: every row of a segment not yet joined reads later than the head of the merge, so it is
         // not opened at all. A first page of a session published in chunks opens the first chunk alone, and a page opens
-        // no segment that ends before its cursor or holds no reading of its time scope.
+        // no segment that ends before its cursor, holds no reading of its time scope or none of its operation's records.
         var cursors = new SegmentCursor[names.Length];
         var queue = new PriorityQueue<int, RowKey>(names.Length, RowKeyComparer.Instance);
         int[] joining = [.. Enumerable.Range(0, names.Length)
@@ -376,7 +380,8 @@ public static class SessionEvidenceQuery
                 int index = joining[joined++];
                 SegmentDeclaration span = declared[index];
                 if ((position is not null && span.MaxNativeTicks < position.Key.NativeTicks)
-                    || (readings is { } held && !SessionNativeInterval.Meets((span.MinNativeTicks, span.MaxNativeTicks), held)))
+                    || (readings is { } held && !SessionNativeInterval.Meets((span.MinNativeTicks, span.MaxNativeTicks), held))
+                    || (operationSegments is not null && !operationSegments.Contains(names[index])))
                 {
                     continue;
                 }

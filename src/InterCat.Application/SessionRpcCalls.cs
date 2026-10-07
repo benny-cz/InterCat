@@ -448,7 +448,7 @@ public static class SessionRpcCalls
                 + "select its channel again.");
         }
 
-        SegmentReaderV1[] segments = Segments(store, manifest, calls);
+        SegmentsOnDemand segments = Segments(store, manifest, calls);
         RpcPeerIndex peers = Peers(store, manifest, segments, cancellationToken);
         if (interval is not null)
         {
@@ -708,18 +708,25 @@ public static class SessionRpcCalls
         Peers = PeersOf(calls, peers, group, null, policy),
     };
 
+    /// <summary>
+    /// The leased generation's calls: those the derivation already paired, read without opening a segment (P25), or else
+    /// paired over every segment, since a call's request and its response can lie in different ones.
+    /// </summary>
     private static (SessionManifestV1 Manifest, RpcCallIndex? Calls) Derive(
         SessionStore store,
         EvidenceLease lease,
         CancellationToken cancellationToken)
     {
         SessionManifestV1 manifest = lease.Manifest;
-        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        return segments.Length == 0 || SessionSegments.SourceClock(store.Root, manifest) is null
+        return SessionSegments.Names(manifest).Count == 0 || SessionSegments.SourceClock(store.Root, manifest) is not { } clock
             ? (manifest, null)
-            : (manifest, Index(store, manifest, segments, cancellationToken));
+            : (manifest, new GenerationSegments(store, manifest, clock).RpcCalls(cancellationToken));
     }
 
+    /// <summary>
+    /// The generation's calls, paired once over <paramref name="segments"/> and their source fields, each opened only when
+    /// the pairing first reads it, and then read without opening one.
+    /// </summary>
     private static RpcCallIndex Index(
         SessionStore store,
         SessionManifestV1 manifest,
@@ -728,11 +735,14 @@ public static class SessionRpcCalls
     {
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation has no source clock for process binding.");
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        return SessionDerivationCache.For(manifest).RpcCalls(store.Root, segments, clock, fields, cancellationToken);
+        return SessionDerivationCache.For(manifest).RpcCalls(store.Root, segments, clock,
+            new SegmentsOnDemand(store, manifest, SessionSegments.FieldNames(manifest)), cancellationToken);
     }
 
-    /// <summary>The generation's call other ends, followed once over its calls from the same segments.</summary>
+    /// <summary>
+    /// The generation's call other ends, followed once over its calls from the same segments, and then read without opening
+    /// one.
+    /// </summary>
     private static RpcPeerIndex Peers(
         SessionStore store,
         SessionManifestV1 manifest,
@@ -741,12 +751,15 @@ public static class SessionRpcCalls
     {
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation has no source clock for process binding.");
-        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
-        return SessionDerivationCache.For(manifest).RpcPeers(store.Root, segments, clock, fields, cancellationToken);
+        return SessionDerivationCache.For(manifest).RpcPeers(store.Root, segments, clock,
+            new SegmentsOnDemand(store, manifest, SessionSegments.FieldNames(manifest)), cancellationToken);
     }
 
-    /// <summary>The generation's segments in the order the calls were paired from.</summary>
-    private static SegmentReaderV1[] Segments(SessionStore store, SessionManifestV1 manifest, RpcCallIndex calls) =>
-        [.. calls.SegmentNames.Select(name => SessionSegments.Open(store, manifest, name
-            ?? throw new InvalidDataException("A segment the calls were paired from has no published name.")))];
+    /// <summary>
+    /// The generation's segments in the order the calls were paired from, each opened only when a call's records are first
+    /// read from it, so a page of calls opens only the segments that hold them.
+    /// </summary>
+    private static SegmentsOnDemand Segments(SessionStore store, SessionManifestV1 manifest, RpcCallIndex calls) =>
+        new(store, manifest, [.. calls.SegmentNames.Select(name => name
+            ?? throw new InvalidDataException("A segment the calls were paired from has no published name."))]);
 }

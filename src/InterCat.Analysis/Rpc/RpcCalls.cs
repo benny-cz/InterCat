@@ -400,12 +400,17 @@ public sealed class RpcCallIndex
         RequireDerivedFrom(segments);
     }
 
-    /// <summary>Refuses segments other than the ones the calls were paired from, in the same order.</summary>
+    /// <summary>
+    /// Refuses segments other than the ones the calls were paired from, in the same order: by the names segments opened on
+    /// demand declare, without opening one, or else by each open segment's own.
+    /// </summary>
     internal void RequireDerivedFrom(IReadOnlyList<SegmentReaderV1> segments)
     {
         ArgumentNullException.ThrowIfNull(segments);
-        if (segments.Count != segmentNames.Length
-            || segments.Select(segment => segment.Published?.Name).Where((name, position) => name != segmentNames[position]).Any())
+        IEnumerable<string?> names = segments is IPublishedSegments published
+            ? published.Names
+            : segments.Select(segment => segment.Published?.Name);
+        if (segments.Count != segmentNames.Length || names.Where((name, position) => name != segmentNames[position]).Any())
         {
             throw new ArgumentException("These are not the segments the calls were derived from.", nameof(segments));
         }

@@ -656,11 +656,12 @@ internal sealed class FocusRows
             channel = relation.Channel;
         }
 
-        // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group.
+        // An RPC channel's or call's records, or HTTP exchanges', are the ones the generation's calls or exchanges group:
+        // once they are paired, named without opening a segment (P25).
         HashSet<(string Segment, int Row)>? operationRecords = focus.OperationKey is not { } operation ? null
             : (HttpExchangeKeys.IsHttp(operation)
-                ? SessionHttpExchanges.RecordsOf(store, manifest, generation.All, operation, policy, cancellationToken)
-                : SessionRpcCalls.RecordsOf(store, manifest, generation.All, operation, policy, cancellationToken))
+                ? SessionHttpExchanges.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken)
+                : SessionRpcCalls.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken))
                 ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
 
         return new(processes, relations, owners, relation, channel, operationRecords, policy);
