@@ -52,10 +52,27 @@ internal sealed record ProcessActivityDocument
     public required long? TransportBytesReceived { get; init; }
 
     /// <summary>
+    /// The instance's own send records behind <see cref="TransportBytesSent"/>: those that measured a size and those that
+    /// recorded none. A null total of an instance that made sends is unmeasured; of one that made none, there are none to
+    /// measure. Neither is a zero (R21).
+    /// </summary>
+    public required ProcessTransportRecordsDocument Sends { get; init; }
+
+    /// <summary>The instance's own receive records behind <see cref="TransportBytesReceived"/>, as <see cref="Sends"/> counts them.</summary>
+    public required ProcessTransportRecordsDocument Receives { get; init; }
+
+    /// <summary>
     /// Who the instance exchanged data with, through proven relations, when one PID was asked about; null otherwise,
     /// because deriving every instance's peers is a query per instance.
     /// </summary>
     public IReadOnlyList<ProcessPeerDocument>? Peers { get; init; }
+}
+
+/// <summary>An instance's transport records of one side: how many measured a size, and how many recorded none.</summary>
+internal sealed record ProcessTransportRecordsDocument
+{
+    public required long Measured { get; init; }
+    public required long Unmeasured { get; init; }
 }
 
 /// <summary>
@@ -243,8 +260,8 @@ internal static class ProcessesCommand
         MetricResult received,
         EvidencePolicy policy)
     {
-        Dictionary<ProcessInstanceId, long?> sentBy = ByInstance(sent);
-        Dictionary<ProcessInstanceId, long?> receivedBy = ByInstance(received);
+        Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
+        Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
         List<ProcessActivityDocument> instances =
         [
             .. records.Groups
@@ -254,8 +271,10 @@ internal static class ProcessesCommand
                     Process = ProcessInstanceDocument.From(group.Process!, records.Clock),
                     Records = group.Value ?? 0,
                     Bindings = group.Bindings.ToDictionary(entry => entry.Key.ToString(), entry => entry.Value),
-                    TransportBytesSent = sentBy.GetValueOrDefault(group.Process!.Id),
-                    TransportBytesReceived = receivedBy.GetValueOrDefault(group.Process!.Id),
+                    TransportBytesSent = sentBy.GetValueOrDefault(group.Process!.Id)?.Value,
+                    TransportBytesReceived = receivedBy.GetValueOrDefault(group.Process!.Id)?.Value,
+                    Sends = Records(sentBy.GetValueOrDefault(group.Process!.Id)),
+                    Receives = Records(receivedBy.GetValueOrDefault(group.Process!.Id)),
                 })
                 .OrderByDescending(item => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0))
                 .ThenByDescending(item => item.Records)
@@ -376,27 +395,38 @@ internal static class ProcessesCommand
     };
 
     /// <summary>
-    /// Each instance's value in one grouped answer. A session with nothing measured in the domain answers no groups,
-    /// and every instance then has no byte value rather than zero bytes.
+    /// Each instance's group in one grouped answer: its value and the records behind it. An answer with nothing measured
+    /// in the domain is unavailable, and still holds each instance's records, whose values are all unknown: every instance
+    /// then has no byte value rather than zero bytes, and one that made records says they are unmeasured.
     /// </summary>
-    private static Dictionary<ProcessInstanceId, long?> ByInstance(MetricResult result)
+    private static Dictionary<ProcessInstanceId, MetricGroup> ByInstance(MetricResult result)
     {
-        var values = new Dictionary<ProcessInstanceId, long?>();
-        if (!result.IsAvailable)
-        {
-            return values;
-        }
-
+        var groups = new Dictionary<ProcessInstanceId, MetricGroup>();
         foreach (MetricGroup group in result.Groups)
         {
             if (group.Process is { } process)
             {
-                values[process.Id] = group.Value;
+                groups[process.Id] = group;
             }
         }
 
-        return values;
+        return groups;
     }
+
+    private static ProcessTransportRecordsDocument Records(MetricGroup? group) => new()
+    {
+        Measured = group?.KnownContributions ?? 0,
+        Unmeasured = group?.UnknownContributions ?? 0,
+    };
+
+    /// <summary>
+    /// One side's bytes as the window's ranked rows say them (R18, R21): the measured sum, "unmeasured" when its records
+    /// recorded no size, or "no sends" or "no receives" when it made none.
+    /// </summary>
+    private static string Bytes(long? total, ProcessTransportRecordsDocument records, string none) =>
+        total is { } bytes ? ConsoleUi.Bytes(bytes)
+        : records.Measured + records.Unmeasured > 0 ? "unmeasured"
+        : none;
 
     private static void Render(ProcessesDocument document, string? coverage, SourceClockDescriptor? clock, int top, int? pid,
         string path)
@@ -462,8 +492,8 @@ internal static class ProcessesCommand
                         item.Process.ImageName ?? "not witnessed",
                         Lifetime(item.Process, clock),
                         ConsoleUi.Count(item.Records),
-                        item.TransportBytesSent is { } sentBytes ? ConsoleUi.Bytes(sentBytes) : "-",
-                        item.TransportBytesReceived is { } receivedBytes ? ConsoleUi.Bytes(receivedBytes) : "-",
+                        Bytes(item.TransportBytesSent, item.Sends, "no sends"),
+                        Bytes(item.TransportBytesReceived, item.Receives, "no receives"),
                     }),
                 ]);
         }

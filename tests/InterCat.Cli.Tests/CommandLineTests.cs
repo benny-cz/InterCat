@@ -328,6 +328,50 @@ public sealed class CommandLineTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R21: icat processes says a process's transport bytes are unmeasured, or that it made none, as the window's rows do")]
+    public async Task AProcessesBytesAreUnmeasuredOrNone()
+    {
+        // PID 100 sends 64 bytes to PID 200, which receives them; PID 300 sends once, and its source exposed no size.
+        ObservationRowV1 unsizedSend = Transfer(90, ObservationKind.Send, AccountingSide.SendSide, 0, 300, 3)
+            .Between("127.0.0.1:50001", "127.0.0.1:9090")
+            with { ByteValue = null, ByteAvailability = FieldAvailability.NotExposed, SessionRelativeTicks = 9_000 };
+        using var traffic = new TemporarySession();
+        Publish(traffic.Store,
+        [
+            unsizedSend,
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 10_000 },
+            Transfer(110, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 11_000 },
+        ]);
+        traffic.Store.ReleaseSegmentReaders();
+
+        // Neither a send that recorded no size nor no send at all is a zero, and each says which it is.
+        (InterCatExitCode code, string table, string said) = await Run("processes", traffic.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  100 .* 64 B +no receives\r?$", table);
+        Assert.Matches(@"(?m)^  200 .* no sends +64 B\r?$", table);
+        Assert.Matches(@"(?m)^  300 .* unmeasured +no receives\r?$", table);
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", traffic.Path, "--json")).Output))
+        {
+            JsonElement idle = json.RootElement.GetProperty("instances").EnumerateArray()
+                .Single(item => item.GetProperty("process").GetProperty("processId").GetInt32() == 300);
+            Assert.Equal(JsonValueKind.Null, idle.GetProperty("transportBytesSent").ValueKind);
+            Assert.Equal((0L, 1L), (idle.GetProperty("sends").GetProperty("measured").GetInt64(),
+                idle.GetProperty("sends").GetProperty("unmeasured").GetInt64()));
+            Assert.Equal((0L, 0L), (idle.GetProperty("receives").GetProperty("measured").GetInt64(),
+                idle.GetProperty("receives").GetProperty("unmeasured").GetInt64()));
+        }
+
+        // Where no send measured a size, the answer has nothing measured, and its sender is still unmeasured, not silent.
+        using var unsized = new TemporarySession();
+        Publish(unsized.Store, [unsizedSend]);
+        unsized.Store.ReleaseSegmentReaders();
+        (code, table, said) = await Run("processes", unsized.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  300 .* unmeasured +no receives\r?$", table);
+    }
+
     [Fact(DisplayName = "R18: icat overview says what the capture covered over the session in the words the window's inspector uses")]
     public async Task TheOverviewSaysWhatTheCaptureCovered()
     {
