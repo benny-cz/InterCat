@@ -136,6 +136,17 @@
               <TextBlock Text="Count correlated evidence only" TextWrapping="Wrap" />
             </Button>
           </StackPanel>
+          <!-- §6.8: a setting changed from its first-run default is shown as changed - the ranking and its rate, the lanes'
+               scale, the grouping and the evidence policy, in the words an investigation keeps them in - and one command
+               restores them all. -->
+          <DockPanel x:Name="DefaultsPanel" IsVisible="{Binding DiffersFromDefaults}">
+            <Button x:Name="RestoreDefaultsButton" DockPanel.Dock="Right" Content="Restore defaults" Click="RestoreDefaultView"
+                    FontSize="11" Padding="8,2" Margin="6,0,0,0" VerticalAlignment="Center"
+                    AutomationProperties.HelpText="Rank by records again, not per second, read every timeline lane on one scale, group processes by executable and count correlated evidence only; the time, selection and pins stay" />
+            <TextBlock x:Name="ChangedSettingsLine" Text="{Binding ChangedSettingsSummary}" Classes="muted" FontSize="11"
+                       TextWrapping="Wrap" VerticalAlignment="Center" ToolTip.Tip="{Binding ChangedSettingsText}"
+                       AutomationProperties.HelpText="{Binding ChangedSettingsText}" />
+          </DockPanel>
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"

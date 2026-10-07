@@ -2764,6 +2764,42 @@ public sealed partial class MainWindow : Window, IDisposable
     private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
         _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
 
+    private void RestoreDefaultView(object? sender, RoutedEventArgs eventArgs) => _ = RestoreDefaultViewAsync();
+
+    /// <summary>
+    /// §6.8's one command back to the defaults: the shown session's rows ranked by records, not per second, every timeline
+    /// lane on one scale, its processes grouped by executable and its records counted with correlated evidence only, each
+    /// put back as its own control would, so the time, selection and pins stay, and a regrouped view returns to the machine
+    /// rung. A session opened from an investigation keeps the defaults there, which is then to keep nothing of them. False
+    /// when nothing is shown or every setting is at its default already.
+    /// </summary>
+    internal async Task<bool> RestoreDefaultViewAsync()
+    {
+        if (displayedOverview is null || !workspace.DiffersFromDefaults)
+        {
+            return false;
+        }
+
+        ViewSettings defaults = ViewSettings.Default;
+        workspace.RankBy = defaults.RankBy;
+        workspace.PerSecond = defaults.PerSecond;
+        workspace.ScalesEachLane = defaults.ScalesEachLane;
+
+        // Regrouped first, from the overview already projected, so a policy projected again afterwards is grouped by
+        // executable too.
+        if (workspace.Grouping != defaults.Grouping)
+        {
+            ChooseGrouping(defaults.Grouping);
+        }
+
+        if (workspace.EvidencePolicy != defaults.Policy)
+        {
+            await ChooseEvidencePolicyAsync(defaults.Policy);
+        }
+
+        return true;
+    }
+
     /// <summary>
     /// Counts the shown session's records under another evidence policy (§6.8): its generation is projected again under
     /// it, and the workspace keeps its rung, selection, pins and interval, as a newer publication of it does. A live

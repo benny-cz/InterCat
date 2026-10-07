@@ -227,6 +227,59 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: Restore defaults in a session opened from its investigation keeps the defaults there, and its pins")]
+    public async Task RestoringTheDefaultViewKeepsTheDefaultsInTheInvestigation()
+    {
+        using var root = new TemporaryDirectory();
+        string paired = PairedSession(root.Path, "paired");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, paired, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
+
+            // A pinned node, a ranking by bytes sent per second, candidates counted and each lane on its own scale are kept.
+            var shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.LayoutReady;
+            string key = shown.GraphDisplay.Nodes[0].Key;
+            Assert.True(shown.PinGraphNode(key, new GraphPoint(0.25, 0.75)));
+            shown.RankBy = RankingMetric.BytesSent;
+            shown.PerSecond = true;
+            shown.ScalesEachLane = true;
+            Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates));
+            await main.InvestigationWritten;
+            WorkspaceLayout changed = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+            Assert.Equal((RankingMetric?)RankingMetric.BytesSent, changed.RankBy);
+            Assert.Equal((EvidencePolicy?)EvidencePolicy.IncludeCandidates, changed.EvidencePolicy);
+
+            // Restored, the investigation keeps the pin alone, and opened from it again the session shows the defaults.
+            Assert.True(await main.RestoreDefaultViewAsync());
+            await main.InvestigationWritten;
+            WorkspaceLayout restored = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+            Assert.Equal((null, false, null, false, 1), (restored.RankBy, restored.PerSecond, restored.EvidencePolicy,
+                restored.ScalesEachLane, restored.Pins.Count));
+            Assert.True(await main.OpenSessionAsync(paired));
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => ((WorkspaceViewModel)main.DataContext!).IsGraphNodePinned(key));
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.Equal((RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, false),
+                (again.RankBy, again.PerSecond, again.EvidencePolicy, again.ScalesEachLane, again.DiffersFromDefaults));
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: an investigation keeps the window's panes as a person left them, puts them back for any of its sessions, and its window says so")]
     public async Task AnInvestigationKeepsTheWindowsPanes()
     {

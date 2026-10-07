@@ -609,6 +609,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ShowsRankingNote));
         OnPropertyChanged(nameof(RankingNote));
         OnPropertyChanged(nameof(RankingNoteDetail));
+        RaiseSettingsChanged();
     }
 
     /// <summary>Reads what the chosen ranking needs for the scope the rows count, unless this generation's is known.</summary>

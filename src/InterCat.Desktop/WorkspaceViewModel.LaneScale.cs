@@ -24,6 +24,7 @@ public sealed partial class WorkspaceViewModel
             scalesEachLane = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(LaneScaleText));
+            RaiseSettingsChanged();
         }
     }
 

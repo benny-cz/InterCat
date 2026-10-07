@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 412 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 413 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 413 — one command restores the default view (§6.8, R5):**
+  - A changed ranking, rate, lane scale, grouping or evidence policy was shown only by its own control, and only the
+    policy could be put back in one action. The rail now says how many settings differ from their defaults, naming
+    each in its tooltip, beside Restore defaults, which puts them all back.
 
 - **Revision 412 — an operation's records are kept and read alone (P25, §12.1 S3):**
   - Each page or zoom of an RPC channel's, call's or relationship's records, or of HTTP exchanges', gathered them anew
@@ -1287,6 +1292,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      from its first view when opened from it again (§26.3, `workspace-v13`). Since revision 354 a later holder's
      empty rung says its records were left out as candidates and offers to count them there. Every read a process's
      rows, the call and peer rankings and the lanes make is tested under each policy.
+   - §6.8's defaults: done in revision 413. Each setting's own control shows its value, and the rail says how many of
+     them - the ranking and its rate, the lanes' scale, the grouping and the evidence policy - differ from their
+     first-run defaults, beside a Restore defaults command that puts them all back as their controls would; the line's
+     tooltip names each in the words `icat workspace show` and an investigation's notice use. The theme and the panes
+     are the window's, not the view's, and stay as chosen.
    - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
@@ -1363,6 +1373,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 413 was built and tested in the same Linux container: Debug and Release each ran **1,756 tests**, passing
+  **1,658 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Debug's first run took a build
+  of the window tests made before their last test was added, so that project was rebuilt and run again in Debug, its
+  two failures the baseline's. Its tests name each setting a workspace changes from its default, in an investigation's
+  words and as it changes, per second only under a ranking with a rate, and none in the tour; in the window, a ranking
+  by bytes sent per second, each lane on its own scale, grouping by terminal session and candidates counted read "4
+  settings changed" beside Restore defaults on one line, the four named in its tooltip and to a screen reader, and the
+  command puts all four back, keeping the time and the selected process, after which it has nothing to restore; and in
+  a session opened from its investigation, restoring keeps only its pin there, the session opening again at the
+  defaults. A screenshot of the rail at 1,080 by 700 showed its ranked rows beneath the line, which a first draft
+  listing every setting pushed out of view. They caught each of 11 mutations.
 
 - Revision 412 was built and tested in the same Linux container: Debug and Release each ran **1,753 tests**, passing
   **1,655 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests page through an RPC
