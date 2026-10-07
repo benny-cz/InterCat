@@ -16,6 +16,14 @@ internal sealed record ProcessesDocument
     public required string BindingRule { get; init; }
     public required string EvidencePolicy { get; init; }
     public required ProcessesSummaryDocument Summary { get; init; }
+
+    /// <summary>
+    /// What the capture covered over the session, mechanism by mechanism, as <c>icat metric --group-by process</c> states
+    /// it of the same answer (R18, R21): a process can make any record the capture collects, so its counts are only as
+    /// complete as the capture was.
+    /// </summary>
+    public required MetricCoverageDocument? Coverage { get; init; }
+
     public required IReadOnlyList<ProcessActivityDocument> Instances { get; init; }
     public required IReadOnlyList<ProcessUnattributedDocument> Unattributed { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
@@ -189,7 +197,8 @@ internal static class ProcessesCommand
         }
         else
         {
-            Render(document, records.Clock, top, pid, full);
+            Render(document, records.Coverage is { } coverage ? MetricCommand.CoverageWords(coverage) : null, records.Clock, top,
+                pid, full);
         }
 
         if (outputPath is not null)
@@ -276,6 +285,7 @@ internal static class ProcessesCommand
             Generation = records.Generation,
             BindingRule = records.BindingRule ?? ProcessInstanceIndex.BindingRule,
             EvidencePolicy = policy.ToString(),
+            Coverage = MetricCommand.CoverageDocument(records.Coverage),
             Summary = new()
             {
                 Instances = instances.Count,
@@ -388,7 +398,8 @@ internal static class ProcessesCommand
         return values;
     }
 
-    private static void Render(ProcessesDocument document, SourceClockDescriptor? clock, int top, int? pid, string path)
+    private static void Render(ProcessesDocument document, string? coverage, SourceClockDescriptor? clock, int top, int? pid,
+        string path)
     {
         ConsoleUi.Heading("Process instances");
         ConsoleUi.Field("Session", document.Path);
@@ -415,6 +426,13 @@ internal static class ProcessesCommand
             string.Create(
                 CultureInfo.CurrentCulture,
                 $"{document.Summary.RecordsAttributed:N0} of {allRecords:N0}"));
+
+        // What the capture covered, in the words icat metric uses of the same answer: a count is only as complete as the
+        // capture was, and an instance's count of none for a mechanism it did not collect is no proof of inactivity (R21).
+        if (coverage is { Length: > 0 })
+        {
+            ConsoleUi.Note(coverage);
+        }
 
         IReadOnlyList<ProcessActivityDocument> shown = pid is { } only
             ? [.. document.Instances.Where(item => item.Process.ProcessId == only)]
@@ -533,7 +551,8 @@ internal static class ProcessesCommand
 
         if (peers.Count == 0)
         {
-            ConsoleUi.Note("It sent and received no transport bytes in this session.");
+            ConsoleUi.Note("No transport byte it sent or received was measured in this session, which is not proof it "
+                + "sent or received none.");
         }
         else
         {
@@ -596,6 +615,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      running at capture start, or seen only in their own records - with each one's");
         ConsoleUi.Line("      lifetime, how many records bind to it, and the transport bytes it sent and");
         ConsoleUi.Line("      received. A PID is never an identity on its own: a reused PID is two instances.");
+        ConsoleUi.Line("      What the capture covered, mechanism by mechanism, is said as icat metric says it, so a");
+        ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
         ConsoleUi.Line("      takes, its image path and parent, and what it sent to and received from each");
         ConsoleUi.Line($"      process at the other end ({TransportRelationIndex.RelationRule}).");

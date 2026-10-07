@@ -752,19 +752,7 @@ internal static class MetricCommand
                     Unit = rate.Unit?.ToString(),
                 }
                 : null,
-            Coverage = result.Coverage is { } coverage
-                ? new()
-                {
-                    LedgerPublished = coverage.LedgerPublished,
-                    Rule = coverage.Rule,
-                    Mechanisms = [.. coverage.Mechanisms.Select(item => new MetricMechanismCoverageDocument
-                    {
-                        Mechanism = item.Mechanism.ToString(),
-                        State = item.State.ToString(),
-                        Reason = item.Reason,
-                    })],
-                }
-                : null,
+            Coverage = CoverageDocument(result.Coverage),
             Accounting = request.AccountingSide is { } accounting && taken.Count > 0
                 ? new()
                 {
@@ -1228,7 +1216,32 @@ internal static class MetricCommand
     private static void RenderCoverage(MetricCoverage coverage, MetricRequest request) => ConsoleUi.Note(
         request.Mechanism is not null && coverage.Mechanisms.Count == 1
             ? SessionCoverage.Sentence(coverage.Mechanisms[0], request.Interval is null ? "the session" : "the selected interval")
-            : CoverageText.Describe(coverage.LedgerPublished ? coverage.Mechanisms : SessionCoverage.ByMechanism(null)));
+            : CoverageWords(coverage));
+
+    /// <summary>
+    /// The coverage of an answer that names no mechanism, every mechanism's in the inspector's words (R5, R21): what
+    /// <c>icat metric</c> and <c>icat processes</c>, which answers from the same grouped metric, both say.
+    /// </summary>
+    internal static string CoverageWords(MetricCoverage coverage)
+    {
+        ArgumentNullException.ThrowIfNull(coverage);
+        return CoverageText.Describe(coverage.LedgerPublished ? coverage.Mechanisms : SessionCoverage.ByMechanism(null));
+    }
+
+    /// <summary>An answer's coverage as a document carries it, by the enumerations' names; null when it states none.</summary>
+    internal static MetricCoverageDocument? CoverageDocument(MetricCoverage? coverage) => coverage is null
+        ? null
+        : new()
+        {
+            LedgerPublished = coverage.LedgerPublished,
+            Rule = coverage.Rule,
+            Mechanisms = [.. coverage.Mechanisms.Select(item => new MetricMechanismCoverageDocument
+            {
+                Mechanism = item.Mechanism.ToString(),
+                State = item.State.ToString(),
+                Reason = item.Reason,
+            })],
+        };
 
     /// <summary>A count of errors, or a rate of them: the metric that counts completed calls by their status.</summary>
     private static bool IsErrorCount(MetricRequest request) =>

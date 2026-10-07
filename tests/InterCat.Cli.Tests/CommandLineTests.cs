@@ -327,6 +327,54 @@ public sealed class CommandLineTests : IDisposable
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing")]
+    public async Task ProcessesSayWhatTheCaptureCovered()
+    {
+        // PID 300 sent once, and its source did not expose the size: none of its transport bytes was measured.
+        using var tcp = new TemporarySession();
+        Publish(tcp.Store,
+        [
+            Transfer(90, ObservationKind.Send, AccountingSide.SendSide, 0, 300, 3).Between("127.0.0.1:50001", "127.0.0.1:9090")
+                with { ByteValue = null, ByteAvailability = FieldAvailability.NotExposed, SessionRelativeTicks = 9_000 },
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 10_000 },
+            Transfer(110, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 11_000 },
+        ], coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [TcpEpoch()] });
+        tcp.Store.ReleaseSegmentReaders();
+
+        // The coverage of the counts it lists is what icat metric says of the same grouped answer, word for word.
+        foreach ((string path, string said) in new[]
+        {
+            (tcp.Path, "Coverage: covered for TCP · no other mechanism collected"),
+            (session.Path, "Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not proof "
+                + "of inactivity"),
+        })
+        {
+            (InterCatExitCode listed, string processes, _) = await Run("processes", path);
+            Assert.Equal(InterCatExitCode.Success, listed);
+            Assert.Contains("  " + said + "\n", processes.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+            Assert.Contains("  " + said + "\n", (await Run("metric", path, "--metric", "observations", "--group-by", "process")).Output
+                .ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        }
+
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", tcp.Path, "--json")).Output))
+        {
+            JsonElement coverage = json.RootElement.GetProperty("coverage");
+            Assert.True(coverage.GetProperty("ledgerPublished").GetBoolean());
+            JsonElement tcpCoverage = coverage.GetProperty("mechanisms").EnumerateArray()
+                .Single(entry => entry.GetProperty("mechanism").GetString() == "Tcp");
+            Assert.Equal(("Covered", "2 records from its 1 admitted descriptor, and nothing was reported lost"),
+                (tcpCoverage.GetProperty("state").GetString(), tcpCoverage.GetProperty("reason").GetString()));
+        }
+
+        // A process none of whose transport bytes was measured is not said to have sent or received none.
+        (_, string idle, _) = await Run("processes", tcp.Path, "--pid", "300");
+        Assert.Contains("No transport byte it sent or received was measured in this session, which is not proof it sent or "
+            + "received none.", idle, StringComparison.Ordinal);
+        Assert.DoesNotContain("sent and received no transport bytes", idle, StringComparison.Ordinal);
+    }
+
     /// <summary>
     /// A live epoch that collected one TCP descriptor, delivered two records and lost nothing, and with <paramref name="alpc"/>
     /// an ALPC descriptor too, of which it was delivered nothing.
