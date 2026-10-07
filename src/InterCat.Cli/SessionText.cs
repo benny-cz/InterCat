@@ -60,24 +60,6 @@ internal static class SessionText
         };
     }
 
-    /// <summary>Why a contribution could not be attributed to an instance, as a reader reads it.</summary>
-    public static string Reason(ProcessBindingReason reason) => reason switch
-    {
-        ProcessBindingReason.NoOwner => "the record names no owner in its payload",
-        ProcessBindingReason.BeforeFirstEvidence => "before the PID's first lifecycle record",
-        ProcessBindingReason.BetweenInstances => "between one instance's exit and the next one's creation",
-        ProcessBindingReason.AfterExit => "after the PID's last exit",
-        ProcessBindingReason.NotAdmittedByPolicy => "a reused PID: a candidate the evidence policy does not admit",
-        ProcessBindingReason.ExecutableUnknown => "the process is known, but its full image path was not witnessed",
-        ProcessBindingReason.PeerEndpointIncomplete => "the record carries no complete endpoint pair to find its other end",
-        ProcessBindingReason.PeerNotObserved => "no record in this capture holds the other end (a remote or unobserved peer)",
-        ProcessBindingReason.PeerAmbiguous => "more than one process holds the other end",
-        ProcessBindingReason.PeerUnbound => "the other end's records bind to no process instance",
-        ProcessBindingReason.NoRelationRule => "no relation rule covers this mechanism yet",
-        ProcessBindingReason.CallNotLinked => "an RPC call whose other end was not linked through ALPC",
-        _ => reason.ToString(),
-    };
-
     /// <summary>How the records of a group are bound, strongest first, e.g. "direct 2, correlated 78".</summary>
     public static string Bindings(IReadOnlyDictionary<RelationStrength, long> bindings) =>
         bindings.Count == 0

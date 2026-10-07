@@ -517,7 +517,8 @@ internal static class OperationsCommand
 
     private static string ProcessName(OperationsGroupDocument group) => group.Process is { } process
         ? string.Create(CultureInfo.CurrentCulture, $"{process.ImageName ?? "executable not witnessed"} · {process.ProcessId}")
-        : string.Create(CultureInfo.CurrentCulture, $"PID {group.ProcessId} · {group.Unattributed}");
+        : string.Create(CultureInfo.CurrentCulture,
+            $"PID {group.ProcessId} · {BindingText.Reason(Enum.Parse<ProcessBindingReason>(group.Unattributed!))}");
 
     /// <summary>A session time the document states invariantly, written as the rest of the table is.</summary>
     private static string LocalSeconds(string seconds) => string.Create(CultureInfo.CurrentCulture,

@@ -139,7 +139,7 @@ public static class EvidenceRowText
             : "no owner process named";
         if (record.Owner is not { } owner) return pid;
         if (owner.Instance is null)
-            return processId is null ? pid : pid + " · owner unresolved: " + Reason(owner.Reason);
+            return processId is null ? pid : pid + " · owner unresolved: " + BindingText.Reason(owner.Reason);
         string named = string.IsNullOrWhiteSpace(owner.ImageName)
             ? string.Create(format, $"{raisedBy}PID {owner.ProcessId} · executable not witnessed")
             : string.Create(format, $"{raisedBy}{owner.ImageName} · PID {owner.ProcessId}");
@@ -213,16 +213,6 @@ public static class EvidenceRowText
 
     /// <summary>A kind as a title's verb (<see cref="ObservationText.Kind"/>); a record of unknown kind is a record.</summary>
     private static string Verb(ObservationKind kind) => kind == ObservationKind.UnknownKind ? "record" : ObservationText.Kind(kind);
-
-    private static string Reason(ProcessBindingReason reason) => reason switch
-    {
-        ProcessBindingReason.NoOwner => "the record names no owner",
-        ProcessBindingReason.BeforeFirstEvidence => "earlier than this PID's first lifecycle record",
-        ProcessBindingReason.BetweenInstances => "between two instances of this PID",
-        ProcessBindingReason.AfterExit => "after this PID's last instance exited",
-        ProcessBindingReason.NotAdmittedByPolicy => "a reused PID's candidate the evidence policy does not admit",
-        _ => reason.ToString(),
-    };
 
     private static string? Endpoint(uint? address, ushort? port) => address is { } value && port is { } number
         ? EndpointText.Endpoint(value, number)

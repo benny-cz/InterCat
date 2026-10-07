@@ -1590,6 +1590,7 @@
         "R22: an operation on an unobserved create is left unresolved, not matched by name",
         "R22: an owner filter distinguishes reused PID instances and honors candidate policy",
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
+        "R22: calls direct evidence only leaves unattributed are said as what they are, never as a reused PID's candidates",
         "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: every capture on this machine records its installation's host, each on a clock of its own",
         "R22: hosts are one only by identity, and a name never makes two of them one",
@@ -1616,6 +1617,7 @@
         "R22: two connections on one reused port are two channels, and undecided ones are a lower bound",
         "R22: two host identities are one host only by a person's confirmation, kept as revisions and withdrawn as one",
         "R22: two identities a person confirms are one host have their captures compared as one host's, and say why",
+        "R22: what an evidence policy leaves unattributed is said as what it is, a reused PID's candidates or all but lifecycle records",
         "R22: without a relation a participant is its own records, with every undecided record disclosed"
       ],
       "R3": [
@@ -1691,10 +1693,12 @@
         "R5: a record's kind and layer, a missing field's reason and a capability's state, tier and overhead each read as words",
         "R5: an operation's state reads as a call's does, and the tour's operations name their kind, direction and state in words",
         "R5: icat metric states its coverage in the inspector's words, and names a mechanism as the window does",
+        "R5: icat operations, exchanges and processes say why a group belongs to no process, in the window's words",
         "R5: icat overview and icat processes number a reused PID's holders alike, as the window does",
         "R5: icat's tables name a mechanism, a record's kind and layer, a coverage state and a capability as the window does, never by the enumeration",
         "R5: initial normative wire codes stay stable",
-        "R5: the manifest parser resolves descriptors, keyword masks and template fields"
+        "R5: the manifest parser resolves descriptors, keyword masks and template fields",
+        "R5: why a record binds to no process reads in one set of words, the window's and icat's, an unknown reason by its number"
       ],
       "R6": [
         "R6: linked panes observe one atomic selection state"

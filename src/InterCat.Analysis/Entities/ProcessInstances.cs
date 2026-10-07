@@ -63,8 +63,9 @@ public enum ProcessBindingReason
     AfterExit = 4,
 
     /// <summary>
-    /// The record lies in the lifetime of a later instance of a PID this capture reused, so it could also be a late
-    /// record of the earlier instance: the binding is a candidate, and the evidence policy asked for did not admit it.
+    /// The record binds to an instance, more weakly than the evidence policy asked for admits: under the default policy a
+    /// candidate, in the lifetime of a later instance of a PID this capture reused, so it could also be a late record of
+    /// the earlier one; under direct evidence only, any binding but a lifecycle record's own.
     /// </summary>
     NotAdmittedByPolicy = 5,
 

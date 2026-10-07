@@ -134,12 +134,31 @@ public sealed class EvidenceRowTextTests
             EvidenceRowText.Owner(Record(row,
                 new(instance, 100, "client.exe", RelationStrength.Candidate, ProcessBindingReason.Bound, false)),
                 Invariant));
-        Assert.Equal("PID 100 · owner unresolved: after this PID's last instance exited",
+        Assert.Equal("PID 100 · owner unresolved: after its PID's last instance exited",
             EvidenceRowText.Owner(Record(row,
                 new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.AfterExit, false)), Invariant));
         Assert.Equal("no owner process named", EvidenceRowText.Owner(Record(
             Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, null),
             new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.NoOwner, false)), Invariant));
+    }
+
+    [Fact(DisplayName = "R5: why a record binds to no process reads in one set of words, the window's and icat's, an unknown reason by its number")]
+    public void ABindingReasonReadsInOneSetOfWords()
+    {
+        ProcessBindingReason[] reasons = Enum.GetValues<ProcessBindingReason>();
+        string[] words = [.. reasons.Select(BindingText.Reason)];
+        Assert.Equal(reasons.Length, words.Distinct(StringComparer.Ordinal).Count());
+        Assert.All(words, said => Assert.DoesNotMatch("[a-z][A-Z]", said));
+        Assert.Equal("reason 99", BindingText.Reason((ProcessBindingReason)99));
+
+        // A binding the policy does not admit is any weaker than it asks for, not only a reused PID's candidate: under
+        // direct evidence only, a PID's first instance's records are not admitted either.
+        Assert.Equal("a binding the evidence policy does not admit", BindingText.Reason(ProcessBindingReason.NotAdmittedByPolicy));
+
+        // The window's evidence row names it in those words.
+        ObservationRowV1 row = Transfer(1, ObservationKind.Send, AccountingSide.SendSide, 8, 100);
+        Assert.Equal("PID 100 · owner unresolved: before its PID's first lifecycle record", EvidenceRowText.Owner(Record(row,
+            new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.BeforeFirstEvidence, false)), Invariant));
     }
 
     [Fact(DisplayName = "ADR-030: an RPC record is owned by the process that raised it, and a kernel record's header never is")]
@@ -148,7 +167,7 @@ public sealed class EvidenceRowTextTests
         ObservationRowV1 call = RpcCall(1, ObservationKind.RequestStart, Direction.Inbound, raisedBy: 1_960, 1);
         Assert.Equal(1_960, EvidenceRowText.OwnerProcessId(call));
         Assert.Equal("raised by PID 1960", EvidenceRowText.Owner(Record(call), Invariant));
-        Assert.Equal("raised by PID 1960 · owner unresolved: after this PID's last instance exited",
+        Assert.Equal("raised by PID 1960 · owner unresolved: after its PID's last instance exited",
             EvidenceRowText.Owner(Record(call,
                 new(null, null, null, RelationStrength.Unresolved, ProcessBindingReason.AfterExit, false)), Invariant));
         Assert.Equal("raised by services.exe · PID 1960", EvidenceRowText.Owner(Record(call,

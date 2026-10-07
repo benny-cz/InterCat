@@ -893,7 +893,7 @@ internal static class MetricCommand
                 || result.Groups.Any(other => other.Process is { } peer && peer.ProcessId == group.Process.ProcessId && peer.Id != group.Process.Id)),
         MetricGroupKind.Mechanism => group.Mechanism!.Value.ToString(),
         MetricGroupKind.Executable => group.Executable!,
-        MetricGroupKind.Unattributed => SessionText.Reason(group.Reason!.Value),
+        MetricGroupKind.Unattributed => BindingText.Reason(group.Reason!.Value),
         MetricGroupKind.Remainder => CountText.Of(group.GroupsMerged,
             "more " + (result.Request.Grouping == LaneGrouping.Mechanism ? "mechanism"
                 : result.Request.Grouping == LaneGrouping.Executable ? "executable" : "instance")),

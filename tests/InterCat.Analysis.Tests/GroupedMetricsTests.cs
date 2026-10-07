@@ -128,6 +128,36 @@ public sealed class GroupedMetricsTests
         Assert.Equal(50, laterBytes.Value);
     }
 
+    [Fact(DisplayName = "R22: what an evidence policy leaves unattributed is said as what it is, a reused PID's candidates or all but lifecycle records")]
+    public void WhatAPolicyLeavesUnattributedIsSaidAsWhatItIs()
+    {
+        // PID 100's first instance sent once, and its later one twice: the later sends are a reused PID's candidates.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 10, 100, 2),
+            Lifecycle(30, ObservationKind.Exit, 100, 3),
+            Lifecycle(40, ObservationKind.Create, 100, 4),
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 20, 100, 5),
+            Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 30, 100, 6),
+        ]);
+
+        MetricResult byDefault = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly });
+        Assert.Contains(byDefault.Caveats, caveat => caveat.StartsWith(
+            "2 contributions lie in the lifetime of a later instance of a PID this capture reused.", StringComparison.Ordinal));
+
+        // Direct evidence only leaves the first instance's send out too, which is no candidate: the caveat says what all
+        // three are, never that they lie in a reused PID's later instance.
+        MetricResult direct = SessionMetrics.Evaluate(session.Store,
+            Request(Metric.Observations) with { Grouping = LaneGrouping.InstanceOnly, EvidencePolicy = EvidencePolicy.DirectOnly });
+        Assert.Contains(direct.Caveats, caveat => caveat.StartsWith(
+            "3 contributions bind to an instance by where their readings fall in its lifetime, not by a lifecycle record of it, "
+            + "so they stay unattributed under direct evidence only.", StringComparison.Ordinal));
+        Assert.DoesNotContain(direct.Caveats, caveat => caveat.Contains("PID this capture reused.", StringComparison.Ordinal));
+    }
+
     [Fact(DisplayName = "I5: grouped rows, the remainder and the unattributed rows partition the total exactly")]
     public void GroupsPartitionTheTotal()
     {

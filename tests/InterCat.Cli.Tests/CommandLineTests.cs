@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
@@ -820,6 +821,37 @@ public sealed class CommandLineTests : IDisposable
         string processes = (await Run("processes", reused.Path)).Output;
         Assert.Contains("100 #1", processes, StringComparison.Ordinal);
         Assert.Contains("100 #2", processes, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R5: icat operations, exchanges and processes say why a group belongs to no process, in the window's words")]
+    public async Task AnUnattributedGroupSaysWhyInWords()
+    {
+        // An RPC call raised by PID 1960 and an HTTP exchange of PID 4242, neither of whose processes a lifecycle record names.
+        Guid activity = Guid.Parse("11111111-2222-4333-8444-555555555555");
+        ObservationRowV1[] bodies = [Body(10, 1), Body(12, 2)];
+        using var unbound = new TemporarySession();
+        Publish(unbound.Store,
+        [
+            RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, raisedBy: 1_960, 3, activity: activity),
+            RpcCall(110, ObservationKind.RequestEnd, Direction.Outbound, raisedBy: 1_960, 4, activity: activity, status: 0),
+            .. bodies,
+        ], fields: [.. bodies.Select(row => Field(row, SourceField.HttpExchangeId, 4))]);
+        unbound.Store.ReleaseSegmentReaders();
+
+        // Direct evidence only admits a lifecycle record's own binding alone, so each group belongs to no process it admits,
+        // and says so in the words the window's evidence rows use, never the enumeration's name.
+        string said = BindingText.Reason(ProcessBindingReason.NotAdmittedByPolicy);
+        (_, string calls, _) = await Run("operations", unbound.Path, "--evidence-policy", "DirectOnly");
+        Assert.Contains($"PID 1960 · {said}", calls, StringComparison.Ordinal);
+        (_, string exchanges, _) = await Run("exchanges", unbound.Path, "--evidence-policy", "DirectOnly");
+        Assert.Contains($"PID 4242 ({said})", exchanges, StringComparison.Ordinal);
+        (_, string processes, _) = await Run("processes", unbound.Path, "--evidence-policy", "DirectOnly");
+        Assert.Contains(said, processes, StringComparison.Ordinal);
+        (_, string grouped, _) = await Run("metric", unbound.Path, "--metric", "observations", "--group-by", "process",
+            "--evidence-policy", "DirectOnly");
+        Assert.Contains(said, grouped, StringComparison.Ordinal);
+        Assert.All(new[] { calls, exchanges, processes, grouped },
+            answer => Assert.DoesNotContain(nameof(ProcessBindingReason.NotAdmittedByPolicy), answer, StringComparison.Ordinal));
     }
 
     [Fact(DisplayName = "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one")]

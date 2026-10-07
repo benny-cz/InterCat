@@ -305,7 +305,8 @@ internal static class ExchangesCommand
             [
                 group.Process is { } process
                     ? string.Create(CultureInfo.InvariantCulture, $"{process.ImageName ?? "PID"} · {group.ProcessId}")
-                    : string.Create(CultureInfo.InvariantCulture, $"PID {group.ProcessId} ({group.Unattributed})"),
+                    : string.Create(CultureInfo.InvariantCulture,
+                        $"PID {group.ProcessId} ({BindingText.Reason(Enum.Parse<ProcessBindingReason>(group.Unattributed!))})"),
                 ConsoleUi.Count(group.Exchanges),
                 ConsoleUi.Count(group.RecordedWhole),
                 ConsoleUi.Count(group.Records),

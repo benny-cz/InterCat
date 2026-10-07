@@ -605,6 +605,24 @@ public sealed class OperationMetricsTests
         return grouped.Groups.Single(group => group.Process?.ProcessId == pid).Process!.Id;
     }
 
+    [Fact(DisplayName = "R22: calls direct evidence only leaves unattributed are said as what they are, never as a reused PID's candidates")]
+    public void CallsDirectEvidenceLeavesOutAreSaidAsWhatTheyAre()
+    {
+        // Every call binds by where its first record's reading falls; none is a lifecycle record, so direct evidence only
+        // admits none, and no PID here was reused.
+        using var session = new TemporarySession();
+        Publish(session.Store, EveryState());
+        MetricResult direct = SessionMetrics.Evaluate(session.Store, Request(Metric.OperationsStarted) with
+        {
+            Grouping = LaneGrouping.InstanceOnly,
+            EvidencePolicy = EvidencePolicy.DirectOnly,
+        });
+        Assert.Contains(direct.Caveats, caveat => caveat.StartsWith(
+            "6 calls bind to an instance by where their first records' readings fall in its lifetime, not by a lifecycle record "
+            + "of it, so they stay unattributed under direct evidence only.", StringComparison.Ordinal));
+        Assert.DoesNotContain(direct.Caveats, caveat => caveat.Contains("PID this capture reused", StringComparison.Ordinal));
+    }
+
     private static MetricRequest Request(Metric metric) => new()
     {
         Basis = AnalysisBasis.LogicalOperations,

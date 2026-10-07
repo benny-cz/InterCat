@@ -378,13 +378,14 @@ public static partial class SessionMetrics
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
             long contributions = notAdmitted.KnownContributions + notAdmitted.UnknownContributions;
-            caveats.Add(
-                $"{CountText.Of(contributions, "contribution")} {CountText.Agree(contributions, "lies", "lie")} in the lifetime "
-                + "of a later instance of a PID this capture reused. PID and time cannot tell a late record of the "
-                + "earlier instance from a record of the later one, so "
-                + $"{CountText.Agree(contributions, "it is a candidate and stays", "they are candidates and stay")} unattributed under "
-                + $"this evidence policy; ask for candidates to include {CountText.Agree(contributions, "it", "them")}, labelled "
-                + "(identity-v1).");
+            caveats.Add(request.EvidencePolicy == EvidencePolicy.DirectOnly
+                ? NotDirect(contributions, "contribution", "its reading falls", "their readings fall")
+                : $"{CountText.Of(contributions, "contribution")} {CountText.Agree(contributions, "lies", "lie")} in the lifetime "
+                    + "of a later instance of a PID this capture reused. PID and time cannot tell a late record of the "
+                    + "earlier instance from a record of the later one, so "
+                    + $"{CountText.Agree(contributions, "it is a candidate and stays", "they are candidates and stay")} unattributed under "
+                    + $"this evidence policy; ask for candidates to include {CountText.Agree(contributions, "it", "them")}, labelled "
+                    + "(identity-v1).");
         }
 
         if (unattributed.Any(group => group.Reason is ProcessBindingReason.BeforeFirstEvidence
@@ -680,4 +681,15 @@ public static partial class SessionMetrics
             };
         }
     }
+
+    /// <summary>
+    /// What direct evidence only leaves unattributed: every binding but a lifecycle record's own, which binds by where its
+    /// reading falls in an instance's lifetime - correlated in a PID's first instance, a candidate in a reused PID's later
+    /// one - and so is not admitted. Said apart from a reused PID's candidates, which are not all of them (identity-v1).
+    /// </summary>
+    internal static string NotDirect(long count, string noun, string oneReading, string readings) =>
+        $"{CountText.Of(count, noun)} {CountText.Agree(count, "binds", "bind")} to an instance by where "
+        + $"{CountText.Agree(count, oneReading, readings)} in its lifetime, not by a lifecycle record of it, so "
+        + $"{CountText.Agree(count, "it stays", "they stay")} unattributed under direct evidence only. The default policy admits "
+        + "those in a PID's first instance; one in a later instance of a reused PID is a candidate (identity-v1).";
 }

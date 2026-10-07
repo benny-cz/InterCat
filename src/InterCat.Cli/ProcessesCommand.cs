@@ -489,7 +489,7 @@ internal static class ProcessesCommand
                 [
                     .. document.Unattributed.Select(item => new[]
                     {
-                        SessionText.Reason(Enum.Parse<ProcessBindingReason>(item.Reason)),
+                        BindingText.Reason(Enum.Parse<ProcessBindingReason>(item.Reason)),
                         ConsoleUi.Count(item.Records),
                     }),
                 ]);
@@ -564,7 +564,7 @@ internal static class ProcessesCommand
                     {
                         peer.Peer is { } other
                             ? string.Create(CultureInfo.InvariantCulture, $"PID {other.ProcessId} {other.ImageName ?? "(image not witnessed)"}")
-                            : "unresolved: " + SessionText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
+                            : "unresolved: " + BindingText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
                         peer.SentTo is { } sentTo ? ConsoleUi.Bytes(sentTo) : "-",
                         peer.ReceivedFrom is { } receivedFrom ? ConsoleUi.Bytes(receivedFrom) : "-",
                     }),

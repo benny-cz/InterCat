@@ -618,11 +618,12 @@ public static partial class SessionMetrics
             && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
             long calls = notAdmitted.KnownContributions + notAdmitted.UnknownContributions;
-            caveats.Add(
-                $"{CountText.Of(calls, "call")} {CountText.Agree(calls, "lies", "lie")} in the lifetime of a later instance of a PID "
-                + $"this capture reused, so {CountText.Agree(calls, "it is a candidate and stays", "they are candidates and stay")} "
-                + "unattributed under this evidence policy; ask for candidates to include "
-                + $"{CountText.Agree(calls, "it", "them")}, labelled (identity-v1).");
+            caveats.Add(request.EvidencePolicy == EvidencePolicy.DirectOnly
+                ? NotDirect(calls, "call", "its first record's reading falls", "their first records' readings fall")
+                : $"{CountText.Of(calls, "call")} {CountText.Agree(calls, "lies", "lie")} in the lifetime of a later instance of a PID "
+                    + $"this capture reused, so {CountText.Agree(calls, "it is a candidate and stays", "they are candidates and stay")} "
+                    + "unattributed under this evidence policy; ask for candidates to include "
+                    + $"{CountText.Agree(calls, "it", "them")}, labelled (identity-v1).");
         }
 
         return caveats;
