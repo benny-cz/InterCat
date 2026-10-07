@@ -692,6 +692,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
                 InvestigationWorkspace.SetPanes(workspace, 0.25, null, Now);
             },
             read => read.Layouts.Single() is { ScalesEachLane: true, PinnedLanes.Count: 0 } && read.Panes is { GraphShare: 0.25 });
+        As(InvestigationWorkspace.SixteenthContract,
+            () => InvestigationWorkspace.SetLayout(workspace, a, [], Now, pinnedLanes: [Guid.Parse("a1b2c3d4-0000-4000-8000-000000000001")]),
+            read => read.Layouts.Single() is { PinnedLanes.Count: 1, Grouping: null });
 
         // Written again, such a file is the current version, and loses nothing.
         InvestigationWorkspace.AddNote(workspace, "And again.", null, Now);
@@ -953,6 +956,61 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal((InvestigationWorkspace.Contract, first), (rewritten.Contract, Assert.Single(rewritten.Layouts.Single().PinnedLanes)));
     }
 
+    [Fact(DisplayName = "R22: a member's layout keeps a grouping by terminal session, and refuses one no view offers")]
+    public void AMembersGroupingIsKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+
+        // Kept by name; grouping by executable, how every view is first grouped, names none and keeps nothing on its own.
+        WorkspaceLayout kept = InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.UserSession)!;
+        Assert.Equal(LaneGrouping.UserSession, kept.Grouping);
+        Assert.Equal(LaneGrouping.UserSession, InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Grouping);
+        Assert.Equal("its processes grouped by terminal session", kept.Describe(CultureInfo.InvariantCulture));
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"grouping\": \"UserSession\"", written, StringComparison.Ordinal);
+        WorkspaceLayout ranked = InvestigationWorkspace.SetLayout(workspace, a, [], Now, RankingMetric.BytesSent)!;
+        Assert.Equal((null, RankingMetric.BytesSent), (ranked.Grouping, ranked.RankBy));
+        Assert.Contains("\"grouping\": null", File.ReadAllText(workspace), StringComparison.Ordinal);
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.Executable));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // Refused: a grouping no view offers.
+        Assert.Contains("groups its processes by executable or by terminal session", Assert.Throws<InvalidOperationException>(() =>
+            InvestigationWorkspace.SetLayout(workspace, a, [], Now, grouping: LaneGrouping.ServiceContainer)).Message,
+            StringComparison.Ordinal);
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // A file of a version before it groups none, and one that says otherwise is refused, as is one naming a grouping no
+        // view offers, or executables by name.
+        foreach ((string text, string problem) in new[]
+        {
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.SixteenthContract}\"", StringComparison.Ordinal),
+                "file groups no session's processes by terminal session"),
+            (written.Replace("\"grouping\": \"UserSession\"", "\"grouping\": \"Host\"", StringComparison.Ordinal),
+                "groups its processes in a way no view offers, or by executable by name"),
+            (written.Replace("\"grouping\": \"UserSession\"", "\"grouping\": \"Executable\"", StringComparison.Ordinal),
+                "groups its processes in a way no view offers, or by executable by name"),
+        })
+        {
+            Assert.NotEqual(written, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A file of the version before, grouping none, reads as one grouping by executable, and is written as the current one.
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.SixteenthContract}\"", StringComparison.Ordinal));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Grouping);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, scalesEachLane: true, grouping: LaneGrouping.UserSession);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, (LaneGrouping?)LaneGrouping.UserSession),
+            (rewritten.Contract, rewritten.Layouts.Single().Grouping));
+    }
+
     [Fact(DisplayName = "§26.3: what the window's panes keep is said in one series, only what differs from equal halves with both shown")]
     public void ThePanesAreDescribedInOneSeries()
     {
@@ -979,7 +1037,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal("1 node pinned on its graph, the timeline filling the column and the graph at 37% of the panes' height when "
             + "both are shown", WorkspaceLayout.Series(
             [
-                .. WorkspaceLayout.Parts(1, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture),
+                .. WorkspaceLayout.Parts(1, 0, LaneGrouping.Executable, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated,
+                    false, culture),
                 .. WorkspacePanes.Parts(0.3712, WorkspacePane.Timeline, culture),
             ]));
     }
@@ -989,11 +1048,12 @@ public sealed class InvestigationWorkspaceTests : IDisposable
     {
         CultureInfo culture = CultureInfo.InvariantCulture;
         static WorkspaceLayout Layout(int pins, RankingMetric? rankBy = null, bool perSecond = false, EvidencePolicy? policy = null,
-            bool scales = false, int lanes = 0) => new()
+            bool scales = false, int lanes = 0, LaneGrouping? grouping = null) => new()
         {
             SessionId = Guid.Empty,
             Pins = [.. Enumerable.Range(0, pins).Select(index => new WorkspacePin { Key = $"group:{index}", X = 0.5, Y = 0.5 })],
             PinnedLanes = [.. Enumerable.Range(1, lanes).Select(index => new Guid(index, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0))],
+            Grouping = grouping,
             RankBy = rankBy,
             PerSecond = perSecond,
             EvidencePolicy = policy,
@@ -1017,12 +1077,19 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal("1 node pinned on its graph, 1,025 process lanes pinned on its timeline and each of its timeline lanes on its "
             + "own scale", Layout(1, scales: true, lanes: 1_025).Describe(culture));
 
-        // A default is not said: a session opened on its own ranks by records counted whole, under correlated evidence, on
-        // one scale, as one opened from an investigation that keeps none of it.
+        // A grouping by terminal session is said before the ranking, as the rows it groups are ranked.
+        Assert.Equal("its processes grouped by terminal session", Layout(0, grouping: LaneGrouping.UserSession).Describe(culture));
+        Assert.Equal("1 process lane pinned on its timeline, its processes grouped by terminal session and its rows ranked by peers",
+            Layout(0, RankingMetric.ActivePeers, lanes: 1, grouping: LaneGrouping.UserSession).Describe(culture));
+
+        // A default is not said: a session opened on its own groups by executable and ranks by records counted whole, under
+        // correlated evidence, on one scale, as one opened from an investigation that keeps none of it.
         Assert.Equal(string.Empty,
-            WorkspaceLayout.Describe(0, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, culture));
+            WorkspaceLayout.Describe(0, 0, LaneGrouping.Executable, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated,
+                false, culture));
         Assert.Equal("each of its timeline lanes on its own scale",
-            WorkspaceLayout.Describe(0, 0, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, true, culture));
+            WorkspaceLayout.Describe(0, 0, LaneGrouping.Executable, RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated,
+                true, culture));
     }
 
     [Fact(DisplayName = "R22: a note is a person's words on the investigation, pinned at a session's instant or not, kept as revisions")]

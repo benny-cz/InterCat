@@ -97,16 +97,19 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// What a member keeps in its investigation beside its pins (§26.3): what its rows are ranked by and whether per
-    /// second, the evidence policy its records are counted under, and whether each timeline lane has its own scale.
+    /// second, the evidence policy its records are counted under, whether each timeline lane has its own scale, and how its
+    /// processes are grouped.
     /// </summary>
-    private readonly record struct ViewSettings(RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy, bool ScalesEachLane)
+    private readonly record struct ViewSettings(RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy, bool ScalesEachLane,
+        LaneGrouping Grouping)
     {
         /// <summary>What a session opened on its own starts with, and an investigation that keeps nothing of it puts back.</summary>
-        public static ViewSettings Default => new(RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false);
+        public static ViewSettings Default =>
+            new(RankingMetric.Records, false, EvidencePolicy.IncludeCorrelated, false, LaneGrouping.Executable);
 
-        /// <summary>What the shown workspace is set to now.</summary>
-        public static ViewSettings Of(WorkspaceViewModel workspace) =>
-            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane);
+        /// <summary>What the shown workspace is set to now, grouped as its person chose (<paramref name="grouping"/>).</summary>
+        public static ViewSettings Of(WorkspaceViewModel workspace, LaneGrouping grouping) =>
+            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping);
     }
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -138,7 +141,8 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// How the window groups a session's processes (§6.3): by executable, as projected, until a person chooses their terminal
-    /// session, and again for each session opened or captured after. Every publication of the session shown is grouped so.
+    /// session, and again for each session opened or captured after, unless the investigation it is opened from keeps
+    /// another grouping for it. Every publication of the session shown is grouped so where its processes offer it.
     /// </summary>
     private LaneGrouping laneGrouping = LaneGrouping.Executable;
     private DateTimeOffset? lastPublicationUtc;
@@ -1212,7 +1216,8 @@ public sealed partial class MainWindow : Window, IDisposable
             return ((layout?.Pins ?? []).ToDictionary(pin => pin.Key, pin => new GraphPoint(pin.X, pin.Y), StringComparer.Ordinal),
                 [.. (layout?.PinnedLanes ?? []).Select(lane => new ProcessInstanceId(lane))],
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
-                    layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane),
+                    layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane,
+                    layout.Grouping ?? LaneGrouping.Executable),
                 file.Panes);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -1229,8 +1234,8 @@ public sealed partial class MainWindow : Window, IDisposable
     private static string PutBack(int pins, int lanes, ViewSettings settings, WorkspacePanes? panes) =>
         WorkspaceLayout.Series(
         [
-            .. WorkspaceLayout.Parts(pins, lanes, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-                CultureInfo.CurrentCulture),
+            .. WorkspaceLayout.Parts(pins, lanes, settings.Grouping, settings.RankBy, settings.PerSecond, settings.Policy,
+                settings.ScalesEachLane, CultureInfo.CurrentCulture),
             .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
         ]) is { Length: > 0 } restored
             ? $", which put back {restored}."
@@ -1245,7 +1250,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         IReadOnlyDictionary<string, GraphPoint> pins = workspace.GraphPins;
         ProcessInstanceId[] lanes = [.. workspace.PinnedLanes];
-        ViewSettings settings = ViewSettings.Of(workspace);
+        ViewSettings settings = ViewSettings.Of(workspace, laneGrouping);
         if (keptPins is { } kept && kept.Count == pins.Count
             && pins.All(pin => kept.TryGetValue(pin.Key, out GraphPoint at) && at == pin.Value)
             && keptLanes is { } lanesKept && lanesKept.SequenceEqual(lanes)
@@ -1261,7 +1266,7 @@ public sealed partial class MainWindow : Window, IDisposable
         Guid[] pinnedLanes = [.. lanes.Select(lane => lane.Value)];
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
             layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-            pinnedLanes));
+            pinnedLanes, settings.Grouping));
         _ = SayWhatIsKeptAsync(written, home);
     }
 
@@ -2805,8 +2810,9 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Groups the shown session's processes another way (§6.3): by executable, or by the terminal session their lifecycle
     /// records name. The overview already projected is regrouped, so nothing is read again, and the view returns to the
     /// machine rung, whose rows are the groups, keeping its time, selection, ranking, pins and scales. A live capture groups
-    /// each later publication so too, and a session opened afterwards starts grouped by executable. False when nothing is
-    /// shown, its processes do not offer the grouping, or it is chosen already.
+    /// each later publication so too, a session opened from an investigation keeps the choice there, and a session opened
+    /// afterwards starts grouped by executable, or as its investigation keeps it. False when nothing is shown, its
+    /// processes do not offer the grouping, or it is chosen already.
     /// </summary>
     internal bool ChooseGrouping(LaneGrouping grouping)
     {
@@ -2820,6 +2826,13 @@ public sealed partial class MainWindow : Window, IDisposable
         ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
             SessionPath: currentSessionPath, Overview: shown, OverviewChunks: displayedChunks), shown, forceOverview: false,
             regrouping: true);
+
+        // A member opened from its investigation keeps its grouping there, as it keeps its ranking (§26.3).
+        if (layoutHome is { } home)
+        {
+            KeepLayout(home);
+        }
+
         return true;
     }
 
@@ -2842,6 +2855,10 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         });
     }
+
+    /// <summary>The grouping a projected publication is shown in: the one chosen, where its processes offer it, else by executable.</summary>
+    private static LaneGrouping GroupingShown(WorkspaceSnapshot projected, LaneGrouping chosen) =>
+        WorkspaceGrouping.Offered(projected).Contains(chosen) ? chosen : LaneGrouping.Executable;
 
     /// <summary>
     /// The same view's navigation once its processes are regrouped: the groups are what changed, so it returns to the
@@ -2887,6 +2904,8 @@ public sealed partial class MainWindow : Window, IDisposable
         IReadOnlyList<ProcessInstanceId> lanes = [];
         string? pinsNotice = null;
         ViewSettings? restored = null;
+        // Each publication is grouped as its person chose, where its processes offer that grouping.
+        WorkspaceSnapshot projected = OverviewWorkspace.From(overview);
         if (savedNavigation is null)
         {
             // A session opened from an investigation it is a member of keeps its pins, pinned lanes and view settings there,
@@ -2905,6 +2924,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 pins = kept.Pins;
                 lanes = keptLanes = kept.Lanes;
                 restored = keptSettings = kept.Settings;
+                laneGrouping = kept.Settings.Grouping;
                 keptPanes = kept.Panes is { } panes
                     ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded)
                     : (WorkspacePanes.EqualShare, null);
@@ -2914,16 +2934,16 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
 
                 pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(investigation)}"
-                    + PutBack(kept.Pins.Count, kept.Lanes.Count, kept.Settings with { Policy = overview.Policy }, kept.Panes);
+                    + PutBack(kept.Pins.Count, kept.Lanes.Count,
+                        kept.Settings with { Policy = overview.Policy, Grouping = GroupingShown(projected, laneGrouping) },
+                        kept.Panes);
             }
 
             keptPins = pins;
         }
 
-        // Each publication is grouped as its person chose, where its processes offer that grouping; the graph's identity
-        // names the grouping too, since its nodes are the groups.
-        WorkspaceSnapshot projected = OverviewWorkspace.From(overview);
-        LaneGrouping grouping = WorkspaceGrouping.Offered(projected).Contains(laneGrouping) ? laneGrouping : LaneGrouping.Executable;
+        // The graph's identity names the grouping too, since its nodes are the groups.
+        LaneGrouping grouping = GroupingShown(projected, laneGrouping);
         var replacement = new WorkspaceViewModel(WorkspaceGrouping.Regroup(projected, grouping),
             WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins);

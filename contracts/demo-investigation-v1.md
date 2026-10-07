@@ -14,7 +14,7 @@ command - can be tried with no capture, no elevation and no second machine.
 
 | Path | What it is |
 |---|---|
-| `demo.icat-workspace` | The investigation (`workspace-v16`): both sessions, their hosts named `demo client` and `demo server`, the server aligned to the client by their recorded wall clocks with a stated 2 ms synchronization, and a note that opens with the disclosure of §3 |
+| `demo.icat-workspace` | The investigation (`workspace-v17`): both sessions, their hosts named `demo client` and `demo server`, the server aligned to the client by their recorded wall clocks with a stated 2 ms synchronization, and a note that opens with the disclosure of §3 |
 | `demo-client/` | The client's session, 10.0.0.10: `browser.exe` (PID 4100) and `sync.exe` (PID 4200, which exits at 58 s) send TCP to the server's 443 and 8443, and the browser sends UDP to a name server at 10.0.0.53 that neither capture recorded |
 | `demo-server/` | The server's session, 10.0.0.20: `api.exe` (5100) answers 443 and asks `db.exe` (5200) over loopback TCP, and `files.exe` (5300) answers 8443. Its capture began 0.75 s after the client's by the wall clock, and its source session lost 2 records |
 
@@ -52,7 +52,7 @@ no value in it is evidence about Windows."
 | `icat demo` | Before it writes, and with what it wrote |
 | The window's Explore the demo | Its capture card, once the demo is open; the action's description says nothing in it was captured |
 | `icat session` | Among its notes |
-| `icat workspace show` | After its members, and as each member's `demo` in `workspace-resolution-v19` |
+| `icat workspace show` | After its members, and as each member's `demo` in `workspace-resolution-v20` |
 
 ## 4. The window's demo
 

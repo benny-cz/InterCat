@@ -2,7 +2,7 @@
 
 - Status: accepted; revision 258, decisions revision 260, known address translations revision 269
 - Date: 2026-09-28
-- Relates to: §7.4, §8.3, M4, P6, P7, R22, ADR-038, ADR-039, `contracts/workspace-v16.md`, `contracts/relations-v1.md`
+- Relates to: §7.4, §8.3, M4, P6, P7, R22, ADR-038, ADR-039, `contracts/workspace-v17.md`, `contracts/relations-v1.md`
 
 ## Context
 

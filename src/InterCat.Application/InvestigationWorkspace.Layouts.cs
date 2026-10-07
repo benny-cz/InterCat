@@ -18,9 +18,9 @@ public sealed record WorkspacePin
 
 /// <summary>
 /// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where, the
-/// process lanes they pinned on its timeline, what its rows are ranked by, the evidence policy its records are counted
-/// under, and the scale its timeline lanes are read against. It is a preference, not a finding, so a member has one,
-/// replaced as it changes rather than kept as revisions.
+/// process lanes they pinned on its timeline, how its processes are grouped, what its rows are ranked by, the evidence
+/// policy its records are counted under, and the scale its timeline lanes are read against. It is a preference, not a
+/// finding, so a member has one, replaced as it changes rather than kept as revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -34,6 +34,13 @@ public sealed record WorkspaceLayout
     /// empty when none is. A file of a version before 16 pins none.
     /// </summary>
     public IReadOnlyList<Guid> PinnedLanes { get; init; } = [];
+
+    /// <summary>
+    /// How the session's processes are grouped (§6.3) when not by executable: <see cref="LaneGrouping.UserSession"/>, by the
+    /// terminal session their lifecycle records name; null groups them by executable. A file of a version before 17 groups
+    /// none otherwise.
+    /// </summary>
+    public LaneGrouping? Grouping { get; init; }
 
     /// <summary>What the session's rows are ranked by (§6.1) when not by their own records; null ranks by records.</summary>
     public RankingMetric? RankBy { get; init; }
@@ -56,36 +63,37 @@ public sealed record WorkspaceLayout
     public required DateTimeOffset UpdatedUtc { get; init; }
 
     /// <summary>
-    /// Whether it keeps anything: a pinned node or lane, a ranking other than records counted whole, another evidence
-    /// policy, or each lane on its own scale.
+    /// Whether it keeps anything: a pinned node or lane, a grouping by terminal session, a ranking other than records counted
+    /// whole, another evidence policy, or each lane on its own scale.
     /// </summary>
     [JsonIgnore]
-    public bool KeepsAnything => Pins.Count > 0 || PinnedLanes.Count > 0 || RankBy is not null || PerSecond
-        || EvidencePolicy is not null || ScalesEachLane;
+    public bool KeepsAnything => Pins.Count > 0 || PinnedLanes.Count > 0 || Grouping is not null || RankBy is not null
+        || PerSecond || EvidencePolicy is not null || ScalesEachLane;
 
     /// <summary>
     /// What it keeps, in the words every place that says so uses - `icat workspace show`, the notice of a session opened
     /// from its investigation and that investigation's window: "1 node pinned on its graph and its rows ranked by bytes
     /// sent per second". Empty when it keeps nothing.
     /// </summary>
-    public string Describe(IFormatProvider culture) => Describe(Pins.Count, PinnedLanes.Count, RankBy ?? RankingMetric.Records,
-        PerSecond, EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
+    public string Describe(IFormatProvider culture) => Describe(Pins.Count, PinnedLanes.Count,
+        Grouping ?? LaneGrouping.Executable, RankBy ?? RankingMetric.Records, PerSecond,
+        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture);
 
     /// <summary>
-    /// What a layout that pins <paramref name="pins"/> nodes and <paramref name="lanes"/> process lanes, ranks by
-    /// <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/> and reads each lane on its own scale or not
-    /// keeps, in <see cref="Describe(IFormatProvider)"/>'s words: nothing of a default, so what is said is only what differs
-    /// from a session opened on its own.
+    /// What a layout that pins <paramref name="pins"/> nodes and <paramref name="lanes"/> process lanes, groups by
+    /// <paramref name="grouping"/>, ranks by <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/> and
+    /// reads each lane on its own scale or not keeps, in <see cref="Describe(IFormatProvider)"/>'s words: nothing of a
+    /// default, so what is said is only what differs from a session opened on its own.
     /// </summary>
-    public static string Describe(int pins, int lanes, RankingMetric rankBy, bool perSecond, EvidencePolicy evidencePolicy,
-        bool scalesEachLane, IFormatProvider culture) =>
-        Series(Parts(pins, lanes, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
+    public static string Describe(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
+        EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture) =>
+        Series(Parts(pins, lanes, grouping, rankBy, perSecond, evidencePolicy, scalesEachLane, culture));
 
     /// <summary>
-    /// Each thing <see cref="Describe(int, int, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/> says such a
-    /// layout keeps, in its order, so a notice can list it in one series with what else was put back.
+    /// Each thing <see cref="Describe(int, int, LaneGrouping, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider)"/>
+    /// says such a layout keeps, in its order, so a notice can list it in one series with what else was put back.
     /// </summary>
-    public static IReadOnlyList<string> Parts(int pins, int lanes, RankingMetric rankBy, bool perSecond,
+    public static IReadOnlyList<string> Parts(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
         EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture) =>
     [
         .. new[]
@@ -94,6 +102,7 @@ public sealed record WorkspaceLayout
             lanes == 0
                 ? null
                 : string.Create(culture, $"{lanes:N0} {(lanes == 1 ? "process lane" : "process lanes")} pinned on its timeline"),
+            grouping == LaneGrouping.UserSession ? "its processes grouped by terminal session" : null,
             rankBy == RankingMetric.Records && !perSecond
                 ? null
                 : $"its rows ranked by {RankingMetrics.Phrase(rankBy)}{(perSecond ? " per second" : string.Empty)}",
@@ -124,10 +133,11 @@ public static partial class InvestigationWorkspace
     /// <summary>
     /// Keeps <paramref name="pins"/>, the ranking <paramref name="rankBy"/> read per second when
     /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, each timeline
-    /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, and the process lanes
-    /// <paramref name="pinnedLanes"/> pinned in their order, as how member <paramref name="sessionId"/>'s view is laid out,
-    /// replacing its earlier layout; one that pins nothing, ranks by records counted whole, counts correlated evidence and
-    /// reads every lane on one scale removes it. Null when it is removed.
+    /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, the process lanes
+    /// <paramref name="pinnedLanes"/> pinned in their order, and the processes grouped by <paramref name="grouping"/>, as
+    /// how member <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing,
+    /// groups by executable, ranks by records counted whole, counts correlated evidence and reads every lane on one scale
+    /// removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -138,13 +148,20 @@ public static partial class InvestigationWorkspace
         bool perSecond = false,
         EvidencePolicy evidencePolicy = Domain.EvidencePolicy.IncludeCorrelated,
         bool scalesEachLane = false,
-        IReadOnlyList<Guid>? pinnedLanes = null)
+        IReadOnlyList<Guid>? pinnedLanes = null,
+        LaneGrouping grouping = LaneGrouping.Executable)
     {
         ArgumentNullException.ThrowIfNull(pins);
         pinnedLanes ??= [];
         if (!Enum.IsDefined(rankBy))
         {
             throw new InvalidOperationException("The layout is refused: it ranks by no metric §6.1 offers.");
+        }
+
+        if (grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        {
+            throw new InvalidOperationException(
+                "The layout is refused: a view groups its processes by executable or by terminal session, and by nothing else.");
         }
 
         if (evidencePolicy is not (Domain.EvidencePolicy.IncludeCorrelated or Domain.EvidencePolicy.IncludeCandidates))
@@ -170,6 +187,7 @@ public static partial class InvestigationWorkspace
             SessionId = sessionId,
             Pins = [.. pins.OrderBy(pin => pin.Key, StringComparer.Ordinal)],
             PinnedLanes = [.. pinnedLanes],
+            Grouping = grouping == LaneGrouping.Executable ? null : grouping,
             RankBy = rankBy == RankingMetric.Records ? null : rankBy,
             PerSecond = perSecond,
             EvidencePolicy = evidencePolicy == Domain.EvidencePolicy.IncludeCorrelated ? null : evidencePolicy,
@@ -207,7 +225,7 @@ public static partial class InvestigationWorkspace
         : lanes.Distinct().Count() != lanes.Count ? "a lane is pinned twice"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v16.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v17.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -245,6 +263,12 @@ public static partial class InvestigationWorkspace
             return $"a {workspace.Contract} file pins no session's timeline lanes";
         }
 
+        // A grouping by terminal session arrived with the seventeenth version (revision 406).
+        if (VersionOf(workspace) < 17 && workspace.Layouts.Any(layout => layout.Grouping is not null))
+        {
+            return $"a {workspace.Contract} file groups no session's processes by terminal session";
+        }
+
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
@@ -253,10 +277,12 @@ public static partial class InvestigationWorkspace
 
         // Records are what no ranking ranks by, so a layout names another metric or none; correlated evidence is what every
         // view counts unless told otherwise, and candidates the one other policy a view offers, so a layout names them or
-        // none: a reader puts back no policy it cannot show.
+        // none: a reader puts back no policy it cannot show. Executables are how every view first groups, and terminal
+        // sessions the one other grouping a view offers, so a layout names them or none.
         return workspace.Layouts.FirstOrDefault(layout => !members.Contains(layout.SessionId) || !layout.KeepsAnything
             || layout.RankBy is { } rankBy && (rankBy == RankingMetric.Records || !Enum.IsDefined(rankBy))
             || layout.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
+            || layout.Grouping is not (null or LaneGrouping.UserSession)
             || PinsProblem(layout.Pins) is not null || LanesProblem(layout.PinnedLanes) is not null) is { } wrong
             ? $"the layout of session {wrong.SessionId:N} "
                 + (!members.Contains(wrong.SessionId) ? "is of no member"
@@ -264,6 +290,8 @@ public static partial class InvestigationWorkspace
                     : (PinsProblem(wrong.Pins) ?? LanesProblem(wrong.PinnedLanes)) is { } problem ? "is refused: " + problem
                     : wrong.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
                         ? "counts its records under a policy no view offers, or under correlated evidence by name"
+                    : wrong.Grouping is not (null or LaneGrouping.UserSession)
+                        ? "groups its processes in a way no view offers, or by executable by name"
                     : "ranks by no metric §6.1 offers, or by records by name")
             : null;
     }

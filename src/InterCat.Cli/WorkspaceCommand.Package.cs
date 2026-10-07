@@ -5,7 +5,7 @@ using InterCat.Domain;
 
 namespace InterCat.Cli;
 
-/// <summary>An investigation packaged with its sessions, or measured for it (`contracts/workspace-v16.md` §8).</summary>
+/// <summary>An investigation packaged with its sessions, or measured for it (`contracts/workspace-v17.md` §8).</summary>
 internal sealed record WorkspacePackageDocument
 {
     public required string Contract { get; init; }

@@ -442,6 +442,60 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its grouping by terminal session there, and is grouped so again")]
+    public async Task AnInvestigationKeepsASessionsGrouping()
+    {
+        using var root = new TemporaryDirectory();
+        string named = TerminalSessionsSession(root.Path, "named");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, named, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == named);
+
+            // Grouped by terminal session, the session keeps the grouping in its investigation, whose window says so.
+            Assert.True(main.ChooseGrouping(LaneGrouping.UserSession));
+            await main.InvestigationWritten;
+            Assert.Equal(LaneGrouping.UserSession, InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Grouping);
+            const string Kept = "Opens with its processes grouped by terminal session, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Kept);
+            Assert.Equal(Kept, KeptLine(list).Text);
+
+            // Opened on its own, the session is grouped by executable.
+            Assert.True(await main.OpenSessionAsync(named));
+            Assert.Equal(LaneGrouping.Executable, ((WorkspaceViewModel)main.DataContext!).Grouping);
+
+            // Opened from the investigation again, it is grouped by terminal session from its first view, and its status
+            // says what was put back.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => ((WorkspaceViewModel)main.DataContext!).Grouping == LaneGrouping.UserSession);
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.Equal("Terminal session", main.GetControl<ComboBox>("GroupBySelector").SelectedItem?.ToString());
+            Assert.Contains("which put back its processes grouped by terminal session.", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+            Assert.Contains(again.RungRows, row => row.Label == "Terminal session 1");
+
+            // Grouped by executable again, the investigation keeps nothing of the session.
+            Assert.True(main.ChooseGrouping(LaneGrouping.Executable));
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+            WaitFor(() => window.View!.Members[0].Kept is null);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>Opens pool.exe's group in <paramref name="workspace"/>, its lanes counted.</summary>
     private static async Task OpenPoolGroupAsync(WorkspaceViewModel workspace)
     {
@@ -1576,6 +1630,20 @@ public sealed class InvestigationWindowTests
             ],
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>
+    /// A session of processes in terminal sessions 0, 1 and 2 and one naming none (<see cref="TerminalSessions"/>), in a
+    /// folder of its own beneath <paramref name="root"/>.
+    /// </summary>
+    private static string TerminalSessionsSession(string root, string name)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
+        _ = Publish(store, rows, capture: CaptureId.New(), clock: ClockFor(ClockId.New(), "lab-" + name), fields: fields);
         store.ReleaseSegmentReaders();
         return directory;
     }

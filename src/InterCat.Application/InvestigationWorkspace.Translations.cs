@@ -3,7 +3,7 @@ using System.Net;
 
 namespace InterCat.Application;
 
-/// <summary>What a person stated of an address translation (`contracts/workspace-v16.md` §6).</summary>
+/// <summary>What a person stated of an address translation (`contracts/workspace-v17.md` §6).</summary>
 public enum WorkspaceTranslationDecision
 {
     /// <summary>A person stated that an endpoint one capture sees is an endpoint the other holds.</summary>
@@ -208,7 +208,7 @@ public static partial class InvestigationWorkspace
         return port is { } known ? string.Create(CultureInfo.InvariantCulture, $"{text}:{known}") : text;
     }
 
-    /// <summary>What makes a file's translations contradict themselves, or null (`contracts/workspace-v16.md` §6).</summary>
+    /// <summary>What makes a file's translations contradict themselves, or null (`contracts/workspace-v17.md` §6).</summary>
     private static string? TranslationProblem(InvestigationWorkspaceFile workspace)
     {
         // Known address translations arrived with the eighth version (revision 269).

@@ -109,7 +109,7 @@ public static partial class InvestigationWorkspace
         : expanded is { } pane && !Enum.IsDefined(pane) ? "they let a pane the window does not have fill the column"
         : null;
 
-    /// <summary>What makes a file's panes contradict themselves, or null (`contracts/workspace-v16.md` §7).</summary>
+    /// <summary>What makes a file's panes contradict themselves, or null (`contracts/workspace-v17.md` §7).</summary>
     private static string? PanesProblem(InvestigationWorkspaceFile workspace)
     {
         if (workspace.Panes is not { } panes)
