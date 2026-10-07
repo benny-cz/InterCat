@@ -185,6 +185,44 @@ public sealed class EvidenceScopeTests
         Assert.False(ProcessSetFilter.TryParse(ProcessSetFilter.Prefix + "not-a-guid", out _));
     }
 
+    [Fact(DisplayName = "§6.4: a lane's filters narrow the scope the latest entity filter names, and an end of anything but a paired channel is a problem stated")]
+    public void ALanesFiltersNarrowTheScope()
+    {
+        // One mechanism's records, at the machine rung, are no longer the whole session, and its timeline focus counts them.
+        EvidenceScope tcp = EvidenceScopes.Resolve(Snapshot, Rung(EvidenceScopes.MechanismFilter(Mechanism.Tcp, "test")));
+        Assert.Equal((Mechanism?)Mechanism.Tcp, tcp.Mechanism);
+        Assert.False(tcp.IsWholeSession);
+        Assert.Equal("Every admitted record in this session · TCP records only", tcp.Description);
+        Assert.Equal((Mechanism?)Mechanism.Tcp, Assert.IsType<TimelineFocus>(TimelineFocus.Of(tcp)).Mechanism);
+
+        // One source direction of a process's records.
+        ImpliedFilter process = Filter("process", "app.exe", DetailLevel.ProcessInstance, Client.ToString());
+        EvidenceScope outbound = EvidenceScopes.Resolve(Snapshot, Rung(process, EvidenceScopes.DirectionFilter(Direction.Outbound, "test")));
+        Assert.Equal([Client], outbound.OwnerProcesses);
+        Assert.Equal((Direction?)Direction.Outbound, outbound.Direction);
+        Assert.Equal("Records owned by app.exe · PID 100 · records marked outbound only", outbound.Description);
+        ImpliedFilter none = EvidenceScopes.DirectionFilter(Direction.DirectionNotApplicable, "test");
+        Assert.Equal((EvidenceScopes.DirectionField, "No data direction", "DirectionNotApplicable"), (none.Field, none.Value, none.Key));
+        Assert.EndsWith(" · records with no data direction only", EvidenceScopes.Resolve(Snapshot, Rung(process, none)).Description,
+            StringComparison.Ordinal);
+
+        // The records made at one end of a paired channel, which its focus counts too; removing the end widens back.
+        NavigationState channel = Rung(Filter("channel", "127.0.0.1:1 ↔ 127.0.0.1:2", DetailLevel.Channel, "transport:one"),
+            EvidenceScopes.EndFilter(0, "127.0.0.1:1", "test"));
+        EvidenceScope end = EvidenceScopes.Resolve(Snapshot, channel);
+        Assert.Equal(("transport:one", (int?)0), (end.ChannelKey, end.End));
+        Assert.Equal("Paired TCP channel 127.0.0.1:1 ↔ 127.0.0.1:2 · those made at 127.0.0.1:1 only", end.Description);
+        Assert.Equal(0, TimelineFocus.Of(end)!.End);
+        Assert.Null(EvidenceScopes.Resolve(Snapshot, channel with { Filters = channel.Filters.Take(1).ToArray() }).End);
+
+        // An end narrows only a paired channel, and a filter naming no mechanism is said, never ignored.
+        Assert.StartsWith("An end filter names one end of a paired TCP channel", EvidenceScopes.Resolve(Snapshot,
+            Rung(process, EvidenceScopes.EndFilter(1, "127.0.0.1:2", "test"))).Problem, StringComparison.Ordinal);
+        Assert.NotNull(EvidenceScopes.Resolve(Snapshot,
+            Rung(new ImpliedFilter(EvidenceScopes.MechanismField, "Pigeon", "test") { Key = "Pigeon" })).Problem);
+        Assert.Throws<ArgumentOutOfRangeException>(() => EvidenceScopes.EndFilter(2, "127.0.0.1:1", "test"));
+    }
+
     private static NavigationState Rung(params ImpliedFilter[] filters) => new()
     {
         Level = DetailLevel.Evidence,

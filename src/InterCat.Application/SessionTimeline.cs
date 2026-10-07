@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using InterCat.Analysis;
 using InterCat.Domain;
@@ -97,12 +98,14 @@ public sealed record ChannelEndTimelineLane(
 
 /// <summary>
 /// The records a focused rung's timeline draws in colour: exactly the rows its evidence scope reads (§3.2) - one admitted
-/// paired channel, the rows canonically owned by a set of process instances, or both at once. A rung's timeline therefore
-/// counts what E lists for it, never a guessed superset.
+/// paired channel, the rows canonically owned by a set of process instances, or both at once, narrowed where its scope is
+/// to one mechanism's, one source direction's or one end's records. A rung's timeline therefore counts what E lists for
+/// it, never a guessed superset.
 /// </summary>
 public sealed class TimelineFocus
 {
-    public TimelineFocus(string? channelKey, IReadOnlyCollection<ProcessInstanceId> ownerProcesses, string? operationKey = null)
+    public TimelineFocus(string? channelKey, IReadOnlyCollection<ProcessInstanceId> ownerProcesses, string? operationKey = null,
+        Mechanism? mechanism = null, Direction? direction = null, int? end = null)
     {
         ArgumentNullException.ThrowIfNull(ownerProcesses);
         if (channelKey is not null && string.IsNullOrWhiteSpace(channelKey))
@@ -121,20 +124,46 @@ public sealed class TimelineFocus
             throw new ArgumentException("An operation focus names an RPC channel or call, or HTTP exchanges, alone.", nameof(operationKey));
         }
 
-        if (channelKey is null && ownerProcesses.Count == 0 && operationKey is null)
+        if (end is not (null or 0 or 1))
+        {
+            throw new ArgumentOutOfRangeException(nameof(end), "A paired channel has two ends, 0 and 1.");
+        }
+
+        if (end is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
+        {
+            throw new ArgumentException("An end narrows a paired TCP channel's records; name the channel.", nameof(end));
+        }
+
+        if (channelKey is null && ownerProcesses.Count == 0 && operationKey is null && mechanism is null && direction is null)
         {
             throw new ArgumentException(
-                "A timeline focus names a channel, owner processes or both, or an operation's records; the whole session is no focus.",
+                "A timeline focus names a channel, owner processes or both, an operation's records, or one mechanism's or "
+                + "source direction's records; the whole session is no focus.",
                 nameof(ownerProcesses));
         }
 
         ChannelKey = channelKey;
         OperationKey = operationKey;
+        Mechanism = mechanism;
+        Direction = direction;
+        End = end;
         OwnerProcesses = Array.AsReadOnly([.. ownerProcesses.Distinct().OrderBy(owner => owner.Value.ToString("N"), StringComparer.Ordinal)]);
         Key = $"channel:{channelKey?.Length ?? 0}:{channelKey}|owners:"
             + string.Join(",", OwnerProcesses.Select(owner => owner.Value.ToString("N")))
-            + (operationKey is null ? string.Empty : $"|operation:{operationKey.Length}:{operationKey}");
+            + (operationKey is null ? string.Empty : $"|operation:{operationKey.Length}:{operationKey}")
+            + (mechanism is { } kind ? string.Create(CultureInfo.InvariantCulture, $"|mechanism:{(int)kind}") : string.Empty)
+            + (direction is { } way ? string.Create(CultureInfo.InvariantCulture, $"|direction:{(int)way}") : string.Empty)
+            + (end is { } side ? string.Create(CultureInfo.InvariantCulture, $"|end:{side}") : string.Empty);
     }
+
+    /// <summary>The one mechanism whose records the focus counts; null for every one.</summary>
+    public Mechanism? Mechanism { get; }
+
+    /// <summary>The one source direction whose records the focus counts; null for every one.</summary>
+    public Direction? Direction { get; }
+
+    /// <summary>The one end of its paired channel whose records the focus counts: 0 the first, 1 the second; null for both.</summary>
+    public int? End { get; }
 
     public string? ChannelKey { get; }
 
@@ -158,8 +187,8 @@ public sealed class TimelineFocus
     {
         ArgumentNullException.ThrowIfNull(scope);
         return scope.Problem is not null || scope.IsWholeSession ? null
-            : scope.OperationKey is { } operation ? new(null, [], operation)
-            : new(scope.ChannelKey, scope.OwnerProcesses);
+            : scope.OperationKey is { } operation ? new(null, [], operation, scope.Mechanism, scope.Direction)
+            : new(scope.ChannelKey, scope.OwnerProcesses, null, scope.Mechanism, scope.Direction, scope.End);
     }
 }
 
@@ -538,6 +567,11 @@ internal sealed class FocusRows
     private readonly int? channel;
     private readonly EvidencePolicy policy;
 
+    // What the focus narrows its rows to, as a timeline lane counts them: one mechanism, one source direction, one end.
+    private readonly Mechanism? mechanism;
+    private readonly Direction? direction;
+    private readonly int? end;
+
     /// <summary>Whether each instance position is a focused owner; null when the focus names no owner.</summary>
     private readonly bool[]? members;
 
@@ -545,8 +579,12 @@ internal sealed class FocusRows
     private readonly HashSet<(string Segment, int Row)>? operationRecords;
 
     private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
-        TransportRelation? relation, int? channel, HashSet<(string Segment, int Row)>? operationRecords, EvidencePolicy policy)
+        TransportRelation? relation, int? channel, HashSet<(string Segment, int Row)>? operationRecords, EvidencePolicy policy,
+        TimelineFocus focus)
     {
+        mechanism = focus.Mechanism;
+        direction = focus.Direction;
+        end = focus.End;
         this.processes = processes;
         this.relations = relations;
         this.owners = owners;
@@ -664,7 +702,7 @@ internal sealed class FocusRows
                 : SessionRpcCalls.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken))
                 ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
 
-        return new(processes, relations, owners, relation, channel, operationRecords, policy);
+        return new(processes, relations, owners, relation, channel, operationRecords, policy, focus);
     }
 
     /// <summary>
@@ -704,6 +742,7 @@ internal sealed class FocusRows
             ends)
         {
             OperationRows = operationRows,
+            Segment = segment,
         };
     }
 
@@ -747,6 +786,9 @@ internal sealed class FocusRows
         /// <summary>For an operation focus, whether each row of the segment is one of its records; null otherwise.</summary>
         public bool[]? OperationRows { get; init; }
 
+        /// <summary>The segment whose rows are tested, read for a focus narrowed to one mechanism or source direction.</summary>
+        public required SegmentReaderV1 Segment { get; init; }
+
         public bool Includes(int row)
         {
             if (OperationRows is { } operation && !operation[row])
@@ -755,6 +797,14 @@ internal sealed class FocusRows
             }
 
             if (hasChannels && channels[row].Channel != scope.channel)
+            {
+                return false;
+            }
+
+            // A focus narrowed as a lane counts: one end of its channel, one mechanism, one source direction (§6.4).
+            if (scope.end is { } side && ends![row] != side
+                || scope.mechanism is { } kind && Segment.UnsignedValue(SegmentColumnId.Mechanism, row) != (ulong)kind
+                || scope.direction is { } way && Segment.UnsignedValue(SegmentColumnId.Direction, row) != (ulong)way)
             {
                 return false;
             }

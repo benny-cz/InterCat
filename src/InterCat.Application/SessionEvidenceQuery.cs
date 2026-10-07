@@ -75,6 +75,15 @@ public sealed record SessionEvidencePage(
     /// </summary>
     public string? OperationKey { get; init; }
 
+    /// <summary>The one mechanism the page's records are narrowed to, as its timeline lane counts them; null for every one.</summary>
+    public Mechanism? Mechanism { get; init; }
+
+    /// <summary>The one source direction the page's records are narrowed to, as a direction row counts them; null for every one.</summary>
+    public Direction? Direction { get; init; }
+
+    /// <summary>The one end of its paired channel the page's records are narrowed to: 0 the first, 1 the second; null for both.</summary>
+    public int? End { get; init; }
+
     /// <summary>
     /// Each mechanism's coverage over the page's time scope - its interval, or the whole session - and the fact that
     /// decided it (`coverage-v2` §4): whether a scope could have held a record it lists none of (R21).
@@ -129,6 +138,9 @@ public static class SessionEvidenceQuery
         IReadOnlyCollection<ProcessInstanceId>? ownerProcesses = null,
         bool resolveOwners = false,
         string? operationKey = null,
+        Mechanism? mechanism = null,
+        Direction? direction = null,
+        int? end = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -138,8 +150,10 @@ public static class SessionEvidenceQuery
         ProcessInstanceId[] owners = Owners(channelKey, policy,
             ownerProcesses ?? (ownerProcessScope is { } single ? [single] : null));
         RequireOneScope(channelKey, owners, operationKey);
+        var narrowing = new Narrowing(mechanism, direction, end);
+        RequireNarrowing(channelKey, narrowing);
         return ReadCore(store, channelKey, interval, owners, policy, pageSize, ParseCursor(cursor), resolveOwners,
-            operationKey, withContent: true, cancellationToken);
+            operationKey, narrowing, withContent: true, cancellationToken);
     }
 
     /// <summary>
@@ -156,14 +170,19 @@ public static class SessionEvidenceQuery
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         bool resolveOwners = false,
         string? operationKey = null,
+        Mechanism? mechanism = null,
+        Direction? direction = null,
+        int? end = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
         ProcessInstanceId[] owners = Owners(channelKey, policy, ownerProcesses);
         RequireOneScope(channelKey, owners, operationKey);
-        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, operationKey, withContent: false,
-            cancellationToken);
+        var narrowing = new Narrowing(mechanism, direction, end);
+        RequireNarrowing(channelKey, narrowing);
+        return ReadCore(store, channelKey, interval, owners, policy, limit, null, resolveOwners, operationKey, narrowing,
+            withContent: false, cancellationToken);
     }
 
     /// <summary>
@@ -177,7 +196,8 @@ public static class SessionEvidenceQuery
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default) =>
         Read(store, ReadableChannel(scope), scope.Interval, cursor: cursor, policy: policy, ownerProcesses: OwnersOf(scope),
-            resolveOwners: true, operationKey: scope.OperationKey, cancellationToken: cancellationToken);
+            resolveOwners: true, operationKey: scope.OperationKey, mechanism: scope.Mechanism, direction: scope.Direction,
+            end: scope.End, cancellationToken: cancellationToken);
 
     /// <summary>
     /// Every record of an evidence rung's scope up to a limit, read as its pages read it, so an export of the scope holds
@@ -190,7 +210,8 @@ public static class SessionEvidenceQuery
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
         CancellationToken cancellationToken = default) =>
         ReadScope(store, limit, ReadableChannel(scope), scope.Interval, OwnersOf(scope), policy, resolveOwners: true,
-            operationKey: scope.OperationKey, cancellationToken: cancellationToken);
+            operationKey: scope.OperationKey, mechanism: scope.Mechanism, direction: scope.Direction, end: scope.End,
+            cancellationToken: cancellationToken);
 
     /// <summary>
     /// A scope's channel, once it is known to be readable: one that states a problem names nothing to read, and is
@@ -214,6 +235,23 @@ public static class SessionEvidenceQuery
         if (channelKey is not null || owners.Length > 0)
             throw new ArgumentException("An RPC channel, call or relationship, or HTTP exchanges, scope their own records; name one alone.",
                 nameof(operationKey));
+    }
+
+    /// <summary>
+    /// A narrowing to one mechanism's, one source direction's or one end's records, as a timeline lane counts them (§6.4):
+    /// a mechanism and a direction narrow any scope, and an end only a paired channel's, whose two ends it tells apart.
+    /// </summary>
+    private static void RequireNarrowing(string? channelKey, Narrowing narrowing)
+    {
+        if (narrowing.Mechanism is { } mechanism && !Enum.IsDefined(mechanism))
+            throw new ArgumentOutOfRangeException(nameof(narrowing), "This names no mechanism.");
+        if (narrowing.Direction is { } direction && !Enum.IsDefined(direction))
+            throw new ArgumentOutOfRangeException(nameof(narrowing), "This names no source direction.");
+        if (narrowing.End is not (null or 0 or 1))
+            throw new ArgumentOutOfRangeException(nameof(narrowing), "A paired channel has two ends, 0 and 1.");
+        if (narrowing.End is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
+            throw new ArgumentException("An end narrows a paired TCP channel's records to those made at one of its ends; "
+                + "name the channel by its key.", nameof(narrowing));
     }
 
     private static ProcessInstanceId[] Owners(
@@ -245,6 +283,7 @@ public static class SessionEvidenceQuery
         EvidenceCursor? position,
         bool resolveOwners,
         string? operationKey,
+        Narrowing narrowing,
         bool withContent,
         CancellationToken cancellationToken)
     {
@@ -260,7 +299,7 @@ public static class SessionEvidenceQuery
         // What each segment's header declares names the evidence a page reads and orders the merge, so a segment is opened
         // only when the merge reaches it: a page of a reopened session read every segment first (P25).
         SegmentDeclaration[] declared = [.. names.Select(name => SessionSegments.Declared(store, manifest, name))];
-        string identity = Identity(manifest.SessionId, declared, channelKey, interval, owners, policy, operationKey);
+        string identity = Identity(manifest.SessionId, declared, channelKey, interval, owners, policy, operationKey, narrowing);
         SourceClockDescriptor? sourceClock = SessionSegments.SourceClock(store.Root, manifest);
 
         // What the capture covered over the page's time scope, stated beside its records (R21): a page listing none is
@@ -275,6 +314,9 @@ public static class SessionEvidenceQuery
                 OwnerProcesses = Array.AsReadOnly(owners),
                 ContinuedFromGeneration = continuedFrom,
                 OperationKey = operationKey,
+                Mechanism = narrowing.Mechanism,
+                Direction = narrowing.Direction,
+                End = narrowing.End,
                 Coverage = coverage,
                 Ledger = ledger,
             };
@@ -429,6 +471,11 @@ public static class SessionEvidenceQuery
                 && (segment.Reader.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is not { } nanoseconds
                     || !range.Contains(nanoseconds / 100))) continue;
             if (selectedChannel is { } channel && segment.ChannelOf(row, relations!) != channel) continue;
+            if (narrowing.End is { } end && segment.EndOf(row) != end) continue;
+            if (narrowing.Mechanism is { } mechanism
+                && segment.Reader.UnsignedValue(SegmentColumnId.Mechanism, row) != (ulong)mechanism) continue;
+            if (narrowing.Direction is { } direction
+                && segment.Reader.UnsignedValue(SegmentColumnId.Direction, row) != (ulong)direction) continue;
             if (rpcRecords is not null && !rpcRecords.Contains((segment.Name, row))) continue;
             ProcessBinding? binding = needOwners ? segment.OwnerOf(row, processes!) : null;
             if (selectedOwners.Count > 0
@@ -474,7 +521,7 @@ public static class SessionEvidenceQuery
     }
 
     private static string Identity(Guid sessionId, IReadOnlyList<SegmentDeclaration> segments, string? channelKey,
-        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? operationKey)
+        TimeRange? interval, ProcessInstanceId[] owners, EvidencePolicy policy, string? operationKey, Narrowing narrowing)
     {
         string timeScope = interval is { } range
             ? string.Create(CultureInfo.InvariantCulture, $"{range.StartTicks}:{range.EndTicks}")
@@ -490,7 +537,7 @@ public static class SessionEvidenceQuery
         string ownerSet = string.Join(",", owners.Select(owner => owner.Value.ToString("N")));
         string canonical = string.Create(CultureInfo.InvariantCulture,
             $"evidence-page-v2|{sessionId:N}|{captures}|{derivations}|{policy}|{relationRule}|{bindingRule}|"
-            + $"{channelKey?.Length ?? 0}:{channelKey}|{ownerSet}|{timeScope}{operationScope}");
+            + $"{channelKey?.Length ?? 0}:{channelKey}|{ownerSet}|{timeScope}{operationScope}{narrowing.Identity}");
         return Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(canonical)));
     }
 
@@ -524,6 +571,18 @@ public static class SessionEvidenceQuery
 
     private sealed record EvidenceCursor(bool Legacy, string Identity, long Generation, RowKey Key);
 
+    /// <summary>
+    /// What a page narrows its scope's records to, as a timeline lane counts them. Its part of the query's identity is
+    /// empty without one, so a cursor issued for an unnarrowed scope still holds.
+    /// </summary>
+    private readonly record struct Narrowing(Mechanism? Mechanism, Direction? Direction, int? End)
+    {
+        public string Identity => string.Concat(
+            Mechanism is { } mechanism ? string.Create(CultureInfo.InvariantCulture, $"|mechanism:{(int)mechanism}") : string.Empty,
+            Direction is { } direction ? string.Create(CultureInfo.InvariantCulture, $"|direction:{(int)direction}") : string.Empty,
+            End is { } end ? string.Create(CultureInfo.InvariantCulture, $"|end:{end}") : string.Empty);
+    }
+
     /// <summary>The <c>segment-v1</c> §4 row order: native reading, then the raw locator, then the fact key.</summary>
     private readonly record struct RowKey(long NativeTicks, uint Stream, uint Epoch, ulong Ordinal, ulong FactHigh, ulong FactLow);
 
@@ -550,6 +609,7 @@ public static class SessionEvidenceQuery
     {
         private PackedChannels? channels;
         private PackedOwners? owners;
+        private sbyte[]? ends;
 
         public SegmentReaderV1 Reader { get; } = reader;
 
@@ -595,6 +655,9 @@ public static class SessionEvidenceQuery
 
             return low;
         }
+
+        /// <summary>Which end of its channel a row was made at: 0 the first, 1 the second, -1 a row naming no endpoint.</summary>
+        public int EndOf(int row) => (ends ??= TransportRelationIndex.EndsOf(Reader))[row];
 
         public int ChannelOf(int row, TransportRelationIndex relations) =>
             (channels ??= SegmentBindings.ChannelsOf(Reader, relations))[row].Channel;

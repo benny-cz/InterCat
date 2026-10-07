@@ -1718,6 +1718,61 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches($@"(?m)^  RPC key +{Regex.Escape(key)}$", answer);
     }
 
+    [Fact(DisplayName = "§6.4: icat evidence lists a timeline lane's records, as the window lists a chosen cell's: one mechanism's, one source direction's, or those made at one end of a paired channel")]
+    public async Task EvidenceListsALanesRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Enumerable.Range(0, 4).SelectMany(index => new[]
+            {
+                Transfer(10 + (3 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(10 + (3 * index)))
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = (10 + (3 * index)) * 100L },
+                Transfer(11 + (3 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(11 + (3 * index)))
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = (11 + (3 * index)) * 100L },
+                Transfer(12 + (3 * index), ObservationKind.Send, AccountingSide.SendSide, 16, 100, (ulong)(12 + (3 * index)))
+                    .Between("127.0.0.1:50001", "127.0.0.1:53") with { Mechanism = Mechanism.Udp, SessionRelativeTicks = (12 + (3 * index)) * 100L },
+            }),
+        ]);
+        string channel = SessionOverviewProjector.Project(session.Store).Channels.Single().Key;
+
+        // A mechanism's and a source direction's records, by the names a person types, carried by the JSON page.
+        (InterCatExitCode code, string answer, _) = await Run("evidence", session.Path, "--mechanism", "udp", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using (JsonDocument page = JsonDocument.Parse(answer))
+        {
+            Assert.Equal("evidence-page-v4", page.RootElement.GetProperty("contract").GetString());
+            Assert.Equal("Udp", page.RootElement.GetProperty("page").GetProperty("mechanism").GetString());
+            Assert.Equal(4, page.RootElement.GetProperty("page").GetProperty("records").GetArrayLength());
+        }
+
+        (code, answer, _) = await Run("evidence", session.Path, "--direction", "inbound", "--page-size", "2");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Source direction +inbound$", answer);
+        Assert.Matches(@"(?m)^  Rows on page +2$", answer);
+        Assert.Contains(" --direction inbound", answer, StringComparison.Ordinal);
+
+        // One end of the paired channel holds half its records.
+        (code, answer, _) = await Run("evidence", session.Path, "--channel", channel, "--end", "1", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        using (JsonDocument page = JsonDocument.Parse(answer))
+        {
+            Assert.Equal(1, page.RootElement.GetProperty("page").GetProperty("end").GetInt32());
+            Assert.Equal(4, page.RootElement.GetProperty("page").GetProperty("records").GetArrayLength());
+        }
+
+        // A name that is none, an end without a channel and a third end are refused, saying what is expected.
+        (code, _, string refused) = await Run("evidence", session.Path, "--mechanism", "pigeon");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--mechanism expects one of:", refused, StringComparison.Ordinal);
+        (code, _, refused) = await Run("evidence", session.Path, "--end", "0");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("name the channel by its key", refused, StringComparison.Ordinal);
+        (code, _, refused) = await Run("evidence", session.Path, "--channel", channel, "--end", "2");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--end takes 0", refused, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R21: icat evidence states the capture's coverage over its time scope, in the inspector's words")]
     public async Task EvidenceStatesItsScopesCoverage()
     {
@@ -1746,7 +1801,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, code);
         using (JsonDocument page = JsonDocument.Parse(answer))
         {
-            Assert.Equal("evidence-page-v3", page.RootElement.GetProperty("contract").GetString());
+            Assert.Equal("evidence-page-v4", page.RootElement.GetProperty("contract").GetString());
             JsonElement coverage = page.RootElement.GetProperty("page").GetProperty("coverage");
             Assert.Equal(Enum.GetValues<Mechanism>().Length, coverage.GetArrayLength());
             Assert.All(coverage.EnumerateArray(), entry => Assert.Equal(
