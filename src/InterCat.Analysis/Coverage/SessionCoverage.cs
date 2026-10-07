@@ -198,7 +198,8 @@ public static class SessionCoverage
 
         List<string> losses =
         [
-            .. epoch.Losses.Where(loss => loss.Lost > 0).OrderBy(loss => loss.Layer).Select(loss => Describe(loss, epoch.Acquisition)),
+            .. epoch.Losses.Where(loss => loss.Lost > 0).OrderBy(loss => loss.Layer)
+                .Select(loss => CoverageLedgerText.Loss(loss, epoch.Acquisition)),
         ];
         HashSet<(Guid, int, int, int?)> allCollected =
         [
@@ -264,16 +265,6 @@ public static class SessionCoverage
             _ => (Math.Min(epoch.FirstDeliveredNativeTicks ?? long.MaxValue, epoch.RecordedFromNativeTicks ?? long.MaxValue),
                 Math.Max(epoch.LastDeliveredNativeTicks ?? long.MinValue, epoch.RecordedToNativeTicks ?? long.MinValue)),
         };
-
-    private static string Describe(CoverageLossV1 loss, CoverageAcquisition acquisition) => loss.Layer switch
-    {
-        LossLayer.SourceSession => acquisition == CoverageAcquisition.EtlImport
-            ? $"the file reported {Count(loss.Lost, "lost event")}, which may be any mechanism's"
-            : $"the session reported {Count(loss.Lost, "lost event")}, which may be any mechanism's",
-        LossLayer.ConsumerBuffers => $"the consumer lost {Count(loss.Lost, "buffer")} of unknown size",
-        LossLayer.CallbackQueue => $"InterCat's full queue dropped {Count(loss.Lost, "record")}",
-        _ => $"{Count(loss.Lost, "admitted record")} could not be stored",
-    };
 
     private static string Count(long count, string noun) =>
         string.Create(CultureInfo.InvariantCulture, $"{count:N0} {noun}{(count == 1 ? string.Empty : "s")}");

@@ -1688,6 +1688,7 @@
         "R5: a channel row names its mechanism and direction in words, never an enumeration name",
         "R5: a direction reads as one word, one its source never stated as unknown and one none applies to as no data direction",
         "R5: a direction row's label is its direction's one word, and a code no version knows is named by its number",
+        "R5: a ledger's acquisition, losses and omissions each read in one set of words, the ones its coverage reasons use",
         "R5: a mechanism and a coverage state each have one set of names, for a lane, a sentence and a label",
         "R5: a mechanism's coverage is said in one sentence form wherever a layer states it, never as an enumeration's name",
         "R5: a record's kind and layer, a missing field's reason and a capability's state, tier and overhead each read as words",

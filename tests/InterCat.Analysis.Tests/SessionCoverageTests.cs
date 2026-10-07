@@ -61,6 +61,38 @@ public sealed class SessionCoverageTests
         Assert.Equal(CoverageState.PartialGap, SessionCoverage.Of(undecodable, Mechanism.Tcp).State);
     }
 
+    [Fact(DisplayName = "R5: a ledger's acquisition, losses and omissions each read in one set of words, the ones its coverage reasons use")]
+    public void ALedgersFactsReadInOneSetOfWords()
+    {
+        Assert.Equal(["ETL import", "live capture"], Enum.GetValues<CoverageAcquisition>().Select(CoverageLedgerText.Acquisition));
+        Assert.Equal(["a provider the capture did not request", "not in the profile's allowlist", "denied by the profile"],
+            Enum.GetValues<OmissionReason>().Select(CoverageLedgerText.Omission));
+        Assert.Equal(
+        [
+            "the session reported 1 lost event, which may be any mechanism's",
+            "the consumer lost 2 buffers of unknown size",
+            "InterCat's full queue dropped 3 records",
+            "4 admitted records could not be stored",
+        ], Enum.GetValues<LossLayer>().Select((layer, index) =>
+            CoverageLedgerText.Loss(new CoverageLossV1 { Layer = layer, Lost = index + 1 }, CoverageAcquisition.LiveCapture)));
+
+        // An imported file reported its own losses; a reported zero is said, never left out (R21).
+        Assert.Equal("the file reported 0 lost events, which may be any mechanism's", CoverageLedgerText.Loss(
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 }, CoverageAcquisition.EtlImport));
+
+        // A value this version does not know is named by its number, never guessed.
+        Assert.Equal("acquisition 9", CoverageLedgerText.Acquisition((CoverageAcquisition)9));
+        Assert.Equal("omission 9", CoverageLedgerText.Omission((OmissionReason)9));
+        Assert.Equal("1,500 records lost at layer 9", CoverageLedgerText.Loss(
+            new CoverageLossV1 { Layer = (LossLayer)9, Lost = 1_500 }, CoverageAcquisition.LiveCapture));
+
+        // A coverage reason says a loss in the same words.
+        CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.EtlImport);
+        CoverageLossV1 lost = new() { Layer = LossLayer.SourceSession, Lost = 1_200 };
+        CoverageLedgerV1 lossy = ledger with { Epochs = [Assert.Single(ledger.Epochs) with { Losses = [lost] }] };
+        Assert.Equal(CoverageLedgerText.Loss(lost, CoverageAcquisition.EtlImport), SessionCoverage.Of(lossy, Mechanism.Tcp).Reason);
+    }
+
     [Fact(DisplayName = "R21: live quiet enablement is covered, unlike a quiet imported file")]
     public void LiveQuietIsCovered()
     {

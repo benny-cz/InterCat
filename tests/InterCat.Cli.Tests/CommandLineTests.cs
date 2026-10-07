@@ -1130,8 +1130,51 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  TCP +covered +2 records from its 1 admitted descriptor", answer);
         Assert.Contains("says nothing about their activity: process lifecycle, thread lifecycle, UDP, Unix socket, named pipe,",
             answer, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Epoch 1 reported lost +Source session 0 records", answer);
+        Assert.Matches(@"(?m)^  Epoch 1 +live capture, delivered readings \[0, 20\] source ticks$", answer);
+        Assert.Matches(@"(?m)^  Epoch 1 losses +the session reported 0 lost events, which may be any mechanism's; the consumer lost 0 "
+            + "buffers of unknown size; InterCat's full queue dropped 0 records; 0 admitted records could not be stored$", answer);
         Assert.Matches(@"(?m)^  Epoch 2 undecodable +0$", answer);
+
+        // An imported file's epoch, a provider it delivered that the capture did not request, and what the file reported
+        // lost, each in the words a coverage reason uses, never an enumeration's name split apart ("Etl import").
+        using var imported = new TemporarySession();
+        Publish(imported.Store,
+            [Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")],
+            coverage: new CoverageLedgerV1
+            {
+                Contract = CoverageLedgerV1.ContractName,
+                Epochs =
+                [
+                    new CoverageEpochV1
+                    {
+                        Epoch = 1,
+                        Acquisition = CoverageAcquisition.EtlImport,
+                        FirstDeliveredNativeTicks = 10,
+                        LastDeliveredNativeTicks = 10,
+                        Collected =
+                        [
+                            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+                        ],
+                        Deliveries =
+                        [
+                            new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 1, Admitted = 1, Omitted = 0 },
+                            new CoverageDeliveryV1
+                            {
+                                ProviderId = Guid.Parse("0c0ffee0-1111-4222-8333-444444444444"), Delivered = 3, Admitted = 0, Omitted = 3,
+                                Omission = OmissionReason.UnrequestedProvider,
+                            },
+                        ],
+                        Losses = [new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 2 }],
+                    },
+                ],
+            });
+        imported.Store.ReleaseSegmentReaders();
+        (code, answer, _) = await Run("session", imported.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Epoch +ETL import, delivered readings \[10, 10\] source ticks$", answer);
+        Assert.Matches(@"(?m)^  Losses +the file reported 2 lost events, which may be any mechanism's$", answer);
+        Assert.Matches(@"(?m) 3 +a provider the capture did not request$", answer);
+        Assert.DoesNotContain("Etl", answer, StringComparison.Ordinal);
         Assert.Matches(@"(?m)^  10 +TCP +send +100 ", answer);
 
         // A record without a size says why, as the window does: its source withheld it, or a package redacted it.
@@ -1212,12 +1255,14 @@ public sealed class CommandLineTests : IDisposable
             new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
         ],
         Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 2, Admitted = 2, Omitted = 0 }],
+
+        // In an order the ledger does not promise: a report lists them by layer, as a coverage reason does.
         Losses =
         [
-            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
-            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
-            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
             new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
         ],
     };
 

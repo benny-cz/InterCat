@@ -872,8 +872,8 @@ internal static class SessionCommand
             ConsoleUi.Field(
                 facts.Epochs.Count == 1 ? "Epoch" : $"Epoch {epoch.Epoch}",
                 (epoch.FirstDeliveredNativeTicks is { } first
-                    ? $"{Words(epoch.Acquisition.ToString())}, delivered readings [{first:N0}, {epoch.LastDeliveredNativeTicks:N0}] source ticks"
-                    : $"{Words(epoch.Acquisition.ToString())}, nothing delivered")
+                    ? $"{CoverageLedgerText.Acquisition(epoch.Acquisition)}, delivered readings [{first:N0}, {epoch.LastDeliveredNativeTicks:N0}] source ticks"
+                    : $"{CoverageLedgerText.Acquisition(epoch.Acquisition)}, nothing delivered")
                 + (epoch.RecordedFromNativeTicks is { } from
                     ? $"; recorded from {from:N0} to {epoch.RecordedToNativeTicks:N0}, and it speaks for every reading between"
                     : string.Empty));
@@ -925,20 +925,18 @@ internal static class SessionCommand
                             },
                             delivery.Version?.ToString(CultureInfo.InvariantCulture) ?? "any",
                             ConsoleUi.Count(delivery.Omitted),
-                            Words(delivery.Omission!.Value.ToString()),
+                            CoverageLedgerText.Omission(delivery.Omission!.Value),
                         }),
                     ]);
             }
 
             long undecodable = epoch.Deliveries.Sum(delivery => delivery.Undecodable?.Values.Sum() ?? 0);
-            string losses = string.Join(
-                "; ",
-                epoch.Losses.Select(loss => loss.Layer == LossLayer.ConsumerBuffers
-                    ? $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} buffers"
-                    : $"{Words(loss.Layer.ToString())} {ConsoleUi.Count(loss.Lost)} records"));
+            // What each loss layer reported, a zero included, in the words a coverage reason says it in (R5, R21).
+            string losses = string.Join("; ", epoch.Losses.OrderBy(loss => loss.Layer)
+                .Select(loss => CoverageLedgerText.Loss(loss, epoch.Acquisition)));
             // Each epoch's losses are its own: with several, each line names the epoch it is of.
             string of = facts.Epochs.Count == 1 ? string.Empty : string.Create(CultureInfo.InvariantCulture, $"Epoch {epoch.Epoch} ");
-            ConsoleUi.Field(of.Length == 0 ? "Reported lost" : of + "reported lost", losses.Length == 0 ? "nothing reported" : losses);
+            ConsoleUi.Field(of.Length == 0 ? "Losses" : of + "losses", losses.Length == 0 ? "nothing reported" : losses);
             ConsoleUi.Field(of.Length == 0 ? "Undecodable" : of + "undecodable", ConsoleUi.Count(undecodable));
         }
     }
@@ -955,24 +953,6 @@ internal static class SessionCommand
 
     /// <summary>A coverage state the document names by its enumeration, as the window says it: "partial gap, not extrapolated".</summary>
     private static string StateValue(string name) => Enum.TryParse(name, out CoverageState state) ? CoverageStateText.Value(state) : name;
-
-    /// <summary>Splits a PascalCase name into lower-case words, e.g. "etl import".</summary>
-    private static string Words(string identifier)
-    {
-        var builder = new System.Text.StringBuilder(identifier.Length + 8);
-        for (int index = 0; index < identifier.Length; index++)
-        {
-            char character = identifier[index];
-            if (index > 0 && char.IsUpper(character) && !char.IsUpper(identifier[index - 1]))
-            {
-                builder.Append(' ');
-            }
-
-            builder.Append(index == 0 ? char.ToUpperInvariant(character) : char.ToLowerInvariant(character));
-        }
-
-        return builder.ToString();
-    }
 
     private static void RenderRows(SegmentReaderV1 reader, int rows)
     {
