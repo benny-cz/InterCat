@@ -325,7 +325,7 @@ public static class AnalysisSpecification
     internal static bool AdmitsByPolicy(MetricRequest request) =>
         request.Focus is not null
         || request.Between is not null
-        || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
+        || ProcessGrouping.ByProcess(request.Grouping);
 
     /// <summary>
     /// Whether the answer reads process bindings - through a policy, through relations, whose ends processes hold, or
@@ -343,7 +343,7 @@ public static class AnalysisSpecification
             || request.Peer is not null
             || request.Grouping == LaneGrouping.Peer
             || effective is Metric.ActivePeers or Metric.ActiveChannels
-            || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable
+            || (request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession
                 && effective is Metric.BytesSent or Metric.BytesReceived);
     }
 

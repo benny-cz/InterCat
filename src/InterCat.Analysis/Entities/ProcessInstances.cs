@@ -101,6 +101,9 @@ public enum ProcessBindingReason
     /// (`contracts/operations-v1.md` §5c). The call's own state says why; a message id is never a key by itself.
     /// </summary>
     CallNotLinked = 12,
+
+    /// <summary>The process binds, but no lifecycle record names the terminal session it ran in, for grouping by session.</summary>
+    SessionUnknown = 13,
 }
 
 /// <summary>

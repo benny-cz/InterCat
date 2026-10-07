@@ -1,7 +1,7 @@
 # InterCat metrics v1
 
 Status: **frozen for the source-observations basis, with process filters, grouping by process instance, executable,
-mechanism and peer, and implemented; on the logical-operations basis, operations started, completed and failed are
+terminal session (since plan revision 404), mechanism and peer, and implemented; on the logical-operations basis, operations started, completed and failed are
 counted from RPC calls since revision 183 (§8a)**. The resource-topology basis, the rest of the logical-operations
 basis, grouping by any other entity and canonical-owner accounting are defined here as contract and reported as
 unavailable by every session until the derivations they need exist (§12).
@@ -88,10 +88,10 @@ Refusals, each with its reason and, where a basis is at fault, the metrics that 
 - A `between` with a focus or a `peer`, with an empty set, an empty instance id or a direction §23 does not define.
   It names the processes at both ends, so it is a process filter of its own: with a focus it would silently intersect
   two selections (ADR-017).
-- `ActivePeers` with neither a process focus nor a grouping by process or executable, and `ActivePeers` with a
-  focus and any grouping: a count of peers is the count of one process's peers, or each process's (§6.1).
-  `ActiveChannels` with a focus and a grouping other than `Peer`, or without a focus and a grouping other than
-  process or executable. A focused `Peer` grouping counts the distinct channels with each resolved counterpart;
+- `ActivePeers` with neither a process focus nor a grouping by process, executable or terminal session, and
+  `ActivePeers` with a focus and any grouping: a count of peers is the count of one process's peers, or each
+  process's or group's (§6.1). `ActiveChannels` with a focus and a grouping other than `Peer`, or without a focus
+  and a grouping other than process, executable or terminal session. A focused `Peer` grouping counts the distinct channels with each resolved counterpart;
   an unresolved counterpart stays unattributed rather than being presented as a peer.
 - **An `owner` with a cross-side byte total.** `owner(P)` selects the records P made; `BytesSent` under
   `ReceiveSide`, or `BytesReceived` under `SendSide`, is made of the records P's peers made. The refusal names
@@ -229,12 +229,19 @@ partition the total: their values add up to it, and a result says so.
 | `InstanceOnly` | the process instance it is attributed to, below, under the request's evidence policy (`contracts/entities-v1.md`) | yes |
 | `Mechanism` | its mechanism, a fact about the record | yes |
 | `Executable` | the witnessed full image path of the instance it is attributed to; paths compare case-insensitively | yes when at least one path is witnessed |
+| `UserSession` | the terminal session of the instance it is attributed to, as that instance's lifecycle records name it | yes when at least one is named |
 | `Peer` | the process at its other end from the focused process, under `relations-v1` | yes, with a process focus |
-| `ServiceContainer`, `UserSession`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
+| `ServiceContainer`, `Host`, `Endpoint`, `Package` | — | `GroupingNotDerived`, with what it needs |
 
 An executable is a full source-witnessed path, not an exit's basename: equal basenames can denote distinct
 binaries. An instance with no full path contributes to `ExecutableUnknown`, an unattributed reason. If no
 full path was witnessed at all, executable grouping is unavailable rather than a ranking with no peers.
+
+A terminal session is the one an instance's own lifecycle records name (`ProcessSessionId`, `EN-SourceField` 6),
+never one guessed from a PID, a name or another process. An instance whose records name none contributes to
+`SessionUnknown`, an unattributed reason, and if no record named a session at all, session grouping is unavailable.
+A session group is `UserSession` in a result and carries the session's number; `icat metric --group-by session`
+names it "Terminal session N".
 
 Under `InstanceOnly` and `Executable`, the metric names the direction relative to the group: a record of a
 `BytesSent` total belongs to the process the data **left**, and one of a `BytesReceived` total to the process it
@@ -374,7 +381,7 @@ every call in scope by state, the record that put it there, and the calls the ge
 
 **Filters, groupings and projections.** `owner(P)` keeps the calls bound to P under the evidence policy, a call binding
 by its first record (`operations-v1` §4); a call of another instance, or a binding the policy excludes, is excluded by
-the process filter. Grouping by process instance, executable or mechanism partitions a count exactly as §6 partitions
+the process filter. Grouping by process instance, executable, terminal session or mechanism partitions a count exactly as §6 partitions
 a source total, with a call bound to no instance unattributed by its reason; an error group whose completed calls all
 carried no status is unmeasured and sorts after the ranked groups. A rate divides a count by the whole interval (§7).
 A projection onto `Rpc` or the application layer keeps every call.

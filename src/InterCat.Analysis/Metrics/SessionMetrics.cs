@@ -192,20 +192,22 @@ public sealed record MetricRequest
         }
 
         // A count of peers is a count of the processes at the other end from one process, so it needs that process:
-        // a focus, answered as one count, or a grouping by process or executable, which counts each one's peers.
-        if (Metric == Metric.ActivePeers && focuses == 0 && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        // a focus, answered as one count, or a grouping by process, executable or session, which counts each one's peers.
+        if (Metric == Metric.ActivePeers && focuses == 0
+            && Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
         {
             return new(
                 "ActivePeers counts the distinct processes at the other end from a process. Name a process focus, or "
-                + "group by process or executable to count each one's peers.",
+                + "group by process, executable or session to count each one's peers.",
                 []);
         }
 
         if (Metric == Metric.ActivePeers && focuses > 0 && Grouping is not null)
         {
             return new(
-                "ActivePeers with a process focus is one count. To rank processes, group by process or executable "
-                + "without a focus; to see the processes at the other end themselves, count observations grouped by peer.",
+                "ActivePeers with a process focus is one count. To rank processes, group by process, executable or "
+                + "session without a focus; to see the processes at the other end themselves, count observations grouped "
+                + "by peer.",
                 []);
         }
 
@@ -213,15 +215,15 @@ public sealed record MetricRequest
         {
             return new(
                 "ActiveChannels with a process focus is one count, or it can rank that focus's channels by peer. "
-                + "To rank all processes, group by process or executable without a focus.",
+                + "To rank all processes, group by process, executable or session without a focus.",
                 []);
         }
 
         if (Metric == Metric.ActiveChannels && focuses == 0
-            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+            && Grouping is not null and not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
         {
             return new(
-                "ActiveChannels is counted in total, for one process focus, or for each process or executable. "
+                "ActiveChannels is counted in total, for one process focus, or for each process, executable or session. "
                 + "To rank one process's channels by peer, name that process focus.",
                 []);
         }
@@ -424,6 +426,9 @@ public enum MetricGroupKind
 
     /// <summary>All process instances whose witnessed full image path is the same.</summary>
     Executable = 5,
+
+    /// <summary>All process instances whose lifecycle records name the same terminal session.</summary>
+    UserSession = 6,
 }
 
 /// <summary>
@@ -439,6 +444,9 @@ public sealed record MetricGroup
 
     /// <summary>The witnessed image path, for an executable group. A name-only exit is not a path identity.</summary>
     public string? Executable { get; init; }
+
+    /// <summary>The terminal session its processes' lifecycle records name, for a session group.</summary>
+    public uint? TerminalSession { get; init; }
 
     /// <summary>The mechanism, for a mechanism group.</summary>
     public Mechanism? Mechanism { get; init; }
@@ -1256,7 +1264,7 @@ public static partial class SessionMetrics
             return counts;
         }
 
-        const int Reasons = (int)ProcessBindingReason.CallNotLinked + 1;
+        const int Reasons = (int)ProcessBindingReason.SessionUnknown + 1;
         MetricRequest request = context.Request;
         foreach ((string _, SegmentReaderV1 reader) in context.Segments)
         {
@@ -1589,7 +1597,7 @@ public static partial class SessionMetrics
             {
                 bool attributed = request.Focus is not null
                     || request.Between is not null
-                    || request.Grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer;
+                    || ProcessGrouping.ByProcess(request.Grouping);
                 caveats.Add(
                     $"These are {(request.Metric == Metric.BytesSent ? "sent" : "received")} bytes measured at the "
                     + "other end of each transfer. "

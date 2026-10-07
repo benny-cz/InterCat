@@ -318,6 +318,53 @@ public sealed class GroupedMetricsTests
         Assert.Contains("records of one total", evidence.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R2: grouped by terminal session, a session holds its processes' records, one naming none is unattributed by that reason, and the rows partition the total")]
+    public void GroupsByTerminalSession()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = SessionsOfProcesses();
+        using var session = new TemporarySession();
+        Publish(session.Store, rows, fields: fields);
+
+        foreach ((MetricRequest request, long first, long second, long unrecorded) in new[]
+        {
+            (Request(Metric.Observations), 5L, 2L, 2L),
+            (Request(Metric.BytesSent, ByteDomain.TransportObserved, AccountingSide.SendSide), 150L, 0L, 9L),
+        })
+        {
+            MetricResult ungrouped = SessionMetrics.Evaluate(session.Store, request);
+            MetricResult grouped = SessionMetrics.Evaluate(session.Store, request with { Grouping = LaneGrouping.UserSession });
+
+            // Processes 100 and 200 ran in terminal session 1 and 300 in session 0; 400's records named none.
+            MetricGroup one = grouped.Groups.Single(group => group.TerminalSession == 1);
+            Assert.Equal((MetricGroupKind.UserSession, first, 1), (one.Kind, one.Value!.Value, one.Rank!.Value));
+            Assert.Equal(second, grouped.Groups.SingleOrDefault(group => group.TerminalSession == 0)?.Value ?? 0);
+            Assert.All(grouped.Groups, group => Assert.Null(group.Process));
+            MetricGroup missing = grouped.Unattributed.Single(group => group.Reason == ProcessBindingReason.SessionUnknown);
+            Assert.Equal(unrecorded, missing.Value);
+            Assert.Contains(grouped.Unattributed, group => group.Reason == ProcessBindingReason.NoOwner);
+            Assert.DoesNotContain(grouped.Unattributed, group => group.Reason == ProcessBindingReason.ExecutableUnknown);
+            Assert.Contains(grouped.Caveats, caveat => caveat.Contains("never placed in a guessed session", StringComparison.Ordinal));
+
+            Assert.True(grouped.GroupsPartitionTotal);
+            Assert.Equal(ungrouped.Value, grouped.Groups.Sum(group => group.Value ?? 0) + grouped.Unattributed.Sum(group => group.Value ?? 0));
+        }
+
+        // Peers are counted per session: session 1's processes reached session 0's and each other, and session 0's
+        // reached one process of session 1.
+        MetricResult peers = SessionMetrics.Evaluate(session.Store, Request(Metric.ActivePeers) with { Grouping = LaneGrouping.UserSession });
+        Assert.Equal(
+            [(1u, 3L), (0u, 1L)],
+            peers.Groups.Select(group => (group.TerminalSession!.Value, group.Value!.Value)));
+        Assert.All(peers.Groups, group => Assert.Equal(MetricGroupKind.UserSession, group.Kind));
+
+        // A session whose lifecycle records name no terminal session cannot be grouped by one at all.
+        using var unnamed = new TemporarySession();
+        Publish(unnamed.Store, BusySession());
+        MetricResult refused = SessionMetrics.Evaluate(unnamed.Store, Request(Metric.Observations) with { Grouping = LaneGrouping.UserSession });
+        Assert.Equal(MetricUnavailableReason.GroupingNotDerived, refused.Unavailable);
+        Assert.Contains("terminal session", refused.UnavailableExplanation!, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R3: a grouped rate divides every group by the same whole interval")]
     public void AGroupedRateSharesItsDenominator()
     {
@@ -345,6 +392,34 @@ public sealed class GroupedMetricsTests
     /// Two processes exchange data; one was created in the capture and exits, the other was already running. A record
     /// with no owner in its payload, and one naming a PID after its only instance exited, are unattributed.
     /// </summary>
+    /// <summary>
+    /// Four processes: 100 and 200 in terminal session 1, 300 in session 0 and 400, whose records name no session. 100
+    /// sends 100 B to 300 and 200 sends 50 B to 100, each received at the other end; 300 sends nothing, 400 sends 9 B to
+    /// a host no record holds, and one send of 5 B names no owner.
+    /// </summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) SessionsOfProcesses()
+    {
+        ObservationRowV1 first = Lifecycle(10, ObservationKind.Create, 100, 1);
+        ObservationRowV1 second = Lifecycle(11, ObservationKind.Create, 200, 2);
+        ObservationRowV1 service = Lifecycle(12, ObservationKind.Create, 300, 3);
+        ObservationRowV1 unnamed = Lifecycle(13, ObservationKind.Create, 400, 4);
+        return (
+        [
+            first, second, service, unnamed,
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 5).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 6).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 50, 200, 7).Between("127.0.0.1:50001", "127.0.0.1:9090"),
+            Transfer(31, ObservationKind.Receive, AccountingSide.ReceiveSide, 50, 100, 8).Between("127.0.0.1:9090", "127.0.0.1:50001"),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 9, 400, 9).Between("127.0.0.1:50002", "10.0.0.5:443"),
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 5, null, 10),
+        ],
+        [
+            Field(first, SourceField.ProcessSessionId, 1),
+            Field(second, SourceField.ProcessSessionId, 1),
+            Field(service, SourceField.ProcessSessionId, 0),
+        ]);
+    }
+
     private static ObservationRowV1[] BusySession() =>
     [
         Lifecycle(10, ObservationKind.Create, 100, 1),

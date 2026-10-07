@@ -1446,6 +1446,7 @@
         "R2: an invalid request is refused before it is planned, not answered",
         "R2: an owner never takes a cross-side total, and one request names one process focus",
         "R2: between(A,B) names both sets, and is a process filter of its own",
+        "R2: grouped by terminal session, a session holds its processes' records, one naming none is unattributed by that reason, and the rows partition the total",
         "R2: ranked by peers, each process counts its own, the rows overlap, and an unresolved-only process is unmeasured"
       ],
       "R20": [

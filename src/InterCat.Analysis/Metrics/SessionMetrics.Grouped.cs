@@ -11,12 +11,17 @@ namespace InterCat.Analysis;
 /// </summary>
 public static partial class SessionMetrics
 {
+    /// <summary>What a grouping by terminal session rests on, said with every answer grouped so (`metrics-v1` §6).</summary>
+    internal const string SessionGroupingCaveat =
+        "A process's terminal session is the one its lifecycle records name, and a session's group holds every process "
+        + "naming it; a process whose records name none is reported by that reason, never placed in a guessed session.";
+
     /// <summary>What a grouping needs that this session may not have. Null when it can be answered.</summary>
     private static MetricResult? WhatGroupingNeeds(MetricRequest request, long generation, SourceClockDescriptor? clock)
     {
         switch (request.Grouping)
         {
-            case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer:
+            case LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession or LaneGrouping.Peer:
                 // A cross-side total groups each record under the process at its other end, found through the relation
                 // rule; a record whose other end it does not resolve is unattributed with the reason, never guessed.
                 return clock is null
@@ -49,7 +54,7 @@ public static partial class SessionMetrics
         MetricRequest request = context.Request;
         Metric effective = request.Metric == Metric.Rate ? request.RateNumerator!.Value : request.Metric;
         bool isCount = effective == Metric.Observations;
-        ProcessRoles? roles = grouping is LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.Peer
+        ProcessRoles? roles = ProcessGrouping.ByProcess(grouping)
             ? context.Roles ?? RolesFor(
                 context,
                 ProcessesOf(context, cancellationToken),
@@ -57,21 +62,17 @@ public static partial class SessionMetrics
                 cancellationToken)
             : null;
         ProcessInstanceIndex? processes = roles?.Processes;
-        if (grouping == LaneGrouping.Executable && !processes!.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ImagePath)))
+        if (processes is not null && ProcessGrouping.Underived(processes, grouping) is { } underived)
         {
-            return Unavailable(
-                request,
-                context.Generation,
-                MetricUnavailableReason.GroupingNotDerived,
-                "No process lifecycle record in this generation carries a full image name. An executable cannot be "
-                + "identified from a PID or an exit basename; import evidence with admitted process image names.");
+            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
+
         GroupLayout layout = roles is null
             ? new MechanismLayout()
             : new ProcessLayout(
                 roles.Processes,
                 request.EvidencePolicy,
-                byExecutable: grouping == LaneGrouping.Executable,
+                grouping == LaneGrouping.Peer ? LaneGrouping.InstanceOnly : grouping,
                 segment => AttributedBindings(context, roles, segment, grouping, effective));
         IReadOnlyList<AccountingSide> taken = isCount ? [] : MetricCompatibility.RowSidesTakenBy(request.AccountingSide!.Value);
 
@@ -374,6 +375,11 @@ public static partial class SessionMetrics
             + "process it describes (ADR-030, ADR-037); a kernel record's header is context (§4.1). Start keys "
             + "distinguish lifecycle instances when present; records without a key still rely on complete lifecycle "
             + "evidence.");
+        if (request.Grouping == LaneGrouping.UserSession)
+        {
+            caveats.Add(SessionGroupingCaveat);
+        }
+
         MetricGroup? notAdmitted = unattributed.FirstOrDefault(group => group.Reason == ProcessBindingReason.NotAdmittedByPolicy);
         if (notAdmitted is not null && request.EvidencePolicy < EvidencePolicy.IncludeCandidates)
         {
@@ -475,7 +481,8 @@ public static partial class SessionMetrics
         ProcessInstance? Process = null,
         Mechanism? Mechanism = null,
         ProcessBindingReason? Reason = null,
-        string? Executable = null);
+        string? Executable = null,
+        uint? Session = null);
 
     /// <summary>
     /// Slots by process instance. The first slots hold the reasons a record is unattributed; each instance then has
@@ -485,27 +492,30 @@ public static partial class SessionMetrics
     /// </summary>
     private sealed class ProcessLayout : GroupLayout
     {
-        private const int ReasonSlots = (int)ProcessBindingReason.CallNotLinked + 1;
+        private const int ReasonSlots = (int)ProcessBindingReason.SessionUnknown + 1;
         private static readonly RelationStrength[] Strengths = [RelationStrength.Direct, RelationStrength.Correlated, RelationStrength.Candidate];
         private readonly ProcessInstanceIndex index;
         private readonly EvidencePolicy policy;
-        private readonly bool byExecutable;
+        private readonly LaneGrouping grouping;
         private readonly Func<SegmentReaderV1, ProcessBinding[]> binder;
 
+        /// <summary>Slots for <paramref name="grouping"/>: by instance, by witnessed executable, or by terminal session.</summary>
         public ProcessLayout(
             ProcessInstanceIndex index,
             EvidencePolicy policy,
-            bool byExecutable,
+            LaneGrouping grouping,
             Func<SegmentReaderV1, ProcessBinding[]> binder)
         {
             this.index = index;
             this.policy = policy;
-            this.byExecutable = byExecutable;
+            this.grouping = grouping;
             this.binder = binder;
             var groups = new List<GroupDefinition>();
             for (int reason = 1; reason < ReasonSlots; reason++)
             {
-                if (reason == (int)ProcessBindingReason.ExecutableUnknown && !byExecutable)
+                // Only the grouping that needs a fact reports a process without it as unattributed.
+                if ((reason == (int)ProcessBindingReason.ExecutableUnknown && grouping != LaneGrouping.Executable)
+                    || (reason == (int)ProcessBindingReason.SessionUnknown && grouping != LaneGrouping.UserSession))
                 {
                     continue;
                 }
@@ -517,7 +527,23 @@ public static partial class SessionMetrics
                     Reason: (ProcessBindingReason)reason));
             }
 
-            if (byExecutable)
+            if (grouping == LaneGrouping.UserSession)
+            {
+                // A session is the one its processes' lifecycle records name; a process naming none is unattributed.
+                foreach (IGrouping<uint, (ProcessInstance Item, int Index)> session in index.Instances
+                    .Select((item, at) => (Item: item, Index: at))
+                    .Where(entry => entry.Item.SessionId is not null)
+                    .GroupBy(entry => entry.Item.SessionId!.Value))
+                {
+                    groups.Add(new(
+                        MetricGroupKind.UserSession,
+                        [.. session.SelectMany(entry => Strengths.Select((strength, offset) =>
+                            (SlotOf(entry.Index, offset), (RelationStrength?)strength)))],
+                        ProcessGrouping.SessionKey(session.Key),
+                        Session: session.Key));
+                }
+            }
+            else if (grouping == LaneGrouping.Executable)
             {
                 // A basename alone can denote different binaries. Only the full path witnessed at start/rundown
                 // groups instances; an exit's name alone is retained on the instance but never merged as an identity.
@@ -564,8 +590,8 @@ public static partial class SessionMetrics
                     ? (int)binding.Reason
                     : !binding.IsAdmittedUnder(policy)
                         ? (int)ProcessBindingReason.NotAdmittedByPolicy
-                        : byExecutable && string.IsNullOrWhiteSpace(index.Instances[binding.Instance].ImagePath)
-                            ? (int)ProcessBindingReason.ExecutableUnknown
+                        : ProcessGrouping.Unattributable(index.Instances[binding.Instance], grouping) is { } reason
+                            ? (int)reason
                         : SlotOf(binding.Instance, Array.IndexOf(Strengths, binding.Strength));
             }
 
@@ -668,6 +694,7 @@ public static partial class SessionMetrics
                 Kind = Definition.Kind,
                 Process = Definition.Process,
                 Executable = Definition.Executable,
+                TerminalSession = Definition.Session,
                 Mechanism = Definition.Mechanism,
                 Reason = Definition.Reason,
                 Value = isMeasured ? value : null,

@@ -641,7 +641,7 @@ public sealed class RelationTests
                 .OrderByDescending(entry => entry.Item2)
                 .ThenBy(entry => entry.Id == other ? 0 : 1));
 
-        Assert.Contains("for each process or executable", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
+        Assert.Contains("for each process, executable or session", (channels with { Grouping = LaneGrouping.Mechanism }).Check()!.Reason, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R22: two connections on one reused port are two channels, and undecided ones are a lower bound")]

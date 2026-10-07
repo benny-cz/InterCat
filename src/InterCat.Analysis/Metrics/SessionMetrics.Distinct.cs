@@ -134,18 +134,12 @@ public static partial class SessionMetrics
             withRelations: true,
             cancellationToken);
         ProcessInstanceIndex processes = roles.Processes;
-        bool byExecutable = grouping == LaneGrouping.Executable;
-        if (byExecutable && !processes.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ImagePath)))
+        if (ProcessGrouping.Underived(processes, grouping) is { } underived)
         {
-            return Unavailable(
-                request,
-                context.Generation,
-                MetricUnavailableReason.GroupingNotDerived,
-                "No process lifecycle record in this generation carries a full image name. An executable cannot be "
-                + "identified from a PID or an exit basename; import evidence with admitted process image names.");
+            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
 
-        // One tally per group key: an instance's identity, or an executable's path folded case-insensitively.
+        // One tally per group key: an instance's identity, an executable's path folded case-insensitively, or a session.
         var tallies = new Dictionary<string, DistinctTally>(StringComparer.Ordinal);
         var unattributed = new Dictionary<ProcessBindingReason, long>();
         var everything = new HashSet<int>();
@@ -312,14 +306,11 @@ public static partial class SessionMetrics
             Caveats = caveats,
         };
 
-        // The group a bound process belongs to: its instance, or its witnessed image path. An instance with no path
-        // has no executable group.
+        // The group a bound process belongs to, or null when it lacks the fact the grouping needs.
         string? KeyOf(ProcessBinding subject)
         {
             ProcessInstance instance = processes.Instances[subject.Instance];
-            return !byExecutable
-                ? instance.Id.ToString()
-                : string.IsNullOrWhiteSpace(instance.ImagePath) ? null : instance.ImagePath.ToUpperInvariant();
+            return ProcessGrouping.Unattributable(instance, grouping) is null ? ProcessGrouping.KeyOf(instance, grouping) : null;
         }
 
         DistinctTally TallyFor(string key, ProcessBinding subject)
@@ -327,23 +318,30 @@ public static partial class SessionMetrics
             if (!tallies.TryGetValue(key, out DistinctTally? tally))
             {
                 ProcessInstance instance = processes.Instances[subject.Instance];
-                tally = new(key, byExecutable ? null : instance, byExecutable ? instance.ImagePath : null);
+                tally = grouping switch
+                {
+                    LaneGrouping.Executable => new(key, MetricGroupKind.Executable) { Executable = instance.ImagePath },
+                    LaneGrouping.UserSession => new(key, MetricGroupKind.UserSession) { Session = instance.SessionId },
+                    _ => new(key, MetricGroupKind.ProcessInstance) { Process = instance },
+                };
                 tallies[key] = tally;
             }
 
             return tally;
         }
 
+        // The group a bound process belongs to: its instance, its witnessed image path, or its terminal session. A
+        // process without the fact a grouping needs has no group, and is counted by that reason.
         void Record(ProcessBinding subject, int? element, ProcessBindingReason unknownReason, RelationStrength? strength)
         {
-            if (KeyOf(subject) is not { } key)
+            ProcessInstance instance = processes.Instances[subject.Instance];
+            if (ProcessGrouping.Unattributable(instance, grouping) is { } ungrouped)
             {
-                unattributed[ProcessBindingReason.ExecutableUnknown] =
-                    unattributed.GetValueOrDefault(ProcessBindingReason.ExecutableUnknown) + 1;
+                unattributed[ungrouped] = unattributed.GetValueOrDefault(ungrouped) + 1;
                 return;
             }
 
-            DistinctTally tally = TallyFor(key, subject);
+            DistinctTally tally = TallyFor(ProcessGrouping.KeyOf(instance, grouping), subject);
             if (element is { } counted)
             {
                 tally.Known++;
@@ -398,7 +396,7 @@ public static partial class SessionMetrics
                     if (!peers.TryGetValue(counterpart.Instance, out tally!))
                     {
                         ProcessInstance process = processes.Instances[counterpart.Instance];
-                        tally = new(process.Id.ToString(), process, executable: null);
+                        tally = new(process.Id.ToString(), MetricGroupKind.ProcessInstance) { Process = process };
                         peers[counterpart.Instance] = tally;
                     }
                 }
@@ -407,7 +405,7 @@ public static partial class SessionMetrics
                     ProcessBindingReason reason = UnknownReason(counterpart);
                     if (!unattributed.TryGetValue(reason, out tally!))
                     {
-                        tally = new(reason.ToString(), process: null, executable: null);
+                        tally = new(reason.ToString(), MetricGroupKind.Unattributed);
                         unattributed[reason] = tally;
                     }
                 }
@@ -524,9 +522,15 @@ public static partial class SessionMetrics
         + "where the capture lost a connect, accept or disconnect, two connections on one port are one channel here.";
 
     /// <summary>One group's counted instances while the rows are read.</summary>
-    private sealed class DistinctTally(string stableKey, ProcessInstance? process, string? executable)
+    private sealed class DistinctTally(string stableKey, MetricGroupKind kind)
     {
         public string StableKey { get; } = stableKey;
+
+        public ProcessInstance? Process { get; init; }
+
+        public string? Executable { get; init; }
+
+        public uint? Session { get; init; }
 
         public HashSet<int> Elements { get; } = [];
 
@@ -540,9 +544,10 @@ public static partial class SessionMetrics
         /// <summary>The group a reader sees: unmeasured, not zero, when no record identified anything (R21).</summary>
         public MetricGroup ToGroup() => new()
         {
-            Kind = process is null ? MetricGroupKind.Executable : MetricGroupKind.ProcessInstance,
-            Process = process,
-            Executable = executable,
+            Kind = kind,
+            Process = Process,
+            Executable = Executable,
+            TerminalSession = Session,
             Value = Elements.Count > 0 ? Elements.Count : null,
             KnownContributions = Known,
             UnknownContributions = UnknownReasons.Values.Sum(),

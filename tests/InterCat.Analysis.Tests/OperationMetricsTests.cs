@@ -191,6 +191,30 @@ public sealed class OperationMetricsTests
         Assert.Equal((Mechanism.Rpc, (long?)5L), (rpc.Mechanism!.Value, rpc.Value));
     }
 
+    [Fact(DisplayName = "§6.3: grouped by terminal session, each call counts under the session of the process it binds to, and a process naming none is unattributed")]
+    public void CallsGroupByTheSessionOfTheirProcess()
+    {
+        List<ObservationRowV1> rows = EveryState();
+        ObservationRowV1 client = rows.Single(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Client);
+        ObservationRowV1 server = rows.Single(row => row.Mechanism == Mechanism.ProcessLifecycle && row.OwnerProcessId == Server);
+        using var both = new TemporarySession();
+        Publish(both.Store, rows, fields: [Field(client, SourceField.ProcessSessionId, 1), Field(server, SourceField.ProcessSessionId, 0)]);
+        MetricResult started = SessionMetrics.Evaluate(both.Store, Request(Metric.OperationsStarted) with { Grouping = LaneGrouping.UserSession });
+        Assert.Equal(
+            [(MetricGroupKind.UserSession, 1u, 4L), (MetricGroupKind.UserSession, 0u, 2L)],
+            started.Groups.Select(group => (group.Kind, group.TerminalSession!.Value, group.Value!.Value)));
+        Assert.Contains(started.Caveats, caveat => caveat.Contains("never placed in a guessed session", StringComparison.Ordinal));
+        Assert.True(started.GroupsPartitionTotal);
+
+        // The server's lifecycle records name no session, so its calls are unattributed by that reason.
+        using var one = new TemporarySession();
+        Publish(one.Store, rows, fields: [Field(client, SourceField.ProcessSessionId, 1)]);
+        MetricResult partly = SessionMetrics.Evaluate(one.Store, Request(Metric.OperationsStarted) with { Grouping = LaneGrouping.UserSession });
+        Assert.Equal((1u, 4L), (Assert.Single(partly.Groups).TerminalSession!.Value, partly.Groups[0].Value!.Value));
+        MetricGroup unnamed = Assert.Single(partly.Unattributed);
+        Assert.Equal((ProcessBindingReason.SessionUnknown, (long?)2L), (unnamed.Reason, unnamed.Value));
+    }
+
     [Fact(DisplayName = "R3: an error count over calls none of which says how it ended is unmeasured, never zero")]
     public void ErrorsOverCallsWithNoStatusAreUnmeasured()
     {

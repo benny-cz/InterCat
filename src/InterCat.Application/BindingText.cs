@@ -29,6 +29,7 @@ public static class BindingText
         ProcessBindingReason.PeerUnbound => "the other end's records bind to no process instance",
         ProcessBindingReason.NoRelationRule => "no relation rule covers this mechanism yet",
         ProcessBindingReason.CallNotLinked => "an RPC call whose other end was not linked through ALPC",
+        ProcessBindingReason.SessionUnknown => "the process is known, but no lifecycle record named its terminal session",
         _ => string.Create(CultureInfo.InvariantCulture, $"reason {(int)reason}"),
     };
 }

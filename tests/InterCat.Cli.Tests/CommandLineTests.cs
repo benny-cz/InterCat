@@ -1976,6 +1976,42 @@ public sealed class CommandLineTests : IDisposable
         static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
+    [Fact(DisplayName = "§6.3: icat metric --group-by session ranks each terminal session's records and states the processes whose records named none")]
+    public async Task MetricGroupsByTerminalSession()
+    {
+        ObservationRowV1 user = Lifecycle(10, ObservationKind.Create, 100, 1);
+        ObservationRowV1 service = Lifecycle(12, ObservationKind.Create, 300, 3);
+        ObservationRowV1 unnamed = Lifecycle(13, ObservationKind.Create, 400, 4);
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            user, service, unnamed,
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 5).Between("127.0.0.1:50000", "10.0.0.5:443"),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 9, 400, 9).Between("127.0.0.1:50002", "10.0.0.6:443"),
+        ], fields: [Field(user, SourceField.ProcessSessionId, 1), Field(service, SourceField.ProcessSessionId, 0)]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string output, string error) = await Run("metric", session.Path, "--metric", "observations", "--group-by", "session");
+        Assert.True(code == InterCatExitCode.Success, error);
+        string text = output.ReplaceLineEndings("\n");
+        Assert.Contains("\nOBSERVATIONS BY TERMINAL SESSION\n", text, StringComparison.Ordinal);
+        Assert.Contains("  By terminal session (", text, StringComparison.Ordinal);
+        Assert.Matches(@"\n\s+1\s+Terminal session 1\s+2\s", text);
+        Assert.Matches(@"\n\s+2\s+Terminal session 0\s+1\s", text);
+        Assert.Contains("  Not attributed to a terminal session, by reason (never a peer, never ranked):", text, StringComparison.Ordinal);
+        Assert.Contains(BindingText.Reason(ProcessBindingReason.SessionUnknown), text, StringComparison.Ordinal);
+
+        using JsonDocument json = JsonDocument.Parse((await Run("metric", session.Path, "--metric", "observations", "--group-by", "session", "--json")).Output);
+        JsonElement grouping = json.RootElement.GetProperty("grouping");
+        Assert.Equal("UserSession", grouping.GetProperty("grouping").GetString());
+        Assert.Equal(
+            [("UserSession", 1u, 2L), ("UserSession", 0u, 1L)],
+            grouping.GetProperty("groups").EnumerateArray().Select(group => (
+                group.GetProperty("kind").GetString(), group.GetProperty("terminalSession").GetUInt32(), group.GetProperty("value").GetInt64())));
+        Assert.Contains(grouping.GetProperty("unattributed").EnumerateArray(),
+            group => group.GetProperty("reason").GetString() == nameof(ProcessBindingReason.SessionUnknown) && group.GetProperty("value").GetInt64() == 2);
+    }
+
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)
     {
         TextWriter output = Console.Out;

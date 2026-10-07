@@ -125,12 +125,9 @@ public static partial class SessionMetrics
             return ungroupable;
         }
 
-        if (request.Grouping == LaneGrouping.Executable
-            && !processes.Instances.Any(instance => !string.IsNullOrWhiteSpace(instance.ImagePath)))
+        if (request.Grouping is { } grouping && ProcessGrouping.Underived(processes, grouping) is { } underived)
         {
-            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived,
-                "No process lifecycle record in this generation carries a full image name. An executable cannot be "
-                + "identified from a PID or an exit basename; import evidence with admitted process image names.");
+            return Unavailable(request, context.Generation, MetricUnavailableReason.GroupingNotDerived, underived);
         }
 
         RpcCallIndex calls = context.Derived is { } derived && ReferenceEquals(processes, derived.Processes)
@@ -605,9 +602,14 @@ public static partial class SessionMetrics
     private static List<string> OperationGroupingCaveats(MetricRequest request, IReadOnlyList<MetricGroup> unattributed)
     {
         var caveats = new List<string>();
-        if (request.Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable))
+        if (request.Grouping is not (LaneGrouping.InstanceOnly or LaneGrouping.Executable or LaneGrouping.UserSession))
         {
             return caveats;
+        }
+
+        if (request.Grouping == LaneGrouping.UserSession)
+        {
+            caveats.Add(SessionGroupingCaveat);
         }
 
         caveats.Add(
@@ -847,8 +849,11 @@ public static partial class SessionMetrics
                     () => new OperationGroup(MetricGroupKind.Mechanism) { Mechanism = Mechanism.Rpc }),
                 _ when !binding.IsBound => Unattributed(binding.Reason),
                 _ when !binding.IsAdmittedUnder(policy) => Unattributed(ProcessBindingReason.NotAdmittedByPolicy),
-                LaneGrouping.Executable when string.IsNullOrWhiteSpace(processes.Instances[binding.Instance].ImagePath) =>
-                    Unattributed(ProcessBindingReason.ExecutableUnknown),
+                _ when ProcessGrouping.Unattributable(processes.Instances[binding.Instance], grouping ?? LaneGrouping.InstanceOnly) is { } ungrouped =>
+                    Unattributed(ungrouped),
+                LaneGrouping.UserSession => (
+                    ProcessGrouping.KeyOf(processes.Instances[binding.Instance], LaneGrouping.UserSession),
+                    () => new OperationGroup(MetricGroupKind.UserSession) { TerminalSession = processes.Instances[binding.Instance].SessionId }),
                 LaneGrouping.Executable => (
                     processes.Instances[binding.Instance].ImagePath!.ToUpperInvariant(),
                     () => new OperationGroup(MetricGroupKind.Executable) { Executable = processes.Instances[binding.Instance].ImagePath }),
@@ -886,6 +891,8 @@ public static partial class SessionMetrics
 
         public string? Executable { get; init; }
 
+        public uint? TerminalSession { get; init; }
+
         public Mechanism? Mechanism { get; init; }
 
         public ProcessBindingReason? Reason { get; init; }
@@ -915,7 +922,7 @@ public static partial class SessionMetrics
 
         private void Bind(ProcessBinding binding)
         {
-            if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable)
+            if (kind is MetricGroupKind.ProcessInstance or MetricGroupKind.Executable or MetricGroupKind.UserSession)
             {
                 bindings[binding.Strength] = bindings.GetValueOrDefault(binding.Strength) + 1;
             }
@@ -937,6 +944,7 @@ public static partial class SessionMetrics
                     Kind = kind,
                     Process = Process,
                     Executable = Executable,
+                    TerminalSession = TerminalSession,
                     Mechanism = Mechanism,
                     Reason = Reason,
                     Value = distribution?.Of(named),
@@ -953,6 +961,7 @@ public static partial class SessionMetrics
                 Kind = kind,
                 Process = Process,
                 Executable = Executable,
+                TerminalSession = TerminalSession,
                 Mechanism = Mechanism,
                 Reason = Reason,
                 Value = measured ? value : null,
