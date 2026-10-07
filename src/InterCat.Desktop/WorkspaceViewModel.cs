@@ -596,6 +596,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         processLaneDisplay = processLanes is null ? [] : OrderProcessLanes(processLanes);
         processLaneProblem = laneProblem;
         RefreshIntervalRows(focus);
+        FindSearchedLanes();
 
         OnPropertyChanged(nameof(TimelineDetail));
         OnPropertyChanged(nameof(TimelineFocusBuckets));
@@ -1232,7 +1233,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
                 ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + PinnedLanesNote
-                    + LaneResolutionNote + ProcessLaneBytesNote + " · machine context above · scroll names for more"
+                    + SearchedLanesNote + LaneResolutionNote + ProcessLaneBytesNote + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction" + DirectionLaneBytesNote + " · machine context above"
                     + (SelectedTimelineDirection is { } direction
@@ -1992,10 +1993,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
+            string said = SearchedLanesNote;
             searchText = value;
             searchResult = WorkspaceSearch.Find(wholeSnapshot, value);
             searchRows = [.. searchResult.Hits.Select(SearchRow.Of)];
             selectedSearchResult = searchRows.Count > 0 ? searchRows[0] : null;
+            FindSearchedLanes();
+            if (said != SearchedLanesNote)
+            {
+                OnPropertyChanged(nameof(TimelineCaption));
+            }
+
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsSearching));
             OnPropertyChanged(nameof(SearchResults));
@@ -2020,6 +2028,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (ReferenceEquals(selectedSearchResult, value)) return;
             selectedSearchResult = value;
             OnPropertyChanged();
+
+            // A hit that is a process whose lane is drawn shows its lane (§6.2).
+            FindSearchedLanes();
         }
     }
 

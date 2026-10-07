@@ -71,6 +71,7 @@ public sealed partial class WorkspaceViewModel
     private void ReorderProcessLanes()
     {
         processLaneDisplay = timelineProcessLanes is null ? [] : OrderProcessLanes(timelineProcessLanes);
+        FindSearchedLanes();
         OnPropertyChanged(nameof(ProcessLaneDisplay));
         OnPropertyChanged(nameof(PinnedLanes));
         OnPropertyChanged(nameof(IsSelectedLanePinned));

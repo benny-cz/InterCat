@@ -42,6 +42,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     private static Pen MarkPen => Current.MarkPen;
     private static Pen TextPen => Current.TextPen;
     private static Pen PinHeadPen => Current.PinHeadPen;
+    private static IBrush MatchBrush => Current.MatchBrush;
 
     /// <summary>The timeline's brushes in one theme mode, from its verified tokens (§6.6).</summary>
     private sealed class Ink
@@ -65,6 +66,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             MarkPen = new(TextBrush, 0.8);
             TextPen = new(TextBrush, 1);
             PinHeadPen = new(DimBrush, 1.5);
+            MatchBrush = Token(surfaces.Ink);
             OutsideBrush = new(DimBrush.Color, 0.6);
             LiveContextBrush = new(ContextBarBrush.Color, 0.25);
             FailedBrush = Token(ThemePalette.Status(mode).Caution);
@@ -133,6 +135,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         /// <summary>The rim of a pinned lane's pin head, in the plot's own colour, as the graph rims a pinned node's.</summary>
         public Pen PinHeadPen { get; }
+
+        /// <summary>The mark of a lane a search finds: the strongest ink, never a mechanism's hue or the selection's accent.</summary>
+        public IBrush MatchBrush { get; }
 
         /// <summary>What lies outside the analysis interval steps back under this.</summary>
         public SolidColorBrush OutsideBrush { get; }
@@ -242,7 +247,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         "Left and Right pan, with Shift by one bucket; plus and minus zoom; Home and End go to the session's edges; 0 "
         + "fits the analysis interval, or the whole session when none is brushed; [ and ] step to the previous or next "
         + "record; Up and Down scroll lanes. P pins the selected process's lane at the top of its group's lanes, or unpins "
-        + "it. T shows the interval table, which lists what the timeline draws.",
+        + "it. A search typed at a group marks the lanes it finds and shows the first. T shows the interval table, which "
+        + "lists what the timeline draws.",
         () => DataContext is WorkspaceViewModel viewModel
             ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent) + " · "
                 + WorkspaceTime.TimeBase(viewModel.Snapshot.Began, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
@@ -636,9 +642,17 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <summary>A ranked-table or graph selection should reveal its L1 row, not merely outline it off-screen.</summary>
     internal void BringSelectedProcessLaneIntoView()
     {
-        if (FocusRows is not { Kind: FocusRowKind.Owners } rows
-            || DataContext is not WorkspaceViewModel { SelectedProcess: { } selected } viewModel) return;
-        int index = viewModel.ProcessLaneDisplay.ToList().FindIndex(lane => lane.ProcessId == selected.Id);
+        if (DataContext is WorkspaceViewModel { SelectedProcess: { } selected })
+        {
+            BringLaneIntoView(selected.Id);
+        }
+    }
+
+    /// <summary>Scrolls <paramref name="process"/>'s L1 row into view, as a selection or a search that finds it asks.</summary>
+    internal void BringLaneIntoView(ProcessInstanceId process)
+    {
+        if (FocusRows is not { Kind: FocusRowKind.Owners } rows || DataContext is not WorkspaceViewModel viewModel) return;
+        int index = viewModel.ProcessLaneDisplay.ToList().FindIndex(lane => lane.ProcessId == process);
         ScrollViewer? scroller = this.GetVisualAncestors().OfType<ScrollViewer>().FirstOrDefault();
         if (index < 0 || scroller is null) return;
         double bottom = Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin);
@@ -1910,6 +1924,12 @@ public sealed class TimelineView : Control, IHoverCardSource
                     new Rect(3, row.Top + 1, scale.Left - 7, Math.Max(1, row.Height - 2)));
             }
 
+            if (viewModel.IsLaneSearched(lane.ProcessId))
+            {
+                // A bar at the gutter's edge marks a lane the search typed finds (§6.2: search lane names).
+                context.DrawRectangle(MatchBrush, null, SearchMark(row));
+            }
+
             DrawText(context, label, new(9, row.Center.Y - 7));
             if (viewModel.IsLanePinned(lane.ProcessId))
             {
@@ -1933,6 +1953,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         return drawn;
     }
+
+    /// <summary>Where the mark of a lane a search finds is drawn: a bar at the gutter's edge, clear of the name and its outline.</summary>
+    internal static Rect SearchMark(Rect row) => new(0, row.Top + 3, 2.5, Math.Max(1, row.Height - 6));
 
     /// <summary>The radius of a pinned lane's pin head, a pinned graph node's.</summary>
     private const double PinHeadRadius = 3.5;

@@ -58,8 +58,7 @@ public static class WorkspaceSearch
             groupObservations[process.GroupKey] = groupObservations.GetValueOrDefault(process.GroupKey) + process.Records;
         }
 
-        // A number is also a PID: an exact PID ranks first, then PIDs that start with it.
-        int? pid = int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) ? parsed : null;
+        int? pid = PidIn(text);
         var candidates = new List<(int Rank, SearchHit Hit)>();
         foreach (ProcessGroup group in snapshot.Groups)
         {
@@ -74,10 +73,7 @@ public static class WorkspaceSearch
 
         foreach (ProcessNode process in snapshot.Processes)
         {
-            string pidText = process.ProcessId.ToString(CultureInfo.InvariantCulture);
-            int rank = pid is { } number && process.ProcessId == number ? 0
-                : pid is not null && pidText.StartsWith(text, StringComparison.Ordinal) ? 1
-                : Rank(text, process.Name, null);
+            int rank = RankOf(process, text, pid);
             if (rank < 0) continue;
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
             candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
@@ -117,6 +113,31 @@ public static class WorkspaceSearch
             .Take(limit)];
         return new(text, ranked, candidates.Count);
     }
+
+    /// <summary>
+    /// Whether <paramref name="query"/> finds <paramref name="process"/>, by the rule <see cref="Find"/> ranks a process's
+    /// hit by - its PID, or a PID's first digits, or its name - with no limit on how many it finds: a group's lanes are
+    /// marked by it (§6.2: search lane names), however many of them a search's listed hits leave out.
+    /// </summary>
+    public static bool Finds(ProcessNode process, string? query)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        string text = query?.Trim() ?? string.Empty;
+        return text.Length > 0 && RankOf(process, text, PidIn(text)) >= 0;
+    }
+
+    /// <summary>A query that is a number is also a PID.</summary>
+    private static int? PidIn(string text) =>
+        int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int parsed) ? parsed : null;
+
+    /// <summary>
+    /// How well a process matches: 0 for its exact PID, 1 for a PID that starts with the number, else as its name matches;
+    /// -1 for no match.
+    /// </summary>
+    private static int RankOf(ProcessNode process, string text, int? pid) =>
+        pid is { } number && process.ProcessId == number ? 0
+        : pid is not null && process.ProcessId.ToString(CultureInfo.InvariantCulture).StartsWith(text, StringComparison.Ordinal) ? 1
+        : Rank(text, process.Name, null);
 
     /// <summary>What a group's members have in common, as its hit names it.</summary>
     private static string KindOf(LaneGrouping grouping) => grouping switch

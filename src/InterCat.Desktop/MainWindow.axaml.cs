@@ -2830,6 +2830,12 @@ public sealed partial class MainWindow : Window, IDisposable
             // A lane pinned or unpinned moves; the selected one stays in view as it does.
             Dispatcher.UIThread.Post(TimelineSurface.BringSelectedProcessLaneIntoView);
         }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.SearchedLane) && workspace.SearchedLane is { } searched)
+        {
+            // A search that finds a lane of the group shown scrolls it into view (§6.2: search lane names).
+            Dispatcher.UIThread.Post(() => TimelineSurface.BringLaneIntoView(searched));
+        }
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection))
         {
             MarkSelectionShares();

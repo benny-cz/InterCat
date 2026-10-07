@@ -55,6 +55,30 @@ public sealed class WorkspaceSearchTests
         Assert.Throws<ArgumentOutOfRangeException>(() => WorkspaceSearch.Find(snapshot, "e", limit: 0));
     }
 
+    [Fact(DisplayName = "§6.2: a process is found by the rule its search hit is ranked by, with no limit on how many")]
+    public void AProcessIsFoundByItsHitsRule()
+    {
+        WorkspaceSnapshot snapshot = SyntheticWorkspace.Create();
+
+        // Every query finds exactly the processes it lists hits for, whatever the hits' limit leaves unlisted.
+        foreach (string query in new[] { "8204", "82", "CACHE", "browser", "e", "platform", " 5120 ", "no such name", "" })
+        {
+            string[] hits = [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits
+                .Where(hit => hit.Kind == SearchHitKind.Process).Select(hit => hit.Key).Order(StringComparer.Ordinal)];
+            string[] found = [.. snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, query))
+                .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal)];
+            Assert.Equal(hits, found);
+        }
+
+        // A number finds its PID and the PIDs it begins, and not a PID it is only inside.
+        ProcessNode browser = snapshot.Processes.Single(process => process.Id == Browser);
+        Assert.True(WorkspaceSearch.Finds(browser, "8204"));
+        Assert.True(WorkspaceSearch.Finds(browser, "82"));
+        Assert.False(WorkspaceSearch.Finds(browser, "204"));
+        Assert.False(WorkspaceSearch.Finds(browser, "  "));
+        Assert.False(WorkspaceSearch.Finds(browser, null));
+    }
+
     [Fact(DisplayName = "§6.7: an executable is found by its image path, below a match on its name")]
     public void AnExecutableIsFoundByItsPath()
     {
