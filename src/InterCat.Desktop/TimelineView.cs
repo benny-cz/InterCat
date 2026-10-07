@@ -264,11 +264,19 @@ public sealed class TimelineView : Control, IHoverCardSource
         DoubleTapped += ZoomAtDoubleClick;
 
         // Scrolled lanes, a banner or a resized pane move this control under a pointer that stays where it is.
-        EffectiveViewportChanged += (_, _) =>
+        EffectiveViewportChanged += (_, e) =>
         {
-            if (hovering)
+            // Only the rows in view are drawn (§6.2). A scroll moves this control, which draws it again; a view that grows or
+            // moves without moving it - the pane made taller, or filling the column - draws again here once it shows a row
+            // the last repaint did not draw.
+            effectiveViewport = e.EffectiveViewport;
+            if (hovering || !DrawnRowsHold(e.EffectiveViewport))
             {
                 InvalidateVisual();
+            }
+
+            if (hovering)
+            {
                 DrawingMovedUnderPointer();
             }
         };
@@ -571,6 +579,60 @@ public sealed class TimelineView : Control, IHoverCardSource
         InvalidateMeasure();
     }
 
+    /// <summary>
+    /// What of this control its scroller shows, in the control's own coordinates, as layout last reported it; null until
+    /// it reports, when every row is drawn.
+    /// </summary>
+    private Rect? effectiveViewport;
+
+    /// <summary>The lane rows the last repaint drew, by index.</summary>
+    private RowBand drawnBand = RowBand.All;
+
+    /// <summary>How many lane rows the last repaint drew: those in view, not every row of a long list.</summary>
+    internal int RowsDrawn { get; private set; }
+
+    /// <summary>The first and last lane rows the last repaint could draw, by index; row 0 is a focused rung's machine row.</summary>
+    internal (int First, int Last) DrawnRowRange => (drawnBand.First, Math.Min(drawnBand.Last, Math.Max(0, LaneCount - 1)));
+
+    /// <summary>
+    /// The lane rows a repaint draws, by index, first to last (§6.2: virtualized rows): every row meeting the view. A group's
+    /// lanes can be two hundred rows, of which a view shows a few; drawing them all made a frame three times as long as a
+    /// group of a few lanes takes, and its drawing allocate twenty times as much.
+    /// </summary>
+    private readonly record struct RowBand(int First, int Last)
+    {
+        /// <summary>Every row: where no view is known, as before the control is laid out in its scroller.</summary>
+        public static RowBand All { get; } = new(0, int.MaxValue);
+
+        public bool Holds(int row) => row >= First && row <= Last;
+    }
+
+    /// <summary>The rows meeting <paramref name="from"/> to <paramref name="to"/>, in this control's coordinates.</summary>
+    private RowBand RowsBetween(double from, double to)
+    {
+        int count = LaneCount;
+        double top = PlotTop;
+        double height = (Math.Max(top + 1, Bounds.Height - PlotBottomMargin) - top) / Math.Max(1, count);
+        return count == 0 ? RowBand.All
+            : new(Math.Clamp((int)Math.Floor((from - top) / height), 0, count - 1),
+                Math.Clamp((int)Math.Floor((to - top) / height), 0, count - 1));
+    }
+
+    /// <summary>The rows the next repaint draws: those in view, or all of them while no view is known.</summary>
+    private RowBand BandToDraw() => effectiveViewport is { Height: > 0 } view ? RowsBetween(view.Top, view.Bottom) : RowBand.All;
+
+    /// <summary>Whether the rows <paramref name="view"/> shows were drawn by the last repaint.</summary>
+    private bool DrawnRowsHold(Rect view)
+    {
+        if (view.Height <= 0 || LaneCount == 0)
+        {
+            return true;
+        }
+
+        RowBand shown = RowsBetween(view.Top, view.Bottom);
+        return drawnBand.Holds(shown.First) && drawnBand.Holds(shown.Last);
+    }
+
     /// <summary>A ranked-table or graph selection should reveal its L1 row, not merely outline it off-screen.</summary>
     internal void BringSelectedProcessLaneIntoView()
     {
@@ -683,21 +745,26 @@ public sealed class TimelineView : Control, IHoverCardSource
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
         bool focused = viewModel.TimelineShowsFocus;
         var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused);
+        RowBand band = drawnBand = BandToDraw();
+        RowsDrawn = 0;
         if (ShowingMechanismLanes || rows is not null)
         {
             switch (rows?.Kind)
             {
                 case null:
-                    DrawMechanismLanes(context, viewModel, detail, scale, bytes, peaks);
+                    RowsDrawn = DrawMechanismLanes(context, viewModel, detail, scale, bytes, peaks, band);
                     break;
                 case FocusRowKind.Owners:
-                    DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes, peaks);
+                    RowsDrawn = DrawProcessLanes(context, viewModel, rows.Context, viewModel.ProcessLaneDisplay, scale, groupBytes,
+                        peaks, band);
                     break;
                 case FocusRowKind.Directions:
-                    DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale, directionBytes, peaks);
+                    RowsDrawn = DrawDirectionLanes(context, viewModel, rows.Context, viewModel.TimelineDirectionLanes!, scale,
+                        directionBytes, peaks, band);
                     break;
                 case FocusRowKind.ChannelEnds:
-                    DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale, peaks);
+                    RowsDrawn = DrawChannelEnds(context, viewModel, rows.Context, viewModel.TimelineChannelEndLanes!, scale, peaks,
+                        band);
                     break;
                 default:
                     if (viewModel.ShowsHttpExchangeLane)
@@ -1555,13 +1622,20 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// One L0 row per observed mechanism, all on the same visible rate scale and time columns: records per tick, or under a
     /// byte ranking the bytes it measures per tick, over the counted columns' coverage.
     /// </summary>
-    private static void DrawMechanismLanes(
+    private static int DrawMechanismLanes(
         DrawingContext context, WorkspaceViewModel viewModel, SessionTimelineDetail? detail, BarScale scale,
-        TimelineByteLayer? bytes, ReadOnlySpan<double> peaks)
+        TimelineByteLayer? bytes, ReadOnlySpan<double> peaks, RowBand band)
     {
         IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
+        int drawn = 0;
         for (int index = 0; index < lanes.Count; index++)
         {
+            if (!band.Holds(index))
+            {
+                continue;
+            }
+
+            drawn++;
             MechanismTimelineLane lane = lanes[index];
             Rect row = LaneRow(index, lanes.Count, scale.Top, scale.Bottom);
             double baseline = row.Bottom - 5;
@@ -1626,6 +1700,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                 DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
             }
         }
+
+        return drawn;
     }
 
     /// <summary>Whether any of a lane's columns holds a record the metric takes, measured or not.</summary>
@@ -1791,14 +1867,21 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// L1's exact owner rows, with one non-additive machine context row above them: records per tick, or under a byte
     /// ranking the bytes it measures per tick, over the counted rows' coverage.
     /// </summary>
-    private static void DrawProcessLanes(DrawingContext context, WorkspaceViewModel viewModel,
+    private static int DrawProcessLanes(DrawingContext context, WorkspaceViewModel viewModel,
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ProcessTimelineLane> lanes, BarScale scale,
-        ProcessLaneByteLayer? bytes, ReadOnlySpan<double> peaks)
+        ProcessLaneByteLayer? bytes, ReadOnlySpan<double> peaks, RowBand band)
     {
         int count = lanes.Count + 1;
         bool coverageOnly = bytes is not null;
+        int drawn = 0;
         for (int index = 0; index < count; index++)
         {
+            if (!band.Holds(index))
+            {
+                continue;
+            }
+
+            drawn++;
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
@@ -1847,6 +1930,8 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row, coverageOnly: coverageOnly);
         }
+
+        return drawn;
     }
 
     /// <summary>The radius of a pinned lane's pin head, a pinned graph node's.</summary>
@@ -1879,14 +1964,21 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// L2's exact source-direction partition; the machine row is context, never added to the owner total. Under a byte
     /// ranking each row plots the bytes it measures per tick, over the counted rows' coverage.
     /// </summary>
-    private static void DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
+    private static int DrawDirectionLanes(DrawingContext context, WorkspaceViewModel viewModel,
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<DirectionTimelineLane> lanes, BarScale scale,
-        DirectionLaneByteLayer? bytes, ReadOnlySpan<double> peaks)
+        DirectionLaneByteLayer? bytes, ReadOnlySpan<double> peaks, RowBand band)
     {
         int count = lanes.Count + 1;
         bool coverageOnly = bytes is not null;
+        int drawn = 0;
         for (int index = 0; index < count; index++)
         {
+            if (!band.Holds(index))
+            {
+                continue;
+            }
+
+            drawn++;
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
@@ -1934,6 +2026,8 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row, coverageOnly: coverageOnly);
         }
+
+        return drawn;
     }
 
     /// <summary>
@@ -2062,13 +2156,20 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// below it, on the shared rate scale, so the channel reads as a conversation. A record with no data direction, such
     /// as a disconnect, is a neutral mark on the midline rather than a bar on either side.
     /// </summary>
-    private static void DrawChannelEnds(DrawingContext context, WorkspaceViewModel viewModel,
+    private static int DrawChannelEnds(DrawingContext context, WorkspaceViewModel viewModel,
         IReadOnlyList<TimelineBucket> machine, IReadOnlyList<ChannelEndTimelineLane> ends, BarScale scale,
-        ReadOnlySpan<double> peaks)
+        ReadOnlySpan<double> peaks, RowBand band)
     {
         int count = ends.Count + 1;
+        int rows = 0;
         for (int index = 0; index < count; index++)
         {
+            if (!band.Holds(index))
+            {
+                continue;
+            }
+
+            rows++;
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
@@ -2148,6 +2249,8 @@ public sealed class TimelineView : Control, IHoverCardSource
                 }
             }
         }
+
+        return rows;
     }
 
     /// <summary>
