@@ -240,8 +240,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>
     /// The timeline as a screen reader meets it: its role, its keyboard path and table, and what it draws now, with the
-    /// range in view and the time base it is counted in. The axis showed that range only to the eye, so after + or an
-    /// arrow the timeline read the same words wherever the view had moved (R15).
+    /// analysis interval where one is chosen, the range in view and the time base it is counted in. The axis showed that
+    /// range only to the eye, so after + or an arrow the timeline read the same words wherever the view had moved, and the
+    /// interval a step, a click or a moment gone to chose was drawn and never said (R15).
     /// </summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "timeline",
         "Left and Right pan, with Shift by one bucket; plus and minus zoom; Home and End go to the session's edges; 0 "
@@ -250,7 +251,11 @@ public sealed class TimelineView : Control, IHoverCardSource
         + "it. A search typed at a group marks the lanes it finds and shows the first. T shows the interval table, which "
         + "lists what the timeline draws.",
         () => DataContext is WorkspaceViewModel viewModel
-            ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent, viewModel.TimeBase)
+            ? viewModel.TimelineCaption
+                + (viewModel.SelectedInterval is { } chosen
+                    ? " · analysis interval " + viewModel.TimeBase.Range(chosen, CultureInfo.CurrentCulture)
+                    : string.Empty)
+                + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent, viewModel.TimeBase)
                 + " · " + viewModel.TimeBase.Base(Viewport, viewModel.Snapshot.Began, CultureInfo.CurrentCulture)
             : null);
 

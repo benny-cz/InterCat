@@ -1,8 +1,11 @@
 using System.Globalization;
+using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -23,7 +26,7 @@ public sealed class GoToMomentWindowTests
 {
     private static readonly DateTimeOffset Noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
 
-    [AvaloniaFact(DisplayName = "§6.2: a time of day typed into the search and Enter move the zoomed timeline there and choose and explain the selected lane's cell holding it")]
+    [AvaloniaFact(DisplayName = "§6.2: a time of day typed into the search and Enter move the zoomed timeline there, choose and explain the selected lane's cell holding it, and give the timeline the keyboard")]
     public async Task ATimeTypedIsGoneTo()
     {
         using var session = new TemporarySession();
@@ -72,6 +75,20 @@ public sealed class GoToMomentWindowTests
         // It is a cell of the zoom's own count, which the lanes draw: the lifecycle lane, with nothing in view, is counted
         // there too rather than leaving every lane on the overview's coarse columns.
         Assert.Contains(" here one of this view's own ", explanation.Text, StringComparison.Ordinal);
+
+        // The keyboard is on the timeline, which says the interval it chose; ] steps on from it in the TCP lane.
+        Assert.True(timeline.IsFocused);
+        AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(timeline);
+        Assert.Contains(" · analysis interval " + workspace.TimeBase.Range(chosen, CultureInfo.CurrentCulture) + " · ",
+            peer.GetItemStatus(), StringComparison.Ordinal);
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Dispatch();
+        Assert.True(workspace.SelectedInterval!.Value.StartTicks >= chosen.EndTicks);
+
+        // What the search says as a time is typed is heard without leaving the box.
+        TextBlock summary = window.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => AutomationProperties.GetName(block) == "Search result status");
+        Assert.Equal(AutomationLiveSetting.Polite, AutomationProperties.GetLiveSetting(summary));
         _ = window.CaptureRenderedFrame();
         Dispatch();
         string rendered = Path.Combine(AppContext.BaseDirectory, "rendered");

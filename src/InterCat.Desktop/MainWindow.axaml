@@ -165,8 +165,10 @@
                    ToolTip.Tip="Search names, PIDs or a time (Ctrl+F)"
                    AutomationProperties.Name="Search this session by name, process ID or channel endpoint, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
                    AutomationProperties.AcceleratorKey="Ctrl+F" />
+          <!-- What a search found, or why a time typed places nothing, is said as it changes, without taking the keyboard. -->
           <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"
-                     IsVisible="{Binding IsSearching}" AutomationProperties.Name="Search result status" />
+                     IsVisible="{Binding IsSearching}" AutomationProperties.Name="Search result status"
+                     AutomationProperties.LiveSetting="Polite" />
           <!-- While records are read, the view holds its generation; a newer one is offered, never forced (section 5.2). -->
           <Border x:Name="HeldBanner" IsVisible="False" Margin="0,6,0,0" Padding="8" CornerRadius="7"
                   Background="{DynamicResource Surface.Elevated}"

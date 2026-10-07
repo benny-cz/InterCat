@@ -629,8 +629,14 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private bool OpenSelectedSearchHit()
     {
-        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSearchResult()) return false;
-        FocusRail();
+        if (DataContext is not WorkspaceViewModel viewModel) return false;
+
+        // A moment gone to gives the keyboard to the timeline, where it is: [ and ] step on from the cell it chose, the
+        // arrows pan around it, and the timeline says where it is (§6.7, R15). Any other hit gives it to the rung opened.
+        bool moment = viewModel.SelectedSearchResult?.Hit.Kind == SearchHitKind.Moment;
+        if (!viewModel.OpenSearchResult()) return false;
+        if (moment) TimelineSurface.Focus(NavigationMethod.Directional);
+        else FocusRail();
         return true;
     }
 
