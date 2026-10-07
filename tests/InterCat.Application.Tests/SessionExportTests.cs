@@ -144,6 +144,24 @@ public sealed class SessionExportTests
         Assert.Equal(["Every record of this scope is included.", Unknown], evidence.Context.Caveats.Skip(1));
         Assert.Equal(gap.Context.Coverage, evidence.Context.Coverage);
 
+        // Its CSV keeps that on the one line an empty scope writes, and a sharing report of either says it in the same
+        // words, mechanism by mechanism, naming no provider of the ledger it was judged from.
+        string[] lines = Csv.Lines(SessionExport.Build(gapped.Store, new([], new TimeRange(25, 35), true, ExportFormat.Csv),
+            Exported).Content);
+        Assert.Equal(2, lines.Length);
+        Assert.Equal(["false", Unknown], Csv.Cells(lines[1])[^2..]);
+        foreach ((bool records, SessionExportResult ordinary) in new[] { (false, gap), (true, evidence) })
+        {
+            SessionExportResult shared = SessionExport.Build(gapped.Store,
+                new([], new TimeRange(25, 35), records, ExportFormat.Json, Redacted: true), Exported);
+            Assert.DoesNotContain(NetworkProvider.ToString(), shared.Content, StringComparison.OrdinalIgnoreCase);
+            using JsonDocument json = JsonDocument.Parse(shared.Content);
+            JsonElement context = json.RootElement.GetProperty("context");
+            Assert.Equal(Unknown, context.GetProperty("coverageSummary").GetString());
+            Assert.Equal(ordinary.Context.Coverage.Select(entry => entry.Reason),
+                context.GetProperty("coverage").EnumerateArray().Select(entry => entry.GetProperty("reason").GetString()!));
+        }
+
         // A generation without a ledger has judged nothing, and its export says so.
         using var session = new TemporarySession();
         Publish(session.Store, Rows());

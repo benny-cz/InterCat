@@ -273,12 +273,14 @@ public sealed class SessionByteRankingTests
             Assert.Equal(2, rows[2].GetProperty("ranked").GetProperty("unmeasured").GetInt64());
         }
 
-        string[] lines = SessionExport.Build(session.Store,
-                new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.BytesSent), exported).Content
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.EndsWith(",bytes-sent,1750,3,0,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
-        Assert.EndsWith(",bytes-sent,,0,2,", lines[3].TrimEnd('\r'), StringComparison.Ordinal);
+        string[] lines = Csv.Lines(SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.BytesSent), exported).Content);
+        string[] header = Csv.Cells(lines[0]);
+        int rankedBy = Array.IndexOf(header, "ranked_by");
+        Assert.Equal(["ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured", "ranked_failed"],
+            header[rankedBy..(rankedBy + 5)]);
+        Assert.Equal(["bytes-sent", "1750", "3", "0", string.Empty], Csv.Cells(lines[1])[rankedBy..(rankedBy + 5)]);
+        Assert.Equal(["bytes-sent", string.Empty, "0", "2", string.Empty], Csv.Cells(lines[3])[rankedBy..(rankedBy + 5)]);
 
         // By records nothing is ranked by value, and the export says so.
         SessionExportResult records = SessionExport.Build(session.Store, new([], null, false, ExportFormat.Json), exported);

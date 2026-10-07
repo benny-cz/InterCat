@@ -236,6 +236,36 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"\n  Size +\S[^\n]*$", written.TrimEnd());
     }
 
+    [Fact(DisplayName = "R21: icat export's CSV states what the capture covered on every line, and its sharing report keeps it")]
+    public async Task AnExportsCsvAndSharingReportStateTheirCoverage()
+    {
+        const string NoLedger = "Coverage unknown: this generation publishes no coverage ledger, so a count of none here is not "
+            + "proof of inactivity";
+        string folder = Path.GetDirectoryName(session.Path)!;
+        string rows = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".csv");
+        string shared = Path.Combine(folder, Guid.NewGuid().ToString("N") + ".csv");
+        try
+        {
+            (InterCatExitCode exported, _, _) = await Run("export", session.Path, "--output", rows);
+            (InterCatExitCode reported, string report, _) = await Run("export", session.Path, "--output", shared, "--share-redacted");
+            Assert.Equal((InterCatExitCode.Success, InterCatExitCode.Success), (exported, reported));
+
+            // The sharing report's own report says what its file keeps, as the detailed export's does.
+            Assert.EndsWith(NoLedger, report.TrimEnd(), StringComparison.Ordinal);
+            foreach (string file in new[] { rows, shared })
+            {
+                string[] lines = File.ReadAllLines(file);
+                Assert.EndsWith(",scope_coverage", lines[0], StringComparison.Ordinal);
+                Assert.All(lines.Skip(1), line => Assert.EndsWith($",\"{NoLedger}\"", line, StringComparison.Ordinal));
+            }
+        }
+        finally
+        {
+            File.Delete(rows);
+            File.Delete(shared);
+        }
+    }
+
     [Fact(DisplayName = "§20.4: a command answering from the last complete generation says so, with what kept the newest from verifying")]
     public async Task AnAnswerFromTheLastCompleteGenerationSaysWhy()
     {

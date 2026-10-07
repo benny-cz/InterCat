@@ -263,16 +263,22 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(rows);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, "key", "label", "detail", "observations", "known_bytes", "mechanism", "coverage",
-            "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured",
-            "ranked_failed"]);
+        Line(csv, [.. ContextHeader, .. RankingColumns, .. TrailingHeader]);
+        string rankedBy = RankingName(context.RankedBy);
+        string[] trailing = TrailingCells(context, present: true);
+        if (rows.Count == 0)
+        {
+            Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, 9), rankedBy,
+                .. Enumerable.Repeat(string.Empty, 4), .. TrailingCells(context, present: false)]);
+        }
+
         foreach (LadderRow row in rows)
         {
             Line(csv, [.. ContextCells(context), Text(row.Key), Text(row.Label), Text(row.Detail),
                 Number(row.ObservationCount), Number(row.KnownBytes), row.Mechanism.ToString(), row.Coverage.ToString(),
-                row.Side.ToString(), row.DescendsTo.ToString(), RankingName(context.RankedBy),
+                row.Side.ToString(), row.DescendsTo.ToString(), rankedBy,
                 Number(row.Ranked?.Value), Number(row.Ranked?.Measured), Number(row.Ranked?.Unmeasured),
-                Number(row.Ranked?.Failed)]);
+                Number(row.Ranked?.Failed), .. trailing]);
         }
 
         return csv.ToString();
@@ -283,10 +289,14 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(records);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, "session_relative_ns", "native_ticks", "what", "mechanism", "kind", "bytes",
-            "byte_domain", "byte_availability", "endpoints", "owner_pid", "owner_instance", "owner_executable",
-            "owner_strength", "provider", "event_id", "version", "attribution", "correlation", "measurement", "timing",
-            "raw_stream", "raw_epoch", "raw_ordinal", "fact_key", "segment", "segment_row"]);
+        Line(csv, [.. ContextHeader, .. EvidenceColumns, .. TrailingHeader]);
+        string[] trailing = TrailingCells(context, present: true);
+        if (records.Count == 0)
+        {
+            Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, EvidenceColumns.Length),
+                .. TrailingCells(context, present: false)]);
+        }
+
         foreach (SessionEvidenceRecord record in records)
         {
             ObservationRowV1 row = record.Observation;
@@ -299,7 +309,7 @@ public static class WorkspaceExport
                 Number(row.EventId), Number(row.DescriptorVersion), row.AttributionQuality.ToString(),
                 row.CorrelationQuality.ToString(), row.MeasurementQuality.ToString(), row.TimingQuality.ToString(),
                 Number(row.RawStreamId), Number(row.RawSourceEpoch), Number((decimal)row.RawRecordOrdinal),
-                row.FactKey.ToString(), Text(record.SegmentName), Number(record.SegmentRow)]);
+                row.FactKey.ToString(), Text(record.SegmentName), Number(record.SegmentRow), .. trailing]);
         }
 
         return csv.ToString();
@@ -428,6 +438,23 @@ public static class WorkspaceExport
     private static readonly string[] ContextHeader =
         ["session_id", "generation", "rung", "interval_start_ticks", "interval_end_ticks", "complete"];
 
+    private static readonly string[] RankingColumns =
+        ["key", "label", "detail", "observations", "known_bytes", "mechanism", "coverage", "accounting_side", "descends_to",
+            "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured", "ranked_failed"];
+
+    private static readonly string[] EvidenceColumns =
+        ["session_relative_ns", "native_ticks", "what", "mechanism", "kind", "bytes", "byte_domain", "byte_availability",
+            "endpoints", "owner_pid", "owner_instance", "owner_executable", "owner_strength", "provider", "event_id",
+            "version", "attribution", "correlation", "measurement", "timing", "raw_stream", "raw_epoch", "raw_ordinal",
+            "fact_key", "segment", "segment_row"];
+
+    /// <summary>
+    /// Columns after a row's own, so every earlier column keeps its place (revision 372): whether the line holds a row,
+    /// false only on the one line an empty scope writes to keep its context, and what the capture covered over the scope in
+    /// the inspector's words, so a count of none, or no row at all, is not read as no activity (R21).
+    /// </summary>
+    private static readonly string[] TrailingHeader = ["row_present", "scope_coverage"];
+
     private static string[] ContextCells(ExportContext context) =>
     [
         context.SessionId?.ToString("N") ?? string.Empty,
@@ -437,6 +464,9 @@ public static class WorkspaceExport
         Number(context.Interval?.EndTicks),
         context.Complete ? "true" : "false",
     ];
+
+    private static string[] TrailingCells(ExportContext context, bool present) =>
+        [present ? "true" : "false", Text(CoverageText.Describe(context.Coverage))];
 
     private static string Number<T>(T? value)
         where T : struct, IFormattable =>

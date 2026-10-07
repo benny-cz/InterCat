@@ -256,10 +256,10 @@ public sealed class SessionCallRankingTests
                 ranked.GetProperty("unmeasured").GetInt64(), ranked.GetProperty("failed").GetInt64()));
         }
 
-        string[] lines = SessionExport.Build(session.Store,
-                new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.RpcCallsServed), DateTimeOffset.UnixEpoch).Content
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries);
-        Assert.EndsWith(",rpc-calls-served,2,2,0,0", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+        string[] lines = Csv.Lines(SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Csv, RankBy: RankingMetric.RpcCallsServed), DateTimeOffset.UnixEpoch).Content);
+        int rankedBy = Array.IndexOf(Csv.Cells(lines[0]), "ranked_by");
+        Assert.Equal(["rpc-calls-served", "2", "2", "0", "0"], Csv.Cells(lines[1])[rankedBy..(rankedBy + 5)]);
     }
 
     /// <summary>

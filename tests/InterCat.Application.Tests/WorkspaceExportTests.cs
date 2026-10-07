@@ -101,6 +101,70 @@ public sealed class WorkspaceExportTests
         Assert.Contains("127.0.0.1:50000 → 127.0.0.1:8080", lines[1], StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R21: an export's CSV states its scope's coverage on every line, and a scope with no row keeps its context in one line")]
+    public void AnExportsCsvStatesItsScopesCoverage()
+    {
+        MechanismCoverage[] coverage =
+        [
+            new(Mechanism.Tcp, CoverageState.Covered, "2 records from its 1 admitted descriptor, and nothing was reported lost"),
+            new(Mechanism.Udp, CoverageState.PartialGap, "the session reported 3 lost events, which may be any mechanism's"),
+            new(Mechanism.Rpc, CoverageState.NotCollected, "no admitted descriptor records it"),
+        ];
+        ExportContext ranked = Context(complete: true, interval: new TimeRange(25, 35)) with { Coverage = coverage };
+        ExportContext evidence = ranked with { Rung = DetailLevel.Evidence };
+        string said = CoverageText.Describe(coverage);
+        LadderRow[] rows =
+        [
+            new("executable:a", "a.exe", "PID 100", 0, null, Mechanism.Tcp, CoverageState.Covered, DetailLevel.Group,
+                AccountingSide.CanonicalOwner),
+        ];
+        ObservationRowV1 row = Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 7)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080");
+        SessionEvidenceRecord[] records =
+            [new(row.ObservationIdIn(Capture, NormalizerContractVersion.V1), "seg-0000000001-0000.icats", 3, row)];
+
+        // Every line of rows ends by saying it holds one, then what the capture covered over the scope, after every
+        // column the export had before, so each of those keeps its place.
+        foreach (string csv in new[] { WorkspaceExport.RankingCsv(ranked, rows), WorkspaceExport.EvidenceCsv(evidence, records) })
+        {
+            string[] lines = Csv.Lines(csv);
+            Assert.Equal(2, lines.Length);
+            string[] header = Csv.Cells(lines[0]);
+            Assert.Equal(["session_id", "generation", "rung", "interval_start_ticks", "interval_end_ticks", "complete"], header[..6]);
+            Assert.Equal(["row_present", "scope_coverage"], header[^2..]);
+            Assert.Equal(header.Length, Csv.Cells(lines[1]).Length);
+            Assert.Equal(["true", said], Csv.Cells(lines[1])[^2..]);
+        }
+
+        Assert.Equal(["ranked_failed", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(ranked, rows))[0])[^3..^1]);
+        Assert.Equal(["segment_row", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^3..^1]);
+
+        // A scope with no row still names itself, says it is complete, and says what the capture covered there, on one
+        // line that holds no row; a ranked one names its ranking, as a row would.
+        foreach ((string csv, int rankedBy) in new[]
+        {
+            (WorkspaceExport.RankingCsv(ranked, []), 15),
+            (WorkspaceExport.EvidenceCsv(evidence, []), -1),
+        })
+        {
+            string[] lines = Csv.Lines(csv);
+            Assert.Equal(2, lines.Length);
+            string[] cells = Csv.Cells(lines[1]);
+            Assert.Equal(Csv.Cells(lines[0]).Length, cells.Length);
+            Assert.Equal([SessionId.ToString("N"), "3", "25", "35", "true"], [cells[0], cells[1], cells[3], cells[4], cells[5]]);
+            Assert.Equal(["false", said], cells[^2..]);
+            Assert.Equal(cells.Length - 8 - (rankedBy < 0 ? 0 : 1), cells[6..^2].Count(string.IsNullOrEmpty));
+            if (rankedBy >= 0)
+            {
+                Assert.Equal(("ranked_by", "records"), (Csv.Cells(lines[0])[rankedBy], cells[rankedBy]));
+            }
+        }
+
+        // Coverage nothing judged is an empty cell, never a claim.
+        Assert.Equal(["true", string.Empty],
+            Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(ranked with { Coverage = [] }, rows))[1])[^2..]);
+    }
+
     private static ExportContext Context(bool complete, TimeRange? interval) => new(
         SessionId, 3, DetailLevel.Machine, "Machine", [], interval, "Whole session", complete,
         ["a caveat"], new DateTimeOffset(2026, 9, 24, 12, 0, 0, TimeSpan.Zero));

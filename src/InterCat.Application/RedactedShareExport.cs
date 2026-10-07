@@ -24,7 +24,8 @@ public static class RedactedShareExport
         + "and ports; resource names; raw-record locators; provider/schema IDs; original files; body and extended bytes; "
         + "free-text filters, breadcrumbs and caveats.";
     public const string Retained = "Rung, relative time, observed counts and sizes, mechanism, direction, status, "
-        + "coverage and quality; randomly pseudonymized entity, owner, endpoint and activity relationships.";
+        + "quality, and what the capture covered over the scope and for each row; randomly pseudonymized entity, owner, "
+        + "endpoint and activity relationships.";
 
     private static readonly JsonSerializerOptions Json = CreateJson();
 
@@ -99,7 +100,17 @@ public static class RedactedShareExport
         FilterCount = context.Filters.Count,
         ScopeKind = context.Rung == DetailLevel.Evidence ? "source observations" : "ranked rows",
         CompletenessMeaning = "Complete means all rows of the selected export scope, not complete capture coverage.",
+        Coverage = context.Coverage.Select(entry => new SharedCoverage(entry.Mechanism, entry.State, entry.Reason)).ToArray(),
+        CoverageSummary = Summary(context),
     };
+
+    /// <summary>
+    /// What the capture covered over the report's scope, in the inspector's words (R21), or null when nothing was judged.
+    /// Every part of it is a mechanism's name, a state's words or a reason's fixed template, whose only variable parts are
+    /// counts: no provider, host or record value enters it.
+    /// </summary>
+    private static string? Summary(ExportContext context) =>
+        CoverageText.Describe(context.Coverage) is { Length: > 0 } said ? said : null;
 
     private static SharedObservation Safe(SessionEvidenceRecord record, Tokens tokens)
     {
@@ -132,6 +143,13 @@ public static class RedactedShareExport
     private sealed record Ranked(string EntityToken, long Observations, long? KnownBytes,
         Mechanism Mechanism, CoverageState Coverage, AccountingSide AccountingSide, DetailLevel DescendsTo,
         long? RankedValue, long? RankedMeasured, long? RankedUnmeasured, long? RankedFailed);
+
+    /// <summary>
+    /// One mechanism's coverage over the report's scope (admitted in revision 372): two enumerations and the fact behind
+    /// them, one of `coverage-v2` §4's fixed templates whose only variable parts are invariant counts, so a ledger's provider
+    /// names and identifiers never reach it.
+    /// </summary>
+    private sealed record SharedCoverage(Mechanism Mechanism, CoverageState State, string Reason);
 
     private sealed record SharedObservation(
         string RecordToken, string? OwnerToken, string? ExecutableToken,
@@ -175,16 +193,18 @@ public static class RedactedShareExport
         var csv = new StringBuilder();
         Line(csv, [.. ContextHeader, "row_present", "entity_token", "observations", "known_bytes", "mechanism", "coverage",
             "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured",
-            "ranked_failed"]);
+            "ranked_failed", "scope_coverage"]);
         string rankedBy = WorkspaceExport.RankingName(context.RankedBy);
+        string coverage = Summary(context) ?? string.Empty;
         if (rows.Count == 0)
             Line(csv, [.. ContextCells(reportId, context, "ranking"), "false", .. Enumerable.Repeat(string.Empty, 7),
-                rankedBy, string.Empty, string.Empty, string.Empty, string.Empty]);
+                rankedBy, string.Empty, string.Empty, string.Empty, string.Empty, coverage]);
         foreach (Ranked row in rows)
             Line(csv, [.. ContextCells(reportId, context, "ranking"), "true", row.EntityToken,
                 Number(row.Observations), Number(row.KnownBytes), row.Mechanism.ToString(),
                 row.Coverage.ToString(), row.AccountingSide.ToString(), row.DescendsTo.ToString(), rankedBy,
-                Number(row.RankedValue), Number(row.RankedMeasured), Number(row.RankedUnmeasured), Number(row.RankedFailed)]);
+                Number(row.RankedValue), Number(row.RankedMeasured), Number(row.RankedUnmeasured), Number(row.RankedFailed),
+                coverage]);
         return csv.ToString();
     }
 
@@ -195,9 +215,11 @@ public static class RedactedShareExport
             "destination_endpoint_token", "resource_token", "source_identifier_token", "activity_token",
             "related_activity_token", "session_relative_ticks", "mechanism", "layer", "kind", "direction",
             "bytes", "byte_domain", "byte_availability", "status_code", "status_availability",
-            "attribution", "correlation", "measurement", "timing", "owner_strength", "owner_reason"]);
+            "attribution", "correlation", "measurement", "timing", "owner_strength", "owner_reason", "scope_coverage"]);
+        string coverage = Summary(context) ?? string.Empty;
         if (records.Count == 0)
-            Line(csv, [.. ContextCells(reportId, context, "evidence"), "false", .. Enumerable.Repeat(string.Empty, 25)]);
+            Line(csv, [.. ContextCells(reportId, context, "evidence"), "false", .. Enumerable.Repeat(string.Empty, 25),
+                coverage]);
         foreach (SharedObservation row in records)
             Line(csv, [.. ContextCells(reportId, context, "evidence"), "true", row.RecordToken, Cell(row.OwnerToken),
                 Cell(row.ExecutableToken), Cell(row.SourceEndpointToken), Cell(row.DestinationEndpointToken),
@@ -207,7 +229,7 @@ public static class RedactedShareExport
                 row.ByteDomain?.ToString() ?? string.Empty, row.ByteAvailability.ToString(), Number(row.StatusCode),
                 row.StatusAvailability.ToString(), row.Attribution.ToString(), row.Correlation.ToString(),
                 row.Measurement.ToString(), row.Timing.ToString(), row.OwnerStrength?.ToString() ?? string.Empty,
-                row.OwnerReason?.ToString() ?? string.Empty]);
+                row.OwnerReason?.ToString() ?? string.Empty, coverage]);
         return csv.ToString();
     }
 

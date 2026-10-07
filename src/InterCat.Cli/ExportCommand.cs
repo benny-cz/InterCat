@@ -128,7 +128,10 @@ internal static class ExportCommand
         ConsoleUi.Field(evidence ? "Records" : "Rows", ConsoleUi.Count(result.Rows));
         ConsoleUi.Field("Complete", result.Context.Complete ? "yes" : "no");
         if (redacted)
+        {
             ConsoleUi.Note("Metadata-only pseudonymized report; no original sources or raw locators. Counts, times and patterns can still identify a workload. Review before sharing.");
+            if (CoverageText.Describe(result.Context.Coverage) is { Length: > 0 } coverage) ConsoleUi.Note(coverage);
+        }
         else
         {
             foreach (string caveat in result.Context.Caveats.Skip(1)) ConsoleUi.Note(caveat);
@@ -156,10 +159,12 @@ internal static class ExportCommand
         ConsoleUi.Line("  at the other end of each process's records, a lower bound beside those left unresolved.");
         ConsoleUi.Line("  --evidence exports the rung's source records instead of its rows, up to --limit (100,000 by");
         ConsoleUi.Line("  default); an export that stops short says so and exits with the partial-result code. CSV");
-        ConsoleUi.Line("  neutralizes formula-like text. The JSON's context, and this report, state what the capture covered");
-        ConsoleUi.Line("  over the export's scope, mechanism by mechanism, so a count of none it could not see is not read");
-        ConsoleUi.Line("  as no activity.");
+        ConsoleUi.Line("  neutralizes formula-like text, and a scope with no row keeps its context in one row_present=false");
+        ConsoleUi.Line("  line. The file, and this report, state what the capture covered over the export's scope, mechanism");
+        ConsoleUi.Line("  by mechanism (a CSV in each line's scope_coverage), so a count of none it could not see is not");
+        ConsoleUi.Line("  read as no activity.");
         ConsoleUi.Line("  --share-redacted writes an allowlisted, pseudonymized report without raw IDs, names, addresses,");
-        ConsoleUi.Line("  source files or record locators. This report is not anonymous or a reopenable session.");
+        ConsoleUi.Line("  source files or record locators, which still states that coverage. It is not anonymous, and it");
+        ConsoleUi.Line("  is not a reopenable session.");
     }
 }

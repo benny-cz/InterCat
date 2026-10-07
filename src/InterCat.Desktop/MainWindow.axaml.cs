@@ -825,7 +825,7 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 new TextBlock { Text = "This creates a metadata-only, pseudonymized report; it cannot reopen a session.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                new TextBlock { Text = "Included: relative times, counts, sizes, status, quality, and random relationship tokens consistent only within this file.",
+                new TextBlock { Text = "Included: relative times, counts, sizes, status, quality, what the capture covered, and random relationship tokens consistent only within this file.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },
                 new TextBlock { Text = "Omitted: capture and session IDs, process and resource names, addresses, ports, original files, raw record locators, and content bytes.",
                     TextWrapping = Avalonia.Media.TextWrapping.Wrap },

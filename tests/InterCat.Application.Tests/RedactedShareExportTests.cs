@@ -14,6 +14,7 @@ namespace InterCat.Application.Tests;
 public sealed partial class RedactedShareExportTests
 {
     private const string Secret = "SENSITIVE-host-user-process-resource";
+    private static readonly Guid SecretProvider = Guid.Parse("5ec2e75e-c0de-4f00-8bad-5ec2e75ec0de");
     private static readonly DateTimeOffset Exported = new(2026, 9, 24, 12, 0, 0, TimeSpan.Zero);
 
     [Theory]
@@ -69,9 +70,9 @@ public sealed partial class RedactedShareExportTests
         else
         {
             string[] lines = report.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,4096,2,1,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,,0,0,", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed,scope_coverage", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,4096,2,1,,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,,0,0,,", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
             Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0].TrimEnd('\r')), CsvCellCount(line.TrimEnd('\r'))));
         }
     }
@@ -181,6 +182,66 @@ public sealed partial class RedactedShareExportTests
         }
     }
 
+    [Theory(DisplayName = "R21: a sharing report states its scope's coverage in the inspector's words, from fixed templates that name no provider")]
+    [InlineData(ExportFormat.Json)]
+    [InlineData(ExportFormat.Csv)]
+    public void ASharingReportStatesItsScopesCoverage(ExportFormat format)
+    {
+        IReadOnlyList<MechanismCoverage> coverage = EveryReason();
+        ExportContext context = Context() with { Coverage = coverage };
+        string said = CoverageText.Describe(coverage);
+        LadderRow[] rows = [new(Secret, Secret, Secret, 3, 64, Mechanism.Tcp, CoverageState.Covered, DetailLevel.Group,
+            AccountingSide.CanonicalOwner)];
+        SessionEvidenceRecord[] records = [Record(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 98765, 7)
+            .Between("10.1.2.3:50000", "10.1.2.4:8080"), new(Guid.NewGuid()))];
+        ExportContext evidence = context with { Rung = DetailLevel.Evidence };
+
+        foreach (string report in new[]
+        {
+            RedactedShareExport.Ranking(format, context, rows), RedactedShareExport.Ranking(format, context, []),
+            RedactedShareExport.Evidence(format, evidence, records), RedactedShareExport.Evidence(format, evidence, []),
+        })
+        {
+            // The ledgers name their provider with the secret and identify it; neither reaches a report.
+            AssertSafe(report);
+            Assert.DoesNotContain(SecretProvider.ToString(), report, StringComparison.OrdinalIgnoreCase);
+            Assert.DoesNotContain(SecretProvider.ToString("N"), report, StringComparison.OrdinalIgnoreCase);
+            if (format == ExportFormat.Json)
+            {
+                using JsonDocument json = JsonDocument.Parse(report);
+                JsonElement stated = json.RootElement.GetProperty("context");
+                Assert.Equal(coverage.Select(entry => ((string?)entry.Mechanism.ToString(), (string?)entry.State.ToString(),
+                        (string?)entry.Reason)),
+                    stated.GetProperty("coverage").EnumerateArray().Select(entry => (entry.GetProperty("mechanism").GetString(),
+                        entry.GetProperty("state").GetString(), entry.GetProperty("reason").GetString())));
+                Assert.Equal(said, stated.GetProperty("coverageSummary").GetString());
+            }
+            else
+            {
+                // Every line says it after every column the report had before, so each of those keeps its place, and it
+                // opens with a word, which a spreadsheet does not evaluate.
+                string[] lines = Csv.Lines(report);
+                Assert.Equal("scope_coverage", Csv.Cells(lines[0])[^1]);
+                Assert.All(lines.Skip(1), line => Assert.Equal(said, Csv.Cells(line)[^1]));
+                Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0]), CsvCellCount(line)));
+                Assert.StartsWith("Coverage", said, StringComparison.Ordinal);
+            }
+        }
+
+        // Nothing judged is no claim: no list entry, no words, and an empty cell.
+        string unjudged = RedactedShareExport.Ranking(format, Context(), rows);
+        if (format == ExportFormat.Json)
+        {
+            using JsonDocument json = JsonDocument.Parse(unjudged);
+            Assert.Equal(0, json.RootElement.GetProperty("context").GetProperty("coverage").GetArrayLength());
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("context").GetProperty("coverageSummary").ValueKind);
+        }
+        else
+        {
+            Assert.Equal(string.Empty, Csv.Cells(Csv.Lines(unjudged)[1])[^1]);
+        }
+    }
+
     [Fact]
     public async Task ExportPublicationPreservesExistingFileOnRefusalAndCancellation()
     {
@@ -208,6 +269,95 @@ public sealed partial class RedactedShareExportTests
         {
             directory.Delete(recursive: true);
         }
+    }
+
+    /// <summary>
+    /// Every fact a coverage reason states (`coverage-v2` §4), one mechanism apiece as a scope's coverage lists them, judged
+    /// by the rule itself over ledgers whose one provider is named with the secret. The reasons are pinned so that a new
+    /// or reworded one fails here and is weighed against the sharing policy before a report carries it.
+    /// </summary>
+    private static IReadOnlyList<MechanismCoverage> EveryReason()
+    {
+        CoverageLedgerV1 live = Ledger(Epoch(CoverageAcquisition.LiveCapture, Mechanism.Tcp, admitted: 2));
+        IReadOnlyList<MechanismCoverage> coverage =
+        [
+            SessionCoverage.Of(null, Mechanism.ProcessLifecycle),
+            SessionCoverage.Of(live, Mechanism.ThreadLifecycle, new TimeRange(100, 200)),
+            SessionCoverage.Of(live, Mechanism.Udp),
+            SessionCoverage.Of(Ledger(Epoch(CoverageAcquisition.EtlImport, Mechanism.UnixDomainSocket, admitted: 0)),
+                Mechanism.UnixDomainSocket),
+            SessionCoverage.Of(Ledger(Epoch(CoverageAcquisition.LiveCapture, Mechanism.NamedPipe, admitted: 0)),
+                Mechanism.NamedPipe),
+            SessionCoverage.Of(live, Mechanism.Tcp),
+            SessionCoverage.Of(Ledger(Epoch(CoverageAcquisition.LiveCapture, Mechanism.Rpc, admitted: 2, undecodable: 6,
+                unassigned: 5, lost: [1, 2, 3, 4])), Mechanism.Rpc),
+            SessionCoverage.Of(Ledger(Epoch(CoverageAcquisition.EtlImport, Mechanism.Alpc, admitted: 3, lost: [7])),
+                Mechanism.Alpc),
+            CoverageText.Over(live, null, new TimeRange(0, 10)).Single(entry => entry.Mechanism == Mechanism.Http),
+        ];
+        Assert.Equal(
+        [
+            "this generation publishes no coverage ledger",
+            "outside the readings the capture's sources delivered",
+            "no admitted descriptor records it",
+            "its 1 admitted descriptor delivered nothing, and a file cannot show whether its session recorded them",
+            "its 1 admitted descriptor delivered nothing while the session recorded them, and nothing was reported lost",
+            "2 records from its 1 admitted descriptor, and nothing was reported lost",
+            "the session reported 1 lost event, which may be any mechanism's; the consumer lost 2 buffers of unknown size; "
+                + "InterCat's full queue dropped 3 records; 4 admitted records could not be stored; 5 undecodable records "
+                + "had no admitted mechanism; it may affect this one; 6 of its records could not be decoded",
+            "the file reported 7 lost events, which may be any mechanism's",
+            "no reading of the capture's clock falls in this interval",
+        ], coverage.Select(entry => entry.Reason));
+        return coverage;
+    }
+
+    private static CoverageLedgerV1 Ledger(CoverageEpochV1 epoch) =>
+        new() { Contract = CoverageLedgerV1.ContractName, Epochs = [epoch] };
+
+    /// <summary>
+    /// One epoch collecting one descriptor of the secret provider: its admitted and undecodable records, records of a
+    /// descriptor it did not collect that could not be decoded, and what each loss layer it measures lost.
+    /// </summary>
+    private static CoverageEpochV1 Epoch(CoverageAcquisition acquisition, Mechanism mechanism, long admitted,
+        long undecodable = 0, long unassigned = 0, long[]? lost = null)
+    {
+        List<CoverageDeliveryV1> deliveries = [];
+        if (admitted + undecodable > 0)
+        {
+            deliveries.Add(new()
+            {
+                ProviderId = SecretProvider, EventId = 10, Version = 0, Delivered = admitted + undecodable,
+                Admitted = admitted, Omitted = 0,
+                Undecodable = undecodable > 0 ? new Dictionary<UndecodableReason, long> { [UndecodableReason.BodyShorterThanSchema] = undecodable } : null,
+            });
+        }
+
+        if (unassigned > 0)
+        {
+            deliveries.Add(new()
+            {
+                ProviderId = SecretProvider, EventId = 11, Version = 0, Delivered = unassigned, Admitted = 0, Omitted = 0,
+                Undecodable = new Dictionary<UndecodableReason, long> { [UndecodableReason.UnknownDescriptorVersion] = unassigned },
+            });
+        }
+
+        LossLayer[] layers = acquisition == CoverageAcquisition.EtlImport
+            ? [LossLayer.SourceSession]
+            : [LossLayer.SourceSession, LossLayer.ConsumerBuffers, LossLayer.CallbackQueue, LossLayer.Storage];
+        return new()
+        {
+            Epoch = 1,
+            Acquisition = acquisition,
+            FirstDeliveredNativeTicks = deliveries.Count > 0 ? 0 : null,
+            LastDeliveredNativeTicks = deliveries.Count > 0 ? 20 : null,
+            Collected =
+            [
+                new CoverageCollectedV1 { ProviderId = SecretProvider, ProviderName = Secret, EventId = 10, Version = 0, Mechanism = mechanism },
+            ],
+            Deliveries = deliveries,
+            Losses = [.. layers.Select((layer, index) => new CoverageLossV1 { Layer = layer, Lost = lost?[index] ?? 0 })],
+        };
     }
 
     private static SessionEvidenceRecord Record(ObservationRowV1 row, ProcessInstanceId id) => new(

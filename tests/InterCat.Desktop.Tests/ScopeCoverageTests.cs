@@ -5,6 +5,7 @@ using InterCat.Desktop;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
+using System.Text.Json;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 
@@ -157,6 +158,21 @@ public sealed class ScopeCoverageTests
         Assert.StartsWith("Coverage unknown: outside the readings", workspace.ScopeCoverage, StringComparison.Ordinal);
         Assert.Equal(workspace.ScopeCoverage, brushed.Context.Caveats[^1]);
         Assert.Equal(brushed.Content, SessionExport.Build(session.Store, new([], gap, false, ExportFormat.Json), at).Content);
+
+        // A sharing report of the view says what the card says, mechanism by mechanism, as icat export --share-redacted does.
+        foreach (SessionExportResult shared in new[]
+        {
+            await workspace.ExportAsync(ExportFormat.Json, at, redacted: true),
+            SessionExport.Build(session.Store, new([], gap, false, ExportFormat.Json, Redacted: true), at),
+        })
+        {
+            using JsonDocument report = JsonDocument.Parse(shared.Content);
+            JsonElement context = report.RootElement.GetProperty("context");
+            Assert.Equal(workspace.ScopeCoverage, context.GetProperty("coverageSummary").GetString());
+            Assert.Equal(brushed.Context.Coverage.Select(entry => (entry.Mechanism.ToString(), entry.State.ToString())),
+                context.GetProperty("coverage").EnumerateArray().Select(entry =>
+                    (entry.GetProperty("mechanism").GetString()!, entry.GetProperty("state").GetString()!)));
+        }
 
         // The records of a range the capture covered are exported with its coverage there, not the whole session's.
         var covered = new TimeRange(8, 15);
