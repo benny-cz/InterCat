@@ -19,8 +19,12 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     public IReadOnlyList<string> ChangedSettings => !realOverview
         ? []
-        : WorkspaceLayout.Parts(0, 0, Grouping, rankBy, perSecond && RankingMetrics.IsAdditive(rankBy), EvidencePolicy,
-            scalesEachLane, CultureInfo.CurrentCulture);
+        :
+        [
+            .. WorkspaceLayout.Parts(0, 0, Grouping, rankBy, perSecond && RankingMetrics.IsAdditive(rankBy), EvidencePolicy,
+                scalesEachLane, CultureInfo.CurrentCulture),
+            .. CollectorsSetAside ? ["InterCat's own processes set aside"] : Array.Empty<string>(),
+        ];
 
     /// <summary>Whether any setting differs from its default, so the rail names it and offers the default view back.</summary>
     public bool DiffersFromDefaults => ChangedSettings.Count > 0;

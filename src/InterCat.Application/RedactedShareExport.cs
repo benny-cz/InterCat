@@ -24,8 +24,8 @@ public static class RedactedShareExport
         + "and ports; resource names; raw-record locators; provider/schema IDs; original files; body and extended bytes; "
         + "free-text filters, breadcrumbs and caveats.";
     public const string Retained = "Rung, relative time, observed counts and sizes, mechanism, direction, status, "
-        + "quality, and what the capture covered over the scope and for each row; randomly pseudonymized entity, owner, "
-        + "endpoint and activity relationships.";
+        + "quality, and what the capture covered over the scope and for each row; how many of InterCat's own processes a "
+        + "ranking set aside, and their records; randomly pseudonymized entity, owner, endpoint and activity relationships.";
 
     private static readonly JsonSerializerOptions Json = CreateJson();
 
@@ -45,7 +45,8 @@ public static class RedactedShareExport
             {
                 Contract, Kind = "ranking", ReportId = reportId, Redaction = PolicyDescription(),
                 Context = SafeContext(context), RankedBy = WorkspaceExport.RankingName(context.RankedBy),
-                GroupedBy = WorkspaceExport.GroupingName(context.GroupedBy), Rows = safe,
+                GroupedBy = WorkspaceExport.GroupingName(context.GroupedBy),
+                SetAside = new { Processes = context.SetAsideProcesses, Records = context.SetAsideRecords }, Rows = safe,
             }, Json),
             ExportFormat.Csv => RankingCsv(reportId, context, safe),
             _ => throw new ArgumentOutOfRangeException(nameof(format)),
@@ -194,18 +195,19 @@ public static class RedactedShareExport
         var csv = new StringBuilder();
         Line(csv, [.. ContextHeader, "row_present", "entity_token", "observations", "known_bytes", "mechanism", "coverage",
             "accounting_side", "descends_to", "ranked_by", "ranked_value", "ranked_measured", "ranked_unmeasured",
-            "ranked_failed", "scope_coverage"]);
+            "ranked_failed", "scope_coverage", .. WorkspaceExport.SetAsideHeader]);
         string rankedBy = WorkspaceExport.RankingName(context.RankedBy);
         string coverage = Summary(context) ?? string.Empty;
+        string[] setAside = WorkspaceExport.SetAsideCells(context);
         if (rows.Count == 0)
             Line(csv, [.. ContextCells(reportId, context, "ranking"), "false", .. Enumerable.Repeat(string.Empty, 7),
-                rankedBy, string.Empty, string.Empty, string.Empty, string.Empty, coverage]);
+                rankedBy, string.Empty, string.Empty, string.Empty, string.Empty, coverage, .. setAside]);
         foreach (Ranked row in rows)
             Line(csv, [.. ContextCells(reportId, context, "ranking"), "true", row.EntityToken,
                 Number(row.Observations), Number(row.KnownBytes), row.Mechanism.ToString(),
                 row.Coverage.ToString(), row.AccountingSide.ToString(), row.DescendsTo.ToString(), rankedBy,
                 Number(row.RankedValue), Number(row.RankedMeasured), Number(row.RankedUnmeasured), Number(row.RankedFailed),
-                coverage]);
+                coverage, .. setAside]);
         return csv.ToString();
     }
 

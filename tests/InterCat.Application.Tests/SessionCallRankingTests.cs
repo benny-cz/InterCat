@@ -192,6 +192,42 @@ public sealed class SessionCallRankingTests
         ];
     }
 
+    [Fact(DisplayName = "§19.5: call times over a group and the machine leave out the instances a view sets aside, which keep their own")]
+    public void TimesLeaveOutWhatIsSetAside()
+    {
+        // The caller.exe instance in terminal session 2 made the calls of 5 and 7 ticks; set aside, its group's and the
+        // machine's median are the other instance's three calls', 1, 1 and 9 ticks, and its session's group has none.
+        ObservationRowV1 first = Lifecycle(1, ObservationKind.Create, Client, 1) with { ResourceName = @"C:\Tools\caller.exe" };
+        ObservationRowV1 second = Lifecycle(2, ObservationKind.Create, 101, 2) with { ResourceName = @"C:\Tools\caller.exe" };
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            first, second,
+            .. Call(Client, 10, 11, 1), .. Call(Client, 20, 21, 2), .. Call(Client, 30, 39, 3),
+            .. Call(101, 40, 45, 4), .. Call(101, 50, 57, 5),
+        ], fields: [Field(first, SourceField.ProcessSessionId, 1), Field(second, SourceField.ProcessSessionId, 2)]);
+        ProcessNode other = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store)).Processes
+            .Single(process => process.ProcessId == 101);
+        SessionCallMeasures all = SessionCallRanking.Measure(session.Store, null);
+        SessionCallMeasures aside = SessionCallRanking.Measure(session.Store, null, setAside: new HashSet<ProcessInstanceId> { other.Id });
+
+        Assert.Equal(all.ByProcess, aside.ByProcess);
+        Assert.Equal(all.TimesByProcess[other.Id], aside.TimesByProcess[other.Id]);
+        Assert.Equal((5L, 500L), (all.TimesAttributed.MadeTimed, all.TimesAttributed.MadeMedian!.Value));
+        Assert.Equal((3L, 100L), (aside.TimesAttributed.MadeTimed, aside.TimesAttributed.MadeMedian!.Value));
+        CallTimes group = aside.TimesByGroup[@"executable:C:\TOOLS\CALLER.EXE"];
+        Assert.Equal((3L, 100L), (group.MadeTimed, group.MadeMedian!.Value));
+        Assert.True(all.TimesByGroup.ContainsKey("session:2"));
+        Assert.False(aside.TimesByGroup.ContainsKey("session:2"));
+        Assert.Equal(all.TimesByGroup["session:1"], aside.TimesByGroup["session:1"]);
+
+        static ObservationRowV1[] Call(int pid, long start, long stop, int number) =>
+        [
+            RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, pid, (ulong)(100 + (2 * number)), Activity(number), ServiceControl),
+            RpcCall(stop, ObservationKind.RequestEnd, Direction.Outbound, pid, (ulong)(101 + (2 * number)), Activity(number), status: 0),
+        ];
+    }
+
     [Fact(DisplayName = "§8a: calls made and served rank their own sides, and a process with only unpaired stops follows those with calls")]
     public void CallsRankByTheirSide()
     {

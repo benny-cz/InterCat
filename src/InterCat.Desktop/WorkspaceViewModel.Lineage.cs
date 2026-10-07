@@ -34,6 +34,19 @@ public sealed partial class WorkspaceViewModel
         : [];
 
     /// <summary>
+    /// The selected process's parent when it is InterCat's own and the view sets it aside (§19.5): in the capture, so never
+    /// said to be missing from it, though not a row to go to.
+    /// </summary>
+    private ProcessNode? SetAsideParentOfSelected => selectedProcess?.Parent is { } parent
+        ? wholeSnapshot.SetAside.FirstOrDefault(process => process.Id == parent)
+        : null;
+
+    /// <summary>The processes of InterCat's own the selected one started that the view sets aside, which it started all the same.</summary>
+    private IReadOnlyList<ProcessNode> SetAsideChildrenOfSelected => selectedProcess is { } selected
+        ? [.. wholeSnapshot.SetAside.Where(process => process.Parent == selected.Id)]
+        : [];
+
+    /// <summary>
     /// Who started the selected process: the parent by name and PID, with how the link rests; a named PID the capture
     /// never saw; or that no record of it named one.
     /// </summary>
@@ -42,11 +55,14 @@ public sealed partial class WorkspaceViewModel
         get
         {
             if (selectedProcess is not { } process) return string.Empty;
-            if (ParentOfSelected is { } parent)
+            if ((ParentOfSelected ?? SetAsideParentOfSelected) is { } parent)
             {
                 return parent.NameWithPid + (process.ParentBinding == RelationStrength.Direct
                     ? " · linked by its start key"
-                    : " · linked by its PID and this process's start time");
+                    : " · linked by its PID and this process's start time")
+                    + (parent.Collector is { } role && ParentOfSelected is null
+                        ? $" · {CollectorText.Label(role)}, set aside"
+                        : string.Empty);
             }
 
             return process.ParentProcessId is { } named
@@ -62,12 +78,19 @@ public sealed partial class WorkspaceViewModel
         {
             if (selectedProcess is null) return string.Empty;
             IReadOnlyList<ProcessNode> children = ChildrenOfSelected;
-            if (children.Count == 0) return "None seen in this capture";
+            IReadOnlyList<ProcessNode> aside = SetAsideChildrenOfSelected;
+            // InterCat's own children the view sets aside are counted after the rest, so none is said to be unseen.
+            string asideText = aside.Count == 0 ? string.Empty
+                : (children.Count == 0 ? string.Empty : " · ")
+                    + CountText.Of(aside.Count, "process", "processes") + " of InterCat's own, set aside: "
+                    + string.Join(", ", aside.Select(child => child.NameWithPid));
+            if (children.Count == 0) return aside.Count == 0 ? "None seen in this capture" : asideText;
             string names = string.Join(", ", children.Take(NamedChildren).Select(child => child.NameWithPid));
             return Counted(children.Count, "process", "processes") + ": " + names
                 + (children.Count > NamedChildren
                     ? string.Create(CultureInfo.CurrentCulture, $" and {children.Count - NamedChildren:N0} more")
-                    : string.Empty);
+                    : string.Empty)
+                + asideText;
         }
     }
 

@@ -1,6 +1,6 @@
 # collector-identities-v1
 
-Status: revision 414 (§19.5); the broker's client since revision 415; labels since revision 416
+Status: revision 414 (§19.5); the broker's client since revision 415; labels since revision 416; a view filter since revision 417
 Owner: `InterCat.Storage` (`CollectorIdentitiesV1`); written by `InterCat.Capture.Recording` (`LiveRecorder`)
 
 The processes that collected a capture, by the identity its own lifecycle records give them. InterCat's broker, the
@@ -67,3 +67,11 @@ roles keeps the first the file names. The records bound to a collector's instanc
 listed and exported as any record is, and labelled where they are shown - its ranked row's caption ("PID 4120 · running
 at start · InterCat's broker"), the inspector's explanation, its graph node's card and `icat processes`, in one set of
 words (`CollectorText`).
+
+A view may set the collectors' instances aside (§19.5's view filter, revision 417): out of its ranked rows, its graph
+and its channels, with every relationship and channel one of them is an end of and a group left with none, while it
+counts how many it set aside and their records over the whole session. It removes no record: the timeline and the
+evidence still count theirs, and an evidence export lists them. An export of such a view states the two counts - a
+caveat, `setAside` in JSON, `set_aside_processes` and `set_aside_records` in CSV and in the redacted report - as `icat
+export --set-aside-collectors` does, and what a ranking totals over the rows shown, a group's or the machine's peers and
+call times and the processes with a peer, leaves them out. A view shows them until a person sets them aside.

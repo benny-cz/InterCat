@@ -50,12 +50,15 @@ public static class SessionPeerRanking
 {
     /// <summary>
     /// Counts the whole retained capture, or <paramref name="interval"/> in 100-nanosecond presentation ticks, whose bounds
-    /// are placed on the source clock as the command line places a time. A record is in scope when its reading is.
+    /// are placed on the source clock as the command line places a time. A record is in scope when its reading is. The
+    /// instances a view sets aside (<paramref name="setAside"/>, §19.5) keep their own peers, and are still the peers of
+    /// those they shared records with, but no group counts them as a member and the processes with a peer leave them out.
     /// </summary>
     public static SessionPeerMeasures Measure(
         SessionStore store,
         TimeRange? interval,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        IReadOnlySet<ProcessInstanceId>? setAside = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -78,16 +81,22 @@ public static class SessionPeerRanking
 
         // Each instance's group as the ladder keys it under every grouping the window offers - by executable and by terminal
         // session - as a dense index into one list of keys, which never collide, so a change of grouping reads nothing again.
+        // An instance the view sets aside (§19.5) is no group's member, though it is still a peer of those it shared records
+        // with: its own records count toward no group, and it is not among the processes with a peer the rows shown hold.
         int instances = processes.Instances.Count;
         IReadOnlyList<LaneGrouping> groupings = WorkspaceGrouping.All;
         var groupKeys = new List<string>();
         var groupIndex = new Dictionary<string, int>(StringComparer.Ordinal);
         int[][] groupOf = [.. groupings.Select(_ => new int[instances])];
+        bool[] aside = new bool[instances];
         for (int instance = 0; instance < instances; instance++)
         {
+            aside[instance] = setAside?.Contains(processes.Instances[instance].Id) == true;
             for (int grouping = 0; grouping < groupings.Count; grouping++)
             {
-                string key = WorkspaceGrouping.KeyOf(processes.Instances[instance], groupings[grouping]);
+                string key = aside[instance]
+                    ? SetAsideKey
+                    : WorkspaceGrouping.KeyOf(processes.Instances[instance], groupings[grouping]);
                 if (!groupIndex.TryGetValue(key, out int index))
                 {
                     groupIndex[key] = index = groupKeys.Count;
@@ -120,13 +129,15 @@ public static class SessionPeerRanking
             }
         }
 
-        // A key is one grouping's, so only that grouping's tally counts anything under it.
+        // A key is one grouping's, so only that grouping's tally counts anything under it. The set-aside instances' key is
+        // every grouping's, and no group's.
         var byGroup = new Dictionary<string, PeerCount>(StringComparer.Ordinal);
         foreach (Grouping grouping in total.Groups)
         {
             for (int group = 0; group < groupKeys.Count; group++)
             {
-                if (grouping.CountOf(group) is { } counted)
+                if (!string.Equals(groupKeys[group], SetAsideKey, StringComparison.Ordinal)
+                    && grouping.CountOf(group) is { } counted)
                 {
                     byGroup[groupKeys[group]] = counted;
                 }
@@ -135,10 +146,13 @@ public static class SessionPeerRanking
 
         return new(manifest.SessionId, manifest.Generation, interval, byProcess, byGroup)
         {
-            WithPeers = total.Processes.Distinct(),
+            WithPeers = total.Processes.Distinct(aside),
             Unattributed = total.Unattributed,
         };
     }
+
+    /// <summary>The group the instances a view sets aside fall in under every grouping, which no ladder row is.</summary>
+    private const string SetAsideKey = "collectors:aside";
 
     /// <summary>
     /// Counts one segment's records in scope that have another end, by process and by group, as the grouped distinct
@@ -269,8 +283,12 @@ public static class SessionPeerRanking
             ? null
             : new(peers[slot] is { Count: > 0 } counted ? counted.Count : null, known[slot], unknown[slot]);
 
-        /// <summary>How many distinct instances are some group's peer: each of them has a resolved peer in turn.</summary>
-        public long Distinct() => peers.Where(set => set is not null).SelectMany(set => set!).Distinct().LongCount();
+        /// <summary>
+        /// How many distinct instances are some group's peer, each of them having a resolved peer in turn, but those
+        /// <paramref name="aside"/> marks.
+        /// </summary>
+        public long Distinct(bool[] aside) =>
+            peers.Where(set => set is not null).SelectMany(set => set!).Distinct().LongCount(instance => !aside[instance]);
 
         private HashSet<int> PeersOf(int slot) => peers[slot] ??= [];
     }

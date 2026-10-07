@@ -70,9 +70,9 @@ public sealed partial class RedactedShareExportTests
         else
         {
             string[] lines = report.Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed,scope_coverage", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,4096,2,1,,", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
-            Assert.EndsWith(",bytes-received,,0,0,,", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith("ranked_by,ranked_value,ranked_measured,ranked_unmeasured,ranked_failed,scope_coverage,set_aside_processes,set_aside_records", lines[0].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,4096,2,1,,,0,0", lines[1].TrimEnd('\r'), StringComparison.Ordinal);
+            Assert.EndsWith(",bytes-received,,0,0,,,0,0", lines[2].TrimEnd('\r'), StringComparison.Ordinal);
             Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0].TrimEnd('\r')), CsvCellCount(line.TrimEnd('\r'))));
         }
     }
@@ -196,10 +196,10 @@ public sealed partial class RedactedShareExportTests
             .Between("10.1.2.3:50000", "10.1.2.4:8080"), new(Guid.NewGuid()))];
         ExportContext evidence = context with { Rung = DetailLevel.Evidence };
 
-        foreach (string report in new[]
+        foreach ((string report, int after) in new[]
         {
-            RedactedShareExport.Ranking(format, context, rows), RedactedShareExport.Ranking(format, context, []),
-            RedactedShareExport.Evidence(format, evidence, records), RedactedShareExport.Evidence(format, evidence, []),
+            (RedactedShareExport.Ranking(format, context, rows), 2), (RedactedShareExport.Ranking(format, context, []), 2),
+            (RedactedShareExport.Evidence(format, evidence, records), 0), (RedactedShareExport.Evidence(format, evidence, []), 0),
         })
         {
             // The ledgers name their provider with the secret and identify it; neither reaches a report.
@@ -218,11 +218,12 @@ public sealed partial class RedactedShareExportTests
             }
             else
             {
-                // Every line says it after every column the report had before, so each of those keeps its place, and it
-                // opens with a word, which a spreadsheet does not evaluate.
+                // Every line says it after every column the report had before, so each of those keeps its place - a
+                // ranking's lines then end with the two counts of what its view set aside, which came later - and it opens
+                // with a word, which a spreadsheet does not evaluate.
                 string[] lines = Csv.Lines(report);
-                Assert.Equal("scope_coverage", Csv.Cells(lines[0])[^1]);
-                Assert.All(lines.Skip(1), line => Assert.Equal(said, Csv.Cells(line)[^1]));
+                Assert.Equal("scope_coverage", Csv.Cells(lines[0])[^(1 + after)]);
+                Assert.All(lines.Skip(1), line => Assert.Equal(said, Csv.Cells(line)[^(1 + after)]));
                 Assert.All(lines, line => Assert.Equal(CsvCellCount(lines[0]), CsvCellCount(line)));
                 Assert.StartsWith("Coverage", said, StringComparison.Ordinal);
             }
@@ -238,7 +239,7 @@ public sealed partial class RedactedShareExportTests
         }
         else
         {
-            Assert.Equal(string.Empty, Csv.Cells(Csv.Lines(unjudged)[1])[^1]);
+            Assert.Equal([string.Empty, "0", "0"], Csv.Cells(Csv.Lines(unjudged)[1])[^3..]);
         }
     }
 

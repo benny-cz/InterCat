@@ -136,11 +136,14 @@ public static class SessionCallRanking
     /// <summary>
     /// Counts the whole retained capture, or <paramref name="interval"/> in 100-nanosecond presentation ticks, whose bounds
     /// are placed on the source clock as the command line places a time. A call is in scope when its stop's reading is.
+    /// The instances a view sets aside (<paramref name="setAside"/>, §19.5) keep their own calls, but no group's or the
+    /// machine rung's times take theirs, since their rows are not shown.
     /// </summary>
     public static SessionCallMeasures Measure(
         SessionStore store,
         TimeRange? interval,
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        IReadOnlySet<ProcessInstanceId>? setAside = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -222,6 +225,11 @@ public static class SessionCallRanking
             List<long> ownMade = made[instance] ?? [];
             List<long> ownServed = served[instance] ?? [];
             timesByProcess[processes.Instances[instance].Id] = CallTimes.Of(ownMade, ownServed);
+            if (setAside?.Contains(processes.Instances[instance].Id) == true)
+            {
+                continue;
+            }
+
             foreach (LaneGrouping grouping in WorkspaceGrouping.All)
             {
                 string group = WorkspaceGrouping.KeyOf(processes.Instances[instance], grouping);

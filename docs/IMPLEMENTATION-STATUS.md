@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-07 · Plan revision: 416 · Branch: `main`
+Updated: 2026-10-07 · Plan revision: 417 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 417 — InterCat's own processes can be set aside (§19.5, §6.8, R18):**
+  - The rail named InterCat's own processes but offered no way to leave them out of a view. One command now sets them
+    aside from the rows, the graph and the channels, counting them and their records, which the timeline and the
+    evidence still count; a ranking's totals, a process's lineage, an export and `icat export --set-aside-collectors`
+    follow it.
 
 - **Revision 416 — InterCat's own processes are labelled (§19.5, R5, R18):**
   - A capture named its collectors, but no view said which processes they were. The instance whose PID and creation
@@ -1307,8 +1313,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      empty rung says its records were left out as candidates and offers to count them there. Every read a process's
      rows, the call and peer rankings and the lanes make is tested under each policy.
    - §6.8's defaults: done in revision 413. Each setting's own control shows its value, and the rail says how many of
-     them - the ranking and its rate, the lanes' scale, the grouping and the evidence policy - differ from their
-     first-run defaults, beside a Restore defaults command that puts them all back as their controls would; the line's
+     them - the ranking and its rate, the lanes' scale, the grouping, the evidence policy and, since revision 417,
+     whether InterCat's own processes are set aside - differ from their first-run defaults, beside a Restore defaults command that puts them all back as their controls would; the line's
      tooltip names each in the words `icat workspace show` and an investigation's notice use. The theme and the panes
      are the window's, not the view's, and stay as chosen.
    - §19.5's self-observation: since revision 414 a live capture names the process collecting it - its broker, or
@@ -1316,8 +1322,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      never released, which `icat session` states; since revision 415 a broker names the client that asked it to record
      too, by the PID its control pipe names; and since revision 416 the instance a collector is - its PID and the
      creation time its lifecycle records carry (`collector-binding-v1`) - is labelled in its row, the inspector, its
-     graph card and `icat processes`. Next: a visible view filter that sets their records aside, counting what it set
-     aside; and a statement, in the inspector and `icat overview`, of a collector no instance is.
+     graph card and `icat processes`; and since revision 417 one command in the rail sets them aside from the rows,
+     the graph and the channels, with the relationships and channels they are an end of, counting them and their
+     records, which the timeline and the evidence still count. It is named among the settings changed from their
+     defaults; a ranking's totals over the rows shown, a process's lineage and an export follow it, and `icat export
+     --set-aside-collectors` builds the same file (R18). Exploration shows them by default (plan revision 417 says
+     why). Next: a statement, in the inspector and `icat overview`, of a collector no instance is; and an
+     investigation keeping the choice, which needs a workspace contract revision.
    - A count agrees with its noun and verb wherever a person reads it: done in revision 357, after revision 354's
      call rankings, for the window, the command line, the metric caveats and the overview's disclosures, through
      `CountText`. A new sentence that states a count should say it through it.
@@ -1394,6 +1405,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 417 was built and tested in the same Linux container: Debug and Release each ran **1,777 tests**, passing
+  **1,679 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests set the tour's
+  collectors aside, which takes their relationships, channels, operations and marks and a group left with none, and
+  the broker of a published capture, which takes its connection to its client while the timeline and the records no
+  process holds stay whole; a snapshot naming none is itself. An export counts what it set aside in its caveat, JSON,
+  CSV and redacted report, which names no process; an evidence export lists every record; and a group sharing its
+  executable with the window that asked for the capture ranks without it, its calls' median and its peers. The peer
+  and call measures keep each instance's own and leave the set-aside ones out of every group and the machine. In the
+  window's model the rail names the broker and counts it once set aside, the setting is named as changed, a ranking by
+  peers counts the client alone, and a lineage names a parent or child set aside; in the window, the command sets them
+  aside, clears a selection of one without saying it was lost, shows them again, Restore defaults shows them, and
+  another session opens with them shown. `icat export --set-aside-collectors` writes the same file and says when there
+  was none to set aside. Four tests that took a CSV's coverage for its last column now find it before the set-aside
+  counts. They caught each of 41 mutations; one written so that it no longer built was rewritten until it did.
 
 - Revision 416 was built and tested in the same Linux container: Debug and Release each ran **1,766 tests**, passing
   **1,668 with 4 skipped**; the 94 failures are the ones revision 361's baseline lists. Its tests publish a capture

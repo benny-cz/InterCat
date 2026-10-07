@@ -444,6 +444,13 @@ public sealed record WorkspaceSnapshot(
     public bool Demo { get; init; }
 
     /// <summary>
+    /// InterCat's own processes this snapshot sets aside (§19.5's view filter, <see cref="WorkspaceCollectors"/>): absent
+    /// from its groups, processes, relationships and channels, though the timeline and the evidence still count their
+    /// records. None when it sets none aside.
+    /// </summary>
+    public IReadOnlyList<ProcessNode> SetAside { get; init; } = [];
+
+    /// <summary>
     /// When the session's capture began by the wall clock it recorded: session time 0, which the timeline's axis counts
     /// from, in UTC; null when the capture recorded no wall clock, as an import does.
     /// </summary>

@@ -8,7 +8,8 @@ namespace InterCat.Application;
 /// <summary>
 /// What a headless export reads: the rung reached by descending through these row keys from the machine rung, an
 /// optional analysis interval, whether that rung's ranked rows or its evidence records are exported, what the machine
-/// and group rungs rank by, and how the processes are grouped into the machine rung's rows (§6.3).
+/// and group rungs rank by, how the processes are grouped into the machine rung's rows (§6.3), and whether InterCat's own
+/// processes are set aside from them, as the window's view filter sets them aside (§19.5).
 /// </summary>
 public sealed record SessionExportRequest(
     IReadOnlyList<string> Path,
@@ -18,7 +19,8 @@ public sealed record SessionExportRequest(
     int EvidenceLimit = SessionExport.DefaultEvidenceLimit,
     bool Redacted = false,
     RankingMetric RankBy = RankingMetric.Records,
-    LaneGrouping Grouping = LaneGrouping.Executable);
+    LaneGrouping Grouping = LaneGrouping.Executable,
+    bool SetAsideCollectors = false);
 
 /// <summary>The exported text, the snapshot it names, and how many rows or records it holds.</summary>
 public sealed record SessionExportResult(string Content, ExportContext Context, int Rows);
@@ -89,7 +91,15 @@ public static class SessionExport
                 + "in, so its processes cannot be grouped by session; a session is never guessed.");
         }
 
+        // InterCat's own processes are set aside after grouping, as the window sets them aside, so a group left with none
+        // goes too and the measures leave them out of every total over the rows shown.
         snapshot = WorkspaceGrouping.Regroup(snapshot, request.Grouping);
+        if (request.SetAsideCollectors)
+        {
+            snapshot = WorkspaceCollectors.SetAside(snapshot);
+        }
+
+        IReadOnlySet<ProcessInstanceId> aside = WorkspaceCollectors.Instances(snapshot);
         if (request.Interval is { } interval)
         {
             SessionIntervalCounts counts = SessionIntervalQuery.Count(store, interval, cancellationToken: cancellationToken);
@@ -112,13 +122,15 @@ public static class SessionExport
                 snapshot = OverviewWorkspace.WithBytes(snapshot, bytes);
                 break;
             case RankingFamily.Calls:
-                SessionCallMeasures calls = SessionCallRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+                SessionCallMeasures calls = SessionCallRanking.Measure(store, request.Interval, setAside: aside,
+                    cancellationToken: cancellationToken);
                 SameSession(calls, overview);
                 snapshot = OverviewWorkspace.WithCalls(snapshot, calls);
                 rankingCaveat = CallCaveat(calls);
                 break;
             case RankingFamily.Peers:
-                SessionPeerMeasures peers = SessionPeerRanking.Measure(store, request.Interval, cancellationToken: cancellationToken);
+                SessionPeerMeasures peers = SessionPeerRanking.Measure(store, request.Interval, setAside: aside,
+                    cancellationToken: cancellationToken);
                 SameSession(peers, overview);
                 snapshot = OverviewWorkspace.WithPeers(snapshot, peers);
                 break;
@@ -144,7 +156,7 @@ public static class SessionExport
             RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied,
-                request.Grouping);
+                request.Grouping, snapshot.SetAside);
             if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
             {
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };

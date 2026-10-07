@@ -29,6 +29,12 @@ public sealed class SessionEvidenceSource(
     /// </summary>
     public EvidencePolicy Policy { get; } = Enum.IsDefined(policy) ? policy : throw new ArgumentOutOfRangeException(nameof(policy));
 
+    /// <summary>
+    /// The instances the shown view sets aside as InterCat's own (§19.5's view filter), which a ranking's measures leave out
+    /// of every total over the rows shown while each keeps its own; none unless a person set them aside.
+    /// </summary>
+    public IReadOnlySet<ProcessInstanceId> SetAside { get; init; } = new HashSet<ProcessInstanceId>();
+
     /// <summary>Counts each edge's and channel's records inside an analysis interval, for a brushed ranking.</summary>
     public Task<SessionIntervalCounts> CountAsync(TimeRange interval, CancellationToken cancellationToken) =>
         Task.Run(() => SessionIntervalQuery.Count(
@@ -57,6 +63,7 @@ public sealed class SessionEvidenceSource(
             Store(),
             interval,
             policy: Policy,
+            setAside: SetAside,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
@@ -68,6 +75,7 @@ public sealed class SessionEvidenceSource(
             Store(),
             interval,
             policy: Policy,
+            setAside: SetAside,
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>

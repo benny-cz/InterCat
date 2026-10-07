@@ -46,6 +46,15 @@ public sealed record ExportContext(
     /// its state: whether a count of none in its rows could have been seen at all (R21). Empty for a view of no session.
     /// </summary>
     public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
+
+    /// <summary>
+    /// How many of InterCat's own processes the view set aside from a ranked export's rows (§19.5's view filter); none when
+    /// it set none aside, or the export lists evidence, whose records nothing sets aside.
+    /// </summary>
+    public int SetAsideProcesses { get; init; }
+
+    /// <summary>The records those processes hold over the whole session, which the evidence still lists.</summary>
+    public long SetAsideRecords { get; init; }
 }
 
 /// <summary>
@@ -64,7 +73,8 @@ public static class WorkspaceExport
     /// A ranked rung's export context: its breadcrumb and filters, and the interval its counts answer, which is a
     /// brushed interval only once its counts have been applied. The Desktop and <c>icat export</c> both build it here,
     /// so the two name one snapshot the same way (R18). A byte ranking is named, with what it measures, beside the
-    /// disclosure, and the coverage of the counts' scope is said as the inspector says it beneath its time scope.
+    /// disclosure, and the coverage of the counts' scope is said as the inspector says it beneath its time scope. InterCat's
+    /// own processes, when the view set them aside, are counted beside the rows they are not in.
     /// </summary>
     public static ExportContext RankingContext(
         Guid? sessionId,
@@ -75,7 +85,8 @@ public static class WorkspaceExport
         IReadOnlyList<MechanismCoverage> coverage,
         DateTimeOffset exportedUtc,
         RankingMetric rankedBy = RankingMetric.Records,
-        LaneGrouping groupedBy = LaneGrouping.Executable)
+        LaneGrouping groupedBy = LaneGrouping.Executable,
+        IReadOnlyList<ProcessNode>? setAside = null)
     {
         ArgumentNullException.ThrowIfNull(ladder);
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
@@ -91,6 +102,13 @@ public static class WorkspaceExport
         if (groupedBy == LaneGrouping.UserSession && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
         {
             caveats = [.. caveats, SessionGroupingCaveat];
+        }
+
+        int asideProcesses = setAside?.Count ?? 0;
+        long asideRecords = setAside?.Sum(process => process.Records) ?? 0;
+        if (asideProcesses > 0)
+        {
+            caveats = [.. caveats, CollectorText.SetAsideCaveat(asideProcesses, asideRecords)];
         }
 
         return new(
@@ -110,6 +128,8 @@ public static class WorkspaceExport
             RankedBy = rankedBy,
             GroupedBy = groupedBy,
             Coverage = coverage,
+            SetAsideProcesses = asideProcesses,
+            SetAsideRecords = asideRecords,
         };
     }
 
@@ -260,6 +280,7 @@ public static class WorkspaceExport
             Context = Describe(context),
             RankedBy = RankingName(context.RankedBy),
             GroupedBy = GroupingName(context.GroupedBy),
+            SetAside = new { Processes = context.SetAsideProcesses, Records = context.SetAsideRecords },
             Rows = rows.Select(row => new
             {
                 row.Key,
@@ -296,13 +317,13 @@ public static class WorkspaceExport
         ArgumentNullException.ThrowIfNull(context);
         ArgumentNullException.ThrowIfNull(rows);
         var csv = new StringBuilder();
-        Line(csv, [.. ContextHeader, .. RankingColumns, .. TrailingHeader]);
+        Line(csv, [.. ContextHeader, .. RankingColumns, .. TrailingHeader, .. SetAsideHeader]);
         string rankedBy = RankingName(context.RankedBy);
-        string[] trailing = TrailingCells(context, present: true);
+        string[] trailing = [.. TrailingCells(context, present: true), .. SetAsideCells(context)];
         if (rows.Count == 0)
         {
             Line(csv, [.. ContextCells(context), .. Enumerable.Repeat(string.Empty, 9), rankedBy,
-                .. Enumerable.Repeat(string.Empty, 4), .. TrailingCells(context, present: false)]);
+                .. Enumerable.Repeat(string.Empty, 4), .. TrailingCells(context, present: false), .. SetAsideCells(context)]);
         }
 
         foreach (LadderRow row in rows)
@@ -316,6 +337,16 @@ public static class WorkspaceExport
 
         return csv.ToString();
     }
+
+    /// <summary>
+    /// A ranked CSV's last columns, after every earlier one so each keeps its place (revision 417): how many of InterCat's
+    /// own processes the view set aside from its rows, and their records over the whole session, which a CSV, carrying no
+    /// caveat, would otherwise leave unsaid (§19.5). Zero when it set none aside.
+    /// </summary>
+    internal static readonly string[] SetAsideHeader = ["set_aside_processes", "set_aside_records"];
+
+    internal static string[] SetAsideCells(ExportContext context) =>
+        [Number(context.SetAsideProcesses), Number(context.SetAsideRecords)];
 
     public static string EvidenceCsv(ExportContext context, IReadOnlyList<SessionEvidenceRecord> records)
     {

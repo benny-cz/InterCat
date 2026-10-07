@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -89,4 +90,24 @@ public static class CollectorText
         _ => "It is icat record, which recorded this capture",
     } + $", as the capture's collectors name it by PID and creation time ({CollectorBinding.Rule}): its records are "
         + "InterCat's own activity, counted as any process's are.";
+
+    /// <summary>
+    /// A collector as a list of them names it: "intercat-broker.exe · PID 4120 (InterCat's broker)".
+    /// </summary>
+    public static string Named(ProcessNode process)
+    {
+        ArgumentNullException.ThrowIfNull(process);
+        return process.Collector is { } role ? $"{process.NameWithPid} ({Label(role)})" : process.NameWithPid;
+    }
+
+    /// <summary>
+    /// What an export of a view that set InterCat's own processes aside says beside its rows (§19.5's view filter): how
+    /// many, with how many records over the whole session, and that none of their records was removed. Counts alone, in
+    /// invariant digits as an export writes them, so it names no process.
+    /// </summary>
+    public static string SetAsideCaveat(int processes, long records) =>
+        "InterCat's own processes are set aside from these rows: "
+        + string.Create(CultureInfo.InvariantCulture, $"{processes:N0} {CountText.Agree(processes, "process", "processes")}, ")
+        + string.Create(CultureInfo.InvariantCulture, $"with {records:N0} {CountText.Agree(records, "record", "records")} ")
+        + "over the whole session. No record is removed: the evidence still lists theirs.";
 }

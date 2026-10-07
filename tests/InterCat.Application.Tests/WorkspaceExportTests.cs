@@ -124,19 +124,28 @@ public sealed class WorkspaceExportTests
             [new(row.ObservationIdIn(Capture, NormalizerContractVersion.V1), "seg-0000000001-0000.icats", 3, row)];
 
         // Every line of rows ends by saying it holds one, then what the capture covered over the scope, after every
-        // column the export had before, so each of those keeps its place.
-        foreach (string csv in new[] { WorkspaceExport.RankingCsv(ranked, rows), WorkspaceExport.EvidenceCsv(evidence, records) })
+        // column the export had before, so each of those keeps its place; a ranking's lines then count what its view set
+        // aside (revision 417), after those in turn.
+        foreach ((string csv, int after) in new[]
+        {
+            (WorkspaceExport.RankingCsv(ranked, rows), 2), (WorkspaceExport.EvidenceCsv(evidence, records), 0),
+        })
         {
             string[] lines = Csv.Lines(csv);
             Assert.Equal(2, lines.Length);
             string[] header = Csv.Cells(lines[0]);
             Assert.Equal(["session_id", "generation", "rung", "interval_start_ticks", "interval_end_ticks", "complete"], header[..6]);
-            Assert.Equal(["row_present", "scope_coverage"], header[^2..]);
+            Assert.Equal(["row_present", "scope_coverage"], header[^(2 + after)..^after]);
             Assert.Equal(header.Length, Csv.Cells(lines[1]).Length);
-            Assert.Equal(["true", said], Csv.Cells(lines[1])[^2..]);
+            Assert.Equal(["true", said], Csv.Cells(lines[1])[^(2 + after)..^after]);
         }
 
-        Assert.Equal(["ranked_failed", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(ranked, rows))[0])[^3..^1]);
+        string[] rankedLines = Csv.Lines(WorkspaceExport.RankingCsv(ranked, rows));
+        Assert.Equal(["ranked_failed", "row_present"], Csv.Cells(rankedLines[0])[^5..^3]);
+        Assert.Equal(["set_aside_processes", "set_aside_records"], Csv.Cells(rankedLines[0])[^2..]);
+        Assert.Equal(["0", "0"], Csv.Cells(rankedLines[1])[^2..]);
+        Assert.Equal(["1", "312"], Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(
+            ranked with { SetAsideProcesses = 1, SetAsideRecords = 312 }, rows))[1])[^2..]);
         Assert.Equal(["segment_row", "row_present"], Csv.Cells(Csv.Lines(WorkspaceExport.EvidenceCsv(evidence, records))[0])[^3..^1]);
 
         // A scope with no row still names itself, says it is complete, and says what the capture covered there, on one
@@ -150,10 +159,11 @@ public sealed class WorkspaceExportTests
             string[] lines = Csv.Lines(csv);
             Assert.Equal(2, lines.Length);
             string[] cells = Csv.Cells(lines[1]);
+            int after = rankedBy < 0 ? 0 : 2;
             Assert.Equal(Csv.Cells(lines[0]).Length, cells.Length);
             Assert.Equal([SessionId.ToString("N"), "3", "25", "35", "true"], [cells[0], cells[1], cells[3], cells[4], cells[5]]);
-            Assert.Equal(["false", said], cells[^2..]);
-            Assert.Equal(cells.Length - 8 - (rankedBy < 0 ? 0 : 1), cells[6..^2].Count(string.IsNullOrEmpty));
+            Assert.Equal(["false", said], cells[^(2 + after)..^after]);
+            Assert.Equal(cells.Length - 8 - after - (rankedBy < 0 ? 0 : 1), cells[6..^(2 + after)].Count(string.IsNullOrEmpty));
             if (rankedBy >= 0)
             {
                 Assert.Equal(("ranked_by", "records"), (Csv.Cells(lines[0])[rankedBy], cells[rankedBy]));
@@ -162,7 +172,7 @@ public sealed class WorkspaceExportTests
 
         // Coverage nothing judged is an empty cell, never a claim.
         Assert.Equal(["true", string.Empty],
-            Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(ranked with { Coverage = [] }, rows))[1])[^2..]);
+            Csv.Cells(Csv.Lines(WorkspaceExport.RankingCsv(ranked with { Coverage = [] }, rows))[1])[^4..^2]);
     }
 
     private static ExportContext Context(bool complete, TimeRange? interval) => new(

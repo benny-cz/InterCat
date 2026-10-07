@@ -145,6 +145,10 @@ public sealed partial class MainWindow : Window, IDisposable
     /// another grouping for it. Every publication of the session shown is grouped so where its processes offer it.
     /// </summary>
     private LaneGrouping laneGrouping = LaneGrouping.Executable;
+
+    // Whether InterCat's own processes are set aside from the shown session's rows, graph and channels (§19.5's view
+    // filter): while the session is open, and for each of its publications.
+    private bool collectorsAside;
     private DateTimeOffset? lastPublicationUtc;
     private BrokerCaptureHealth? liveHealth;
 
@@ -2438,6 +2442,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ForgetDisplayedSession();
         evidencePolicy = EvidencePolicy.IncludeCorrelated;
         laneGrouping = LaneGrouping.Executable;
+        collectorsAside = false;
         ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
             "Windows may ask for administrator approval to record system-wide events."));
         try
@@ -2766,6 +2771,34 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private void RestoreDefaultView(object? sender, RoutedEventArgs eventArgs) => _ = RestoreDefaultViewAsync();
 
+    private void ToggleCollectorsAside(object? sender, RoutedEventArgs eventArgs) => ChooseCollectorsAside(!collectorsAside);
+
+    /// <summary>
+    /// Sets InterCat's own processes aside from the shown session's rows, graph and channels, or shows them again (§19.5's
+    /// view filter): the overview already projected is filtered, so nothing is read again, and the view returns to the
+    /// machine rung, as a regrouped one does, keeping its time, ranking and scales. A process set aside is no longer the
+    /// selection. Each later publication of the session is filtered so too. False when nothing is shown, the session names
+    /// no process of InterCat's own, or the choice is made already.
+    /// </summary>
+    internal bool ChooseCollectorsAside(bool aside)
+    {
+        if (displayedOverview is not { } shown || aside == collectorsAside || !workspace.OffersCollectorsAside)
+        {
+            return false;
+        }
+
+        if (aside && workspace.SelectedProcess is { Collector: not null })
+        {
+            workspace.SelectedProcess = null;
+        }
+
+        collectorsAside = aside;
+        ReplaceWorkspace(new CaptureUiUpdate(phase, CaptureStatus.Text ?? string.Empty, CaptureDetail.Text ?? string.Empty,
+            SessionPath: currentSessionPath, Overview: shown, OverviewChunks: displayedChunks), shown, forceOverview: false,
+            regrouping: true);
+        return true;
+    }
+
     /// <summary>
     /// §6.8's one command back to the defaults: the shown session's rows ranked by records, not per second, every timeline
     /// lane on one scale, its processes grouped by executable and its records counted with correlated evidence only, each
@@ -2781,6 +2814,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         ViewSettings defaults = ViewSettings.Default;
+        ChooseCollectorsAside(false);
         workspace.RankBy = defaults.RankBy;
         workspace.PerSecond = defaults.PerSecond;
         workspace.ScalesEachLane = defaults.ScalesEachLane;
@@ -2931,10 +2965,6 @@ public sealed partial class MainWindow : Window, IDisposable
         displayedOverview = overview;
         displayedChunks = update.OverviewChunks ?? 0;
         currentSessionPath = update.SessionPath ?? currentSessionPath;
-        // Every read of the workspace binds records as the overview it shows was projected: under its policy.
-        SessionEvidenceSource? evidence = currentSessionPath is { } path
-            ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation, overview.Policy)
-            : null;
         // A later publication of the same session keeps every node that is still drawn where the user last saw it.
         IReadOnlyDictionary<string, GraphPoint>? pins = savedNavigation is null ? null : workspace.GraphPins;
         IReadOnlyList<ProcessInstanceId> lanes = [];
@@ -2952,6 +2982,7 @@ public sealed partial class MainWindow : Window, IDisposable
             keptSettings = null;
             keptPanes = null;
             laneGrouping = LaneGrouping.Executable;
+            collectorsAside = false;
             if (openingFromInvestigation is { } investigation && LayoutKeptIn(investigation, overview.SessionId) is { } kept)
             {
                 // The window's panes are the investigation's, for every session opened from it: put back when it keeps them,
@@ -2978,10 +3009,21 @@ public sealed partial class MainWindow : Window, IDisposable
             keptPins = pins;
         }
 
-        // The graph's identity names the grouping too, since its nodes are the groups.
+        // The graph's identity names the grouping too, since its nodes are the groups. InterCat's own processes are set
+        // aside as their person chose, after grouping, so a group left with none goes too.
         LaneGrouping grouping = GroupingShown(projected, laneGrouping);
-        var replacement = new WorkspaceViewModel(WorkspaceGrouping.Regroup(projected, grouping),
-            WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), evidence,
+        WorkspaceSnapshot grouped = WorkspaceGrouping.Regroup(projected, grouping);
+        WorkspaceSnapshot shownSnapshot = collectorsAside ? WorkspaceCollectors.SetAside(grouped) : grouped;
+        // Every read of the workspace binds records as the overview it shows was projected: under its policy, with what the
+        // view set aside left out of the totals its rankings state over the rows shown.
+        SessionEvidenceSource? evidence = currentSessionPath is { } path
+            ? new SessionEvidenceSource(path, overview.SessionId, overview.Generation, overview.Policy)
+            {
+                SetAside = WorkspaceCollectors.Instances(shownSnapshot),
+            }
+            : null;
+        var replacement = new WorkspaceViewModel(shownSnapshot,
+            WorkspaceCollectors.Identity(WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), collectorsAside), evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins);
         if (restored is { } settings)
         {

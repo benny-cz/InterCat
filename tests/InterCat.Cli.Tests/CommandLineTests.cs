@@ -301,11 +301,12 @@ public sealed class CommandLineTests : IDisposable
 
             // The sharing report's own report says what its file keeps, as the detailed export's does.
             Assert.EndsWith(NoLedger, report.TrimEnd(), StringComparison.Ordinal);
+            // A ranking's lines then count what its view set aside, which came later, so each earlier column kept its place.
             foreach (string file in new[] { rows, shared })
             {
                 string[] lines = File.ReadAllLines(file);
-                Assert.EndsWith(",scope_coverage", lines[0], StringComparison.Ordinal);
-                Assert.All(lines.Skip(1), line => Assert.EndsWith($",\"{NoLedger}\"", line, StringComparison.Ordinal));
+                Assert.EndsWith(",scope_coverage,set_aside_processes,set_aside_records", lines[0], StringComparison.Ordinal);
+                Assert.All(lines.Skip(1), line => Assert.EndsWith($",\"{NoLedger}\",0,0", line, StringComparison.Ordinal));
             }
         }
         finally
@@ -1240,6 +1241,63 @@ public sealed class CommandLineTests : IDisposable
             instance.GetProperty("role").GetString()));
         Assert.Equal([7008, 4120], collectors.GetProperty("unfound").EnumerateArray()
             .Select(collector => collector.GetProperty("processId").GetInt32()));
+    }
+
+    [Fact(DisplayName = "§19.5: icat export --set-aside-collectors sets InterCat's own processes aside from the rows, as the window does, and says what it set aside")]
+    public async Task AnExportSetsInterCatsOwnAside()
+    {
+        using var session = new TemporarySession();
+        PublishCollected(session.Store);
+        session.Store.ReleaseSegmentReaders();
+        using var unnamed = new TemporarySession();
+        PublishCollected(unnamed.Store, named: false);
+        unnamed.Store.ReleaseSegmentReaders();
+        string output = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            // The broker's group is no row, the file counts what was set aside, and the report says so in the window's words.
+            (InterCatExitCode exported, string report, string said) =
+                await Run("export", session.Path, "--output", output, "--set-aside-collectors");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Contains("  " + CollectorText.SetAsideCaveat(1, 3), report, StringComparison.Ordinal);
+            Assert.Matches(new Regex(@"\n  Rows +2\r?\n"), report);
+            using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(output)))
+            {
+                Assert.Equal(["InterCat.exe", "tool.exe"], document.RootElement.GetProperty("rows").EnumerateArray()
+                    .Select(row => row.GetProperty("label").GetString()).Order(StringComparer.Ordinal));
+                Assert.Equal(1, document.RootElement.GetProperty("setAside").GetProperty("processes").GetInt32());
+            }
+
+            // Without the flag the broker is a row as any process is; and its redacted report states the counts alone.
+            (exported, report, said) = await Run("export", session.Path, "--output", output, "--overwrite");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.DoesNotContain("InterCat's own", report, StringComparison.Ordinal);
+            Assert.Matches(new Regex(@"\n  Rows +3\r?\n"), report);
+            (exported, report, said) = await Run("export", session.Path, "--output", output, "--overwrite",
+                "--set-aside-collectors", "--share-redacted");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Contains("  " + CollectorText.SetAsideCaveat(1, 3), report, StringComparison.Ordinal);
+
+            // An evidence export lists every record, InterCat's own included, and says that it does.
+            (exported, report, said) = await Run("export", session.Path, "--output", output, "--overwrite",
+                "--set-aside-collectors", "--evidence");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Matches(new Regex(@"\n  Records +6\r?\n"), report);
+            Assert.Contains("an evidence export lists every record of its scope, InterCat's own included", report,
+                StringComparison.Ordinal);
+
+            // A capture that names no collector has nothing to set aside, and says so rather than leave it unsaid.
+            (exported, report, said) = await Run("export", unnamed.Path, "--output", output, "--overwrite",
+                "--set-aside-collectors");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Contains("No process of this session is known to be InterCat's own, so none was set aside", report,
+                StringComparison.Ordinal);
+            Assert.Matches(new Regex(@"\n  Rows +3\r?\n"), report);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
     }
 
     [Fact(DisplayName = "P16: icat support writes versions, capabilities and each session's counters, and no name, endpoint, host or path")]
