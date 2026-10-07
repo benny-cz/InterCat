@@ -604,6 +604,92 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§26.3: a session opened from an investigation keeps its times read on the wall clock there, and is read so from its first view when opened from it again")]
+    public async Task AnInvestigationKeepsTheWallClock()
+    {
+        using var root = new TemporaryDirectory();
+        string calibrated = Directory.CreateDirectory(Path.Combine(root.Path, "calibrated")).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(calibrated), Guid.NewGuid(), "investigation-window-tests");
+        DateTimeOffset noon = new(2026, 9, 29, 12, 0, 0, TimeSpan.Zero);
+        Publish(store,
+            [Transfer(1_100, ObservationKind.Send, AccountingSide.SendSide, 64, 100).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 110_000 }],
+            calibration: new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = InterCat.Analysis.Tests.TestSessions.Capture.Value,
+                ClockId = TestClock.Id.Value,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = 0, Utc = noon, AcquisitionUncertaintyNanoseconds = 200 }],
+            });
+        store.ReleaseSegmentReaders();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, calibrated, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == calibrated);
+
+            // Read on the wall clock, the session keeps the choice in its investigation, whose window says so.
+            ((WorkspaceViewModel)main.DataContext!).ReadsWallClock = true;
+            await main.InvestigationWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.WallClock);
+            const string Kept = "Opens with its times read on the wall clock, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Kept);
+            Assert.Equal(Kept, KeptLine(list).Text);
+
+            // Opened on its own, the session reads session time.
+            Assert.True(await main.OpenSessionAsync(calibrated));
+            Assert.False(((WorkspaceViewModel)main.DataContext!).ReadsWallClock);
+
+            // Opened from the investigation again, it reads the wall clock from its first view, and its status says so.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.DataContext is WorkspaceViewModel { ReadsWallClock: true });
+            Assert.True(main.GetControl<ToggleButton>("WallClockToggle").IsChecked);
+            Assert.Contains("which put back its times read on the wall clock.", main.GetControl<TextBlock>("CaptureDetail").Text,
+                StringComparison.Ordinal);
+
+            // Read in session time again, the investigation keeps nothing of the session.
+            ((WorkspaceViewModel)main.DataContext!).ReadsWallClock = false;
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+            WaitFor(() => window.View!.Members[0].Kept is null);
+
+            // A session whose capture recorded no wall clock is read in session time, whatever its layout says, and its notice
+            // says nothing of a wall clock it could not put back.
+            string plain = Directory.CreateDirectory(Path.Combine(root.Path, "plain")).FullName;
+            SessionStore imported = SessionStore.Open(LocalOwnedDirectory.Open(plain), Guid.NewGuid(), "investigation-window-tests");
+            Publish(imported,
+                [Transfer(1_100, ObservationKind.Send, AccountingSide.SendSide, 64, 100).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                    with { SessionRelativeTicks = 110_000 }],
+                capture: CaptureId.New());
+            imported.ReleaseSegmentReaders();
+            Guid b = InvestigationWorkspace.Add(workspace, plain, Committed).SessionId;
+            InvestigationWorkspace.SetLayout(workspace, b, [], Committed, scalesEachLane: true, wallClock: true);
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members.Count == 2);
+            list.SelectedIndex = 1;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == plain);
+            WaitFor(() => main.DataContext is WorkspaceViewModel { ScalesEachLane: true });
+            Assert.False(((WorkspaceViewModel)main.DataContext!).ReadsWallClock);
+            Assert.Contains("which put back each of its timeline lanes on its own scale.",
+                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>Opens pool.exe's group in <paramref name="workspace"/>, its lanes counted.</summary>
     private static async Task OpenPoolGroupAsync(WorkspaceViewModel workspace)
     {

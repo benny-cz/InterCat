@@ -5,7 +5,7 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>What resolving a member against its path found (`contracts/workspace-v18.md` §3).</summary>
+/// <summary>What resolving a member against its path found (`contracts/workspace-v19.md` §3).</summary>
 public enum WorkspaceMemberState
 {
     /// <summary>The path holds the member's session, at the selected generation.</summary>
@@ -28,7 +28,7 @@ public enum WorkspaceMemberState
 }
 
 /// <summary>
-/// One session of a workspace, by identity (`contracts/workspace-v18.md` §2): the session and the capture its journal
+/// One session of a workspace, by identity (`contracts/workspace-v19.md` §2): the session and the capture its journal
 /// records, the generation selected and its manifest's digest, its source clock's host, clock and epoch, and where it was
 /// last found.
 /// </summary>
@@ -59,7 +59,7 @@ public sealed record WorkspaceMember
 public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 
 /// <summary>
-/// A workspace as its file holds it (`workspace-v18`): a `workspace-v1` file is read as one without alignments, a
+/// A workspace as its file holds it (`workspace-v19`): a `workspace-v1` file is read as one without alignments, a
 /// `workspace-v2` file as one with manual alignments only, a `workspace-v3` file as one without join decisions, a
 /// `workspace-v4` file as one whose alignments each have one anchor, a `workspace-v5` file as one whose members are each
 /// aligned to the time reference itself, a `workspace-v6` file as one without host confirmations, a `workspace-v7` file
@@ -68,8 +68,8 @@ public sealed record WorkspaceHostAlias(Guid HostId, string Alias);
 /// rank nothing, a `workspace-v12` file as one whose layouts count correlated evidence, a `workspace-v13` file as one
 /// whose layouts read every timeline lane on one scale, a `workspace-v14` file as one that keeps no window's panes, a
 /// `workspace-v15` file as one whose layouts pin no timeline lane, a `workspace-v16` file as one whose layouts group every
-/// session's processes by executable, and a `workspace-v17` file as one whose layouts set no session's InterCat processes
-/// aside.
+/// session's processes by executable, a `workspace-v17` file as one whose layouts set no session's InterCat processes
+/// aside, and a `workspace-v18` file as one whose layouts read no session's times on the wall clock.
 /// </summary>
 public sealed record InvestigationWorkspaceFile
 {
@@ -142,13 +142,20 @@ public sealed record WorkspaceHost(Guid HostId, string? Alias, IReadOnlyList<Gui
 }
 
 /// <summary>
-/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v18` file that references its members by
+/// An investigation over separately valid sessions (§8.4, ADR-038): one `workspace-v19` file that references its members by
 /// identity and never writes to a session. A capture is one member; a moved session stays an unresolved reference until a
 /// person relinks it, and a relink checks identity. Its time is one member's clock, to which a person aligns the others.
 /// </summary>
 public static partial class InvestigationWorkspace
 {
-    public const string Contract = "workspace-v18";
+    public const string Contract = "workspace-v19";
+
+    /// <summary>
+    /// The eighteenth version, revision 419's: layouts pin nodes and timeline lanes, group by terminal session, rank, keep
+    /// an evidence policy, read each timeline lane on its own scale and set InterCat's own processes aside, and the window's
+    /// panes are kept; no layout reads its times on the wall clock. It is read, and written as the current one.
+    /// </summary>
+    public const string EighteenthContract = "workspace-v18";
 
     /// <summary>
     /// The seventeenth version, revision 406's: layouts pin nodes and timeline lanes, group by terminal session, rank, keep
@@ -394,7 +401,7 @@ public static partial class InvestigationWorkspace
             ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
     }
 
-    /// <summary>Resolves every member against its path (`contracts/workspace-v18.md` §3), in the workspace's order.</summary>
+    /// <summary>Resolves every member against its path (`contracts/workspace-v19.md` §3), in the workspace's order.</summary>
     public static IReadOnlyList<WorkspaceMemberResolution> Resolve(
         string workspacePath,
         InvestigationWorkspaceFile workspace,
@@ -558,14 +565,14 @@ public static partial class InvestigationWorkspace
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
     {
-        if (workspace.Contract is not (Contract or SeventeenthContract or SixteenthContract or FifteenthContract or FourteenthContract or ThirteenthContract
+        if (workspace.Contract is not (Contract or EighteenthContract or SeventeenthContract or SixteenthContract or FifteenthContract or FourteenthContract or ThirteenthContract
             or TwelfthContract or EleventhContract or TenthContract or NinthContract or EighthContract or SeventhContract
             or SixthContract or FifthContract or FourthContract or ThirdContract or SecondContract or FirstContract))
         {
             return $"it is '{workspace.Contract}', not {FirstContract}, {SecondContract}, {ThirdContract}, {FourthContract}, "
                 + $"{FifthContract}, {SixthContract}, {SeventhContract}, {EighthContract}, {NinthContract}, {TenthContract}, "
                 + $"{EleventhContract}, {TwelfthContract}, {ThirteenthContract}, {FourteenthContract}, {FifteenthContract}, "
-                + $"{SixteenthContract}, {SeventeenthContract} or {Contract}";
+                + $"{SixteenthContract}, {SeventeenthContract}, {EighteenthContract} or {Contract}";
         }
 
         if (workspace.WorkspaceId == Guid.Empty)

@@ -98,10 +98,11 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>
     /// What a member keeps in its investigation beside its pins (§26.3): what its rows are ranked by and whether per
     /// second, the evidence policy its records are counted under, whether each timeline lane has its own scale, how its
-    /// processes are grouped, and whether InterCat's own processes are set aside (§19.5).
+    /// processes are grouped, whether InterCat's own processes are set aside (§19.5), and whether its times are read on the
+    /// wall clock (§6.2).
     /// </summary>
     private readonly record struct ViewSettings(RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy, bool ScalesEachLane,
-        LaneGrouping Grouping, bool CollectorsAside = false)
+        LaneGrouping Grouping, bool CollectorsAside = false, bool WallClock = false)
     {
         /// <summary>What a session opened on its own starts with, and an investigation that keeps nothing of it puts back.</summary>
         public static ViewSettings Default =>
@@ -112,7 +113,8 @@ public sealed partial class MainWindow : Window, IDisposable
         /// InterCat's own processes set aside as they chose (<paramref name="collectorsAside"/>).
         /// </summary>
         public static ViewSettings Of(WorkspaceViewModel workspace, LaneGrouping grouping, bool collectorsAside) =>
-            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping, collectorsAside);
+            new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping, collectorsAside,
+                workspace.ReadsWallClock);
     }
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -1224,7 +1226,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 [.. (layout?.PinnedLanes ?? []).Select(lane => new ProcessInstanceId(lane))],
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
                     layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane,
-                    layout.Grouping ?? LaneGrouping.Executable, layout.CollectorsAside),
+                    layout.Grouping ?? LaneGrouping.Executable, layout.CollectorsAside, layout.WallClock),
                 file.Panes);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -1242,7 +1244,7 @@ public sealed partial class MainWindow : Window, IDisposable
         WorkspaceLayout.Series(
         [
             .. WorkspaceLayout.Parts(pins, lanes, settings.Grouping, settings.RankBy, settings.PerSecond, settings.Policy,
-                settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside),
+                settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside, settings.WallClock),
             .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
         ]) is { Length: > 0 } restored
             ? $", which put back {restored}."
@@ -1273,7 +1275,7 @@ public sealed partial class MainWindow : Window, IDisposable
         Guid[] pinnedLanes = [.. lanes.Select(lane => lane.Value)];
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
             layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-            pinnedLanes, settings.Grouping, settings.CollectorsAside));
+            pinnedLanes, settings.Grouping, settings.CollectorsAside, settings.WallClock));
         _ = SayWhatIsKeptAsync(written, home);
     }
 
@@ -3020,6 +3022,8 @@ public sealed partial class MainWindow : Window, IDisposable
                             Grouping = GroupingShown(projected, laneGrouping),
                             // Said put back only where the session names some of InterCat's own to set aside.
                             CollectorsAside = collectorsAside && projected.Processes.Any(process => process.Collector is not null),
+                            // Said put back only where the session's capture recorded a wall clock to read it on.
+                            WallClock = kept.Settings.WallClock && projected.WallClock is not null,
                         },
                         kept.Panes);
             }
@@ -3048,6 +3052,7 @@ public sealed partial class MainWindow : Window, IDisposable
             replacement.RankBy = settings.RankBy;
             replacement.PerSecond = settings.PerSecond;
             replacement.ScalesEachLane = settings.ScalesEachLane;
+            replacement.ReadsWallClock = settings.WallClock;
         }
 
         // The lanes its investigation kept pinned are pinned before any group's lanes are counted, so they are drawn first.
@@ -3302,6 +3307,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) or nameof(WorkspaceViewModel.PinnedLanes)
                 or nameof(WorkspaceViewModel.RankBy) or nameof(WorkspaceViewModel.PerSecond) or nameof(WorkspaceViewModel.ScalesEachLane)
+                or nameof(WorkspaceViewModel.ReadsWallClock)
             && layoutHome is { } home)
         {
             KeepLayout(home);
