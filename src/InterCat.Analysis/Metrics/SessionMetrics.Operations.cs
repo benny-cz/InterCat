@@ -147,9 +147,9 @@ public static partial class SessionMetrics
             if (!peers.CollectedAlpc)
             {
                 return Unavailable(request, context.Generation, MetricUnavailableReason.NoLogicalOperations,
-                    $"{OtherEndsAskedFor(request)} needs the process at a call's other end, and this capture collected no "
-                    + "ALPC to link a call to the call that served it (operations-v1 §5c). A capture with the RPC peers "
-                    + "profile collects it: icat record --profile rpc-peers.");
+                    $"{OtherEndsAskedFor(request)} needs the process at a call's other end, and this generation holds no "
+                    + "ALPC record to link a call to the call that served it (operations-v1 §5c). A capture with the RPC "
+                    + "peers profile collects ALPC: icat record --profile rpc-peers.");
             }
 
             ends = CallEnds.Of(calls, peers, request, processes);

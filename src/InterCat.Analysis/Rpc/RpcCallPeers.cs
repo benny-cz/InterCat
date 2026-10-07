@@ -10,7 +10,10 @@ public enum RpcPeerState
     /// <summary>Its one send's one receive began a server call of the same interface and procedure.</summary>
     Served = 1,
 
-    /// <summary>The generation holds no ALPC record at all: its capture did not collect ALPC, so nothing is resolved.</summary>
+    /// <summary>
+    /// The generation holds no ALPC record at all, so nothing is resolved. Whether its capture collected ALPC is its coverage
+    /// ledger's to say, never this absence's (R21).
+    /// </summary>
     NoAlpcEvidence = 2,
 
     /// <summary>The call has no start or no stop, so it has no window to find its send in.</summary>

@@ -7,6 +7,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
@@ -180,11 +181,15 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             currentChannels = page.Channels;
             rows.ItemsSource = currentChannels.Select(Describe).ToArray();
             rows.SelectedIndex = currentChannels.Count > 0 ? 0 : -1;
-            caveat.Text = page.Caveat;
             nextCursor = page.NextCursor;
             next.IsEnabled = nextCursor is not null;
+
+            // What the capture covered of TCP is said once (R21): as the reason an empty list holds none, where it is
+            // announced, and beside the caveat under a list of channels.
+            string coverage = SessionCoverage.Sentence(page.Coverage[0], "the session");
+            caveat.Text = page.TotalChannels == 0 ? page.Caveat : page.Caveat + " " + coverage;
             status.Text = page.TotalChannels == 0
-                ? "No admitted paired TCP channel is in this scope. This is not proof of inactivity."
+                ? "No admitted paired TCP channel is in this scope. " + coverage
                 : $"Generation {page.Generation:N0} · {Spoken.Count(page.TotalChannels, "channel")} in scope "
                     + $"· {currentChannels.Count:N0} on this page"
                     + (nextCursor is null ? " · end of result" : " · more pages available");

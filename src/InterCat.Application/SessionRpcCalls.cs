@@ -19,7 +19,7 @@ public sealed record RpcChannelSummary(
     RpcCallDurations? Durations,
     long Records)
 {
-    /// <summary>Who is at the other end of the channel's calls; null when the capture collected no ALPC.</summary>
+    /// <summary>Who is at the other end of the channel's calls; null when the generation holds no ALPC record.</summary>
     public RpcChannelPeers? Peers { get; init; }
 
     /// <summary>The channel in words: which side's calls, and to what.</summary>
@@ -48,7 +48,7 @@ public sealed record RpcChannelList(Guid SessionId, long Generation, IReadOnlyLi
 /// <summary>One call of a channel, with the key that names it in every generation holding it.</summary>
 public sealed record RpcCallRow(string Key, RpcCall Call)
 {
-    /// <summary>The call's other end, or why none is known; null when the capture collected no ALPC.</summary>
+    /// <summary>The call's other end, or why none is known; null when the generation holds no ALPC record.</summary>
     public RpcCallPeerView? OtherEnd { get; init; }
 }
 

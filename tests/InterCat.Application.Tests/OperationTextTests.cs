@@ -55,6 +55,18 @@ public sealed class OperationTextTests
         _ = Assert.Throws<ArgumentOutOfRangeException>(() => OperationText.State((RpcCallState)99));
     }
 
+    [Fact(DisplayName = "R21: a call's other end reads in words, and one with no ALPC record to follow never says what the capture collected")]
+    public void AnOtherEndReadsInWords()
+    {
+        // Whether the capture collected ALPC is its coverage ledger's to say; a generation without one record of it says
+        // only that there is none to follow (operations-v1 §5c).
+        Assert.Equal("no ALPC record to follow", OperationText.PeerState(RpcPeerState.NoAlpcEvidence));
+        RpcPeerState[] stated = [.. Enum.GetValues<RpcPeerState>()];
+        Assert.Equal(stated.Length, stated.Select(OperationText.PeerState).Distinct(StringComparer.Ordinal).Count());
+        Assert.DoesNotContain(stated, state => OperationText.PeerState(state).Contains("collect", StringComparison.Ordinal));
+        _ = Assert.Throws<ArgumentOutOfRangeException>(() => OperationText.PeerState((RpcPeerState)99));
+    }
+
     [Fact(DisplayName = "R5: an operation's state reads as a call's does, and the tour's operations name their kind, direction and state in words")]
     public void AnOperationReadsInWords()
     {

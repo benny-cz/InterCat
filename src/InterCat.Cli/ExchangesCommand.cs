@@ -20,6 +20,12 @@ internal sealed record ExchangesDocument
     /// <summary>HTTP records whose source fields name no exchange, and so belong to none.</summary>
     public required long RecordsWithoutExchange { get; init; }
 
+    /// <summary>
+    /// What the capture covered of HTTP over the session (R21): whether an exchange it lists none of could have been seen
+    /// at all. The ledger says it, never the records' absence.
+    /// </summary>
+    public required IReadOnlyList<MechanismCoverage> Coverage { get; init; }
+
     public required IReadOnlyList<ExchangesGroupDocument> Groups { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
 }
@@ -162,7 +168,9 @@ internal static class ExchangesCommand
             ConsoleUi.Progress("Deriving process instances and grouping every HTTP buffer record by its exchange number.");
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
             HttpExchangeIndex index = HttpExchangeIndex.Derive(segments, fields, processes, cancellationToken);
-            document = Describe(full, manifest.Generation, index, clock, policy, pid, list);
+            IReadOnlyList<MechanismCoverage> coverage =
+                SessionCoverage.ForMechanisms(SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.Http]);
+            document = Describe(full, manifest.Generation, index, coverage, clock, policy, pid, list);
         }
 
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
@@ -189,6 +197,7 @@ internal static class ExchangesCommand
         string path,
         long generation,
         HttpExchangeIndex index,
+        IReadOnlyList<MechanismCoverage> coverage,
         SourceClockDescriptor clock,
         EvidencePolicy policy,
         int? pid,
@@ -249,6 +258,7 @@ internal static class ExchangesCommand
             BindingRule = ProcessInstanceIndex.BindingRule,
             EvidencePolicy = policy.ToString(),
             RecordsWithoutExchange = index.WithoutExchange,
+            Coverage = coverage,
             Groups = groups,
             Caveats =
             [
@@ -276,14 +286,16 @@ internal static class ExchangesCommand
                 $"{document.RecordsWithoutExchange:N0} HTTP records name no exchange and belong to none"));
         }
 
+        // Whether an exchange listed nowhere could have been seen at all is the ledger's to say (R21).
+        ConsoleUi.Note(SessionCoverage.Sentence(document.Coverage[0], "the session"));
         ConsoleUi.Line();
         if (document.Groups.Count == 0)
         {
             ConsoleUi.Note(document.RecordsWithoutExchange > 0
                 ? "No HTTP exchange is grouped: its HTTP records name no exchange number, so none can be told apart - as in a "
                     + "redacted package made by an earlier version of InterCat, which withheld the numbers."
-                : "This session holds no HTTP exchange: its capture kept no WinINet capture records, or none of the process "
-                    + "asked for.");
+                : "This session holds no HTTP exchange: it holds no WinINet capture record, or none of the process asked "
+                    + "for.");
             return;
         }
 
@@ -341,5 +353,6 @@ internal static class ExchangesCommand
         ConsoleUi.Line("  client process, each exchange with what was recorded of its request and response heads and bodies,");
         ConsoleUi.Line("  and how long it took. --pid narrows to one process and lists its first 20 exchanges; --exchanges");
         ConsoleUi.Line("  sets how many are listed per process. Nothing here reads content: icat content reads a buffer's.");
+        ConsoleUi.Line("  What the capture covered of HTTP is said from its coverage ledger, never from a count of none.");
     }
 }

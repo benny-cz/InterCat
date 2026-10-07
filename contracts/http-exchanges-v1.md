@@ -71,7 +71,10 @@ its number, the bytes of its two messages and how it was recorded; a click selec
 `http-exchanges-v1`: the session and generation, `groupingRule`, `bindingRule`, the evidence policy, the HTTP records
 that name no exchange, and per process its instance (or why none is admitted), its ladder key, its exchanges, how many
 were recorded whole, its buffer records, request and response bytes and median duration; with `--exchanges n` or
-`--pid`, its first exchanges, each with its key, number, first time, duration, completeness and four parts.
+`--pid`, its first exchanges, each with its key, number, first time, duration, completeness and four parts. Since
+revision 373 it states what the capture covered of HTTP over the session (`coverage`, each entry a mechanism, its
+state and the fact behind it), read from the coverage ledger (`coverage-v2` §4), so a listing of none says whether an
+exchange could have been seen at all; its report says it in the words `icat metric` uses.
 
 ## 5a. In a redacted package (revision 250)
 

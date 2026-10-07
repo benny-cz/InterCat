@@ -18,7 +18,14 @@ public sealed record SessionChannelPage(
     string? NextCursor,
     bool RestartRequired,
     string? RestartReason,
-    string Caveat);
+    string Caveat)
+{
+    /// <summary>
+    /// What the capture covered of TCP over the session (R21): whether a channel the page lists none of could have been
+    /// seen at all, which the ledger says and a count of none never does. Empty on a page that asks for a restart.
+    /// </summary>
+    public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
+}
 
 public static class SessionChannelQuery
 {
@@ -76,12 +83,12 @@ public static class SessionChannelQuery
             throw new ArgumentException("The cursor points outside this generation's channel set.", nameof(cursor));
 
         int count = Math.Min(pageSize, admitted.Length - offset);
-        CoverageState tcp = SessionCoverage.Of(SessionSegments.CoverageLedger(store.Root, manifest), Mechanism.Tcp).State;
+        MechanismCoverage tcp = SessionCoverage.Of(SessionSegments.CoverageLedger(store.Root, manifest), Mechanism.Tcp);
         Channel[] channels = [.. admitted.Skip(offset).Take(count)
-            .Select(relation => SessionOverviewProjector.ProjectChannel(relation, tcp))];
+            .Select(relation => SessionOverviewProjector.ProjectChannel(relation, tcp.State))];
         int next = offset + count;
         return new(identity, manifest.SessionId, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
-            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat);
+            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat) { Coverage = [tcp] };
     }
 
     private static string Identity(SessionManifestV1 manifest, ProcessInstanceId? scope, EvidencePolicy policy)

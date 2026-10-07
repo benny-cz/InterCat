@@ -266,6 +266,94 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "R21: icat operations, exchanges and channels say what the capture covered of what they list, never from a count of none")]
+    public async Task AListingSaysWhatTheCaptureCoveredOfIt()
+    {
+        using var tcp = new TemporarySession();
+        Publish(tcp.Store,
+        [
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 10_000 },
+            Transfer(110, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 2).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 11_000 },
+        ], coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [TcpEpoch()] });
+        tcp.Store.ReleaseSegmentReaders();
+        const string NotCollected = " was not collected over the session: no admitted descriptor records it.";
+
+        // A capture that collected TCP alone lists no RPC call and no HTTP exchange because it could see none, and says so
+        // from its ledger: what it holds never stands for what it collected.
+        (InterCatExitCode listed, string calls, _) = await Run("operations", tcp.Path);
+        Assert.Equal(InterCatExitCode.Success, listed);
+        Assert.Contains("RPC" + NotCollected, calls, StringComparison.Ordinal);
+        Assert.Contains("This session holds no RPC call record.", calls, StringComparison.Ordinal);
+        Assert.Contains("none resolved, the capture did not collect ALPC (icat record --profile rpc-peers does)", calls,
+            StringComparison.Ordinal);
+        Assert.Contains("HTTP" + NotCollected, (await Run("exchanges", tcp.Path)).Output, StringComparison.Ordinal);
+
+        // One that collected ALPC and was delivered none of it says it holds none to follow, not that it collected none.
+        using var quiet = new TemporarySession();
+        Publish(quiet.Store, [Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 10_000 }],
+            coverage: new CoverageLedgerV1 { Contract = CoverageLedgerV1.ContractName, Epochs = [TcpEpoch(alpc: true)] });
+        quiet.Store.ReleaseSegmentReaders();
+        Assert.Contains("none resolved, the generation holds no ALPC record (ALPC coverage: covered)",
+            (await Run("operations", quiet.Path)).Output, StringComparison.Ordinal);
+        Assert.Contains("TCP was covered over the session: 2 records from its 1 admitted descriptor, and nothing was reported lost.",
+            (await Run("channels", tcp.Path)).Output, StringComparison.Ordinal);
+
+        // A script reads the same coverage by the enumerations' names.
+        foreach ((string[] args, Func<JsonElement, JsonElement> coverage, (string, string)[] expected) in new (string[], Func<JsonElement, JsonElement>, (string, string)[])[]
+        {
+            (["operations", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Rpc", "NotCollected"), ("Alpc", "NotCollected")]),
+            (["exchanges", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Http", "NotCollected")]),
+            (["channels", tcp.Path, "--json"], root => root.GetProperty("page").GetProperty("coverage"), [("Tcp", "Covered")]),
+        })
+        {
+            using JsonDocument document = JsonDocument.Parse((await Run(args)).Output);
+            Assert.Equal(expected, coverage(document.RootElement).EnumerateArray().Select(entry =>
+                (entry.GetProperty("mechanism").GetString()!, entry.GetProperty("state").GetString()!)));
+        }
+
+        // A generation without a ledger judged nothing, and each listing says that, not that a source was left out.
+        (_, string unjudged, _) = await Run("operations", session.Path);
+        Assert.Contains("RPC's coverage over the session is unknown: this generation publishes no coverage ledger.", unjudged,
+            StringComparison.Ordinal);
+        Assert.Contains("none resolved, the generation holds no ALPC record (ALPC coverage: unknown)", unjudged,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("did not", unjudged, StringComparison.Ordinal);
+        Assert.Contains("HTTP's coverage over the session is unknown", (await Run("exchanges", session.Path)).Output,
+            StringComparison.Ordinal);
+        Assert.Contains("TCP's coverage over the session is unknown", (await Run("channels", session.Path)).Output,
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// A live epoch that collected one TCP descriptor, delivered two records and lost nothing, and with <paramref name="alpc"/>
+    /// an ALPC descriptor too, of which it was delivered nothing.
+    /// </summary>
+    private static CoverageEpochV1 TcpEpoch(bool alpc = false) => new()
+    {
+        Epoch = 1,
+        Acquisition = CoverageAcquisition.LiveCapture,
+        FirstDeliveredNativeTicks = 100,
+        LastDeliveredNativeTicks = 110,
+        Collected =
+        [
+            new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 10, Version = 0, Mechanism = Mechanism.Tcp },
+            .. alpc
+                ? new[] { new CoverageCollectedV1 { ProviderId = NetworkProvider, ProviderName = "network", EventId = 20, Version = 0, Mechanism = Mechanism.Alpc } }
+                : [],
+        ],
+        Deliveries = [new CoverageDeliveryV1 { ProviderId = NetworkProvider, EventId = 10, Version = 0, Delivered = 2, Admitted = 2, Omitted = 0 }],
+        Losses =
+        [
+            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+        ],
+    };
+
     [Fact(DisplayName = "§20.4: a command answering from the last complete generation says so, with what kept the newest from verifying")]
     public async Task AnAnswerFromTheLastCompleteGenerationSaysWhy()
     {

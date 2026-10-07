@@ -23,8 +23,15 @@ internal sealed record OperationsDocument
     public required long CallRecords { get; init; }
     public required long OtherRpcRecords { get; init; }
 
-    /// <summary>The ALPC sends and receives the other ends were followed through; none when the capture collected none.</summary>
+    /// <summary>The ALPC sends and receives the other ends were followed through; none when the generation holds none.</summary>
     public required long AlpcRecords { get; init; }
+
+    /// <summary>
+    /// What the capture covered of the two mechanisms this listing reads, RPC and then ALPC, over the session (R21): whether
+    /// a call it lists none of, or an other end it resolves none of, could have been seen at all. The ledger says it, never
+    /// the records' absence.
+    /// </summary>
+    public required IReadOnlyList<MechanismCoverage> Coverage { get; init; }
 
     public required RpcCallCounts Totals { get; init; }
     public required IReadOnlyList<OperationsGroupDocument> Groups { get; init; }
@@ -228,7 +235,10 @@ internal static class OperationsCommand
             ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
             RpcCallIndex index = RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken);
             RpcPeerIndex peers = RpcPeerIndex.Derive(index, segments, fields, cancellationToken);
-            document = Describe(full, manifest.Generation, index, peers, segments, clock, policy, pid, rpcInterface, calls);
+            IReadOnlyList<MechanismCoverage> coverage = SessionCoverage.ForMechanisms(
+                SessionSegments.CoverageLedger(store.Root, manifest), [Mechanism.Rpc, Mechanism.Alpc]);
+            document = Describe(full, manifest.Generation, index, peers, coverage, segments, clock, policy, pid, rpcInterface,
+                calls);
         }
 
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
@@ -256,6 +266,7 @@ internal static class OperationsCommand
         long generation,
         RpcCallIndex index,
         RpcPeerIndex peers,
+        IReadOnlyList<MechanismCoverage> coverage,
         SegmentReaderV1[] segments,
         SourceClockDescriptor clock,
         EvidencePolicy policy,
@@ -310,6 +321,7 @@ internal static class OperationsCommand
             CallRecords = index.CallRecords,
             OtherRpcRecords = index.OtherRpcRecords,
             AlpcRecords = peers.AlpcSends + peers.AlpcReceives,
+            Coverage = coverage,
             Totals = index.Totals,
             Groups = groups,
             Caveats =
@@ -388,10 +400,14 @@ internal static class OperationsCommand
         ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
         long clientCalls = document.Groups.Where(group => group.Side == "Client").Sum(group => group.Counts.Calls);
         long served = document.Groups.Where(group => group.Side == "Client").Sum(group => group.OtherEnds.Linked);
+        MechanismCoverage rpc = document.Coverage[0];
+        MechanismCoverage alpc = document.Coverage[1];
         ConsoleUi.Field(
             "Other ends",
             document.AlpcRecords == 0
-                ? $"{document.PeerRule}: none resolved, the capture collected no ALPC (icat record --profile rpc-peers does)"
+                ? $"{document.PeerRule}: none resolved, " + (alpc.State == CoverageState.NotCollected
+                    ? "the capture did not collect ALPC (icat record --profile rpc-peers does)"
+                    : $"the generation holds no ALPC record (ALPC coverage: {CoverageStateText.Value(alpc.State)})")
                 : string.Create(CultureInfo.CurrentCulture,
                     $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {served:N0} of the {clientCalls:N0} client calls listed were served"));
         ConsoleUi.Field(
@@ -405,11 +421,13 @@ internal static class OperationsCommand
             $"{totals.Calls:N0}: {totals.Completed:N0} completed ({totals.Failed:N0} failed), {totals.OpenAtCaptureEnd:N0} open at capture end"));
         ConsoleUi.Field("Not paired", string.Create(CultureInfo.CurrentCulture,
             $"{totals.StartNotObserved:N0} without {CountText.Agree(totals.StartNotObserved, "its", "their")} start, {totals.NoActivityId:N0} without an activity id, {totals.Ambiguous:N0} ambiguous"));
+        // Whether a call listed nowhere could have been seen at all is the ledger's to say, not the records' absence (R21).
+        ConsoleUi.Note(SessionCoverage.Sentence(rpc, "the session"));
         ConsoleUi.Line();
         if (document.Groups.Count == 0)
         {
             ConsoleUi.Note(document.CallRecords == 0
-                ? "This session holds no RPC call record: its capture did not include the RPC source."
+                ? "This session holds no RPC call record."
                 : "No group matches the process or interface asked for.");
         }
         else
@@ -518,7 +536,8 @@ internal static class OperationsCommand
         ConsoleUi.Line("  side of one process (contracts/operations-v1.md). Calls are grouped by process, side and");
         ConsoleUi.Line("  interface, with completions, failures, open calls and durations, and every call that could");
         ConsoleUi.Line("  not be paired is counted by its reason. When the capture collected ALPC (--profile rpc-peers),");
-        ConsoleUi.Line("  each client call's other end is the server call its one ALPC message reached (ADR-034).");
+        ConsoleUi.Line("  each client call's other end is the server call its one ALPC message reached (ADR-034). What the");
+        ConsoleUi.Line("  capture covered of RPC and ALPC is said from its coverage ledger, never from a count of none.");
         ConsoleUi.Line();
         ConsoleUi.Line("  --pid <id>             Only the groups of this PID, with their first calls.");
         ConsoleUi.Line("  --interface <uuid>     Only the groups of this RPC interface, with their first calls.");

@@ -60,6 +60,11 @@ public sealed class ChannelBrowserWindowTests
         Channel opened = Assert.IsType<Channel>(await chosen);
         Assert.Equal(Assert.Single(snapshot.Channels).Key, opened.Key);
 
+        // Beneath a list of channels the caveat ends with what the capture covered of TCP, which this one did not judge (R21).
+        Assert.EndsWith(" TCP's coverage over the session is unknown: this generation publishes no coverage ledger.",
+            browser.GetVisualDescendants().OfType<TextBlock>().Single(block =>
+                block.Text?.StartsWith("Only paired TCP", StringComparison.Ordinal) == true).Text, StringComparison.Ordinal);
+
         // Escape closes the browser with no channel chosen, as it cancels InterCat's prompts.
         using var again = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
         Task<Channel?> cancelled = again.ShowDialog<Channel?>(owner);
@@ -67,6 +72,66 @@ public sealed class ChannelBrowserWindowTests
         again.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         Dispatch();
         Assert.Null(await cancelled);
+        owner.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R21: the channel browser says what the capture covered of TCP, as the reason an empty list holds none")]
+    public async Task AnEmptyBrowserSaysWhatTheCaptureCoveredOfTcp()
+    {
+        // A capture that collected process lifecycle alone holds no channel because it could see none.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+            [Lifecycle(1, ObservationKind.Inventory, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 }],
+            coverage: new CoverageLedgerV1
+            {
+                Contract = CoverageLedgerV1.ContractName,
+                Epochs =
+                [
+                    new CoverageEpochV1
+                    {
+                        Epoch = 1,
+                        Acquisition = CoverageAcquisition.LiveCapture,
+                        FirstDeliveredNativeTicks = 1,
+                        LastDeliveredNativeTicks = 1,
+                        Collected =
+                        [
+                            new CoverageCollectedV1
+                            {
+                                ProviderId = ProcessProvider, ProviderName = "process", EventId = 1, Version = 0,
+                                Mechanism = Mechanism.ProcessLifecycle,
+                            },
+                        ],
+                        Deliveries = [new CoverageDeliveryV1 { ProviderId = ProcessProvider, EventId = 1, Version = 0, Delivered = 1, Admitted = 1, Omitted = 0 }],
+                        Losses =
+                        [
+                            new CoverageLossV1 { Layer = LossLayer.SourceSession, Lost = 0 },
+                            new CoverageLossV1 { Layer = LossLayer.ConsumerBuffers, Lost = 0 },
+                            new CoverageLossV1 { Layer = LossLayer.CallbackQueue, Lost = 0 },
+                            new CoverageLossV1 { Layer = LossLayer.Storage, Lost = 0 },
+                        ],
+                    },
+                ],
+            });
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
+        Task<Channel?> closed = browser.ShowDialog<Channel?>(owner);
+        TextBlock status = browser.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => AutomationProperties.GetName(block) == "Channels status");
+        for (int wait = 0; wait < 250 && status.Text?.StartsWith("No admitted", StringComparison.Ordinal) != true; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        // The announced status says why the list is empty, and the caveat beneath it does not say it again.
+        Assert.Equal("No admitted paired TCP channel is in this scope. TCP was not collected over the session: no admitted "
+            + "descriptor records it.", status.Text);
+        Assert.DoesNotContain(browser.GetVisualDescendants().OfType<TextBlock>(), block =>
+            block != status && block.Text?.Contains("was not collected", StringComparison.Ordinal) == true);
+        browser.Close();
+        Assert.Null(await closed);
         owner.Close();
     }
 

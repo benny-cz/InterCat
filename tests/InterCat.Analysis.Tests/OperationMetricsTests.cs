@@ -273,7 +273,7 @@ public sealed class OperationMetricsTests
         {
             (DurationRequest(DurationInterval.IoCompletion), "No IoCompletion operation is derived"),
             (Request(Metric.ActiveChannels), "connection incarnations"),
-            (Request(Metric.ActivePeers) with { Owner = client }, "this capture collected no ALPC"),
+            (Request(Metric.ActivePeers) with { Owner = client }, "this generation holds no ALPC record"),
             (Request(Metric.Errors) with { AccountingSide = AccountingSide.SendSide }, "no call is accounted to a side"),
             (Request(Metric.OperationsStarted) with { Participant = client }, "participant(P) needs the process at a call's other end"),
             (Request(Metric.OperationsStarted) with { Sender = client }, "sender(P) selects data that flowed one way"),

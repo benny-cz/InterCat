@@ -91,7 +91,7 @@ public static class OperationText
     public static string PeerState(RpcPeerState state) => state switch
     {
         RpcPeerState.Served => "served",
-        RpcPeerState.NoAlpcEvidence => "the capture collected no ALPC",
+        RpcPeerState.NoAlpcEvidence => "no ALPC record to follow",
         RpcPeerState.NotCompleted => "not completed, so no window to follow",
         RpcPeerState.NoSend => "no ALPC send on its thread during the call",
         RpcPeerState.SeveralSends => "several ALPC sends during the call",

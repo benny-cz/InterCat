@@ -126,7 +126,7 @@ Every other shape leaves the call's other end unresolved, with its reason:
 
 | Reason | Meaning |
 |---|---|
-| `NoAlpcEvidence` | the generation holds no ALPC record: its capture did not collect ALPC, and nothing is resolved |
+| `NoAlpcEvidence` | the generation holds no ALPC record, so nothing is resolved; whether its capture collected ALPC is its coverage ledger's to say (`coverage-v2`), never this absence's (R21) |
 | `NotCompleted` | the call has no start or no stop, so it has no window |
 | `NoSend` | no send in the window on the call's thread: another transport, or a send not delivered |
 | `SeveralSends` | more than one send in the window: which one carried the call cannot be told |
@@ -158,6 +158,12 @@ evidence policy admits both calls' bindings. The edge is correlated at best, as 
 the call records at its two ends - a client call's start and stop, and the server call's start and stop when it has
 one - never the ALPC records that link them. Under an interval it counts those its readings fall in. A generation
 whose coverage ledger names no collected ALPC descriptor draws none and reads nothing for them.
+
+Revision 373: `icat operations` states beside the calls it lists what the capture covered of RPC and of ALPC over the
+session, from its coverage ledger (`coverage-v2` §4). Its JSON's `coverage` lists the two in that order, each with its
+state and the fact behind it; its report says RPC's in the words `icat metric` uses and, when it resolves no other end,
+whether the capture collected ALPC or only holds no record of it. A count of none never stands for a source the
+capture lacked, and a generation without a ledger says it judged nothing.
 
 ## 6. Assumptions
 

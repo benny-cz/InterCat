@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
@@ -504,6 +505,11 @@ public sealed class SessionOverviewTests
     [Fact(DisplayName = "R21: a process row states what the capture collected and a channel row TCP, over the session and within an interval")]
     public void RowsStateTheCapturesCoverage()
     {
+        var ledger = new CoverageLedgerV1
+        {
+            Contract = CoverageLedgerV1.ContractName,
+            Epochs = [LiveEpoch(1, 0, 24, lost: 0), LiveEpoch(2, 25, 40, lost: 1)],
+        };
         using var session = new TemporarySession();
         Publish(session.Store,
         [
@@ -514,18 +520,20 @@ public sealed class SessionOverviewTests
                 .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = 2_000 },
             Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4)
                 .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 3_000 },
-        ], coverage: new CoverageLedgerV1
-        {
-            Contract = CoverageLedgerV1.ContractName,
-            Epochs = [LiveEpoch(1, 0, 24, lost: 0), LiveEpoch(2, 25, 40, lost: 1)],
-        });
+        ], coverage: ledger);
 
         // Over the session the second epoch's loss is in every row: a count is only as complete as the capture was. How
         // an instance is known to exist is said in words, not the enumeration's name (R5).
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         Assert.All(overview.Nodes, node => Assert.Equal(CoverageState.PartialGap, node.Coverage));
         Assert.Equal(CoverageState.PartialGap, Assert.Single(overview.Channels).Coverage);
-        Assert.Equal(CoverageState.PartialGap, Assert.Single(SessionChannelQuery.Read(session.Store).Channels).Coverage);
+        SessionChannelPage page = SessionChannelQuery.Read(session.Store);
+        Assert.Equal(CoverageState.PartialGap, Assert.Single(page.Channels).Coverage);
+
+        // A page of channels says what the capture covered of TCP, with the fact behind it, as a page of none would.
+        MechanismCoverage tcp = Assert.Single(page.Coverage);
+        Assert.Equal((Mechanism.Tcp, CoverageState.PartialGap), (tcp.Mechanism, tcp.State));
+        Assert.Equal(SessionCoverage.Of(ledger, Mechanism.Tcp), tcp);
         Assert.Equal("created during capture", overview.Nodes.Single(node => node.ProcessId == 100).Role);
         Assert.Equal("seen only in its own records", overview.Nodes.Single(node => node.ProcessId == 200).Role);
 

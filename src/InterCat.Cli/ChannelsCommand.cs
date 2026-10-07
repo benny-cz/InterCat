@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -99,6 +100,8 @@ internal static class ChannelsCommand
         ConsoleUi.Field("Channels in scope", ConsoleUi.Count(page.TotalChannels));
         foreach (Channel channel in page.Channels)
             ConsoleUi.Line($"  {channel.Key} · {channel.Name} · {channel.ObservationCount:N0} observed records");
+        // Whether a channel listed nowhere could have been seen at all is the ledger's to say (R21).
+        ConsoleUi.Note(SessionCoverage.Sentence(page.Coverage[0], "the session"));
         ConsoleUi.Note(page.Caveat);
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat channels <directory> --cursor {page.NextCursor}"
@@ -163,7 +166,8 @@ internal static class ChannelsCommand
     {
         ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
-        ConsoleUi.Line("  Read-only pages of admitted paired TCP channels, even above the overview bound.");
+        ConsoleUi.Line("  Read-only pages of admitted paired TCP channels, even above the overview bound, with what the");
+        ConsoleUi.Line("  capture covered of TCP, from its coverage ledger, so a page of none is not read as no traffic.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes by stable instance ID.");
         ConsoleUi.Line("  --one-sided lists the process's connections whose other end no record holds - most often");
         ConsoleUi.Line("  another host's - with their records and bytes, as its rung does.");
