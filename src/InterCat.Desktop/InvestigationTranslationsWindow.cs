@@ -26,6 +26,18 @@ internal sealed class InvestigationTranslationsWindow : Window
 {
     private readonly string path;
     private readonly ListBox known = new() { SelectionMode = SelectionMode.Single, MinHeight = 90, MaxHeight = 220 };
+
+    /// <summary>What the list says in its place while it holds no translation, so an empty list never reads as one loading.</summary>
+    private readonly TextBlock none = new()
+    {
+        Text = "No translation is stated, so candidate joins mirror only endpoints the two captures name alike.",
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Margin = new Thickness(10, 8),
+        IsHitTestVisible = false,
+        IsVisible = false,
+        Classes = { "muted" },
+    };
     private readonly TextBox seen = new() { Watermark = "such as 203.0.113.7:8443" };
     private readonly TextBox actual = new() { Watermark = "such as 10.0.0.5:443" };
     private readonly TextBox note = new() { Watermark = "optional, such as: the router forwards 8443 to the web server" };
@@ -77,7 +89,7 @@ internal sealed class InvestigationTranslationsWindow : Window
                         + "both are an address alone, whose ports pass through; a loopback address is never translated.",
                     TextWrapping = TextWrapping.Wrap,
                 },
-                known,
+                new Grid { Children = { known, none } },
                 new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { withdraw } },
                 Field("Seen as", seen),
                 Field("is", actual),
@@ -139,7 +151,10 @@ internal sealed class InvestigationTranslationsWindow : Window
     {
         try
         {
-            known.ItemsSource = InvestigationWorkspace.TranslationsInForce(InvestigationWorkspace.Read(path)).Select(translation => new TranslationRow(translation)).ToArray();
+            TranslationRow[] rows = [.. InvestigationWorkspace.TranslationsInForce(InvestigationWorkspace.Read(path))
+                .Select(translation => new TranslationRow(translation))];
+            known.ItemsSource = rows;
+            none.IsVisible = rows.Length == 0;
         }
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)

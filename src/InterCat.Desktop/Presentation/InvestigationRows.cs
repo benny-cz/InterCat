@@ -23,6 +23,9 @@ public sealed record InvestigationMemberRow(
     Guid HostId = default,
     string? Kept = null) : IAccessibleRow
 {
+    /// <summary>The alignment in force for it, which aligning it again starts from; null when it has none.</summary>
+    public WorkspaceAlignment? Alignment { get; init; }
+
     /// <summary>Whether it has a place in the investigation's time: it is its clock, or aligned to a session that has one.</summary>
     public bool IsPlaced => IsTimeReference || IsAligned;
 
@@ -121,7 +124,10 @@ public static class InvestigationRows
                         ? [.. chain.Links.Skip(1).Select(link => link.Clock)]
                         : [],
                     member.HostId,
-                    Kept(InvestigationWorkspace.LayoutOf(workspace, member.SessionId), culture));
+                    Kept(InvestigationWorkspace.LayoutOf(workspace, member.SessionId), culture))
+                {
+                    Alignment = InvestigationWorkspace.ActiveAlignment(workspace, member.SessionId),
+                };
             }),
         ];
 

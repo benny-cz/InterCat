@@ -764,9 +764,11 @@ public sealed class InvestigationWindowTests
             Assert.True(Named<Button>(window, "Align the selected session to the investigation's time").IsEnabled);
             Assert.False(Named<Button>(window, "Withdraw alignment").IsEnabled);
 
-            // The dialog aligns to the other session's clock, and says in words what it needs.
+            // The dialog aligns to the other session's clock, and says in words what it needs; a session aligned to nothing yet
+            // has no alignment in force to state.
             InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
             dialog.Show(window);
+            Assert.False(Named<TextBlock>(dialog, "The alignment in force").IsVisible);
             Assert.False(await dialog.AlignAsync());
             Assert.Equal("Write both instants in seconds of their own session's time, such as 12.5.",
                 Named<TextBlock>(dialog, "Alignment status").Text);
@@ -850,6 +852,89 @@ public sealed class InvestigationWindowTests
                 time, StringComparison.Ordinal);
             Assert.EndsWith($", so its clock runs +10 ppm against the reference's, its rate wandering at most {0.5m.ToString("0.###", culture)} ppm",
                 time, StringComparison.Ordinal);
+
+            // Opened again, the dialog starts from that alignment, says it, and aligning from it states the same again.
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            InvestigationAlignWindow again = window.AlignDialogForSelected()!;
+            again.Show(window);
+            TextBlock now = Named<TextBlock>(again, "The alignment in force");
+            Assert.True(now.IsVisible);
+            Assert.Equal($"Now: {time}. Aligning it again replaces this; withdrawing it is in the investigation's window.", now.Text);
+            string[] boxes =
+            [
+                "The instant in this session, in seconds", "The same instant in the reference session, in seconds",
+                "A second instant in this session, in seconds, to measure the clocks' rate; optional",
+                "The same second instant in the reference session, in seconds", "How sure the instant is, as a duration with its unit",
+                "How fast the two clocks drift apart at most, in parts per million, if known",
+            ];
+            Assert.Equal(["1", "3", "11", 13.0001m.ToString(culture), "1 ms", 0.5.ToString("R", culture)],
+                boxes.Select(name => Named<TextBox>(again, name).Text));
+
+            // Each box keeps its own height beside a hint of several lines, the drift's beside the longest.
+            Save(again, "investigation-align-again.png");
+            Assert.True(Named<TextBox>(again, boxes[^1]).IsEffectivelyVisible);
+            Assert.All(boxes, name => Assert.Equal(Named<TextBox>(again, boxes[0]).Bounds.Height, Named<TextBox>(again, name).Bounds.Height, 1));
+            Assert.True(await again.AlignAsync());
+            WorkspaceAlignment restated = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
+            Assert.Equal(made with { Revision = restated.Revision, RecordedUtc = restated.RecordedUtc }, restated);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.2: a session aligned by its wall clock opens the Align dialog on that alignment, and an investigation with no translation or view says so in each list's place")]
+    public async Task TheDialogsStartFromWhatIsKept()
+    {
+        using var root = new TemporaryDirectory();
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(root.Path, "demo"));
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(demo.WorkspacePath);
+            WaitFor(() => window.View is not null);
+            InvestigationMemberRow server = window.View!.Members.Single(row => row.Alignment is not null);
+            WorkspaceAlignment aligned = server.Alignment!;
+            Assert.Equal(WorkspaceAlignmentMode.WallClock, aligned.Mode);
+
+            // The dialog opens on the wall clocks, the reference and what was stated of them, and says the alignment in force.
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedItem = server;
+            InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
+            dialog.Show(window);
+            CultureInfo culture = CultureInfo.CurrentCulture;
+            Assert.Equal((true, false, false), (Named<RadioButton>(dialog, "By their wall clocks").IsChecked == true,
+                Named<RadioButton>(dialog, "By one or two instants I read in both").IsChecked == true,
+                Named<RadioButton>(dialog, "By their boot: exact, when both captures recorded one boot").IsChecked == true));
+            Assert.Equal(InvestigationInput.WriteDuration(aligned.SynchronizationNanoseconds!.Value, culture),
+                Named<TextBox>(dialog, "How closely the two wall clocks agreed, with its unit").Text);
+            Assert.Equal(InvestigationInput.WritePartsPerMillion(aligned.DriftPartsPerMillion!.Value, culture),
+                Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million").Text);
+            Assert.Equal(aligned.ReferenceSessionId, Assert.IsType<AlignmentReference>(Named<ComboBox>(dialog,
+                "The session to align to: the investigation's clock, or a session placed in it").SelectedItem).SessionId);
+            Assert.StartsWith("Now: Aligned by the wall clocks", Named<TextBlock>(dialog, "The alignment in force").Text, StringComparison.Ordinal);
+            Save(dialog, "investigation-align-wall-clock.png");
+
+            // Aligning from what it opened on states the same alignment again.
+            Assert.True(await dialog.AlignAsync());
+            WorkspaceAlignment restated = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(demo.WorkspacePath), server.SessionId)!;
+            Assert.Equal(aligned with { Revision = restated.Revision, RecordedUtc = restated.RecordedUtc, Note = restated.Note }, restated);
+
+            // The demo states no translation and saves no view: each list says so in its place.
+            foreach ((Window list, string none) in new (Window, string)[]
+            {
+                (window.TranslationsDialog(), "No translation is stated, so candidate joins mirror only endpoints the two captures name alike."),
+                (window.ViewsDialog(), "No view is saved yet: name the interval the timeline shows, below, to show it again."),
+            })
+            {
+                list.Show(window);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                Assert.True(list.GetVisualDescendants().OfType<TextBlock>().Single(text => text.Text == none).IsEffectivelyVisible, none);
+                list.Close();
+            }
+
             window.Close();
         }
         finally
@@ -898,6 +983,14 @@ public sealed class InvestigationWindowTests
             Assert.StartsWith($"Aligned by a person to session {Short(b)}, itself aligned: its {0m.ToString("0.000", culture)} s is "
                 + $"session {Short(b)}'s {1m.ToString("0.000", culture)} s", window.View!.Members[2].Time, StringComparison.Ordinal);
             Assert.EndsWith(", directly or through another.", window.View.Time, StringComparison.Ordinal);
+
+            // Opened again, gamma's dialog starts from beta, the session it is aligned to.
+            list.SelectedIndex = 2;
+            InvestigationAlignWindow gammas = window.AlignDialogForSelected()!;
+            gammas.Show(window);
+            Assert.Equal(b, Assert.IsType<AlignmentReference>(Named<ComboBox>(gammas,
+                "The session to align to: the investigation's clock, or a session placed in it").SelectedItem).SessionId);
+            gammas.Close();
 
             // Beta, which gamma is aligned through, may be aligned only to the investigation's clock now: never through gamma.
             list.SelectedIndex = 1;

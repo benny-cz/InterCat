@@ -27,6 +27,18 @@ internal sealed class InvestigationViewsWindow : Window
     private readonly string path;
     private readonly TimeRange? shown;
     private readonly ListBox views = new() { SelectionMode = SelectionMode.Single, MinHeight = 90, MaxHeight = 240 };
+
+    /// <summary>What the list says in its place while it holds no view, so an empty list never reads as one loading.</summary>
+    private readonly TextBlock none = new()
+    {
+        Text = "No view is saved yet: name the interval the timeline shows, below, to show it again.",
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Margin = new Thickness(10, 8),
+        IsHitTestVisible = false,
+        IsVisible = false,
+        Classes = { "muted" },
+    };
     private readonly TextBox name = new() { Watermark = "such as: the upload stalls" };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
     private readonly Button show = new() { Content = "Show", IsEnabled = false, Classes = { "primary" } };
@@ -95,7 +107,7 @@ internal sealed class InvestigationViewsWindow : Window
                         + "reference session's clock: one saved before the time reference changed is kept, and not shown.",
                     TextWrapping = TextWrapping.Wrap,
                 },
-                views,
+                new Grid { Children = { views, none } },
                 new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Children = { remove, show } },
                 new TextBlock
                 {
@@ -135,8 +147,10 @@ internal sealed class InvestigationViewsWindow : Window
         try
         {
             InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(path);
-            views.ItemsSource = InvestigationWorkspace.ViewsInForce(workspace)
-                .Select(view => new ViewRow(view, InvestigationWorkspace.ViewIsCurrent(workspace, view))).ToArray();
+            ViewRow[] rows = [.. InvestigationWorkspace.ViewsInForce(workspace)
+                .Select(view => new ViewRow(view, InvestigationWorkspace.ViewIsCurrent(workspace, view)))];
+            views.ItemsSource = rows;
+            none.IsVisible = rows.Length == 0;
         }
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)

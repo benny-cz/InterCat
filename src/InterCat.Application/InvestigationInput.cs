@@ -50,6 +50,31 @@ public static partial class InvestigationInput
             ? rate
             : null;
 
+    /// <summary>
+    /// A duration as <see cref="Duration"/> reads it back exactly: in the largest unit it fills at least once, its digits
+    /// as many as it has, so a dialog filled with what was stated says what was stated - 2,100,000 ns as "2.1 ms".
+    /// </summary>
+    public static string WriteDuration(long nanoseconds, IFormatProvider? culture = null)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(nanoseconds);
+        (decimal scale, string unit) = nanoseconds switch
+        {
+            >= 1_000_000_000 => (1_000_000_000m, "s"),
+            >= 1_000_000 => (1_000_000m, "ms"),
+            >= 1_000 => (1_000m, "µs"),
+            _ => (1m, "ns"),
+        };
+        return (nanoseconds / scale).ToString("0.#########", culture ?? CultureInfo.CurrentCulture) + " " + unit;
+    }
+
+    /// <summary>An instant of session time in seconds, as <see cref="Seconds"/> reads it back exactly.</summary>
+    public static string WriteSeconds(long nanoseconds, IFormatProvider? culture = null) =>
+        (nanoseconds / 1_000_000_000m).ToString("0.#########", culture ?? CultureInfo.CurrentCulture);
+
+    /// <summary>A rate in parts per million, as <see cref="PartsPerMillion"/> reads it back exactly.</summary>
+    public static string WritePartsPerMillion(double rate, IFormatProvider? culture = null) =>
+        rate.ToString("R", culture ?? CultureInfo.CurrentCulture);
+
     [GeneratedRegex(@"^([0-9]+(?:[.,][0-9]+)?)\s*(ns|us|µs|ms|s)$", RegexOptions.CultureInvariant)]
     private static partial Regex DurationPattern();
 }

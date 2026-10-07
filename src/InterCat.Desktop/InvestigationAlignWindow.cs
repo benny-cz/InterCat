@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
@@ -38,6 +39,9 @@ internal sealed class InvestigationAlignWindow : Window
     private readonly TextBox secondReferenceAt = new() { Watermark = "optional", Width = 160 };
     private readonly TextBox note = new() { Watermark = "optional" };
     private readonly TextBlock status = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12 };
+
+    /// <summary>The alignment in force, said before the form that replaces it; hidden for a session with none.</summary>
+    private readonly TextBlock now = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly StackPanel wallClockFields;
     private readonly StackPanel instantFields;
     private readonly Button align = new() { Content = "Align", Classes = { "primary" } };
@@ -61,6 +65,7 @@ internal sealed class InvestigationAlignWindow : Window
             ?? (references.Count > 0 ? references[0] : null);
         reference.IsEnabled = references.Count > 1;
         byInstant.IsChecked = true;
+        StartFrom(member, references);
         AutomationProperties.SetName(reference, "The session to align to: the investigation's clock, or a session placed in it");
         TrimmedChoices.Apply(reference);
         AutomationProperties.SetHelpText(byBoot, "Align exactly by the boot both captures recorded");
@@ -76,6 +81,7 @@ internal sealed class InvestigationAlignWindow : Window
         AutomationProperties.SetName(secondReferenceAt, "The same second instant in the reference session, in seconds");
         AutomationProperties.SetName(note, "A note about this alignment");
         AutomationProperties.SetName(status, "Alignment status");
+        AutomationProperties.SetName(now, "The alignment in force");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(align, "Align this session");
 
@@ -122,6 +128,7 @@ internal sealed class InvestigationAlignWindow : Window
                     Text = $"Place {name}'s instants in the investigation's time by aligning them to this session's:",
                     TextWrapping = TextWrapping.Wrap,
                 },
+                now,
                 reference,
                 byBoot,
                 byWallClock,
@@ -147,6 +154,43 @@ internal sealed class InvestigationAlignWindow : Window
                 },
             },
         };
+    }
+
+    /// <summary>
+    /// A session aligned already opens on how it is aligned - its method, its reference and what was stated - and says the
+    /// alignment in force, so aligning it again starts from that alignment, never from a blank form that reads as none.
+    /// </summary>
+    private void StartFrom(InvestigationMemberRow member, IReadOnlyList<AlignmentReference> references)
+    {
+        if (member.Alignment is not { } alignment)
+        {
+            return;
+        }
+
+        now.Text = $"Now: {member.Time}. Aligning it again replaces this; withdrawing it is in the investigation's window.";
+        now.IsVisible = true;
+        if (references.FirstOrDefault(choice => choice.SessionId == alignment.ReferenceSessionId) is { } aligned)
+        {
+            reference.SelectedItem = aligned;
+        }
+
+        Choose(alignment.Mode);
+        if (alignment.Mode == WorkspaceAlignmentMode.WallClock)
+        {
+            agreement.Text = alignment.SynchronizationNanoseconds is { } agreed ? InvestigationInput.WriteDuration(agreed, CultureInfo.CurrentCulture) : agreement.Text;
+            wallDrift.Text = alignment.DriftPartsPerMillion is { } drift ? InvestigationInput.WritePartsPerMillion(drift, CultureInfo.CurrentCulture) : wallDrift.Text;
+        }
+        else if (alignment.Mode == WorkspaceAlignmentMode.Manual)
+        {
+            memberAt.Text = alignment.SessionNanoseconds is { } at ? InvestigationInput.WriteSeconds(at, CultureInfo.CurrentCulture) : null;
+            referenceAt.Text = alignment.ReferenceNanoseconds is { } referenceTime ? InvestigationInput.WriteSeconds(referenceTime, CultureInfo.CurrentCulture) : null;
+            within.Text = alignment.WithinNanoseconds is { } bound ? InvestigationInput.WriteDuration(bound, CultureInfo.CurrentCulture) : within.Text;
+            secondMemberAt.Text = alignment.SecondSessionNanoseconds is { } secondAt ? InvestigationInput.WriteSeconds(secondAt, CultureInfo.CurrentCulture) : null;
+            secondReferenceAt.Text = alignment.SecondReferenceNanoseconds is { } secondReference
+                ? InvestigationInput.WriteSeconds(secondReference, CultureInfo.CurrentCulture)
+                : null;
+            instantDrift.Text = alignment.DriftPartsPerMillion is { } drift ? InvestigationInput.WritePartsPerMillion(drift, CultureInfo.CurrentCulture) : null;
+        }
     }
 
     /// <summary>Chooses how to align, as the radio buttons do; a test sets it directly.</summary>
@@ -271,6 +315,9 @@ internal sealed class InvestigationAlignWindow : Window
                 Classes = { "muted" },
             };
             box.Width = double.NaN;
+
+            // A box keeps its own height beside a hint of several lines, as every other box does.
+            box.VerticalAlignment = VerticalAlignment.Center;
             Grid.SetColumn(box, 1);
             Grid.SetColumn(explanation, 2);
             row.Children.Add(caption);
