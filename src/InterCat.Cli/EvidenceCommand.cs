@@ -62,7 +62,7 @@ internal static class EvidenceCommand
                 : invalidSize ? "--page-size must be an integer from 1 to 200."
                 : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
                 : invalidNarrowing ? narrowingProblem!
-                : tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start.");
+                : tooWide ?? "--interval must be " + TickInterval.Takes + ".");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -263,7 +263,8 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  ends; an RPC channel's or call's key opens its own records, and no RPC key takes --owner-process.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");
-        ConsoleUi.Line("  --interval is a half-open range in 100-nanosecond session-relative presentation ticks.");
+        ConsoleUi.Line("  --interval is a half-open range of session time, each bound in 100-nanosecond ticks or a time");
+        ConsoleUi.Line("  with its unit (1.5s, 250ms, 40us), taken outward to whole ticks.");
         ConsoleUi.Line("  --from lists the rows from a moment on, read as the window's search reads one: a time of day on");
         ConsoleUi.Line("  the wall clock the capture's machine read (14:32:05.120, with its date or offset where needed),");
         ConsoleUi.Line("  or session time with its unit (312.5 s, 250 ms). A moment the session cannot place is refused,");

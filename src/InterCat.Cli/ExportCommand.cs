@@ -75,7 +75,7 @@ internal static class ExportCommand
             : output is null ? "--output <path> is required; an export is written only where it is asked to be."
             : format is null ? "--format must be json or csv."
             : intervalText is not null && interval is null
-                ? tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
+                ? tooWide ?? "--interval must be " + TickInterval.Takes + "."
             : invalidLimit ? $"--limit applies to --evidence and must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}."
             : rankBy is null
                 ? "--rank-by must be records, bytes-sent, bytes-received, bytes-sent-and-received, rpc-calls-made, rpc-calls-served, "
@@ -181,7 +181,8 @@ internal static class ExportCommand
         ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
-        ConsoleUi.Line("  --interval ranks within [start,end) in 100-nanosecond session ticks. --rank-by orders the machine");
+        ConsoleUi.Line("  --interval ranks within [start,end), each bound in 100-nanosecond session ticks or a time with its");
+        ConsoleUi.Line("  unit (1.5s, 250ms). --rank-by orders the machine");
         ConsoleUi.Line("  and group rungs by records (the default), by each process's transport-observed bytes on its own");
         ConsoleUi.Line("  send or receive records - a row whose records recorded no size ranks after every measured row -");
         ConsoleUi.Line("  or both (endpoint activity, counting a local transfer at both ends), or by the RPC calls it");

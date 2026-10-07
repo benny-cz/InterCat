@@ -52,7 +52,7 @@ internal static class TimelineCommand
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat timeline <directory>."
                 : hasUnknown ? CommandLine.Unknown(unknown!)
                 : invalidColumns ? $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."
-                : interval is null ? tooWide ?? "--interval start:end is required, in 100-nanosecond session-relative ticks, with end > start."
+                : interval is null ? tooWide ?? "--interval is required: " + TickInterval.Takes + "."
                 : scopeProblem!);
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
@@ -267,7 +267,8 @@ internal static class TimelineCommand
         ConsoleUi.Line("icat timeline <session-directory> --interval <start:end> [--columns <1-2000>]");
         ConsoleUi.Line("    [--mechanism <name> | --process <instance-id> [--direction <name>] | --channel <key> [--end <0|1>]]");
         ConsoleUi.Line("    [--bytes] [--wall-clock] [--json]");
-        ConsoleUi.Line("  Read-only, leased timeline over [start,end) in 100-nanosecond session ticks.");
+        ConsoleUi.Line("  Read-only, leased timeline over [start,end), each bound in 100-nanosecond session ticks or a time");
+        ConsoleUi.Line("  with its unit (1.5s, 250ms, 40us), taken outward to whole ticks.");
         ConsoleUi.Line("  Buckets partition the interval exactly, as the Desktop's zoomed timeline draws them.");
         ConsoleUi.Line("  A scope lists the records one lane of the Desktop's interval table lists; --bytes adds what");
         ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart. --wall-clock states");

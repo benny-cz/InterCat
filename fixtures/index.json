@@ -1802,6 +1802,7 @@
         "R18: a process's direction rows measured together hold what the byte measure answers for each direction and every record",
         "R18: a refused invocation says why on stderr, and leaves stdout to the answer it did not give",
         "R18: a verb is read first, and no option is read after an operand",
+        "R18: an --interval takes each bound as ticks or as a time with its unit, as the window states an interval, taken outward to whole ticks",
         "R18: an evidence export reads its whole scope in one pass, and one that stops at its limit says so",
         "R18: an export ranked by bytes names its ranking, and each row carries the value it was ranked by",
         "R18: an export ranked by calls served names its ranking, and each row its calls, failures and unpaired stops",

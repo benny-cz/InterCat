@@ -869,8 +869,8 @@ internal static partial class WorkspaceCommand
         TimeRange? interval = null;
         if (intervalText is not null && (interval = TickInterval.Read(intervalText, out string? tooWide)) is null)
         {
-            ConsoleUi.Failure(tooWide ?? $"--interval {intervalText} names no interval: give <start>:<end> in 100-nanosecond ticks of "
-                + "the investigation's time, its end after its start.");
+            ConsoleUi.Failure(tooWide ?? $"--interval {intervalText} names no interval: give <start>:<end> of the investigation's time, "
+                + "each bound in 100-nanosecond ticks or a time with its unit, such as 1.5s, 250ms or 40us, its end after its start.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -1465,7 +1465,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           time. A candidate is never established; its evidence and alternatives are listed.");
         ConsoleUi.Line("  timeline draws the merged time as the Desktop's investigation window does: each member's records");
         ConsoleUi.Line("           over --columns (160 unless given) of the investigation's time, or of --interval in its");
-        ConsoleUi.Line("           100-nanosecond ticks, where its alignment places them, with what its capture covered");
+        ConsoleUi.Line("           100-nanosecond ticks or times with their unit (1.5s:2.5s), where its alignment places them,");
+        ConsoleUi.Line("           with what its capture covered");
         ConsoleUi.Line("           there, in the window's words; a member with no place says why.");
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");

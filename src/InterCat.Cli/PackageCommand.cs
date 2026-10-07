@@ -127,7 +127,7 @@ internal static class PackageCommand
             : intervalText is not null && !redacted
                 ? "--interval scopes a redacted package; an original package copies the session's whole generation."
             : intervalText is not null && interval is null
-                ? tooWide ?? "--interval must be start:end in 100-nanosecond session-relative ticks, with end > start."
+                ? tooWide ?? "--interval must be " + TickInterval.Takes + "."
             : !check && outputOption is null
                 ? "--output <new-directory> is required; a package is written only where it is asked to be."
             : null;
@@ -495,8 +495,9 @@ internal static class PackageCommand
         ConsoleUi.Line("  names, process and thread IDs, addresses, ports and identifiers are random pseudonyms and");
         ConsoleUi.Line("  whose records are synthetic metadata. It leaves out the original journal, bodies, extended");
         ConsoleUi.Line("  data, locators and absolute clock readings, and is verified before it is published.");
-        ConsoleUi.Line("  --interval holds only the records from start to end, in 100-nanosecond session ticks as");
-        ConsoleUi.Line("  icat evidence reads them, and from outside it the lifecycle records of the processes it holds,");
+        ConsoleUi.Line("  --interval holds only the records from start to end, in 100-nanosecond session ticks or a time");
+        ConsoleUi.Line("  with its unit (1.5s, 250ms) as icat evidence reads them, and from outside it the lifecycle");
+        ConsoleUi.Line("  records of the processes it holds,");
         ConsoleUi.Line("  so they keep their names; its coverage outside the interval is unknown. It packages a session");
         ConsoleUi.Line("  too large to package whole, an interval of at most 10,000,000 rows at a time.");
         ConsoleUi.Line("  --check measures what the package would hold and writes nothing. --report also writes the");

@@ -2146,6 +2146,43 @@ public sealed class CommandLineTests : IDisposable
             answer);
     }
 
+    [Fact(DisplayName = "R18: an --interval takes each bound as ticks or as a time with its unit, as the window states an interval, taken outward to whole ticks")]
+    public async Task IntervalsTakeTimesWithTheirUnit()
+    {
+        using TemporarySession gapped = Gapped();
+
+        // Six microseconds from the epoch is the interval sixty ticks are, counted alike.
+        (InterCatExitCode code, string ticks, string said) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6");
+        Assert.True(code == InterCatExitCode.Success, said);
+        (code, string timed, said) = await Run("timeline", gapped.Path, "--interval", "0s:6us", "--columns", "6");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(Buckets(ticks), Buckets(timed));
+        Assert.Equal(6, Buckets(timed).Length);
+        (code, timed, said) = await Run("timeline", gapped.Path, "--interval", "0ms:0.006ms", "--columns", "6");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(Buckets(ticks), Buckets(timed));
+
+        // A time inside a tick is taken outward, so the interval holds every record of the time typed.
+        (code, string page, said) = await Run("evidence", gapped.Path, "--interval", "150ns:250ns");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[1, 3\) · 100 ns ticks\r?$", RegexOptions.Multiline), page);
+        (code, page, said) = await Run("evidence", gapped.Path, "--interval", "-1us:1µs");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^\s*Session-time interval\s+\[-10, 10\) · 100 ns ticks\r?$", RegexOptions.Multiline), page);
+
+        // A bound that is neither, or an interval whose end is not after its start, is refused, saying what it takes.
+        foreach (string refused in new[] { "1.5:2", "1s:1000ms", "1 h:2 h", "1s" })
+        {
+            (code, _, said) = await Run("evidence", gapped.Path, "--interval", refused);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("--interval must be start:end, each bound a count of 100-nanosecond session ticks or a time with its "
+                + "unit, such as 1.5s, 250ms or 40us, with its end after its start.", said, StringComparison.Ordinal);
+        }
+
+        static string[] Buckets(string answer) =>
+            [.. answer.Split('\n').Select(line => line.TrimEnd('\r')).Where(line => line.Contains(" µs  ", StringComparison.Ordinal))];
+    }
+
     [Fact(DisplayName = "R21: icat timeline counts a mechanism's lane where none of its records falls, each column saying what the capture covered of it, as the window's lane does")]
     public async Task AQuietMechanismsLaneIsCounted()
     {
