@@ -15,7 +15,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class DefaultViewTests
 {
     [Fact(DisplayName = "§6.8: a setting changed from its default is named in the words an investigation keeps it in, as it changes, a rate only under a ranking that has one")]
-    public async Task AChangedSettingIsNamed()
+    public void AChangedSettingIsNamed() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
@@ -73,5 +73,5 @@ public sealed class DefaultViewTests
         using var tour = new WorkspaceViewModel();
         tour.ScalesEachLane = true;
         Assert.False(tour.DiffersFromDefaults);
-    }
+    });
 }

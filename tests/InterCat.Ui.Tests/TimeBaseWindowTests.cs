@@ -1,13 +1,16 @@
 using System.Globalization;
+using Avalonia;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -117,6 +120,45 @@ public sealed class TimeBaseWindowTests
         Publish(imported.Store, Records(), clock: Clock);
         Show(window, imported);
         Assert.False(window.GetControl<ToggleButton>("WallClockToggle").IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.2: the interval table states each window on the wall clock whole at the smallest window, never under the count beside it, and keys no mechanism where it holds no record")]
+    public void TheIntervalTableFitsTheWallClock()
+    {
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store, Records(), clock: Clock, calibration: Calibration());
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        Show(window, calibrated);
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        window.GetControl<ToggleButton>("WallClockToggle").IsChecked = true;
+        workspace.ShowTables = true;
+        Render(window);
+
+        // Each window reads the wall clock's time of day at both ends, which session time's column was too narrow for.
+        ListBox intervals = window.GetControl<ListBox>("IntervalList");
+        Assert.Contains(" – ", workspace.Intervals[0].Window, StringComparison.Ordinal);
+        foreach (IntervalRow row in workspace.Intervals.Take(3))
+        {
+            Control container = intervals.ContainerFromItem(row)!;
+            TextBlock text = container.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == row.Window);
+            TextBlock count = container.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == row.Observations);
+            Assert.True(text.TextLayout.WidthIncludingTrailingWhitespace <= text.Bounds.Width + 0.5,
+                $"{row.Window} is {text.TextLayout.WidthIncludingTrailingWhitespace} wide in {text.Bounds.Width}.");
+            Assert.True(text.Bounds.Right <= count.Bounds.Left, $"{row.Window} runs under {row.Observations}.");
+
+            // The bytes end inside the table, trimmed to what is left of it rather than cut by its edge.
+            TextBlock bytes = container.GetVisualDescendants().OfType<TextBlock>().Single(block => block.Text == row.KnownBytes);
+            Assert.True(bytes.TranslatePoint(new Point(bytes.Bounds.Width, 0), intervals)!.Value.X <= intervals.Bounds.Width,
+                $"{row.KnownBytes} ends past the table.");
+        }
+
+        // An interval with no record keys no mechanism: no glyph beside it, and no name read aloud.
+        IntervalRow empty = workspace.Intervals.First(row => row.ObservationCount == 0);
+        Assert.Equal(string.Empty, empty.Glyph);
+        Assert.DoesNotContain("Unknown", empty.AccessibleName, StringComparison.Ordinal);
+        Save(window, "interval-table-wall-clock-1080x700.png");
         window.Close();
     }
 

@@ -911,7 +911,9 @@
         </Grid>
         <!-- Bytes come last: a real session's timeline sums none per interval, so its rows' bytes are read once the table
              is shown, sent and received apart; a session with no directory to read them from leaves the column out. -->
-        <Grid Grid.Row="5" ColumnDefinitions="18,160,180,190,260" Margin="2,8,0,2">
+        <!-- A window on the wall clock is wider than one in session time, and one across days wraps within its column
+             rather than running under the count beside it; the bytes take what width is left, and trim to it. -->
+        <Grid Grid.Row="5" ColumnDefinitions="18,224,170,150,*" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Window" Classes="columnHeader" />
           <TextBlock Grid.Column="2" Text="Observations" Classes="columnHeader" />
           <TextBlock Grid.Column="3" Text="Coverage" Classes="columnHeader" />
@@ -924,9 +926,9 @@
                  AutomationProperties.Name="Interval table, the table equivalent of the activity timeline">
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:IntervalRow">
-              <Grid ColumnDefinitions="18,160,180,190,260" Margin="2,4">
+              <Grid ColumnDefinitions="18,224,170,150,*" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
-                <TextBlock Grid.Column="1" Text="{Binding Window}" FontWeight="SemiBold" />
+                <TextBlock Grid.Column="1" Text="{Binding Window}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,8,0" />
                 <TextBlock Grid.Column="2" Text="{Binding Observations}" />
                 <TextBlock Grid.Column="3" Text="{Binding Coverage}" Classes="muted" />
                 <TextBlock Grid.Column="4" Text="{Binding KnownBytes}" IsVisible="{Binding ShowsBytes}"

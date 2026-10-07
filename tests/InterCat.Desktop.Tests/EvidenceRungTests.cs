@@ -892,7 +892,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§6.4: an export from any evidence rung holds exactly the records it lists, an RPC or HTTP one's as a process's")]
-    public async Task AnEvidenceExportHoldsExactlyTheRecordsTheRungLists()
+    public void AnEvidenceExportHoldsExactlyTheRecordsTheRungLists() => SingleThreadedContext.Run(async () =>
     {
         // Process 100 calls the service control manager three times and makes two HTTP exchanges, the first in four
         // buffers and the second in three, beside its paired channel.
@@ -999,7 +999,7 @@ public sealed class EvidenceRungTests
         await workspace.EvidenceReady;
         Assert.StartsWith("Records of RPC call at +", workspace.EvidenceScopeText, StringComparison.Ordinal);
         await AssertExportsWhatTheRungLists(workspace, 2);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: with a relationship chosen at the machine rung, the inspector counts its records and bytes, and E lists them")]
     public async Task EListsAChosenRelationshipsRecords()
@@ -1032,7 +1032,7 @@ public sealed class EvidenceRungTests
     }
 
     [Fact(DisplayName = "§6.4: below the machine rung E lists what the inspector counts: a process chosen among a group's members, a chosen relationship, a channel chosen among a process's rows, else the rung's own records")]
-    public async Task BelowTheMachineRungEListsWhatTheInspectorCounts()
+    public void BelowTheMachineRungEListsWhatTheInspectorCounts() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store, Rows());
@@ -1109,7 +1109,7 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.StartsWith("Records owned by " + server.NameWithPid, workspace.EvidenceScopeText, StringComparison.Ordinal);
-    }
+    });
 
     [Fact(DisplayName = "§6.4: with nothing selected the evidence card names the records E then lists, the rung's own, over the scope the rows count")]
     public async Task WithNothingSelectedTheCardNamesWhatEListsNext()

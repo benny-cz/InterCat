@@ -71,6 +71,38 @@ public sealed class SharedSessionStoresTests
         Assert.NotSame(second, registry.Open(next.Path));
     }
 
+    [Fact(DisplayName = "§20.1: a folder that now holds another session is opened afresh, never read through the store kept for the one it held")]
+    public void AReplacedFolderIsOpenedAfresh()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 }]);
+        var registry = new SessionStoreRegistry(capacity: 2);
+        SessionStore kept = registry.Open(session.Path);
+        Assert.Same(kept, registry.Open(session.Path));
+
+        // The folder is emptied and another session written into it, as a package made again at the same name is.
+        kept.ReleaseSegmentReaders();
+        session.Store.ReleaseSegmentReaders();
+        Directory.Delete(session.Path, recursive: true);
+        Directory.CreateDirectory(session.Path);
+        Guid another = Guid.NewGuid();
+        SessionStore written = SessionStore.Open(LocalOwnedDirectory.Open(session.Path), another, "replacing-tests");
+        Publish(written, [Lifecycle(2, ObservationKind.Create, 200, 2) with { SessionRelativeTicks = 200 }]);
+        written.ReleaseSegmentReaders();
+
+        // Opened again, the folder is what it now holds: a store of the other session, kept from then on.
+        SessionStore opened = registry.Open(session.Path);
+        Assert.NotSame(kept, opened);
+        Assert.Equal(another, opened.SessionId);
+        Assert.Same(opened, registry.Open(session.Path));
+
+        // A folder holding no session any more is opened afresh too, and refused as such rather than read as the old one.
+        opened.ReleaseSegmentReaders();
+        Directory.Delete(session.Path, recursive: true);
+        Directory.CreateDirectory(session.Path);
+        Assert.NotSame(opened, registry.Open(session.Path));
+    }
+
     private static void ReadEverySegment(SessionStore store)
     {
         using EvidenceLease lease = store.AcquireLease();

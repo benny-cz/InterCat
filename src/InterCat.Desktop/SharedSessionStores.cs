@@ -47,14 +47,23 @@ internal sealed class SessionStoreRegistry
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(sessionPath);
         string key = Path.GetFullPath(sessionPath);
+        SessionStore? kept;
         lock (gate)
         {
-            SessionStore? kept = recent.Find(entry => SameDirectory(entry.Path, key)).Store;
-            if (kept is not null && (sessionId is null || kept.SessionId == sessionId))
+            kept = recent.Find(entry => SameDirectory(entry.Path, key)).Store;
+        }
+
+        // A kept store is handed out only while its directory still holds its session: a folder emptied and written
+        // again - a package made anew at the same name, a session copied over another - is opened afresh, where reading
+        // it through the old store failed every read until the viewer restarted.
+        if (kept is not null && (sessionId is null || kept.SessionId == sessionId) && StillHolds(kept))
+        {
+            lock (gate)
             {
                 Keep(key, kept);
-                return kept;
             }
+
+            return kept;
         }
 
         // Opening reads the pointer, the manifest and a listing, so it happens outside the lock; two first readers may
@@ -101,6 +110,24 @@ internal sealed class SessionStoreRegistry
         if (recent.Count > capacity)
         {
             recent.RemoveAt(recent.Count - 1);
+        }
+    }
+
+    /// <summary>
+    /// Whether a store's directory still holds the session it was opened for: a lease refuses one that now holds another
+    /// session, or none.
+    /// </summary>
+    private static bool StillHolds(SessionStore store)
+    {
+        try
+        {
+            using EvidenceLease lease = store.AcquireLease();
+            return true;
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            return false;
         }
     }
 

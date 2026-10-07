@@ -92,7 +92,8 @@ public sealed record IntervalRow(
     public string AccessibleName =>
         $"{Window}, {Spoken.Count(ObservationCount, "observation")}"
         + (FocusCount is { } focused ? string.Create(CultureInfo.CurrentCulture, $", {focused:N0} in focus") : string.Empty)
-        + (ShowsBytes ? $", {KnownBytes}" : string.Empty) + $", {Mechanism}, {Spoken.Coverage(Coverage)}";
+        + (ShowsBytes ? $", {KnownBytes}" : string.Empty) + (Mechanism.Length > 0 ? $", {Mechanism}" : string.Empty)
+        + $", {Spoken.Coverage(Coverage)}";
 }
 
 /// <summary>Builds the table equivalents from one snapshot, using the same values the canvas draws.</summary>
@@ -219,14 +220,16 @@ public static class WorkspaceRowBuilder
                 focusCount = focused;
             }
 
+            // An interval holding no record keys no mechanism: a glyph or a name for it would read as an unknown one.
+            bool empty = bucket.ObservationCount == 0;
             rows.Add(new(
                 bucket.Interval,
                 clock?.Range(bucket.Interval, CultureInfo.CurrentCulture)
                     ?? WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
                 observations,
                 bytesOf is null ? DescribeBytes(bucket.KnownBytes) : bytesOf(bucket),
-                tokens.Label,
-                tokens.Glyph,
+                empty ? string.Empty : tokens.Label,
+                empty ? string.Empty : tokens.Glyph,
                 CoverageStateText.Label(bucket.Coverage))
             {
                 ObservationCount = bucket.ObservationCount,

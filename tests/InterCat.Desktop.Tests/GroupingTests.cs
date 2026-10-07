@@ -80,7 +80,7 @@ public sealed class GroupingTests
     }
 
     [Fact(DisplayName = "§6.3: the selector stands at the machine rung of a session that names a terminal session, and nowhere else")]
-    public async Task TheSelectorStandsWhereTheGroupsAre()
+    public void TheSelectorStandsWhereTheGroupsAre() => SingleThreadedContext.Run(async () =>
     {
         using var named = new TemporarySession();
         (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
@@ -111,7 +111,7 @@ public sealed class GroupingTests
         Assert.False(single.ShowsGroupingChoice);
         using var tour = new WorkspaceViewModel();
         Assert.False(tour.ShowsGroupingChoice);
-    }
+    });
 
     /// <summary>
     /// <paramref name="count"/> workers, each its own executable, in terminal session 1, each calling the service in session
