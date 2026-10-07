@@ -229,7 +229,8 @@ public sealed record SessionRedaction(
             + "processes it holds, so they keep their names; its coverage outside the interval is unknown.";
     }
 
-    private static string Seconds(long ticks, IFormatProvider? culture) =>
+    /// <summary>A session-relative instant in 100-nanosecond ticks as the package's sentences say it, in seconds.</summary>
+    public static string Seconds(long ticks, IFormatProvider? culture = null) =>
         (ticks / 10_000_000m).ToString("0.000######", culture ?? CultureInfo.CurrentCulture) + " s";
 
     /// <summary>The package's policy, or null when the generation names none (an ordinary session).</summary>

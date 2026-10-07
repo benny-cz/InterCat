@@ -171,6 +171,10 @@ public sealed class SecondaryWindowAuditTests
             ("original package", MainWindow.OriginalPackagePrompt(OriginalEvidencePackage.Preview(session.Store))),
             ("original package saved", MainWindow.OriginalResultPrompt(original)),
             ("redacted package", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store))),
+            ("redacted package of a time scope", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store),
+                new TimeRange(1_000, 2_000))),
+            ("redacted package over the bound", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store)
+                with { ObservationRows = RedactedSessionPackage.MaximumRows + 1 })),
             ("redacted package saved", MainWindow.RedactedPackageResultPrompt(redacted)),
             ("stop Explore", MainWindow.StopExplorePrompt()),
             ("support bundle", MainWindow.SupportBundlePrompt(1)),

@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
 using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -162,6 +163,138 @@ public sealed class RedactedPackageWindowTests
             if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
         }
     }
+
+    [AvaloniaFact(DisplayName = "11.3: sharing offers the time scope first, in its package's words, and a session over the bound only an interval")]
+    public async Task SharingOffersTheTimeScope()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, IntervalSource(), coverage: TransportLedger(tcp: true, udp: false));
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        try
+        {
+            System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentCulture;
+            var scope = new TimeRange(4_000, 6_000);
+
+            // With a time scope it is the first choice, and what the package keeps is said as its readers will say it.
+            Window prompt = MainWindow.RedactedPackagePrompt(overview, scope);
+            Task<MainWindow.RedactedPackageScope?> chosen = prompt.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
+            Dispatch();
+            (RadioButton part, RadioButton whole) = Choices(prompt);
+            Assert.True(part.IsVisible && part.IsChecked == true && whole.IsVisible && whole.IsEnabled && whole.IsChecked != true);
+            Assert.Equal($"Only its time scope, from {SessionRedaction.Seconds(4_000, culture)} to {SessionRedaction.Seconds(6_000, culture)}",
+                part.Content);
+            TextBlock kept = Kept(prompt);
+            Assert.EndsWith(SessionRedaction.Holds(new() { StartTicks = 4_000, EndTicks = 6_000, LifecycleRowsOutside = 0 }, culture),
+                kept.Text, StringComparison.Ordinal);
+            whole.IsChecked = true;
+            Dispatch();
+            Assert.StartsWith($"Kept: every record, {overview.ObservationRows:N0} in all", kept.Text, StringComparison.Ordinal);
+            part.IsChecked = true;
+            Dispatch();
+            Assert.DoesNotContain(prompt.GetLogicalDescendants().OfType<TextBlock>(), text => text.IsVisible
+                && text.Text?.Contains("an interval at a time", StringComparison.Ordinal) == true);
+            Proceed(prompt).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Equal(scope, (await chosen)!.Interval);
+
+            // Choosing the whole session shares all of it, scope or none.
+            Window instead = MainWindow.RedactedPackagePrompt(overview, scope);
+            Task<MainWindow.RedactedPackageScope?> entire = instead.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
+            Dispatch();
+            Choices(instead).Whole.IsChecked = true;
+            Dispatch();
+            Proceed(instead).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Null((await entire)!.Interval);
+
+            // Without one the whole session is what is shared, and no choice is offered.
+            Window plain = MainWindow.RedactedPackagePrompt(overview);
+            Task<MainWindow.RedactedPackageScope?> all = plain.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
+            Dispatch();
+            Assert.All(new[] { Choices(plain).Part, Choices(plain).Whole }, choice => Assert.False(choice.IsVisible));
+            Proceed(plain).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Assert.Null((await all)!.Interval);
+
+            // A session over the bound is shared an interval at a time: without a scope nothing can go ahead, and it says why.
+            SessionOverviewBundle large = overview with { ObservationRows = RedactedSessionPackage.MaximumRows + 1 };
+            Window refused = MainWindow.RedactedPackagePrompt(large);
+            _ = refused.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
+            Dispatch();
+            Assert.False(Proceed(refused).IsEnabled);
+            Assert.False(Choices(refused).Whole.IsEnabled);
+            Assert.False(Kept(refused).IsVisible);
+            Assert.Contains(refused.GetLogicalDescendants().OfType<TextBlock>(), text => text.IsVisible
+                && text.Text?.Contains("so it is shared an interval at a time", StringComparison.Ordinal) == true);
+            refused.Close();
+            Window scoped = MainWindow.RedactedPackagePrompt(large, scope);
+            _ = scoped.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
+            Dispatch();
+            Assert.True(Proceed(scoped).IsEnabled && Choices(scoped).Part.IsChecked == true && Kept(scoped).IsVisible);
+            Assert.False(Choices(scoped).Whole.IsEnabled);
+            scoped.Close();
+        }
+        finally
+        {
+            owner.Close();
+        }
+
+        static (RadioButton Part, RadioButton Whole) Choices(Window prompt)
+        {
+            RadioButton[] choices = [.. prompt.GetLogicalDescendants().OfType<RadioButton>()];
+            return (choices[0], choices[1]);
+        }
+
+        static TextBlock Kept(Window prompt) => prompt.GetLogicalDescendants().OfType<TextBlock>()
+            .Single(text => text.Text?.StartsWith("Kept:", StringComparison.Ordinal) == true);
+
+        static Button Proceed(Window prompt) => prompt.GetLogicalDescendants().OfType<Button>()
+            .Single(button => Equals(button.Content, "Choose a folder…"));
+    }
+
+    [AvaloniaFact(DisplayName = "11.3: the window packages its time scope, and says what the package holds")]
+    public async Task TheWindowPackagesItsTimeScope()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, IntervalSource(), coverage: TransportLedger(tcp: true, udp: false));
+        string destination = MainWindow.NewPackageDirectory(Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Packages"),
+            DateTimeOffset.Now);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Update(session, CaptureUiPhase.Complete), forceOverview: true);
+            Dispatch();
+            RedactedSessionPackageResult result = Assert.IsType<RedactedSessionPackageResult>(
+                await window.WriteRedactedPackageAsync(session.Path, destination, new TimeRange(4_000, 6_000)));
+            var held = new RedactedSessionInterval { StartTicks = 4_000, EndTicks = 6_000, LifecycleRowsOutside = 1 };
+            Assert.Equal(held, result.Source.Interval);
+            SessionStore package = SessionStore.OpenExisting(LocalOwnedDirectory.Open(destination));
+            Assert.Equal(held, SessionRedaction.Read(package.Root, package.Current!)!.Interval);
+            package.ReleaseSegmentReaders();
+
+            // What it saved says what it holds, as the package will once opened.
+            Assert.Contains(MainWindow.RedactedPackageResultPrompt(result).GetLogicalDescendants().OfType<TextBlock>(),
+                text => text.Text?.EndsWith(SessionRedaction.Holds(held, System.Globalization.CultureInfo.CurrentCulture),
+                    StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            window.Close();
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
+
+    /// <summary>A client's creation, its sends at ticks 5,000 and 9,000, and another process's send.</summary>
+    private static ObservationRowV1[] IntervalSource() =>
+    [
+        Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 1_000 },
+        Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 500_000 },
+        Transfer(9_000, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 900_000 },
+        Transfer(9_500, ObservationKind.Send, AccountingSide.SendSide, 32, 200, 4)
+            .Between("127.0.0.1:50001", "127.0.0.1:8081") with { SessionRelativeTicks = 950_000 },
+    ];
 
     [AvaloniaFact(DisplayName = "11.3: a new package folder never reuses an existing name")]
     public void PackageFoldersAreNumberedRatherThanReused()

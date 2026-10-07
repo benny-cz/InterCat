@@ -1923,7 +1923,7 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        if (!await ConfirmRedactedPackageAsync(overview)) return;
+        if (await ConfirmRedactedPackageAsync(overview, workspace.ScopeInterval) is not { } chosen) return;
         IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
         {
             Title = "Choose where to save the redacted session package",
@@ -1931,7 +1931,7 @@ public sealed partial class MainWindow : Window, IDisposable
         });
         if (folders.Count == 0 || closed) return;
         string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now);
-        RedactedSessionPackageResult? result = await WriteRedactedPackageAsync(source, destination);
+        RedactedSessionPackageResult? result = await WriteRedactedPackageAsync(source, destination, chosen.Interval);
         if (result is not null && !closed && await ShowPackageResultAsync(result))
         {
             _ = await OpenSessionAsync(result.Directory);
@@ -2197,7 +2197,8 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Makes the package off the UI thread, stating its progress on the capture card, and returns null when it was
     /// cancelled or refused - the card then says which, and the source session is unchanged either way.
     /// </summary>
-    internal async Task<RedactedSessionPackageResult?> WriteRedactedPackageAsync(string source, string destination)
+    internal async Task<RedactedSessionPackageResult?> WriteRedactedPackageAsync(string source, string destination,
+        TimeRange? interval = null)
     {
         if (packaging is not null) return null;
         using var cancellation = new CancellationTokenSource();
@@ -2211,6 +2212,7 @@ public sealed partial class MainWindow : Window, IDisposable
             if (closed || packaging != cancellation) return;
             string stage = update.Stage switch
             {
+                RedactedPackageStage.Selecting => "Finding the time scope's records and their processes",
                 RedactedPackageStage.Inspecting => "Reading the session's rows",
                 RedactedPackageStage.Writing => "Writing pseudonymized rows",
                 _ => "Reopening and verifying the package",
@@ -2223,7 +2225,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             RedactedSessionPackageResult result = await Task.Run(() => RedactedSessionPackage.Create(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(source)), destination, DateTimeOffset.UtcNow,
-                progress, cancellation.Token), cancellation.Token);
+                interval, progress, cancellation.Token), cancellation.Token);
             if (!closed)
             {
                 CaptureStatus.Text = "Redacted session package saved";
@@ -2261,12 +2263,20 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    private async Task<bool> ConfirmRedactedPackageAsync(SessionOverviewBundle overview) =>
-        await RedactedPackagePrompt(overview).ShowDialog<bool>(this);
+    private async Task<RedactedPackageScope?> ConfirmRedactedPackageAsync(SessionOverviewBundle overview, TimeRange? scope) =>
+        await RedactedPackagePrompt(overview, scope).ShowDialog<RedactedPackageScope?>(this);
 
-    /// <summary>What a redacted session package keeps, replaces and leaves out, asked before its folder is chosen.</summary>
-    internal static Window RedactedPackagePrompt(SessionOverviewBundle overview)
+    /// <summary>What a person chose to share: the whole session, or the interval of its time scope (redacted-session-v1 §11).</summary>
+    internal sealed record RedactedPackageScope(TimeRange? Interval);
+
+    /// <summary>
+    /// What a redacted session package keeps, replaces and leaves out, asked before its folder is chosen. With a time scope
+    /// - a brushed or kept range, or the view zoomed in - it offers that interval first, in the words its readers will
+    /// use; a session above the row bound can be shared only an interval at a time, and says so.
+    /// </summary>
+    internal static Window RedactedPackagePrompt(SessionOverviewBundle overview, TimeRange? scope = null)
     {
+        ArgumentNullException.ThrowIfNull(overview);
         var prompt = new Window
         {
             Title = "Share a redacted session package?", Width = 580,
@@ -2274,16 +2284,48 @@ public sealed partial class MainWindow : Window, IDisposable
             WindowStartupLocation = WindowStartupLocation.CenterOwner,
             CanResize = false,
         };
+        bool tooLarge = overview.ObservationRows > RedactedSessionPackage.MaximumRows;
+        var part = new RadioButton
+        {
+            GroupName = "package-scope", IsChecked = scope is not null, IsVisible = scope is not null,
+            Content = scope is { } range
+                ? $"Only its time scope, from {SessionRedaction.Seconds(range.StartTicks, CultureInfo.CurrentCulture)} to "
+                    + SessionRedaction.Seconds(range.EndTicks, CultureInfo.CurrentCulture)
+                : string.Empty,
+        };
+        var whole = new RadioButton
+        {
+            GroupName = "package-scope", Content = "The whole session", IsChecked = scope is null && !tooLarge,
+            IsEnabled = !tooLarge, IsVisible = scope is not null || tooLarge,
+        };
+        TextBlock kept = Paragraph(string.Empty);
         var cancel = new Button { Content = "Cancel" };
         var proceed = new Button { Content = "Choose a folder…" };
-        cancel.Click += (_, _) => prompt.Close(false);
-        proceed.Click += (_, _) => prompt.Close(true);
+        void Describe()
+        {
+            bool interval = part.IsChecked == true && scope is not null;
+            kept.Text = interval
+                ? "Kept: every record in that interval, with its time, size, status and quality, and coverage and loss there. "
+                    + SessionRedaction.Holds(new() { StartTicks = scope!.Value.StartTicks, EndTicks = scope.Value.EndTicks,
+                        LifecycleRowsOutside = 0 }, CultureInfo.CurrentCulture)
+                : $"Kept: every record, {overview.ObservationRows:N0} in all, with its time, size, status and quality; "
+                    + $"every process, {overview.Nodes.Count:N0} in all, and how they relate; coverage and loss.";
+            // A session over the bound with no interval chosen keeps nothing yet, and says what to do instead.
+            proceed.IsEnabled = interval || !tooLarge;
+            kept.IsVisible = proceed.IsEnabled;
+        }
+
+        part.IsCheckedChanged += (_, _) => Describe();
+        whole.IsCheckedChanged += (_, _) => Describe();
+        Describe();
+        cancel.Click += (_, _) => prompt.Close(null);
+        proceed.Click += (_, _) => prompt.Close(new RedactedPackageScope(part.IsChecked == true ? scope : null));
         prompt.Opened += (_, _) => cancel.Focus();
         prompt.KeyDown += (_, key) =>
         {
             if (key.Key == Key.Escape)
             {
-                prompt.Close(false);
+                prompt.Close(null);
                 key.Handled = true;
             }
         };
@@ -2294,8 +2336,15 @@ public sealed partial class MainWindow : Window, IDisposable
             {
                 Paragraph("This saves a new session folder that opens in InterCat, for someone else to explore. The "
                     + "session you have open is not changed."),
-                Paragraph($"Kept: every record, {overview.ObservationRows:N0} in all, with its time, size, status and quality; "
-                    + $"every process, {overview.Nodes.Count:N0} in all, and how they relate; coverage and loss."),
+                new StackPanel { Spacing = 6, IsVisible = part.IsVisible || whole.IsVisible, Children = { part, whole } },
+                new TextBlock
+                {
+                    Text = $"This session holds {overview.ObservationRows:N0} records, and a package holds at most "
+                        + $"{RedactedSessionPackage.MaximumRows:N0}, so it is shared an interval at a time: brush or zoom to "
+                        + "one in the timeline first.",
+                    TextWrapping = Avalonia.Media.TextWrapping.Wrap, IsVisible = tooLarge, Classes = { "caution" },
+                },
+                kept,
                 Paragraph("Replaced by random pseudonyms: executable, pipe and resource names; process and thread IDs; "
                     + "addresses and ports; activity and interface identifiers; third-party providers."),
                 Paragraph("Left out: the original journal with any record bodies and extended data, process start and "
@@ -2342,7 +2391,10 @@ public sealed partial class MainWindow : Window, IDisposable
             Margin = new Avalonia.Thickness(20), Spacing = 12,
             Children =
             {
-                Paragraph($"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}."),
+                Paragraph($"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}."
+                    + (result.Source.Interval is { } interval
+                        ? " " + SessionRedaction.Holds(interval, CultureInfo.CurrentCulture)
+                        : string.Empty)),
                 Paragraph($"Before it was saved, the package was reopened as a recipient would open it, every value "
                     + $"was checked against the pseudonyms it issued, and {CountText.Of(result.FilesVerified, "file")} "
                     + $"{CountText.Agree(result.FilesVerified, "was", "were")} searched "

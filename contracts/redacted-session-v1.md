@@ -209,10 +209,13 @@ the source untouched.
   [--report <path>]`. `--check` measures and writes nothing. The destination must not exist and must not overlap the
   source. `--interval` makes an interval package (§11); its document adds `sourceRows` and `interval`.
 - Desktop: "Share redacted session…" in the inspector, for a saved or stopped session. It states what is kept, replaced
-  and left out, asks where to put the new folder (`intercat-redacted-session-<local time>`, numbered rather than reused),
-  shows progress and can be cancelled from the same button, then offers to open the package to review what a recipient
-  will see. An open package says so in the status card, the header, the health strip and the disclosure; the record
-  action reads "Open synthetic record".
+  and left out, asks where to put the new folder (`intercat-redacted-session-<local time>`, numbered rather than
+  reused), shows progress and can be cancelled from the same button, then offers to open the package to review what a
+  recipient will see. An open package says so in the status card, the header, the health strip and the disclosure; the
+  record action reads "Open synthetic record". With a time scope - a brushed or kept range, or the view zoomed in - it
+  offers that interval first (§11), saying what the package will hold in the sentence its readers will use, and its
+  result says it again; the whole session stays a choice. A session above the row bound is shared only an interval at a
+  time: without a time scope the prompt says so, keeps nothing and cannot go ahead.
 
 ## 11. An interval package
 
@@ -256,6 +259,6 @@ The policy file's `interval` states it: `startTicks`, `endTicks`, and `lifecycle
 from outside it, fewer than the rows the package holds. Its retained list says coverage is kept over the interval, and
 its omitted list names the rows left out. A reader that does not know the member refuses the package, which would
 otherwise read as its source's whole time. Every reader - `icat package` and `icat session`, and the window's status
-card and disclosure - says what an interval package holds in one sentence, after the package's own summary: "It holds
-its source's records from S to E and, outside that interval, only the lifecycle records of the processes it holds, so
-they keep their names; its coverage outside the interval is unknown."
+card, disclosure, share prompt and saved result - says what an interval package holds in one sentence, after the
+package's own summary: "It holds its source's records from S to E and, outside that interval, only the lifecycle records
+of the processes it holds, so they keep their names; its coverage outside the interval is unknown."
