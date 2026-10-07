@@ -180,4 +180,11 @@ public sealed record SessionWallClock(long AnchorTicks, DateTimeOffset AnchorUtc
         long steered = PartsPerMillion is { } rate ? (long)Math.Round(elapsed * rate / 1e6) : 0;
         return AnchorUtc.AddTicks(elapsed + steered);
     }
+
+    /// <summary>The instant of session time, in presentation ticks, at which the wall clock read <paramref name="utc"/>.</summary>
+    public long TicksAt(DateTimeOffset utc)
+    {
+        long elapsed = (utc - AnchorUtc).Ticks;
+        return AnchorTicks + (PartsPerMillion is { } rate ? (long)Math.Round(elapsed / (1 + (rate / 1e6))) : elapsed);
+    }
 }

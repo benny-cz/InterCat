@@ -31,14 +31,15 @@ public sealed record IntervalByteScope
     /// <summary>With <see cref="ChannelKey"/>, only the records made at this end: 0 the first, 1 the second.</summary>
     public int? End { get; init; }
 
-    /// <summary>What the scope says in words, for a heading or a caption.</summary>
+    /// <summary>What the scope says in words, for a heading or a caption: a mechanism and a direction as the window names them.</summary>
     public string Description =>
         Owner is { } owner
-            ? $"records owned by process instance {owner}" + (Direction is { } direction ? $" with source direction {direction}" : string.Empty)
+            ? $"records owned by process instance {owner}"
+                + (Direction is { } direction ? $" with source direction {ObservationText.DirectionOf(direction)}" : string.Empty)
             : ChannelKey is { } key
             ? (End is { } end ? $"records made at end {end} of channel {key}" : $"records of channel {key}")
             : Mechanism is { } mechanism
-            ? $"{mechanism} records"
+            ? $"{EvidenceRowText.MechanismName(mechanism)} records"
             : "every record";
 
     /// <summary>Why this scope names no set of records a table lists, or null when it does.</summary>

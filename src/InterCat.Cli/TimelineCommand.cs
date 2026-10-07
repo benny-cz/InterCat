@@ -188,9 +188,12 @@ internal static class TimelineCommand
     {
         if (scope.Owner is null && scope.ChannelKey is null)
         {
-            SessionTimelineDetail detail = SessionTimelineQuery.Detail(store, interval, columns, cancellationToken);
+            // A mechanism's lane is counted whether or not a record of it falls in the interval, so its quiet columns say
+            // what the capture covered of it there, as the window's lane does.
+            SessionTimelineDetail detail = SessionTimelineQuery.Detail(store, interval, columns,
+                scope.Mechanism is { } laned ? [laned] : [], cancellationToken);
             return (detail.Generation, scope.Mechanism is { } mechanism
-                ? detail.MechanismLanes.FirstOrDefault(lane => lane.Mechanism == mechanism)?.Buckets ?? []
+                ? detail.MechanismLanes.Single(lane => lane.Mechanism == mechanism).Buckets
                 : detail.Buckets);
         }
 

@@ -51,6 +51,40 @@ public sealed class SessionTimelineTests
         Assert.NotEqual(CoverageState.Covered, lifecycle.Buckets[quiet].Coverage);
     }
 
+    [Fact(DisplayName = "§6.2: a zoom keeps a lane for each mechanism a view draws, empty where none of its records falls in view and judged by that mechanism's coverage")]
+    public void AZoomKeepsTheLanesAViewDraws()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(2_000, ObservationKind.Create, 100, 2)),
+            Timed(Transfer(6_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3).Between(ClientEnd, ServerEnd)),
+            Timed(Transfer(8_000, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between(ClientEnd, ServerEnd)),
+        ], coverage: TwoEpochs());
+
+        // Past its first half the session holds TCP records and no lifecycle record: counted alone, a zoom there has a TCP
+        // lane and no other, so a view drawing both lanes could draw neither from it.
+        var later = new TimeRange(5_000, 10_000);
+        SessionTimelineDetail alone = SessionTimelineQuery.Detail(session.Store, later, 5);
+        Assert.Equal([Mechanism.Tcp], alone.MechanismLanes.Select(lane => lane.Mechanism));
+
+        // Asked for the lanes a view draws, it keeps the lifecycle lane, empty in each of the zoom's columns, which the
+        // capture, collecting TCP alone, never covered for it; its TCP lane is the one counted alone.
+        SessionTimelineDetail drawn = SessionTimelineQuery.Detail(session.Store, later, 5,
+            [Mechanism.ProcessLifecycle, Mechanism.Tcp]);
+        Assert.Equal([Mechanism.ProcessLifecycle, Mechanism.Tcp], drawn.MechanismLanes.Select(lane => lane.Mechanism));
+        MechanismTimelineLane lifecycle = drawn.MechanismLanes[0];
+        Assert.Equal(drawn.Buckets.Select(bucket => bucket.Interval), lifecycle.Buckets.Select(bucket => bucket.Interval));
+        Assert.All(lifecycle.Buckets, bucket =>
+        {
+            Assert.Equal(0, bucket.ObservationCount);
+            Assert.NotEqual(CoverageState.Covered, bucket.Coverage);
+        });
+        Assert.Equal(alone.MechanismLanes[0].Buckets, drawn.MechanismLanes[1].Buckets);
+        Assert.Contains(drawn.MechanismLanes[1].Buckets, bucket => bucket is { ObservationCount: 0, Coverage: CoverageState.PartialGap });
+        Assert.Equal(alone.Buckets, drawn.Buckets);
+    }
+
     [Fact(DisplayName = "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview")]
     public void AViewportTimelineCountsWhatAScanCounts()
     {

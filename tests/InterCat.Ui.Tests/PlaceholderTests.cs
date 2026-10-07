@@ -26,7 +26,7 @@ public sealed class PlaceholderTests
             // text is wider than the field, whatever font draws it.
             Grid grid = window.GetControl<Grid>("WindowGrid");
             TextBox search = window.GetControl<TextBox>("SearchBox");
-            Assert.Equal("Search names or PID (Ctrl+F)", search.Watermark);
+            Assert.Equal("Search names, PIDs or a time (Ctrl+F)", search.Watermark);
 
             // Cut short, the placeholder is whole in the field's tooltip, and its shortcut is the field's accelerator.
             Assert.Equal(search.Watermark, ToolTip.GetTip(search));

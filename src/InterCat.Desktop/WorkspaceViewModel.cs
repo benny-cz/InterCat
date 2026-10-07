@@ -544,7 +544,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (focus is null)
             {
-                SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token)
+                // The zoom keeps a lane for each the overview draws, so the timeline can draw its count in every lane even
+                // where a mechanism has nothing in view (§6.2).
+                SessionTimelineDetail detail = await source.TimelineAsync(viewport, columns, query.Token,
+                        [.. wholeSnapshot.MechanismLanes.Select(lane => lane.Mechanism)])
                     .AnsweredLater();
                 if (!disposed && ReferenceEquals(timelineQuery, query))
                 {
@@ -2075,7 +2078,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             string said = SearchedLanesNote;
             searchText = value;
             searchResult = WorkspaceSearch.Find(wholeSnapshot, value);
-            searchRows = [.. searchResult.Hits.Select(SearchRow.Of)];
+
+            // A moment typed comes first: going to it chooses the cell holding it (§6.2, §6.7).
+            ReadSearchedMoment(value);
+            searchRows = [.. SearchedMomentRow() is { } moment ? [moment] : Array.Empty<SearchRow>(),
+                .. searchResult.Hits.Select(SearchRow.Of)];
             selectedSearchResult = searchRows.Count > 0 ? searchRows[0] : null;
             FindSearchedLanes();
             if (said != SearchedLanesNote)
@@ -2113,15 +2120,23 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
-    /// <summary>How many entities matched, and what to do next; bounded results say how many more there are.</summary>
+    /// <summary>
+    /// How many entities matched, and what to do next; bounded results say how many more there are. A time typed that the
+    /// session cannot place says why first, ahead of any names it also matched.
+    /// </summary>
     public string SearchSummary => !IsSearching
         ? string.Empty
-        : searchResult.Matched == 0
-            ? "No matches · names, PIDs and channel endpoints are searched"
-            : searchResult.Matched > searchResult.Hits.Count
-                ? string.Create(CultureInfo.CurrentCulture,
-                    $"{searchResult.Hits.Count:N0} of {searchResult.Matched:N0} matches · refine the search for the rest")
-                : Counted(searchResult.Matched, "match", "matches") + " · Enter opens the selected one, Esc clears";
+        : searchedMomentProblem is { } problem
+            ? searchResult.Matched == 0 ? problem : problem + " " + MatchesSummary
+        : searchedMoment is not null && searchResult.Matched == 0 ? "A moment of this session · Enter goes there, Esc clears"
+        : MatchesSummary;
+
+    private string MatchesSummary => searchResult.Matched == 0
+        ? "No matches · names, PIDs and channel endpoints are searched"
+        : searchResult.Matched > searchResult.Hits.Count
+            ? string.Create(CultureInfo.CurrentCulture,
+                $"{searchResult.Hits.Count:N0} of {searchResult.Matched:N0} matches · refine the search for the rest")
+            : Counted(searchResult.Matched, "match", "matches") + " · Enter opens the selected one, Esc clears";
 
     /// <summary>Whether the rail shows the rung's ranked table: not while a search lists its hits there.</summary>
     public bool ShowsRankedTable => !IsEmptyRung && !IsSearching;
@@ -2162,6 +2177,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (row is null)
         {
             return false;
+        }
+
+        // A moment is no rung: going to it moves the timeline and chooses the cell holding it, on the rung shown.
+        if (MomentOf(row.Hit) is { } moment)
+        {
+            bool gone = GoTo(moment);
+            if (gone) SearchText = string.Empty;
+            return gone;
         }
 
         // Search covers the whole published session, not only an analysis brush. Clear that brush before opening a

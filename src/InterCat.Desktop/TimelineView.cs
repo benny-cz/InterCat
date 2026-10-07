@@ -535,6 +535,13 @@ public sealed class TimelineView : Control, IHoverCardSource
         detailTimer.Start();
     }
 
+    /// <summary>Shows the view a moment gone to is centred in (§6.7), and asks for its count at once rather than once it settles.</summary>
+    private void OnViewportRequested(object? sender, TimeRange range)
+    {
+        SetViewport(range);
+        RequestDetailNow();
+    }
+
     /// <summary>Asks at once for the detail the resting viewport needs, without waiting for it to settle.</summary>
     internal void RequestDetailNow()
     {
@@ -554,12 +561,14 @@ public sealed class TimelineView : Control, IHoverCardSource
         if (observed is not null)
         {
             observed.PropertyChanged -= OnViewModelChanged;
+            observed.ViewportRequested -= OnViewportRequested;
         }
 
         observed = DataContext as WorkspaceViewModel;
         if (observed is not null)
         {
             observed.PropertyChanged += OnViewModelChanged;
+            observed.ViewportRequested += OnViewportRequested;
         }
 
         cardKey = null;

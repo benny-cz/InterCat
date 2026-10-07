@@ -9,6 +9,9 @@ public enum SearchHitKind
     Group = 1,
     Process = 2,
     Channel = 3,
+
+    /// <summary>A moment of the session the search's text names, which going to chooses the cell of (§6.2, §6.7).</summary>
+    Moment = 4,
 }
 
 /// <summary>

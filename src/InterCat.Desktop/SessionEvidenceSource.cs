@@ -135,12 +135,17 @@ public sealed class SessionEvidenceSource(
             policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
 
-    /// <summary>The timeline over a viewport at the resolution it is drawn at, for zoomed detail.</summary>
-    public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken) =>
+    /// <summary>
+    /// The timeline over a viewport at the resolution it is drawn at, for zoomed detail, with a lane for each of
+    /// <paramref name="mechanismLanes"/>, the lanes the view draws, whether or not a record of it is in view.
+    /// </summary>
+    public Task<SessionTimelineDetail> TimelineAsync(TimeRange interval, int columns, CancellationToken cancellationToken,
+        IReadOnlyCollection<Mechanism>? mechanismLanes = null) =>
         Task.Run(() => SessionTimelineQuery.Detail(
             Store(),
             interval,
             columns,
+            mechanismLanes ?? [],
             cancellationToken), cancellationToken);
 
     /// <summary>

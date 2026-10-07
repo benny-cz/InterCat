@@ -160,10 +160,10 @@
           </DockPanel>
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
-          <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names or PID (Ctrl+F)"
+          <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names, PIDs or a time (Ctrl+F)"
                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                   ToolTip.Tip="Search names or PID (Ctrl+F)"
-                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint"
+                   ToolTip.Tip="Search names, PIDs or a time (Ctrl+F)"
+                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
                    AutomationProperties.AcceleratorKey="Ctrl+F" />
           <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding IsSearching}" AutomationProperties.Name="Search result status" />
@@ -212,7 +212,8 @@
                   <TextBlock Text="{Binding Kind}" Classes="eyebrow" />
                   <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
                   <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
-                  <TextBlock Text="{Binding Observations}" Classes="muted" FontSize="10" />
+                  <TextBlock Text="{Binding Observations}" Classes="muted" FontSize="10"
+                             IsVisible="{Binding Observations, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                 </StackPanel>
               </DataTemplate>
             </ListBox.ItemTemplate>

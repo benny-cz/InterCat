@@ -2058,6 +2058,30 @@ public sealed class CommandLineTests : IDisposable
             answer);
     }
 
+    [Fact(DisplayName = "R21: icat timeline counts a mechanism's lane where none of its records falls, each column saying what the capture covered of it, as the window's lane does")]
+    public async Task AQuietMechanismsLaneIsCounted()
+    {
+        using TemporarySession gapped = Gapped();
+
+        // The capture collected TCP alone, so UDP's lane holds no record: each of its columns is counted all the same,
+        // not collected where the capture delivered readings and unknown between its epochs, rather than left out.
+        (InterCatExitCode code, string answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6",
+            "--mechanism", "udp");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Records +UDP records$", answer);
+        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +not collected$", answer);
+        Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown$", answer);
+        Assert.Matches(@"(?m)^  5\.0 – 6\.0 µs +0 +- +not collected$", answer);
+        Assert.DoesNotContain("has no bucket", answer, StringComparison.Ordinal);
+
+        // TCP's quiet columns are covered: nothing it collects happened there.
+        (code, answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6", "--mechanism", "tcp");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Records +TCP records$", answer);
+        Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +covered$", answer);
+        Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered$", answer);
+    }
+
     [Fact(DisplayName = "R5: icat's tables name a mechanism, a record's kind and layer, a coverage state and a capability as the window does, never by the enumeration")]
     public async Task TablesNameMechanismsAndCoverageInWords()
     {

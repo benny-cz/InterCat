@@ -268,7 +268,25 @@ public static class SessionTimelineQuery
         TimeRange interval,
         int columns,
         CancellationToken cancellationToken = default) =>
-        Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, null, cancellationToken).Whole;
+        Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, null, null, cancellationToken).Whole;
+
+    /// <summary>
+    /// <see cref="Detail(SessionStore, TimeRange, int, CancellationToken)"/> with a lane for each of
+    /// <paramref name="mechanismLanes"/> - the lanes a view draws, the session's - whether or not a record of it falls
+    /// in the interval: an empty lane says what the capture covered of its mechanism there, and a view that draws the
+    /// session's every lane can draw the zoom's count in each rather than none (§6.2).
+    /// </summary>
+    public static SessionTimelineDetail Detail(
+        SessionStore store,
+        TimeRange interval,
+        int columns,
+        IReadOnlyCollection<Mechanism> mechanismLanes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(mechanismLanes);
+        return Count(store, interval, columns, null, EvidencePolicy.IncludeCorrelated, null, mechanismLanes, cancellationToken)
+            .Whole;
+    }
 
     /// <summary>
     /// <see cref="Detail"/> together with the rows <paramref name="focus"/> reads, under the evidence rung's own rules and
@@ -288,7 +306,7 @@ public static class SessionTimelineQuery
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(focus);
-        return Count(store, interval, columns, focus, policy, lanes, cancellationToken);
+        return Count(store, interval, columns, focus, policy, lanes, null, cancellationToken);
     }
 
     /// <summary>The whole timeline and, with a focus, its count and lanes; without one, Focus is empty.</summary>
@@ -299,6 +317,7 @@ public static class SessionTimelineQuery
         TimelineFocus? focus,
         EvidencePolicy policy,
         IReadOnlyList<ProcessInstanceId>? lanes,
+        IReadOnlyCollection<Mechanism>? mechanismLanes,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -365,7 +384,7 @@ public static class SessionTimelineQuery
         var whole = new SessionTimelineDetail(manifest.SessionId, manifest.Generation, interval,
             Array.AsReadOnly(counted.Buckets(coverage, clock, capture)))
         {
-            MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock)),
+            MechanismLanes = Array.AsReadOnly(counted.MechanismLanes(coverage, clock, mechanismLanes)),
             ManifestDigest = manifest.Digest,
         };
         CoverageState[]? laneCapture = total?.Lanes is not { Length: > 0 } counting ? null
@@ -1167,22 +1186,24 @@ internal sealed class TimelineColumns
     }
 
     /// <summary>
-    /// The same counted rows split into mechanism lanes. No extra segment read occurs. Even an empty column in a
+    /// The same counted rows split into mechanism lanes: one for each mechanism a row names, and one for each of
+    /// <paramref name="kept"/> whether or not a row names it. No extra segment read occurs. Even an empty column in a
     /// mechanism lane asks the coverage ledger about that mechanism, not whichever mechanism dominated the whole column.
     /// </summary>
-    public MechanismTimelineLane[] MechanismLanes(CoverageLedgerV1? coverage, SourceClockDescriptor clock)
+    public MechanismTimelineLane[] MechanismLanes(CoverageLedgerV1? coverage, SourceClockDescriptor clock,
+        IReadOnlyCollection<Mechanism>? kept = null)
     {
         int[] tallies = mechanisms ?? throw new InvalidOperationException("These columns were counted without mechanisms.");
         var lanes = new List<MechanismTimelineLane>();
         for (int slot = 0; slot < Slots.Length; slot++)
         {
-            bool observed = false;
-            for (int index = 0; index < counts.Length && !observed; index++)
+            bool laned = kept?.Contains(Slots[slot]) == true;
+            for (int index = 0; index < counts.Length && !laned; index++)
             {
-                observed = tallies[(index * Slots.Length) + slot] > 0;
+                laned = tallies[(index * Slots.Length) + slot] > 0;
             }
 
-            if (!observed) continue;
+            if (!laned) continue;
             Mechanism mechanism = Slots[slot];
             var buckets = new TimelineBucket[counts.Length];
             for (int index = 0; index < counts.Length; index++)

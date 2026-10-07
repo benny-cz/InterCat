@@ -100,6 +100,39 @@ public sealed class TimelineCellTests
         Assert.False(tour.HasCellExplanation);
     });
 
+    [Fact(DisplayName = "§6.8: a zoom carried into a publication that draws a new lane explains no cell of it, since the lanes draw the overview until their own count arrives")]
+    public void ACarriedZoomMissingALaneExplainsNoCell() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel first = Open(session);
+        TimeRange extent = first.Snapshot.Extent;
+        var zoom = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        first.RequestTimelineDetail(zoom, 40);
+        await first.TimelineDetailReady;
+        first.SelectTimelineLane(Mechanism.Tcp);
+        TimelineBucket fine = first.TimelineDetail!.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        first.ChooseTimelineCell(fine, Mechanism.Tcp);
+        Assert.Contains(" here one of this view's own 40;", first.CellExplanation, StringComparison.Ordinal);
+
+        // The next publication draws a UDP lane the carried zoom never counted: until its own zoom arrives the lanes draw
+        // the overview's columns, of which the chosen interval is none, so it is explained as no cell.
+        Publish(session.Store, [Timed(Transfer(400, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 900)
+            .Between(ClientEnd, ServerEnd) with { Mechanism = Mechanism.Udp })]);
+        using WorkspaceViewModel next = Open(session);
+        Assert.Contains(next.Snapshot.MechanismLanes, lane => lane.Mechanism == Mechanism.Udp);
+        Assert.Null(next.RestoreNavigation(first.CaptureNavigation()));
+        next.AdoptTimeline(first.CarryTimeline());
+        Assert.Equal(fine.Interval, next.SelectedInterval);
+        Assert.False(next.HasCellExplanation);
+
+        // Its own zoom counts every lane, and the cell is explained again.
+        next.RequestTimelineDetail(zoom, 40);
+        await next.TimelineDetailReady;
+        Assert.Contains(" here one of this view's own 40;", next.CellExplanation, StringComparison.Ordinal);
+    });
+
     [Fact(DisplayName = "§6.8: a cell chosen in a group's process lane, counted coarser than the view, is the analysis interval and names its owner, the rule that bound its records and the columns it was counted in")]
     public async Task AProcessLanesCellIsExplained()
     {

@@ -1537,6 +1537,7 @@
         "R21: icat processes says a process's transport bytes are unmeasured, or that it made none, as the window's rows do",
         "R21: icat processes says how each instance's records were bound, and what the evidence policy left out of a reused PID's later holder, as the inspector does",
         "R21: icat processes says what the capture covered as icat metric does, and never that a process sent nothing",
+        "R21: icat timeline counts a mechanism's lane where none of its records falls, each column saying what the capture covered of it, as the window's lane does",
         "R21: icat workspace correlate says an end's sends that measured no size are unmeasured, never 0 B, in the window's words",
         "R21: icat workspace correlate states what each compared capture covered of TCP and UDP, and that no candidate is then no proof",
         "R21: icat workspace timeline names each run of columns a capture did not cover, a single column as one, and none where it covered all",

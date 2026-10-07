@@ -93,14 +93,24 @@ public sealed partial class WorkspaceViewModel
     /// The lane's bucket whose half-open interval is <paramref name="interval"/>, as the timeline draws it, and whether it
     /// is the zoomed view's own count; null when the rung does not draw the lane or the interval is no cell of it.
     /// </summary>
-    private (TimelineBucket Bucket, bool Zoomed)? CellOf(TimelineCellLane lane, TimeRange interval)
+    private (TimelineBucket Bucket, bool Zoomed)? CellOf(TimelineCellLane lane, TimeRange interval) =>
+        CellWhere(lane, bucket => bucket.Interval == interval);
+
+    /// <summary>The lane's bucket holding <paramref name="ticks"/>, as <see cref="CellOf"/> finds one by its interval.</summary>
+    private (TimelineBucket Bucket, bool Zoomed)? CellAt(TimelineCellLane lane, long ticks) =>
+        CellWhere(lane, bucket => bucket.Interval.StartTicks <= ticks && ticks < bucket.Interval.EndTicks);
+
+    private (TimelineBucket Bucket, bool Zoomed)? CellWhere(TimelineCellLane lane, Func<TimelineBucket, bool> holds)
     {
         if (lane.Mechanism is { } mechanism)
         {
+            // The lanes draw the zoom's own count only once it holds every lane, and the overview's until then.
             return !ShowsMechanismLanes ? null
-                : Find(timelineDetail?.MechanismLanes.FirstOrDefault(candidate => candidate.Mechanism == mechanism)?.Buckets, interval) is { } zoomed
+                : Find(HasCompleteLaneDetail
+                        ? timelineDetail!.MechanismLanes.FirstOrDefault(candidate => candidate.Mechanism == mechanism)?.Buckets
+                        : null, holds) is { } zoomed
                     ? (zoomed, true)
-                : Find(Snapshot.MechanismLanes.FirstOrDefault(candidate => candidate.Mechanism == mechanism)?.Buckets, interval) is { } whole
+                : Find(Snapshot.MechanismLanes.FirstOrDefault(candidate => candidate.Mechanism == mechanism)?.Buckets, holds) is { } whole
                     ? (whole, false)
                 : null;
         }
@@ -116,17 +126,17 @@ public sealed partial class WorkspaceViewModel
             : null;
         if (lane != MachineRow)
         {
-            return Find(buckets, interval) is { } row ? (row, timelineDetail is not null) : null;
+            return Find(buckets, holds) is { } row ? (row, timelineDetail is not null) : null;
         }
 
         // The machine rung draws its mechanisms' lanes and no machine row beside them; every other rung draws one.
         return ShowsMechanismLanes ? null
-            : Find(timelineDetail?.Buckets, interval) is { } machine ? (machine, true)
-            : Find(Snapshot.Timeline, interval) is { } overview ? (overview, false)
+            : Find(timelineDetail?.Buckets, holds) is { } machine ? (machine, true)
+            : Find(Snapshot.Timeline, holds) is { } overview ? (overview, false)
             : null;
 
-        static TimelineBucket? Find(IReadOnlyList<TimelineBucket>? buckets, TimeRange interval) =>
-            buckets?.FirstOrDefault(bucket => bucket.Interval == interval);
+        static TimelineBucket? Find(IReadOnlyList<TimelineBucket>? buckets, Func<TimelineBucket, bool> holds) =>
+            buckets?.FirstOrDefault(holds);
     }
 
     /// <summary>The explanation of one cell, in the words its hover card and the inspector's other explanations use.</summary>
