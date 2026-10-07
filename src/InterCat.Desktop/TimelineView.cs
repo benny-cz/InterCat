@@ -41,6 +41,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     private static Pen HighlightPen => Current.HighlightPen;
     private static Pen MarkPen => Current.MarkPen;
     private static Pen TextPen => Current.TextPen;
+    private static Pen PinHeadPen => Current.PinHeadPen;
 
     /// <summary>The timeline's brushes in one theme mode, from its verified tokens (§6.6).</summary>
     private sealed class Ink
@@ -63,6 +64,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             HighlightPen = new(SelectedBrush, 2);
             MarkPen = new(TextBrush, 0.8);
             TextPen = new(TextBrush, 1);
+            PinHeadPen = new(DimBrush, 1.5);
             OutsideBrush = new(DimBrush.Color, 0.6);
             LiveContextBrush = new(ContextBarBrush.Color, 0.25);
             FailedBrush = Token(ThemePalette.Status(mode).Caution);
@@ -128,6 +130,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         /// <summary>Muted ink at a pixel: evidence marks and the live edge's rule.</summary>
         public Pen TextPen { get; }
+
+        /// <summary>The rim of a pinned lane's pin head, in the plot's own colour, as the graph rims a pinned node's.</summary>
+        public Pen PinHeadPen { get; }
 
         /// <summary>What lies outside the analysis interval steps back under this.</summary>
         public SolidColorBrush OutsideBrush { get; }
@@ -236,7 +241,8 @@ public sealed class TimelineView : Control, IHoverCardSource
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "timeline",
         "Left and Right pan, with Shift by one bucket; plus and minus zoom; Home and End go to the session's edges; 0 "
         + "fits the analysis interval, or the whole session when none is brushed; [ and ] step to the previous or next "
-        + "record; Up and Down scroll lanes. T shows the interval table, which lists what the timeline draws.",
+        + "record; Up and Down scroll lanes. P pins the selected process's lane at the top of its group's lanes, or unpins "
+        + "it. T shows the interval table, which lists what the timeline draws.",
         () => DataContext is WorkspaceViewModel viewModel
             ? viewModel.TimelineCaption + " · " + ViewportWords(Viewport, IsFit, viewModel.Snapshot.Extent) + " · "
                 + WorkspaceTime.TimeBase(viewModel.Snapshot.Began, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
@@ -1822,6 +1828,13 @@ public sealed class TimelineView : Control, IHoverCardSource
             }
 
             DrawText(context, label, new(9, row.Center.Y - 7));
+            if (viewModel.IsLanePinned(lane.ProcessId))
+            {
+                // A pin's head just after the name, as the graph marks a pinned node (§6.2).
+                Point head = PinHead(row, Labels.Get(label, 10, TextBrush).Width, scale.Left);
+                context.DrawEllipse(SelectedBrush, PinHeadPen, head, PinHeadRadius, PinHeadRadius);
+            }
+
             if (bytes?.Measures.Of(lane.ProcessId) is { } measured)
             {
                 DrawByteColumns(context, viewModel, measured, bytes.Metric, rowScale, new ByteHue(null, lane.Buckets, Context: false));
@@ -1834,6 +1847,24 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             DrawLaneSeries(context, viewModel, null, lane.Buckets, rowScale, row, coverageOnly: coverageOnly);
         }
+    }
+
+    /// <summary>The radius of a pinned lane's pin head, a pinned graph node's.</summary>
+    private const double PinHeadRadius = 3.5;
+
+    /// <summary>
+    /// Where a pinned lane's pin head is drawn: just after its row's name, level with it, and short of the plot however
+    /// long the name runs.
+    /// </summary>
+    private static Point PinHead(Rect row, double nameWidth, double plotLeft) =>
+        new(Math.Min(9 + nameWidth + 9, plotLeft - 10), row.Center.Y);
+
+    /// <summary>Where lane row <paramref name="row"/>'s pin head is drawn while it is pinned; row 0 is the machine context.</summary>
+    internal Point LanePinHead(int row)
+    {
+        var viewModel = (WorkspaceViewModel)DataContext!;
+        string label = OwnerLabel(viewModel.ProcessLaneDisplay[row - 1], viewModel);
+        return PinHead(RowBounds(row), Labels.Get(label, 10, TextBrush).Width, PlotLeft);
     }
 
     /// <summary>The machine row's name above a group's byte lanes: every record's bytes of the ranking's kind.</summary>

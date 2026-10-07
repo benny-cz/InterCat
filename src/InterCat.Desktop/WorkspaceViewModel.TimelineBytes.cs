@@ -304,7 +304,9 @@ public sealed partial class WorkspaceViewModel
         IReadOnlyList<TimelineBucket>? machine = timelineDetail?.Buckets is { Count: > 0 } detail && Spans(detail, span) ? detail
             : Spans(wholeSnapshot.Timeline, span) ? wholeSnapshot.Timeline
             : null;
-        return new(span, machine?.Count ?? lane.Count, lane.Count, [.. processLaneDisplay.Select(owner => owner.ProcessId)]);
+        // The lanes' instances in an order of their own, not as drawn: pinning a lane moves it without reading anything anew.
+        return new(span, machine?.Count ?? lane.Count, lane.Count,
+            [.. processLaneDisplay.Select(owner => owner.ProcessId).OrderBy(owner => owner.Value)]);
 
         static bool Spans(IReadOnlyList<TimelineBucket> buckets, TimeRange span) => buckets.Count > 0
             && buckets[0].Interval.StartTicks == span.StartTicks && buckets[^1].Interval.EndTicks == span.EndTicks;

@@ -615,15 +615,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Process lanes in the ranked table's order over the whole session: most own records first, then by instance, so
-    /// each lane sits where its row does. A brush reranks the table, not the lanes, and the timeline keeps its shape
-    /// (§6.4); a lane of an instance the snapshot does not name goes last.
+    /// each lane sits where its row does, beneath the lanes a person pinned, in the order pinned (§6.2). A brush reranks
+    /// the table, not the lanes, and the timeline keeps its shape (§6.4); a lane of an instance the snapshot does not name
+    /// goes last.
     /// </summary>
     private IReadOnlyList<ProcessTimelineLane> OrderProcessLanes(IReadOnlyList<ProcessTimelineLane> lanes)
     {
         Dictionary<ProcessInstanceId, long> records = wholeSnapshot.Processes
             .ToDictionary(process => process.Id, process => process.Records);
         return [.. lanes
-            .OrderBy(lane => records.ContainsKey(lane.ProcessId) ? 0 : 1)
+            .OrderBy(lane => pinnedLanes.IndexOf(lane.ProcessId) is var pinned and >= 0 ? pinned : int.MaxValue)
+            .ThenBy(lane => records.ContainsKey(lane.ProcessId) ? 0 : 1)
             .ThenByDescending(lane => records.GetValueOrDefault(lane.ProcessId))
             .ThenBy(lane => lane.ProcessId.ToString(), StringComparer.Ordinal)];
     }
@@ -1119,7 +1121,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ?? "instance " + end.Holder.ToString()[..8];
     }
 
-    /// <summary>L1 process rows ordered by PID and stable instance ID, independent of query/ranking order.</summary>
+    /// <summary>L1 process rows: those a person pinned first, then the rest in the ranked table's order over the session.</summary>
     public IReadOnlyList<ProcessTimelineLane> ProcessLaneDisplay => processLaneDisplay;
 
     public bool ShowsProcessLanes => ladder.Current.Level == DetailLevel.Group && processLaneDisplay.Count > 0
@@ -1229,8 +1231,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
                 ? $"{focus} · process lanes unavailable: {laneProblem}"
             : ShowsProcessLanes
-                ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + LaneResolutionNote
-                    + ProcessLaneBytesNote + " · machine context above · scroll names for more"
+                ? $"{focus} · {Counted(processLaneDisplay.Count, "process lane", "process lanes")}" + PinnedLanesNote
+                    + LaneResolutionNote + ProcessLaneBytesNote + " · machine context above · scroll names for more"
             : ShowsDirectionLanes
                 ? $"{focus} · by source direction" + DirectionLaneBytesNote + " · machine context above"
                     + (SelectedTimelineDirection is { } direction
@@ -5883,6 +5885,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
             PropertyChanged?.Invoke(this, new(nameof(DrawsUnmeasured)));
+        }
+        else if (propertyName == nameof(HasSelectedProcessLane))
+        {
+            // The lane pin control acts on the selected process's lane, and says what it would do to it.
+            PropertyChanged?.Invoke(this, new(nameof(IsSelectedLanePinned)));
+            PropertyChanged?.Invoke(this, new(nameof(LanePinLabel)));
         }
         else if (propertyName is nameof(ShowsMechanismLanes) or nameof(ShowsProcessLanes) or nameof(ShowsDirectionLanes)
             or nameof(ShowsChannelEndLanes) or nameof(TimelineBytes) or nameof(ProcessLaneBytes) or nameof(DirectionLaneBytes))

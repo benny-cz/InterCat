@@ -446,7 +446,10 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = ToggleFollowLatest();
                 break;
             case Key.P when e.KeyModifiers == KeyModifiers.None:
-                e.Handled = viewModel.TogglePinSelectedGraphNode();
+                // With the keyboard in the timeline, P pins the selected process's lane at the top of its group's lanes, or
+                // unpins it (§6.2); anywhere else, or with no such lane, it pins the selected graph node.
+                e.Handled = (TimelineSurface.IsKeyboardFocusWithin && viewModel.ToggleSelectedLanePin())
+                    || viewModel.TogglePinSelectedGraphNode();
                 break;
             case Key.L when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = viewModel.RelayoutGraph();
@@ -719,6 +722,12 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>The pointer equivalent of P: pins the selected graph node where it is drawn, or releases its pin.</summary>
     private void TogglePinNode(object? sender, RoutedEventArgs eventArgs) => _ = workspace.TogglePinSelectedGraphNode();
+
+    /// <summary>
+    /// The pointer equivalent of P in the timeline: pins the selected process's lane at the top of its group's lanes, or
+    /// unpins it (§6.2).
+    /// </summary>
+    private void ToggleLanePin(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ToggleSelectedLanePin();
 
     /// <summary>The pointer equivalent of L: lays the graph out afresh, keeping pinned nodes where they are.</summary>
     private void RelayoutGraph(object? sender, RoutedEventArgs eventArgs) => _ = workspace.RelayoutGraph();
@@ -2619,6 +2628,8 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             // The timeline keeps what it drew until this generation's own counts replace it, as the graph keeps its layout,
             // and the ranking keeps its scope's counts instead of blinking back to the whole session meanwhile (§6.4).
+            // Its pinned lanes stay pinned, as the graph's nodes do.
+            replacement.PinLanes(workspace.PinnedLanes);
             replacement.AdoptTimeline(workspace.CarryTimeline());
             replacement.AdoptScope(workspace.CarryScope());
         }
@@ -2798,8 +2809,9 @@ public sealed partial class MainWindow : Window, IDisposable
             TimelineSurface.RefreshLaneLayout();
         }
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.SelectedProcess)
-            or nameof(WorkspaceViewModel.ShowsProcessLanes))
+            or nameof(WorkspaceViewModel.ShowsProcessLanes) or nameof(WorkspaceViewModel.PinnedLanes))
         {
+            // A lane pinned or unpinned moves; the selected one stays in view as it does.
             Dispatcher.UIThread.Post(TimelineSurface.BringSelectedProcessLaneIntoView);
         }
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection))
