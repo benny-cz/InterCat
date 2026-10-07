@@ -36,7 +36,8 @@ public sealed class CommandLineTests : IDisposable
         ["Session", "Abandoned staged files", "Marker-only files", "Active writer files", "Unmarked legacy files", "Files removed"];
 
     /// <summary>The fields an export's report states before its caveats.</summary>
-    private static readonly string[] ExportFields = ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Rows", "Complete"];
+    private static readonly string[] ExportFields =
+        ["Written to", "Contract", "Rung", "Breadcrumb", "Scope", "Ranked by", "Grouped by", "Rows", "Complete"];
 
     /// <summary>The names a machine-readable answer gives its contract or version under.</summary>
     private static readonly string[] VersionNames = ["contract", "schemaVersion", "reportVersion"];
@@ -237,6 +238,51 @@ public sealed class CommandLineTests : IDisposable
         (InterCatExitCode checkpointed, string written, _) = await Run("checkpoint", session.Path);
         Assert.Equal(InterCatExitCode.Success, checkpointed);
         Assert.Matches(@"\n  Size +\S[^\n]*$", written.TrimEnd());
+    }
+
+    [Fact(DisplayName = "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session")]
+    public async Task AnExportGroupsBySession()
+    {
+        using var named = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
+        Publish(named.Store, rows, fields: fields);
+        using var unnamed = new TemporarySession();
+        Publish(unnamed.Store, rows);
+        string output = Path.Combine(Path.GetDirectoryName(named.Path)!, Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            // Grouped by session, terminal session 1's rung lists its two processes, and the report and the file say how.
+            (InterCatExitCode exported, string report, string said) =
+                await Run("export", named.Path, "--output", output, "--group-by", "session", "--at", "session:1");
+            Assert.True(exported == InterCatExitCode.Success, said);
+            Assert.Contains("Machine › Group: Terminal session 1", report, StringComparison.Ordinal);
+            Assert.Matches(new Regex(@"\n  Grouped by +terminal session\r?\n"), report);
+            using (JsonDocument document = JsonDocument.Parse(File.ReadAllText(output)))
+            {
+                Assert.Equal("session", document.RootElement.GetProperty("groupedBy").GetString());
+                Assert.Equal(["client.exe", "server.exe"], document.RootElement.GetProperty("rows").EnumerateArray()
+                    .Select(row => row.GetProperty("label").GetString()).Order(StringComparer.Ordinal));
+            }
+
+            // By executable, the default, a session's key names no row; a grouping the window does not offer is refused, and
+            // a session whose records name no terminal session is never grouped by one.
+            (InterCatExitCode byExecutable, _, string noRow) = await Run("export", named.Path, "--output", output, "--overwrite",
+                "--at", "session:1");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, byExecutable);
+            Assert.Contains("'session:1' is not a row of the Machine rung", noRow, StringComparison.Ordinal);
+            (InterCatExitCode unknown, _, string notOffered) = await Run("export", named.Path, "--output", output, "--overwrite",
+                "--group-by", "host");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, unknown);
+            Assert.Contains("--group-by must be executable or session.", notOffered, StringComparison.Ordinal);
+            (InterCatExitCode never, _, string guessed) = await Run("export", unnamed.Path, "--output", output, "--overwrite",
+                "--group-by", "session");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, never);
+            Assert.Contains("a session is never guessed", guessed, StringComparison.Ordinal);
+        }
+        finally
+        {
+            File.Delete(output);
+        }
     }
 
     [Fact(DisplayName = "R21: icat export's CSV states what the capture covered on every line, and its sharing report keeps it")]

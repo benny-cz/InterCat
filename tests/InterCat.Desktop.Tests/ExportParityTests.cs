@@ -80,5 +80,67 @@ public sealed class ExportParityTests
         }
     }
 
+    [Fact(DisplayName = "R18: grouped by terminal session, the window's export of the machine rung, a session's rung and its records is icat export --group-by session's")]
+    public async Task AGroupedExportIsTheHeadlessExport()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = TerminalSessions();
+        Publish(session.Store, rows, fields: fields);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(WorkspaceGrouping.Regroup(OverviewWorkspace.From(overview), LaneGrouping.UserSession),
+            WorkspaceGrouping.Identity(overview.GraphIdentity, LaneGrouping.UserSession),
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        SessionExportRequest Headless(string[] path, bool evidence, ExportFormat format) =>
+            new(path, null, evidence, format, RankBy: evidence ? RankingMetric.Records : RankingMetric.ActivePeers,
+                Grouping: LaneGrouping.UserSession);
+
+        // The machine rung's rows are the sessions, ranked by peers, and the export says how they were grouped.
+        workspace.RankBy = RankingMetric.ActivePeers;
+        await workspace.RankingReady;
+        foreach (ExportFormat format in (ExportFormat[])[ExportFormat.Json, ExportFormat.Csv])
+        {
+            Assert.Equal((await workspace.ExportAsync(format, Exported)).Content,
+                SessionExport.Build(session.Store, Headless([], false, format), Exported).Content);
+        }
+
+        using (JsonDocument machine = JsonDocument.Parse((await workspace.ExportAsync(ExportFormat.Json, Exported)).Content))
+        {
+            Assert.Equal("session", machine.RootElement.GetProperty("groupedBy").GetString());
+            Assert.Equal(["session:1", "session:0", "session:2", "session:unknown"],
+                machine.RootElement.GetProperty("rows").EnumerateArray().Select(row => row.GetProperty("key").GetString()));
+            Assert.Contains(WorkspaceExport.SessionGroupingCaveat,
+                machine.RootElement.GetProperty("context").GetProperty("caveats").EnumerateArray().Select(caveat => caveat.GetString()));
+        }
+
+        // A session's rung is reached by its key, and its records are the session's processes' own.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == "session:1");
+        Assert.True(workspace.Descend());
+        await workspace.RankingReady;
+        foreach (ExportFormat format in (ExportFormat[])[ExportFormat.Json, ExportFormat.Csv])
+        {
+            Assert.Equal((await workspace.ExportAsync(format, Exported)).Content,
+                SessionExport.Build(session.Store, Headless(["session:1"], false, format), Exported).Content);
+        }
+
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        foreach (ExportFormat format in (ExportFormat[])[ExportFormat.Json, ExportFormat.Csv])
+        {
+            SessionExportResult desktop = await workspace.ExportAsync(format, Exported);
+            Assert.Equal(desktop.Content, SessionExport.Build(session.Store, Headless(["session:1"], true, format), Exported).Content);
+            Assert.StartsWith("Records owned by the 2 instances of Terminal session 1", desktop.Context.Scope, StringComparison.Ordinal);
+        }
+
+        // By executable, as by default, a session's key names no row; and a session whose records name no terminal session
+        // is never grouped by one.
+        Assert.Contains("'session:1' is not a row of the Machine rung", Assert.Throws<ArgumentException>(() =>
+            SessionExport.Build(session.Store, new(["session:1"], null, false, ExportFormat.Json), Exported)).Message,
+            StringComparison.Ordinal);
+        using var unnamed = new TemporarySession();
+        Publish(unnamed.Store, rows);
+        Assert.Contains("a session is never guessed", Assert.Throws<ArgumentException>(() =>
+            SessionExport.Build(unnamed.Store, Headless([], false, ExportFormat.Json), Exported)).Message, StringComparison.Ordinal);
+    }
+
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }

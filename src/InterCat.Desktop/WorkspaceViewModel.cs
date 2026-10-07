@@ -5783,17 +5783,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// The applied snapshot an export names: this generation, this rung and its filters, and the interval the shown
-    /// counts answer, with what the capture covered there, as the inspector states it beneath its time scope (R21). At
-    /// the evidence rung the scope is the records' own, and the export is complete only when every page of that scope
-    /// has been loaded (plan §6.4).
+    /// The applied snapshot an export names: this generation, this rung and its filters, how its processes are grouped,
+    /// and the interval the shown counts answer, with what the capture covered there, as the inspector states it beneath
+    /// its time scope (R21). At the evidence rung the scope is the records' own, and the export is complete only when
+    /// every page of that scope has been loaded (plan §6.4).
     /// </summary>
     public ExportContext DescribeExport(DateTimeOffset exportedUtc)
     {
         ExportContext context = WorkspaceExport.RankingContext(
             evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure,
             Snapshot.MechanismCoverage, exportedUtc,
-            view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records);
+            view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records, Grouping);
 
         // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
         context = RankingExportCaveat is { } caveat ? context with { Caveats = [.. context.Caveats, caveat] } : context;

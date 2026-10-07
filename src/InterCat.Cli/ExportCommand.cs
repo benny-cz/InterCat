@@ -8,8 +8,9 @@ namespace InterCat.Cli;
 /// <summary>
 /// The Desktop's "Export this view" headlessly, in the same <c>intercat-export-v1</c> contract (R18). The rung is
 /// reached by descending through row keys, as a person would by selecting rows; an interval ranks within it;
-/// <c>--rank-by</c> ranks the machine and group rungs as the Desktop's selector does; and <c>--evidence</c> exports the
-/// rung's source records instead of its ranked rows.
+/// <c>--rank-by</c> ranks the machine and group rungs as the Desktop's selector does; <c>--group-by</c> groups the
+/// processes into the machine rung's rows as its Group by selector does; and <c>--evidence</c> exports the rung's
+/// source records instead of its ranked rows.
 /// </summary>
 internal static class ExportCommand
 {
@@ -28,6 +29,7 @@ internal static class ExportCommand
         string? formatText = command.TakeOption("--format");
         string? limitText = command.TakeOption("--limit");
         string? rankText = command.TakeOption("--rank-by");
+        string? groupText = command.TakeOption("--group-by");
         bool evidence = command.TryTakeFlag("--evidence");
         bool redacted = command.TryTakeFlag("--share-redacted");
         bool overwrite = command.TryTakeFlag("--overwrite");
@@ -55,6 +57,12 @@ internal static class ExportCommand
             "active-peers" => RankingMetric.ActivePeers,
             _ => null,
         };
+        LaneGrouping? groupBy = groupText switch
+        {
+            null or "executable" => LaneGrouping.Executable,
+            "session" => LaneGrouping.UserSession,
+            _ => null,
+        };
         int limit = SessionExport.DefaultEvidenceLimit;
         bool invalidLimit = limitText is not null
             && (!evidence
@@ -72,6 +80,7 @@ internal static class ExportCommand
                     + "rpc-errors, rpc-call-time-median, rpc-serve-time-median or active-peers."
             : evidence && rankBy != RankingMetric.Records
                 ? "--rank-by ranks rows; an --evidence export lists its records in reading order."
+            : groupBy is null ? "--group-by must be executable or session."
             : null;
         if (problem is not null)
         {
@@ -99,7 +108,7 @@ internal static class ExportCommand
         {
             result = SessionExport.Build(
                 SessionStore.OpenExisting(LocalOwnedDirectory.Open(session)),
-                new(path, interval, evidence, format!.Value, limit, redacted, rankBy!.Value),
+                new(path, interval, evidence, format!.Value, limit, redacted, rankBy!.Value, groupBy!.Value),
                 DateTimeOffset.UtcNow,
                 cancellationToken);
         }
@@ -124,7 +133,12 @@ internal static class ExportCommand
             ConsoleUi.Field("Breadcrumb", result.Context.Breadcrumb);
             ConsoleUi.Field("Scope", result.Context.Scope);
         }
-        if (!evidence) ConsoleUi.Field("Ranked by", WorkspaceExport.RankingName(result.Context.RankedBy));
+        if (!evidence)
+        {
+            ConsoleUi.Field("Ranked by", WorkspaceExport.RankingName(result.Context.RankedBy));
+            ConsoleUi.Field("Grouped by", result.Context.GroupedBy == LaneGrouping.UserSession ? "terminal session" : "executable");
+        }
+
         ConsoleUi.Field(evidence ? "Records" : "Rows", ConsoleUi.Count(result.Rows));
         ConsoleUi.Field("Complete", result.Context.Complete ? "yes" : "no");
         if (redacted)
@@ -145,7 +159,7 @@ internal static class ExportCommand
         ConsoleUi.Line("icat export <session-directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
         ConsoleUi.Line("            [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received|rpc-calls-made|");
         ConsoleUi.Line("                       rpc-calls-served|rpc-errors|rpc-call-time-median|rpc-serve-time-median|");
-        ConsoleUi.Line("                       active-peers]");
+        ConsoleUi.Line("                       active-peers] [--group-by executable|session]");
         ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
@@ -157,6 +171,9 @@ internal static class ExportCommand
         ConsoleUi.Line("  or by the median time those calls took, slowest first (call time as a client, serve time as a");
         ConsoleUi.Line("  server); a stop paired with no start is never timed. active-peers ranks by the distinct processes");
         ConsoleUi.Line("  at the other end of each process's records, a lower bound beside those left unresolved.");
+        ConsoleUi.Line("  --group-by session groups the machine rung's rows by the terminal session each process's");
+        ConsoleUi.Line("  lifecycle records name, as the window's Group by does, so --at reaches a session by its key");
+        ConsoleUi.Line("  (session:1, or session:unknown for the processes naming none); executable is the default.");
         ConsoleUi.Line("  --evidence exports the rung's source records instead of its rows, up to --limit (100,000 by");
         ConsoleUi.Line("  default); an export that stops short says so and exits with the partial-result code. CSV");
         ConsoleUi.Line("  neutralizes formula-like text, and a scope with no row keeps its context in one row_present=false");

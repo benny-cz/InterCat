@@ -7,8 +7,8 @@ namespace InterCat.Application;
 
 /// <summary>
 /// What a headless export reads: the rung reached by descending through these row keys from the machine rung, an
-/// optional analysis interval, whether that rung's ranked rows or its evidence records are exported, and what the
-/// machine and group rungs rank by.
+/// optional analysis interval, whether that rung's ranked rows or its evidence records are exported, what the machine
+/// and group rungs rank by, and how the processes are grouped into the machine rung's rows (§6.3).
 /// </summary>
 public sealed record SessionExportRequest(
     IReadOnlyList<string> Path,
@@ -17,7 +17,8 @@ public sealed record SessionExportRequest(
     ExportFormat Format,
     int EvidenceLimit = SessionExport.DefaultEvidenceLimit,
     bool Redacted = false,
-    RankingMetric RankBy = RankingMetric.Records);
+    RankingMetric RankBy = RankingMetric.Records,
+    LaneGrouping Grouping = LaneGrouping.Executable);
 
 /// <summary>The exported text, the snapshot it names, and how many rows or records it holds.</summary>
 public sealed record SessionExportResult(string Content, ExportContext Context, int Rows);
@@ -73,8 +74,22 @@ public static class SessionExport
             throw new ArgumentException("A ranking applies to ranked rows; an evidence export lists its records in reading order.");
         }
 
+        if (request.Grouping is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        {
+            throw new ArgumentException("An export groups processes by executable or by terminal session, as the window does.");
+        }
+
+        // The processes are grouped as the window groups them before a row key is read, so a session's rows are reached
+        // by the keys the window's session rows have.
         SessionOverviewBundle overview = SessionOverviewProjector.Project(store, cancellationToken: cancellationToken);
         WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
+        if (!WorkspaceGrouping.Offered(snapshot).Contains(request.Grouping))
+        {
+            throw new ArgumentException("No process lifecycle record in this session names the terminal session its process ran "
+                + "in, so its processes cannot be grouped by session; a session is never guessed.");
+        }
+
+        snapshot = WorkspaceGrouping.Regroup(snapshot, request.Grouping);
         if (request.Interval is { } interval)
         {
             SessionIntervalCounts counts = SessionIntervalQuery.Count(store, interval, cancellationToken: cancellationToken);
@@ -128,7 +143,8 @@ public static class SessionExport
             LadderView view = LadderProjection.Project(snapshot, ladder.Current, request.RankBy);
             RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
-                request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied);
+                request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied,
+                request.Grouping);
             if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
             {
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };

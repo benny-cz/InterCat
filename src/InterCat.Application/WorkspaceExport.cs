@@ -36,6 +36,12 @@ public sealed record ExportContext(
     public RankingMetric RankedBy { get; init; } = RankingMetric.Records;
 
     /// <summary>
+    /// How a ranked export's processes were grouped (§6.3): by executable, as projected, or by the terminal session their
+    /// lifecycle records name, which its machine rung's rows, and a group's rung, are.
+    /// </summary>
+    public LaneGrouping GroupedBy { get; init; } = LaneGrouping.Executable;
+
+    /// <summary>
     /// Each mechanism's coverage over the export's time scope, its interval or the whole session, with the fact behind
     /// its state: whether a count of none in its rows could have been seen at all (R21). Empty for a view of no session.
     /// </summary>
@@ -68,12 +74,25 @@ public static class WorkspaceExport
         string disclosure,
         IReadOnlyList<MechanismCoverage> coverage,
         DateTimeOffset exportedUtc,
-        RankingMetric rankedBy = RankingMetric.Records)
+        RankingMetric rankedBy = RankingMetric.Records,
+        LaneGrouping groupedBy = LaneGrouping.Executable)
     {
         ArgumentNullException.ThrowIfNull(ladder);
         ArgumentException.ThrowIfNullOrWhiteSpace(disclosure);
         ArgumentNullException.ThrowIfNull(coverage);
         if (!Enum.IsDefined(rankedBy)) throw new ArgumentOutOfRangeException(nameof(rankedBy));
+        if (groupedBy is not (LaneGrouping.Executable or LaneGrouping.UserSession))
+        {
+            throw new ArgumentOutOfRangeException(nameof(groupedBy), groupedBy, "A view groups by executable or terminal session.");
+        }
+
+        // Where its rows are groups or a group's processes, a grouping by terminal session says how the groups were formed.
+        string[] caveats = rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)];
+        if (groupedBy == LaneGrouping.UserSession && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
+        {
+            caveats = [.. caveats, SessionGroupingCaveat];
+        }
+
         return new(
             sessionId,
             generation,
@@ -85,15 +104,20 @@ public static class WorkspaceExport
                 ? "Ranked within " + WorkspaceTime.FormatRange(range, CultureInfo.InvariantCulture)
                 : "Whole session",
             true,
-            WithCoverage(
-                rankedBy == RankingMetric.Records ? [disclosure] : [disclosure, RankingCaveat(rankedBy, ladder.Current.Level)],
-                coverage),
+            WithCoverage(caveats, coverage),
             exportedUtc)
         {
             RankedBy = rankedBy,
+            GroupedBy = groupedBy,
             Coverage = coverage,
         };
     }
+
+    /// <summary>How an export's groups were formed when its processes are grouped by terminal session (§6.3).</summary>
+    public const string SessionGroupingCaveat =
+        "Grouped by terminal session: each group is the processes whose lifecycle records name that session, as icat metric "
+        + "--group-by session groups them, and the processes whose records name none are one group, Terminal session not "
+        + "recorded, never placed in a guessed session.";
 
     /// <summary>Caveats followed by what the capture covered over the export's scope, when it names a session's capture.</summary>
     private static string[] WithCoverage(string[] caveats, IReadOnlyList<MechanismCoverage> coverage) =>
@@ -155,6 +179,14 @@ public static class WorkspaceExport
     private const string TimeCaveat = "A median does not add: a group's is its members' calls taken together, and the rows "
         + "do not partition a total. A stop paired with no start is never timed, and a row with only such stops ranks after "
         + "every row that timed a call.";
+
+    /// <summary>A grouping's name as the command line and an export spell it: `executable` or `session`.</summary>
+    public static string GroupingName(LaneGrouping grouping) => grouping switch
+    {
+        LaneGrouping.Executable => "executable",
+        LaneGrouping.UserSession => "session",
+        _ => throw new ArgumentOutOfRangeException(nameof(grouping), grouping, "A view groups by executable or terminal session."),
+    };
 
     /// <summary>A ranking's name as the command line and an export spell it.</summary>
     public static string RankingName(RankingMetric ranking) => ranking switch
@@ -227,6 +259,7 @@ public static class WorkspaceExport
             Kind = "ranking",
             Context = Describe(context),
             RankedBy = RankingName(context.RankedBy),
+            GroupedBy = GroupingName(context.GroupedBy),
             Rows = rows.Select(row => new
             {
                 row.Key,

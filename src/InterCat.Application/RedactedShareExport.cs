@@ -44,7 +44,8 @@ public static class RedactedShareExport
             ExportFormat.Json => JsonSerializer.Serialize(new
             {
                 Contract, Kind = "ranking", ReportId = reportId, Redaction = PolicyDescription(),
-                Context = SafeContext(context), RankedBy = WorkspaceExport.RankingName(context.RankedBy), Rows = safe,
+                Context = SafeContext(context), RankedBy = WorkspaceExport.RankingName(context.RankedBy),
+                GroupedBy = WorkspaceExport.GroupingName(context.GroupedBy), Rows = safe,
             }, Json),
             ExportFormat.Csv => RankingCsv(reportId, context, safe),
             _ => throw new ArgumentOutOfRangeException(nameof(format)),
