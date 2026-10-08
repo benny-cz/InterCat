@@ -335,8 +335,14 @@ public static class SessionTimelineQuery
         // in the segments its interval meets.
         FocusRows? rows = focus is null ? null
             : FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock), focus, policy, cancellationToken);
-        SegmentReaderV1[] met = SessionNativeInterval.Segments(store, manifest, interval, clock);
-        var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
+
+        // The whole timeline comes from tiles (S4). Unfocused, it comes from the tiles the generation's checkpoint
+        // persisted where they describe its segments, and no segment is opened; otherwise, and with a focus, which reads
+        // its rows, from the tiles of each segment the interval meets. Either way only a tile a column boundary crosses
+        // has its records read.
+        SegmentReaderV1[] met = [];
+        TimelineColumns counted = (rows is null ? PersistedWhole(store, manifest, interval, columns, cancellationToken) : null)
+            ?? CountWhole(met = SessionNativeInterval.Segments(store, manifest, interval, clock), interval, columns, cancellationToken);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         (ProcessInstanceId[] laneOwners, ProcessInstanceId[] folded, string? laneProblem) =
             groupFocus ? LanesOf(focus!, lanes) : ([], [], null);
@@ -351,14 +357,6 @@ public static class SessionTimelineQuery
 
         // A channel has exactly two ends, each with its total and two directional bands: six series at most.
         TransportRelation? endRelation = focus is { OwnerProcesses.Count: 0 } ? rows?.Relation : null;
-
-        // The whole timeline comes from each segment's tiles (S4), focused or not: only a tile a column boundary crosses
-        // has its rows read.
-        foreach (SegmentReaderV1 segment in met)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
-        }
 
         // A focus reads its rows. Each segment is counted by one worker into columns of its own, and the workers' columns
         // are summed (SegmentPasses): at 10M records a group's lanes answer within §12's budget only side by side.
@@ -403,6 +401,64 @@ public static class SessionTimelineQuery
             OwnerLane = total?.Directions is null ? [] : Array.AsReadOnly(total.Focused.Buckets(capture)),
             ProcessLaneProblem = laneProblem,
         };
+    }
+
+    /// <summary>The whole timeline over <paramref name="met"/>, from each segment's own tiles.</summary>
+    private static TimelineColumns CountWhole(
+        SegmentReaderV1[] met, TimeRange interval, int columns, CancellationToken cancellationToken)
+    {
+        var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
+        foreach (SegmentReaderV1 segment in met)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            SegmentTimeTiles.Of(segment, cancellationToken).CountInto(segment, counted, cancellationToken);
+        }
+
+        return counted;
+    }
+
+    /// <summary>
+    /// The whole timeline from the tiles the generation's checkpoint persisted (`contracts/tile-index-v1.md`), opening no
+    /// segment but one whose readings go backwards, which keeps none and has its rows read; null when the generation names
+    /// no tile index, or one without a section of each of its segments, or one a part of which could not be read: that is
+    /// said once, the index is not read again for the generation, and the timeline is counted from its segments instead.
+    /// </summary>
+    private static TimelineColumns? PersistedWhole(
+        SessionStore store, SessionManifestV1 manifest, TimeRange interval, int columns, CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes))
+        {
+            return null;
+        }
+
+        try
+        {
+            using TileReading reading = tiles.Read(store.Root);
+            var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
+            foreach (StoreDependency segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!reading.CountInto(reading.Section(segment.Name), counted, cancellationToken))
+                {
+                    SegmentReaderV1 unordered = SessionSegments.Open(store, manifest, segment.Name);
+                    SegmentTimeTiles.Of(unordered, cancellationToken).CountInto(unordered, counted, cancellationToken);
+                }
+            }
+
+            return counted;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
     }
 
     /// <summary>

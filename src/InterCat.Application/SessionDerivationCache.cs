@@ -111,6 +111,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private OverviewCounts? overview;
     private bool overviewRead;
     private string? overviewProblem;
+    private TileIndexFile? tiles;
+    private bool tilesRead;
+    private string? tilesProblem;
     private string? operationsProblem;
     private OperationIndex? operationIndex;
     private bool operationIndexRead;
@@ -156,6 +159,12 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// none, or it was read. The overview is then counted from the segments, and is the same.
     /// </summary>
     public string? OverviewProblem => Volatile.Read(ref overviewProblem);
+
+    /// <summary>
+    /// Why the tile index this generation names could not be read, once it was asked for, or stopped being read; null
+    /// when it names none, or it was read. A zoom then counts from its segments' rows, and counts the same.
+    /// </summary>
+    public string? TilesProblem => Volatile.Read(ref tilesProblem);
 
     /// <summary>
     /// Why the operation index this generation names could not be read, once its calls were asked for; null when it names
@@ -477,6 +486,51 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             return overview;
+        }
+    }
+
+    /// <summary>
+    /// The tile index this generation names (`contracts/tile-index-v1.md`), opened and checked once; null when it names
+    /// none, when it could not be read, which <see cref="TilesProblem"/> then says, or once a zoom found a part of it it
+    /// could not read (<see cref="RefuseTiles"/>). A zoom counts a segment it holds a section of without opening it.
+    /// </summary>
+    public TileIndexFile? PersistedTiles(IOwnedDirectory directory)
+    {
+        lock (gate)
+        {
+            if (tilesRead)
+            {
+                return tiles;
+            }
+
+            tilesRead = true;
+            try
+            {
+                if (SessionTileIndex.NamedBy(Manifest) is { } named)
+                {
+                    tiles = SessionTileIndex.Open(directory, named, Manifest.SessionId);
+                }
+            }
+            catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+            {
+                Volatile.Write(ref tilesProblem, exception.Message);
+            }
+
+            return tiles;
+        }
+    }
+
+    /// <summary>
+    /// Stops the tile index being read for this generation, saying why: a part of it a zoom read was not what it should
+    /// be, so every later zoom counts from the segments' rows, as one does without it.
+    /// </summary>
+    public void RefuseTiles(string why)
+    {
+        lock (gate)
+        {
+            tilesRead = true;
+            tiles = null;
+            Volatile.Write(ref tilesProblem, why);
         }
     }
 

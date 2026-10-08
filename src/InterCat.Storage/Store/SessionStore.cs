@@ -961,8 +961,9 @@ public sealed partial class SessionStore
     /// Whether a dependency's readers check every byte they interpret against checksums the file carries, so it can be
     /// read before its file is hashed: a segment (segment-v1 §9), a dictionary, whose decoder checks its own digest,
     /// a journal, whose frames and records carry theirs (journal-v1), an index, which its reader hashes against the
-    /// digest its generation records before interpreting a byte (derivation-checkpoint-v1 §4), and a content chunk, whose
-    /// header and fragments carry theirs (content-v1 §2).
+    /// digest its generation records before interpreting a byte (derivation-checkpoint-v1 §4) or, for a tile index read
+    /// by the block, checks block by block (tile-index-v1 §4), and a content chunk, whose header and fragments carry
+    /// theirs (content-v1 §2).
     /// </summary>
     private static bool ChecksItself(StoreDependencyKind kind) =>
         kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary or StoreDependencyKind.Journal

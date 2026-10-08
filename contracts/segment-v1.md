@@ -385,7 +385,8 @@ would let absence be read as data (R21, P1).
   own table id and column set.
 - Compression. Every column at this version is uncompressed and directly mappable; §20.1's bounded decode
   buffers apply when a compressed encoding is added.
-- Aggregate tiles and the multiresolution overview pyramid of §10.2.
+- Aggregate tiles and the multiresolution overview pyramid of §10.2, which are indexes beside the segments rather than
+  segments: the persisted overview (`overview-index-v1`) and the tile index (`tile-index-v1`).
 
 Compaction and evidence leases, listed here while this format was frozen, are now `contracts/store-v1.md` §8: a
 compaction rewrites rows unchanged, raw-record locator included, and a reader holds its generation under a lease. Neither

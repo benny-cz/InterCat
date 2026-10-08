@@ -105,6 +105,7 @@ public sealed class DerivationCheckpointOverviewTests
                 DerivationCheckpoint.NamedBy(session.Store.Current!)!,
                 SessionOverviewIndex.NamedBy(session.Store.Current!)!,
                 OperationIndex.NamedBy(session.Store.Current!)!,
+                SessionTileIndex.NamedBy(session.Store.Current!)!,
             ],
             session.Store.Current!.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Index));
         SessionDerivationCache.Clear();

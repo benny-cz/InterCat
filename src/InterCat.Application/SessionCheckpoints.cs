@@ -85,13 +85,13 @@ public static class SessionCheckpoints
             if (IsCurrent(store.Root, manifest, clock, segments, fields))
             {
                 return Unpublished(CheckpointOutcome.AlreadyCurrent, manifest.Generation, started,
-                    "The generation already names a checkpoint, an overview and an index of its calls, each of every "
-                    + "segment it names.");
+                    "The generation already names a checkpoint, an overview, an index of its calls and its tiles, each of "
+                    + "every segment it names.");
             }
 
-            // The derivation checkpoint, the persisted overview and the operation index are published together: with
-            // them, a reopen opens no segment before its first view (overview-index-v1), nor before its first call
-            // ranking, RPC or HTTP listing, or brush (operation-index-v1).
+            // The derivation checkpoint, the persisted overview, the operation index and the tile index are published
+            // together: with them, a reopen opens no segment before its first view (overview-index-v1), nor before its
+            // first call ranking, RPC or HTTP listing, or brush (operation-index-v1), nor to draw a zoom (tile-index-v1).
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
@@ -135,13 +135,23 @@ public static class SessionCheckpoints
                 peers,
                 exchanges);
             _ = operations.Complete();
+            StoreDependency[] described = SessionOverviewIndex.ObservationSegments(manifest);
+            if (!described.Select(segment => segment.Name).SequenceEqual(SessionSegments.Names(manifest), StringComparer.Ordinal))
+            {
+                throw new InvalidOperationException("The generation's segments were listed in two orders.");
+            }
+
+            using StoreStagingFile tiles = store.Stage(SessionTileIndex.FileNameFor(next), StoreDependencyKind.Index);
+            bytes += SessionTileIndex.Write(
+                tiles.Content, manifest.SessionId, manifest.Generation, [.. described.Zip(segments)], cancellationToken);
+            _ = tiles.Complete();
 
             // Everything read is written, so the lease goes before the commit: a writer removes superseded manifests
             // only while no lease anywhere holds the session (store-v1 §9), and this one would keep them. The commit
             // re-measures every dependency and refuses a generation that is no longer current, so nothing relies on it.
             lease.Dispose();
             StoreCommitResult result = store.CommitIndex(
-                [checkpoint, overview, operations], manifest.Generation, committedUtc, next, cancellationToken);
+                [checkpoint, overview, operations, tiles], manifest.Generation, committedUtc, next, cancellationToken);
             return new(CheckpointOutcome.Published, manifest.Generation, result.Manifest.Generation, bytes,
                 Stopwatch.GetElapsedTime(started), null);
         }
@@ -172,9 +182,10 @@ public static class SessionCheckpoints
 
     /// <summary>
     /// Whether the generation names a readable checkpoint holding every derivation, a readable persisted overview and a
-    /// readable operation index keeping its exchanges, each covering exactly the segments it names. A checkpoint written
-    /// before revision 166 holds no activity, which a reopen would count from every segment, so it is replaced, and so is
-    /// a generation published before revision 440, which names no operation index, or 441, whose index keeps no exchanges.
+    /// readable operation index keeping its exchanges and a readable tile index, each covering exactly the segments it
+    /// names. A checkpoint written before revision 166 holds no activity, which a reopen would count from every segment,
+    /// so it is replaced, and so is a generation published before revision 440, which names no operation index, 441, whose
+    /// index keeps no exchanges, or 456, which names no tile index.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -203,11 +214,19 @@ public static class SessionCheckpoints
                     manifest.SessionId,
                     clock,
                     saved.Processes) is { KeepsExchanges: true } kept
-                && kept.Covers(SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest));
+                && kept.Covers(SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest))
+                && SessionTileIndex.NamedBy(manifest) is { } tiles
+                && SessionTileIndex.Open(directory, tiles, manifest.SessionId) is { } file
+                && file.Segments.Count == segments.Length
+                && SessionOverviewIndex.ObservationSegments(manifest).All(file.Describes);
         }
         catch (InvalidDataException)
         {
             // What cannot be read is replaced by what is published now.
+            return false;
+        }
+        catch (IOException)
+        {
             return false;
         }
     }

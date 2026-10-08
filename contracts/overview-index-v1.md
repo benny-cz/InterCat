@@ -5,7 +5,8 @@ Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 i
 beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
 no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
 lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
-rows when a view needs them.
+rows when a view needs them, and since revision 456 persisted for a finished generation beside the overview, with the
+records a column boundary can fall among (`contracts/tile-index-v1.md`), so a zoom opens no segment either.
 
 Revision 170 renamed this contract from `overview-v1`, which the JSON bundle `icat overview --json` had carried since
 revision 87 and still carries: that bundle is what a view shows, and this is a file a generation publishes. The file
@@ -163,8 +164,7 @@ from the segments' tiles.
 
 ## 4. What is not defined at this version
 
-- Deeper levels. Zoomed detail builds a segment's tiles from its rows when first drawn (revision 158). Persisting
-  them, so a zoom into a long session reads only the tiles it draws, is the pyramid's next level.
+- Deeper levels, which `contracts/tile-index-v1.md` defines since revision 456.
 - Focused counts, which filter rows by owner or channel and are not what these counts hold (§10.3).
 - Byte sums beyond the main columns' lanes and the whole session's processes and TCP channel ends: the minimap's, a
   datagram flow's, and any interval's, which are read from the segments.

@@ -180,7 +180,9 @@ hashed:
 - a content chunk's header and every fragment carry theirs (`content-v1` §2), revision 234;
 - an index is read whole and hashed against its recorded digest before a byte of it is interpreted
   (`derivation-checkpoint-v1` §4). Revision 162 added it: a checkpoint can be tens of megabytes for a session of many
-  connections, and hashing it at open would read it twice.
+  connections, and hashing it at open would read it twice. A tile index (revision 456) is read by the block instead,
+  and checks each block, and each block of records, against its own checksum before interpreting a byte of it
+  (`tile-index-v1` §4): a zoom reads what it draws, and a session's whole tile index would be read for none.
 
 Every other kind is small and carries no checksum of its own, so it is hashed at open as before. After its first
 view, the viewer hashes each file it listed. A file whose digest disagrees is reported and forgotten, so the next

@@ -95,10 +95,22 @@ internal sealed class SegmentTimeTiles
     /// <summary>The earliest and latest reading of one tile's records.</summary>
     internal (long Low, long High) Readings(int tile) => (lows[tile], highs[tile]);
 
-    /// <summary>The tiles of a segment, built on first use and kept for as long as its reader is.</summary>
+    /// <summary>The run of rows one tile's records occupy, from its first to past its last, untimed rows among them.</summary>
+    internal (int First, int End) RowsOf(int tile) => (firstRows[tile], endRows[tile]);
+
+    /// <summary>The mechanisms the segment's timed records are of, in code order: a tile keeps one count per mechanism here.</summary>
+    internal ReadOnlySpan<Mechanism> Mechanisms => mechanisms;
+
+    /// <summary>How many of one tile's records are of the mechanism in <paramref name="slot"/> of <see cref="Mechanisms"/>.</summary>
+    internal int CountAt(int tile, int slot) => counts[(tile * mechanisms.Length) + slot];
+
+    /// <summary>A tile's place among the aligned tiles of its width: it holds <c>[index·width, (index+1)·width)</c>.</summary>
+    internal long IndexOf(int tile) => indexes[tile];
+
     /// <summary>Whether a reader's tiles have been built: what a zoom's cost depends on, read only by tests of it.</summary>
     internal static bool IsBuilt(SegmentReaderV1 segment) => Built.TryGetValue(segment, out _);
 
+    /// <summary>The tiles of a segment, built on first use and kept for as long as its reader is.</summary>
     public static SegmentTimeTiles Of(SegmentReaderV1 segment, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(segment);

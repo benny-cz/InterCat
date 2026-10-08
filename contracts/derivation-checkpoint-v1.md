@@ -83,8 +83,9 @@ rollback to the generation before it, as any damaged file does (store-v1 §6). I
 generation, or a live writer's next commit, which re-measures everything it carries. A writer publishes a new
 checkpoint when it finishes.
 
-A writer publishes a checkpoint, and since revision 163 the persisted overview with it (`contracts/overview-index-v1.md`)
-and since revision 440 the operation index (`contracts/operation-index-v1.md`), when it has finished writing a session:
+A writer publishes a checkpoint, and since revision 163 the persisted overview with it (`contracts/overview-index-v1.md`),
+since revision 440 the operation index (`contracts/operation-index-v1.md`) and since revision 456 the tile index
+(`contracts/tile-index-v1.md`), when it has finished writing a session:
 
 - an import (`icat import --into`);
 - the end of a live follow: the Desktop's, its finish of an interrupted one, `icat follow` and `icat capture`;

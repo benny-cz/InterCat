@@ -854,10 +854,13 @@
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
+        "I14: a generation published before tile indexes is counted from its segments, and gains one when its checkpoint is published",
         "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again",
         "I14: a reopened HTTP session takes its exchanges from its operation index: its first listing, page and spans open no segment, and answer as a grouping of every segment does",
         "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
+        "I14: a segment that keeps no tiles is described as such, its rows read, and one with no timed record counts nothing",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
+        "I14: a tile index is used only where it describes each of the generation's segments by name, length and digest",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
         "I14: an extension declines, for a full derivation, whatever would change a decision already made",
         "I14: an import bound that would be exceeded is a refusal, not a partial import",
@@ -1097,9 +1100,12 @@
         "I3: time ranges are half-open"
       ],
       "I4": [
+        "I4: a damaged tile index is refused, never misread: the zoom counts from the segments' rows instead",
+        "I4: a generation's tile index refused once is not read again for it, and says why",
         "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows",
         "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged",
         "I4: a record is counted in the column whose stated interval holds it, at every boundary",
+        "I4: a reopened session's zooms count from its persisted tiles exactly what its rows count, and open no segment",
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",
         "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
@@ -1928,6 +1934,9 @@
         "S5: rolling retention leaves a session within its window, and one whose oldest chunk reaches into it, as they are",
         "S5: the Explore card keeps every record of ten minutes unless a person chooses a window, which it explains and the capture is told",
         "S5: while a capture keeping a window records, the window projects its stop from what the window holds, and once a pin keeps the session past it, from when the pin stops it"
+      ],
+      "S3": [
+        "S3: a zoom counts from persisted tiles in proportion to its view: whole tiles where its columns hold them, records only where a column boundary falls among them"
       ]
     },
     "uncovered": {
