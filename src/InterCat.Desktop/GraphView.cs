@@ -562,13 +562,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             radii[node.Key] = radius;
             if (selected.Contains(node.Key))
             {
-                context.DrawEllipse(Brushes.Transparent, SelectionPen, point, radius + 6, radius + 6);
+                context.DrawEllipse(Brushes.Transparent, SelectionPen, point, radius + SelectionHalo, radius + SelectionHalo);
             }
             else if (partlySelected.Contains(node.Key))
             {
                 // Part of the selection is inside this aggregate among other processes: a broken ring, never the solid
                 // one, so an aggregate is not mistaken for the selected process or group itself.
-                DrawDashedCircle(context, null, PartialSelectionDashes, point, radius + 6);
+                DrawDashedCircle(context, null, PartialSelectionDashes, point, radius + SelectionHalo);
             }
 
             if (node.Key == highlightedNode)
@@ -881,12 +881,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             double width = Math.Max(name.Width, detail?.Width ?? 0);
             double height = name.Height + (detail?.Height ?? 0);
             bool mustShow = index < required && (node.Key == focused || selected.Count == 1);
-            Rect? where = Place(point, radius, width, height, node.Key, points, radii, placed, mustShow);
+
+            // A selected node's name stands outside the halo drawn around it, never across the ring, with its second line or
+            // without it.
+            double clearance = selected.Contains(node.Key) || partlySelected.Contains(node.Key) ? radius + SelectionHalo : radius;
+            Rect? where = Place(point, clearance, width, height, node.Key, points, radii, placed, mustShow);
             if (where is null && detail is not null)
             {
                 // Without room for the second line, the name alone may still fit.
                 detail = null;
-                where = Place(point, radius, name.Width, name.Height, node.Key, points, radii, placed, mustShow);
+                where = Place(point, clearance, name.Width, name.Height, node.Key, points, radii, placed, mustShow);
             }
 
             if (where is not { } box)
@@ -899,6 +903,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             detail?.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
         }
     }
+
+    /// <summary>How far outside a node its selection's ring is drawn, and a selected node's label kept clear of it.</summary>
+    private const double SelectionHalo = 6;
+
+    /// <summary>The label boxes drawn in the last frame, in the order placed.</summary>
+    internal IReadOnlyList<Rect> PlacedLabels => placedLabels;
 
     /// <summary>Whether a node's label is required: it is selected, or it holds the keyboard's focus.</summary>
     private static bool IsRequired(GraphDisplayNode node, IReadOnlySet<string> selected, string? focused) =>

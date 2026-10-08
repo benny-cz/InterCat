@@ -15,6 +15,41 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class GraphHoverTests
 {
+    [AvaloniaFact(DisplayName = "§6.3: a selected node's name stands outside its selection's ring, as far past the ring as an unselected name stands from its node")]
+    public async Task ASelectedNodesNameClearsItsRing()
+    {
+        var viewModel = new WorkspaceViewModel(SyntheticWorkspace.Create(), "generation-1");
+        var window = new MainWindow(viewModel) { Width = 1456, Height = 939 };
+        window.Show();
+        await viewModel.LayoutReady;
+        viewModel.ClearSelection();
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        GraphDisplayNode node = viewModel.GraphDisplay.Nodes.Where(candidate => candidate.Kind == GraphNodeKind.Process)
+            .OrderByDescending(candidate => candidate.Observations).First();
+        Point at = graph.PointOf(node.Key)!.Value;
+
+        // How far its name's box stands from the node's centre, on whichever side it was placed.
+        double Gap()
+        {
+            static double From(Rect box, Point centre) => box.Top > centre.Y ? box.Top - centre.Y
+                : box.Bottom < centre.Y ? centre.Y - box.Bottom
+                : box.Left > centre.X ? box.Left - centre.X
+                : centre.X - box.Right;
+            return graph.PlacedLabels.Where(box => Math.Abs(box.Center.X - at.X) < 120 && Math.Abs(box.Center.Y - at.Y) < 120)
+                .Min(box => From(box, at));
+        }
+
+        double unselected = Gap();
+        viewModel.SelectGraphNode(node.Key);
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Assert.Equal(unselected + 6, Gap(), 1);
+        Save(window, "graph-selected-label.png");
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.2: hovering a node or an edge describes it, and hover never changes the selection")]
     public async Task HoverDescribesWithoutSelecting()
     {

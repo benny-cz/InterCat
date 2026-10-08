@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 432 · Branch: `main`
+Updated: 2026-10-08 · Plan revision: 433 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -77,6 +77,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 433 — a selected node's name clears its halo (§6.3):**
+  - A selected or partly selected node's name is placed outside the ring drawn around it, where it was drawn across
+    the ring; no other label moves.
 
 - **Revision 432 — an action is offered only where it acts (§6.8, R15):**
   - Export, a redacted report and a re-layout are disabled while nothing is there for them, each saying why in its
@@ -1500,6 +1504,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      an exchange (TCP is not process-scoped at capture).
 
 ## Verification and cautions
+
+- Revision 433 was built and tested in the same Linux container: Debug and Release each ran **1,824 tests**, passing
+  **1,728 with 4 skipped**; the 92 failures are the ones revision 432 left, all needing Windows. In a real window the
+  busiest process's name stands 6 pixels further from its node once the node is selected, the ring's own distance, on
+  the side it was placed. The mutation that placed it across the ring again was caught; one that changed only the
+  name-alone fallback, used when a second line has no room, was not, since no test crowds a selected node so: both
+  placements take the same clearance.
 
 - Revision 432 was built and tested in the same Linux container: Debug and Release each ran **1,823 tests**, passing
   **1,727 with 4 skipped**; the 92 failures are revision 361's baseline less the two legibility tests revisions 428
