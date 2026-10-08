@@ -2041,6 +2041,49 @@ public sealed class CommandLineTests : IDisposable
         static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
+    [Fact(DisplayName = "S5: icat follow --keep-last keeps the newest stretch of session time, releasing the oldest chunks between mirrors and saying so")]
+    public async Task AFollowKeepsTheNewestStretch()
+    {
+        using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var told = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+
+        // Four chunks of two records a second apart in session time.
+        _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
+            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+
+        // Keeping the last two seconds of seven, the follow releases the chunks wholly before the newest two, once it has
+        // mirrored them, and says from when it keeps every record.
+        (InterCatExitCode code, string output, string said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement rolling = answer.RootElement.GetProperty("rolling");
+            Assert.True(answer.RootElement.GetProperty("finished").GetBoolean());
+            Assert.Equal((2, "the last 2 seconds", 1), (rolling.GetProperty("keepSeconds").GetInt32(),
+                rolling.GetProperty("window").GetString(), rolling.GetProperty("releases").GetInt32()));
+            Assert.Equal(answer.RootElement.GetProperty("evidenceChunks").GetInt32(), answer.RootElement.GetProperty("derivedChunks").GetInt32());
+        }
+
+        SessionManifestV1 session = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!;
+        GenerationRelease release = session.LatestRelease(RetentionExtentKind.Interval)!;
+        Assert.Equal("rolling retention keeps the last 2 seconds", release.Record.Reason);
+        (_, output, _) = await Run("session", followed.Path);
+        Assert.Contains("rolling retention keeps the last 2 seconds", output, StringComparison.Ordinal);
+
+        // Told in words: the size line's sentence when it releases, and the policy in the follow's report.
+        (code, output, said) = await Run("follow", evidence.Path, told.Path, "--keep-last", "2");
+        Assert.True(code == InterCatExitCode.Success, said);
+        SessionManifestV1 again = SessionStore.OpenExisting(LocalOwnedDirectory.Open(told.Path)).Current!;
+        Assert.Contains(SessionGrowth.Retained(again)!, said + output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Rolling +keeps the last 2 seconds of session time; 1 release so far, every record kept from \S+ s\r?$", output);
+
+        // A window is whole seconds from one to a day.
+        (code, _, said) = await Run("follow", evidence.Path, told.Path, "--keep-last", "0");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--keep-last expects whole seconds", said, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]
     public async Task ContentIsReleasedOnlyWhenToldWhy()
     {

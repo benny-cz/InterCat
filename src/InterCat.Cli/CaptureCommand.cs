@@ -29,6 +29,9 @@ internal sealed record CaptureDocument
     public required int DerivedChunks { get; init; }
     public required long DerivedRecords { get; init; }
     public required long? Generation { get; init; }
+
+    /// <summary>The rolling retention the follow ran (`--keep-last`); null when the session kept every record.</summary>
+    public RollingDocument? Rolling { get; init; }
 }
 
 /// <summary>
@@ -63,6 +66,7 @@ internal static class CaptureCommand
         string? durationOption = command.TakeOption("--duration");
         string? journalOption = command.TakeOption("--max-journal-mib");
         string? freeOption = command.TakeOption("--min-free-mib");
+        string? keepOption = command.TakeOption("--keep-last");
         string? brokerOption = command.TakeOption("--broker");
         string? sessionOption = command.TakePositional();
         bool json = command.TryTakeFlag("--json");
@@ -91,6 +95,12 @@ internal static class CaptureCommand
             out BrokerPrepareCaptureRequest? request, out string? problem))
         {
             ConsoleUi.Failure(problem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        if (!RollingFollow.TryParse(keepOption, out RollingRetention? rolling, out string? keepProblem))
+        {
+            ConsoleUi.Failure(keepProblem!);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -123,7 +133,7 @@ internal static class CaptureCommand
 
         await using (connection.ConfigureAwait(false))
         {
-            return await CaptureAsync(connection.Client, request!, sessionPath, json, cancellationToken)
+            return await CaptureAsync(connection.Client, request!, sessionPath, json, rolling, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -133,6 +143,7 @@ internal static class CaptureCommand
         BrokerPrepareCaptureRequest request,
         string sessionPath,
         bool json,
+        RollingRetention? rolling,
         CancellationToken cancellationToken)
     {
         if (await client.SendAsync(
@@ -194,7 +205,7 @@ internal static class CaptureCommand
             await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, ticket,
                     new CaptureLimits(TimeSpan.FromSeconds(request.Quota.MaximumDurationSeconds),
                         request.Quota.MaximumJournalBytes, request.Quota.MinimumFreeDiskBytes),
-                    cancellationToken)
+                    rolling, cancellationToken)
                 .ConfigureAwait(false);
 
         // The follow returns only once the capture is closed, and a closed capture publishes nothing more: a session that
@@ -223,6 +234,7 @@ internal static class CaptureCommand
             DerivedChunks = last?.DerivedChunks ?? 0,
             DerivedRecords = last?.DerivedRecords ?? 0,
             Generation = derived?.Current?.Generation,
+            Rolling = derived is null ? null : RollingFollow.Describe(rolling, derived),
         };
         if (json)
         {
@@ -281,6 +293,7 @@ internal static class CaptureCommand
         bool json,
         LiveFollowHold? ticket,
         CaptureLimits limits,
+        RollingRetention? rolling,
         CancellationToken cancellationToken)
     {
         FollowStep? last = null;
@@ -328,6 +341,9 @@ internal static class CaptureCommand
                         + $"published chunk(s), generation {ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
                         + Growth(derived!, step.DerivedRecords, stopRequested ? null : limits, evidencePath, sessionPath));
                 }
+
+                // Between two mirrors, by the follow's own writer: the only place a release may be published (ADR-044).
+                RollingFollow.Step(rolling, derived!, new(step.MirroredChunks), json, work);
 
                 last = step;
             }
@@ -513,6 +529,14 @@ internal static class CaptureCommand
         ConsoleUi.Field("Records", $"{ConsoleUi.Count(document.DerivedRecords)} derived from {ConsoleUi.Count(document.DerivedChunks)} chunk(s)");
         ConsoleUi.Field("Generation", document.Generation is { } generation ? ConsoleUi.Count(generation) : "none published");
         ConsoleUi.Field("Capture", $"{document.CaptureId} ({document.State})");
+        if (document.Rolling is { } rolling)
+        {
+            ConsoleUi.Field("Rolling", $"keeps {rolling.Window} of session time; "
+                + (rolling.KeptFromNanoseconds is { } from
+                    ? $"{CountText.Of(rolling.Releases, "release")}, every record kept from {SessionTimeText.Seconds(from, CultureInfo.CurrentCulture)}"
+                    : "nothing released"));
+        }
+
         if (document.Reason is { } reason)
         {
             ConsoleUi.Note(reason);
@@ -536,11 +560,14 @@ internal static class CaptureCommand
     {
         ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
         ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--allow-broader]");
-        ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--broker <exe>] [--json]");
+        ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
+        ConsoleUi.Line("               [--json]");
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval), records evidence only, and this process derives the session.");
         ConsoleUi.Line("      Stops at --duration (default 60 s) or on Ctrl+C; everything published is kept. If this");
         ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
-        ConsoleUi.Line("      it leaves beside it.");
+        ConsoleUi.Line("      it leaves beside it. --keep-last keeps the session to the newest stretch of session time");
+        ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on; the");
+        ConsoleUi.Line("      broker's own evidence keeps every record until the capture stops.");
     }
 }

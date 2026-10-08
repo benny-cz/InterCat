@@ -1855,7 +1855,10 @@
         "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before"
       ],
       "S5": [
-        "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished"
+        "S5: icat follow --keep-last keeps the newest stretch of session time, releasing the oldest chunks between mirrors and saying so",
+        "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished",
+        "S5: rolling retention keeps the newest window of session time, releasing the oldest records a quarter of it apart",
+        "S5: rolling retention leaves a session within its window, and one whose oldest chunk reaches into it, as they are"
       ]
     },
     "uncovered": {

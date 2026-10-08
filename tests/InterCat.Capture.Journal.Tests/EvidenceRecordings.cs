@@ -39,6 +39,7 @@ internal static class EvidenceRecordings
     /// starts at a record <paramref name="bursts"/> names - by default the third - and waits for the bursts before it to be
     /// published, so the recording has a chunk of its own for every burst but the last, which ends with its finality: a
     /// fixed pause did not guarantee that, because under load one publication could take every record and the finality.
+    /// Records are <paramref name="qpcStep"/> counter ticks apart, so a test can spread them over session time.
     /// </summary>
     public static async Task<LiveRecordingResult> RecordEvidence(
         string directory,
@@ -46,7 +47,8 @@ internal static class EvidenceRecordings
         bool failLossRead = false,
         ClockCalibrationSource? calibration = null,
         IReadOnlyList<CollectorProcessV1>? collectors = null,
-        IReadOnlyList<int>? bursts = null)
+        IReadOnlyList<int>? bursts = null,
+        long qpcStep = 1)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
         var host = new ScriptedHost { FailLossRead = failLossRead };
@@ -68,7 +70,7 @@ internal static class EvidenceRecordings
                 SourceIndex = 0,
                 EventId = 10,
                 Version = 0,
-                TimestampQpc = now + index,
+                TimestampQpc = now + (index * qpcStep),
                 TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
                 RecordOrdinal = ordinals[index],
             };

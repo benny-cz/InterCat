@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -20,6 +21,9 @@ internal sealed record FollowDocument
     public required long DerivedRecords { get; init; }
     public required long? Generation { get; init; }
     public required int Compactions { get; init; }
+
+    /// <summary>The rolling retention the follow ran (`--keep-last`); null when it kept every record.</summary>
+    public RollingDocument? Rolling { get; init; }
 }
 
 /// <summary>
@@ -42,6 +46,7 @@ internal static class FollowCommand
         }
 
         string? pollOption = command.TakeOption("--poll");
+        string? keepOption = command.TakeOption("--keep-last");
         string? evidenceOption = command.TakePositional();
         string? sessionOption = command.TakePositional();
         bool once = command.TryTakeFlag("--once");
@@ -52,7 +57,7 @@ internal static class FollowCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (evidenceOption is not null && sessionOption is null && pollOption is null && !once)
+        if (evidenceOption is not null && sessionOption is null && pollOption is null && keepOption is null && !once)
         {
             return FinishInterrupted(Path.GetFullPath(evidenceOption), json, cancellationToken);
         }
@@ -88,6 +93,12 @@ internal static class FollowCommand
         }
 
         TimeSpan poll = TimeSpan.FromSeconds(pollSeconds);
+        if (!RollingFollow.TryParse(keepOption, out RollingRetention? rolling, out string? keepProblem))
+        {
+            ConsoleUi.Failure(keepProblem!);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));
         if (evidence.Current is null)
         {
@@ -128,6 +139,7 @@ internal static class FollowCommand
             if (once)
             {
                 last = follower.CatchUp(cancellationToken: cancellationToken);
+                RollingFollow.Step(rolling, derived, new(last.MirroredChunks), json, cancellationToken);
             }
             else
             {
@@ -143,6 +155,9 @@ internal static class FollowCommand
                                 + $"{step.DerivedChunks:N0} of {CountText.Of(step.EvidenceChunks, "chunk")} and "
                                 + $"{CountText.Of(step.DerivedRecords, "record")} derived, generation {step.DerivedGeneration:N0}.");
                         }
+
+                        // Between two mirrors, on the follow's own thread: the only place its writer may release (ADR-044).
+                        RollingFollow.Step(rolling, derived, new(step.MirroredChunks), json, cancellationToken);
                     },
                     cancellationToken).ConfigureAwait(false);
             }
@@ -168,6 +183,7 @@ internal static class FollowCommand
             DerivedRecords = last?.DerivedRecords ?? 0,
             Generation = derived.Current?.Generation,
             Compactions = last?.Compactions ?? 0,
+            Rolling = RollingFollow.Describe(rolling, derived),
         };
         if (json)
         {
@@ -310,6 +326,14 @@ internal static class FollowCommand
             document.Finished
                 ? "finished: the capture stopped, and its coverage ledger is mirrored"
                 : "the capture has not finished here; run this again to continue");
+        if (document.Rolling is { } rolling)
+        {
+            ConsoleUi.Field("Rolling", $"keeps {rolling.Window} of session time; "
+                + (rolling.KeptFromNanoseconds is { } from
+                    ? $"{CountText.Of(rolling.Releases, "release")} so far, every record kept from {SessionTimeText.Seconds(from, CultureInfo.CurrentCulture)}"
+                    : "nothing released yet"));
+        }
+
         ConsoleUi.Note(
             "Every chunk was copied byte for byte and checked against the evidence's digest; its rows were derived here. "
             + "The session is an ordinary one: icat session, processes and metric read it.");
@@ -317,11 +341,14 @@ internal static class FollowCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--json]");
+        ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--keep-last <seconds>]");
+        ConsoleUi.Line("              [--json]");
         ConsoleUi.Line("      Derives a session from what icat record --evidence-only publishes, in this ordinary");
         ConsoleUi.Line("      process: each committed journal chunk is copied byte for byte and checked, and its");
         ConsoleUi.Line("      rows derived here. It follows while the capture records, ends when it stops, and");
         ConsoleUi.Line("      continues where it stopped when run again. --once derives what is committed now.");
+        ConsoleUi.Line("      --keep-last keeps the newest stretch of session time that long: once the session holds a");
+        ConsoleUi.Line("      quarter more, the records read before it are released, but for what later ones rest on.");
         ConsoleUi.Line("  icat follow <session-dir> [--json]");
         ConsoleUi.Line("      Finishes a session whose follow ended early, from the ticket icat capture or the");
         ConsoleUi.Line("      Desktop left beside it. Nothing is recorded again: what the broker kept is derived.");

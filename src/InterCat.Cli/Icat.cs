@@ -153,7 +153,7 @@ internal static class Icat
         ConsoleUi.Line("      The same for the seeded UDP workload, with --sockets where TCP has --connections.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
-        ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--broker <exe>] [--json]");
+        ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--keep-last <seconds>] [--broker <exe>] [--json]");
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval) and this process derives the session. Ctrl+C stops early.");
         ConsoleUi.Line("      Windows only, as the broker is.");
@@ -252,7 +252,8 @@ internal static class Icat
         ConsoleUi.Line("      admitted journal, or every message's kept content would give up, and performs it only");
         ConsoleUi.Line("      with --confirm and a stated reason (ADR-010, ADR-043).");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--json]");
+        ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--keep-last <seconds>]");
+        ConsoleUi.Line("              [--json]");
         ConsoleUi.Line("  icat follow <session-dir> [--json]");
         ConsoleUi.Line("      Derives a session, in this ordinary process, from what icat record --evidence-only");
         ConsoleUi.Line("      publishes: chunks copied byte for byte and checked, rows derived here (ADR-027). Given");
