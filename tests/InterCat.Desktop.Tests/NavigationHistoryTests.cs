@@ -140,7 +140,7 @@ public sealed class NavigationHistoryTests
     }
 
     [Fact(DisplayName = "§6.7: forward history survives a live publication as far as the new generation still has its rungs")]
-    public void ForwardHistorySurvivesAPublication()
+    public void ForwardHistorySurvivesAPublication() => SingleThreadedContext.Run(() =>
     {
         WorkspaceSnapshot source = SyntheticWorkspace.Create();
         using var old = new WorkspaceViewModel(source, "session:one:generation:1");
@@ -183,7 +183,8 @@ public sealed class NavigationHistoryTests
         Assert.True(thinner.GoForward());
         Assert.False(thinner.CanGoForward);
         Assert.Equal(deepest.Take(2), thinner.Crumbs.Select(crumb => crumb.Label));
-    }
+        return Task.CompletedTask;
+    });
 
     private static WorkspaceViewModel Open(TemporarySession session)
     {

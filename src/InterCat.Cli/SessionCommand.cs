@@ -56,6 +56,12 @@ internal sealed record SessionDocument
 
     /// <summary>The generation's size on disk, with its tier, as the window states it (§12.1 S5); null before one is published.</summary>
     public required SessionSizeDocument? Size { get; init; }
+
+    /// <summary>The pins keeping the session's records from a moment through every retention (store-v1 §8), earliest first.</summary>
+    public IReadOnlyList<PinDocument> Pins { get; init; } = [];
+
+    /// <summary>Why the session's pins could not be read, which refuses every release until they can be; null when they were.</summary>
+    public string? PinsProblem { get; init; }
 }
 
 /// <summary>A generation's size on disk: every file it names at its measured length, its journal's part, and its records.</summary>
@@ -486,6 +492,7 @@ internal static class SessionCommand
         }
 
         JournalRederivationReadiness readiness = JournalRederivation.Assess(manifest);
+        (IReadOnlyList<PinDocument> pins, string? pinsProblem) = manifest is null ? ([], null) : PinsOf(store, cancellationToken);
         return new()
         {
             Contract = "store-v1",
@@ -554,7 +561,34 @@ internal static class SessionCommand
             Content = content,
             Notes = notes,
             Size = manifest is null ? null : SizeOf(SessionGrowth.Measure(manifest, coverage!.RowCount)),
+            Pins = pins,
+            PinsProblem = pinsProblem,
         };
+    }
+
+    /// <summary>The session's pins as a document states them, or why they could not be read.</summary>
+    private static (IReadOnlyList<PinDocument> Pins, string? Problem) PinsOf(SessionStore store, CancellationToken cancellationToken)
+    {
+        IReadOnlyList<RetentionPin> pins;
+        try
+        {
+            pins = store.Pins();
+        }
+        catch (InvalidDataException exception)
+        {
+            return ([], exception.Message);
+        }
+
+        if (pins.Count == 0)
+        {
+            return ([], null);
+        }
+
+        TimeRange? extent = SessionRecording.RecordsExtent(store, cancellationToken);
+        SessionWallClock? wall = SessionRecording.WallClock(store);
+        return ([.. pins.Select(pin => PinDocument.Of(pin, extent is { } range
+            ? RetainCommand.Instant(pin.FromNanoseconds, wall, range)
+            : SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)))], null);
     }
 
     private static SessionSizeDocument SizeOf(SessionSize size) => new()
@@ -702,6 +736,20 @@ internal static class SessionCommand
         foreach (GenerationRelease earlier in generation.EarlierReleases ?? [])
         {
             RenderRetention(earlier.Record, string.Create(CultureInfo.CurrentCulture, $"generation {earlier.Generation:N0}"));
+        }
+
+        if (document.Pins.Count > 0 || document.PinsProblem is not null)
+        {
+            ConsoleUi.Heading("Pinned");
+            if (document.PinsProblem is { } problem)
+            {
+                ConsoleUi.Field("Pins", problem + " No release is made until they can be read.");
+            }
+
+            foreach (PinDocument pin in document.Pins)
+            {
+                ConsoleUi.Field("Pin " + pin.ShortId, pin.Statement);
+            }
         }
 
         ConsoleUi.Heading("Published files");

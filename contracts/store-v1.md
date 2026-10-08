@@ -3,9 +3,10 @@
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
 dictionaries a generation publishes, evidence leases and the retention of a dependency, a journal prefix or, since
 revision 434, an interval with the identity evidence and the operations its retained rows rest on, journal
-re-derivation, the removal of superseded manifests, and the publication of an index, are implemented and tested; a
-rolling retention policy is not**. The segment and dictionary formats are frozen separately
-in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
+re-derivation, the removal of superseded manifests, the publication of an index, a follow's rolling retention (revision
+439, ADR-045) and, since revision 442, the pins that keep a session's records from a moment (ADR-046), are implemented
+and tested**. The segment and dictionary formats are frozen separately in `contracts/segment-v1.md`; this contract owns
+how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
 what a reader acquires, and what recovery does with a publication that was interrupted. It owns nothing
@@ -30,6 +31,8 @@ Names are ASCII letters, digits, `.`, `-` and `_`, at most 64 characters, no lea
 | `previous-generation.json` | The retained last-known-good pointer. |
 | `session-publication.lock` | Persistent root-wide writer serialization guard. |
 | `session-evidence-lease.lock` | Persistent shared-reader/exclusive-deletion guard. |
+| `retention-pins.json` | The pins standing on the session (§8), replaced whole. Mutable, and no generation's dependency. |
+| `retention-pins.lock` | Persistent guard every change to the pins, and every release that could give up a pinned record, holds. |
 | `recovery-pointer-<32 hex>.json` | Preserved bytes of a damaged current pointer after confirmed repair. |
 | `stg-<32 hex>.tmp` | A file being staged. Unreferenced by construction. |
 | `stg-<same 32 hex>.lease` | The staging owner's OS-held marker; never a published dependency. |
@@ -312,7 +315,8 @@ anything. If any reader in any process holds the shared guard, physical removal 
 files remain as reported orphans. This is intentionally conservative: one reader may defer deletion of an
 unrelated file, but no reader loses a dependency. Disposal, expiry, or process exit releases the OS handle;
 expiry has a timer so an idle client does not hold cleanup indefinitely. A lease is not a durable promise
-across process restart, and the guard is not a cross-process quota reservation for pins.
+across process restart, and the guard is not a cross-process quota reservation for pins: a pin (below) is that promise,
+about a session's records rather than a generation's files.
 
 A lease on a session with no published generation is refused. An empty session is not a generation with no
 data. Since revision 310 a reader establishes a missing guard only in a folder that holds a session pointer, current or
@@ -327,6 +331,51 @@ store's current one. A commit that lands between acquiring a lease and asking th
 generation would otherwise hand the reader a newer generation than the one its lease protects — a reader
 holding generation 1 and reading generation 2's dependency list reads files its lease does not hold (I16,
 I18). A lease never moves to a later generation, and neither does what it names.
+
+### A pin
+
+A **pin** (revision 442, ADR-046) is a person's hold on a session's records, where a lease is a reader's hold on a
+generation's files. While it stands, no retention gives up a record the session holds that was read at or after its
+moment, and the session may hold up to its **allowance**. Session times are nanoseconds.
+
+- **What it keeps.** An interval release asked for past a pin plans to the earliest pin before its boundary, so every
+  record it gives up was read before it, and states the pin that held it (below). A release by record number - a
+  journal prefix, or a recording's oldest chunks - cannot say when its records were read, and is refused while any pin
+  stands. A release of kept content is not held: content is restricted evidence a person may give up on its own
+  (`contracts/content-v1.md` §2), and every record and row stays. Derived files, which re-derivation rebuilds, are not
+  held either.
+- **Where it is.** In `retention-pins.json`, beside the generations rather than in them: a pin is placed while a follow
+  writes the session, and a generation published by any other writer fails the follow (ADR-024). The file is replaced
+  whole through a staged name, as a pointer is:
+
+  ```text
+  RetentionPinsV1 = { formatVersion: 1, sessionId, pins: [ RetentionPin ] }      ; in the order placed, at most 64
+  RetentionPin    = { id (non-empty guid, once), fromNanoseconds (>= 0), allowanceBytes (> 0),
+                      placedUtc, reason (1..500 characters, not blank) }
+  ```
+
+  It is written as a manifest is (camel case, indented, no unknown member) and read refusing any other format, another
+  session's identity, a damaged pin, a duplicate identity, more than 64 pins or more than 1 MiB.
+- **The lock.** Placing or removing a pin, and every release that could give up a pinned record, holds
+  `retention-pins.lock` exclusively - a release takes it before anything else and keeps it until it has published -
+  and waits up to ten seconds for another holder. A release reads the pins under it and refuses with a
+  `RetentionPinnedException` when its boundary passes a pin; a pin reads the current generation under it. So a pin placed
+  while a release planned is honoured by the release, or placed against the generation the release published.
+- **Placing one.** Refused when its moment lies before the latest interval release's boundary - those records are
+  gone, and the refusal names the boundary as the earliest moment a pin keeps from - when its allowance is less than
+  the session holds (every file its current generation names, at its measured length), and when 64 already stand.
+- **Unreadable pins.** A pins file that cannot be read refuses every release that could give up a pinned record and
+  every change to the pins: neither what they keep nor the pins themselves are lost.
+- **A rolling follow** (ADR-045). A pin whose moment lies before what the policy is due to release holds the policy at
+  the pin, which the follow says once. When the session then holds more than such a pin allows, the follow stops -
+  `icat capture` stops its capture - and says which pin stopped it and how to go on; unreadable pins stop it too. A pin
+  within the window holds nothing back.
+- **From the command line.** `icat pin <session>` lists the pins, `icat pin <session> --from <moment> --reason <text>
+  [--allow-mib <n>]` places one - the moment placed as `icat evidence --from` places one, the allowance by default what
+  the session holds now - and `icat pin <session> --remove <pin>` removes one, named by its identity or its first
+  characters. Its document, under `store-v1`, lists the pins with the one placed or removed, the session's size and the
+  latest release's boundary. `icat session` lists the pins in the same words, and `icat retain --release-before` names
+  the pin that held a release.
 
 ### Retention
 
@@ -497,8 +546,9 @@ manifest is removed as §9's superseded manifests are.
 
 ## 9. What the sweep treats as referenced
 
-Opening a session reports every file no generation needs. Both lock guards and both pointers count, and so does the manifest and
-dependency list of **each** generation a pointer names — including the retained last-known-good. A sweep that
+Opening a session reports every file no generation needs. Every lock guard and both pointers count, as do the pins and
+their lock (§8), and so does the manifest and dependency list of **each** generation a pointer names — including the
+retained last-known-good. A sweep that
 treated the last-known-good as unreferenced would let `RemoveOrphans` delete the one thing a rollback needs,
 and the next torn pointer would turn a recoverable interruption into a refused session.
 
@@ -526,10 +576,10 @@ A session written before this rule keeps its superseded manifests until its next
   Thread and resource identities are not derived, so none are kept.
 - Open-operation censoring at a retention boundary (I20) is not needed while an interval release keeps an operation open
   across its boundary whole (revision 435); an operation whose start the capture itself never saw is stated as such.
-- Rolling retention by time or size. Retention here is an explicit action on a named extent; the policy that
-  decides when to take it is separate work, and must run inside the recorder, whose next publication a release
-  published beneath it fails. S5's disclosure exists for the policy captures have, which stops at its
-  limits: since revision 393 a recording says when its length, its journal or the disk's reserve stops it. A rolling
-  policy will owe the point at which it begins evicting in the same place.
+- Rolling retention of a broker's own evidence. Since revision 439 a follow keeps a rolling window of the session it
+  derives (ADR-045), releasing between its mirrors by its own writer, since a release published beneath a recorder
+  fails the recorder's next publication; the broker's evidence keeps every record until its capture's limits stop it.
+- Materializing a pinned interval into a package of its own, §10.1's other branch: a pin keeps everything after its
+  moment, and its allowance bounds that (ADR-046).
 - Binding to the broker's validated root for live capture. The interface is shared; the composition
   belongs with the live runtime.

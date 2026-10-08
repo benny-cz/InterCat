@@ -271,7 +271,7 @@ public sealed class StoreStagingFile : IDisposable
 /// publication is detected on the next open and rolled back to the last complete generation rather than
 /// read as though it had completed.
 /// </summary>
-public sealed class SessionStore
+public sealed partial class SessionStore
 {
     public const string PublicationLockFileName = "session-publication.lock";
 
@@ -529,10 +529,12 @@ public sealed class SessionStore
             || publishedName.Equals(SessionPointerV1.PreviousFileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.Equals(PublicationLockFileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.Equals(EvidenceLeaseLockFileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.Equals(RetentionPinsV1.FileName, StringComparison.OrdinalIgnoreCase)
+            || publishedName.Equals(RetentionPinsV1.LockFileName, StringComparison.OrdinalIgnoreCase)
             || publishedName.StartsWith("manifest-", StringComparison.OrdinalIgnoreCase))
         {
             throw new ArgumentException(
-                "A dependency cannot use the session's pointer, manifest or publication-lock namespace.",
+                "A dependency cannot use the session's pointer, manifest, pins or lock namespace.",
                 nameof(publishedName));
         }
 
@@ -859,7 +861,7 @@ public sealed class SessionStore
                 current = manifest;
 
                 // A pin cannot promise less disk allowance than the evidence it already holds.
-                long held = manifest.Dependencies.Sum(dependency => dependency.LengthBytes);
+                long held = manifest.HeldBytes();
                 if (bounds.Kind == EvidenceLeaseKind.Pinned && bounds.ReservedBytes < held)
                 {
                     throw new InvalidOperationException(
@@ -1158,12 +1160,14 @@ public sealed class SessionStore
         }
 
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        using FileStream pinsLock = AcquirePinsLock();
         lock (gate)
         {
             using FileStream publicationLock = AcquirePublicationLock();
             RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            RequireNoPins();
             if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
             {
                 throw new InvalidOperationException(
@@ -1236,12 +1240,14 @@ public sealed class SessionStore
         ArgumentException.ThrowIfNullOrWhiteSpace(reason);
         ArgumentOutOfRangeException.ThrowIfNegative(releasedRecords);
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        using FileStream pinsLock = AcquirePinsLock();
         lock (gate)
         {
             using FileStream publicationLock = AcquirePublicationLock();
             RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
+            RequireNoPins();
             if (chunks.Count == 0)
             {
                 throw new ArgumentException(
@@ -1526,6 +1532,10 @@ public sealed class SessionStore
         }
 
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+
+        // The pins are held until the release has published, so a pin placed meanwhile is either read here or placed
+        // against the generation this publishes, whose boundary then refuses it if it lies before.
+        using FileStream pinsLock = AcquirePinsLock();
         lock (gate)
         {
             using FileStream publicationLock = AcquirePublicationLock();
@@ -1538,6 +1548,8 @@ public sealed class SessionStore
                     $"Generation {sourceGeneration} changed while its oldest interval was being released. Reopen the "
                     + "current generation and release again. Nothing was published.");
             }
+
+            RequirePinsAllowInterval(interval.BoundaryNanoseconds);
 
             var released = new List<StoreDependency>();
             CommittedBoundary boundary = previous.Boundary;
@@ -2494,8 +2506,8 @@ public sealed class SessionStore
     }
 
     /// <summary>
-    /// Every file the session still needs: both pointers, and the manifest and dependencies of each
-    /// generation a pointer names.
+    /// Every file the session still needs: both pointers, the locks, the pins a person placed, and the manifest and
+    /// dependencies of each generation a pointer names.
     /// </summary>
     /// <remarks>
     /// The retained last-known-good counts. It is the whole point of keeping it: a sweep that treated the
@@ -2510,6 +2522,8 @@ public sealed class SessionStore
             SessionPointerV1.PreviousFileName,
             PublicationLockFileName,
             EvidenceLeaseLockFileName,
+            RetentionPinsV1.FileName,
+            RetentionPinsV1.LockFileName,
         };
         Add(referenced, manifest);
         if (Read<SessionPointerV1>(directory, SessionPointerV1.PreviousFileName) is { } previous

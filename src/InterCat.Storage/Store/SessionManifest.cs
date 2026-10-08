@@ -410,6 +410,12 @@ public sealed record SessionManifestV1
             ? new(Generation, own)
             : EarlierReleases?.LastOrDefault(release => release.Record.Kind == kind);
 
+    /// <summary>
+    /// What this generation holds on disk: every file it names, at the length it measured before naming it. It is the size
+    /// a session is stated at, and what a pin's allowance is measured against.
+    /// </summary>
+    public long HeldBytes() => Dependencies.Aggregate(0L, (held, dependency) => checked(held + dependency.LengthBytes));
+
     /// <summary>The releases a later generation carries: those nothing can rebuild. Derived files can be rebuilt.</summary>
     private static bool IsCarried(RetentionExtentKind kind) =>
         kind is RetentionExtentKind.JournalPrefix or RetentionExtentKind.Content or RetentionExtentKind.Interval;

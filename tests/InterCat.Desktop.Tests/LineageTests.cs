@@ -15,7 +15,7 @@ namespace InterCat.Desktop.Tests;
 public sealed class LineageTests
 {
     [Fact(DisplayName = "§3.2: the inspector names a process's parent and children, and selects either")]
-    public void TheInspectorStatesAndSelectsAProcesssLineage()
+    public void TheInspectorStatesAndSelectsAProcesssLineage() => SingleThreadedContext.Run(() =>
     {
         using var session = new TemporarySession();
         ObservationRowV1 launcher = Timed(Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\launcher.exe" });
@@ -75,10 +75,11 @@ public sealed class LineageTests
         Assert.Equal([401, 402], workspace.ChosenProcesses.Select(process => process.ProcessId).Order());
         Assert.Null(workspace.SelectedProcess);
         Assert.False(workspace.ShowsLineage);
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact(DisplayName = "§3.2: a single child is selected as the selection, and the synthetic tour states no lineage")]
-    public void ASingleChildIsTheSelection()
+    public void ASingleChildIsTheSelection() => SingleThreadedContext.Run(() =>
     {
         using var session = new TemporarySession();
         ObservationRowV1 parent = Timed(Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\shell.exe" });
@@ -102,7 +103,8 @@ public sealed class LineageTests
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1");
         tour.SelectProcess(tour.Snapshot.Processes[0].Id);
         Assert.False(tour.ShowsLineage);
-    }
+        return Task.CompletedTask;
+    });
 
     /// <summary>A row whose session time is its reading in workspace ticks.</summary>
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

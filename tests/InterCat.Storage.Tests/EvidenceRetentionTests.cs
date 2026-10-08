@@ -10,7 +10,7 @@ namespace InterCat.Storage.Tests;
 /// out from under an open reader is worse than no retention, and a release that cannot be read afterwards is
 /// indistinguishable from data loss.
 /// </summary>
-public sealed class EvidenceRetentionTests
+public sealed partial class EvidenceRetentionTests
 {
     private static readonly Guid Session = Guid.Parse("c4d5e6f7-a8b9-4c0d-8e1f-2a3b4c5d6e7f");
     private static readonly CaptureId Capture = new(Guid.Parse("b2c3d4e5-f6a7-4b8c-8d9e-0f1a2b3c4d5e"));

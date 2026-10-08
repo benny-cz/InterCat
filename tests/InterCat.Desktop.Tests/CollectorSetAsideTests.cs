@@ -95,7 +95,7 @@ public sealed class CollectorSetAsideTests
     });
 
     [Fact(DisplayName = "§19.5: a process's lineage names a parent or child set aside as InterCat's own, never as missing from the capture")]
-    public void LineageNamesWhatIsSetAside()
+    public void LineageNamesWhatIsSetAside() => SingleThreadedContext.Run(() =>
     {
         DateTimeOffset created = CollectorBrokerCreated;
         using var session = new TemporarySession();
@@ -167,7 +167,8 @@ public sealed class CollectorSetAsideTests
         shown.SelectProcess(shown.Snapshot.Processes.Single(node => node.ProcessId == 402).Id);
         Assert.Equal("intercat-broker.exe · PID 401 · linked by its start key", shown.ParentText);
         Assert.True(shown.CanSelectParent);
-    }
+        return Task.CompletedTask;
+    });
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 

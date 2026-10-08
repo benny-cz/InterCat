@@ -56,6 +56,7 @@ internal static class Icat
                 "recover" => await RecoverCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "staging" => await StagingCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "retain" => await RetainCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "pin" => await PinCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "compact" => await CompactCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "checkpoint" => await CheckpointCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "follow" => await FollowCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -251,6 +252,11 @@ internal static class Icat
         ConsoleUi.Line("      Measures what releasing the records read before a moment with their rows, a prefix of the");
         ConsoleUi.Line("      admitted journal, or every message's kept content would give up, and performs it only");
         ConsoleUi.Line("      with --confirm and a stated reason (ADR-010, ADR-043).");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat pin <directory> [--from <moment> --reason <text> [--allow-mib <n>]] [--remove <pin>]");
+        ConsoleUi.Line("           [--json]");
+        ConsoleUi.Line("      Lists, places or removes the pins that keep a session's records from a moment through");
+        ConsoleUi.Line("      every retention, within the size they allow it (ADR-046).");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--keep-last <seconds>]");
         ConsoleUi.Line("              [--json]");

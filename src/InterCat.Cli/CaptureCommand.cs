@@ -343,7 +343,20 @@ internal static class CaptureCommand
                 }
 
                 // Between two mirrors, by the follow's own writer: the only place a release may be published (ADR-044).
-                RollingFollow.Step(rolling, derived!, new(step.MirroredChunks), json, work);
+                // A session that outgrew what a pin keeping it past its window allows stops its capture, rather than
+                // release the pinned records or grow on.
+                if (RollingFollow.Step(rolling, derived!, new(step.MirroredChunks), json, work) is { } pinned && !stopRequested)
+                {
+                    stopRequested = true;
+                    finishing.CancelAfter(FinishAfterStop);
+                    ConsoleUi.Warn("Stopping the capture; deriving what it published. " + pinned + " "
+                        + RollingFollow.GoOn(sessionPath));
+                    if (await client.SendAsync(new BrokerStopCaptureRequest(captureId, Guid.NewGuid()), finishing.Token)
+                            .ConfigureAwait(false) is BrokerStopCaptureResponse { FailureReason: { } refused })
+                    {
+                        ConsoleUi.Warn(refused);
+                    }
+                }
 
                 last = step;
             }
@@ -535,6 +548,16 @@ internal static class CaptureCommand
                 + (rolling.KeptFromNanoseconds is { } from
                     ? $"{CountText.Of(rolling.Releases, "release")}, every record kept from {SessionTimeText.Seconds(from, CultureInfo.CurrentCulture)}"
                     : "nothing released"));
+            if (rolling.PinnedFromNanoseconds is { } pinned)
+            {
+                ConsoleUi.Field("Pinned", $"a pin keeps every record from {SessionTimeText.Seconds(pinned, CultureInfo.CurrentCulture)}, "
+                    + $"so the session keeps more than {rolling.Window}");
+            }
+
+            if (rolling.Stopped is { } stopped)
+            {
+                ConsoleUi.Note("The capture was stopped: " + stopped);
+            }
         }
 
         if (document.Reason is { } reason)
@@ -568,6 +591,8 @@ internal static class CaptureCommand
         ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
         ConsoleUi.Line("      it leaves beside it. --keep-last keeps the session to the newest stretch of session time");
         ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on; the");
-        ConsoleUi.Line("      broker's own evidence keeps every record until the capture stops.");
+        ConsoleUi.Line("      broker's own evidence keeps every record until the capture stops. A pin (icat pin) keeps");
+        ConsoleUi.Line("      the records read from its moment; once the session holds more than the pin allows, the");
+        ConsoleUi.Line("      capture stops rather than release them.");
     }
 }

@@ -29,7 +29,7 @@ public sealed class RollingRetentionTests
 
         // Seven seconds held is more than two and a half: the records read before 5 s go, a whole chunk at a time, so the
         // two chunks wholly before it; the one holding 5 s stays whole, and so does what the newest chunk rests on.
-        IntervalReleaseResult first = Assert.IsType<IntervalReleaseResult>(rolling.Step(session.Store, Committed));
+        IntervalReleaseResult first = Assert.IsType<IntervalReleaseResult>(rolling.Step(session.Store, Committed).Released);
         Assert.Equal((5_000_000_000L, 3_000_000_001L, 2), (first.Preview.RequestedNanoseconds, first.Preview.BoundaryNanoseconds!.Value,
             first.Preview.ReleasedUnits));
         Assert.Equal("rolling retention keeps the last 2 seconds", session.Store.Current!.Retention!.Reason);
@@ -38,16 +38,16 @@ public sealed class RollingRetentionTests
         // Nothing more until the session has grown by a quarter of the window: not at once, nor at 7.3 s, though the chunk
         // at 4 and 5 s now lies wholly before the newest window.
         long generation = session.Store.Current.Generation;
-        Assert.Null(rolling.Step(session.Store, Committed));
+        Assert.Null(rolling.Step(session.Store, Committed).Released);
         Assert.Equal(generation, session.Store.Current.Generation);
         Publish(session.Store, Sends(7_300));
         generation = session.Store.Current!.Generation;
-        Assert.Null(rolling.Step(session.Store, Committed));
+        Assert.Null(rolling.Step(session.Store, Committed).Released);
         Assert.Equal(generation, session.Store.Current.Generation);
 
         // Past 7.5 s: the records read before 7 s go, which is the chunk at 4 and 5 s.
         Publish(session.Store, Sends(8_000, 9_000));
-        IntervalReleaseResult second = Assert.IsType<IntervalReleaseResult>(rolling.Step(session.Store, Committed));
+        IntervalReleaseResult second = Assert.IsType<IntervalReleaseResult>(rolling.Step(session.Store, Committed).Released);
         Assert.Equal((7_000_000_000L, 5_000_000_001L, 1), (second.Preview.RequestedNanoseconds, second.Preview.BoundaryNanoseconds!.Value,
             second.Preview.ReleasedUnits));
         Assert.Equal(2, rolling.Releases);
@@ -61,7 +61,7 @@ public sealed class RollingRetentionTests
         Publish(short_.Store, Sends(0, 1_000));
         Publish(short_.Store, Sends(2_000, 3_000));
         var tenSeconds = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(10)));
-        Assert.Null(tenSeconds.Step(short_.Store, Committed));
+        Assert.Same(RollingStep.Idle, tenSeconds.Step(short_.Store, Committed));
         Assert.Null(short_.Store.Current!.Retention);
 
         // Past its window but not yet a quarter past it: 2.3 s held, two kept, though the chunk at 0 and 0.2 s lies wholly
@@ -69,7 +69,7 @@ public sealed class RollingRetentionTests
         using var barely = new TemporarySession();
         Publish(barely.Store, Sends(0, 200));
         Publish(barely.Store, Sends(2_300));
-        Assert.Null(new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2))).Step(barely.Store, Committed));
+        Assert.Same(RollingStep.Idle, new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2))).Step(barely.Store, Committed));
         Assert.Null(barely.Store.Current!.Retention);
 
         // A session released just now, by a follow before this one: from its boundary at 3 s it holds 2.4 s, so a fresh
@@ -82,7 +82,7 @@ public sealed class RollingRetentionTests
         Assert.Equal(3_000_000_001L, IntervalRelease.Release(released.Store, 3_100_000_000, "rolling retention keeps the last 2 seconds",
             Committed).Preview.BoundaryNanoseconds);
         long generation = released.Store.Current!.Generation;
-        Assert.Null(new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2))).Step(released.Store, Committed));
+        Assert.Same(RollingStep.Idle, new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2))).Step(released.Store, Committed));
         Assert.Equal(generation, released.Store.Current.Generation);
 
         // Past its window, but its oldest chunk holds a record read at 6 s, inside it, and a chunk is released whole.
@@ -90,7 +90,7 @@ public sealed class RollingRetentionTests
         Publish(reaching.Store, Sends(0, 6_000));
         Publish(reaching.Store, Sends(7_000));
         var twoSeconds = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2)));
-        Assert.Null(twoSeconds.Step(reaching.Store, Committed));
+        Assert.Equal(new RollingStep(), twoSeconds.Step(reaching.Store, Committed));
         Assert.Null(reaching.Store.Current!.Retention);
         Assert.Equal(0, twoSeconds.Releases);
 
@@ -100,6 +100,96 @@ public sealed class RollingRetentionTests
         int[] windows = [3_600, 10_800, 60, 600, 1, 90];
         Assert.Equal(["the last hour", "the last 3 hours", "the last minute", "the last 10 minutes", "the last second", "the last 90 seconds"],
             windows.Select(seconds => new RollingRetentionPolicy(TimeSpan.FromSeconds(seconds)).Window));
+    }
+
+    [Fact(DisplayName = "I18: a pin holds rolling retention at its moment, and once the session outgrows what the pin allows the follow is told to stop")]
+    public void APinHoldsRollingRetention()
+    {
+        using var session = new TemporarySession();
+
+        // Four chunks of two sends a second apart, and a pin from 2.5 s that lets the session grow by half again.
+        for (int chunk = 0; chunk < 4; chunk++)
+        {
+            Publish(session.Store, Sends(chunk * 2_000, (chunk * 2_000) + 1_000));
+        }
+
+        long held = session.Store.Current!.HeldBytes();
+        RetentionPin pin = session.Store.Pin(2_500_000_000, held + (held / 2), "the burst at 2.5 s", Committed);
+        var rolling = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2)));
+
+        // Due to release what was read before 5 s, the policy stops at the pin: only the chunk wholly before it goes.
+        RollingStep first = rolling.Step(session.Store, Committed);
+        Assert.Equal((pin, true, (string?)null), (first.HeldBy, first.NewlyHeld, first.Stop));
+        Assert.Equal((5_000_000_000L, 1_000_000_001L, pin), (first.Released!.Preview.RequestedNanoseconds,
+            first.Released.Preview.BoundaryNanoseconds!.Value, first.Released.Preview.HeldBy));
+        Assert.Equal((1, pin), (rolling.Releases, rolling.HeldBy));
+        Assert.Equal("A pin keeps every record read from 2.500 s (the burst at 2.5 s), so the session keeps more than the last 2 "
+            + $"seconds from here on, up to the {ByteSizeText.Of(pin.AllowanceBytes)} the pin allows.",
+            RetentionPinText.HoldsWindow(pin, rolling.Policy));
+
+        // As the session grows past the window, the pin goes on holding it: nothing before the pin is left, so the rows are
+        // not read again, and nothing more goes.
+        Publish(session.Store, Sends(9_000));
+        long generation = session.Store.Current!.Generation;
+        RollingStep second = rolling.Step(session.Store, Committed);
+        Assert.Equal(((IntervalReleaseResult?)null, pin, false, (string?)null), (second.Released, second.HeldBy, second.NewlyHeld, second.Stop));
+        Assert.Equal(generation, session.Store.Current.Generation);
+
+        // Once it holds more than the pin allows, the step says the follow stops, naming the pin and both sizes.
+        while (session.Store.Current!.HeldBytes() <= pin.AllowanceBytes)
+        {
+            Publish(session.Store, Sends(10_000 + (int)session.Store.Current.Generation));
+        }
+
+        long size = session.Store.Current.HeldBytes();
+        RollingStep outgrown = rolling.Step(session.Store, Committed);
+        string stop = $"The pin from 2.500 s (the burst at 2.5 s) allows this session {ByteSizeText.Of(pin.AllowanceBytes)}, and it "
+            + $"holds {ByteSizeText.Of(size)}: the records the pin keeps cannot be released, and the session cannot grow past what "
+            + "it allows.";
+        Assert.Equal((stop, stop), (outgrown.Stop, rolling.Stopped));
+        Assert.Null(outgrown.Released);
+
+        // Removed, the pin holds nothing: the next step releases up to the window.
+        Assert.Equal(pin, session.Store.Unpin(pin.Id));
+        Publish(session.Store, Sends(20_000));
+        RollingStep free = rolling.Step(session.Store, Committed);
+        Assert.Equal(((RetentionPin?)null, (string?)null), (free.HeldBy, free.Stop));
+        Assert.Equal((18_000_000_000L, (RetentionPin?)null), (free.Released!.Preview.RequestedNanoseconds, free.Released.Preview.HeldBy));
+        Assert.Null(rolling.HeldBy);
+        Assert.Equal(2, rolling.Releases);
+    }
+
+    [Fact(DisplayName = "I18: a pin within the window holds nothing back, and pins that cannot be read stop the follow rather than release or grow")]
+    public void PinsWithinTheWindowAndUnreadable()
+    {
+        using var session = new TemporarySession();
+        for (int chunk = 0; chunk < 4; chunk++)
+        {
+            Publish(session.Store, Sends(chunk * 2_000, (chunk * 2_000) + 1_000));
+        }
+
+        // From 6 s, within the newest 2 s of 7: it allows only what the session holds, but keeps nothing the policy releases.
+        RetentionPin within = session.Store.Pin(6_000_000_000, session.Store.Current!.HeldBytes(), "the newest burst", Committed);
+        RollingStep step = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2))).Step(session.Store, Committed);
+        Assert.Equal(((RetentionPin?)null, false, (string?)null, 3_000_000_001L),
+            (step.HeldBy, step.NewlyHeld, step.Stop, step.Released!.Preview.BoundaryNanoseconds!.Value));
+        Assert.Equal([within], session.Store.Pins());
+
+        // Pins that cannot be read keep what they keep unknown, and how much they allow: the follow stops.
+        using var damaged = new TemporarySession();
+        for (int chunk = 0; chunk < 4; chunk++)
+        {
+            Publish(damaged.Store, Sends(chunk * 2_000, (chunk * 2_000) + 1_000));
+        }
+
+        File.WriteAllText(Path.Combine(damaged.Path, RetentionPinsV1.FileName), "{");
+        long generation = damaged.Store.Current!.Generation;
+        var rolling = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(2)));
+        RollingStep stopped = rolling.Step(damaged.Store, Committed);
+        Assert.Equal("This session's pins, in retention-pins.json, could not be read: it is not a pins file this InterCat can read. "
+            + "Nothing is released that a pin might keep, and how much its pins allow the session to hold is not known.", stopped.Stop);
+        Assert.Equal((stopped.Stop, (IntervalReleaseResult?)null), (rolling.Stopped, stopped.Released));
+        Assert.Equal(generation, damaged.Store.Current.Generation);
     }
 
     /// <summary>One connection's sends from PID 100 at the given milliseconds of session time.</summary>

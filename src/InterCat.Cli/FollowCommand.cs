@@ -129,6 +129,9 @@ internal static class FollowCommand
         Directory.CreateDirectory(sessionPath);
         SessionStore derived = SessionStore.Open(LocalOwnedDirectory.Open(sessionPath), source.SessionId, source.SourceIdentity);
         FollowStep? last = null;
+
+        // A pin keeping the session past its window ends the follow once the session outgrows what the pin allows.
+        using var pinStop = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         try
         {
             LiveSessionFollower follower = LiveSessionFollower.Open(evidence, derived, cancellationToken: cancellationToken);
@@ -139,7 +142,7 @@ internal static class FollowCommand
             if (once)
             {
                 last = follower.CatchUp(cancellationToken: cancellationToken);
-                RollingFollow.Step(rolling, derived, new(last.MirroredChunks), json, cancellationToken);
+                _ = RollingFollow.Step(rolling, derived, new(last.MirroredChunks), json, cancellationToken);
             }
             else
             {
@@ -157,14 +160,17 @@ internal static class FollowCommand
                         }
 
                         // Between two mirrors, on the follow's own thread: the only place its writer may release (ADR-044).
-                        RollingFollow.Step(rolling, derived, new(step.MirroredChunks), json, cancellationToken);
+                        if (RollingFollow.Step(rolling, derived, new(step.MirroredChunks), json, cancellationToken) is not null)
+                        {
+                            pinStop.Cancel();
+                        }
                     },
-                    cancellationToken).ConfigureAwait(false);
+                    pinStop.Token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Ctrl+C is how a follow is stopped: what was mirrored stays mirrored.
+            // Ctrl+C is how a follow is stopped, and a pin's allowance another: what was mirrored stays mirrored.
         }
         catch (InvalidOperationException exception)
         {
@@ -192,6 +198,11 @@ internal static class FollowCommand
         else
         {
             Render(document);
+        }
+
+        if (document.Rolling?.Stopped is { } stopped)
+        {
+            ConsoleUi.Warn("The follow stopped. " + stopped + " " + RollingFollow.GoOn(sessionPath));
         }
 
         if (document.Finished)
@@ -332,6 +343,11 @@ internal static class FollowCommand
                 + (rolling.KeptFromNanoseconds is { } from
                     ? $"{CountText.Of(rolling.Releases, "release")} so far, every record kept from {SessionTimeText.Seconds(from, CultureInfo.CurrentCulture)}"
                     : "nothing released yet"));
+            if (rolling.PinnedFromNanoseconds is { } pinned)
+            {
+                ConsoleUi.Field("Pinned", $"a pin keeps every record from {SessionTimeText.Seconds(pinned, CultureInfo.CurrentCulture)}, "
+                    + $"so the session keeps more than {rolling.Window}");
+            }
         }
 
         ConsoleUi.Note(
@@ -349,6 +365,8 @@ internal static class FollowCommand
         ConsoleUi.Line("      continues where it stopped when run again. --once derives what is committed now.");
         ConsoleUi.Line("      --keep-last keeps the newest stretch of session time that long: once the session holds a");
         ConsoleUi.Line("      quarter more, the records read before it are released, but for what later ones rest on.");
+        ConsoleUi.Line("      A pin (icat pin) keeps the records read from its moment; once the session holds more");
+        ConsoleUi.Line("      than the pin allows, the follow stops rather than release them.");
         ConsoleUi.Line("  icat follow <session-dir> [--json]");
         ConsoleUi.Line("      Finishes a session whose follow ended early, from the ticket icat capture or the");
         ConsoleUi.Line("      Desktop left beside it. Nothing is recorded again: what the broker kept is derived.");

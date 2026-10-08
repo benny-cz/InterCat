@@ -30,6 +30,12 @@ public enum IntervalReleaseObstacle
     /// release kept - and no unit of the journal lies wholly before it.
     /// </summary>
     AllKept = 5,
+
+    /// <summary>
+    /// A pin keeps every record read from a moment before the boundary, and nothing read before the pin can be released,
+    /// though something read before the boundary could be without it (ADR-046).
+    /// </summary>
+    Pinned = 6,
 }
 
 /// <summary>
@@ -41,8 +47,14 @@ public sealed record IntervalReleasePreview
 {
     public required long Generation { get; init; }
 
-    /// <summary>The boundary asked for: records read before it are released where their units allow.</summary>
+    /// <summary>The boundary asked for: records read before it are released where their units and the pins allow.</summary>
     public required long RequestedNanoseconds { get; init; }
+
+    /// <summary>
+    /// The pin that keeps the release from reaching the boundary asked for - the earliest whose moment lies before it - so
+    /// the release gives up only records read before that moment; null when no pin does (ADR-046).
+    /// </summary>
+    public RetentionPin? HeldBy { get; init; }
 
     /// <summary>
     /// The boundary the release achieves: one nanosecond after the latest record it releases, so every record read at or
@@ -212,6 +224,9 @@ public static class IntervalRelease
             IntervalReleaseObstacle.AllKept =>
                 $"Every row read before {SessionTimeText.Seconds(preview.RequestedNanoseconds, CultureInfo.CurrentCulture)} that this session can still release is kept as "
                 + $"the identity evidence of processes and connections after it, and no {unit} lies wholly before it.",
+            IntervalReleaseObstacle.Pinned when preview.HeldBy is { } pin =>
+                $"A pin keeps every record read from {SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)} ({pin.Reason}), "
+                + "and nothing read before it can be released, so nothing is until the pin is removed.",
             _ => preview.Obstacle.ToString(),
         };
     }
@@ -223,6 +238,10 @@ public static class IntervalRelease
     /// </summary>
     private static ReleasePlan Plan(SessionStore store, SessionManifestV1 manifest, long boundary, CancellationToken cancellationToken)
     {
+        // A pin keeps every record read from its moment on, so a release asked for past one plans to it (ADR-046): every row
+        // it gives up was then read before the pin. Publication checks the pins again, while it holds them.
+        RetentionPin? heldBy = EarliestPinBefore(store, boundary);
+        long planned = heldBy?.FromNanoseconds ?? boundary;
         (IReadOnlyList<JournalReleaseUnit> units, bool chunked) = JournalRetention.Units(store, manifest, cancellationToken);
         var slots = new UnitSlots(units);
         IReadOnlyList<string> observationNames = SessionSegments.Names(manifest);
@@ -269,7 +288,9 @@ public static class IntervalRelease
         long? running = null;
         long? latestReleased = null;
         int taken = 0;
+        int takenAsked = 0;
         bool blocked = false;
+        bool blockedAsked = false;
         for (int slot = 0; slot < releasable; slot++)
         {
             running = Max(running, latest[slot]);
@@ -279,18 +300,23 @@ public static class IntervalRelease
                 most = reached + 1;
             }
 
-            blocked |= latest[slot] >= boundary;
+            blocked |= latest[slot] >= planned;
             if (!blocked)
             {
                 latestReleased = Max(latestReleased, latest[slot]);
                 taken = slot + 1;
             }
+
+            blockedAsked |= latest[slot] >= boundary;
+            takenAsked = blockedAsked ? takenAsked : slot + 1;
         }
 
+        // A pin is what stops a release only when the boundary asked for would take more than the pin lets it.
+        bool pinned = takenAsked > taken;
         IntervalReleaseObstacle obstacle =
             units.Count == 0 ? IntervalReleaseObstacle.NoJournal
             : earliest is null ? IntervalReleaseObstacle.NoReleasableUnit
-            : latestReleased is null ? IntervalReleaseObstacle.NothingBefore
+            : latestReleased is null ? (pinned ? IntervalReleaseObstacle.Pinned : IntervalReleaseObstacle.NothingBefore)
             : !chunked && taken > 1 && manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
                 ? IntervalReleaseObstacle.ContentBesideJournal
                 : IntervalReleaseObstacle.None;
@@ -299,6 +325,7 @@ public static class IntervalRelease
         {
             Generation = manifest.Generation,
             RequestedNanoseconds = boundary,
+            HeldBy = heldBy,
             Chunks = chunked,
             Units = units.Count,
             ReleasedUnits = releasedUnits,
@@ -331,7 +358,9 @@ public static class IntervalRelease
 
         if (releasedUnits == 0 && given == 0)
         {
-            return new(preview with { KeptRows = keptFound, Obstacle = IntervalReleaseObstacle.AllKept }, slots, 0, [], []);
+            return new(
+                preview with { KeptRows = keptFound, Obstacle = pinned ? IntervalReleaseObstacle.Pinned : IntervalReleaseObstacle.AllKept },
+                slots, 0, [], []);
         }
 
         return new(
@@ -350,6 +379,23 @@ public static class IntervalRelease
 
     private static long? Max(long? left, long? right) =>
         left is { } a ? right is { } b ? Math.Max(a, b) : a : right;
+
+    /// <summary>
+    /// The earliest pin whose moment lies before <paramref name="boundary"/>, which a release before it would pass; null
+    /// when none does. Pins that cannot be read refuse the release, which might give up what they keep.
+    /// </summary>
+    private static RetentionPin? EarliestPinBefore(SessionStore store, long boundary)
+    {
+        try
+        {
+            return store.Pins().FirstOrDefault(pin => pin.FromNanoseconds < boundary);
+        }
+        catch (InvalidDataException exception)
+        {
+            throw new RetentionPinnedException(
+                exception.Message + " No release is made that a pin might forbid, so nothing was released.", null);
+        }
+    }
 
     /// <summary>
     /// The released rows a release keeps: the identity evidence of every connection and process a retained row names

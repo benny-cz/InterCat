@@ -2084,6 +2084,176 @@ public sealed class CommandLineTests : IDisposable
         Assert.Contains("--keep-last expects whole seconds", said, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I18: icat pin keeps a followed session's records from a moment: a rolling follow keeps them, icat retain stops at the pin, and icat session lists it")]
+    public async Task APinKeepsAFollowedSessionsRecords()
+    {
+        using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+
+        // Four chunks of two records a second apart in session time; the session is first followed to the third chunk.
+        _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
+            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+        string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
+        string recorded = File.ReadAllText(pointer);
+        _ = InterCat.Capture.Journal.Tests.EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+        (InterCatExitCode code, string output, string said) = await Run("follow", evidence.Path, followed.Path, "--once");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        File.WriteAllText(pointer, recorded);
+        long held = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!.HeldBytes();
+
+        // Nothing is pinned yet.
+        (code, output, said) = await Run("pin", followed.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Pins +none: a release may give up whatever it reaches\r?$", output);
+
+        // Pinned from half a second in, for a reason; the allowance not given is what the session holds now, and is said.
+        (code, output, said) = await Run("pin", followed.Path, "--from", "0.5 s", "--reason", "the first burst", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        string shortId;
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement root = answer.RootElement;
+            JsonElement placed = root.GetProperty("placed");
+            shortId = placed.GetProperty("shortId").GetString()!;
+            Assert.Equal(("store-v1", "pin", 500_000_000L, held, "the first burst", "0.500 s"), (root.GetProperty("contract").GetString(),
+                root.GetProperty("action").GetString(), placed.GetProperty("fromNanoseconds").GetInt64(),
+                placed.GetProperty("allowanceBytes").GetInt64(), placed.GetProperty("reason").GetString(), placed.GetProperty("from").GetString()));
+            Assert.Equal(placed.GetProperty("id").GetString(),
+                Assert.Single(root.GetProperty("pins").EnumerateArray()).GetProperty("id").GetString());
+            Assert.StartsWith(shortId, placed.GetProperty("id").GetString(), StringComparison.Ordinal);
+            Assert.Contains(root.GetProperty("notes").EnumerateArray(), note => note.GetString() == "It allows the session what it holds "
+                + $"now, {ByteSizeText.Of(held)}. For a session a follow is still writing, pin with --allow-mib to let it grow.");
+        }
+
+        // Following on, keeping the last two seconds: the pin keeps the session from half a second, which the follow says as
+        // the pin begins to hold it. The capture's end coalesces the session's segments, so it stays within what the pin
+        // allows.
+        (code, output, said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("A pin keeps every record read from 0.500 s (the first burst), so the session keeps more than the last 2 "
+            + $"seconds from here on, up to the {ByteSizeText.Of(held)} the pin allows.", said, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Rolling +keeps the last 2 seconds of session time; nothing released yet\r?$", output);
+        Assert.Matches(@"(?m)^  Pinned +a pin keeps every record from 0\.500 s, so the session keeps more than the last 2 seconds\r?$", output);
+        Assert.DoesNotContain("allows this session", said, StringComparison.Ordinal);
+        SessionManifestV1 session = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!;
+        Assert.Null(session.LatestRelease(RetentionExtentKind.Interval));
+
+        // A release asked for past the pin stops at it, and says so; none by record number is made while it stands.
+        (code, output, said) = await Run("retain", followed.Path, "--release-before", "5 s", "--json");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement preview = answer.RootElement.GetProperty("preview");
+            Assert.Equal(("pinned", shortId), (preview.GetProperty("obstacle").GetString(),
+                preview.GetProperty("heldBy").GetProperty("shortId").GetString()));
+            Assert.Contains(answer.RootElement.GetProperty("notes").EnumerateArray(), note => note.GetString() ==
+                "A pin keeps every record read from 0.500 s (the first burst), and nothing read before it can be released, so "
+                + "nothing is until the pin is removed.");
+        }
+
+        (code, output, said) = await Run("retain", followed.Path, "--release-journal-before-record", "2", "--confirm", "--reason", "by number");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("A release by record number cannot say when its records were read", said, StringComparison.Ordinal);
+        Assert.Equal(session.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!.Generation);
+
+        // The session lists the pin in the words icat pin uses.
+        (code, output, _) = await Run("session", followed.Path);
+        Assert.True(code == InterCatExitCode.Success);
+        Assert.Matches(new Regex($@"^  Pin {shortId} +keeps every record from 0\.500 s · allows the session {Regex.Escape(ByteSizeText.Of(held))} "
+            + @"· placed \d{4}-\d\d-\d\d \d\d:\d\d UTC · the first burst\r?$", RegexOptions.Multiline), output);
+
+        // What a pin is asked for is checked before anything is written.
+        (code, _, said) = await Run("pin", followed.Path, "--from", "0.5 s");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("A pin says why it keeps the records", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("pin", followed.Path, "--reason", "no moment");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("go with the moment a pin keeps records from", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("pin", followed.Path, "--from", "0.5 s", "--reason", "none allowed", "--allow-mib", "0");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--allow-mib expects whole mebibytes", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("pin", followed.Path, "--from", "soon", "--reason", "no moment");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        (code, _, said) = await Run("pin", followed.Path, "--remove", shortId, "--from", "0.5 s");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--remove names the pin it removes alone", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("pin", followed.Path, "--remove", "ffffffffffff");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("No pin of this session is named ffffffffffff", said, StringComparison.Ordinal);
+        Assert.Single(SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Pins());
+
+        // Removed, it keeps nothing, and the release it held back goes on.
+        (code, output, said) = await Run("pin", followed.Path, "--remove", shortId);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("It no longer keeps the records read from 0.500 s", output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Pins +none: a release may give up whatever it reaches\r?$", output);
+        (code, _, said) = await Run("retain", followed.Path, "--release-before", "5 s", "--confirm", "--reason", "unpinned");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.NotNull(SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!.LatestRelease(RetentionExtentKind.Interval));
+    }
+
+    [Fact(DisplayName = "I18: a rolling follow stops rather than let the session outgrow what a pin keeping it allows, and says how to go on")]
+    public async Task AFollowStopsAtAPinsAllowance()
+    {
+        using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
+            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+        string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
+        string recorded = File.ReadAllText(pointer);
+
+        // A capture still recording, followed into a session a pin keeps from half a second, allowing it a kilobyte: as a
+        // pin placed when the session was small, which it has since outgrown.
+        SessionManifestV1 still = InterCat.Capture.Journal.Tests.EvidenceRecordings.RewindToUnfinalized(evidence.Path);
+        var pin = new RetentionPin
+        {
+            Id = Guid.NewGuid(),
+            FromNanoseconds = 500_000_000,
+            AllowanceBytes = 1_024,
+            PlacedUtc = DateTimeOffset.UtcNow,
+            Reason = "the first burst",
+        };
+        File.WriteAllText(Path.Combine(followed.Path, RetentionPinsV1.FileName), JsonSerializer.Serialize(new RetentionPinsV1
+        {
+            FormatVersion = RetentionPinsV1.CurrentFormatVersion,
+            SessionId = still.SessionId,
+            Pins = [pin],
+        }, SessionManifestV1.Json));
+
+        // Its first pass mirrors the three chunks the capture published, and the policy, due to release what was read before
+        // 3 s, is held at half a second: the session holds more than the pin allows, so the follow stops rather than wait for
+        // the capture, and says why and how to go on.
+        (InterCatExitCode code, string output, string said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2", "--json")
+            .WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        long size = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!.HeldBytes();
+        string stopped = $"The pin from 0.500 s (the first burst) allows this session {ByteSizeText.Of(1_024)}, and it holds "
+            + $"{ByteSizeText.Of(size)}: the records the pin keeps cannot be released, and the session cannot grow past what it allows.";
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement rolling = answer.RootElement.GetProperty("rolling");
+            Assert.False(answer.RootElement.GetProperty("finished").GetBoolean());
+            Assert.Equal((0, 500_000_000L), (rolling.GetProperty("releases").GetInt32(), rolling.GetProperty("pinnedFromNanoseconds").GetInt64()));
+            Assert.Equal(stopped, rolling.GetProperty("stopped").GetString());
+        }
+
+        Assert.Contains("The follow stopped. " + stopped + $" To go on, remove the pin (icat pin {followed.Path} --remove <pin>) or "
+            + "pin from the same moment allowing more, then follow again.", said, StringComparison.Ordinal);
+
+        // Unpinned, the follow goes on to the capture's end, releasing what lies before its window.
+        File.WriteAllText(pointer, recorded);
+        (code, _, said) = await Run("pin", followed.Path, "--remove", pin.ShortId);
+        Assert.True(code == InterCatExitCode.Success, said);
+        (code, output, said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2", "--json").WaitAsync(TimeSpan.FromSeconds(60));
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement rolling = answer.RootElement.GetProperty("rolling");
+            Assert.True(answer.RootElement.GetProperty("finished").GetBoolean());
+            Assert.Equal((1, JsonValueKind.Null), (rolling.GetProperty("releases").GetInt32(), rolling.GetProperty("stopped").ValueKind));
+        }
+    }
+
     [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]
     public async Task ContentIsReleasedOnlyWhenToldWhy()
     {

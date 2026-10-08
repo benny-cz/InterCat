@@ -22,7 +22,7 @@ public sealed class ExplanationTests
     private const string OtherClientEnd = "127.0.0.1:50001";
 
     [Fact(DisplayName = "§6.8: the inspector says how a selected process's records were bound to it, and what a reused PID's later holder left out of its total")]
-    public void TheInspectorExplainsHowAProcesssRecordsAreBound()
+    public void TheInspectorExplainsHowAProcesssRecordsAreBound() => SingleThreadedContext.Run(() =>
     {
         // PID 100 is held three times. Its second holder sends twice, each a candidate that could be a late record of the
         // first holder; its third makes no record but its creation. PID 200 is held once.
@@ -87,10 +87,11 @@ public sealed class ExplanationTests
         using var tour = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-tour-v1");
         tour.SelectProcess(tour.Snapshot.Processes[0].Id);
         Assert.Equal(string.Empty, tour.BindingExplanation);
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact(DisplayName = "§6.8: a selected group says how its processes were grouped, and what its total leaves out of a reused PID's later holder")]
-    public void ASelectedGroupSaysHowItWasFormed()
+    public void ASelectedGroupSaysHowItWasFormed() => SingleThreadedContext.Run(() =>
     {
         // client.exe's PID is reused, and its second holder's two sends are candidates; server.exe is held once; PID 700
         // names no executable, in any record.
@@ -131,7 +132,8 @@ public sealed class ExplanationTests
         tour.SelectedRung = tour.RungRows[0];
         Assert.NotNull(tour.SelectedGroup);
         Assert.Equal(string.Empty, tour.Explanation);
-    }
+        return Task.CompletedTask;
+    });
 
     [Fact(DisplayName = "§6.8: what a reused PID's later holder left out is offered as candidates, and counted so it is said and read everywhere")]
     public void CandidatesAreOfferedAndCounted() => SingleThreadedContext.Run(async () =>
@@ -194,7 +196,7 @@ public sealed class ExplanationTests
     });
 
     [Fact(DisplayName = "§6.8: a channel chosen among a process's rows, or opened on its own rung, says how its ends were paired, whether the capture saw it open and close, and its key")]
-    public void AChosenChannelSaysHowItWasPaired()
+    public void AChosenChannelSaysHowItWasPaired() => SingleThreadedContext.Run(() =>
     {
         // The client connects to the server twice. The capture sees the first connection open and close at both ends,
         // and neither for the second.
@@ -278,7 +280,8 @@ public sealed class ExplanationTests
         Assert.Equal("How its records are counted", workspace.ExplanationHeading);
         Assert.StartsWith("Each record naming PID 200 while it ran is its own", workspace.Explanation, StringComparison.Ordinal);
         Assert.True(workspace.ShowsLineage);
-    }
+        return Task.CompletedTask;
+    });
 
     /// <summary>Positions whose ordinal suffix differs from their last digit's, and the ones around them.</summary>
     private static readonly int[] Positions = [1, 2, 3, 4, 10, 11, 12, 13, 21, 22, 23, 101, 111, 112];

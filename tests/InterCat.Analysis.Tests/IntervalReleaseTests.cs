@@ -334,6 +334,57 @@ public sealed class IntervalReleaseTests
             IntervalRelease.Preview(unordered.Store, 15_000)).Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I18: a release asked for past a pin plans to it, giving up only what was read before, and one the pin stops says so")]
+    public void AReleaseStopsAtAPin()
+    {
+        // Three chunks: sends at 10 and 20 µs, at 30 µs, and at 40 µs, the newest, which a release keeps.
+        using var session = new TemporarySession();
+        Publish(session.Store, Timed(
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 1).Between(Client, Server),
+            Transfer(200, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2).Between(Client, Server)));
+        Publish(session.Store, Timed(Transfer(300, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3).Between(Client, Server)));
+        Publish(session.Store, Timed(Transfer(400, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 4).Between(Client, Server)));
+        IntervalReleasePreview unpinned = IntervalRelease.Preview(session.Store, 35_000);
+        Assert.Equal((2, 30_001L, (RetentionPin?)null), (unpinned.ReleasedUnits, unpinned.BoundaryNanoseconds!.Value, unpinned.HeldBy));
+
+        // A pin from 25 µs keeps the second chunk: asked for the records before 35 µs, a release takes only the first, and
+        // is held by the earliest pin before 35 µs, whichever was placed first.
+        RetentionPin later = session.Store.Pin(27_000, long.MaxValue, "after it", Committed);
+        RetentionPin pin = session.Store.Pin(25_000, long.MaxValue, "the second chunk", Committed);
+        IntervalReleasePreview held = IntervalRelease.Preview(session.Store, 35_000);
+        Assert.Equal((pin, 1, 20_001L, IntervalReleaseObstacle.None, 35_000L),
+            (held.HeldBy, held.ReleasedUnits, held.BoundaryNanoseconds!.Value, held.Obstacle, held.RequestedNanoseconds));
+
+        // A pin from the boundary asked for, or after it, holds nothing back.
+        Assert.Null(IntervalRelease.Preview(session.Store, 25_000).HeldBy);
+        IntervalReleaseResult released = IntervalRelease.Release(session.Store, 35_000, "older than the retained window", Committed, Committed);
+        Assert.Equal((20_001L, pin), (released.Preview.BoundaryNanoseconds!.Value, released.Preview.HeldBy));
+        Assert.Equal(20_001L, session.Store.Current!.LatestRelease(RetentionExtentKind.Interval)!.Record.Interval!.BoundaryNanoseconds);
+
+        // Asked again, nothing read before the pin is left to release but the evidence the first release kept: the pin, not
+        // the chunk, stops it, and says so.
+        IntervalReleasePreview stopped = IntervalRelease.Preview(session.Store, 35_000);
+        Assert.Equal((IntervalReleaseObstacle.Pinned, pin, false), (stopped.Obstacle, stopped.HeldBy, stopped.ReleasesAnything));
+        string seconds = SessionTimeText.Seconds(25_000, CultureInfo.CurrentCulture);
+        Assert.Equal($"A pin keeps every record read from {seconds} (the second chunk), and nothing read before it can be released, "
+            + "so nothing is until the pin is removed.", IntervalRelease.Refusal(stopped));
+        long generation = session.Store.Current.Generation;
+        Assert.EndsWith("until the pin is removed. Nothing was published.", Assert.Throws<InvalidOperationException>(() =>
+            IntervalRelease.Release(session.Store, 35_000, "again", Committed, Committed)).Message, StringComparison.Ordinal);
+        Assert.Equal(generation, session.Store.Current!.Generation);
+
+        // Where the chunk itself stops a release, the chunk is said: the pin did not stop what would not have gone anyway.
+        IntervalReleasePreview reaching = IntervalRelease.Preview(session.Store, 30_000);
+        Assert.Equal((IntervalReleaseObstacle.AllKept, pin), (reaching.Obstacle, reaching.HeldBy));
+
+        // Removed, the pins keep nothing: the release goes on past their moments.
+        Assert.Equal(pin, session.Store.Unpin(pin.Id));
+        Assert.Equal(later, IntervalRelease.Preview(session.Store, 35_000).HeldBy);
+        Assert.Equal(later, session.Store.Unpin(later.Id));
+        IntervalReleasePreview free = IntervalRelease.Preview(session.Store, 35_000);
+        Assert.Equal((1, 30_001L, (RetentionPin?)null), (free.ReleasedUnits, free.BoundaryNanoseconds!.Value, free.HeldBy));
+    }
+
     /// <summary>
     /// A random capture of RPC calls and HTTP exchanges, cut into chunks with some delivered late: calls of two clients,
     /// many linked through ALPC to a call a service host's thread served - now and then with a second send, a lost

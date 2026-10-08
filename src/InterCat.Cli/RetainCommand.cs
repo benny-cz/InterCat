@@ -97,6 +97,9 @@ internal sealed record IntervalRetentionPreviewDocument
     /// <summary>The boundary asked for, in session-time nanoseconds.</summary>
     public required long RequestedNanoseconds { get; init; }
 
+    /// <summary>The pin that keeps the release from reaching the boundary asked for; null when none does.</summary>
+    public PinDocument? HeldBy { get; init; }
+
     /// <summary>The boundary the release achieves: every record read at or after it is kept. Null when nothing is released.</summary>
     public required long? BoundaryNanoseconds { get; init; }
 
@@ -299,6 +302,7 @@ internal static class RetainCommand
         ConsoleUi.Progress($"Measuring what releasing records before {before} would give up. Nothing is written yet.");
         JournalReleasePreview preview = JournalRetention.Preview(store, before, cancellationToken);
         RetentionOutcome? outcome = null;
+        string? refused = null;
         if (confirm && preview.ReleasesAnything && !preview.WouldEmptyTheJournal)
         {
             // A store opened for reading cannot publish, because a generation names the session it belongs to
@@ -315,15 +319,22 @@ internal static class RetainCommand
                         + " and publishing the retention generation."
                     : $"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in "
                         + $"{CountText.Of(preview.ReleasedBatches, "batch", "batches")} and publishing the retention generation.");
-            outcome = JournalRetention.Release(
-                writable,
-                before,
-                reasonOption!,
-                DateTimeOffset.UtcNow,
-                cancellationToken: cancellationToken);
+            try
+            {
+                outcome = JournalRetention.Release(
+                    writable,
+                    before,
+                    reasonOption!,
+                    DateTimeOffset.UtcNow,
+                    cancellationToken: cancellationToken);
+            }
+            catch (RetentionPinnedException exception)
+            {
+                refused = exception.Message;
+            }
         }
 
-        RetentionDocument document = Describe(store, full, preview, outcome, confirm);
+        RetentionDocument document = Describe(store, full, preview, outcome, confirm, refused);
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
         if (json)
         {
@@ -341,7 +352,12 @@ internal static class RetainCommand
             ConsoleUi.Success($"Retention report written to {outputPath}.");
         }
 
-        return document.Performed || preview.ReleasesAnything
+        if (refused is not null)
+        {
+            ConsoleUi.Warn(refused);
+        }
+
+        return document.Performed || (preview.ReleasesAnything && refused is null)
             ? InterCatExitCode.Success
             : InterCatExitCode.PartialResultSuccess;
     }
@@ -351,7 +367,8 @@ internal static class RetainCommand
         string path,
         JournalReleasePreview preview,
         RetentionOutcome? outcome,
-        bool confirmed)
+        bool confirmed,
+        string? refused)
     {
         bool chunked = preview.JournalChunks > 1;
         var notes = new List<string>
@@ -389,7 +406,7 @@ internal static class RetainCommand
 
         if (outcome is null && confirmed)
         {
-            notes.Add("Nothing was published, because the release above is refused.");
+            notes.Add(refused ?? "Nothing was published, because the release above is refused.");
         }
 
         if (outcome is null && !confirmed && preview.ReleasesAnything)
@@ -553,7 +570,18 @@ internal static class RetainCommand
         long requested = ticks * 100;
         string placed = Instant(requested, wall, extent);
         ConsoleUi.Progress($"Measuring what releasing the records read before {placed} would give up. Nothing is written yet.");
-        IntervalReleasePreview preview = IntervalRelease.Preview(store, requested, cancellationToken);
+        IntervalReleasePreview preview;
+        try
+        {
+            preview = IntervalRelease.Preview(store, requested, cancellationToken);
+        }
+        catch (RetentionPinnedException exception)
+        {
+            // The pins could not be read, so what they keep is not known: nothing is measured as releasable.
+            ConsoleUi.Failure(exception.Message);
+            return InterCatExitCode.CorruptedInput;
+        }
+
         bool finished = NoRecorderWrites(store, manifest);
         IntervalReleaseResult? released = null;
         string? refused = null;
@@ -582,6 +610,12 @@ internal static class RetainCommand
             "Afterwards every reader says the time before the boundary is a partial gap, never a quiet one, and the "
             + "session says from when it keeps every record.",
         };
+        if (preview.HeldBy is { } pin && preview.ReleasesAnything)
+        {
+            notes.Add($"A pin keeps every record read from {Instant(pin.FromNanoseconds, wall, extent)} ({pin.Reason}), so "
+                + "this release stops there: it gives up only records read before the pin.");
+        }
+
         if (!preview.ReleasesAnything)
         {
             notes.Add(IntervalRelease.Refusal(preview));
@@ -629,6 +663,7 @@ internal static class RetainCommand
             {
                 Generation = preview.Generation,
                 RequestedNanoseconds = preview.RequestedNanoseconds,
+                HeldBy = preview.HeldBy is { } holding ? Pin(holding, wall, extent) : null,
                 BoundaryNanoseconds = preview.BoundaryNanoseconds,
                 ReleaseUnit = preview.ReleaseUnit,
                 Units = preview.Units,
@@ -693,6 +728,11 @@ internal static class RetainCommand
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", preview.Generation.ToString("N0", culture));
         ConsoleUi.Field("Asked for", "the records read before " + document.Placed);
+        if (preview.HeldBy is { } pin)
+        {
+            ConsoleUi.Field("Pinned", $"pin {pin.ShortId} keeps every record from {pin.From} ({pin.Reason})");
+        }
+
         ConsoleUi.Field("Journal", (preview.ReleaseUnit == "chunk"
                 ? string.Create(culture, $"{preview.Units:N0} chunks of one recording")
                 : string.Create(culture, $"one journal of {CountText.Of(preview.Units, "batch", "batches")}"))
@@ -734,6 +774,10 @@ internal static class RetainCommand
         }
     }
 
+    /// <summary>A pin as a retention report states it.</summary>
+    private static PinDocument Pin(RetentionPin pin, SessionWallClock? wall, TimeRange extent) =>
+        PinDocument.Of(pin, Instant(pin.FromNanoseconds, wall, extent));
+
     /// <summary>The units a release gives up, as its report names them: "the oldest chunk of 3", "2 batches of 5".</summary>
     private static string Units(IntervalReleasePreview preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
 
@@ -748,7 +792,7 @@ internal static class RetainCommand
     /// An instant of the session as a release names it: its session time, as the retention record and the window's size
     /// line say it, after where it falls on the wall clock the capture's machine read when the session recorded one.
     /// </summary>
-    private static string Instant(long nanoseconds, SessionWallClock? wall, TimeRange extent) => wall is null
+    internal static string Instant(long nanoseconds, SessionWallClock? wall, TimeRange extent) => wall is null
         ? SessionTimeText.Seconds(nanoseconds, CultureInfo.CurrentCulture)
         : SessionClock.Wall(wall, TimeZoneInfo.Local, extent).Moment(nanoseconds, CultureInfo.CurrentCulture)
             + " · session time " + SessionTimeText.Seconds(nanoseconds, CultureInfo.CurrentCulture);
@@ -758,7 +802,7 @@ internal static class RetainCommand
     /// of its coverage read a file rather than a live session. A capture that stopped without finishing cannot be told from
     /// one still recording, and a session that states neither is taken to be one.
     /// </summary>
-    private static bool NoRecorderWrites(SessionStore store, SessionManifestV1 manifest) =>
+    internal static bool NoRecorderWrites(SessionStore store, SessionManifestV1 manifest) =>
         manifest.Dependencies.Any(dependency => dependency.Kind is StoreDependencyKind.CaptureFinalization or StoreDependencyKind.RedactionPolicy)
         || (SessionSegments.CoverageLedger(store.Root, manifest) is { Epochs.Count: > 0 } ledger
             && ledger.Epochs.All(epoch => epoch.Acquisition == CoverageAcquisition.EtlImport));

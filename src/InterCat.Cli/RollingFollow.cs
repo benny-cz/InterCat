@@ -35,30 +35,47 @@ internal static class RollingFollow
     }
 
     /// <summary>
-    /// Runs the policy after a pass that mirrored chunks, and says what a release gave up in the words the window's size
-    /// line uses.
+    /// Runs the policy after a pass that mirrored chunks, says what a release gave up in the words the window's size line
+    /// uses and when a pin begins to keep the session past its window, and answers why the follow must stop: the session
+    /// outgrew what a pin holding it back allows. Null while it goes on.
     /// </summary>
-    public static void Step(RollingRetention? rolling, SessionStore derived, FollowedPass pass, bool json, CancellationToken cancellationToken)
+    public static string? Step(RollingRetention? rolling, SessionStore derived, FollowedPass pass, bool json, CancellationToken cancellationToken)
     {
         if (rolling is null || pass.MirroredChunks == 0)
         {
-            return;
+            return null;
         }
 
-        IntervalReleaseResult? released = rolling.Step(derived, DateTimeOffset.UtcNow, cancellationToken);
-        if (released is not null && !json && derived.Current is { } manifest && SessionGrowth.Retained(manifest) is { } retained)
+        RollingStep step = rolling.Step(derived, DateTimeOffset.UtcNow, cancellationToken);
+        if (!json && step.Released is not null && derived.Current is { } manifest && SessionGrowth.Retained(manifest) is { } retained)
         {
             ConsoleUi.Progress(retained);
         }
+
+        if (!json && step.NewlyHeld && step.HeldBy is { } pin && step.Stop is null)
+        {
+            ConsoleUi.Progress(RetentionPinText.HoldsWindow(pin, rolling.Policy));
+        }
+
+        return step.Stop;
     }
 
-    /// <summary>What a document states of the policy: its window, its releases, and from when every record is kept.</summary>
+    /// <summary>
+    /// What a person does to go on after a pin stopped the follow: remove it, or keep its records with a larger allowance.
+    /// </summary>
+    public static string GoOn(string sessionPath) =>
+        $"To go on, remove the pin (icat pin {sessionPath} --remove <pin>) or pin from the same moment allowing more, "
+        + "then follow again.";
+
+    /// <summary>What a document states of the policy: its window, its releases, from when every record is kept, and why it stopped.</summary>
     public static RollingDocument? Describe(RollingRetention? rolling, SessionStore derived) => rolling is null ? null : new()
     {
         KeepSeconds = (int)rolling.Policy.Keep.TotalSeconds,
         Window = rolling.Policy.Window,
         Releases = rolling.Releases,
         KeptFromNanoseconds = derived.Current?.LatestRelease(RetentionExtentKind.Interval)?.Record.Interval?.BoundaryNanoseconds,
+        PinnedFromNanoseconds = rolling.HeldBy?.FromNanoseconds,
+        Stopped = rolling.Stopped,
     };
 }
 
@@ -79,4 +96,10 @@ internal sealed record RollingDocument
 
     /// <summary>The boundary of the session's latest interval release: every record read at or after it is kept.</summary>
     public required long? KeptFromNanoseconds { get; init; }
+
+    /// <summary>The moment of the pin keeping the session past its window at the latest step; null when none did.</summary>
+    public long? PinnedFromNanoseconds { get; init; }
+
+    /// <summary>Why the follow stopped rather than outgrow what a pin allows; null when no pin stopped it.</summary>
+    public string? Stopped { get; init; }
 }
