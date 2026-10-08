@@ -922,9 +922,25 @@ public sealed class TimelineView : Control, IHoverCardSource
             double from = left + Labels.Get(start, 10, TextBrush).Width + AxisLabelGap;
             double to = right - endWidth - AxisLabelGap;
             TimeBaseText = FittingTimeBase(timeBase, to - from, clock.Name);
+            double saidLeft = double.NaN;
+            double saidRight = double.NaN;
             if (TimeBaseText is { } said)
             {
-                DrawText(context, said, new(((from + to) / 2) - (Labels.Get(said, 10, TextBrush).Width / 2), bottom + 7));
+                double saidWidth = Labels.Get(said, 10, TextBrush).Width;
+                saidLeft = ((from + to) / 2) - (saidWidth / 2);
+                saidRight = saidLeft + saidWidth;
+                DrawText(context, said, new(saidLeft, bottom + 7));
+            }
+
+            TimeBaseSpan = (saidLeft, saidRight);
+            AxisEndsSpan = (from, to);
+
+            // Between the ends, and either side of the time base, round instants of §6.2's ladder, each named where its tick
+            // is drawn; laid out again only when the view, the plot or the time base moves, so a repaint allocates nothing.
+            foreach (AxisTick tick in AxisTicksFor(visible, clock, left, plotWidth, from, to, saidLeft, saidRight))
+            {
+                context.DrawLine(GridPen, new(tick.X, bottom), new(tick.X, bottom + 4));
+                DrawText(context, tick.Label, new(tick.Left, bottom + 7));
             }
             // Under each lane's own scale no one rate tops the axis; each lane's own is in its cards (§6.2).
             string peak = rowPeakCount > 0 ? OwnPeaksLabel
@@ -3172,6 +3188,80 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     /// <summary>The time base drawn under the axis, between its start and end, as last drawn; null where none fitted.</summary>
     internal string? TimeBaseText { get; private set; }
+
+    /// <summary>Where the time base was written under the axis when last drawn, left to right; NaN at both ends when none fitted.</summary>
+    internal (double Left, double Right) TimeBaseSpan { get; private set; }
+
+    /// <summary>What lay between the axis's two end labels, their gaps left out, when last drawn: where the ticks may stand.</summary>
+    internal (double Left, double Right) AxisEndsSpan { get; private set; }
+
+    /// <summary>A tick the axis names between its ends: the instant, its label, where its rule is and where its label lies.</summary>
+    internal readonly record struct AxisTick(long Ticks, string Label, double X, double Left, double Width);
+
+    /// <summary>The ticks the axis named between its ends when last drawn, left to right.</summary>
+    internal IReadOnlyList<AxisTick> AxisTicks => axisTicks;
+
+    private readonly List<AxisTick> axisTicks = [];
+    private readonly List<(long Ticks, string Label)> tickCandidates = [];
+    private (long Start, long Span, SessionClock? Clock, double Left, double Width, double From, double To, double SaidLeft, double SaidRight)? axisTicksKey;
+
+    /// <summary>The most ticks the axis is offered between its ends before their labels are measured.</summary>
+    private const int MostAxisTicks = 10;
+
+    /// <summary>
+    /// The ticks between the axis's ends: the narrowest width of the ladder whose labels, measured and centred on their
+    /// instants, keep clear of one another, and of those the ones clear of both ends' labels and of the time base. Laid out
+    /// again only when what it depends on moves.
+    /// </summary>
+    private List<AxisTick> AxisTicksFor(TimeRange visible, SessionClock clock, double left, double plotWidth, double from, double to,
+        double saidLeft, double saidRight)
+    {
+        var key = (visible.StartTicks, visible.SpanTicks, (SessionClock?)clock, left, plotWidth, from, to, saidLeft, saidRight);
+        if (axisTicksKey == key)
+        {
+            return axisTicks;
+        }
+
+        axisTicksKey = key;
+        axisTicks.Clear();
+        for (long width = WorkspaceTime.LadderWidth(Math.Max(visible.SpanTicks / MostAxisTicks, 1)); width < visible.SpanTicks;
+            width = WorkspaceTime.LadderWidth(width + 1))
+        {
+            clock.AxisTicks(visible, width, tickCandidates, CultureInfo.CurrentCulture);
+            double previous = double.NegativeInfinity;
+            bool clear = true;
+            foreach ((long at, string label) in tickCandidates)
+            {
+                double half = Labels.Get(label, 10, TextBrush).Width / 2;
+                double x = left + ViewportMath.PixelAtTick(visible, at, plotWidth);
+                clear = x - half >= previous + AxisLabelGap;
+                if (!clear) break;
+                previous = x + half;
+            }
+
+            if (!clear)
+            {
+                continue;
+            }
+
+            foreach ((long at, string label) in tickCandidates)
+            {
+                double labelWidth = Labels.Get(label, 10, TextBrush).Width;
+                double x = left + ViewportMath.PixelAtTick(visible, at, plotWidth);
+                double start = x - (labelWidth / 2);
+                bool betweenEnds = start >= from && start + labelWidth <= to;
+                bool besideBase = double.IsNaN(saidLeft) || start + labelWidth + AxisLabelGap <= saidLeft || start >= saidRight + AxisLabelGap;
+                if (betweenEnds && besideBase)
+                {
+                    axisTicks.Add(new(at, label, x, start, labelWidth));
+                }
+            }
+
+            break;
+        }
+
+        return axisTicks;
+    }
 
     /// <summary>The least room between the time base and the instants either side of it.</summary>
     private const double AxisLabelGap = 12;

@@ -289,7 +289,7 @@ public sealed class LegibleTextTests
             }
         }
 
-        Assert.Equal(new long[] { 1, 1, 2, 5, 5, 10, 20, 50, 100, 1_000_000_000 },
+        Assert.Equal(new long[] { 1, 1, 2, 5, 5, 10, 20, 50, 100, 1_200_000_000 },
             new long[] { 1, 1, 2, 3, 5, 6, 11, 21, 51, 600_000_001 }.Select(WorkspaceTime.LadderWidth));
         Assert.Equal(("15 s", "1.5 s", "0.25 ms", "2,500 s"), (WorkspaceTime.FormatTick(150_000_000, 50_000_000, 600_000_000, CultureInfo.InvariantCulture),
             WorkspaceTime.FormatTick(15_000_000, 5_000_000, 600_000_000, CultureInfo.InvariantCulture),

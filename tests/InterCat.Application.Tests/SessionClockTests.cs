@@ -114,6 +114,48 @@ public sealed class SessionClockTests
         Assert.Equal("UTC-05:30", SessionClock.OffsetText(-TimeSpan.FromMinutes(330)));
     }
 
+    [Fact(DisplayName = "§6.2: an axis ticks round instants a ladder width apart, in session time its multiples and on the wall clock the times of day it reads, each named exactly")]
+    public void AnAxisTicksRoundInstants()
+    {
+        // In session time, the multiples of the width strictly inside the span, each named to the width's digits.
+        var ticks = new List<(long Ticks, string Label)> { (1, "stale") };
+        SessionClock session = SessionClock.Session(East);
+        session.AxisTicks(new TimeRange(2_000_000, 59_030_001), 5_000_000, ticks, Invariant);
+        Assert.Equal(Enumerable.Range(1, 11).Select(step => (step * 5_000_000L, (step * 0.5m).ToString("N1", Invariant) + " s")), ticks);
+        session.AxisTicks(new TimeRange(-25_000_000, 0), 10_000_000, ticks, Invariant);
+        Assert.Equal([(-20_000_000L, "-2 s"), (-10_000_000L, "-1 s")], ticks);
+
+        // On the wall clock, the round times of day it reads, placed where it reads them: here at a clock 10 ppm fast, from
+        // a reading 0.25 s past noon, ticks every second name 14:00:01 to 14:00:05 in the reader's zone two hours east.
+        var wall = new SessionWallClock(0, Noon.AddMilliseconds(250), 10.0, 200);
+        SessionClock clock = SessionClock.Wall(wall, East, new TimeRange(0, 60_000_000));
+        clock.AxisTicks(new TimeRange(0, 55_000_000), 10_000_000, ticks, Invariant);
+        Assert.Equal(["14:00:01", "14:00:02", "14:00:03", "14:00:04", "14:00:05"], ticks.Select(tick => tick.Label));
+        Assert.All(ticks.Select((tick, index) => (tick, index)), entry =>
+            Assert.InRange((wall.At(entry.tick.Ticks) - Noon.AddSeconds(entry.index + 1)).Ticks, -1, 1));
+
+        // A width under a second names the digits it needs, and none it does not; a clock running fast reads its fourth
+        // quarter second just inside the span's one second.
+        clock.AxisTicks(new TimeRange(0, 10_000_000), 2_500_000, ticks, Invariant);
+        Assert.Equal(["14:00:00.50", "14:00:00.75", "14:00:01.00", "14:00:01.25"], ticks.Select(tick => tick.Label));
+
+        // A round time is named from itself: on a clock 150 ppm fast, the instant 3,705 s from its anchor reads one tick
+        // before 13:01:45 UTC when mapped back, so a label read from the instant would say a second too early.
+        var fast = new SessionWallClock(0, Noon, 150.0, 200);
+        long instant = fast.TicksAt(Noon.AddSeconds(3_705));
+        Assert.Equal(Noon.AddSeconds(3_705).AddTicks(-1), fast.At(instant));
+        SessionClock.Wall(fast, East, new TimeRange(0, instant + 1)).AxisTicks(new TimeRange(instant - 5_000_000, instant + 5_000_000),
+            10_000_000, ticks, Invariant);
+        Assert.Equal((instant, "15:01:45"), Assert.Single(ticks));
+
+        // Above ten seconds the ladder's widths are those a clock's minutes and hours make round.
+        long second = WorkspaceTime.TicksPerSecond;
+        Assert.Equal(new[] { 5 * second, 10 * second, 20 * second, 30 * second, 60 * second, 120 * second, 7_200 * second,
+                TimeSpan.TicksPerDay, 2 * TimeSpan.TicksPerDay },
+            new[] { 4 * second, 10 * second, 11 * second, 25 * second, 31 * second, 61 * second, 3_601 * second,
+                (12 * 3_600 * second) + 1, (TimeSpan.TicksPerDay * 3 / 2) }.Select(WorkspaceTime.LadderWidth));
+    }
+
     [Fact(DisplayName = "§6.2: in session time every instant reads as it always did, and the axis names the moment it counts from")]
     public void SessionTimeReadsAsItDid()
     {

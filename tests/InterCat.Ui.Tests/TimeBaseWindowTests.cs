@@ -37,6 +37,70 @@ public sealed class TimeBaseWindowTests
         TimestampRounding.NearestEven,
         SourceClockMath.SessionTicksPerSecond * 60);
 
+    [AvaloniaFact(DisplayName = "§6.2: between its ends the timeline ticks round instants of the ladder, in session time or on the wall clock, each named where it is drawn and clear of the time base")]
+    public void TheAxisTicksRoundInstants()
+    {
+        // Ten sends 0.2 s apart, within the calibration's 2.5 s.
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store,
+        [
+            .. Enumerable.Range(0, 10).Select(index => Transfer(1_100 + index, ObservationKind.Send, AccountingSide.SendSide,
+                10, 100, (ulong)(1 + index)).Between("192.168.1.5:61000", "8.8.8.8:53") with
+            {
+                Mechanism = Mechanism.Udp,
+                SessionRelativeTicks = (1_000 + (index * 2_000_000L)) * 100,
+            }),
+        ], clock: Clock, calibration: Calibration());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        Show(window, calibrated);
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        foreach ((bool wallClock, double width) in new[] { (false, 1_456d), (true, 1_456d), (false, 1_080d), (true, 1_080d) })
+        {
+            (window.Width, window.Height) = (width, width == 1_456 ? 939 : 700);
+            window.GetControl<ToggleButton>("WallClockToggle").IsChecked = wallClock;
+            Render(window);
+            IReadOnlyList<TimelineView.AxisTick> ticks = timeline.AxisTicks;
+            // At the smallest window the whole time base, which the axis states first, may leave no room for a tick.
+            Assert.True(width < 1_456 || ticks.Count >= 2, $"{(wallClock ? "The wall clock" : "Session time")} at {width} px ticks {ticks.Count} instants.");
+
+            // Each label is centred on its rule, keeps clear of the next, of the end labels and of the time base.
+            (double saidLeft, double saidRight) = timeline.TimeBaseSpan;
+            (double from, double to) = timeline.AxisEndsSpan;
+            Assert.All(ticks, tick =>
+            {
+                Assert.Equal(tick.X, tick.Left + (tick.Width / 2), 3);
+                Assert.True(tick.Left >= from && tick.Left + tick.Width <= to, $"{tick.Label} runs into an end's label.");
+                Assert.True(double.IsNaN(saidLeft) || tick.Left + tick.Width + 12 <= saidLeft || tick.Left >= saidRight + 12,
+                    $"{tick.Label} runs into the time base.");
+            });
+            Assert.All(ticks.Zip(ticks.Skip(1)), pair => Assert.True(pair.Second.Left >= pair.First.Left + pair.First.Width + 12,
+                $"{pair.First.Label} and {pair.Second.Label} run together."));
+
+            // Each names the instant it is drawn at: a round session time, or the time of day the wall clock read there.
+            SessionClock clock = workspace.TimeBase;
+            foreach (TimelineView.AxisTick tick in ticks)
+            {
+                if (wallClock)
+                {
+                    TimeSpan read = TimeZoneInfo.ConvertTime(clock.WallClock!.At(tick.Ticks), clock.Zone).TimeOfDay;
+                    Assert.InRange((read - TimeSpan.Parse(tick.Label, CultureInfo.InvariantCulture)).Ticks, -1, 1);
+                }
+                else
+                {
+                    string[] parts = tick.Label.Split(' ');
+                    decimal ticksPerUnit = parts[1] switch { "s" => 10_000_000m, "ms" => 10_000m, "µs" => 10m, _ => 0m };
+                    Assert.Equal(tick.Ticks, (long)(decimal.Parse(parts[0], NumberStyles.Number, culture) * ticksPerUnit));
+                }
+            }
+        }
+
+        Save(window, "axis-ticks-wall-clock-1080x700.png");
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.2: the timeline states the time base its instants count in: session time, since the wall-clock moment its capture began where it recorded one")]
     public void TheTimelineStatesItsTimeBase()
     {

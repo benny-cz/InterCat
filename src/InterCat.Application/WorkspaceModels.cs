@@ -385,19 +385,35 @@ public static class WorkspaceTime
     }
 
     /// <summary>
-    /// The narrowest width of §6.2's 1-2-5 ladder of at least <paramref name="least"/> ticks - 1, 2, 5, 10, 20, 50 and on -
-    /// so an axis's ticks fall on round instants.
+    /// The narrowest width of §6.2's named ladder of at least <paramref name="least"/> ticks, so an axis's ticks fall on round
+    /// instants: 1, 2 and 5 of each power of ten up to 5 s, then the widths a clock's minutes and hours make round - 10, 20
+    /// and 30 s, 1, 2, 5, 10 and 30 min, 1 h - then 2, 6 and 12 h, and whole days on the 1-2-5 ladder.
     /// </summary>
     public static long LadderWidth(long least)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(least);
-        for (long decade = 1; ; decade = checked(decade * 10))
+        for (long decade = 1; decade < 10 * TicksPerSecond; decade *= 10)
         {
             if (decade >= least) return decade;
             if (decade * 2 >= least) return decade * 2;
             if (decade * 5 >= least) return decade * 5;
         }
+
+        foreach (long seconds in ClockWidths)
+        {
+            if (seconds * TicksPerSecond >= least) return seconds * TicksPerSecond;
+        }
+
+        for (long days = TimeSpan.TicksPerDay; ; days = checked(days * 10))
+        {
+            if (days >= least) return days;
+            if (days * 2 >= least) return days * 2;
+            if (days * 5 >= least) return days * 5;
+        }
     }
+
+    /// <summary>The ladder's widths from 10 s to 12 h, in seconds: those a clock's minutes and hours make round.</summary>
+    private static readonly long[] ClockWidths = [10, 20, 30, 60, 120, 300, 600, 1_800, 3_600, 7_200, 21_600, 43_200];
 
     /// <summary>
     /// An axis tick's label: an instant on a multiple of the ladder's <paramref name="width"/>, in the unit a visible span of

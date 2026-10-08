@@ -68,6 +68,60 @@ public sealed class SessionClock
         : TimeOfDay(Local(ticks), Digits(span), culture);
 
     /// <summary>
+    /// The round instants a visible span may be ticked at, a ladder width apart (§6.2), each with its label to exactly the
+    /// digits the width needs, so a label names the instant its tick is drawn at: in session time the multiples of the
+    /// width, "15 s"; on the wall clock the times of day on multiples of it, "09:00:10", each placed at the instant of
+    /// session time the wall clock read it. Only instants strictly inside the span are given, in order, into
+    /// <paramref name="ticks"/>, which is emptied first.
+    /// </summary>
+    public void AxisTicks(TimeRange visible, long width, ICollection<(long Ticks, string Label)> ticks, IFormatProvider? culture = null)
+    {
+        ArgumentNullException.ThrowIfNull(ticks);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        ticks.Clear();
+        if (WallClock is not { } wall)
+        {
+            for (long instant = (Math.DivRem(visible.StartTicks, width, out long past) + (past > 0 ? 1 : 0)) * width;
+                instant < visible.EndTicks; instant += width)
+            {
+                if (instant > visible.StartTicks)
+                {
+                    ticks.Add((instant, WorkspaceTime.FormatTick(instant, width, visible.SpanTicks, culture)));
+                }
+            }
+
+            return;
+        }
+
+        // Times of day on multiples of the width from the day's start, in the zone the view reads; each placed where the
+        // wall clock read it, and named from the round time itself, never from the instant it maps back to.
+        DateTimeOffset start = Local(visible.StartTicks);
+        long sinceMidnight = start.TimeOfDay.Ticks;
+        long first = (sinceMidnight / width + (sinceMidnight % width > 0 ? 1 : 0)) * width;
+        int digits = 0;
+        for (long fraction = width % TimeSpan.TicksPerSecond; fraction != 0 && digits < 7; fraction = fraction * 10 % TimeSpan.TicksPerSecond)
+        {
+            digits++;
+        }
+
+        // A wall clock that read no later for a later instant would never leave the span: no axis needs more than its pixels.
+        DateTimeOffset round = new DateTimeOffset(start.Date, start.Offset).AddTicks(first).ToUniversalTime();
+        for (int count = 0; count < MostAxisTicks; count++, round = round.AddTicks(width))
+        {
+            long instant = wall.TicksAt(round);
+            if (instant >= visible.EndTicks)
+            {
+                return;
+            }
+
+            if (instant > visible.StartTicks)
+            {
+                ticks.Add((instant, TimeOfDay(TimeZoneInfo.ConvertTime(round, Zone), digits, culture)));
+            }
+        }
+    }
+
+    /// <summary>
     /// A range in the unit or digits its span needs: "0.120 – 0.250 s", or on the wall clock
     /// "14:32:05.120 – 14:32:05.250 UTC+02:00", dated where it crosses a day and each end offset where the zone's offset
     /// changes between them.
@@ -245,11 +299,16 @@ public sealed class SessionClock
         IFormatProvider provider = culture ?? CultureInfo.CurrentCulture;
         string separator = DateTimeFormatInfo.GetInstance(provider).TimeSeparator;
         long fraction = local.Ticks % TimeSpan.TicksPerSecond / Pow10(7 - digits);
-        return string.Create(CultureInfo.InvariantCulture,
-            $"{local.Hour:D2}{separator}{local.Minute:D2}{separator}{local.Second:D2}")
-            + NumberFormatInfo.GetInstance(provider).NumberDecimalSeparator
-            + fraction.ToString("D" + digits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
+        string seconds = string.Create(CultureInfo.InvariantCulture,
+            $"{local.Hour:D2}{separator}{local.Minute:D2}{separator}{local.Second:D2}");
+        return digits == 0
+            ? seconds
+            : seconds + NumberFormatInfo.GetInstance(provider).NumberDecimalSeparator
+                + fraction.ToString("D" + digits.ToString(CultureInfo.InvariantCulture), CultureInfo.InvariantCulture);
     }
+
+    /// <summary>More ticks than any axis draws: a bound on the times of day a span is searched for.</summary>
+    private const int MostAxisTicks = 10_000;
 
     /// <summary>The decimal places a span needs, as session time escalates its unit (§6.2): tenths, ms, µs, 100 ns.</summary>
     private static int Digits(long span) => span switch
