@@ -129,7 +129,8 @@ public sealed class ScaleGateTests
                     + "reported beside it. The L0 timeline query counts 2,000 columns. At a 40-process group it is timed "
                     + "twice: with the group's 40 process lanes, counted in the same pass, at the window's widest request "
                     + "of 256 columns; and at 2,000 columns, where the 40 lanes are counted in the 500 columns the "
-                    + "20,000-cell bound allows (revision 210), in the same pass as the group's own 2,000.",
+                    + "20,000-cell bound allows (revision 210), in the same pass as the group's own 2,000. At the busiest "
+                    + "connection it counts the two ends' lanes at the window's 256 columns.",
                 "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it "
                     + "includes counting the interval's records per process, edge and channel.",
             },
@@ -265,6 +266,13 @@ public sealed class ScaleGateTests
             laneColumns = focused.ProcessLanes[0].Buckets.Count;
         });
         result["processLaneColumnsAt2000Columns"] = laneColumns;
+
+        // L3: the busiest connection's two ends, each with what it sent and what it received apart, at the window's widest
+        // request.
+        var busiest = snapshot.Channels.Where(channel => channel.Mechanism == Mechanism.Tcp).MaxBy(channel => channel.ObservationCount)!;
+        var ends = new TimelineFocus(busiest.Key, []);
+        result["timelineL3ChannelEndsAtWindowColumns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
+            Assert.Equal(2, SessionTimelineQuery.Focused(store, viewport, WindowColumns, ends).ChannelEndLanes.Count));
         Retain("timeline");
 
         // The bounded graph and the top 100 rows of the machine and group rungs, from the overview in memory.

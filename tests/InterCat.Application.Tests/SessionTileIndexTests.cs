@@ -423,12 +423,13 @@ public sealed class SessionTileIndexTests
         reopened.ReleaseSegmentReaders();
     }
 
-    [Fact(DisplayName = "S3: a tile whose tallies would take more than half the bytes of its records keeps none, and a brush counts it from its children or records, exactly")]
+    [Fact(DisplayName = "S3: a tile whose tallies would take more than a third of the bytes of its records keeps none, and a brush counts it from its children or records, exactly")]
     public void TalliesAreKeptOnlyWhereTheySpareReading()
     {
-        // 60 connections between 120 processes, their records taking turns 30 microseconds apart: a finest tile's three
-        // or so records, and a tile ten times wider's thirty, each have an owner and a channel of their own, so their
-        // tallies would take as many bytes as their records; a tile a hundred times wider has ten records per entry.
+        // 60 connections between 120 processes, their records taking turns 30 microseconds apart: a finest tile's three or
+        // so records, a tile ten times wider's thirty and a tile a hundred times wider's three hundred have nearly as many
+        // owners and channels as records, so their tallies would take more than a third of their records' bytes; a tile a
+        // thousand times wider's three thousand have thirteen records to an owner entry, and fourteen to a channel entry.
         ObservationRowV1[] rows = Interleaved(60, 30_000);
         TimeRange extent = Extent(rows);
         using var session = Published(rows);
@@ -446,19 +447,20 @@ public sealed class SessionTileIndexTests
             Assert.Equal((section.TileCount(3) - 1, 4, 1), (whole.TilesOfTalliesRead, whole.TilesUntallied, whole.TilesOfRecordsRead));
         }
 
-        // A brush of a few milliseconds counts the widest tiles its ends fall beneath from their tallies, and the narrower
-        // ones, which keep none, from their records.
-        var few = new TimeRange(1_000_150, 1_604_850);
+        // A brush of a few seconds counts the widest tile it holds whole from its tallies, and the narrower ones beneath
+        // its two ends, which keep none, from their records.
+        var few = new TimeRange(1_000_150, 3_604_850);
         using (TileReading narrow = file.Read(session.Store.Root))
         {
             TileSection section = narrow.Section(SessionSegments.Names(manifest)[0]);
             IntervalTally counted = Tally(narrow, [section], few, EvidencePolicy.IncludeCorrelated, bound);
             Assert.Equal(Counted(bound, few, EvidencePolicy.IncludeCorrelated)[0], $"observed {counted.Observed}, graph {counted.Graph}");
-            // At each end, at most nine tiles of each level beside the one it falls in, and each of the narrower ones'
-            // ten children: a few hundred records in all.
-            Assert.InRange(narrow.TilesOfTalliesRead, 1, 2 * 9);
-            Assert.InRange(narrow.TilesUntallied, 2, 2 * (9 + 90 + 9));
-            Assert.InRange(narrow.TilesOfRecordsRead, 3, 2 * (90 + 9 + 1));
+
+            // At each end, at most nine tiles of each narrower level beside the one it falls in, and each of their
+            // children: a thousand finest tiles' records at most, three thousand records.
+            Assert.Equal(1, narrow.TilesOfTalliesRead);
+            Assert.InRange(narrow.TilesUntallied, 2, 2 * (9 + 99 + 999));
+            Assert.InRange(narrow.TilesOfRecordsRead, 3, 2 * (999 + 1));
         }
 
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
@@ -563,21 +565,292 @@ public sealed class SessionTileIndexTests
             Assert.Equal(0, reopened.SegmentReaderCache.Entries);
             Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
             reopened.ReleaseSegmentReaders();
+            twin.Store.ReleaseSegmentReaders();
+        }
+    }
 
-            // A channel's focus, which counts its ends, is not what tiles hold, and reads its rows.
-            if (bound.Relations.Relations.FirstOrDefault(relation => relation.Mechanism == Mechanism.Tcp) is { } paired)
+    [Theory(DisplayName = "I4: a reopened session's channel counts its focus and each end's lanes from its persisted tiles exactly as its rows do, narrowed to a mechanism, a direction or an end, under every policy, and opens no segment")]
+    [InlineData(7)]
+    [InlineData(93)]
+    [InlineData(20_261_010)]
+    public void ChannelEndsCountWhatRowsCount(int seed)
+    {
+        var random = new Random(seed);
+        Mechanism[] kinds = [Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc];
+        int counted = 0;
+        for (int trial = 0; trial < 6; trial++)
+        {
+            // The same capture twice: with its checkpoint's tiles, and without, where a focus reads its rows.
+            using var tiled = new TemporarySession();
+            using var twin = new TemporarySession();
+            long stretch = trial % 3 == 0 ? 1 : trial % 3 == 1 ? 1_000 : 1_000_000;
+            int rowsPerSegment = random.Next(5, 80);
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in Stretched(random, stretch))
             {
-                var channel = new TimelineFocus(paired.StableKey, []);
+                _ = Publish(tiled.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+                _ = Publish(twin.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+            }
+
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tiled.Store, Committed).Outcome);
+            tiled.Store.ReleaseSegmentReaders();
+            Bound bound = Bind(twin.Store);
+            long[] ticks = [.. bound.Segments.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
+                .Select(row => segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row))
+                .Where(nanoseconds => nanoseconds is not null).Select(nanoseconds => nanoseconds!.Value / 100))];
+            long low = ticks.Min() - stretch;
+            long high = ticks.Max() + 1 + stretch;
+
+            // Every paired TCP channel, and every connection or flow whose other end the capture does not hold.
+            string[] keys =
+            [
+                .. bound.Relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp).Select(relation => relation.StableKey),
+                .. bound.Relations.OneSided.Select(connection => connection.StableKey),
+            ];
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                for (int query = 0; query < 4 && keys.Length > 0; query++)
+                {
+                    // A channel, perhaps narrowed to one mechanism, one source direction or, paired, one end; over the whole
+                    // extent or anywhere. One the policy does not admit is refused alike.
+                    string key = keys[random.Next(keys.Length)];
+                    Mechanism? mechanism = random.Next(4) == 0 ? kinds[random.Next(kinds.Length)] : null;
+                    Direction? direction = random.Next(4) == 0 ? SessionTimelineQuery.LaneDirections[random.Next(5)] : null;
+                    int? end = !TransportConnection.IsKey(key) && random.Next(3) == 0 ? random.Next(2) : null;
+                    var focus = new TimelineFocus(key, [], mechanism: mechanism, direction: direction, end: end);
+                    long start = low + random.NextInt64(0, high - low);
+                    TimeRange interval = query == 0 ? new(low, high) : new(start, start + 1 + random.NextInt64(0, high - start));
+                    int columns = random.Next(3) == 0 ? random.Next(1, 6) : random.Next(1, 300);
+                    List<string> expected = Outcome(() => SessionTimelineQuery.Focused(twin.Store, interval, columns, focus, policy));
+                    Assert.Equal(expected, Outcome(() => SessionTimelineQuery.Focused(reopened, interval, columns, focus, policy)));
+                    counted += expected[0].StartsWith("refused ", StringComparison.Ordinal) ? 0 : 1;
+                }
+            }
+
+            Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+            Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
+            reopened.ReleaseSegmentReaders();
+
+            // A channel's records of some processes, which no tally holds together, read their rows.
+            if (bound.Relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp).GroupBy(relation => relation.StableKey)
+                .FirstOrDefault(named => named.Count() == 1) is { } paired)
+            {
+                var both = new TimelineFocus(paired.Key, [.. bound.Processes.Instances.Select(instance => instance.Id)]);
                 var whole = new TimeRange(low, high);
-                SessionStore ends = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
-                Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 50, channel, EvidencePolicy.AllIncludingConflicting)),
-                    Focused(SessionTimelineQuery.Focused(ends, whole, 50, channel, EvidencePolicy.AllIncludingConflicting)));
-                Assert.NotEqual(0, ends.SegmentReaderCache.Entries);
-                ends.ReleaseSegmentReaders();
+                SessionStore rowsRead = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+                Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 50, both, EvidencePolicy.AllIncludingConflicting)),
+                    Focused(SessionTimelineQuery.Focused(rowsRead, whole, 50, both, EvidencePolicy.AllIncludingConflicting)));
+                Assert.NotEqual(0, rowsRead.SegmentReaderCache.Entries);
+                rowsRead.ReleaseSegmentReaders();
             }
 
             twin.Store.ReleaseSegmentReaders();
         }
+
+        Assert.True(counted >= 40, $"Only {counted} channel focuses were counted.");
+    }
+
+    [Fact(DisplayName = "S3: a channel's focus counts a tile whole from its tallies wherever it falls in one column, each end's records apart, and reads records only where a column boundary falls among them")]
+    public void AChannelCountsWholeTilesFromTheirTallies()
+    {
+        // 60 pairs talking in turn, a pair at a time: one pair's connection holds a sixtieth of the records, which the
+        // view's 256 columns over the whole extent hold in four or five.
+        ObservationRowV1[] rows = Shifts(60, 24_000);
+        using var session = Published(rows);
+        SessionManifestV1 manifest = session.Store.Current!;
+        Bound bound = Bind(session.Store);
+        TransportRelation relation = bound.Relations.Relations.Single(candidate =>
+            candidate.FirstEndpoint.EndsWith(":8007", StringComparison.Ordinal) || candidate.SecondEndpoint.EndsWith(":8007", StringComparison.Ordinal));
+        TileIndexFile file = SessionTileIndex.Open(session.Store.Root, SessionTileIndex.NamedBy(manifest)!, manifest.SessionId);
+        using TileReading reading = file.Read(session.Store.Root);
+        TileSection section = reading.Section(Assert.Single(SessionSegments.Names(manifest)));
+        TimeRange extent = Extent(rows);
+
+        // Every record of the connection, each at its end, outbound and inbound apart.
+        var focused = new TimelineColumns(extent, 256, tallyMechanisms: true);
+        SessionTimelineQuery.ChannelEndColumns[] ends = Ends(relation, extent, 256);
+        Assert.True(reading.CountChannel(section, focused, ends, relation.Channel, null, null, null, CancellationToken.None));
+        AssertChannel(OfChannel(bound, relation, extent, 256, null, null), focused, ends);
+        Assert.Equal(398, focused.Counts.Sum());
+
+        // Most tiles of the extent hold none of its records, and their tallies say so; at each of the 257 boundaries, the
+        // finest tile it falls among and at most nine beside it, which keep no tallies.
+        Assert.InRange(reading.TilesOfTalliesRead, 256, 20 * 256);
+        Assert.InRange(reading.TilesOfRecordsRead, 1, 10 * 257);
+
+        // What its second end received, what either end sent, and its first end's records, from just before its records to
+        // the extent's end in 19 columns.
+        TimeRange stretch = new(focused.Interval.StartTicks + (focused.Interval.SpanTicks * 7 / 60), extent.EndTicks);
+        foreach ((Direction? direction, int? end) in new (Direction?, int?)[] { (Direction.Inbound, 1), (Direction.Outbound, null), (null, 0) })
+        {
+            var narrowed = new TimelineColumns(stretch, 19, tallyMechanisms: true);
+            SessionTimelineQuery.ChannelEndColumns[] narrowedEnds = Ends(relation, stretch, 19);
+            Assert.True(reading.CountChannel(section, narrowed, narrowedEnds, relation.Channel, Mechanism.Tcp, direction, end, CancellationToken.None));
+            AssertChannel(OfChannel(bound, relation, stretch, 19, direction, end), narrowed, narrowedEnds);
+            Assert.InRange(narrowed.Counts.Sum(), 1, 397);
+        }
+
+        // A stretch both of whose ends fall among the connection's own records, in a tile holding records outside it.
+        TimeRange among = new(900_150, 950_150);
+        var amongColumns = new TimelineColumns(among, 7, tallyMechanisms: true);
+        SessionTimelineQuery.ChannelEndColumns[] amongEnds = Ends(relation, among, 7);
+        Assert.True(reading.CountChannel(section, amongColumns, amongEnds, relation.Channel, null, null, null, CancellationToken.None));
+        AssertChannel(OfChannel(bound, relation, among, 7, null, null), amongColumns, amongEnds);
+        Assert.Equal(166, amongColumns.Counts.Sum());
+
+        // Another mechanism's records of it are none.
+        var none = new TimelineColumns(extent, 64, tallyMechanisms: true);
+        Assert.True(reading.CountChannel(section, none, null, relation.Channel, Mechanism.Udp, null, null, CancellationToken.None));
+        Assert.Equal(0, none.Counts.Sum());
+
+        // The last pair's connection, counted afresh over a three-hundredth of the extent in 37 columns, beginning inside
+        // the last of the 64 the reading last fell in.
+        TransportRelation last = bound.Relations.Relations.Single(candidate =>
+            candidate.FirstEndpoint.EndsWith(":8059", StringComparison.Ordinal) || candidate.SecondEndpoint.EndsWith(":8059", StringComparison.Ordinal));
+        TimeRange tail = new(extent.EndTicks - (extent.SpanTicks / 300), extent.EndTicks);
+        var tailColumns = new TimelineColumns(tail, 37, tallyMechanisms: true);
+        SessionTimelineQuery.ChannelEndColumns[] tailEnds = Ends(last, tail, 37);
+        Assert.True(reading.CountChannel(section, tailColumns, tailEnds, last.Channel, null, null, null, CancellationToken.None));
+        AssertChannel(OfChannel(bound, last, tail, 37, null, null), tailColumns, tailEnds);
+        Assert.InRange(tailColumns.Counts.Sum(), 1, 398);
+    }
+
+    [Fact(DisplayName = "S3: a tile keeps each part of its tallies where it takes a third of the bytes of its records, and a brush counts it from them")]
+    public void TalliesOfAThirdAreKept()
+    {
+        // Three sends a tick apart over one connection, each record four bytes in their finest tile, and one more ten
+        // seconds later: each part of the tile's tallies, one entry, takes four bytes, a third of its records' twelve.
+        ObservationRowV1[] rows = [Send(0, 1_000), Send(1, 1_001), Send(2, 1_002), Send(3, 10_001_000)];
+        using var session = Published(rows);
+        SessionManifestV1 manifest = session.Store.Current!;
+        Bound bound = Bind(session.Store);
+        TileIndexFile file = SessionTileIndex.Open(session.Store.Root, SessionTileIndex.NamedBy(manifest)!, manifest.SessionId);
+        using TileReading reading = file.Read(session.Store.Root);
+        TileSection section = reading.Section(Assert.Single(SessionSegments.Names(manifest)));
+        Assert.Equal((1_000L, 1), (section.Width, section.Levels));
+        IntervalTally counted = Tally(reading, [section], new TimeRange(999, 1_003), EvidencePolicy.IncludeCorrelated, bound);
+        Assert.Equal(3, counted.Observed);
+        Assert.Equal((1, 0, 0), (reading.TilesOfTalliesRead, reading.TilesUntallied, reading.TilesOfRecordsRead));
+    }
+
+    [Theory(DisplayName = "I4: a record or a tally whose kind no record can have, or that names no end of its channel where a focus counts its ends, is refused: the query counts from the segments' rows instead")]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    [InlineData(5)]
+    [InlineData(6)]
+    [InlineData(7)]
+    [InlineData(8)]
+    [InlineData(9)]
+    public void KindsNoRecordHasAreRefused(int damage)
+    {
+        // Each case's session differs from the others', so no two share a manifest, nor what a generation's derivations keep.
+        ObservationRowV1[] rows = Exchanges(1_310 + damage);
+        TimeRange whole = Extent(rows);
+        using var session = Published(rows);
+        using var twin = new TemporarySession();
+        Publish(twin.Store, rows);
+        Bound bound = Bind(twin.Store);
+        TransportRelation relation = Assert.Single(bound.Relations.Relations);
+        (TileSection section, string path) = TopOf(session);
+        SessionManifestV1 manifest = session.Store.Current!;
+        TileIndexFile file = SessionTileIndex.Open(session.Store.Root, SessionTileIndex.NamedBy(manifest)!, manifest.SessionId);
+        int top = section.Levels - 1;
+        TileBlock finest;
+        TileBlock highest;
+        using (FileStream stream = File.OpenRead(path))
+        {
+            finest = file.Block(stream, section, 0, 0);
+            highest = file.Block(stream, section, top, 0);
+        }
+
+        // The finest tile 1 holds the first send alone: its kind, one byte, follows its increase, zero. The top level's first
+        // tile keeps tallies, of both processes and both channels.
+        Assert.Equal((1_000L, 1_000L), (finest.Lows[1], finest.Highs[1]));
+        long records = section.RecordsAt + finest.Links[1];
+        long recordsEnd = section.RecordsAt + finest.Links[2] - 4;
+        long owners = section.OwnerTalliesAt + highest.OwnerLinks[0];
+        long ownersEnd = section.OwnerTalliesAt + highest.OwnerTalliesEnd;
+        long channels = section.ChannelTalliesAt + highest.ChannelLinks[0];
+        long channelsEnd = section.ChannelTalliesAt + highest.ChannelTalliesEnd;
+        byte[] kept = File.ReadAllBytes(path);
+        (int Number, long At, long Count)[] entries = ChannelKinds(kept, channels);
+        int paired = Array.FindIndex(entries, entry => entry.Number == relation.Channel);
+        Assert.Equal(relation.Channel, entries[paired + 1].Number);
+        long at = damage switch
+        {
+            < 2 or 6 => records + 1,
+            2 or 5 => entries[^1].At,
+            3 => entries[paired].At,
+            7 => entries[paired + 1].At,
+            8 => channels,
+            9 => entries[paired].Count,
+            _ => OwnerKinds(kept, owners)[^1],
+        };
+
+        // A kind takes one byte; a count's first byte holds its lowest seven bits, which take three more without a carry.
+        Assert.InRange(damage == 9 ? kept[at] & 0x7F : kept[at], 0, 0x7C);
+        byte value = damage switch
+        {
+            // The send names no end of its channel, or the fourth end; the last channel entry names the fourth end, and the
+            // paired channel's first entry no end of it.
+            0 or 3 => (byte)(kept[at] & ~(3 << 3)),
+            1 or 2 => (byte)(kept[at] | (3 << 3)),
+
+            // The send's, or the last channel entry's, mechanism is none of the section's.
+            5 or 6 => (byte)(section.Mechanisms.Length << 5),
+
+            // The paired channel's second entry has its first's kind; the tile's channel tallies say none are kept, before
+            // its entries; the paired channel's first entry counts three more records than it holds, more than the tile's
+            // channels hold together.
+            7 => kept[entries[paired].At],
+            8 => 0,
+            9 => (byte)(kept[at] + 3),
+
+            // The last owner entry's mechanism is none of the section's.
+            _ => (byte)(section.Mechanisms.Length << 3),
+        };
+        Assert.NotEqual(kept[at], value);
+        Assert.Equal(kept[at] & 0x80, value & 0x80);
+        kept[at] = value;
+        (long from, long to) = damage switch
+        {
+            < 2 or 6 => (records, recordsEnd),
+            4 => (owners, ownersEnd),
+            _ => (channels, channelsEnd),
+        };
+        Crc32C.Write(kept.AsSpan((int)to, 4), Crc32C.Compute(kept.AsSpan((int)from, (int)(to - from))));
+        File.WriteAllBytes(path, kept);
+
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        string name = section.Entry.Name;
+        if (damage is 0 or 3)
+        {
+            // The channel's ends, over the send's tile or over the whole extent, whose top tiles count from their tallies.
+            var focus = new TimelineFocus(relation.StableKey, []);
+            (TimeRange interval, int columns) = damage == 0 ? (new TimeRange(0, 5_000), 5) : (whole, 1);
+            Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, interval, columns, focus)),
+                Focused(SessionTimelineQuery.Focused(viewer, interval, columns, focus)));
+            Assert.Equal("The persisted tile index is not readable: a record of the focused channel names no end of it.",
+                SessionDerivationCache.For(viewer.Current!).TilesProblem);
+        }
+        else
+        {
+            // A brush over the send's tile, or over the whole extent.
+            TimeRange interval = damage is 1 or 6 ? new(500, 5_000) : whole;
+            Assert.Equal(Counted(bound, interval, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(viewer, interval)));
+            Assert.Equal(damage is 1 or 6
+                ? $"The persisted tile index is not readable: the records of tile 1 of the section of '{name}' are not the tile's."
+                : $"The persisted tile index is not readable: the {(damage == 4 ? "owner" : "channel")} tallies of tile 0 of level {top} "
+                    + $"of the section of '{name}' are not the tile's.",
+                SessionDerivationCache.For(viewer.Current!).TilesProblem);
+        }
+
+        Assert.Equal(1, viewer.SegmentReaderCache.Entries);
+        viewer.ReleaseSegmentReaders();
+        twin.Store.ReleaseSegmentReaders();
     }
 
     [Theory(DisplayName = "S3: a group of 120 processes counts its lanes from persisted tiles exactly, in the lanes' own columns past the cell budget and folded past the lanes a view names, and opens no segment")]
@@ -759,10 +1032,10 @@ public sealed class SessionTileIndexTests
         int link;
         using (FileStream stream = File.OpenRead(path))
         {
-            link = file.Block(stream, section, top, 0).TallyLinks[1];
+            link = file.Block(stream, section, top, 0).OwnerLinks[1];
         }
 
-        Flip(path, section.TalliesAt + link);
+        Flip(path, section.OwnerTalliesAt + link);
 
         // A brush over the whole extent counts the top tiles from their tallies, and so meets the damage.
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
@@ -770,25 +1043,111 @@ public sealed class SessionTileIndexTests
         Assert.Equal(Counted(bound, whole, EvidencePolicy.AllIncludingConflicting),
             Stated(SessionIntervalQuery.Count(viewer, whole, EvidencePolicy.AllIncludingConflicting)));
         Assert.Equal(1, viewer.SegmentReaderCache.Entries);
-        Assert.Equal($"The persisted tile index is not readable: the tallies of block 0 of level {top} of the section of "
+        Assert.Equal($"The persisted tile index is not readable: the owner tallies of block 0 of level {top} of the section of "
             + $"'{section.Entry.Name}' does not match its checksum.", SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
     }
 
-    [Fact(DisplayName = "I14: a tile index written before tiles kept their bindings is refused, counted around, and published again")]
-    public void AMinorZeroTileIndexIsPublishedAgain()
+    [Theory(DisplayName = "I4: channel tallies a block or a section's header does not lay out are refused: a block's links that do not follow one another or tallies ending before its last tile's, and a header placing them other than after the owner tallies")]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void ChannelTalliesOutOfPlaceAreRefused(int damage)
     {
-        ObservationRowV1[] rows = Exchanges(1_300);
+        // Each case's session differs from the others', so no two share a manifest, nor what a generation's derivations keep.
+        ObservationRowV1[] rows = Exchanges(1_330 + damage);
+        TimeRange whole = Extent(rows);
+        using var session = Published(rows);
+        (TileSection section, string path) = TopOf(session);
+        int top = section.Levels - 1;
+        (long block, int length) = section.BlockAt(top, 0);
+        int tileBytes = SessionTileIndex.TileBytes(section.Mechanisms.Length);
+        byte[] kept = File.ReadAllBytes(path);
+        Assert.InRange(section.TileCount(top), 2, SessionTileIndex.TilesPerBlock);
+        (long from, int checkedLength) = (block, length - 4);
+        switch (damage)
+        {
+            case 0:
+                // The top block's second tile's channel tallies begin where its first's do.
+                BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan((int)block + tileBytes + 28), BinaryPrimitives.ReadInt32LittleEndian(kept.AsSpan((int)block + 28)));
+                break;
+            case 1:
+                // The top block's channel tallies end where its last tile's begin.
+                int lastLink = BinaryPrimitives.ReadInt32LittleEndian(kept.AsSpan((int)block + ((section.TileCount(top) - 1) * tileBytes) + 28));
+                BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan((int)block + length - 8), lastLink);
+                break;
+            default:
+                // The section's channel tallies begin a byte after its owner tallies end, and end where the section does.
+                int header = (int)section.Entry.Offset;
+                int channelsAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 32;
+                BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt)) + 1);
+                BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt + 8)) - 1);
+                (from, checkedLength) = (header, channelsAt + 16 - header);
+                break;
+        }
+
+        Crc32C.Write(kept.AsSpan((int)from + checkedLength, 4), Crc32C.Compute(kept.AsSpan((int)from, checkedLength)));
+        File.WriteAllBytes(path, kept);
+        string name = section.Entry.Name;
+        Assert.Equal("The persisted tile index is not readable: " + damage switch
+        {
+            0 => $"block 0 of level {top} of the section of '{name}' holds a tile it does not lay out.",
+            1 => $"block 0 of level {top} of the section of '{name}' holds tallies it places outside the section.",
+            _ => $"the header of the section of '{name}' does not lay out its section.",
+        }, Refusal(session, whole, 64));
+
+        // The zoom counts what the segment's rows count, from the segment.
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(Expected(rows, whole, 64), Drawn(SessionTimelineQuery.Detail(viewer, whole, 64, Kinds)));
+        Assert.Equal(1, viewer.SegmentReaderCache.Entries);
+        viewer.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "I4: a focus narrowed to a code no direction is reads its rows, which a tile index does not keep apart, and counts what they count")]
+    public void AFocusOnACodeNoDirectionIsReadsItsRows()
+    {
+        ObservationRowV1[] rows = Exchanges(1_360);
+        TimeRange whole = Extent(rows);
+        using var session = Published(rows);
+        using var twin = new TemporarySession();
+        Publish(twin.Store, rows);
+        Bound bound = Bind(twin.Store);
+        TransportRelation relation = Assert.Single(bound.Relations.Relations);
+        foreach (TimelineFocus focus in new[]
+        {
+            new TimelineFocus(null, [.. bound.Processes.Instances.Select(instance => instance.Id)], direction: (Direction)9),
+            new TimelineFocus(relation.StableKey, [], direction: (Direction)9),
+        })
+        {
+            SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+            Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 40, focus)),
+                Focused(SessionTimelineQuery.Focused(viewer, whole, 40, focus)));
+            Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
+            Assert.Null(SessionDerivationCache.For(viewer.Current!).TilesProblem);
+            viewer.ReleaseSegmentReaders();
+        }
+
+        twin.Store.ReleaseSegmentReaders();
+    }
+
+    [Theory(DisplayName = "I14: a tile index written before tiles kept their bindings, directions and ends is refused, counted around, and published again")]
+    [InlineData(0)]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void AnEarlierMinorTileIndexIsPublishedAgain(int minor)
+    {
+        // Each minor's session differs from the others', so no two share a manifest, nor what its derivations keep.
+        ObservationRowV1[] rows = Exchanges(1_300 + minor);
         TimeRange whole = Extent(rows);
         using var session = Published(rows);
         SessionStore store = session.Store;
         string path = Path.Combine(session.Path, SessionTileIndex.NamedBy(store.Current!)!.Name);
 
-        // The same file, its header saying minor 0, as revision 456 wrote it.
+        // The same file, its header saying an earlier minor, as revision 456, 457 or 459 wrote it.
         Republish(session, tiles: content =>
         {
             byte[] bytes = File.ReadAllBytes(path);
-            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(10), 0);
+            BinaryPrimitives.WriteUInt16LittleEndian(bytes.AsSpan(10), (ushort)minor);
             Crc32C.Write(bytes.AsSpan(44), Crc32C.Compute(bytes.AsSpan(0, 44)));
             content.Write(bytes);
         });
@@ -797,8 +1156,8 @@ public sealed class SessionTileIndexTests
         Bound bound = Bind(store);
         Assert.Equal(Counted(bound, whole, EvidencePolicy.DirectOnly), Stated(SessionIntervalQuery.Count(viewer, whole, EvidencePolicy.DirectOnly)));
         Assert.Equal(1, viewer.SegmentReaderCache.Entries);
-        Assert.Equal("The persisted tile index is not readable: it is minor 0, written before a tile index kept its records' "
-            + "bindings and directions; a checkpoint publishes it again.", SessionDerivationCache.For(viewer.Current!).TilesProblem);
+        Assert.Equal($"The persisted tile index is not readable: it is minor {minor}, written before a tile index kept its records' "
+            + "bindings, directions and ends; a checkpoint publishes it again.", SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
 
         CheckpointPublication again = SessionCheckpoints.Publish(store, Committed);
@@ -1017,9 +1376,141 @@ public sealed class SessionTileIndexTests
         .. timeline.FoldedLane is { } folded ? folded.Buckets.Select(bucket => $"folded {folded.Processes.Count} {bucket}") : [],
         .. timeline.DirectionLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"direction {lane.Direction} {bucket}")),
         .. timeline.OwnerLane.Select(bucket => $"owner {bucket}"),
-        .. timeline.ChannelEndLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"end {lane.End} {bucket}")),
+        .. timeline.ChannelEndLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"end {lane.End} {lane.Holder} {lane.Endpoint} {bucket}")
+            .Concat(lane.Outbound.Select(bucket => $"end {lane.End} outbound {bucket}"))
+            .Concat(lane.Inbound.Select(bucket => $"end {lane.End} inbound {bucket}"))),
         $"problem {timeline.ProcessLaneProblem}",
     ];
+
+    /// <summary>A focused timeline as <see cref="Focused"/> draws it, or the refusal of a focus the generation does not hold.</summary>
+    private static List<string> Outcome(Func<SessionFocusedTimeline> count)
+    {
+        try
+        {
+            return Focused(count());
+        }
+        catch (InvalidOperationException refused)
+        {
+            return [$"refused {refused.Message}"];
+        }
+    }
+
+    /// <summary>A paired channel's two ends' lanes over <paramref name="interval"/>, first end first.</summary>
+    private static SessionTimelineQuery.ChannelEndColumns[] Ends(TransportRelation relation, TimeRange interval, int columns) =>
+    [
+        new(0, relation.First.Id, relation.FirstEndpoint, relation.Mechanism, interval, columns),
+        new(1, relation.Second.Id, relation.SecondEndpoint, relation.Mechanism, interval, columns),
+    ];
+
+    /// <summary>Each end's lane's counts: every record, then the outbound ones, then the inbound ones.</summary>
+    private static List<string> Lanes(SessionTimelineQuery.ChannelEndColumns[] ends) =>
+    [
+        .. ends.Select(end => end.Lane(null, TestClock)).SelectMany(lane =>
+            lane.Buckets.Select(bucket => $"end {lane.End} {bucket.ObservationCount}")
+                .Concat(lane.Outbound.Select(bucket => $"end {lane.End} outbound {bucket.ObservationCount}"))
+                .Concat(lane.Inbound.Select(bucket => $"end {lane.End} inbound {bucket.ObservationCount}"))),
+    ];
+
+    /// <summary>
+    /// A paired channel's focus and its ends' lanes over <paramref name="interval"/>, of TCP, in <paramref name="direction"/>
+    /// and at <paramref name="end"/> where they are named, as counting every row bound to it gives them.
+    /// </summary>
+    private static (List<(int Column, Mechanism? Mechanism, int Count)> Focus, List<string> Ends) OfChannel(
+        Bound bound, TransportRelation relation, TimeRange interval, int columns, Direction? direction, int? end)
+    {
+        var focused = new TimelineColumns(interval, columns, tallyMechanisms: true);
+        SessionTimelineQuery.ChannelEndColumns[] ends = Ends(relation, interval, columns);
+        foreach (SegmentReaderV1 segment in bound.Segments)
+        {
+            ChannelBinding[] channels = bound.Relations.ChannelsOf(segment);
+            sbyte[] sides = TransportRelationIndex.EndsOf(segment);
+            for (int row = 0; row < segment.RowCount; row++)
+            {
+                var way = (Direction)segment.UnsignedValue(SegmentColumnId.Direction, row)!.Value;
+                if (segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is not { } nanoseconds
+                    || focused.ColumnOf(nanoseconds / 100) is not { } column || !channels[row].IsKnown
+                    || channels[row].Channel != relation.Channel || (direction is { } only && way != only) || (end is { } side && sides[row] != side))
+                {
+                    continue;
+                }
+
+                var mechanism = (Mechanism)segment.UnsignedValue(SegmentColumnId.Mechanism, row)!.Value;
+                focused.Add(column, mechanism);
+                ends[sides[row]].Add(column, mechanism, way);
+            }
+        }
+
+        return (Snapshot(focused), Lanes(ends));
+    }
+
+    /// <summary>That a channel's focus and its ends' lanes count what <paramref name="expected"/> says its rows do.</summary>
+    private static void AssertChannel(
+        (List<(int Column, Mechanism? Mechanism, int Count)> Focus, List<string> Ends) expected,
+        TimelineColumns focused,
+        SessionTimelineQuery.ChannelEndColumns[] ends)
+    {
+        Assert.Equal(expected.Focus, Snapshot(focused));
+        Assert.Equal(expected.Ends, Lanes(ends));
+    }
+
+    /// <summary>
+    /// Where, in <paramref name="file"/>, the owner tallies beginning at <paramref name="at"/> keep each entry's kind: its
+    /// mechanism and direction.
+    /// </summary>
+    private static long[] OwnerKinds(byte[] file, long at)
+    {
+        long position = at;
+        ulong owners = Leb128(file, ref position);
+        Assert.NotEqual(0UL, owners);
+        var kinds = new List<long>();
+        for (ulong entry = 0; entry < owners - 1; entry++)
+        {
+            _ = Leb128(file, ref position);
+            kinds.Add(position);
+            _ = Leb128(file, ref position);
+            _ = Leb128(file, ref position);
+        }
+
+        return [.. kinds];
+    }
+
+    /// <summary>
+    /// Where, in <paramref name="file"/>, the channel tallies beginning at <paramref name="at"/> keep each entry's kind - its
+    /// mechanism, end and direction - and its count, with the number of its channel.
+    /// </summary>
+    private static (int Number, long At, long Count)[] ChannelKinds(byte[] file, long at)
+    {
+        long position = at;
+        ulong channels = Leb128(file, ref position);
+        Assert.NotEqual(0UL, channels);
+        var kinds = new List<(int, long, long)>();
+        ulong number = 0;
+        for (ulong entry = 0; entry < channels - 1; entry++)
+        {
+            number += Leb128(file, ref position);
+            long kind = position;
+            _ = Leb128(file, ref position);
+            long count = position;
+            _ = Leb128(file, ref position);
+            kinds.Add(((int)number, kind, count));
+        }
+
+        return [.. kinds];
+    }
+
+    private static ulong Leb128(byte[] bytes, ref long position)
+    {
+        ulong value = 0;
+        for (int shift = 0; ; shift += 7)
+        {
+            byte next = bytes[position++];
+            value |= (ulong)(next & 0x7F) << shift;
+            if (next < 0x80)
+            {
+                return value;
+            }
+        }
+    }
 
     /// <summary>A brush's counts as the query states them: what it observed and drew, and each edge's, channel's and process's.</summary>
     private static List<string> Stated(SessionIntervalCounts counts) =>
