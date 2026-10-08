@@ -91,7 +91,7 @@ public static class SessionCheckpoints
 
             // The derivation checkpoint, the persisted overview and the operation index are published together: with
             // them, a reopen opens no segment before its first view (overview-index-v1), nor before its first call
-            // ranking, listing or brush (operation-index-v1).
+            // ranking, RPC or HTTP listing, or brush (operation-index-v1).
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
@@ -108,6 +108,7 @@ public static class SessionCheckpoints
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
             // (overview-index-v1 §3); one that did not keeps none.
             RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
+            HttpExchangeIndex exchanges = derivation.HttpExchanges(store.Root, segments, clock, fields, cancellationToken);
             if (RpcPeerEdges.Collected(SessionSegments.CoverageLedger(store.Root, manifest)))
             {
                 counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers) };
@@ -130,7 +131,8 @@ public static class SessionCheckpoints
                 SessionOverviewIndex.ObservationSegments(manifest),
                 SessionOverviewIndex.FieldSegments(manifest),
                 peers.Calls,
-                peers);
+                peers,
+                exchanges);
             _ = operations.Complete();
 
             // Everything read is written, so the lease goes before the commit: a writer removes superseded manifests
@@ -169,9 +171,9 @@ public static class SessionCheckpoints
 
     /// <summary>
     /// Whether the generation names a readable checkpoint holding every derivation, a readable persisted overview and a
-    /// readable operation index, each covering exactly the segments it names. A checkpoint written before revision 166
-    /// holds no activity, which a reopen would count from every segment, so it is replaced, and so is a generation
-    /// published before revision 440, which names no operation index.
+    /// readable operation index keeping its exchanges, each covering exactly the segments it names. A checkpoint written
+    /// before revision 166 holds no activity, which a reopen would count from every segment, so it is replaced, and so is
+    /// a generation published before revision 440, which names no operation index, or 441, whose index keeps no exchanges.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -199,8 +201,8 @@ public static class SessionCheckpoints
                     SessionSegments.ReadVerified(directory, operations, OperationIndex.MaximumBytes),
                     manifest.SessionId,
                     clock,
-                    saved.Processes).Covers(
-                        SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest));
+                    saved.Processes) is { KeepsExchanges: true } kept
+                && kept.Covers(SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest));
         }
         catch (InvalidDataException)
         {

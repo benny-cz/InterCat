@@ -6,10 +6,11 @@ using InterCat.Storage;
 namespace InterCat.Analysis;
 
 /// <summary>
-/// One generation's RPC calls and their other ends as derived from named segments, published beside its derivation
-/// checkpoint so that a reopened session's first call ranking, listing or brush reads them rather than pairing every
-/// call record again (`contracts/operation-index-v1.md`, P25). It is a derived index: it changes no observation, and the
-/// segments it covers rebuild it (R1, R20).
+/// One generation's RPC calls and their other ends, and since minor 1 its HTTP exchanges, as derived from named segments,
+/// published beside its derivation checkpoint so that a reopened session's first call ranking, listing or brush, or its
+/// first HTTP listing, reads them rather than pairing every call record or grouping every buffer again
+/// (`contracts/operation-index-v1.md`, P25). It is a derived index: it changes no observation, and the segments it covers
+/// rebuild it (R1, R20).
 /// </summary>
 public sealed class OperationIndex
 {
@@ -19,7 +20,8 @@ public sealed class OperationIndex
     private const string FilePrefix = "operation-index-";
     private const string FileSuffix = ".bin";
     private const ushort Major = 1;
-    private const ushort Minor = 0;
+    /// <summary>Minor 1 adds the HTTP exchanges (revision 441); a minor-0 index is read without them.</summary>
+    private const ushort Minor = 1;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "operation index";
@@ -32,7 +34,9 @@ public sealed class OperationIndex
         IReadOnlyList<StoreDependency> segments,
         IReadOnlyList<StoreDependency> fieldSegments,
         RpcCallIndex? calls,
-        RpcPeerIndex? peers)
+        RpcPeerIndex? peers,
+        bool keepsExchanges,
+        HttpExchangeIndex? exchanges)
     {
         SessionId = sessionId;
         DerivedGeneration = derivedGeneration;
@@ -40,6 +44,8 @@ public sealed class OperationIndex
         FieldSegments = fieldSegments;
         Calls = calls;
         Peers = peers;
+        KeepsExchanges = keepsExchanges;
+        Exchanges = exchanges;
     }
 
     public Guid SessionId { get; }
@@ -61,6 +67,15 @@ public sealed class OperationIndex
 
     /// <summary>The calls' other ends, as a derivation over <see cref="Calls"/> and the covered segments gives them.</summary>
     public RpcPeerIndex? Peers { get; }
+
+    /// <summary>Whether the index was written with a section for the HTTP exchanges: from minor 1.</summary>
+    public bool KeepsExchanges { get; }
+
+    /// <summary>
+    /// The HTTP exchanges, as a grouping of the covered segments with the instances they were read with gives them; null
+    /// before minor 1, or when they were more than the index could hold besides the calls.
+    /// </summary>
+    public HttpExchangeIndex? Exchanges { get; }
 
     private static ReadOnlySpan<byte> Magic => "ICATOPIX"u8;
 
@@ -110,11 +125,12 @@ public sealed class OperationIndex
     }
 
     /// <summary>
-    /// Writes <paramref name="calls"/> and their other ends <paramref name="peers"/>, derived from
-    /// <paramref name="segments"/> - in the order the calls were paired from - and <paramref name="fieldSegments"/> of
-    /// generation <paramref name="derivedGeneration"/>. The calls are written in the canonical order of their first
-    /// records (§3), so the same derivation always writes the same bytes. Calls that would take more than
-    /// <paramref name="maximumBytes"/> are not kept: the index then says so, and a reader pairs them from the segments.
+    /// Writes <paramref name="calls"/>, their other ends <paramref name="peers"/> and the exchanges
+    /// <paramref name="exchanges"/>, derived from <paramref name="segments"/> - in the order they were read - and
+    /// <paramref name="fieldSegments"/> of generation <paramref name="derivedGeneration"/>. Calls and exchanges are written
+    /// in the canonical order of their first records (§3), so the same derivations always write the same bytes. Calls, or
+    /// exchanges after them, that would take more than <paramref name="maximumBytes"/> are not kept: the index then says
+    /// so, and a reader derives them from the segments.
     /// </summary>
     /// <returns>How many bytes were written.</returns>
     public static long Write(
@@ -125,6 +141,7 @@ public sealed class OperationIndex
         IReadOnlyList<StoreDependency> fieldSegments,
         RpcCallIndex calls,
         RpcPeerIndex peers,
+        HttpExchangeIndex exchanges,
         long maximumBytes = MaximumBytes)
     {
         ArgumentNullException.ThrowIfNull(destination);
@@ -132,6 +149,7 @@ public sealed class OperationIndex
         ArgumentNullException.ThrowIfNull(fieldSegments);
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(peers);
+        ArgumentNullException.ThrowIfNull(exchanges);
         ArgumentOutOfRangeException.ThrowIfLessThan(derivedGeneration, 1);
         ArgumentOutOfRangeException.ThrowIfGreaterThan(maximumBytes, MaximumBytes);
         if (!ReferenceEquals(peers.Calls, calls))
@@ -139,9 +157,11 @@ public sealed class OperationIndex
             throw new ArgumentException("These other ends were followed over other calls.", nameof(peers));
         }
 
-        if (!calls.SegmentNames.SequenceEqual(segments.Select(segment => segment.Name)))
+        if (!calls.SegmentNames.SequenceEqual(segments.Select(segment => segment.Name))
+            || !exchanges.SegmentNames.SequenceEqual(segments.Select(segment => segment.Name)))
         {
-            throw new ArgumentException("The calls were paired from other segments, or in another order.", nameof(segments));
+            throw new ArgumentException(
+                "The calls or the exchanges were read from other segments, or in another order.", nameof(segments));
         }
 
         if (segments.Concat(fieldSegments).Any(file => file.Kind != StoreDependencyKind.Segment)
@@ -180,6 +200,15 @@ public sealed class OperationIndex
             int[] order = calls.InCanonicalOrder();
             calls.WriteState(writer, order);
             peers.WriteState(writer, order);
+        }
+
+        // The exchanges follow under their own rule, kept when they fit after what is written.
+        writer.Str8(HttpExchangeIndex.GroupingRule);
+        bool exchangesHeld = writer.Written + 1 + exchanges.StateBytes() <= maximumBytes;
+        writer.Flag(exchangesHeld);
+        if (exchangesHeld)
+        {
+            exchanges.WriteState(writer);
         }
 
         writer.Flush();
@@ -298,17 +327,30 @@ public sealed class OperationIndex
             (role == ObservationRole ? segments : fields).Add(new(name, StoreDependencyKind.Segment, length, digest));
         }
 
+        string[] positions = [.. segments.Select(segment => segment.Name)];
         RpcCallIndex? calls = null;
         RpcPeerIndex? peers = null;
         if (reader.Flag())
         {
-            calls = RpcCallIndex.ReadState(
-                reader, processes, clock, [.. segments.Select(segment => segment.Name)], cancellationToken, out int[] placed);
+            calls = RpcCallIndex.ReadState(reader, processes, clock, positions, cancellationToken, out int[] placed);
             peers = RpcPeerIndex.ReadState(reader, calls, placed);
         }
 
+        HttpExchangeIndex? exchanges = null;
+        if (minor >= 1)
+        {
+            string grouping = reader.Str8();
+            if (grouping != HttpExchangeIndex.GroupingRule)
+            {
+                throw reader.Invalid(
+                    $"its exchanges were grouped under {grouping}, and this build groups under {HttpExchangeIndex.GroupingRule}.");
+            }
+
+            exchanges = reader.Flag() ? HttpExchangeIndex.ReadState(reader, processes, positions, cancellationToken) : null;
+        }
+
         reader.RequireEnd();
-        return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), calls, peers);
+        return new(session, derivedGeneration, segments.AsReadOnly(), fields.AsReadOnly(), calls, peers, minor >= 1, exchanges);
     }
 
     private static bool IsDigest(string digest) =>

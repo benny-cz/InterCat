@@ -112,6 +112,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private bool overviewRead;
     private string? overviewProblem;
     private string? operationsProblem;
+    private OperationIndex? operationIndex;
+    private bool operationIndexRead;
     private SessionContentIndex? content;
 
     // The records the last few operation scopes asked for named, most recent first: each zoom or page of a busy channel's
@@ -163,6 +165,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>Whether the calls and their other ends were read from this generation's operation index.</summary>
     internal bool CallsFromIndex { get; private set; }
+
+    /// <summary>Whether the HTTP exchanges were read from this generation's operation index.</summary>
+    internal bool ExchangesFromIndex { get; private set; }
 
     /// <summary>Whether the instances were extended from an earlier generation's rather than derived in full.</summary>
     internal bool ProcessesExtended { get; private set; }
@@ -308,8 +313,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
-    /// The generation's HTTP exchanges (ADR-037), grouped from its WinINet capture records once on first use and bound to
-    /// the same process instances as every other derivation of it.
+    /// The generation's HTTP exchanges (ADR-037), taken on first use from the operation index the generation names when it
+    /// covers its segments and keeps them, or else grouped from its WinINet capture records, and bound to the same process
+    /// instances as every other derivation of it.
     /// </summary>
     public HttpExchangeIndex HttpExchanges(
         IOwnedDirectory directory,
@@ -323,6 +329,13 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             if (httpExchanges is { } known)
             {
                 return known;
+            }
+
+            if (OperationsLocked(directory, segments, clock, fields, cancellationToken) is { Exchanges: { } kept })
+            {
+                Volatile.Write(ref httpExchanges, kept);
+                ExchangesFromIndex = true;
+                return kept;
             }
 
             ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
@@ -532,10 +545,11 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
-    /// The operation index this generation names, read and checked when the calls are first asked for, binding its calls
-    /// to the instances already made, or the checkpoint's, which open no segment. Null when it names none, when it covers
-    /// other segments than <paramref name="segments"/> in their order - the calls name segments by position - and when it
-    /// could not be read, which <see cref="OperationsProblem"/> then says. The caller holds the gate.
+    /// The operation index this generation names, read and checked once, when its calls or exchanges are first asked for,
+    /// binding them to the instances already made, or the checkpoint's, which open no segment. Null when it names none,
+    /// when it covers other segments than the generation names, when <paramref name="segments"/> are not those in their
+    /// order - an index names segments by position - and when it could not be read, which <see cref="OperationsProblem"/>
+    /// then says. The caller holds the gate.
     /// </summary>
     private OperationIndex? OperationsLocked(
         IOwnedDirectory directory,
@@ -558,16 +572,22 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
                 return null;
             }
 
-            ProcessInstanceIndex instances = processes
-                ?? FromCheckpointLocked(directory, clock)?.Processes
-                ?? ProcessesLocked(directory, segments, clock, fields, cancellationToken);
-            OperationIndex saved = OperationIndex.Read(
-                SessionSegments.ReadVerified(directory, named, OperationIndex.MaximumBytes),
-                Manifest.SessionId,
-                clock,
-                instances,
-                cancellationToken);
-            return saved.Covers(observed, SessionOverviewIndex.FieldSegments(Manifest)) ? saved : null;
+            if (!operationIndexRead)
+            {
+                ProcessInstanceIndex instances = processes
+                    ?? FromCheckpointLocked(directory, clock)?.Processes
+                    ?? ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+                OperationIndex saved = OperationIndex.Read(
+                    SessionSegments.ReadVerified(directory, named, OperationIndex.MaximumBytes),
+                    Manifest.SessionId,
+                    clock,
+                    instances,
+                    cancellationToken);
+                operationIndex = saved.Covers(observed, SessionOverviewIndex.FieldSegments(Manifest)) ? saved : null;
+                operationIndexRead = true;
+            }
+
+            return operationIndex;
         }
         catch (InvalidDataException exception)
         {
@@ -582,6 +602,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             Volatile.Write(ref operationsProblem, exception.Message);
         }
 
+        // An index that could not be read is not read again for the other derivation; why is kept.
+        operationIndexRead = true;
         return null;
     }
 

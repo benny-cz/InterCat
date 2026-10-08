@@ -165,49 +165,10 @@ public sealed class SessionHttpExchangesTests
     internal static ProcessInstanceId Client(SessionStore store) =>
         SessionOverviewProjector.Project(store).Nodes.Single(node => node.ProcessId == 4_242).Id;
 
-    /// <summary>
-    /// Five exchanges of process 4242: exchange 1 in six buffers, its request and response bodies in two each, the request
-    /// body's last raised after the response ended, interleaved with exchange 2's three, whose request had no body; exchange
-    /// 3, whose response body's last buffer was not recorded; exchange 1's number again; and exchange 3's again, its request
-    /// head lost. Process 7 made none.
-    /// </summary>
+    /// <inheritdoc cref="TestSessions.HttpExchangeRows"/>
     internal static ObservationRowV1[] Rows(out SourceFieldRowV1[] fields)
     {
-        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes)[] buffers =
-        [
-            (10, 2001, 1, 0, 3, 181), (11, 2002, 1, 0, 1, 64),
-            (15, 2001, 2, 0, 3, 181),
-            (20, 2003, 1, 0, 3, 115),
-            (25, 2003, 2, 0, 3, 115), (26, 2004, 2, 0, 3, 0),
-            (29, 2004, 1, 0, 1, 900), (30, 2004, 1, 1, 2, 100), (31, 2002, 1, 1, 2, 36),
-            (40, 2001, 3, 0, 3, 181), (41, 2003, 3, 0, 3, 115), (42, 2004, 3, 0, 1, 50),
-            (100, 2001, 1, 0, 3, 181), (101, 2003, 1, 0, 3, 115), (102, 2004, 1, 0, 3, 7),
-            (200, 2003, 3, 0, 3, 115), (201, 2004, 3, 0, 3, 9),
-        ];
-        ObservationRowV1[] rows = [.. buffers.Select((buffer, index) => Http(buffer.Ticks, buffer.Event, (ulong)(index + 1), buffer.Bytes))];
-        fields =
-        [
-            .. buffers.SelectMany((buffer, index) => new[]
-            {
-                Field(rows[index], SourceField.HttpExchangeId, buffer.Number),
-                Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
-                Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
-            }),
-        ];
-        return [Lifecycle(1, ObservationKind.Create, 4_242, 100), Lifecycle(2, ObservationKind.Inventory, 7, 101), .. rows];
+        (ObservationRowV1[] rows, fields) = HttpExchangeRows();
+        return rows;
     }
-
-    /// <summary>A WinINet capture record of <paramref name="eventId"/>, raised by process 4242, with a session time.</summary>
-    private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal, long bytes) =>
-        Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
-            eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, bytes, null, ordinal) with
-        {
-            Mechanism = Mechanism.Http,
-            Layer = ObservationLayer.Application,
-            EventId = eventId,
-            HeaderProcessId = 4_242,
-            Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
-            ByteDomain = ByteDomain.ApplicationPayload,
-            SessionRelativeTicks = ticks * 100,
-        };
 }

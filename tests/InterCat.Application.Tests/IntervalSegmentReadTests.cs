@@ -260,7 +260,7 @@ public sealed class IntervalSegmentReadTests
         Assert.True(records.RowsIn("c").IsEmpty);
     }
 
-    [Fact(DisplayName = "§12.1: once a generation's HTTP exchanges are grouped, a process's exchanges and their spans open no segment, and an exchange's evidence only the segment holding its buffers")]
+    [Fact(DisplayName = "§12.1: a finished session's HTTP exchanges are read without grouping, and once a generation's are grouped, a process's exchanges and their spans open no segment, and an exchange's evidence only the segment holding its buffers")]
     public void GroupedExchangesAreReadWithoutTheirSegments()
     {
         // A process's WinINet buffers in four segments of six records, cut as they arrived; its twin holds them in one.
@@ -276,11 +276,17 @@ public sealed class IntervalSegmentReadTests
         string channel = HttpExchangeKeys.Channel(client);
         var late = new TimeRange(90, 200);
 
-        // The first read groups the exchanges over every segment and their source fields.
+        // The finished session keeps its exchanges, so a reopen's first read opens no segment; in a generation that
+        // keeps none, as a live one does, the first read groups them over every segment and their source fields.
+        SessionStore indexed = Reopened(split.Path);
+        HttpExchangePage kept = SessionHttpExchanges.Exchanges(indexed, channel);
+        Assert.Equal(0, indexed.SegmentReaderCache.Entries);
+        OperationIndexReopenTests.Republish(split.Store, operations: null);
         SessionDerivationCache.Clear();
         SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
         HttpExchangePage all = SessionHttpExchanges.Exchanges(first, channel);
         Assert.Equal(4 + SessionSegments.FieldNames(split.Store.Current!).Count, first.SegmentReaderCache.Entries);
+        Assert.Equal(kept.Exchanges, all.Exchanges);
         first.ReleaseSegmentReaders();
 
         // Later, the process's exchanges, a time scope's and their spans read the groups and open none.

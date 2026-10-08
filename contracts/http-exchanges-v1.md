@@ -88,6 +88,13 @@ exchanges group exactly as the source's, with their parts' sizes and timing and 
 (`contracts/redacted-session-v1.md` §4). A package made before revision 250 withheld the three fields, and its HTTP
 records name no exchange.
 
+## 5b. Kept with a finished session (revision 441)
+
+A finished session's operation index keeps its exchanges (`contracts/operation-index-v1.md` minor 1): each with its
+parts, times and buffers' places, without its process binding, which a reopen makes from the checkpoint's instances as
+this grouping does. A reopen's first HTTP listing therefore groups no buffer, and answers as grouping every segment does.
+A live generation keeps none, and groups its exchanges from every record once.
+
 ## 6. Not defined at this version
 
 - An exchange's method, target, status or headers: they are content, and reading them is a decoder's work (§11.2's

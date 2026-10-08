@@ -203,6 +203,19 @@ public sealed partial class HttpExchangeIndex
             }
         }
 
+        return Assemble(drafts, [.. segments.Select(segment => segment.Published?.Name)], processes, withoutExchange);
+    }
+
+    /// <summary>
+    /// Orders bound exchanges into their groups and counts each group: what a derivation does once it has told the uses
+    /// apart and bound them, and a reader of an operation index once it has read and bound them.
+    /// </summary>
+    private static HttpExchangeIndex Assemble(
+        IEnumerable<(HttpExchange Exchange, (int Segment, int Row)[] Records)> drafts,
+        string?[] segmentNames,
+        ProcessInstanceIndex processes,
+        long withoutExchange)
+    {
         // Grouped by instance, the bound first in index order and then the unbound by process ID; each group's exchanges in
         // reading order, by first buffer and then by its record.
         (HttpExchange Exchange, (int Segment, int Row)[] Records)[] ordered =
@@ -244,7 +257,7 @@ public sealed partial class HttpExchangeIndex
             [.. ordered.Select(draft => draft.Exchange)],
             [.. ordered.Select(draft => draft.Records)],
             [.. groups],
-            [.. segments.Select(segment => segment.Published?.Name)],
+            segmentNames,
             processes,
             withoutExchange);
     }

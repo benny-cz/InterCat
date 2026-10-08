@@ -35,9 +35,15 @@ public sealed class OperationIndexTests
         Assert.Same(derived.Processes, read.Calls!.Processes);
         Assert.Same(read.Calls, read.Peers!.Calls);
 
-        // Every call state and every other end the rules give is among them, so each is read back.
+        // Every call state and every other end the rules give is among them, so each is read back, and so is every
+        // exchange: interleaved, used again, cut short, its request head lost.
         string described = Describe(derived.Peers, derived.Observations);
         Assert.Equal(described, Describe(read.Peers, derived.Observations));
+        Assert.True(read.KeepsExchanges);
+        Assert.Same(derived.Processes, read.Exchanges!.Processes);
+        Assert.Equal(Describe(derived.Exchanges), Describe(read.Exchanges));
+        Assert.Equal((5, 1), (read.Exchanges.Groups.Single(group => group.ProcessId == 4_242).Exchanges,
+            read.Exchanges.Groups.Single(group => group.ProcessId == 4_343).Exchanges));
         Assert.Equal(Enum.GetValues<RpcCallState>().Order(), derived.Calls.Outcomes().Select(call => call.State).Distinct().Order());
         RpcPeerState[] reached = [.. derived.Calls.Groups.SelectMany(group => Enumerable.Range(0, (int)group.Counts.Calls)
             .Select(position => derived.Peers.PeerOf(group, position, derived.Observations).State)).Distinct().Order()];
@@ -45,8 +51,15 @@ public sealed class OperationIndexTests
             [RpcPeerState.Served, RpcPeerState.NotCompleted, RpcPeerState.NoSend, RpcPeerState.NotReached],
             reached);
 
-        // The calls are written in the canonical order of their first records, which no binding changes.
-        Assert.Equal(bytes, Write(derived with { Calls = read.Calls!, Peers = read.Peers! }));
+        // Calls and exchanges are written in the canonical order of their first records, which no binding changes.
+        Assert.Equal(bytes, Write(derived with { Calls = read.Calls!, Peers = read.Peers!, Exchanges = read.Exchanges }));
+
+        // An index of minor 0 holds no exchanges: it is read without them, and says so.
+        int httpFlag = Find(bytes, Encoding.UTF8.GetBytes(HttpExchangeIndex.GroupingRule)) + 16;
+        OperationIndex minorZero = OperationIndex.Read(Patched(bytes[..(httpFlag - 17)], 10, [0, 0]), derived.SessionId, TestClock,
+            derived.Processes);
+        Assert.Equal((false, (HttpExchangeIndex?)null), (minorZero.KeepsExchanges, minorZero.Exchanges));
+        Assert.Equal(described, Describe(minorZero.Peers!, derived.Observations));
 
         // Without ALPC no other end is resolved, and the index says so in two counts.
         using var plain = new TemporarySession();
@@ -71,11 +84,12 @@ public sealed class OperationIndexTests
             Assert.StartsWith("The operation index is not readable: ", refused.Message, StringComparison.Ordinal);
         }
 
-        Refused(bytes[..^1], "ends inside a field");
+        Refused(bytes[..20], "ends inside a field");
+        Refused(bytes[..^1], "a count of 2 is more than the 15 bytes left can hold");
         Refused([.. bytes, 0], "1 bytes follow its last field");
         Refused(Patched(bytes, 0, "ICATDCKP"u8), "does not begin as an operation index does");
-        Refused(Patched(bytes, 10, [1, 0]), "format 1.1");
-        Refused(Patched(bytes, 8, [2, 0]), "format 2.0");
+        Refused(Patched(bytes, 10, [2, 0]), "format 1.2");
+        Refused(Patched(bytes, 8, [2, 0]), "format 2.1");
         Refused(Replaced(bytes, RpcCallIndex.OperationRule, "rpc-call-operation-v0"), "derived under rpc-call-operation-v0");
         Refused(Replaced(bytes, RpcPeerIndex.PeerRule, "rpc-call-peer-v0"), "rpc-call-peer-v0");
         Refused(Replaced(bytes, ProcessInstanceIndex.BindingRule, ProcessInstanceIndex.BindingRule[..^1] + "0"), "and this build derives under");
@@ -118,9 +132,9 @@ public sealed class OperationIndexTests
             "holds a state its records contradict");
 
         // A call moved out of its first record's order, and calls that hold another number of records than counted: the
-        // count is where an index keeping no calls ends.
+        // count follows the flag after the last covered file's digest.
         Refused(Patched(Patched(bytes, first + 23, Int64(10_000)), first + 39, Int64(10_000)), "not in the canonical order of its first record");
-        int counted = Write(derived, bytes.Length - 1).Length;
+        int counted = Find(bytes, Encoding.UTF8.GetBytes(derived.FieldSegments[^1].Digest)) + 71 + 1;
         Assert.Equal(derived.Calls.CallRecords, BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(counted)));
         Refused(Patched(bytes, counted, Int64(derived.Calls.CallRecords + 1)), "and it counts");
         Refused(Patched(bytes, counted, Int64(-1)), "fewer than no RPC records");
@@ -133,7 +147,8 @@ public sealed class OperationIndexTests
 
         // The other ends follow the calls: the first call's is the server call that served it, and a served call that
         // names no server call, or one whose state says it was not served while it names one, contradicts the rule.
-        int peers = bytes.Length - (5 * (int)derived.Calls.Totals.Calls);
+        int httpFlag = Find(bytes, Encoding.UTF8.GetBytes(HttpExchangeIndex.GroupingRule)) + 16;
+        int peers = httpFlag - 17 - (5 * (int)derived.Calls.Totals.Calls);
         Assert.Equal((byte)RpcPeerState.Served, bytes[peers]);
         Refused(Patched(bytes, peers, [(byte)RpcPeerState.NoSend]), "contradicts the call it names");
         Refused(Patched(bytes, peers + 1, Int32(-1)), "contradicts the call it names");
@@ -169,6 +184,28 @@ public sealed class OperationIndexTests
             "contradicts the call it names");
         Refused(Patched(bytes, peers - 16, Int64(-1)), "fewer than no ALPC records");
 
+        // The exchanges follow under their rule: the HTTP records that named none, two origins, then each exchange in the
+        // order of its first buffer - the first is exchange 1, from tick 10, with every time, its parts and its six
+        // buffers' places - none of which may contradict what a grouping gives.
+        Refused(Replaced(bytes, HttpExchangeIndex.GroupingRule, "http-exchange-v0"), "grouped under http-exchange-v0");
+        Refused(Patched(bytes, httpFlag + 1, Int64(-1)), "fewer than no HTTP records without an exchange");
+        Assert.Equal(2, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(httpFlag + 9)));
+        Refused(Patched(bytes, httpFlag + 21, bytes.AsSpan(httpFlag + 13, 8)), "an origin of exchanges is named twice");
+        int exchange = Find(bytes, Exchange(number: 1, origin: 0, ordinal: 1));
+        Assert.Equal(httpFlag + 33, exchange);
+        Refused(Patched(bytes, exchange + 12, Int32(2)), "names no origin the index holds");
+        Refused(Patched(bytes, exchange + 32, Int64(9)), "ends before it begins");
+        Refused(Patched(bytes, exchange + 40, [(byte)(bytes[exchange + 40] | 8)]), "holds an undefined time");
+        Refused(Patched(bytes, exchange + 65, Int32(-1)), "a part its buffers could not make");
+        Refused(Patched(bytes, exchange + 69, Int64(-1)), "a part its buffers could not make");
+        int unbodied = Find(bytes, Exchange(number: 2, origin: 0, ordinal: 3));
+        Assert.Equal(0, BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(unbodied + 78)));
+        Refused(Patched(bytes, unbodied + 90, [1]), "a part its buffers could not make");
+        Refused(Patched(bytes, exchange + 117, Int32(7)), "holds 7 buffers, and its parts 6");
+        Refused(Patched(bytes, exchange + 121, Int32(derived.Segments.Length)), "names a buffer in no segment");
+        Refused(Patched(bytes, exchange + 125, Int32(-1)), "names a buffer in no segment");
+        Refused(Patched(Patched(bytes, exchange + 24, Int64(1_000)), exchange + 32, Int64(1_000)), "not in the order of its first buffer");
+
         // Instances that hold none of its PIDs are not the ones it was derived with: its calls bind to nothing they hold.
         using var stranger = new TemporarySession();
         Publish(stranger.Store, [Lifecycle(1, ObservationKind.Create, 7, 1)]);
@@ -184,17 +221,41 @@ public sealed class OperationIndexTests
         Derivation derived = Derive(session.Store);
         byte[] whole = Write(derived);
         Assert.Equal(whole, Write(derived, whole.Length));
-        byte[] bounded = Write(derived, whole.Length - 1);
-        OperationIndex read = OperationIndex.Read(bounded, derived.SessionId, TestClock, derived.Processes);
-        Assert.Null(read.Calls);
-        Assert.Null(read.Peers);
+
+        // Exchanges that would not fit after the calls are not kept, and the calls are.
+        int callsFlag = Find(whole, Encoding.UTF8.GetBytes(derived.FieldSegments[^1].Digest)) + 71;
+        int httpFlag = Find(whole, Encoding.UTF8.GetBytes(HttpExchangeIndex.GroupingRule)) + 16;
+        byte[] noExchanges = Write(derived, whole.Length - 1);
+        Assert.Equal(whole[..httpFlag], noExchanges[..httpFlag]);
+        Assert.Equal([0], noExchanges[httpFlag..]);
+        OperationIndex read = OperationIndex.Read(noExchanges, derived.SessionId, TestClock, derived.Processes);
+        Assert.Equal((true, (HttpExchangeIndex?)null), (read.KeepsExchanges, read.Exchanges));
+        Assert.Equal(Describe(derived.Peers, derived.Observations), Describe(read.Peers!, derived.Observations));
+
+        // Calls that would not fit are not kept, and the exchanges are weighed against what is left: kept when they fit
+        // in it, which these do where the calls did not.
+        int callsBytes = httpFlag - 17 - (callsFlag + 1);
+        int exchangesBytes = whole.Length - (httpFlag + 1);
+        Assert.True(callsBytes > 18 + exchangesBytes);
+        byte[] onlyExchanges = Write(derived, callsFlag + 19 + exchangesBytes);
+        Assert.Equal(0, onlyExchanges[callsFlag]);
+        read = OperationIndex.Read(onlyExchanges, derived.SessionId, TestClock, derived.Processes);
+        Assert.Equal(((RpcCallIndex?)null, (RpcPeerIndex?)null), (read.Calls, read.Peers));
+        Assert.Equal(Describe(derived.Exchanges), Describe(read.Exchanges!));
+        byte[] bounded = Write(derived, callsFlag + 19);
+        Assert.Equal(callsFlag + 19, bounded.Length);
+        read = OperationIndex.Read(bounded, derived.SessionId, TestClock, derived.Processes);
+        Assert.Equal(((RpcCallIndex?)null, (HttpExchangeIndex?)null), (read.Calls, read.Exchanges));
         Assert.True(read.Covers(derived.Segments, derived.FieldSegments));
-        Assert.Equal(0, bounded[^1]);
-        Assert.Equal(whole[..(bounded.Length - 1)], bounded[..^1]);
+        Assert.Equal(whole[..callsFlag], bounded[..callsFlag]);
         Assert.Throws<ArgumentOutOfRangeException>(() => Write(derived, (long)OperationIndex.MaximumBytes + 1));
         Assert.Throws<ArgumentException>(() => Write(derived with { Segments = [.. derived.Segments.Reverse()] }));
         Assert.Throws<ArgumentException>(() => Write(derived with { FieldSegments = [derived.Segments[0]] }));
         Assert.Throws<ArgumentException>(() => Write(derived with { FieldSegments = [derived.FieldSegments[0] with { Kind = StoreDependencyKind.Index }] }));
+        Assert.Throws<ArgumentException>(() => Write(derived with
+        {
+            Exchanges = HttpExchangeIndex.Derive([.. derived.Observations.Reverse()], [], derived.Processes),
+        }));
         Assert.Throws<ArgumentException>(() => Write(derived with { Calls = read.Calls ?? OperationIndex.Read(whole, derived.SessionId, TestClock, derived.Processes).Calls! }));
     }
 
@@ -207,7 +268,8 @@ public sealed class OperationIndexTests
         StoreDependency[] FieldSegments,
         ProcessInstanceIndex Processes,
         RpcCallIndex Calls,
-        RpcPeerIndex Peers);
+        RpcPeerIndex Peers,
+        HttpExchangeIndex Exchanges);
 
     /// <summary>
     /// The linked calls, a stop without its start, a start and a stop without an activity id, a call still open at
@@ -232,11 +294,26 @@ public sealed class OperationIndexTests
             RpcCall(470, ObservationKind.RequestStart, Direction.Inbound, 500, 78, Activity(7)) with { RawStreamId = 2 },
             RpcCall(480, ObservationKind.RequestEnd, Direction.Inbound, 500, 79, Activity(7), status: 5) with { RawStreamId = 2 },
         ];
-        ObservationRowV1[] rows = [.. linked.Where(row => alpc || row.Mechanism != Mechanism.Alpc), .. more];
+        // A second process's one exchange, read between the first process's first two, so the exchanges' reading order
+        // is not their groups' order.
+        (ObservationRowV1[] http, SourceFieldRowV1[] httpFields) = HttpExchangeRows(stream: 3, laterStream: 4);
+        ObservationRowV1 between = http[2] with { NativeTicks = 12, SessionRelativeTicks = 1_200, RawRecordOrdinal = 50, HeaderProcessId = 4_343 };
+        ObservationRowV1[] rows =
+        [
+            .. linked.Where(row => alpc || row.Mechanism != Mechanism.Alpc),
+            .. more,
+            .. http,
+            Lifecycle(4, ObservationKind.Create, 4_343, 4),
+            between,
+        ];
         SourceFieldRowV1[] fields =
         [
             .. linkedFields.Where(field => alpc || field.Field != SourceField.AlpcMessageId),
             Field(more[5], SourceField.RpcProtocolSequence, 10),
+            .. httpFields,
+            Field(between, SourceField.HttpExchangeId, 9),
+            Field(between, SourceField.ContentBufferSequence, 0),
+            Field(between, SourceField.ContentBufferFlags, 3),
         ];
         Publish(store, rows, rowsPerSegment: 5, fields: fields);
         (SegmentReaderV1[] observations, SegmentReaderV1[] fieldSegments) = SegmentsOf(store);
@@ -250,16 +327,37 @@ public sealed class OperationIndexTests
             [.. fieldSegments.Select(segment => segment.Published!)],
             processes,
             calls,
-            RpcPeerIndex.Derive(calls, observations, fieldSegments));
+            RpcPeerIndex.Derive(calls, observations, fieldSegments),
+            HttpExchangeIndex.Derive(observations, fieldSegments, processes));
     }
 
     private static byte[] Write(Derivation derived, long maximumBytes = OperationIndex.MaximumBytes)
     {
         using var written = new MemoryStream();
         long length = OperationIndex.Write(written, derived.SessionId, derived.Generation, derived.Segments, derived.FieldSegments,
-            derived.Calls, derived.Peers, maximumBytes);
+            derived.Calls, derived.Peers, derived.Exchanges, maximumBytes);
         Assert.Equal(written.Length, length);
         return written.ToArray();
+    }
+
+    /// <summary>Everything the exchanges answer, as one comparable text.</summary>
+    private static string Describe(HttpExchangeIndex exchanges)
+    {
+        var lines = new List<string> { $"{exchanges.WithoutExchange} {string.Join(",", exchanges.SegmentNames)}" };
+        foreach (HttpExchangeGroup group in exchanges.Groups)
+        {
+            lines.Add(group.ToString());
+            lines.Add(string.Join(";", exchanges.ExchangesOf(group)));
+            lines.Add(string.Join(";", exchanges.RecordsOf(group)));
+            for (int position = 0; position < group.Exchanges; position++)
+            {
+                HttpExchange exchange = exchanges.ExchangesOf(group, position, 1)[0];
+                lines.Add($"{string.Join(",", exchanges.RecordsOf(group, position))} "
+                    + exchanges.PositionOf(group, exchange.First.Stream, exchange.First.Epoch, exchange.First.Ordinal));
+            }
+        }
+
+        return string.Join("\n", lines);
     }
 
     /// <summary>Everything the calls and their other ends answer, as one comparable text.</summary>
@@ -308,6 +406,17 @@ public sealed class OperationIndexTests
     }
 
     private static byte[] Inserted(byte[] bytes, int offset, byte[] inserted) => [.. bytes[..offset], .. inserted, .. bytes[offset..]];
+
+    /// <summary>The start of an exchange of process 4242 as the index holds it: its number, PID, origin and first ordinal.</summary>
+    private static byte[] Exchange(long number, int origin, ulong ordinal)
+    {
+        byte[] exchange = new byte[24];
+        BinaryPrimitives.WriteInt64LittleEndian(exchange, number);
+        BinaryPrimitives.WriteInt32LittleEndian(exchange.AsSpan(8), 4_242);
+        BinaryPrimitives.WriteInt32LittleEndian(exchange.AsSpan(12), origin);
+        BinaryPrimitives.WriteUInt64LittleEndian(exchange.AsSpan(16), ordinal);
+        return exchange;
+    }
 
     private static byte[] Int32(int value)
     {

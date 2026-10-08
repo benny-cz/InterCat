@@ -363,6 +363,59 @@ internal static class TestSessions
     private static Guid RpcActivity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
 
     /// <summary>
+    /// Five exchanges of process 4242: exchange 1 in six buffers, its request and response bodies in two each, the request
+    /// body's last raised after the response ended, interleaved with exchange 2's three, whose request had no body; exchange
+    /// 3, whose response body's last buffer was not recorded; exchange 1's number again; and exchange 3's again, its request
+    /// head lost. Process 7 made none. The buffers come from raw stream <paramref name="stream"/>, those of the last two
+    /// exchanges from <paramref name="laterStream"/> when it is given.
+    /// </summary>
+    public static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) HttpExchangeRows(uint stream = 1, uint? laterStream = null)
+    {
+        (long Ticks, ushort Event, long Number, long Sequence, long Flags, long Bytes)[] buffers =
+        [
+            (10, 2001, 1, 0, 3, 181), (11, 2002, 1, 0, 1, 64),
+            (15, 2001, 2, 0, 3, 181),
+            (20, 2003, 1, 0, 3, 115),
+            (25, 2003, 2, 0, 3, 115), (26, 2004, 2, 0, 3, 0),
+            (29, 2004, 1, 0, 1, 900), (30, 2004, 1, 1, 2, 100), (31, 2002, 1, 1, 2, 36),
+            (40, 2001, 3, 0, 3, 181), (41, 2003, 3, 0, 3, 115), (42, 2004, 3, 0, 1, 50),
+            (100, 2001, 1, 0, 3, 181), (101, 2003, 1, 0, 3, 115), (102, 2004, 1, 0, 3, 7),
+            (200, 2003, 3, 0, 3, 115), (201, 2004, 3, 0, 3, 9),
+        ];
+        ObservationRowV1[] rows =
+        [
+            .. buffers.Select((buffer, index) => Http(buffer.Ticks, buffer.Event, (ulong)(index + 1), buffer.Bytes) with
+            {
+                RawStreamId = index >= 12 && laterStream is { } later ? later : stream,
+            }),
+        ];
+        SourceFieldRowV1[] fields =
+        [
+            .. buffers.SelectMany((buffer, index) => new[]
+            {
+                Field(rows[index], SourceField.HttpExchangeId, buffer.Number),
+                Field(rows[index], SourceField.ContentBufferSequence, buffer.Sequence),
+                Field(rows[index], SourceField.ContentBufferFlags, buffer.Flags),
+            }),
+        ];
+        return ([Lifecycle(1, ObservationKind.Create, 4_242, 100), Lifecycle(2, ObservationKind.Inventory, 7, 101), .. rows], fields);
+    }
+
+    /// <summary>A WinINet capture record of <paramref name="eventId"/>, raised by process 4242, with a session time.</summary>
+    private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal, long bytes) =>
+        Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, bytes, null, ordinal) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = eventId,
+            HeaderProcessId = 4_242,
+            Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+            SessionRelativeTicks = ticks * 100,
+        };
+
+    /// <summary>
     /// A machine's processes in their terminal sessions (§6.3): client.exe in session 1 beside server.exe, to which it
     /// sends, and again in session 2, sending to service.exe in session 0, to which server.exe sends too; tool.exe, whose
     /// lifecycle records name no session, sends to an address nothing in the capture holds. The rows' session times are a

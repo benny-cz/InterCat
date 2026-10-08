@@ -854,6 +854,7 @@
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
+        "I14: a reopened HTTP session takes its exchanges from its operation index: its first listing, page and spans open no segment, and answer as a grouping of every segment does",
         "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
@@ -864,6 +865,7 @@
         "I14: an operation index cut short, changed, of another format, rule, session or clock, or contradicting its calls or their instances, is refused, never misread",
         "I14: an operation index reads back as the calls and other ends it was written from, bound by the instances it is read with, and writes the same bytes again",
         "I14: an operation index that cannot be read, or that covers other segments, is paired around, the overview says why, and publishing replaces it",
+        "I14: an operation index written before it kept exchanges gives its calls, the exchanges are grouped from the segments, and publishing replaces it",
         "I14: an overview that cannot be read is counted around from the segments, and the overview says why",
         "I14: calls do not depend on how their records were cut into segments or delivered",
         "I14: calls read at one instant are listed by raw locator, however their records were cut into segments",
@@ -1880,7 +1882,7 @@
         "plannedBy": "IC-009"
       },
       "P25": {
-        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revision 440 a finished session keeps its RPC calls in an operation index, so a reopen's first call ranking, RPC listing or brush pairs none. A live generation's first RPC view still pairs its calls over every segment, a reopen's first HTTP listing groups its exchanges over every one, and a zoom builds a met segment's tiles from its rows.",
+        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revisions 440 and 441 a finished session keeps its RPC calls and HTTP exchanges in an operation index, so a reopen's first call ranking, RPC or HTTP listing, or brush derives none. A live generation's first RPC or HTTP view still derives its operations from every segment, and a zoom builds a met segment's tiles from its rows.",
         "plannedBy": "M5"
       }
     }
