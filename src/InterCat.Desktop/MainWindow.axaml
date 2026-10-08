@@ -332,11 +332,38 @@
 
         <Border Classes="card" Padding="9" CornerRadius="8"
                 Background="{DynamicResource Surface.Elevated}">
-          <StackPanel Spacing="7">
-            <TextBlock Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
+          <!-- Six apart, so the Keep choice fits beside a shown session's lines at the smallest window (§6.1). -->
+          <StackPanel Spacing="6">
+            <!-- First-run guidance, as the line beneath it is: once a session is shown the card's action names itself. -->
+            <TextBlock x:Name="CaptureEyebrow" Text="EXPLORE THIS MACHINE" Classes="eyebrow" />
             <TextBlock x:Name="CaptureIntro"
                        Text="Explore records supported process and TCP activity; it cannot see every IPC message or payload."
                        Classes="muted" FontSize="11" TextWrapping="Wrap" />
+            <!-- §20.2: what the capture keeps - every record of ten minutes, the default that needs no configuration, or the
+                 newest stretch of session time of one that records until stopped, its older records released as it
+                 records (ADR-045). Chosen before a capture starts; it says what the choice does beneath it. -->
+            <Grid x:Name="CaptureKeepRow" ColumnDefinitions="Auto,*">
+              <TextBlock Text="Keep" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
+              <ComboBox x:Name="CaptureKeepSelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
+                        ItemsSource="{x:Static local:CaptureKeepChoice.All}" SelectedIndex="0"
+                        SelectionChanged="CaptureKeepChosen"
+                        AutomationProperties.Name="What the capture keeps"
+                        AutomationProperties.HelpText="Every record of a ten-minute capture, or the newest stretch of session time of one that records until it is stopped">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="local:CaptureKeepChoice">
+                    <TextBlock Text="{Binding Label}" />
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+                <!-- The narrowest rail ends the chosen label in an ellipsis, which the selector's tooltip completes. -->
+                <ComboBox.SelectionBoxItemTemplate>
+                  <DataTemplate x:DataType="local:CaptureKeepChoice">
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                  </DataTemplate>
+                </ComboBox.SelectionBoxItemTemplate>
+              </ComboBox>
+            </Grid>
+            <TextBlock x:Name="CaptureKeepNote" Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="False"
+                       AutomationProperties.Name="What the chosen capture keeps" />
             <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
             <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13" Classes="primary"
                     Click="StartExploring" AutomationProperties.HelpText="Start the default Explore capture" />

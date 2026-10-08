@@ -65,6 +65,12 @@ public sealed record SessionOverviewBundle(
     public string? Retained { get; init; }
 
     /// <summary>
+    /// The session time from which the session keeps every record (<see cref="SessionRecording.RetainedFromNanoseconds"/>):
+    /// its timeline begins at the first tick wholly at or after it; null when it released no interval.
+    /// </summary>
+    public long? RetainedFromNanoseconds { get; init; }
+
+    /// <summary>
     /// What the pins standing on the session keep and allow, as the size line says it
     /// (<see cref="RetentionPinText.SizeLine"/>), or why they could not be read; null when none stands (ADR-046).
     /// </summary>
@@ -150,7 +156,8 @@ public static class SessionOverviewProjector
                 derivation.Relations(store.Root, Segments(), clock, Fields(), cancellationToken),
                 null);
         ProcessActivityIndex activity = saved ?? derivation.Activity(store.Root, Segments(), clock, Fields(), cancellationToken);
-        OverviewCounts counted = derivation.PersistedOverview(store.Root) ?? Count(Segments(), cancellationToken);
+        OverviewCounts counted = derivation.PersistedOverview(store.Root)
+            ?? Count(Segments(), RetainedFromTicks(manifest), cancellationToken);
 
         // Every instance and relationship is in the bundle, however many there are. What the graph draws at once is the
         // display projection's bound (GraphProjection, §6.3): it clusters rather than omitting anyone.
@@ -368,6 +375,7 @@ public static class SessionOverviewProjector
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
             Retained = SessionGrowth.Retained(manifest),
+            RetainedFromNanoseconds = SessionRecording.RetainedFromNanoseconds(manifest),
             Pinned = PinnedStatement(store),
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
@@ -389,7 +397,26 @@ public static class SessionOverviewProjector
     /// of the rest, and their counts in the overview's columns and the minimap's. It is what a persisted overview holds
     /// (`contracts/overview-index-v1.md`); coverage is judged when the counts are presented.
     /// </summary>
-    internal static OverviewCounts Count(IReadOnlyList<SegmentReaderV1> segments, CancellationToken cancellationToken)
+    internal static OverviewCounts Count(IReadOnlyList<SegmentReaderV1> segments, CancellationToken cancellationToken) =>
+        Count(segments, retainedFromTicks: null, cancellationToken);
+
+    /// <summary>
+    /// Where a session's overview begins (<see cref="SessionRecording.RetainedFromTicks"/>): the rows it kept from before
+    /// its latest interval release's boundary, which later records rest on, are counted among its rows, but its timeline
+    /// and minimap begin at the boundary (ADR-045).
+    /// </summary>
+    internal static long? RetainedFromTicks(SessionManifestV1 manifest) => SessionRecording.RetainedFromTicks(manifest);
+
+    /// <summary>
+    /// <see cref="Count(IReadOnlyList{SegmentReaderV1}, CancellationToken)"/> for a session that keeps every record from
+    /// <paramref name="retainedFromTicks"/> on: the extent, the overview's columns and the minimap's begin there, where an
+    /// earlier timed row would begin them, so the released stretch before it is not drawn as a long gap; every row is still
+    /// counted among the rows.
+    /// </summary>
+    internal static OverviewCounts Count(
+        IReadOnlyList<SegmentReaderV1> segments,
+        long? retainedFromTicks,
+        CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(segments);
 
@@ -420,6 +447,13 @@ public static class SessionOverviewProjector
             return new(rows, withoutTime, null, null, null);
         }
 
+        // A session that released its oldest interval is drawn from the boundary on: the rows it kept from before, as the
+        // evidence of what came after, are its records but read before every record it keeps (ADR-043, ADR-045).
+        if (retainedFromTicks is { } retained && minimum < retained && maximum >= retained)
+        {
+            minimum = retained;
+        }
+
         var extent = new TimeRange(minimum, maximum + 1);
         var main = new TimelineColumns(extent, MaximumTimelineBuckets, tallyMechanisms: true);
         (TimeRange span, int count) = SessionMinimap.ColumnsFor(extent);
@@ -430,7 +464,9 @@ public static class SessionOverviewProjector
             tiles[index].CountInto(segments[index], minimap, cancellationToken);
         }
 
-        return new(rows, withoutTime, extent, main, minimap);
+        // Every timed row lies at or before the extent's end, so a timed row no column holds was read before it began.
+        long counted = main.Counts.Sum(column => (long)column);
+        return new(rows, withoutTime, extent, main, minimap) { BeforeExtent = rows - withoutTime - counted };
     }
 
     /// <summary>The timeline, its mechanism lanes and the minimap the counts give, with coverage judged by the ledger.</summary>

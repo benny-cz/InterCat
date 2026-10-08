@@ -558,7 +558,7 @@ internal static class RetainCommand
 
         SessionWallClock? wall = SessionRecording.WallClock(store);
         if (!SessionMoment.TryPlace(moment, wall, TimeZoneInfo.Local, extent, CultureInfo.CurrentCulture, out long ticks,
-                out string? problem))
+                out string? problem, SessionRecording.RetainedFromNanoseconds(manifest)))
         {
             ConsoleUi.Failure(problem ?? "--release-before takes a moment: a time of day on the wall clock the capture's "
                 + "machine read, such as 14:32:05.120, with its date or offset where needed, or session time with its unit, "

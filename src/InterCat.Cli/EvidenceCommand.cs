@@ -221,7 +221,7 @@ internal static class EvidenceCommand
         }
 
         if (!SessionMoment.TryPlace(text, wall, TimeZoneInfo.Local, extent, CultureInfo.CurrentCulture, out long ticks,
-                out problem))
+                out problem, store.Current is { } manifest ? SessionRecording.RetainedFromNanoseconds(manifest) : null))
         {
             problem ??= "--from takes a moment: a time of day on the wall clock the capture's machine read, such as 14:32:05.120, "
                 + $"with its date or offset where needed, or session time with its unit, such as 312.5 s. '{text}' is neither.";

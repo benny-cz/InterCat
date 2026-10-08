@@ -1,7 +1,7 @@
 # InterCat overview index v1
 
 Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289, minor 3 in revision
-292. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
+292, minor 4 in revision 445. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
 beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
 no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
 lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
@@ -20,7 +20,11 @@ an answer.
 For the covered observation segments, what the overview projection counts from their rows:
 
 - how many rows they hold, and how many of those have no usable session time;
-- the extent: the earliest session time of a timed row, and one tick after the latest, when any row is timed;
+- the extent: the earliest session time of a timed row, and one tick after the latest, when any row is timed. Since
+  plan revision 445 a generation that states an interval release (store-v1 §8) begins its extent at the first tick
+  wholly at or after the release's boundary, from which it keeps every record, when it holds timed rows on both sides
+  of it: the rows kept from before the boundary, as the evidence of what came after, are its rows, but its timeline and
+  minimap begin where every record is kept rather than draw the released stretch as one long gap (ADR-045);
 - the **main columns**: the 64 overview buckets (`SessionOverviewProjector.MaximumTimelineBuckets`) dividing the extent
   by §10.3's `b(i) = t0 + floor(span·i/W)`, fewer when the extent spans fewer ticks, with each column's count per
   mechanism;
@@ -65,6 +69,10 @@ whole-session byte ranking and the graph sized by bytes read no segment either. 
 with more than 20,000 TCP channels, or whose process bytes would take more than 12 MiB, keeps none, as does one where an
 end's records bind at two strengths, which no binding rule gives today; it is then read as before.
 
+Since minor 4 (plan revision 445) it also holds how many timed rows were read **before the extent** begins: those a
+generation that released an interval kept from before its boundary. The main and minimap columns, with them, add up to
+the timed rows. Every other overview holds zero.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -82,7 +90,7 @@ segment. A generation names at most one.
 Little-endian throughout, with derivation-checkpoint-v1's `str8` and `guid`. An overview is at most 16 MiB.
 
 ```text
-overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
+overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 4,
              session guid, derivedGeneration i64 (>= 1),
              mainBound u16 (= 64), minimapBound u16 (= 2000),
              count u32, (name str8, length i64, digest str8)*   ; covered observation segments, ascending by name
@@ -108,6 +116,7 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 1,
                   ; ascending by (instance "N" form, strength)
               count u32, (channel str8, holder guid, strength u8, bytes)*]
                   ; ascending by (channel, holder "N" form)
+             beforeExtent i64 (0 <= beforeExtent <= rows - untimed)           ; minor 4 and later
 
 bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
              receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
@@ -115,8 +124,8 @@ bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
 ```
 
 A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; a minor-1 overview
-ends after them and holds no lane bytes; a minor-2 overview ends after those and holds no process bytes. Each is read as
-before. A link's strength is `EN-RelationStrength`'s
+ends after them and holds no lane bytes; a minor-2 overview ends after those and holds no process bytes; a minor-3
+overview ends after those and counts no row before its extent. Each is read as before. A link's strength is `EN-RelationStrength`'s
 `Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
@@ -130,7 +139,8 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
 - a column index is outside its columns, a mechanism is not one §23 defines, or bytes remain;
 - the main column count, or the minimap span and column count, are not what this build derives from the extent;
 - the extent is empty or wider than a tick count holds (its end more than 2^63 - 1 ticks after its start);
-- the main or minimap counts do not add up to the timed rows, or there is no extent while some row is timed;
+- the main or minimap counts, with the rows before the extent, do not add up to the timed rows; there is no extent
+  while some row is timed; or more rows are counted before the extent than are timed;
 - an RPC link names an empty identity or the same instance twice, puts its pair or its links out of order, has a
   strength a link cannot have, holds no record, or there are more than 1,000,000 of them;
 - a lane's bytes lie in a column outside the main columns, or in one that counts no record of their mechanism (an
@@ -145,7 +155,9 @@ checkpoint hold every instance they name and every channel end, at one of its ch
 the segments.
 
 A refused overview is not used, and the overview says why in one caveat. A reader uses an overview for a generation
-only when it covers exactly the generation's observation segments, with the same names, lengths and digests. Counts
+only when it covers exactly the generation's observation segments, with the same names, lengths and digests, and,
+for a generation that states an interval release, only when its extent does not begin before the release's boundary:
+one counted as overviews were before minor 4, from a row kept from before it, is counted again. Counts
 cannot be extended by further segments, as the extent and every column would move. Otherwise the projection counts
 from the segments' tiles.
 

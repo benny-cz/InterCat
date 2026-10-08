@@ -82,6 +82,12 @@ public sealed record CaptureRunOptions
     /// while recording holds for every later publication; null means correlated evidence, the default.
     /// </summary>
     public Func<EvidencePolicy>? EvidencePolicy { get; init; }
+
+    /// <summary>
+    /// The newest stretch of session time the session keeps, its older records released between mirrors by the follow's
+    /// own writer (§20.2, ADR-045); null keeps every record. The broker's evidence keeps every record until it stops.
+    /// </summary>
+    public RollingRetentionPolicy? Rolling { get; init; }
 }
 
 /// <summary>
@@ -241,13 +247,15 @@ public static class DesktopCaptureRunner
             // finish a follow that ends early (§3.1 step 6). Without it only that offer is lost, never the capture.
             using LiveFollowHold? ticket = HoldTicket(started, evidencePath, sessionPath, status.LeaseExpiresAtUtc);
             report(new(CaptureUiPhase.Recording, "Recording · follow latest",
-                "Raw evidence is broker-owned. Published chunks are derived into your session below. "
+                "Raw evidence is broker-owned. Published chunks are derived into your session below"
+                + (options.Rolling is { } window ? $", which keeps {window.Window} of session time. " : ". ")
                 + "Unobserved activity is not zero.", summary, sessionPath));
 
             // Following and projecting run off this loop, one step at a time, so status, the live preview and the owner
             // lease keep their own cadence however long a growing session takes to derive (§12, §19.3, revision 128's
             // 10-minute measurement). A finished step wakes the loop at once, so its overview is not held for a poll.
-            using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed, policy: options.EvidencePolicy);
+            using var derivation = new LiveDerivation(evidencePath, sessionPath, elapsed, policy: options.EvidencePolicy,
+                rolling: options.Rolling is { } keep ? new RollingRetention(keep) : null);
             Task<LiveDerivationStep>? deriving = null;
             bool derivingAfterClose = false;
             long stepStarted = 0;
@@ -255,17 +263,24 @@ public static class DesktopCaptureRunner
             BrokerCaptureStatusResponse? closedStatus = null;
             DateTimeOffset nextRenewal = DateTimeOffset.UtcNow + LeaseRenewal;
             bool stopSent = false;
+
+            // Why a pin stopped the capture: the session outgrew what a pin holding it past its window allows (ADR-046).
+            string? pinStop = null;
             using var finishing = new CancellationTokenSource();
             try
             {
                 while (true)
                 {
-                    if (stop.IsCancellationRequested && !stopSent)
+                    if ((stop.IsCancellationRequested || pinStop is not null) && !stopSent)
                     {
                         stopSent = true;
                         finishing.CancelAfter(FinishTimeout);
-                        report(new(CaptureUiPhase.Finishing, "Stopping and keeping the session",
-                            "The broker is finalizing. InterCat is deriving everything it published.", summary, sessionPath));
+                        report(pinStop is { } pinned
+                            ? new(CaptureUiPhase.Finishing, "A pin stopped the capture",
+                                pinned + " " + PinGoOn + " The broker is finalizing, and InterCat is deriving everything it "
+                                + "published.", summary, sessionPath)
+                            : new(CaptureUiPhase.Finishing, "Stopping and keeping the session",
+                                "The broker is finalizing. InterCat is deriving everything it published.", summary, sessionPath));
                         BrokerWireResponse stopped = await client.SendAsync(
                             new BrokerStopCaptureRequest(started, Guid.NewGuid()), finishing.Token)
                             .ConfigureAwait(false);
@@ -288,6 +303,10 @@ public static class DesktopCaptureRunner
                             {
                                 LiveDerivationStep step = await done.ConfigureAwait(false);
                                 HandOff(step);
+
+                                // The records a pin keeps are never released, and the session never grows past what the pin
+                                // allows: the next pass stops the capture and says why.
+                                pinStop ??= step.Rolling?.Stop;
                                 if (derivingAfterClose && closedStatus is { } final)
                                 {
                                     // This step began after the broker reported the capture closed, so it followed every
@@ -313,8 +332,9 @@ public static class DesktopCaptureRunner
                                             : !allPublishedFollowed
                                                 ? "Not every published chunk reached the viewer. The existing derived "
                                                     + "session is kept."
-                                                : final.FailureReason
-                                                    ?? "The capture is closed. All published evidence was followed.",
+                                                : (pinStop is { } pinned ? "A pin stopped the capture. " + pinned + " " : string.Empty)
+                                                    + (final.FailureReason
+                                                        ?? "The capture is closed. All published evidence was followed."),
                                         summary, sessionPath));
                                     return;
                                 }
@@ -421,6 +441,7 @@ public static class DesktopCaptureRunner
                     report(new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
                         $"{follow.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
                         $"Generation {generation:N0} · {follow.DerivedChunks:N0} published chunks. "
+                        + (Keeps(derivation.Rolling) is { } kept ? kept + " " : string.Empty)
                         + "Graph edges are paired TCP only; other observations remain in the timeline.",
                         summary, sessionPath, overview,
                         Visibility: new(generation, follow.DerivedRecords, Stopwatch.GetTimestamp(),
@@ -471,6 +492,22 @@ public static class DesktopCaptureRunner
             }
         }
     }
+
+    /// <summary>What a person does to record on once a pin stopped the capture: remove the pin, or let it allow more.</summary>
+    internal const string PinGoOn =
+        "To record on, remove the pin or keep its records allowing more, from Keep records…, and start exploring again.";
+
+    /// <summary>
+    /// What a capture keeping a rolling window says of it while it records: the window, or the pin keeping the session
+    /// past it (ADR-045, ADR-046); null when the session keeps every record.
+    /// </summary>
+    internal static string? Keeps(RollingRetention? rolling) => rolling is null
+        ? null
+        : rolling.HeldBy is { } pin
+            ? RetentionPinText.HoldsWindow(pin, rolling.Policy)
+            : rolling.Releases > 0
+                ? $"Keeps {rolling.Policy.Window} of session time: {CountText.Of(rolling.Releases, "release")} so far."
+                : $"Keeps {rolling.Policy.Window} of session time.";
 
     /// <summary>
     /// Whether a preview says nothing new: the same chunk, records and unbinned records. A count moves only with a record,

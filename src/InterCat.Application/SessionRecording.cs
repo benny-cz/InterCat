@@ -140,6 +140,28 @@ public static class SessionRecording
     /// session's persisted overview holds it, and any other's segments count it from their tiles. Null where no record
     /// has a session time.
     /// </summary>
+    /// <summary>
+    /// The presentation tick from which a session keeps every record: the first wholly at or after its latest interval
+    /// release's boundary (ADR-043), so no column drawn from it reaches into what was released; null when it states none.
+    /// Its timeline begins there (ADR-045), and a moment before it lies in what the session released.
+    /// </summary>
+    public static long? RetainedFromTicks(SessionManifestV1 manifest) =>
+        RetainedFromNanoseconds(manifest) is { } boundary ? (boundary + 99) / 100 : null;
+
+    /// <summary>
+    /// The session time from which a session keeps every record: its latest interval release's boundary (ADR-043); null
+    /// when it states none.
+    /// </summary>
+    public static long? RetainedFromNanoseconds(SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        return manifest.LatestRelease(RetentionExtentKind.Interval)?.Record.Interval?.BoundaryNanoseconds;
+    }
+
+    /// <summary>
+    /// The extent of the session's timed records from where it keeps every record (<see cref="RetainedFromTicks"/>), as its
+    /// overview counts it; null when no record has a session time.
+    /// </summary>
     public static TimeRange? RecordsExtent(SessionStore store, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(store);
@@ -163,7 +185,18 @@ public static class SessionRecording
             }
         }
 
-        return first == long.MaxValue ? null : new TimeRange(first, last + 1);
+        if (first == long.MaxValue)
+        {
+            return null;
+        }
+
+        // Drawn from the boundary on, as the overview counts it, though the rows kept from before it are records too.
+        if (RetainedFromTicks(manifest) is { } retained && first < retained && last >= retained)
+        {
+            first = retained;
+        }
+
+        return new TimeRange(first, last + 1);
     }
 
     private static long NativeAt(SourceClockDescriptor clock, long nanoseconds) =>

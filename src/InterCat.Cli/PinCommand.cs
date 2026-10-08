@@ -177,7 +177,7 @@ internal static class PinCommand
             }
 
             if (!SessionMoment.TryPlace(fromOption, wall, TimeZoneInfo.Local, range, CultureInfo.CurrentCulture, out long ticks,
-                    out string? problem))
+                    out string? problem, SessionRecording.RetainedFromNanoseconds(manifest)))
             {
                 ConsoleUi.Failure(problem ?? "--from takes a moment: a time of day on the wall clock the capture's machine read, "
                     + "such as 14:32:05.120, with its date or offset where needed, or session time with its unit, such as "

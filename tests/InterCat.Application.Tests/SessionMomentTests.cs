@@ -124,6 +124,40 @@ public sealed class SessionMomentTests
         Assert.Equal(500, Wall.TicksAt(Noon.AddTicks(500)));
     }
 
+    [Fact(DisplayName = "§6.2: a moment in the stretch a session released is said to lie in what it released, from when it keeps every record")]
+    public void AMomentInTheReleasedStretchSaysSo()
+    {
+        // The session released what was read before 1 s: its extent, as its overview counts it, begins there.
+        var retained = new TimeRange(10_000_000, 25_000_000);
+        foreach (string moment in new[] { "0.5 s", "14:00:00.5" })
+        {
+            Assert.False(SessionMoment.TryPlace(moment, Wall, East, retained, Invariant, out _, out string? released,
+                retainedFromNanoseconds: 1_000_000_000));
+            Assert.StartsWith($"{moment} lies in what this session released: it keeps every record from ", released,
+                StringComparison.Ordinal);
+        }
+
+        Assert.False(SessionMoment.TryPlace("0.5 s", Wall, East, retained, Invariant, out _, out string? inSeconds,
+            retainedFromNanoseconds: 1_000_000_000));
+        Assert.Equal("0.5 s lies in what this session released: it keeps every record from 1.000 s on.", inSeconds);
+        Assert.False(SessionMoment.TryPlace("14:00:00.5", Wall, East, retained, Invariant, out _, out string? onTheWall,
+            retainedFromNanoseconds: 1_000_000_000));
+        Assert.Equal("14:00:00.5 lies in what this session released: it keeps every record from "
+            + SessionClock.Wall(Wall, East, retained).Moment(1_000_000_000, Invariant) + " on.", onTheWall);
+        Assert.Contains("14:00:01", onTheWall, StringComparison.Ordinal);
+
+        // From the boundary on a moment is placed as before; one before the session began, or after it, is outside it.
+        Assert.True(SessionMoment.TryPlace("1.5 s", Wall, East, retained, Invariant, out long placed, out _,
+            retainedFromNanoseconds: 1_000_000_000));
+        Assert.Equal(15_000_000, placed);
+        Assert.False(SessionMoment.TryPlace("-0.5 s", Wall, East, retained, Invariant, out _, out string? before,
+            retainedFromNanoseconds: 1_000_000_000));
+        Assert.StartsWith("-0.5 s is outside this session", before, StringComparison.Ordinal);
+        Assert.False(SessionMoment.TryPlace("3 s", Wall, East, retained, Invariant, out _, out string? after,
+            retainedFromNanoseconds: 1_000_000_000));
+        Assert.StartsWith("3 s is outside this session", after, StringComparison.Ordinal);
+    }
+
     private static long Place(string text, CultureInfo? culture = null)
     {
         Assert.True(SessionMoment.TryPlace(text, Wall, East, Extent, culture ?? Invariant, out long ticks, out string? problem),

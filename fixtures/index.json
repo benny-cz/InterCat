@@ -854,6 +854,7 @@
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
+        "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again",
         "I14: a reopened HTTP session takes its exchanges from its operation index: its first listing, page and spans open no segment, and answer as a grouping of every segment does",
         "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
@@ -1548,7 +1549,7 @@
         "R21: a variant with no queue reports no utilization rather than zero",
         "R21: a viewport timeline counts what a scan counts, and at the overview's resolution it is the overview",
         "R21: a workspace orders instants across members only as far as their alignments allow",
-        "R21: after an interval release the overview says what is kept since when, and before the boundary is a partial gap",
+        "R21: after an interval release the overview begins where every record is kept, says what is kept since when, and states the whole session as a partial gap",
         "R21: an absent source-loss counter is never interpreted as a reported zero",
         "R21: an export states what the capture covered over its scope, mechanism by mechanism, as the inspector does",
         "R21: an export's CSV states its scope's coverage on every line, and a scope with no row keeps its context in one line",
@@ -1878,10 +1879,13 @@
         "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before"
       ],
       "S5": [
+        "S5: a live capture a pin holds past its window says so, and must stop once the session holds more than the pin allows",
+        "S5: a live capture keeping a window releases the records read before it between mirrors, and its overview says from when it keeps every record",
         "S5: icat follow --keep-last keeps the newest stretch of session time, releasing the oldest chunks between mirrors and saying so",
         "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished",
         "S5: rolling retention keeps the newest window of session time, releasing the oldest records a quarter of it apart",
-        "S5: rolling retention leaves a session within its window, and one whose oldest chunk reaches into it, as they are"
+        "S5: rolling retention leaves a session within its window, and one whose oldest chunk reaches into it, as they are",
+        "S5: the Explore card keeps every record of ten minutes unless a person chooses a window, which it explains and the capture is told"
       ]
     },
     "uncovered": {

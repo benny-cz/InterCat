@@ -1,6 +1,6 @@
 # ADR-045: A follow keeps the newest window of session time
 
-- Status: accepted; revision 439
+- Status: accepted; revision 439, the window and its timeline revision 445
 - Date: 2026-10-08
 - Relates to: §12.1 S5, S6, §20.2, IC-016a, ADR-024, ADR-027, ADR-043, ADR-044, `contracts/store-v1.md` §8
 
@@ -34,6 +34,14 @@ holding the asked-for boundary stays.
    `icat session` and the window state. On a release the command prints the window's size-line sentence: from when the
    session keeps every record, and what went before. Its document states the window, the releases made and the latest
    boundary.
+6. **The window offers it, and draws from it (revision 445).** The Explore card's Keep choice records every record of a
+   ten-minute capture by default, or records until stopped, for up to a day, keeping the last 10 minutes or the last
+   hour; its follow runs the same policy between mirrors, says the window while it records, and stops its capture when
+   a pin's allowance is outgrown, saying how to go on. A session that released an interval is drawn from where it keeps
+   every record: its overview's extent, timeline and minimap begin at the first tick wholly at or after the latest
+   release's boundary, the rows kept from before it counted among its rows but not drawn, so a long capture's released
+   hours are not a long gap squeezing its window (`contracts/overview-index-v1.md` minor 4). A moment typed in the
+   released stretch says it lies in what the session released.
 
 ## Consequences
 
@@ -42,8 +50,9 @@ holding the asked-for boundary stays.
 - The broker's evidence still keeps every record until its quota or duration stops the capture, so a capture cannot
   outlast its journal quota yet. Releasing the evidence needs the broker to know what its follower has mirrored
   (ADR-027), and the follower to accept evidence that released chunks it holds.
-- The window offers no rolling capture yet. Its timeline would show the released time as a long partial gap before the
-  window, which it should instead start at.
+- Since revision 445 the window offers a rolling capture, and its timeline starts at the window rather than show the
+  released time as a long partial gap before it. The whole session's coverage stays a partial gap, which the size line
+  and every coverage statement say.
 - A rolling session's coverage before its newest boundary is a partial gap, as every released interval's is
   (ADR-043 decision 7).
 

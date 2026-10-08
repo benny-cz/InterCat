@@ -90,14 +90,15 @@ public partial class MainWindow
                 return (store.Pins(), lease.Manifest.HeldBytes(),
                     lease.Manifest.LatestRelease(RetentionExtentKind.Interval)?.Record.Interval?.BoundaryNanoseconds);
             });
-            long from = Math.Max(checked(scope.StartTicks * 100), released ?? 0);
+            // A scope from the timeline's start - the first tick wholly after the latest release's boundary - or before it
+            // keeps from the boundary itself, every record the session keeps, and the dialog says why it begins there.
+            long? fromBoundary = released is { } boundary && scope.StartTicks <= (boundary + 99) / 100 ? boundary : null;
+            long from = fromBoundary ?? checked(scope.StartTicks * 100);
             return new(
                 from,
                 clock.Moment(from, CultureInfo.CurrentCulture),
                 workspace.ScopeInterval is not null,
-                released is { } boundary && checked(scope.StartTicks * 100) < boundary
-                    ? clock.Moment(boundary, CultureInfo.CurrentCulture)
-                    : null,
+                fromBoundary is { } kept ? clock.Moment(kept, CultureInfo.CurrentCulture) : null,
                 held,
                 [.. pins.Select(pin => (pin, RetentionPinText.Describe(pin, clock.Moment(pin.FromNanoseconds, CultureInfo.CurrentCulture))))]);
         }

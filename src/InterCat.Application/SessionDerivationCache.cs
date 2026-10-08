@@ -428,9 +428,19 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
+    /// Whether persisted counts begin where the generation keeps every record, as counts are drawn since revision 445: an
+    /// overview counted earlier, from the first row kept before an interval release's boundary, is counted again.
+    /// </summary>
+    private static bool BeginsWhereRetained(OverviewCounts counts, SessionManifestV1 manifest) =>
+        counts.Extent is not { } extent
+        || SessionOverviewProjector.RetainedFromTicks(manifest) is not { } retained
+        || extent.StartTicks >= retained
+        || extent.EndTicks <= retained;
+
+    /// <summary>
     /// The counts this generation's persisted overview holds (`contracts/overview-index-v1.md`), read and checked once; null
-    /// when it names none, when it covers other segments than the generation names, or when it could not be read, which
-    /// <see cref="OverviewProblem"/> then says.
+    /// when it names none, when it covers other segments than the generation names, when it begins before the boundary the
+    /// generation keeps every record from, or when it could not be read, which <see cref="OverviewProblem"/> then says.
     /// </summary>
     public OverviewCounts? PersistedOverview(IOwnedDirectory directory)
     {
@@ -448,7 +458,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
                 {
                     (OverviewCounts counts, IReadOnlyList<StoreDependency> covered) = SessionOverviewIndex.Read(
                         SessionSegments.ReadVerified(directory, named, SessionOverviewIndex.MaximumBytes), Manifest.SessionId);
-                    overview = SessionOverviewIndex.Covers(covered, Manifest) ? counts : null;
+                    overview = SessionOverviewIndex.Covers(covered, Manifest) && BeginsWhereRetained(counts, Manifest)
+                        ? counts
+                        : null;
                 }
             }
             catch (InvalidDataException exception)

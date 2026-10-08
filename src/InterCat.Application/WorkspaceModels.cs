@@ -520,4 +520,10 @@ public sealed record WorkspaceSnapshot(
     /// instants in (§6.2's time base); null when the capture recorded none.
     /// </summary>
     public SessionWallClock? WallClock { get; init; }
+
+    /// <summary>
+    /// The session time from which the session keeps every record, at whose first whole tick its extent begins after an
+    /// interval release (<see cref="SessionRecording.RetainedFromNanoseconds"/>); null when it released none.
+    /// </summary>
+    public long? RetainedFromNanoseconds { get; init; }
 }

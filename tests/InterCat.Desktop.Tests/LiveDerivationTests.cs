@@ -130,4 +130,86 @@ public sealed class LiveDerivationTests
         Assert.Null(again.Generation);
         Assert.Equal(checkpoint.PublishedGeneration, derivation.Store.Current!.Generation);
     });
+
+    [Fact(DisplayName = "S5: a live capture keeping a window releases the records read before it between mirrors, and its overview says from when it keeps every record")]
+    public void ALiveCaptureKeepingAWindowReleasesBeforeIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+
+        // Three chunks of records a second apart: at 0 and 1 s, 2 and 3 s, 4 and 5 s.
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6], bursts: [2, 4],
+            qpcStep: Stopwatch.Frequency);
+        var rolling = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(1)));
+        using var derivation = new LiveDerivation(evidence.Path, Path.Combine(user.Path, "explore"), Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4), rolling: rolling);
+
+        // The step mirrors every chunk, then releases the two read wholly before the newest second, by the follow's own
+        // writer, and projects what the session keeps: the overview says from when it keeps every record.
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        Assert.True(step.Follow!.Finished);
+        IntervalReleaseResult released = Assert.IsType<IntervalReleaseResult>(step.Rolling?.Released);
+        Assert.Equal(2, released.Preview.ReleasedUnits);
+        Assert.Same(rolling, derivation.Rolling);
+        Assert.Equal(1, rolling.Releases);
+        SessionManifestV1 kept = derivation.Store!.Current!;
+        Assert.Equal("rolling retention keeps the last second", kept.LatestRelease(RetentionExtentKind.Interval)!.Record.Reason);
+        Assert.Equal(SessionGrowth.Retained(kept), step.Overview!.Retained);
+        Assert.StartsWith("Kept from ", step.Overview.Retained, StringComparison.Ordinal);
+        Assert.EndsWith("(rolling retention keeps the last second).", step.Overview.Retained, StringComparison.Ordinal);
+        Assert.Equal("Keeps the last second of session time: 1 release so far.", DesktopCaptureRunner.Keeps(rolling));
+
+        // A capture that keeps every record says nothing of a window, and releases nothing.
+        using var whole = new TemporarySession();
+        using var everything = new LiveDerivation(evidence.Path, Path.Combine(whole.Path, "explore"), Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4));
+        LiveDerivationStep all = await everything.StepAsync(CancellationToken.None);
+        Assert.Null(all.Rolling);
+        Assert.Null(everything.Rolling);
+        Assert.Null(all.Overview!.Retained);
+        Assert.Null(DesktopCaptureRunner.Keeps(null));
+    });
+
+    [Fact(DisplayName = "S5: a live capture a pin holds past its window says so, and must stop once the session holds more than the pin allows")]
+    public void APinStopsALiveCaptureOnceOutgrown() => SingleThreadedContext.Run(async () =>
+    {
+        using var evidence = new TemporaryDirectory();
+        using var user = new TemporarySession();
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6], bursts: [2, 4],
+            qpcStep: Stopwatch.Frequency);
+        SessionManifestV1 source = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence.Path)).Current!;
+
+        // A pin from half a second allowing a kilobyte, placed when the session was small, which it has since outgrown.
+        string sessionPath = Path.Combine(user.Path, "explore");
+        Directory.CreateDirectory(sessionPath);
+        var pin = new RetentionPin
+        {
+            Id = Guid.NewGuid(),
+            FromNanoseconds = 500_000_000,
+            AllowanceBytes = 1_024,
+            PlacedUtc = DateTimeOffset.UtcNow,
+            Reason = "the first burst",
+        };
+        File.WriteAllText(Path.Combine(sessionPath, RetentionPinsV1.FileName), System.Text.Json.JsonSerializer.Serialize(
+            new RetentionPinsV1 { FormatVersion = RetentionPinsV1.CurrentFormatVersion, SessionId = source.SessionId, Pins = [pin] },
+            SessionManifestV1.Json));
+        var rolling = new RollingRetention(new RollingRetentionPolicy(TimeSpan.FromSeconds(1)));
+        using var derivation = new LiveDerivation(evidence.Path, sessionPath, Stopwatch.StartNew(),
+            new SessionStoreRegistry(capacity: 4), rolling: rolling);
+
+        // The release due before the newest second is held at the pin, which releases nothing before it, and the session
+        // holds more than the pin allows: the step says the capture must stop, and why.
+        LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
+        RollingStep held = Assert.IsType<RollingStep>(step.Rolling);
+        Assert.Null(held.Released);
+        Assert.Equal((pin.Id, true), (held.HeldBy!.Id, held.NewlyHeld));
+        // The size is measured as the step ran, before the finished session's checkpoint was published beside it.
+        Assert.StartsWith($"The pin from 0.500 s (the first burst) allows this session {ByteSizeText.Of(1_024)}, and it holds ",
+            held.Stop, StringComparison.Ordinal);
+        Assert.EndsWith(": the records the pin keeps cannot be released, and the session cannot grow past what it allows.",
+            held.Stop, StringComparison.Ordinal);
+        Assert.Equal(held.Stop, rolling.Stopped);
+        Assert.Equal(RetentionPinText.HoldsWindow(held.HeldBy, rolling.Policy), DesktopCaptureRunner.Keeps(rolling));
+        Assert.StartsWith("To record on, remove the pin", DesktopCaptureRunner.PinGoOn, StringComparison.Ordinal);
+    });
 }

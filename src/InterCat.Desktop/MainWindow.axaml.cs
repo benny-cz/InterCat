@@ -254,6 +254,9 @@ public sealed partial class MainWindow : Window, IDisposable
             Presentation.AccessibleItems.Name(items);
         }
 
+        // The Keep choice's tooltip says what the chosen capture keeps from the first, so a trimmed label is always completed.
+        CaptureKeepChosen(CaptureKeepSelector, null);
+
         // A ranked row in §6.7's multi-selection is marked where it is drawn, and says so to a screen reader; the rows are
         // not rebuilt, so the keyboard focus a Ctrl+Space set out from stays where it was.
         RungList.ContainerPrepared += (_, prepared) => MarkSelectionShare(prepared.Container);
@@ -1718,15 +1721,16 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>The saved sessions show only while no session is open and no capture is running, where the ranked table
     /// will be.</summary>
     /// <summary>
-    /// What the rail offers only before any session is shown and while no capture runs: the saved sessions, what exploring
-    /// records, and the demo to try (§14 M5). Once a session is shown the ranked list needs the rail's height - three rows
-    /// at the smallest window - and the demo waits in the Investigation menu.
+    /// What the rail offers only before any session is shown and while no capture runs: the saved sessions, the card's
+    /// heading and what exploring records, and the demo to try (§14 M5). Once a session is shown the ranked list needs the
+    /// rail's height - three rows at the smallest window - and the demo waits in the Investigation menu.
     /// </summary>
     private void UpdateBeforeSessionVisibility()
     {
         bool idle = phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
         bool first = workspace.IsEmptyWorkspace && idle;
         RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && first;
+        CaptureEyebrow.IsVisible = first;
         CaptureIntro.IsVisible = first;
         ExploreDemoButton.IsVisible = first;
     }
@@ -2463,8 +2467,9 @@ public sealed partial class MainWindow : Window, IDisposable
         try
         {
             // Each publication is projected under the policy the window holds when it is projected, so a person's choice
-            // made while recording holds from the next one on.
-            var options = new CaptureRunOptions { EvidencePolicy = () => evidencePolicy };
+            // made while recording holds from the next one on; the Keep choice says how long it records and what it keeps.
+            CaptureRunOptions options = KeepChoice.Options(() => evidencePolicy);
+            StartedWith = options;
             captureTask = Task.Run(() => DesktopCaptureRunner.RunAsync(
                 update => ReceiveCaptureUpdate(run, update), captureStop.Token, options));
             await captureTask;
@@ -2474,6 +2479,30 @@ public sealed partial class MainWindow : Window, IDisposable
             ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture interrupted",
                 exception.Message + " Any published evidence is retained in the session shown below."));
         }
+    }
+
+    /// <summary>What the latest capture this window started was told: how long it records and what its session keeps.</summary>
+    internal CaptureRunOptions? StartedWith { get; private set; }
+
+    /// <summary>The latest capture this window started, which closing the window waits for while it runs; null before one.</summary>
+    internal Task? CaptureRun => captureTask;
+
+    /// <summary>What the next capture keeps, as the Explore card's Keep selector holds it; every record of ten minutes by default.</summary>
+    internal CaptureKeepChoice KeepChoice => CaptureKeepSelector?.SelectedItem as CaptureKeepChoice ?? CaptureKeepChoice.All[0];
+
+    /// <summary>Says beneath the selector what a choice that keeps a window records and keeps; the default needs no words.</summary>
+    private void CaptureKeepChosen(object? sender, SelectionChangedEventArgs? eventArgs)
+    {
+        // The markup's first selection arrives while the window is still being built, before its named parts are.
+        if (CaptureKeepNote is null || CaptureKeepSelector is null)
+        {
+            return;
+        }
+
+        CaptureKeepChoice choice = KeepChoice;
+        CaptureKeepNote.Text = choice.Keep is null ? string.Empty : "This capture " + choice.Explanation;
+        CaptureKeepNote.IsVisible = choice.Keep is not null;
+        ToolTip.SetTip(CaptureKeepSelector, choice.Label + ": " + choice.Explanation);
     }
 
     /// <summary>
@@ -2546,6 +2575,8 @@ public sealed partial class MainWindow : Window, IDisposable
         // While a capture runs the card holds only what can be done now - stop it, pause the view - and its state. The
         // actions that wait for it to end, and the words about starting one, give the ranked list the rail's height.
         StartExploringButton.IsVisible = !busy;
+        CaptureKeepRow.IsVisible = !busy;
+        CaptureKeepNote.IsVisible = !busy && KeepChoice.Keep is not null;
         OpenSavedSessionButton.IsVisible = !busy;
         InvestigationButton.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;

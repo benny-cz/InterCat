@@ -138,8 +138,12 @@ public sealed class DemoEntryWindowTests
             // The card no longer offers the demo or says what exploring records, and keeps no line that says nothing, so it
             // shows all it holds unscrolled and leaves the ranked list room for each of the three processes' rows.
             Assert.False(window.GetControl<Button>("ExploreDemoButton").IsVisible);
+            Assert.False(window.GetControl<TextBlock>("CaptureEyebrow").IsVisible);
             Assert.False(window.GetControl<TextBlock>("CaptureIntro").IsVisible);
             Assert.False(window.GetControl<TextBlock>("CaptureLatency").IsVisible);
+
+            // What the next capture keeps is still chosen there, before it starts.
+            Assert.True(window.GetControl<Grid>("CaptureKeepRow").IsVisible);
             Control actions = window.GetControl<Control>("RailActions");
             Assert.True(actions.DesiredSize.Height <= actions.MaxHeight,
                 $"The card wants {actions.DesiredSize.Height:F0} px of the {actions.MaxHeight:F0} it may have.");

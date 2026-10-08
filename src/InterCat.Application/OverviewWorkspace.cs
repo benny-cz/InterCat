@@ -62,6 +62,7 @@ public static class OverviewWorkspace
             Recording = overview.Recording,
             Began = overview.Began,
             WallClock = overview.WallClock,
+            RetainedFromNanoseconds = overview.RetainedFromNanoseconds,
             Demo = overview.Demo,
             Collectors = overview.Collectors,
         };

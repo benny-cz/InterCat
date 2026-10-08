@@ -1997,6 +1997,20 @@ public sealed class CommandLineTests : IDisposable
             output, StringComparison.Ordinal);
         Assert.Equal(generation + 1, Current());
 
+        // A moment in the stretch it released is said to lie there, from when the session keeps every record - by a
+        // release, and by a page of evidence - rather than outside the session.
+        foreach (string[] asked in new[]
+        {
+            new[] { "retain", kept.Path, "--release-before", "10 µs" },
+            new[] { "evidence", kept.Path, "--from", "10 µs" },
+        })
+        {
+            (code, _, said) = await Run(asked);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("10 µs lies in what this session released: it keeps every record from 0.000020001 s on.", said,
+                StringComparison.Ordinal);
+        }
+
         // A recording that has not finished may still be written by its recorder, so it is measured and never released.
         using var recording = new TemporarySession();
         PublishTwoChunks(recording.Store, finished: false, noon);

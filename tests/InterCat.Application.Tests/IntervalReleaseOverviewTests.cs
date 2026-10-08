@@ -13,7 +13,7 @@ namespace InterCat.Application.Tests;
 /// </summary>
 public sealed class IntervalReleaseOverviewTests
 {
-    [Fact(DisplayName = "R21: after an interval release the overview says what is kept since when, and before the boundary is a partial gap")]
+    [Fact(DisplayName = "R21: after an interval release the overview begins where every record is kept, says what is kept since when, and states the whole session as a partial gap")]
     public void TheOverviewStatesARelease()
     {
         using var session = new TemporarySession();
@@ -39,14 +39,19 @@ public sealed class IntervalReleaseOverviewTests
                 + "on 2026-09-22 16:00 UTC - 3 records, keeping 2 rows of them as the evidence of what came after (older than the retained window).",
             overview.Retained);
 
-        // The columns before the boundary are no better than a partial gap, drawn and said as one; those after it are as
-        // they were. The kept rows hold the timeline's extent where it was, so its columns are the same.
-        long boundary = SourceClockMath.FirstNativeAtOrAfter(TestClock, new SessionTimestamp(3_001));
-        Assert.Equal(whole.Timeline.Select(bucket => bucket.Interval), overview.Timeline.Select(bucket => bucket.Interval));
-        Assert.Contains(overview.Timeline, bucket => bucket.Coverage == CoverageState.PartialGap);
-        Assert.All(whole.Timeline.Zip(overview.Timeline), pair => Assert.Equal(
-            pair.First.Interval.StartTicks < boundary ? SessionCoverage.Worst([pair.First.Coverage, CoverageState.PartialGap]) : pair.First.Coverage,
-            pair.Second.Coverage));
+        // The timeline and the minimap begin at the first tick wholly after the boundary, where every record is kept: the
+        // rows kept from before it are records the session holds, counted among its rows, but the released stretch is not
+        // drawn as a long gap before the records kept (ADR-045). No column reaches into it, so each is as it was.
+        Assert.Equal(3_001, overview.RetainedFromNanoseconds);
+        Assert.Equal(overview.Extent, SessionRecording.RecordsExtent(reopened));
+        Assert.Equal(new TimeRange(31, whole.Extent!.Value.EndTicks), overview.Extent);
+        Assert.Equal(overview.Extent, overview.Minimap!.Extent);
+        Assert.Equal(4, overview.ObservationRows);
+        Assert.Equal(2, overview.Timeline.Sum(bucket => bucket.ObservationCount));
+        Assert.DoesNotContain(overview.Timeline, bucket => bucket.Coverage == CoverageState.PartialGap);
+        Assert.Equal(3_001, OverviewWorkspace.From(overview).RetainedFromNanoseconds);
+
+        // The whole session's coverage is no better than a partial gap, and says why.
         MechanismCoverage tcp = overview.MechanismCoverage.Single(entry => entry.Mechanism == Mechanism.Tcp);
         Assert.Equal(CoverageState.PartialGap, tcp.State);
         Assert.Contains("were released by retention", tcp.Reason, StringComparison.Ordinal);

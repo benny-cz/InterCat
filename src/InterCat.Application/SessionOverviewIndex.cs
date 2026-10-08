@@ -35,6 +35,13 @@ internal sealed record OverviewCounts(
     /// null when it did not, and then they are read from the segments when a view asks.
     /// </summary>
     public OverviewProcessBytes? ProcessBytes { get; init; }
+
+    /// <summary>
+    /// The timed rows read before <see cref="Extent"/> begins: those a session that released its oldest interval kept from
+    /// before its boundary, as the evidence of what came after, whose overview begins at the boundary (ADR-045,
+    /// overview-index-v1 minor 4). Zero for every other session, and in an overview of an earlier minor.
+    /// </summary>
+    public long BeforeExtent { get; init; }
 }
 
 /// <summary>
@@ -123,11 +130,11 @@ internal static class SessionOverviewIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them, and
-    /// minor 3 each process's and TCP channel end's bytes after those (§3); an earlier overview holds what its minor did and
-    /// is still read.
+    /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them,
+    /// minor 3 each process's and TCP channel end's bytes after those, and minor 4 how many timed rows were read before the
+    /// extent begins (§3); an earlier overview holds what its minor did and is still read.
     /// </summary>
-    private const ushort Minor = 3;
+    private const ushort Minor = 4;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -294,6 +301,8 @@ internal static class SessionOverviewIndex
             }
         }
 
+        // Minor 4: the timed rows read before the extent begins, which a session that released an interval keeps.
+        writer.I64(counts.BeforeExtent);
         writer.Flush();
         return writer.Written;
     }
@@ -406,8 +415,9 @@ internal static class SessionOverviewIndex
             IReadOnlyList<RpcPeerLinkTotal>? untimedLinks = minor >= 1 ? ReadLinks(reader) : null;
             OverviewLaneBytes? untimedBytes = minor >= 2 ? ReadLaneBytes(reader, main: null) : null;
             OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader) : null;
+            long untimedBefore = minor >= 4 ? reader.I64() : 0;
             reader.RequireEnd();
-            return rows == withoutTime
+            return rows == withoutTime && untimedBefore == 0
                 ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes, ProcessBytes = untimedKept },
                     segments.AsReadOnly())
                 : throw reader.Invalid("it has timed rows and no extent.");
@@ -475,9 +485,21 @@ internal static class SessionOverviewIndex
         IReadOnlyList<RpcPeerLinkTotal>? links = minor >= 1 ? ReadLinks(reader) : null;
         OverviewLaneBytes? laneBytes = minor >= 2 ? ReadLaneBytes(reader, main) : null;
         OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader) : null;
+        long beforeExtent = minor >= 4 ? reader.I64() : 0;
         reader.RequireEnd();
-        return total == timed && mapped == timed
-            ? (new(rows, withoutTime, extent, main, minimap) { RpcLinks = links, LaneBytes = laneBytes, ProcessBytes = kept },
+        if (beforeExtent < 0 || beforeExtent > timed)
+        {
+            throw reader.Invalid("it counts more rows before its extent than it has timed rows.");
+        }
+
+        return total + beforeExtent == timed && mapped + beforeExtent == timed
+            ? (new(rows, withoutTime, extent, main, minimap)
+                {
+                    RpcLinks = links,
+                    LaneBytes = laneBytes,
+                    ProcessBytes = kept,
+                    BeforeExtent = beforeExtent,
+                },
                 segments.AsReadOnly())
             : throw reader.Invalid("its columns do not add up to its timed rows.");
     }

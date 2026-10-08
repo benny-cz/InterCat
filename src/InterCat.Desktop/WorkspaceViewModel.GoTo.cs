@@ -94,7 +94,7 @@ public sealed partial class WorkspaceViewModel
         }
 
         if (SessionMoment.TryPlace(text, wholeSnapshot.WallClock, TimeZoneInfo.Local, wholeSnapshot.Extent,
-                CultureInfo.CurrentCulture, out long ticks, out string? problem))
+                CultureInfo.CurrentCulture, out long ticks, out string? problem, wholeSnapshot.RetainedFromNanoseconds))
         {
             searchedMoment = ticks;
         }

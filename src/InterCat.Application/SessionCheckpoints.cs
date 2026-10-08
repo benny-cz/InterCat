@@ -96,7 +96,8 @@ public static class SessionCheckpoints
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
             ProcessActivityIndex activity = derivation.Activity(store.Root, segments, clock, fields, cancellationToken);
-            OverviewCounts counts = SessionOverviewProjector.Count(segments, cancellationToken);
+            OverviewCounts counts = SessionOverviewProjector.Count(
+                segments, SessionOverviewProjector.RetainedFromTicks(manifest), cancellationToken);
 
             // What the first view under a byte ranking reads is kept with the counts, so it reads no segment either: each
             // overview column's bytes per mechanism, for the lanes (overview-index-v1 minor 2), and each process's and TCP

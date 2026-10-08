@@ -398,8 +398,9 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
 
         // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: this build's ends
-        // with a flag for links, another for lane bytes and another for process bytes after it.
-        byte[] minorZero = Written(counts)[..^3];
+        // with a flag for links, another for lane bytes and another for process bytes after it, and the eight bytes of the
+        // rows read before its extent.
+        byte[] minorZero = Written(counts)[..^(3 + 8)];
         minorZero[10] = 0;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorZero, manifest.SessionId).Counts;
         Assert.Null(earlier.RpcLinks);
@@ -510,8 +511,8 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(lanes.Cells, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.LaneBytes!.Cells);
 
         // A minor-1 overview, as revisions 229 to 288 wrote it, ends with its links and keeps no lane bytes; this build's
-        // keeps no process bytes after them, and says so in its last byte.
-        byte[] minorOne = Written(counts)[..^2];
+        // keeps no process bytes after them, and says so in a byte before the rows read before its extent.
+        byte[] minorOne = Written(counts)[..^(2 + 8)];
         minorOne[10] = 1;
         Assert.Null(SessionOverviewIndex.Read(minorOne, manifest.SessionId).Counts.LaneBytes);
 
@@ -653,6 +654,54 @@ public sealed class DerivationCheckpointOverviewTests
         }
     }
 
+    [Fact(DisplayName = "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again")]
+    public void APersistedOverviewBeginsWhereEveryRecordIsKept()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, Timed(
+            Lifecycle(10, ObservationKind.Create, 100, 1),
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between("127.0.0.1:50000", "10.0.0.9:443"),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3).Between("127.0.0.1:50000", "10.0.0.9:443")));
+        Publish(session.Store, Timed(
+            Transfer(200, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 4).Between("127.0.0.1:50000", "10.0.0.9:443"),
+            Transfer(300, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 5).Between("127.0.0.1:50000", "10.0.0.9:443")));
+        _ = IntervalRelease.Release(session.Store, 10_000, "older than the retained window", Committed, Committed);
+
+        // The checkpoint's overview counts from the first tick wholly after the boundary, as a live count does, and a reopen
+        // reads it rather than the segments.
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionManifestV1 manifest = reopened.Current!;
+        OverviewCounts persisted = Assert.IsType<OverviewCounts>(SessionDerivationCache.For(manifest).PersistedOverview(reopened.Root));
+        Assert.Equal(31, persisted.Extent!.Value.StartTicks);
+
+        // The two rows kept from before the boundary are counted as read before the extent, so every timed row is counted.
+        Assert.Equal((4L, 0L, 2L), (persisted.Rows, persisted.WithoutTime, persisted.BeforeExtent));
+        Assert.Equal(2, persisted.Main!.Counts.Sum());
+        Assert.Equal(persisted.Extent, SessionOverviewProjector.Project(reopened).Extent);
+        Assert.Equal(persisted.Extent, SessionRecording.RecordsExtent(reopened));
+
+        // An overview counted from the first row kept before the boundary, as overviews were counted before, is not used:
+        // the segments are counted again, from the boundary.
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(reopened, manifest, name))];
+        OverviewCounts earlier = SessionOverviewProjector.Count(segments, CancellationToken.None);
+        Assert.Equal(10, earlier.Extent!.Value.StartTicks);
+        using var stream = new MemoryStream();
+        _ = SessionOverviewIndex.Write(stream, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest),
+            earlier);
+        PublishIndexes(reopened, withCheckpoint: true, stream.ToArray());
+        SessionDerivationCache.Clear();
+        SessionStore again = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.NotNull(SessionOverviewIndex.NamedBy(again.Current!));
+        Assert.Null(SessionDerivationCache.For(again.Current!).PersistedOverview(again.Root));
+        Assert.Equal(new TimeRange(31, 301), SessionOverviewProjector.Project(again).Extent);
+    }
+
+    private static ObservationRowV1[] Timed(params ObservationRowV1[] rows) =>
+        [.. rows.Select(row => row with { SessionRelativeTicks = row.NativeTicks * 100 })];
+
     [Fact(DisplayName = "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused")]
     public void PersistedProcessBytesReadBackOrAreRefused()
     {
@@ -680,13 +729,22 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(kept.Processes, again.Processes);
         Assert.Equal(kept.Ends, again.Ends);
         Assert.Equal(kept.EncodedLength, bytes.Length - Written(counts with { ProcessBytes = null }).Length + 1);
+        Assert.Equal(0, BitConverter.ToInt64(bytes, bytes.Length - 8));
 
         // A minor-2 overview, as revision 289 wrote it, ends with its lane bytes and keeps no process bytes.
-        byte[] minorTwo = Written(counts with { ProcessBytes = null })[..^1];
+        byte[] minorTwo = Written(counts with { ProcessBytes = null })[..^(1 + 8)];
         minorTwo[10] = 2;
         OverviewCounts earlier = SessionOverviewIndex.Read(minorTwo, manifest.SessionId).Counts;
         Assert.Null(earlier.ProcessBytes);
         Assert.Equal(counts.LaneBytes!.Cells, earlier.LaneBytes!.Cells);
+
+        // A minor-3 overview, as revisions 292 to 444 wrote it, ends with its process bytes, and counts every timed row in
+        // its columns: none read before its extent.
+        byte[] minorThree = Written(counts)[..^8];
+        minorThree[10] = 3;
+        OverviewCounts third = SessionOverviewIndex.Read(minorThree, manifest.SessionId).Counts;
+        Assert.Equal(kept.Processes, third.ProcessBytes!.Processes);
+        Assert.Equal(0, third.BeforeExtent);
 
         // An entry naming no instance, channel or holder, at a strength no policy admits, below zero, summing what no
         // contribution measured, or holding none, is refused; so is one held twice, and the bytes of records bound to no

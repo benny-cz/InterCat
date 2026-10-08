@@ -25,10 +25,11 @@ public static partial class SessionMoment
     /// day it falls in unless it names its date; or session time, in seconds unless it names its unit. False, with why,
     /// when it is no moment (and <paramref name="problem"/> is null), names a time of day in a session that recorded no
     /// wall clock, falls outside the session, falls on more than one of its days, or names a time the zone skipped or
-    /// repeated.
+    /// repeated. A moment before <paramref name="retainedFromNanoseconds"/>, the session time a session that released its
+    /// oldest interval keeps every record from, is said to lie in what the session released.
     /// </summary>
     public static bool TryPlace(string text, SessionWallClock? wallClock, TimeZoneInfo zone, TimeRange extent,
-        IFormatProvider? culture, out long ticks, out string? problem)
+        IFormatProvider? culture, out long ticks, out string? problem, long? retainedFromNanoseconds = null)
     {
         ArgumentNullException.ThrowIfNull(text);
         ArgumentNullException.ThrowIfNull(zone);
@@ -38,6 +39,13 @@ public static partial class SessionMoment
         problem = null;
         if (SessionTime(typed, provider) is { } session)
         {
+            if (Released(session, extent, retainedFromNanoseconds) is { } retained)
+            {
+                problem = $"{typed} lies in what this session released: it keeps every record from "
+                    + $"{SessionTimeText.Seconds(retained, provider)} on.";
+                return false;
+            }
+
             if (session < extent.StartTicks || session >= extent.EndTicks)
             {
                 problem = $"{typed} is outside this session, which runs {WorkspaceTime.FormatRange(extent, provider)} in session time.";
@@ -87,6 +95,7 @@ public static partial class SessionMoment
         }
 
         var placed = new List<long>();
+        long? released = null;
         foreach (DateTime day in days)
         {
             DateTime local = day.Date + time;
@@ -118,6 +127,8 @@ public static partial class SessionMoment
             {
                 placed.Add(at);
             }
+
+            released ??= Released(at, extent, retainedFromNanoseconds);
         }
 
         if (placed.Count == 1)
@@ -126,12 +137,29 @@ public static partial class SessionMoment
             return true;
         }
 
+        if (placed.Count == 0 && released is { } boundary)
+        {
+            problem = $"{typed} lies in what this session released: it keeps every record from "
+                + $"{reads.Moment(boundary, provider)} on.";
+            return false;
+        }
+
         problem = placed.Count == 0
             ? $"{typed} is outside this session, which the wall clock read from {reads.Range(extent, provider)}."
             : $"{typed} falls on {placed.Count.ToString("N0", provider)} of this session's days; add its date, as "
                 + $"{days[0].ToString("d", provider)} {typed}.";
         return false;
     }
+
+    /// <summary>
+    /// The boundary, in session time, a moment lies before when it falls in the stretch a session released: after the
+    /// session began, before the first tick wholly at or after the boundary and before its extent begins; null for any
+    /// other moment.
+    /// </summary>
+    private static long? Released(long ticks, TimeRange extent, long? retainedFromNanoseconds) =>
+        retainedFromNanoseconds is { } retained && ticks >= 0 && ticks < (retained + 99) / 100 && ticks < extent.StartTicks
+            ? retained
+            : null;
 
     /// <summary>
     /// The days a time of day with no date may fall on: each from the session's first to its last, in the offset it names
