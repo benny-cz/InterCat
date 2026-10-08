@@ -79,7 +79,7 @@ HTTPS exchange is kept as its plaintext, headers, cookies and authorization incl
 `icat record --profile content` starts such a request, as evidence only too, since an evidence follow
 mirrors content (ADR-047). The broker prepares one since revision 451 and starts it since revision 452,
 only of its client's own processes, each named by its ID and its start (`contracts/broker-v1.md` §2.1,
-ADR-049).
+ADR-049), and `icat capture --profile content` asks it for one since revision 453.
 
 For any other source the preview is request-only: `canStart` is false, `effectiveAdmission` and
 `bodyPolicy` are null, `providers[]` and approved content events/fields/classifications are empty, and

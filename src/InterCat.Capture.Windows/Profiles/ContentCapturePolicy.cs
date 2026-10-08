@@ -118,7 +118,7 @@ public static class ContentCapturePolicyCompiler
 
         if (!source.Mechanisms.Contains(request.Mechanism))
         {
-            return $"Content source '{request.SourceId}' does not describe {request.Mechanism}.";
+            return $"Content source '{request.SourceId}' does not describe {MechanismText.Name(request.Mechanism)}.";
         }
 
         if (request.ProcessIds is null

@@ -111,7 +111,7 @@ public sealed class CaptureProfileCompilerTests
 
         Assert.False(plan.CanStart);
         Assert.Null(plan.Content);
-        Assert.Contains("does not describe Tcp", Assert.Single(plan.Diagnostics), StringComparison.Ordinal);
+        Assert.Contains("does not describe TCP", Assert.Single(plan.Diagnostics), StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "IC-012: Focused TCP compiles one mechanism and required lifecycle context")]

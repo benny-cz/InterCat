@@ -1,5 +1,3 @@
-using System.ComponentModel;
-using System.Diagnostics;
 using System.Globalization;
 using System.Text.Json;
 using InterCat.Analysis;
@@ -70,15 +68,7 @@ internal static class RecordCommand
         string? mechanismOption = command.TakeOption("--mechanism");
         string? durationOption = command.TakeOption("--duration");
         string? publishOption = command.TakeOption("--publish-every");
-        string? contentSource = command.TakeOption("--source");
-        string? maximumRecordText = command.TakeOption("--max-record-bytes");
-        string? maximumSessionText = command.TakeOption("--max-session-bytes");
-        string? inspectionOption = command.TakeOption("--inspection");
-        string? retentionOption = command.TakeOption("--retention");
-        var processOptions = new List<string>();
-        for (string? value; (value = command.TakeOption("--pid")) is not null;) processOptions.Add(value);
-        var channelOptions = new List<string>();
-        for (string? value; (value = command.TakeOption("--channel")) is not null;) channelOptions.Add(value);
+        ContentRequestOptions content = ContentRequestOptions.Take(command);
         string? sessionPath = command.TakePositional();
         bool evidenceOnly = command.TryTakeFlag("--evidence-only");
         bool json = command.TryTakeFlag("--json");
@@ -135,23 +125,19 @@ internal static class RecordCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        bool contentOptions = contentSource is not null || maximumRecordText is not null || maximumSessionText is not null
-            || inspectionOption is not null || retentionOption is not null || processOptions.Count > 0 || channelOptions.Count > 0;
         ContentCaptureRequest? contentRequest = null;
         if (profile == CaptureProfileKind.Content)
         {
             // Nothing about content is assumed: its source, its processes, its channels, both limits and the consent to
             // inspect it are the request's own, stated on the command line and checked before anything starts.
-            string? problem = ContentRequest(contentSource, mechanism!.Value, processOptions, channelOptions, maximumRecordText,
-                maximumSessionText, inspectionOption, retentionOption, out contentRequest);
-            if (problem is not null)
+            if (content.Compile(mechanism!.Value, out contentRequest) is { } problem)
             {
                 ConsoleUi.Failure(problem);
                 ConsoleUi.Explain(PrintHelp);
                 return InterCatExitCode.InvalidInvocation;
             }
         }
-        else if (contentOptions)
+        else if (content.AnyBesideProcesses || content.Processes.Count > 0)
         {
             ConsoleUi.Failure("--source, --pid, --channel, the byte limits, --inspection and --retention make a content "
                 + "request, and only --profile content takes one.");
@@ -231,16 +217,14 @@ internal static class RecordCommand
             // that is not running is refused here, before anything starts (ADR-037).
             foreach (int processId in contentRequest.ProcessIds)
             {
-                if (RunningProcess(processId) is not { } running)
+                if (ContentProcessReview.See(processId) is not { } running)
                 {
-                    ConsoleUi.Failure(
-                        $"Process {processId} is not running, so nothing was recorded: a content request names running "
-                        + "processes, which the capture holds open so their IDs stay theirs. Task Manager's Details tab "
-                        + "lists running processes with their IDs.");
+                    ConsoleUi.Failure(ContentProcessReview.NotRunning(processId));
                     return InterCatExitCode.InvalidInvocation;
                 }
 
-                ConsoleUi.Progress($"Content is kept from process {processId}, {running}, held open while the capture runs so its ID stays its own.");
+                ConsoleUi.Progress($"Content is kept from process {processId}, {ContentProcessReview.Describe(running, TimeZoneInfo.Local)}, "
+                    + "held open while the capture runs so its ID stays its own.");
             }
         }
 
@@ -432,124 +416,12 @@ internal static class RecordCommand
         ConsoleUi.Success($"Recorded {ConsoleUi.Count(document.JournaledRecords)} records.");
     }
 
-    /// <summary>
-    /// A content request from its options, or the problem with them. Every part is the request's own and required, except
-    /// the retention, whose one bounded behaviour is stop-at-limit (`contracts/content-v1.md` §5).
-    /// </summary>
-    /// <summary>A running process's image and start, in words; null when no process has the ID, or it has exited.</summary>
-    private static string? RunningProcess(int processId)
-    {
-        Process process;
-        try
-        {
-            process = Process.GetProcessById(processId);
-        }
-        catch (ArgumentException)
-        {
-            return null;
-        }
-
-        using (process)
-        {
-            try
-            {
-                if (process.HasExited)
-                {
-                    return null;
-                }
-
-                string image = process.ProcessName;
-                string started;
-                try
-                {
-                    started = "started " + process.StartTime.ToString("T", CultureInfo.CurrentCulture);
-                }
-                catch (Exception exception) when (exception is Win32Exception or NotSupportedException)
-                {
-                    started = "its start not readable";
-                }
-
-                return $"{image} ({started})";
-            }
-            catch (InvalidOperationException)
-            {
-                return null;
-            }
-            catch (Win32Exception)
-            {
-                return "its image not readable";
-            }
-        }
-    }
-
-    private static string? ContentRequest(string? source, Mechanism mechanism, List<string> processes, List<string> channels,
-        string? maximumRecord, string? maximumSession, string? inspection, string? retention, out ContentCaptureRequest? request)
-    {
-        request = null;
-        if (source is null || processes.Count == 0 || channels.Count == 0 || maximumRecord is null || maximumSession is null
-            || inspection is null)
-        {
-            return "--profile content needs --source, --mechanism, at least one --pid and --channel, --max-record-bytes, "
-                + "--max-session-bytes and --inspection.";
-        }
-
-        var processIds = new List<int>(processes.Count);
-        foreach (string text in processes)
-        {
-            if (!int.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out int processId) || processId <= 0)
-            {
-                return $"--pid takes a positive process ID; '{text}' is not one.";
-            }
-
-            processIds.Add(processId);
-        }
-
-        if (!int.TryParse(maximumRecord, NumberStyles.None, CultureInfo.InvariantCulture, out int recordBytes))
-        {
-            return $"--max-record-bytes takes a whole number of bytes; '{maximumRecord}' is not one.";
-        }
-
-        if (!long.TryParse(maximumSession, NumberStyles.None, CultureInfo.InvariantCulture, out long sessionBytes))
-        {
-            return $"--max-session-bytes takes a whole number of bytes; '{maximumSession}' is not one.";
-        }
-
-        ContentInspectionMode? mode = inspection.Trim().ToLowerInvariant() switch
-        {
-            "hex-text" or "hextext" => ContentInspectionMode.HexAndText,
-            "disabled" => ContentInspectionMode.Disabled,
-            _ => null,
-        };
-        if (mode is null)
-        {
-            return "--inspection is hex-text, which lets a person see kept bytes when they ask, or disabled, which never does.";
-        }
-
-        if (retention is not null && retention.Trim().ToLowerInvariant() is not ("stop-at-limit" or "stopatlimit"))
-        {
-            return "--retention is stop-at-limit, the one bounded behaviour: the capture stops when kept content reaches its limit.";
-        }
-
-        request = new()
-        {
-            SourceId = source,
-            Mechanism = mechanism,
-            ProcessIds = processIds,
-            ChannelSelectors = channels,
-            MaximumRecordBytes = recordBytes,
-            MaximumSessionBytes = sessionBytes,
-            Retention = ContentRetentionMode.StopAtLimit,
-            Inspection = mode.Value,
-        };
-        return ContentCapturePolicyCompiler.Validate(request);
-    }
-
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");
         ConsoleUi.Line("            [--mechanism tcp|udp|http] [--duration <seconds>] [--publish-every <seconds>] [--evidence-only] [--json]");
-        ConsoleUi.Line("            content: --source <source-id> --mechanism http --pid <id> ... --channel * --inspection hex-text|disabled");
-        ConsoleUi.Line("                     --max-record-bytes <n> --max-session-bytes <n> [--retention stop-at-limit]");
+        ConsoleUi.Line("            content: " + ContentRequestOptions.Synopsis);
+        ConsoleUi.Line("                     " + ContentRequestOptions.Limits);
         ConsoleUi.Line();
         ConsoleUi.Line("  Captures live under one uniquely named ETW session straight into a new session directory,");
         ConsoleUi.Line($"  for --duration seconds (default {DefaultSeconds}, at most {MaximumSeconds:N0}) or until Ctrl+C, which keeps what");
@@ -566,6 +438,8 @@ internal static class RecordCommand
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");
         ConsoleUi.Line("  says every exchange of theirs is kept. It stops when kept content reaches --max-session-bytes.");
-        ConsoleUi.Line("  --profile content-fixture, InterCat's own test instrument, records through icat record only.");
+        ConsoleUi.Line("  icat capture --profile content takes the same request through the broker, from your own");
+        ConsoleUi.Line("  processes alone, without running elevated. --profile content-fixture, InterCat's own test");
+        ConsoleUi.Line("  instrument, records through icat record only.");
     }
 }

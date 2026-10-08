@@ -153,10 +153,11 @@ internal static class Icat
         ConsoleUi.Line("                   [--bytes <n>] [--workload <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      The same for the seeded UDP workload, with --sockets where TCP has --connections.");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
-        ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--keep-last <seconds>] [--broker <exe>] [--json]");
+        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport|content]");
+        ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--keep-last <seconds>] [--broker <exe>] [--json]");
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval) and this process derives the session. Ctrl+C stops early.");
+        ConsoleUi.Line("      A content capture keeps your own processes' messages (icat capture --help).");
         ConsoleUi.Line("      Windows only, as the broker is.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat record <new-session-dir> [--profile explore|focused-transport|rpc-peers|content|content-fixture]");

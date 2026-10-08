@@ -32,6 +32,9 @@ internal sealed record CaptureDocument
 
     /// <summary>The rolling retention the follow ran (`--keep-last`); null when the session kept every record.</summary>
     public RollingDocument? Rolling { get; init; }
+
+    /// <summary>What a content capture was asked to keep and what its session holds of it; null for any other capture.</summary>
+    public CaptureContentDocument? Content { get; init; }
 }
 
 /// <summary>
@@ -43,10 +46,6 @@ internal sealed record CaptureDocument
 [SupportedOSPlatform("windows")]
 internal static class CaptureCommand
 {
-    private const int DefaultSeconds = 60;
-    private const int MaximumSeconds = 86_400;
-    private const long DefaultJournalMebibytes = 1_024;
-    private const long DefaultFreeMebibytes = 1_024;
     private static readonly TimeSpan Poll = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FinishAfterStop = TimeSpan.FromSeconds(60);
@@ -61,7 +60,7 @@ internal static class CaptureCommand
 
         string profile = command.TakeOption("--profile") ?? "explore";
         string? mechanismOption = command.TakeOption("--mechanism");
-        string? pidsOption = command.TakeOption("--pid");
+        ContentRequestOptions content = ContentRequestOptions.Take(command);
         bool broader = command.TryTakeFlag("--allow-broader");
         string? durationOption = command.TakeOption("--duration");
         string? journalOption = command.TakeOption("--max-journal-mib");
@@ -91,11 +90,26 @@ internal static class CaptureCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (!TryParseRequest(profile, mechanismOption, pidsOption, broader, durationOption, journalOption, freeOption,
-            out BrokerPrepareCaptureRequest? request, out string? problem))
+        if (CaptureRequests.Parse(profile, mechanismOption, broader, durationOption, journalOption, freeOption,
+                keepOption is not null, content, out string? problem) is not { } request)
         {
             ConsoleUi.Failure(problem!);
+            ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
+        }
+
+        // Each process a content request names, as it runs now: one not running is refused before Windows is asked for
+        // approval, and the broker's start for each is compared with the one seen here once it prepares (ADR-049).
+        var seen = new Dictionary<int, SeenProcess>();
+        foreach (int processId in request.Content?.ProcessIds ?? [])
+        {
+            if (ContentProcessReview.See(processId) is not { } running)
+            {
+                ConsoleUi.Failure(ContentProcessReview.NotRunning(processId));
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            seen[processId] = running;
         }
 
         if (!RollingFollow.TryParse(keepOption, out RollingRetention? rolling, out string? keepProblem))
@@ -108,7 +122,7 @@ internal static class CaptureCommand
         // publish as often as the window needs rather than its duration (broker-v1 §5.1).
         if (rolling is not null)
         {
-            request = request! with
+            request = request with
             {
                 Retention = BrokerRetentionPolicy.ReleaseFollowed,
                 KeptWindowSeconds = (int)Math.Ceiling(rolling.Policy.Keep.TotalSeconds),
@@ -144,7 +158,7 @@ internal static class CaptureCommand
 
         await using (connection.ConfigureAwait(false))
         {
-            return await CaptureAsync(connection.Client, request!, sessionPath, json, rolling, cancellationToken)
+            return await CaptureAsync(connection.Client, request, seen, sessionPath, json, rolling, cancellationToken)
                 .ConfigureAwait(false);
         }
     }
@@ -152,6 +166,7 @@ internal static class CaptureCommand
     private static async Task<InterCatExitCode> CaptureAsync(
         WindowsBrokerPipeClient client,
         BrokerPrepareCaptureRequest request,
+        IReadOnlyDictionary<int, SeenProcess> seen,
         string sessionPath,
         bool json,
         RollingRetention? rolling,
@@ -179,9 +194,17 @@ internal static class CaptureCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        // A process the broker pinned that is not the one seen under its ID before asking - its ID passed to another
+        // between - is never recorded; the prepared plan is let go unstarted (R22).
+        if (ContentProcessReview.Mismatch(prepared.Summary, seen, TimeZoneInfo.Local) is { } changed)
+        {
+            ConsoleUi.Failure(changed + " Nothing was recorded.");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         if (!json)
         {
-            RenderSummary(prepared.Summary);
+            RenderSummary(prepared.Summary, request.Content, seen);
         }
 
         BrokerWireResponse startResponse = await client.SendAsync(
@@ -244,6 +267,7 @@ internal static class CaptureCommand
             DerivedRecords = last?.DerivedRecords ?? 0,
             Generation = derived?.Current?.Generation,
             Rolling = derived is null ? null : RollingFollow.Describe(rolling, derived),
+            Content = CaptureContent.Describe(prepared.Summary, seen, derived),
         };
         if (json)
         {
@@ -458,88 +482,22 @@ internal static class CaptureCommand
             as BrokerCaptureStatusResponse
         ?? throw new InvalidDataException("The capture broker did not report this capture's status.");
 
-    private static bool TryParseRequest(
-        string profile,
-        string? mechanismOption,
-        string? pidsOption,
-        bool broader,
-        string? durationOption,
-        string? journalOption,
-        string? freeOption,
-        out BrokerPrepareCaptureRequest? request,
-        out string? problem)
-    {
-        request = null;
-        problem = null;
-        int seconds = DefaultSeconds;
-        if (durationOption is not null
-            && (!int.TryParse(durationOption.TrimEnd('s'), NumberStyles.None, CultureInfo.InvariantCulture, out seconds)
-                || seconds is < 1 or > MaximumSeconds))
-        {
-            problem = $"--duration is whole seconds from 1 to {MaximumSeconds:N0}; '{durationOption}' is not one.";
-            return false;
-        }
-
-        long journal = DefaultJournalMebibytes;
-        long free = DefaultFreeMebibytes;
-        if ((journalOption is not null && (!long.TryParse(journalOption, NumberStyles.None, CultureInfo.InvariantCulture, out journal) || journal < 1))
-            || (freeOption is not null && (!long.TryParse(freeOption, NumberStyles.None, CultureInfo.InvariantCulture, out free) || free < 0)))
-        {
-            problem = "--max-journal-mib and --min-free-mib take whole mebibytes.";
-            return false;
-        }
-
-        Mechanism? mechanism = mechanismOption?.ToUpperInvariant() switch
-        {
-            null => null,
-            "TCP" => Mechanism.Tcp,
-            _ => (Mechanism)0,
-        };
-        List<int> pids = [];
-        foreach (string item in (pidsOption ?? string.Empty).Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-        {
-            if (!int.TryParse(item, NumberStyles.None, CultureInfo.InvariantCulture, out int pid) || pid <= 0)
-            {
-                problem = $"--pid takes positive process IDs separated by commas; '{item}' is not one.";
-                return false;
-            }
-
-            pids.Add(pid);
-        }
-
-        bool focused = string.Equals(profile, "focused-transport", StringComparison.Ordinal);
-        if (!focused && !string.Equals(profile, "explore", StringComparison.Ordinal))
-        {
-            problem = $"--profile is explore or focused-transport; '{profile}' is not one. icat profiles lists what each collects.";
-            return false;
-        }
-
-        if (focused != (mechanism is not null) || mechanism == (Mechanism)0 || (!focused && (pids.Count > 0 || broader)))
-        {
-            problem = "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; explore takes neither.";
-            return false;
-        }
-
-        request = new(
-            profile,
-            mechanism,
-            pids,
-            broader,
-            false,
-            new BrokerCaptureQuota(seconds, journal * 1024 * 1024, free * 1024 * 1024),
-            BrokerRetentionPolicy.StopAtLimit,
-            null,
-
-            // Live, so a capture interrupted by a killed broker still keeps everything published (plan revision 82).
-            BrokerJournalPublication.Live);
-        return true;
-    }
-
-    private static void RenderSummary(BrokerEffectiveCaptureSummary summary)
+    private static void RenderSummary(
+        BrokerEffectiveCaptureSummary summary,
+        ContentCaptureRequest? content,
+        IReadOnlyDictionary<int, SeenProcess> seen)
     {
         ConsoleUi.Heading("Capture");
         ConsoleUi.Field("Profile", summary.EffectiveProfileId ?? summary.RequestedProfileId);
         ConsoleUi.Field("Sources", string.Join(", ", summary.Sources.Select(source => source.SourceId)));
+        if (content is not null)
+        {
+            foreach ((string label, string value) in ContentProcessReview.Lines(summary, content.Mechanism, seen, TimeZoneInfo.Local))
+            {
+                ConsoleUi.Field(label, value);
+            }
+        }
+
         ConsoleUi.Field("Stops after", $"{summary.Quota.MaximumDurationSeconds:N0} s, or {ConsoleUi.Size(summary.Quota.MaximumJournalBytes)} of journal");
         ConsoleUi.Field("Keeps free", $"{ConsoleUi.Size(summary.Quota.MinimumFreeDiskBytes)} on the recording volume");
         ConsoleUi.Field(
@@ -584,6 +542,12 @@ internal static class CaptureCommand
             }
         }
 
+        // Kept content is restricted evidence beside the journal (ADR-036): how much, never a byte of it.
+        if (document.Content is { } content)
+        {
+            ConsoleUi.Field("Content kept", CaptureContent.Statement(content.Kept));
+        }
+
         if (document.Reason is { } reason)
         {
             ConsoleUi.Note(reason);
@@ -605,13 +569,16 @@ internal static class CaptureCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport]");
-        ConsoleUi.Line("               [--mechanism tcp] [--pid <id,...>] [--allow-broader]");
+        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport|content]");
+        ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--allow-broader]");
         ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
         ConsoleUi.Line("               [--json]");
+        ConsoleUi.Line("               content: " + ContentRequestOptions.Synopsis);
+        ConsoleUi.Line("                        " + ContentRequestOptions.Limits);
         ConsoleUi.Line("      Captures live without running icat elevated: the capture broker is started on demand");
         ConsoleUi.Line("      (Windows asks for approval), records evidence only, and this process derives the session.");
-        ConsoleUi.Line("      Stops at --duration (default 60 s) or on Ctrl+C; everything published is kept. If this");
+        ConsoleUi.Line($"      Stops at --duration (default {CaptureRequests.DefaultSeconds} s) or on Ctrl+C; everything published is "
+            + "kept. If this");
         ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
         ConsoleUi.Line("      it leaves beside it. --keep-last keeps the session to the newest stretch of session time");
         ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on, and the");
@@ -619,5 +586,11 @@ internal static class CaptureCommand
         ConsoleUi.Line("      it holds rather than all it recorded. A pin (icat pin) keeps the records read from its");
         ConsoleUi.Line("      moment; once the session holds more than the pin allows, the capture stops rather than");
         ConsoleUi.Line("      release them.");
+        ConsoleUi.Line("      --profile content keeps the messages of the processes --pid names - WinINet's HTTP");
+        ConsoleUi.Line("      exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture - as icat record does, through");
+        ConsoleUi.Line("      the broker: only your own processes, in this sign-in and at no higher integrity, which it");
+        ConsoleUi.Line("      holds open while it records. The review names each by what it runs and when it started,");
+        ConsoleUi.Line("      and a process whose ID passed to another before the capture starts is refused. It stops");
+        ConsoleUi.Line("      when kept content reaches --max-session-bytes, and takes no --keep-last.");
     }
 }

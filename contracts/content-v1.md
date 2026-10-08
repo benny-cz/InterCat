@@ -197,7 +197,8 @@ the named processes alone, by the session's process filter; lifecycle stays whol
 `--evidence-only` the elevated recorder publishes the content beside its chunks, and `icat follow` derives the session
 with it (§2). Since revision 451 the broker prepares such a request only of its client's own processes, each named by
 its ID and its start, and digests the policy, and since revision 452 starts one, holding those processes while it
-records and stopping at the session limit (`contracts/broker-v1.md` §2.1, ADR-049).
+records and stopping at the session limit (`contracts/broker-v1.md` §2.1, ADR-049); since revision 453
+`icat capture --profile content` asks it for one in `icat record`'s words.
 
 | | |
 |---|---|
