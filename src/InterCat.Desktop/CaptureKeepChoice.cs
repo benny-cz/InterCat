@@ -8,9 +8,12 @@ namespace InterCat.Desktop;
 /// <summary>
 /// What a capture started from the window keeps, as the Explore card's Keep selector lists it (§20.2, ADR-045): every
 /// record of a capture bounded at ten minutes, or the newest stretch of session time of one that records until it is
-/// stopped, for at most a day, its older records released between mirrors as `icat capture --keep-last` releases them.
+/// stopped, for at most a day, its older records released between mirrors as `icat capture --keep-last` releases them -
+/// or, with <paramref name="Content"/>, the messages of processes of the person's own, which they choose when they start
+/// it and review as the broker prepared it before anything is recorded (§11.1, ADR-049).
 /// </summary>
-public sealed record CaptureKeepChoice(string Label, int MaximumDurationSeconds, TimeSpan? Keep) : IAccessibleRow
+public sealed record CaptureKeepChoice(string Label, int MaximumDurationSeconds, TimeSpan? Keep, bool Content = false)
+    : IAccessibleRow
 {
     /// <summary>The longest a capture records, which the broker bounds: a day.</summary>
     public const int UntilStoppedSeconds = 86_400;
@@ -21,6 +24,7 @@ public sealed record CaptureKeepChoice(string Label, int MaximumDurationSeconds,
         new CaptureKeepChoice("Every record, 10 minutes", 600, null),
         new CaptureKeepChoice("The last 10 minutes", UntilStoppedSeconds, TimeSpan.FromMinutes(10)),
         new CaptureKeepChoice("The last hour", UntilStoppedSeconds, TimeSpan.FromHours(1)),
+        new CaptureKeepChoice("Your processes' messages", 600, null, Content: true),
     ]);
 
     /// <summary>The policy releasing what a capture's session holds before its newest window; null when it keeps every record.</summary>
@@ -32,7 +36,10 @@ public sealed record CaptureKeepChoice(string Label, int MaximumDurationSeconds,
     public string AccessibleName => Label + ": " + Explanation;
 
     /// <summary>What the capture records and keeps under this choice, and what can stop it sooner, in the card's words.</summary>
-    public string Explanation => Rolling is not { } rolling
+    public string Explanation => Content
+        ? "keeps the HTTP messages of processes of yours you choose next, within limits you set; you review it before "
+            + "anything is recorded."
+        : Rolling is not { } rolling
         ? "records for up to 10 minutes and keeps every record."
         : $"records until you stop it, for up to 24 hours, and keeps {rolling.Window} of session time, releasing older "
             + "records as it goes. The broker releases its own copy of what the session gave up, so its journal limit "

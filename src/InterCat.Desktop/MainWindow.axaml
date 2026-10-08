@@ -342,13 +342,16 @@
             <!-- §20.2: what the capture keeps - every record of ten minutes, the default that needs no configuration, or the
                  newest stretch of session time of one that records until stopped, its older records released as it
                  records (ADR-045). Chosen before a capture starts; it says what the choice does beneath it. -->
+            <!-- §11.1, ADR-049: or the messages of the person's own processes, its own capture: chosen here, it is asked
+                 for explicitly when it starts - the processes, the limits and the consent to see what is kept - and
+                 reviewed as the broker prepared it before anything is recorded. -->
             <Grid x:Name="CaptureKeepRow" ColumnDefinitions="Auto,*">
               <TextBlock Text="Keep" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
               <ComboBox x:Name="CaptureKeepSelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
                         ItemsSource="{x:Static local:CaptureKeepChoice.All}" SelectedIndex="0"
                         SelectionChanged="CaptureKeepChosen"
                         AutomationProperties.Name="What the capture keeps"
-                        AutomationProperties.HelpText="Every record of a ten-minute capture, or the newest stretch of session time of one that records until it is stopped">
+                        AutomationProperties.HelpText="Every record of a ten-minute capture, the newest stretch of session time of one that records until it is stopped, or the messages of processes of yours">
                 <ComboBox.ItemTemplate>
                   <DataTemplate x:DataType="local:CaptureKeepChoice">
                     <TextBlock Text="{Binding Label}" />

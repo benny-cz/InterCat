@@ -1,22 +1,20 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
-using InterCat.Capture.Windows;
-using InterCat.CaptureBroker;
 using InterCat.Domain;
 
-namespace InterCat.Cli;
+namespace InterCat.CaptureBroker;
 
-/// <summary>A process as a command saw it under an ID it names: its image and when it started, each where readable.</summary>
-internal sealed record SeenProcess(int ProcessId, string? Image, DateTimeOffset? StartedUtc);
+/// <summary>A process as a client saw it under an ID it names: its image and when it started, each where readable.</summary>
+public sealed record SeenProcess(int ProcessId, string? Image, DateTimeOffset? StartedUtc);
 
 /// <summary>
-/// What a content capture says of the processes it keeps content from (ADR-049, R22): each as the command saw it before
-/// asking and as the broker pinned it - its ID and its start - so a process whose ID passed to another between the two is
-/// refused before the capture starts rather than recorded as a stranger, and the review names each by what it runs and
-/// when it started rather than by an ID alone.
+/// What a client says of the processes a content capture keeps content from (ADR-049, R22): each as the client saw it
+/// before asking and as the broker pinned it - its ID and its start - so a process whose ID passed to another between the
+/// two is refused before the capture starts rather than recorded as a stranger, and a review names each by what it runs
+/// and when it started rather than by an ID alone. icat capture and the window say it in these words.
 /// </summary>
-internal static class ContentProcessReview
+public static class BrokerContentReview
 {
     /// <summary>The process now holding <paramref name="processId"/>, as this process can read it; null when none is running.</summary>
     public static SeenProcess? See(int processId)
@@ -52,11 +50,43 @@ internal static class ContentProcessReview
             return new(
                 processId,
                 Read(() => process.ProcessName),
-                Read<DateTimeOffset?>(() => new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero)));
+                Read(() => StartOf(process)));
         }
     }
 
-    /// <summary>Why a content request that names a process not running records nothing, in every command's words.</summary>
+    /// <summary>
+    /// The processes a person may choose to keep content from, as this process can read them: each in this terminal session
+    /// whose start it can read, but this process itself, by name and then start. Whose each one is, and at what integrity,
+    /// the broker reads when it prepares; one that is not the asker's own is refused then, by name.
+    /// </summary>
+    public static IReadOnlyList<SeenProcess> Running()
+    {
+        using Process current = Process.GetCurrentProcess();
+        int session = current.SessionId;
+        var running = new List<SeenProcess>();
+        foreach (Process process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                if (process.Id == current.Id || Read<int?>(() => process.SessionId) != session
+                    || Read(() => StartOf(process)) is not { } started)
+                {
+                    continue;
+                }
+
+                running.Add(new(process.Id, Read(() => process.ProcessName), started));
+            }
+        }
+
+        return
+        [
+            .. running.OrderBy(process => process.Image, StringComparer.OrdinalIgnoreCase)
+                .ThenBy(process => process.StartedUtc)
+                .ThenBy(process => process.ProcessId),
+        ];
+    }
+
+    /// <summary>Why a content request that names a process not running records nothing, in every client's words.</summary>
     public static string NotRunning(int processId) =>
         string.Create(CultureInfo.InvariantCulture, $"Process {processId} is not running, so nothing was recorded: ")
         + "a content request names running processes, which the capture holds open so their IDs stay theirs. Task Manager's "
@@ -118,8 +148,8 @@ internal static class ContentProcessReview
 
         var lines = new List<(string, string)>
         {
-            ("Content", $"{MechanismText.Name(mechanism)} messages of {content.SourceId}, "
-                + (content.ChannelSelectors is [ContentCapturePolicyCompiler.EveryChannel]
+            ("Content", $"{MechanismText.Name(mechanism)} messages {ContentSources.Of(content.SourceId)}, "
+                + (content.ChannelSelectors is [ContentCaptureRequest.EveryChannel]
                     ? "every channel of the processes below"
                     : (content.ChannelSelectors.Count == 1 ? "the channel " : "the channels ")
                         + string.Join(", ", content.ChannelSelectors) + " of the processes below")),
@@ -138,8 +168,62 @@ internal static class ContentProcessReview
         return lines;
     }
 
+    /// <summary>
+    /// What changed between the plan a person reviewed and the one the broker prepares when they confirm it, as a clause;
+    /// null when it keeps what was reviewed - the same processes from the same starts, the same messages kept within the
+    /// same limits under the same consent, the same sources collecting the same, and the same limits. The first difference
+    /// is named.
+    /// </summary>
+    public static string? Changed(BrokerEffectiveCaptureSummary reviewed, BrokerEffectiveCaptureSummary now, TimeZoneInfo zone)
+    {
+        ArgumentNullException.ThrowIfNull(reviewed);
+        ArgumentNullException.ThrowIfNull(now);
+        if (!reviewed.RequestedProcessIds.SequenceEqual(now.RequestedProcessIds))
+        {
+            return "the processes it names";
+        }
+
+        if (reviewed.Content is { } before && now.Content is { } after)
+        {
+            foreach ((int processId, (DateTimeOffset was, DateTimeOffset started)) in reviewed.RequestedProcessIds
+                .Zip(before.ProcessStartsUtc.Zip(after.ProcessStartsUtc)))
+            {
+                if (was != started)
+                {
+                    return string.Create(CultureInfo.InvariantCulture, $"process {processId} is now the one that started at ")
+                        + $"{Instant(started, zone)}, not {Instant(was, zone)}";
+                }
+            }
+
+            if (!string.Equals(before.SourceId, after.SourceId, StringComparison.Ordinal)
+                || !before.ChannelSelectors.SequenceEqual(after.ChannelSelectors, StringComparer.Ordinal)
+                || before.MaximumRecordBytes != after.MaximumRecordBytes
+                || before.MaximumSessionBytes != after.MaximumSessionBytes
+                || before.Inspection != after.Inspection)
+            {
+                return "what it keeps of the messages";
+            }
+        }
+        else if (reviewed.Content is not null || now.Content is not null)
+        {
+            return "whether it keeps content";
+        }
+
+        return !reviewed.Sources.Select(source => source.SourceId).SequenceEqual(now.Sources.Select(source => source.SourceId),
+                StringComparer.Ordinal)
+            || !string.Equals(reviewed.CollectionStatement, now.CollectionStatement, StringComparison.Ordinal)
+            || !string.Equals(reviewed.Disclosure, now.Disclosure, StringComparison.Ordinal)
+                ? "what it collects"
+            : reviewed.Quota != now.Quota || reviewed.Retention != now.Retention
+                ? "its limits"
+                : null;
+    }
+
     private static string Instant(DateTimeOffset value, TimeZoneInfo zone) =>
         TimeZoneInfo.ConvertTime(value, zone).ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture);
+
+    /// <summary>When a process started, as the instant its local start time names.</summary>
+    private static DateTimeOffset? StartOf(Process process) => new DateTimeOffset(process.StartTime.ToUniversalTime(), TimeSpan.Zero);
 
     private static T? Read<T>(Func<T> read)
     {

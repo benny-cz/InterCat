@@ -1194,7 +1194,8 @@
         "P19: a content capture starts with the authenticated client that started it, whose processes its runtime then holds",
         "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership",
         "P19: the broker keeps content only from processes the client could read itself - its own user's, in its own sign-in, at no higher integrity - read from each process, never the request",
-        "P19: the broker prepares a content capture only of its client's own processes, read from each, says when one is not, and states each one's start for the review"
+        "P19: the broker prepares a content capture only of its client's own processes, read from each, says when one is not, and states each one's start for the review",
+        "P19: the window asks for a content capture of the processes a person chose, every exchange of theirs within the limits chosen"
       ],
       "P2": [
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
@@ -1640,6 +1641,7 @@
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
         "R22: a content capture holds its processes from before it records, checked through the handles that hold them, and holds none it refuses",
+        "R22: a content capture whose plan changed between its review and its start is not started, naming what changed",
         "R22: a content capture's review names each process by what it runs and the start the broker pinned, and refuses one whose ID passed to another",
         "R22: a content capture's review states what it keeps and each named process's start, all or none, every start once prepared",
         "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
@@ -1666,7 +1668,7 @@
         "R22: a prepared content plan keeps one source's content under its request's limits, of processes each named by its ID and start, which its digest covers",
         "R22: a process a content capture names is its ID and its start, so one whose ID now names a later process, or that is no longer the client's, refuses the start",
         "R22: a process filter is held to running processes, each held open so its ID stays its own",
-        "R22: a process is seen by what it runs and when it started, and one not running is refused in every command's words",
+        "R22: a process is seen by what it runs and when it started, and one not running is refused in every client's words",
         "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
         "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",
         "R22: a record of a PID's later instance counts only when candidates are admitted, as its binding says",
@@ -1710,6 +1712,8 @@
         "R22: the investigation window says when two captures of one host ran at once",
         "R22: the investigation window states a known address translation, and a candidate joins through it",
         "R22: the investigation window takes a person's word that two host identities are one host, and its withdrawal",
+        "R22: the processes a person may choose are this sign-in's, each with the start a client can read, never the client itself",
+        "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed",
         "R22: two boots of one host that overlap in the investigation's time say an alignment is wrong",
         "R22: two captures of one boot align exactly through their epochs, and captures of two boots never do",
         "R22: two captures of one host that ran at once are flagged, never merged, and two hosts' never compared",

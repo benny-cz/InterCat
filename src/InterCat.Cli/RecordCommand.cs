@@ -4,6 +4,7 @@ using InterCat.Analysis;
 using InterCat.Capture.Journal;
 using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
+using InterCat.CaptureBroker;
 using InterCat.Domain;
 using InterCat.Storage;
 
@@ -217,13 +218,13 @@ internal static class RecordCommand
             // that is not running is refused here, before anything starts (ADR-037).
             foreach (int processId in contentRequest.ProcessIds)
             {
-                if (ContentProcessReview.See(processId) is not { } running)
+                if (BrokerContentReview.See(processId) is not { } running)
                 {
-                    ConsoleUi.Failure(ContentProcessReview.NotRunning(processId));
+                    ConsoleUi.Failure(BrokerContentReview.NotRunning(processId));
                     return InterCatExitCode.InvalidInvocation;
                 }
 
-                ConsoleUi.Progress($"Content is kept from process {processId}, {ContentProcessReview.Describe(running, TimeZoneInfo.Local)}, "
+                ConsoleUi.Progress($"Content is kept from process {processId}, {BrokerContentReview.Describe(running, TimeZoneInfo.Local)}, "
                     + "held open while the capture runs so its ID stays its own.");
             }
         }

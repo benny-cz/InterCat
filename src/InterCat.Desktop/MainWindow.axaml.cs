@@ -417,7 +417,7 @@ public sealed partial class MainWindow : Window, IDisposable
             case Key.R when e.KeyModifiers.HasFlag(KeyModifiers.Control):
                 if (StartExploringButton.IsEnabled)
                 {
-                    BeginCapture();
+                    StartChosenCapture();
                 }
                 e.Handled = true;
                 break;
@@ -679,7 +679,20 @@ public sealed partial class MainWindow : Window, IDisposable
     private void ClearTimelineProcessFocus(object? sender, RoutedEventArgs eventArgs) =>
         workspace.ClearProcessLaneFocus();
 
-    private void StartExploring(object? sender, RoutedEventArgs eventArgs) => BeginCapture();
+    private void StartExploring(object? sender, RoutedEventArgs eventArgs) => StartChosenCapture();
+
+    /// <summary>Starts the capture the Keep choice names: Explore, or the messages of processes the person now chooses.</summary>
+    private void StartChosenCapture()
+    {
+        if (KeepChoice.Content)
+        {
+            ChooseContentCapture();
+        }
+        else
+        {
+            BeginCapture();
+        }
+    }
 
     /// <summary>The pointer equivalent of E: one step to the current rung's source records (section 3.2).</summary>
     private void ShowSourceRecords(object? sender, RoutedEventArgs eventArgs) => _ = workspace.ShowEvidence();
@@ -2446,7 +2459,34 @@ public sealed partial class MainWindow : Window, IDisposable
 
     private static TextBlock Paragraph(string text) => new() { Text = text, TextWrapping = Avalonia.Media.TextWrapping.Wrap };
 
-    private async void BeginCapture()
+    /// <summary>
+    /// Asks what a content capture keeps - the person's own processes, its limits, the consent to see what is kept - and
+    /// starts it, to be reviewed as the broker prepares it before anything is recorded (§11.1, ADR-049).
+    /// </summary>
+    private async void ChooseContentCapture()
+    {
+        if (openingSession || finishingCapture is not null || captureTask is { IsCompleted: false })
+        {
+            return;
+        }
+
+        IReadOnlyList<SeenProcess> running = await Task.Run(BrokerContentReview.Running);
+        var chooser = new ContentCaptureWindow(running, BrokerContentReview.Running);
+        if (await chooser.ShowDialog<bool>(this) && !closed && chooser.Chosen is { } chosen)
+        {
+            BeginCapture(chosen);
+        }
+    }
+
+    /// <summary>Starts a content capture already chosen, as the chooser's Review does; a test uses it.</summary>
+    internal void BeginContentCapture(ContentCaptureChoice chosen) => BeginCapture(chosen);
+
+    /// <summary>Shows a content capture's review as the broker prepared it; true starts it.</summary>
+    private Task<bool> ReviewContent(BrokerEffectiveCaptureSummary summary, ContentCaptureChoice chosen) =>
+        Dispatcher.UIThread.InvokeAsync(async () =>
+            !closed && await new ContentCaptureReviewWindow(summary, chosen.Request.Mechanism, chosen.Seen).ShowDialog<bool>(this));
+
+    private async void BeginCapture(ContentCaptureChoice? content = null)
     {
         if (openingSession || finishingCapture is not null || captureTask is { IsCompleted: false })
         {
@@ -2460,13 +2500,22 @@ public sealed partial class MainWindow : Window, IDisposable
         evidencePolicy = EvidencePolicy.IncludeCorrelated;
         laneGrouping = LaneGrouping.Executable;
         collectorsAside = false;
-        ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Preparing Explore",
+        ApplyCaptureUpdate(new(CaptureUiPhase.Starting, content is null ? "Preparing Explore" : "Preparing the content capture",
             "Windows may ask for administrator approval to record system-wide events."));
         try
         {
             // Each publication is projected under the policy the window holds when it is projected, so a person's choice
             // made while recording holds from the next one on; the Keep choice says how long it records and what it keeps.
-            CaptureRunOptions options = KeepChoice.Options(() => evidencePolicy);
+            // A content capture records for the length it was given, keeps every record, and is reviewed before it starts.
+            CaptureRunOptions options = content is null
+                ? KeepChoice.Options(() => evidencePolicy)
+                : new()
+                {
+                    MaximumDurationSeconds = content.MaximumDurationSeconds,
+                    EvidencePolicy = () => evidencePolicy,
+                    Content = content,
+                    Review = summary => ReviewContent(summary, content),
+                };
             StartedWith = options;
             captureTask = Task.Run(() => DesktopCaptureRunner.RunAsync(
                 update => ReceiveCaptureUpdate(run, update), captureStop.Token, options));
@@ -2498,9 +2547,27 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         CaptureKeepChoice choice = KeepChoice;
-        CaptureKeepNote.Text = choice.Keep is null ? string.Empty : "This capture " + choice.Explanation;
-        CaptureKeepNote.IsVisible = choice.Keep is not null;
+        CaptureKeepNote.Text = Explained(choice) ? "This capture " + choice.Explanation : string.Empty;
+        CaptureKeepNote.IsVisible = Explained(choice);
         ToolTip.SetTip(CaptureKeepSelector, choice.Label + ": " + choice.Explanation);
+        NameStart(unavailable: phase == CaptureUiPhase.Unavailable);
+    }
+
+    /// <summary>Whether the card says beneath the Keep choice what it does: every choice but the default does.</summary>
+    private static bool Explained(CaptureKeepChoice choice) => choice.Keep is not null || choice.Content;
+
+    /// <summary>
+    /// Names the card's start action for the Keep choice: starting Explore, retrying it once it could not run, or choosing
+    /// the processes whose messages a content capture keeps.
+    /// </summary>
+    private void NameStart(bool unavailable)
+    {
+        bool content = KeepChoice.Content;
+        StartExploringButton.Content = content ? "Choose processes…"
+            : unavailable && StartedWith?.Content is null ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
+        AutomationProperties.SetHelpText(StartExploringButton, content
+            ? "Choose your own processes whose HTTP messages a capture keeps (Ctrl+R); you review it before anything is recorded"
+            : "Start the default Explore capture");
     }
 
     /// <summary>
@@ -2550,7 +2617,9 @@ public sealed partial class MainWindow : Window, IDisposable
         phase = update.Phase;
         CaptureStatus.Text = update.Headline;
         bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
-        StartExploringButton.Content = unavailable ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
+
+        // Retrying is offered for the capture that could not run, and why it could not is on hover.
+        NameStart(unavailable);
         ToolTip.SetTip(StartExploringButton, unavailable ? update.Detail : null);
         // An unavailable capture is a warning in words: caution ink, never a mechanism's hue (§6.6).
         CaptureStatus.Classes.Set("caution", unavailable);
@@ -2574,7 +2643,7 @@ public sealed partial class MainWindow : Window, IDisposable
         // actions that wait for it to end, and the words about starting one, give the ranked list the rail's height.
         StartExploringButton.IsVisible = !busy;
         CaptureKeepRow.IsVisible = !busy;
-        CaptureKeepNote.IsVisible = !busy && KeepChoice.Keep is not null;
+        CaptureKeepNote.IsVisible = !busy && Explained(KeepChoice);
         OpenSavedSessionButton.IsVisible = !busy;
         InvestigationButton.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;

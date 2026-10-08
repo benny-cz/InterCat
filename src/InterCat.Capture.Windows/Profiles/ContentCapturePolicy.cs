@@ -94,7 +94,7 @@ public static class ContentCapturePolicyCompiler
     /// scopes a source that cannot select channels before anything is kept: the process scope is then the whole scope,
     /// and the request says so rather than naming channels nothing would enforce.
     /// </summary>
-    public const string EveryChannel = "*";
+    public const string EveryChannel = ContentCaptureRequest.EveryChannel;
 
     public static string? Validate(ContentCaptureRequest? request)
     {

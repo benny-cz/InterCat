@@ -1,7 +1,7 @@
 # ADR-049: The broker keeps content only from its client's own processes, each named by its PID and start, held while it records
 
 - Status: accepted; revision 451 (decisions 1 and 3 at prepare), revision 452 (decisions 2 and 4 at start), revision
-  453 (`icat capture --profile content`); the window's follows
+  453 (`icat capture --profile content`), revision 454 (the window's, reviewed before it starts)
 - Date: 2026-10-08
 - Relates to: §9, §11, §11.1, R16, R22, P18, P19, ADR-036, ADR-037, ADR-047, `contracts/broker-v1.md` §2-§3,
   `contracts/content-v1.md`

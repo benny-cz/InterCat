@@ -103,9 +103,9 @@ internal static class CaptureCommand
         var seen = new Dictionary<int, SeenProcess>();
         foreach (int processId in request.Content?.ProcessIds ?? [])
         {
-            if (ContentProcessReview.See(processId) is not { } running)
+            if (BrokerContentReview.See(processId) is not { } running)
             {
-                ConsoleUi.Failure(ContentProcessReview.NotRunning(processId));
+                ConsoleUi.Failure(BrokerContentReview.NotRunning(processId));
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -196,7 +196,7 @@ internal static class CaptureCommand
 
         // A process the broker pinned that is not the one seen under its ID before asking - its ID passed to another
         // between - is never recorded; the prepared plan is let go unstarted (R22).
-        if (ContentProcessReview.Mismatch(prepared.Summary, seen, TimeZoneInfo.Local) is { } changed)
+        if (BrokerContentReview.Mismatch(prepared.Summary, seen, TimeZoneInfo.Local) is { } changed)
         {
             ConsoleUi.Failure(changed + " Nothing was recorded.");
             return InterCatExitCode.PermissionOrCapabilityFailure;
@@ -492,7 +492,7 @@ internal static class CaptureCommand
         ConsoleUi.Field("Sources", string.Join(", ", summary.Sources.Select(source => source.SourceId)));
         if (content is not null)
         {
-            foreach ((string label, string value) in ContentProcessReview.Lines(summary, content.Mechanism, seen, TimeZoneInfo.Local))
+            foreach ((string label, string value) in BrokerContentReview.Lines(summary, content.Mechanism, seen, TimeZoneInfo.Local))
             {
                 ConsoleUi.Field(label, value);
             }
@@ -545,7 +545,7 @@ internal static class CaptureCommand
         // Kept content is restricted evidence beside the journal (ADR-036): how much, never a byte of it.
         if (document.Content is { } content)
         {
-            ConsoleUi.Field("Content kept", CaptureContent.Statement(content.Kept));
+            ConsoleUi.Field("Content kept", SessionContentKept.Statement(content.Kept));
         }
 
         if (document.Reason is { } reason)

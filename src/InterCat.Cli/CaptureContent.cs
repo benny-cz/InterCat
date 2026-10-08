@@ -59,44 +59,7 @@ internal static class CaptureContent
             MaximumRecordBytes = content.MaximumRecordBytes,
             MaximumSessionBytes = content.MaximumSessionBytes,
             Inspection = content.Inspection,
-            Kept = Kept(derived),
+            Kept = SessionContentKept.Read(derived),
         };
-    }
-
-    /// <summary>What a capture's content came to, in words: how much of how many messages, whole, cut or not kept.</summary>
-    public static string Statement(SessionContentSummary? kept)
-    {
-        if (kept is null)
-        {
-            return "unknown: the session published nothing, or its content could not be read";
-        }
-
-        string sums = kept.Records == 0
-            ? "none: no message of the processes named was kept"
-            : $"{ConsoleUi.Bytes(kept.KeptBytes)} of {CountText.Of(kept.Records, "message")}: {ConsoleUi.Count(kept.Whole)} "
-                + $"kept whole, {ConsoleUi.Count(kept.Cut)} cut to the record limit, {ConsoleUi.Count(kept.Omitted)} not kept "
-                + "once the content limit was reached";
-        return kept.Problem is { } problem ? $"{sums}; some could not be read, so these sums leave it out: {problem}" : sums;
-    }
-
-    private static SessionContentSummary? Kept(SessionStore? derived)
-    {
-        if (derived is null)
-        {
-            return null;
-        }
-
-        try
-        {
-            using EvidenceLease lease = derived.AcquireLease();
-            SessionManifestV1 manifest = lease.Manifest;
-            return manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content)
-                ? SessionContentIndex.Read(derived.Root, manifest, CancellationToken.None).Summarize()
-                : SessionContentIndex.Empty.Summarize();
-        }
-        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException)
-        {
-            return null;
-        }
     }
 }

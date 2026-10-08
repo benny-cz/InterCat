@@ -96,6 +96,112 @@ public sealed class DesktopCaptureTests
             BrokerJournalPublicationPolicy.IntervalMilliseconds(rolling.Publication, 86_400)));
     }
 
+    [Fact(DisplayName = "P19: the window asks for a content capture of the processes a person chose, every exchange of theirs within the limits chosen")]
+    public void AContentCaptureAsksForTheChosenProcesses()
+    {
+        DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var choice = new ContentCaptureChoice(
+            [new(4_242, "client", started), new(5_150, null, started.AddSeconds(1))],
+            64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, 3_600);
+        BrokerPrepareCaptureRequest request = DesktopCaptureRunner.ContentRequest(choice);
+        Assert.Equal(("content", (Mechanism?)null, 0, false, false), (request.ProfileId, request.FocusedMechanism,
+            request.FocusedProcessIds.Count, request.AllowBroaderCapture, request.RequestOriginalDiagnosticEtl));
+        Assert.Equal((BrokerRetentionPolicy.StopAtLimit, BrokerJournalPublication.Live, (int?)null),
+            (request.Retention, request.Publication, request.KeptWindowSeconds));
+        Assert.Equal(new BrokerCaptureQuota(3_600, 1L << 30, 1L << 30), request.Quota);
+
+        // Every exchange of the processes chosen, by the one content source a person can name, within the chosen limits.
+        ContentCaptureRequest content = request.Content!;
+        Assert.Equal((ContentSources.WinInetCapture, Mechanism.Http, 64 * 1024, 16L * 1024 * 1024, ContentRetentionMode.StopAtLimit,
+                ContentInspectionMode.Disabled),
+            (content.SourceId, content.Mechanism, content.MaximumRecordBytes, content.MaximumSessionBytes, content.Retention,
+                content.Inspection));
+        Assert.Equal([4_242, 5_150], content.ProcessIds);
+        Assert.Equal([ContentCaptureRequest.EveryChannel], content.ChannelSelectors);
+
+        // Each process as the window saw it, by its ID, which the broker's pinned starts are compared with.
+        Assert.Equal([4_242, 5_150], choice.Seen.Keys.Order());
+        Assert.Same(choice.Processes[1], choice.Seen[5_150]);
+    }
+
+    [Fact(DisplayName = "R22: the window starts a content capture only after its review, with a plan prepared again that keeps what was reviewed")]
+    public void AContentCaptureStartsOnlyAfterItsReview() => SingleThreadedContext.Run(async () =>
+    {
+        DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        var choice = new ContentCaptureChoice([new(4_242, "client", started)], 64 * 1024, 16L * 1024 * 1024,
+            ContentInspectionMode.Disabled, 600);
+        BrokerPrepareCaptureResponse prepared = Prepared(started, "first");
+        var reports = new List<CaptureUiUpdate>();
+        int preparedAgain = 0;
+        Task<BrokerPrepareCaptureResponse> Again(BrokerPrepareCaptureResponse response)
+        {
+            preparedAgain++;
+            return Task.FromResult(response);
+        }
+
+        // Without a review, which only a test omits, the plan prepared starts as it is.
+        Assert.Same(prepared, await DesktopCaptureRunner.ReviewContentAsync(prepared, choice, null, () => Again(prepared), reports.Add));
+        Assert.Equal((0, 0), (reports.Count, preparedAgain));
+
+        // A process the broker pinned that is not the one chosen - its ID passed to another between - is refused unreviewed.
+        bool reviewed = false;
+        Assert.Null(await DesktopCaptureRunner.ReviewContentAsync(Prepared(started.AddSeconds(1), "other"), choice,
+            _ => Task.FromResult(reviewed = true), () => Again(prepared), reports.Add));
+        Assert.False(reviewed);
+        Assert.Equal((CaptureUiPhase.Unavailable, "The content capture is unavailable here"), (reports[^1].Phase, reports[^1].Headline));
+        Assert.StartsWith("Process 4242 is not the one named: ", reports[^1].Detail, StringComparison.Ordinal);
+        Assert.EndsWith(" Nothing was recorded.", reports[^1].Detail, StringComparison.Ordinal);
+
+        // A person who does not start it after its review starts nothing, and nothing is prepared again.
+        reports.Clear();
+        Assert.Null(await DesktopCaptureRunner.ReviewContentAsync(prepared, choice, summary => Task.FromResult(false),
+            () => Again(prepared), reports.Add));
+        Assert.Equal([(CaptureUiPhase.Starting, "Review what the content capture keeps"), (CaptureUiPhase.Complete, "Content capture not started")],
+            reports.Select(update => (update.Phase, update.Headline)));
+        Assert.Equal(0, preparedAgain);
+
+        // Started, it is prepared again and starts with the new plan, once that keeps what was reviewed.
+        BrokerPrepareCaptureResponse fresh = Prepared(started, "second");
+        BrokerEffectiveCaptureSummary? shown = null;
+        Assert.Same(fresh, await DesktopCaptureRunner.ReviewContentAsync(prepared, choice,
+            summary => Task.FromResult((shown = summary) is not null), () => Again(fresh), reports.Add));
+        Assert.Same(prepared.Summary, shown);
+        Assert.Equal(1, preparedAgain);
+
+        // A plan that changed since its review, or that the broker no longer prepares, starts nothing and says why.
+        foreach ((BrokerPrepareCaptureResponse again, string why) in new[]
+        {
+            (Prepared(started.AddMilliseconds(5), "third"), "What the broker would record changed since you reviewed it: process 4242 "
+                + "is now the one that started at "),
+            (new BrokerPrepareCaptureResponse(false, BrokerPrepareRefusalCode.ContentProcessRefused,
+                "Process 4242 runs as another user. Content is kept only from your own processes.", null, prepared.Summary),
+                "What the broker would record changed since you reviewed it: Process 4242 runs as another user. Content is kept "
+                + "only from your own processes. Nothing was recorded; choose the processes again to review it anew."),
+        })
+        {
+            Assert.Null(await DesktopCaptureRunner.ReviewContentAsync(prepared, choice, _ => Task.FromResult(true), () => Again(again),
+                reports.Add));
+            Assert.Equal((CaptureUiPhase.Unavailable, "The content capture changed since its review"), (reports[^1].Phase, reports[^1].Headline));
+            Assert.StartsWith(why, reports[^1].Detail, StringComparison.Ordinal);
+        }
+    });
+
+    /// <summary>A content capture of process 4242 prepared from the start <paramref name="started"/>, under a grant named so.</summary>
+    private static BrokerPrepareCaptureResponse Prepared(DateTimeOffset started, string token) => new(
+        true,
+        null,
+        null,
+        new PreparedPlanGrant(token, "sha256:" + new string('a', 64), started, started.AddSeconds(30)),
+        new BrokerEffectiveCaptureSummary(
+            "content", "content", AdmissionMode.ScopedContent, AdmissionMode.ScopedContent, null, null, [4_242], [4_242],
+            true, false, false,
+            [new BrokerEffectiveSourceSummary(ContentSources.WinInetCapture, ProviderProcessScope.ProcessFiltered, [4_242], false, "Content.")],
+            "Content is kept only from the named processes.", "WinINet keeps each HTTP exchange's messages.",
+            new BrokerCaptureQuota(600, 1L << 30, 1L << 30), BrokerRetentionPolicy.StopAtLimit, [], BrokerJournalPublication.Live,
+            2_000, null,
+            new BrokerEffectiveContentSummary(ContentSources.WinInetCapture, [started], 64 * 1024, 16L * 1024 * 1024,
+                ContentInspectionMode.Disabled, [ContentCaptureRequest.EveryChannel])));
+
     [Fact]
     public void EffectiveCaptureReviewStatesSourceScopeAndLimits()
     {

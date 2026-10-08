@@ -85,6 +85,13 @@ moments' lifecycle and no content. A capture whose kept content reaches the sess
 (stop-at-limit, ADR-049 decision 4), and its status says so in place of its duration's: `The content it kept reached
 the 16 MiB its request allows; the admitted prefix was finalized.`
 
+A client that has a person review a content capture before it starts - the window does - prepares it again when they
+confirm, since a grant is held for 30 seconds (section 4) and a review for as long as a person reads, and starts the
+new plan only when its summary keeps what was reviewed: the same processes from the same starts, the same content
+source, channels, limits and consent, the same sources, collection statement and disclosure, and the same limits.
+Before either, it compares the start the broker pinned for each process with the one it saw under that ID when the
+process was chosen, and starts nothing when they differ (R22).
+
 ## 3. Prepared-plan digest
 
 The digest is `sha256:` followed by 64 lowercase hexadecimal characters. Its input starts with the

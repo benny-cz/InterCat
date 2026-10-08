@@ -198,7 +198,8 @@ the named processes alone, by the session's process filter; lifecycle stays whol
 with it (§2). Since revision 451 the broker prepares such a request only of its client's own processes, each named by
 its ID and its start, and digests the policy, and since revision 452 starts one, holding those processes while it
 records and stopping at the session limit (`contracts/broker-v1.md` §2.1, ADR-049); since revision 453
-`icat capture --profile content` asks it for one in `icat record`'s words.
+`icat capture --profile content` asks it for one in `icat record`'s words, and since revision 454 the window does, its
+processes chosen from the person's own and the broker's review shown before anything is recorded.
 
 | | |
 |---|---|

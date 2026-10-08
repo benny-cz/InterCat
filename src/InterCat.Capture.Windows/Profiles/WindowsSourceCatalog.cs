@@ -260,7 +260,7 @@ public static class WindowsSourceCatalog
     ];
 
     /// <summary>WinINet's own capture of an HTTP exchange's buffers, for the processes a capture names (ADR-037).</summary>
-    public const string WinInetCaptureSourceId = "etw/manifest/Microsoft-Windows-WinINet-Capture";
+    public const string WinInetCaptureSourceId = ContentSources.WinInetCapture;
 
     /// <summary>The capture events' own keywords - send, receive, personal data present, packet - and not the operational channel's.</summary>
     public const ulong WinInetCaptureKeywords = 0x0000_0603_0000_0000;

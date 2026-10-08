@@ -88,6 +88,48 @@ public sealed record CaptureRunOptions
     /// own writer (§20.2, ADR-045); null keeps every record. The broker's evidence keeps every record until it stops.
     /// </summary>
     public RollingRetentionPolicy? Rolling { get; init; }
+
+    /// <summary>
+    /// A content capture of the person's own processes, each as the window saw it when it was chosen (ADR-049); null
+    /// records Explore. It keeps what it records until its content limit stops it, so it keeps no rolling window.
+    /// </summary>
+    public ContentCaptureChoice? Content { get; init; }
+
+    /// <summary>
+    /// Shows a content capture's review as the broker prepared it, and answers whether to start it. Nothing is recorded
+    /// before a person has seen what would be kept (§11.1); without a review a content capture starts unreviewed, which
+    /// only a test asks for.
+    /// </summary>
+    public Func<BrokerEffectiveCaptureSummary, Task<bool>>? Review { get; init; }
+}
+
+/// <summary>
+/// A content capture as the window's dialog chose it (ADR-049): the processes as the window saw them, the limits a message
+/// and the capture's content may reach, the consent to see what is kept, and how long it may record. It keeps WinINet's
+/// HTTP exchanges, every one of the processes', the one content source a person can ask for by name.
+/// </summary>
+public sealed record ContentCaptureChoice(
+    IReadOnlyList<SeenProcess> Processes,
+    int MaximumRecordBytes,
+    long MaximumSessionBytes,
+    ContentInspectionMode Inspection,
+    int MaximumDurationSeconds)
+{
+    /// <summary>The content request it makes of the broker: its processes' every HTTP exchange, within its limits.</summary>
+    public ContentCaptureRequest Request => new()
+    {
+        SourceId = ContentSources.WinInetCapture,
+        Mechanism = Mechanism.Http,
+        ProcessIds = [.. Processes.Select(process => process.ProcessId)],
+        ChannelSelectors = [ContentCaptureRequest.EveryChannel],
+        MaximumRecordBytes = MaximumRecordBytes,
+        MaximumSessionBytes = MaximumSessionBytes,
+        Retention = ContentRetentionMode.StopAtLimit,
+        Inspection = Inspection,
+    };
+
+    /// <summary>Each process as the window saw it when it was chosen, by its ID.</summary>
+    public IReadOnlyDictionary<int, SeenProcess> Seen => Processes.ToDictionary(process => process.ProcessId);
 }
 
 /// <summary>
@@ -120,11 +162,24 @@ public static class DesktopCaptureRunner
     /// day-long limit (`contracts/broker-v1.md` §5.1).
     /// </param>
     public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, TimeSpan? keepWindow = null) => new(
-        "explore", null, [], false, false,
-        new BrokerCaptureQuota(maximumDurationSeconds, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024),
+        "explore", null, [], false, false, Quota(maximumDurationSeconds),
         keepWindow is null ? BrokerRetentionPolicy.StopAtLimit : BrokerRetentionPolicy.ReleaseFollowed,
         null, BrokerJournalPublication.Live,
         keepWindow is { } keep ? (int)Math.Ceiling(keep.TotalSeconds) : null);
+
+    /// <summary>
+    /// A content capture of <paramref name="choice"/>'s processes (ADR-049): the Content profile and its request, recording
+    /// for the choice's length under Explore's journal and disk limits, published live as Explore is.
+    /// </summary>
+    public static BrokerPrepareCaptureRequest ContentRequest(ContentCaptureChoice choice)
+    {
+        ArgumentNullException.ThrowIfNull(choice);
+        return new("content", null, [], false, false, Quota(choice.MaximumDurationSeconds), BrokerRetentionPolicy.StopAtLimit,
+            choice.Request, BrokerJournalPublication.Live);
+    }
+
+    private static BrokerCaptureQuota Quota(int maximumDurationSeconds) =>
+        new(maximumDurationSeconds, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024);
 
     /// <summary>
     /// The limits a prepared capture stops at (§12.1 S5). One the broker releases for keeping <paramref name="rolling"/>'s
@@ -201,7 +256,9 @@ public static class DesktopCaptureRunner
             return;
         }
 
-        report(new(CaptureUiPhase.Starting, "Starting Explore",
+        // A content capture is named as itself wherever Explore would be.
+        string name = options.Content is null ? "Explore" : "The content capture";
+        report(new(CaptureUiPhase.Starting, options.Content is null ? "Starting Explore" : "Starting the content capture",
             "Windows will ask once to approve the broker recording system-wide events. The viewer stays unprivileged."));
         BrokerConnection? connection = null;
         CaptureId? captureId = null;
@@ -220,19 +277,31 @@ public static class DesktopCaptureRunner
                 throw new InvalidDataException("The capture broker protocol is incompatible. Reinstall InterCat.");
             }
 
-            BrokerWireResponse response = await client.SendAsync(
-                    ExploreRequest(options.MaximumDurationSeconds, options.Rolling?.Keep), stop)
-                .ConfigureAwait(false);
-            if (response is not BrokerPrepareCaptureResponse prepared)
-            {
-                throw new InvalidDataException("The broker did not return a capture review.");
-            }
-
+            BrokerPrepareCaptureRequest request = options.Content is { } content
+                ? ContentRequest(content)
+                : ExploreRequest(options.MaximumDurationSeconds, options.Rolling?.Keep);
+            BrokerPrepareCaptureResponse prepared = await PrepareAsync(client, request, stop).ConfigureAwait(false);
             if (!prepared.Prepared || prepared.Grant is null)
             {
-                report(new(CaptureUiPhase.Unavailable, "Explore is unavailable here",
+                report(new(CaptureUiPhase.Unavailable, $"{name} is unavailable here",
                     prepared.RefusalReason ?? "The broker refused this profile. No capture was started."));
                 return;
+            }
+
+            // A content capture starts only once a person has seen what the broker would keep, and only of the processes
+            // they chose (ADR-049, R22).
+            if (options.Content is { } chosen)
+            {
+                Func<Task<BrokerPrepareCaptureResponse>> prepareAgain = () => OperatingSystem.IsWindows()
+                    ? PrepareAsync(client, request, stop)
+                    : throw new PlatformNotSupportedException();
+                if (await ReviewContentAsync(prepared, chosen, options.Review, prepareAgain, report).ConfigureAwait(false)
+                    is not { } reviewed)
+                {
+                    return;
+                }
+
+                prepared = reviewed;
             }
 
             summary = Describe(prepared.Summary);
@@ -243,11 +312,11 @@ public static class DesktopCaptureRunner
                 PublicationInterval = TimeSpan.FromMilliseconds(prepared.Summary.PublicationIntervalMilliseconds),
             };
             report(new(CaptureUiPhase.Starting, "Capture plan ready", summary, summary));
-            response = await client.SendAsync(
-                new BrokerStartCaptureRequest(prepared.Grant.Token, Guid.NewGuid()), stop).ConfigureAwait(false);
+            BrokerWireResponse response = await client.SendAsync(
+                new BrokerStartCaptureRequest(prepared.Grant!.Token, Guid.NewGuid()), stop).ConfigureAwait(false);
             if (response is not BrokerStartCaptureResponse { Code: BrokerOperationCode.Started, CaptureId: { } started })
             {
-                report(new(CaptureUiPhase.Unavailable, "Explore did not start",
+                report(new(CaptureUiPhase.Unavailable, $"{name} did not start",
                     response is BrokerStartCaptureResponse failed
                         ? failed.FailureReason ?? failed.Code.ToString()
                         : "The broker did not confirm the capture.", summary));
@@ -261,7 +330,8 @@ public static class DesktopCaptureRunner
             string evidencePath = status.EvidenceDirectory
                 ?? throw new InvalidDataException("The broker did not publish an evidence location.");
             string sessionRoot = options.SessionRoot ?? DefaultSessionRoot();
-            sessionPath = Path.Combine(sessionRoot, $"explore-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}-{started.Value:N}");
+            sessionPath = Path.Combine(sessionRoot,
+                $"{request.ProfileId}-{DateTimeOffset.UtcNow:yyyyMMddTHHmmssZ}-{started.Value:N}");
 
             // Where this session's evidence is, held beside the session while it is followed, so a later launch can
             // finish a follow that ends early (§3.1 step 6). Without it only that offer is lost, never the capture.
@@ -354,7 +424,12 @@ public static class DesktopCaptureRunner
                                                     + "session is kept."
                                                 : (pinStop is { } pinned ? "A pin stopped the capture. " + pinned + " " : string.Empty)
                                                     + (final.FailureReason
-                                                        ?? "The capture is closed. All published evidence was followed."),
+                                                        ?? "The capture is closed. All published evidence was followed.")
+                                                    + (options.Content is null
+                                                        ? string.Empty
+                                                        : " Content kept: "
+                                                            + SessionContentKept.Statement(SessionContentKept.Read(derivation.Store))
+                                                            + "."),
                                         summary, sessionPath));
                                     return;
                                 }
@@ -516,6 +591,58 @@ public static class DesktopCaptureRunner
         }
     }
 
+    /// <summary>
+    /// The plan a content capture starts with, or null once <paramref name="report"/> has said why none starts: a process
+    /// the broker pinned that is not the one chosen - its ID passed to another between - is refused; a person who does not
+    /// start it after its <paramref name="review"/> starts nothing; and one they start is prepared again, since a review
+    /// takes longer than a prepared plan is held for, and starts only if it keeps what was reviewed (broker-v1 §2.1).
+    /// Without a review, which only a test omits, the plan prepared starts as it is.
+    /// </summary>
+    internal static async Task<BrokerPrepareCaptureResponse?> ReviewContentAsync(
+        BrokerPrepareCaptureResponse prepared,
+        ContentCaptureChoice chosen,
+        Func<BrokerEffectiveCaptureSummary, Task<bool>>? review,
+        Func<Task<BrokerPrepareCaptureResponse>> prepareAgain,
+        Action<CaptureUiUpdate> report)
+    {
+        ArgumentNullException.ThrowIfNull(prepared);
+        ArgumentNullException.ThrowIfNull(chosen);
+        ArgumentNullException.ThrowIfNull(prepareAgain);
+        ArgumentNullException.ThrowIfNull(report);
+        if (BrokerContentReview.Mismatch(prepared.Summary, chosen.Seen, TimeZoneInfo.Local) is { } changed)
+        {
+            report(new(CaptureUiPhase.Unavailable, "The content capture is unavailable here", changed + " Nothing was recorded."));
+            return null;
+        }
+
+        if (review is null)
+        {
+            return prepared;
+        }
+
+        report(new(CaptureUiPhase.Starting, "Review what the content capture keeps", "Nothing is recorded until you start it."));
+        if (!await review(prepared.Summary).ConfigureAwait(false))
+        {
+            report(new(CaptureUiPhase.Complete, "Content capture not started",
+                "You did not start it after its review. Nothing was recorded."));
+            return null;
+        }
+
+        BrokerPrepareCaptureResponse again = await prepareAgain().ConfigureAwait(false);
+        string? since = !again.Prepared || again.Grant is null
+            ? again.RefusalReason ?? "the broker no longer prepares it"
+            : BrokerContentReview.Changed(prepared.Summary, again.Summary, TimeZoneInfo.Local);
+        if (since is not null)
+        {
+            report(new(CaptureUiPhase.Unavailable, "The content capture changed since its review",
+                $"What the broker would record changed since you reviewed it: {since.TrimEnd('.')}. Nothing was recorded; "
+                + "choose the processes again to review it anew."));
+            return null;
+        }
+
+        return again;
+    }
+
     /// <summary>What a person does to record on once a pin stopped the capture: remove the pin, or let it allow more.</summary>
     internal const string PinGoOn =
         "To record on, remove the pin or keep its records allowing more, from Keep records…, and start exploring again.";
@@ -566,6 +693,12 @@ public static class DesktopCaptureRunner
             ? throw new InvalidOperationException("Windows did not provide a local user-data directory.")
             : Path.Combine(userData, "InterCat", "Sessions");
     }
+
+    [SupportedOSPlatform("windows")]
+    private static async Task<BrokerPrepareCaptureResponse> PrepareAsync(
+        WindowsBrokerPipeClient client, BrokerPrepareCaptureRequest request, CancellationToken cancellationToken) =>
+        await client.SendAsync(request, cancellationToken).ConfigureAwait(false) as BrokerPrepareCaptureResponse
+        ?? throw new InvalidDataException("The broker did not return a capture review.");
 
     [SupportedOSPlatform("windows")]
     private static async Task<BrokerCaptureStatusResponse> StatusAsync(

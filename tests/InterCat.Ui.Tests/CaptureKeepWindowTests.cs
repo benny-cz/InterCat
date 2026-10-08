@@ -26,7 +26,7 @@ public sealed class CaptureKeepWindowTests
             Grid row = window.GetControl<Grid>("CaptureKeepRow");
 
             // Every record of a ten-minute capture, the first-run default: nothing to explain, nothing released.
-            Assert.Equal(["Every record, 10 minutes", "The last 10 minutes", "The last hour"],
+            Assert.Equal(["Every record, 10 minutes", "The last 10 minutes", "The last hour", "Your processes' messages"],
                 selector.Items.Cast<CaptureKeepChoice>().Select(choice => choice.Label));
             Assert.Same(CaptureKeepChoice.All[0], window.KeepChoice);
             Assert.False(note.IsVisible);
