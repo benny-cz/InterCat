@@ -299,7 +299,7 @@ public sealed class BrokerConnectionDispatcherTests
         var fixture = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
             "content-fixture", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, null)));
 
-        // So is a content request its source is admitted for: its evidence follower does not mirror content (ADR-037).
+        // So is a content request its source is admitted for: the broker prepares the metadata-only policy alone (ADR-037).
         var content = Assert.IsType<BrokerErrorResponse>(await Dispatch(dispatcher, new BrokerPrepareCaptureRequest(
             "content", null, [], false, false, Quota, BrokerRetentionPolicy.StopAtLimit, new ContentCaptureRequest
             {

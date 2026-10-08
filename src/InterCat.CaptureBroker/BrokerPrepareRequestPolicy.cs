@@ -31,8 +31,8 @@ public static class BrokerPrepareRequestPolicy
             throw new InvalidDataException("PrepareCapture requires a canonical catalog profile ID.");
         }
 
-        // The content fixture is InterCat's own test instrument, recorded by icat record into a directory of one's own; an
-        // evidence session's follower does not mirror content, so the broker never records it (ADR-036).
+        // The content fixture is InterCat's own test instrument, recorded by icat record into a directory of one's own; the
+        // broker never records it (ADR-036).
         if (profile.Kind == CaptureProfileKind.ContentFixture)
         {
             throw new InvalidDataException(
@@ -65,13 +65,13 @@ public static class BrokerPrepareRequestPolicy
                 throw new InvalidDataException(contentProblem);
             }
 
-            // A request that would keep content records through icat record only: an evidence session's follower does not
-            // mirror content, so the broker previews such a request and never starts it (ADR-036, ADR-037).
+            // A request that would keep content records through icat record only: the broker's prepared plan admits the
+            // reviewed metadata-only policy alone (broker-v1 §2), so the broker previews such a request and never starts
+            // it (ADR-036, ADR-037). An evidence session's follower mirrors content since ADR-047.
             if (ContentCapturePolicyCompiler.Compile(request.Content!).AdmissionPolicyAvailable)
             {
                 throw new InvalidDataException(
-                    "A content capture records through icat record only, never through the broker: its evidence follower "
-                    + "does not mirror content.");
+                    "A content capture records through icat record only; the capture broker does not prepare one.");
             }
         }
         else if (request.Content is not null)

@@ -113,14 +113,6 @@ internal static class RecordCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        // Kept content is published beside its journal chunk, which an evidence session's follower does not mirror.
-        if (profile is CaptureProfileKind.ContentFixture or CaptureProfileKind.Content && evidenceOnly)
-        {
-            ConsoleUi.Failure("--evidence-only records metadata evidence for a follower, which does not mirror kept content; "
-                + "record content without it.");
-            return InterCatExitCode.InvalidInvocation;
-        }
-
         Mechanism? mechanism = mechanismOption?.ToUpperInvariant() switch
         {
             null => null,
@@ -567,12 +559,14 @@ internal static class RecordCommand
         ConsoleUi.Line($"  --publish-every (default {DefaultPublishSeconds} s) publishes what was recorded so far as a new generation, one");
         ConsoleUi.Line("  journal chunk each, so session, processes and metric can read the capture while it records; 0");
         ConsoleUi.Line("  publishes once, when it stops. Its coverage ledger is published with the last generation.");
-        ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks, plan and ledger - and");
-        ConsoleUi.Line("  derives nothing in the elevated process; icat follow derives the session from it (ADR-027).");
+        ConsoleUi.Line("  --evidence-only publishes the admitted evidence alone - journal chunks with the content kept of");
+        ConsoleUi.Line("  their records, plan and ledger - and derives nothing in the elevated process; icat follow");
+        ConsoleUi.Line("  derives the session from it, mirroring the content with its chunks (ADR-027).");
         ConsoleUi.Line("  --profile content keeps the message bytes of a source admitted for content - WinINet's HTTP");
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");
-        ConsoleUi.Line("  says every exchange of theirs is kept. It stops when kept content reaches --max-session-bytes,");
-        ConsoleUi.Line("  and it records through icat record only, never through the broker.");
+        ConsoleUi.Line("  says every exchange of theirs is kept. It stops when kept content reaches --max-session-bytes.");
+        ConsoleUi.Line("  icat capture --profile content takes the same request through the broker. --profile");
+        ConsoleUi.Line("  content-fixture, InterCat's own test instrument, records through icat record only.");
     }
 }

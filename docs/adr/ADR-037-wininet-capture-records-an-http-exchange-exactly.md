@@ -117,7 +117,8 @@ names, not by time.
 5. **Admitted under a request.** Revision 239 measured its overhead - Low, a median 0.71 CPU pp and 2.5% of the
    workload's time over seven pairs - and admits it under a bounded Content request that names its processes and, since
    the source cannot select channels, every channel of theirs (`*`). `icat record --profile content` records it; the
-   broker never starts one, since its follower does not mirror content.
+   broker never starts one, since its follower does not mirror content. (Since revision 444 a follow mirrors it,
+   ADR-047, and `icat record --evidence-only` keeps it; the broker still prepares the metadata-only policy alone.)
 6. **What a record says of encryption: only what it knows.** A record's bytes are the application's message above any
    encryption of its connection, and are stated so; a record is never said to have crossed the wire in the clear, nor
    encrypted, since nothing in it says which. Because an HTTPS exchange is kept as its plaintext, headers, cookies and

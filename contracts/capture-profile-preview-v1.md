@@ -76,8 +76,9 @@ is `ScopedContent`, `bodyPolicy` is `scoped-content-request-v1`, `providers[]` e
 the requested `processIdsToInclude` alone, and `content.admissionPolicyAvailable` is true. Its
 `collectionStatement` says what the source's bytes are before anything is recorded: for WinINet, that an
 HTTPS exchange is kept as its plaintext, headers, cookies and authorization included (revision 243).
-`icat record --profile content` starts such a request; the broker refuses it, since its evidence follower
-does not mirror content.
+`icat record --profile content` starts such a request, as evidence only too, since an evidence follow
+mirrors content (ADR-047); the broker refuses it, since its prepared plan admits the reviewed metadata-only
+policy alone (`contracts/broker-v1.md` §2).
 
 For any other source the preview is request-only: `canStart` is false, `effectiveAdmission` and
 `bodyPolicy` are null, `providers[]` and approved content events/fields/classifications are empty, and

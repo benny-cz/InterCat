@@ -23,36 +23,12 @@ public sealed class ContentRecordingTests
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "content-tests");
         CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentFixture(8, 20, ContentInspectionMode.HexAndText);
         OwnedSessionPlan plan = Plan(policy);
-        IReadOnlyList<AdmittedSlotPlan> slots = plan.Sources[0].Events
-            .Single(descriptor => descriptor.EventId == ContentFixtureEventSource.MessageSentId).Slots;
-        int Slot(string field) => slots.Select((slot, index) => (slot, index)).Single(pair => pair.slot.FieldName == field).index;
         var host = new ScriptedHost();
         long now = Stopwatch.GetTimestamp();
         string[] messages = ["hello", "0123456789AB", "abcdefghij"];
         for (int index = 0; index < messages.Length; index++)
         {
-            byte[] message = Encoding.UTF8.GetBytes(messages[index]);
-            var admitted = new AdmittedEvent
-            {
-                SourceIndex = 0,
-                EventId = ContentFixtureEventSource.MessageSentId,
-                Version = ContentFixtureEventSource.EventVersion,
-                TimestampQpc = now + index,
-                TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
-                HeaderProcessId = 4_242,
-                HeaderThreadId = 4_243,
-                RecordOrdinal = index + 1,
-            };
-            admitted.SetSlot(Slot("processId"), 4_242);
-            admitted.SetSlot(Slot("conversation"), 1);
-            admitted.SetSlot(Slot("messageSize"), message.Length);
-
-            // What the callback copies: at most the record limit, with the length the message had.
-            int kept = Math.Min(message.Length, policy.ContentRecordLimit);
-            byte[] rented = ArrayPool<byte>.Shared.Rent(Math.Max(kept, 1));
-            message.AsSpan(0, kept).CopyTo(rented);
-            admitted.SetContent(rented, kept, message.Length);
-            host.Admit(admitted, new DeliveredRecord(plan.Sources[0].ProviderGuid, admitted.EventId, admitted.Version, admitted.TimestampQpc));
+            AdmitMessage(host, plan, Encoding.UTF8.GetBytes(messages[index]), now + index, index + 1);
         }
 
         LiveRecordingResult result = await LiveSessionRecorder.RecordAsync(
@@ -219,8 +195,39 @@ public sealed class ContentRecordingTests
         </instrumentationManifest>
         """;
 
+    /// <summary>
+    /// Admits one message the fixture's workload sent, its bytes copied as the callback copies them: at most the record
+    /// limit of the plan's policy, with the length the message had.
+    /// </summary>
+    internal static void AdmitMessage(ScriptedHost host, OwnedSessionPlan plan, byte[] message, long timestampQpc, long ordinal)
+    {
+        AdmittedEventPlan descriptor = plan.Sources[0].Events
+            .Single(candidate => candidate.EventId == ContentFixtureEventSource.MessageSentId);
+        int Slot(string field) =>
+            descriptor.Slots.Select((slot, index) => (slot, index)).Single(pair => pair.slot.FieldName == field).index;
+        var admitted = new AdmittedEvent
+        {
+            SourceIndex = 0,
+            EventId = ContentFixtureEventSource.MessageSentId,
+            Version = ContentFixtureEventSource.EventVersion,
+            TimestampQpc = timestampQpc,
+            TimestampUtcTicks = DateTimeOffset.UtcNow.UtcTicks,
+            HeaderProcessId = 4_242,
+            HeaderThreadId = 4_243,
+            RecordOrdinal = ordinal,
+        };
+        admitted.SetSlot(Slot("processId"), 4_242);
+        admitted.SetSlot(Slot("conversation"), 1);
+        admitted.SetSlot(Slot("messageSize"), message.Length);
+        int kept = Math.Min(message.Length, descriptor.BodyPolicy.ContentRecordLimit);
+        byte[] rented = ArrayPool<byte>.Shared.Rent(Math.Max(kept, 1));
+        message.AsSpan(0, kept).CopyTo(rented);
+        admitted.SetContent(rented, kept, message.Length);
+        host.Admit(admitted, new DeliveredRecord(plan.Sources[0].ProviderGuid, admitted.EventId, admitted.Version, admitted.TimestampQpc));
+    }
+
     /// <summary>A plan recording the content fixture alone, compiled from its catalog entry under <paramref name="policy"/>.</summary>
-    private static OwnedSessionPlan Plan(CompiledBodyAdmissionPolicy policy)
+    internal static OwnedSessionPlan Plan(CompiledBodyAdmissionPolicy policy)
     {
         WindowsSourceDefinition fixture = WindowsSourceCatalog.Find(WindowsSourceCatalog.ContentFixtureSourceId)!;
         SourceAdmissionPlan source = AdmissionPlanCompiler.Compile(fixture, ManifestParser.Parse(fixture.EmbeddedManifest!), 0,

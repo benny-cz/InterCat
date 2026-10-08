@@ -2254,6 +2254,23 @@ public sealed class CommandLineTests : IDisposable
         }
     }
 
+    [Fact(DisplayName = "I21: icat record takes a content profile with --evidence-only, since a follow mirrors the content it keeps")]
+    public async Task ContentIsRecordedAsEvidenceOnly()
+    {
+        // Only where no capture can start: on Windows an elevated test run would record.
+        if (OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        string directory = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N"));
+        (InterCatExitCode code, string output, string said) =
+            await Run("record", directory, "--profile", "content-fixture", "--evidence-only");
+        Assert.Equal((InterCatExitCode.PermissionOrCapabilityFailure, string.Empty), (code, output));
+        Assert.StartsWith("x Starting an ETW session requires elevation", said, StringComparison.Ordinal);
+        Assert.False(Directory.Exists(directory));
+    }
+
     [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]
     public async Task ContentIsReleasedOnlyWhenToldWhy()
     {

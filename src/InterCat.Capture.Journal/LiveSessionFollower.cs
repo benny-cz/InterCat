@@ -40,7 +40,8 @@ public sealed record FollowStep
 
 /// <summary>
 /// Follows a privileged recorder's evidence session from an ordinary process (§9, ADR-027). The recorder publishes
-/// admitted evidence only - journal chunks, the normalizer plan, finalization marker and optional coverage ledger - and nothing privileged derives,
+/// admitted evidence only - journal chunks with the content kept of their records, the normalizer plan, finalization
+/// marker and optional coverage ledger - and nothing privileged derives,
 /// queries or compacts. The follower mirrors each committed chunk byte for byte into a session of its own, checked
 /// against the evidence manifest's digest, derives its rows there exactly as a recording that derives in-process would,
 /// and copies the plan with the first chunk and finality evidence with the last. The derived session is an ordinary session:
@@ -52,6 +53,7 @@ public sealed record FollowStep
 /// release its own oldest interval meanwhile (ADR-043): the chunks it still holds are found among the evidence's by their
 /// bytes, so the follow goes on from them, counting the capture's chunks and records as before (ADR-044). The evidence
 /// session must still hold every chunk from the first; following across a release of the evidence's own chunks is refused.
+/// The content a capture kept of a chunk's records is mirrored with the chunk, byte for byte (content-v1 §2).
 /// </remarks>
 public sealed class LiveSessionFollower
 {
@@ -395,6 +397,19 @@ public sealed class LiveSessionFollower
             builder.StageCollectorIdentities(Read(evidence, collectors));
         }
 
+        // The content the capture kept of this chunk's records was published beside it, under its generation's number; it
+        // is copied byte for byte beside the mirrored chunk, under this generation's, so the two stay paired (content-v1 §2).
+        string pairedContent = ContentChunkV1.FileName(SegmentFormatV1.GenerationOfJournal(chunk.Name)
+            ?? throw new InvalidDataException($"'{chunk.Name}' is not named as a journal chunk is; nothing was mirrored."));
+        if (source.Dependencies.SingleOrDefault(dependency => dependency.Kind == StoreDependencyKind.Content
+            && dependency.Name.Equals(pairedContent, StringComparison.OrdinalIgnoreCase)) is { } content)
+        {
+            using FileStream kept = evidence.Root.OpenOwnedFile(
+                content.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+            RequireRecorded(kept, content, source);
+            builder.StageMirroredContent(kept, cancellationToken);
+        }
+
         DerivedGenerationResult published = builder.CompleteMirror(records, DateTimeOffset.UtcNow, cancellationToken);
         mirroredCalibration = calibration?.Digest ?? mirroredCalibration;
         mirroredCollectors |= collectors is not null;
@@ -479,20 +494,12 @@ public sealed class LiveSessionFollower
                 $"Generation {source.Generation} already has derived rows, so it is an ordinary session rather than "
                 + "evidence to follow. Open it directly.");
         }
-
-        // A follower mirrors journal chunks under its own generations; kept content, paired with its chunk's generation,
-        // is not mirrored yet, and following without it would drop evidence (content-v1 §2).
-        if (source.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
-        {
-            throw new InvalidOperationException(
-                $"Generation {source.Generation} keeps message content beside its journal, which a follower does not "
-                + "mirror yet. Nothing was followed.");
-        }
     }
 
     /// <summary>
     /// Evidence that released its own oldest chunks no longer holds the capture's journal from its first record, so a follow
-    /// would number what it derives from the wrong one: it is refused (ADR-027).
+    /// would number what it derives from the wrong one, and evidence that released its kept content would leave records
+    /// whose content went without the session saying so: both are refused (ADR-027, content-v1 §2).
     /// </summary>
     private static void RequireWholeEvidence(SessionManifestV1 source)
     {
@@ -503,6 +510,13 @@ public sealed class LiveSessionFollower
                 $"Evidence generation {source.Generation} released its oldest records, so it no longer holds the capture's "
                 + "journal from its first one, and a follow would number what it derives from the wrong record. Nothing was "
                 + "followed.");
+        }
+
+        if (source.LatestRelease(RetentionExtentKind.Content) is not null)
+        {
+            throw new InvalidDataException(
+                $"Evidence generation {source.Generation} released the content its capture kept, so a follow would keep "
+                + "records whose content went without saying so. Nothing was followed.");
         }
     }
 

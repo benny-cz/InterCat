@@ -2,7 +2,8 @@
 
 Status: **implemented** in plan revisions 234 to 239 (ADR-036, ADR-037): the chunk format, its publication and lifetime
 in the store, its readers and viewer (§4), and the capture paths that write one (§5): InterCat's own content fixture,
-and WinINet's HTTP exchanges for the processes a request names.
+and WinINet's HTTP exchanges for the processes a request names. Since revision 444 an evidence follow mirrors it with
+its journal chunk (§2, ADR-047).
 
 A content chunk holds the content a capture kept of the records of one journal chunk: the bytes a validated source
 recorded as a message's content, each with what a person needs to read it honestly (§11.2, I21). It is restricted
@@ -43,8 +44,14 @@ a journal: an additive generation, an index publication, a re-derivation and a c
 
 A chunk is released with its journal chunk: releasing a recording's journal chunk releases the chunk of the same
 generation in the same retention record. Releasing a chunk by name alone is refused, and so is a journal-prefix release
-that rewrites one journal while any chunk is kept, since it would leave content its records no longer have. A follower
-refuses an evidence session that names a chunk.
+that rewrites one journal while any chunk is kept, since it would leave content its records no longer have.
+
+Since revision 444 a follow (ADR-027) mirrors a chunk with its journal chunk (ADR-047): the evidence's bytes unchanged,
+checked against the length and digest its generation recorded and read whole first, in the generation that mirrors the
+journal chunk and under its number, so the two stay paired in the derived session and are released together there. A
+chunk names its capture and no generation, so the copy needs no rewriting. A follow refuses evidence that released its
+content, as it refuses evidence that released its records: the records' content would be gone without the session
+saying so.
 
 Since revision 306 every chunk can also be released at once, on its own: a **content release** (store-v1 §8). It
 publishes a generation that names no chunk and keeps everything else - every journal, row and derived file, the plan,
@@ -162,7 +169,7 @@ fixture:
 | Layout | `processId` i32 (the raising process, which names itself), `conversation` i64, `messageSize` u32, then `messageSize` bytes of `message`; read from the type that raises it |
 | Kept as | `ApplicationPayload`, encoding binary (the fixture declares no text encoding), direction by event, offset 0 |
 | Limits | 4,096 bytes a record; 16 MiB a session; inspection `hex-text` |
-| Recorded by | `icat record --profile content-fixture`, never through the broker, whose evidence follower refuses content (§2) |
+| Recorded by | `icat record --profile content-fixture`, as evidence only too, for `icat follow` to derive (§2); never through the broker (§5.1) |
 
 A content field is a message's bytes sized by a fixed length field before them, as the provider's manifest declares
 (`length=`). The capture copies at most the record limit of them in the callback, with the length the field states as
@@ -185,8 +192,10 @@ keeps that one source's content within the request's limits. It compiles only fo
 holds its process scope before persistence and whose capture impact is measured, and only when the request names what
 the source can hold: a source that cannot select channels before anything is kept is requested with the one selector
 `*`, every channel of the named processes, and any other selector is refused. The source's provider is enabled for
-the named processes alone, by the session's process filter; lifecycle stays whole-machine metadata. The broker
-previews such a request and never starts it, since its evidence follower does not mirror content.
+the named processes alone, by the session's process filter; lifecycle stays whole-machine metadata. With
+`--evidence-only` the elevated recorder publishes the content beside its chunks, and `icat follow` derives the session
+with it (§2). The broker previews such a request and never starts it: its prepared plan admits the reviewed
+metadata-only policy alone (`contracts/broker-v1.md` §2).
 
 | | |
 |---|---|
@@ -211,5 +220,6 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 - HTTP/2, compressed responses and asynchronous WinINet are unmeasured, and so are the other client libraries, which
   raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
-- An evidence follower that mirrors content, so a broker capture could keep it.
+- A broker capture that keeps content. An evidence follow mirrors it since revision 444; the broker's prepared plan
+  admits the metadata-only policy alone (`contracts/broker-v1.md` §2).
 - Content an imported file already holds (§11.1).

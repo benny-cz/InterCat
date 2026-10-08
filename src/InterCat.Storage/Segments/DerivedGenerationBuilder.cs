@@ -366,6 +366,36 @@ public sealed class DerivedGenerationBuilder : IDisposable
     }
 
     /// <summary>
+    /// Stages the content kept of a mirrored journal chunk's records (`contracts/content-v1.md` §2): an exact copy of the
+    /// chunk the evidence published beside it, under this generation's number, so the chunk stays paired with its
+    /// journal. It is read whole first, every fragment checked, and refused unless it is this capture's.
+    /// </summary>
+    public void StageMirroredContent(Stream contentBytes, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(contentBytes);
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (completed || contentStaged)
+        {
+            throw new InvalidOperationException("A generation stages its content once, before publication.");
+        }
+
+        if (!mirroring)
+        {
+            throw new InvalidOperationException(
+                "Mirrored content is kept beside a mirrored journal chunk; a generation that writes its journal stages its own.");
+        }
+
+        contentBytes.Position = 0;
+        _ = ContentChunkV1.Read(contentBytes, identity.CaptureId, cancellationToken);
+        StoreStagingFile file = store.Stage(ContentChunkV1.FileName(generation), StoreDependencyKind.Content);
+        staged.Add(file);
+        contentBytes.Position = 0;
+        contentBytes.CopyTo(file.Content);
+        _ = file.Complete();
+        contentStaged = true;
+    }
+
+    /// <summary>
     /// Begins a generation. The journal is staged immediately, because §20.1's first step is making the
     /// admitted evidence durable and the derived files may not precede it.
     /// </summary>
