@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
@@ -84,7 +85,7 @@ public sealed class IntervalSegmentReadTests
         Assert.Equal((90, 90), (counted.ObservedRows, counted.ChannelRecords[channel]));
     }
 
-    [Fact(DisplayName = "§12.1: a finished capture of RPC calls keeps them, so a reopen's first brush opens only the segments it meets; a generation that keeps none pairs them over every segment once")]
+    [Fact(DisplayName = "§12.1: a finished capture of RPC calls keeps them, so a reopen's first brush opens no segment, or without tiles only the segments it meets; a generation that keeps none pairs them over every segment once")]
     public void ABrushPairsRpcCallsOnce()
     {
         // The service control manager's linked calls in three segments of six records, cut as they arrived: the first spans
@@ -98,21 +99,34 @@ public sealed class IntervalSegmentReadTests
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
         string edge = Assert.Single(SessionOverviewProjector.Project(twin.Store).Edges, edge => edge.Mechanism == Mechanism.Rpc).Key;
 
-        // The finished session's operation index keeps its calls and their other ends, so even a reopen's first brush
-        // reads only the segments it meets, and no source field: all three for the early interval, and the second and
-        // third for the late one, where the third call's records lie, from tick 300.
+        // The finished session's operation index keeps its calls and their other ends, and its tile index what its records
+        // bind to, so even a reopen's first brush opens no segment and reads no source field.
         var early = new TimeRange(0, 150);
         var late = new TimeRange(250, 400);
         SessionStore indexed = Reopened(split.Path);
         Assert.Equal(4, SessionIntervalQuery.Count(indexed, early).EdgeRecords[edge]);
-        Assert.Equal(3, indexed.SegmentReaderCache.Entries);
+        Assert.Equal(0, indexed.SegmentReaderCache.Entries);
         Assert.True(SessionDerivationCache.For(indexed.Current!).CallsFromIndex);
-        indexed.ReleaseSegmentReaders();
-        SessionStore lateFirst = Reopened(split.Path);
-        SessionIntervalCounts counted = SessionIntervalQuery.Count(lateFirst, late);
-        Assert.Equal(2, lateFirst.SegmentReaderCache.Entries);
+        SessionIntervalCounts counted = SessionIntervalQuery.Count(indexed, late);
+        Assert.Equal(0, indexed.SegmentReaderCache.Entries);
         Assert.Equal(4, counted.EdgeRecords[edge]);
         Assert.Equal(Text(SessionIntervalQuery.Count(twin.Store, late).EdgeRecords), Text(counted.EdgeRecords));
+        indexed.ReleaseSegmentReaders();
+
+        // Without its tiles, as a generation published before they were kept, a reopen's first brush still pairs no call,
+        // and reads only the segments it meets: all three for the early interval, and the second and third for the late
+        // one, where the third call's records lie, from tick 300.
+        OperationIndexReopenTests.Republish(split.Store, operations: SessionSegments.ReadVerified(
+            split.Store.Root, OperationIndex.NamedBy(split.Store.Current!)!, OperationIndex.MaximumBytes));
+        SessionStore untiled = Reopened(split.Path);
+        Assert.Equal(4, SessionIntervalQuery.Count(untiled, early).EdgeRecords[edge]);
+        Assert.Equal(3, untiled.SegmentReaderCache.Entries);
+        Assert.True(SessionDerivationCache.For(untiled.Current!).CallsFromIndex);
+        untiled.ReleaseSegmentReaders();
+        SessionStore lateFirst = Reopened(split.Path);
+        counted = SessionIntervalQuery.Count(lateFirst, late);
+        Assert.Equal(2, lateFirst.SegmentReaderCache.Entries);
+        Assert.Equal(4, counted.EdgeRecords[edge]);
         lateFirst.ReleaseSegmentReaders();
 
         // A generation that keeps no calls, as a live one does, pairs them over every segment and their source fields at

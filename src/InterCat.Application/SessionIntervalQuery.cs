@@ -64,13 +64,11 @@ public static class SessionIntervalQuery
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so an interval cannot be placed.");
 
-        // A brush counts only the segments its interval meets, with the instances and channels the derivation or the
-        // checkpoint holds: a reopened session's first brush opened every segment, wherever it was (P25). Only a
-        // derivation neither holds opens the rest.
+        // A brush binds with the instances and channels the derivation or the checkpoint holds: a reopened session's first
+        // brush opened every segment, wherever it was (P25). Only a derivation neither holds opens the rest.
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
-        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
 
         // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits. Each
         // gets a dense slot, so a row's count is an array index rather than a key hashed per row (R11).
@@ -87,18 +85,24 @@ public static class SessionIntervalQuery
             }
         }
 
-        // Each segment is counted by one worker into tallies of its own, and the workers' tallies are summed: the same
-        // counts a serial pass makes, side by side (SegmentPasses).
+        // A finished session's brush counts from the tile index its checkpoint published, opening no segment (S3).
+        // Otherwise it counts only the segments its interval meets, each by one worker into tallies of its own, and the
+        // workers' tallies are summed: the same counts a serial pass makes, side by side (SegmentPasses).
         int instances = processes.Instances.Count;
         int slots = TimelineColumns.SlotCount;
-        var total = new IntervalTally(instances * slots, drawn.Count);
-        SegmentPasses.Run(
-            segments,
-            () => new IntervalTally(instances * slots, drawn.Count),
-            (segment, tally) => CountSegment(segment, interval, policy, processes, relations, slotOfChannel, slots, tally,
-                cancellationToken),
-            total.Add,
+        IntervalTally? total = PersistedTally(store, manifest, interval, policy, processes, relations, slotOfChannel, drawn.Count,
             cancellationToken);
+        if (total is null)
+        {
+            total = new IntervalTally(instances * slots, drawn.Count);
+            SegmentPasses.Run(
+                SessionNativeInterval.Segments(store, manifest, interval, clock),
+                () => new IntervalTally(instances * slots, drawn.Count),
+                (segment, tally) => CountSegment(segment, interval, policy, processes, relations, slotOfChannel, slots, tally,
+                    cancellationToken),
+                total.Add,
+                cancellationToken);
+        }
 
         var edgeRecords = new Dictionary<string, long>(StringComparer.Ordinal);
         var channelRecords = new Dictionary<string, long>(StringComparer.Ordinal);
@@ -154,6 +158,61 @@ public static class SessionIntervalQuery
     }
 
     /// <summary>
+    /// The brush's counts from the tile index the generation's checkpoint published (`contracts/tile-index-v1.md` §4): each
+    /// tile its interval holds whole from its tallies, and the records of the tiles its ends fall among, opening no segment
+    /// but one whose readings go backwards, which keeps no tiles and has its rows read. Null when the generation names no
+    /// tile index, or one without a section of each of its segments, or one whose bindings are not this derivation's, which
+    /// a later checkpoint publishes again; and when a part of it could not be read, which is said once, and the index is
+    /// not read again for the generation. The brush then counts from its segments, and counts the same.
+    /// </summary>
+    private static IntervalTally? PersistedTally(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        TimeRange interval,
+        EvidencePolicy policy,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        int drawn,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes) || !tiles.Derivation.Matches(processes, relations))
+        {
+            return null;
+        }
+
+        int slots = TimelineColumns.SlotCount;
+        var tally = new IntervalTally(processes.Instances.Count * slots, drawn);
+        try
+        {
+            using TileReading reading = tiles.Read(store.Root);
+            foreach (StoreDependency segment in segments)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                if (!reading.CountInterval(reading.Section(segment.Name), interval, policy, slotOfChannel, tally, cancellationToken))
+                {
+                    CountSegment(SessionSegments.Open(store, manifest, segment.Name), interval, policy, processes, relations,
+                        slotOfChannel, slots, tally, cancellationToken);
+                }
+            }
+
+            return tally;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Counts one segment's records inside the interval: every one observed, each by the instance its owner binds to as
     /// the policy admits it, and each of a drawn channel by that channel.
     /// </summary>
@@ -204,32 +263,35 @@ public static class SessionIntervalQuery
             }
         }
     }
+}
 
-    /// <summary>One worker's counts: per instance and mechanism slot, flat, and per drawn channel.</summary>
-    private sealed class IntervalTally(int processCells, int channels)
+/// <summary>
+/// One brush's counts, or one worker's share of them: the records observed in the interval, those of a drawn channel, and
+/// each instance's admitted records per mechanism slot (flat) and each drawn channel's.
+/// </summary>
+internal sealed class IntervalTally(int processCells, int channels)
+{
+    public long Observed { get; set; }
+
+    public long Graph { get; set; }
+
+    public long[] Processes { get; } = new long[processCells];
+
+    public long[] Channels { get; } = new long[channels];
+
+    /// <summary>Sums another worker's counts into these.</summary>
+    public void Add(IntervalTally other)
     {
-        public long Observed { get; set; }
-
-        public long Graph { get; set; }
-
-        public long[] Processes { get; } = new long[processCells];
-
-        public long[] Channels { get; } = new long[channels];
-
-        /// <summary>Sums another worker's counts into these.</summary>
-        public void Add(IntervalTally other)
+        Observed += other.Observed;
+        Graph += other.Graph;
+        for (int cell = 0; cell < Processes.Length; cell++)
         {
-            Observed += other.Observed;
-            Graph += other.Graph;
-            for (int cell = 0; cell < Processes.Length; cell++)
-            {
-                Processes[cell] += other.Processes[cell];
-            }
+            Processes[cell] += other.Processes[cell];
+        }
 
-            for (int slot = 0; slot < Channels.Length; slot++)
-            {
-                Channels[slot] += other.Channels[slot];
-            }
+        for (int slot = 0; slot < Channels.Length; slot++)
+        {
+            Channels[slot] += other.Channels[slot];
         }
     }
 }

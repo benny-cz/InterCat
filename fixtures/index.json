@@ -861,6 +861,7 @@
         "I14: a segment that keeps no tiles is described as such, its rows read, and one with no timed record counts nothing",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: a tile index is used only where it describes each of the generation's segments by name, length and digest",
+        "I14: a tile index written before tiles kept their bindings is refused, counted around, and published again",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
         "I14: an extension declines, for a full derivation, whatever would change a decision already made",
         "I14: an import bound that would be exceeded is a refusal, not a partial import",
@@ -1100,17 +1101,20 @@
         "I3: time ranges are half-open"
       ],
       "I4": [
+        "I4: a burst that fills one tile with hundreds of records is counted from them exactly, by a zoom and by a brush",
         "I4: a damaged tile index is refused, never misread: the zoom counts from the segments' rows instead",
         "I4: a generation's tile index refused once is not read again for it, and says why",
         "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows",
         "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged",
         "I4: a record is counted in the column whose stated interval holds it, at every boundary",
+        "I4: a reopened session's brush counts from its tiles' tallies and records exactly what its rows count, under every policy, and opens no segment",
         "I4: a reopened session's zooms count from its persisted tiles exactly what its rows count, and open no segment",
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",
         "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
         "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
         "I4: counting segments through their tiles equals counting their rows, for any interval and columns",
+        "I4: damaged tallies are refused, never counted: the brush counts from the segments' rows instead",
         "I4: every eligible point belongs to exactly one bucket",
         "I4: every minimap column is a union of whole tiles of every segment, so the minimap reads no row",
         "I4: the covered extent contains the requested one, including the final observation"
@@ -1690,6 +1694,8 @@
         "R22: a session opened from an investigation keeps its grouping by terminal session there, and is grouped so again",
         "R22: a session opened from an investigation keeps its pinned lanes there, in the order pinned, and gets them back",
         "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again",
+        "R22: a tile index whose bindings are not the derivation's is not counted by a brush, which reads its segments, and a checkpoint publishes it again",
+        "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation",
         "R22: an IPv6 connection relates its two ends as an IPv4 one does, and never meets an end of the other family",
         "R22: an RPC record binds to the process that raised it, and a kernel record's header stays context",
         "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it",
@@ -1936,6 +1942,8 @@
         "S5: while a capture keeping a window records, the window projects its stop from what the window holds, and once a pin keeps the session past it, from when the pin stops it"
       ],
       "S3": [
+        "S3: a brush counts from persisted tiles in proportion to its ends: whole tiles from their tallies, records only where an end falls among them",
+        "S3: a tile whose tallies would take more than half the bytes of its records keeps none, and a brush counts it from its children or records, exactly",
         "S3: a zoom counts from persisted tiles in proportion to its view: whole tiles where its columns hold them, records only where a column boundary falls among them"
       ]
     },

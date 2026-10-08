@@ -143,7 +143,8 @@ public static class SessionCheckpoints
 
             using StoreStagingFile tiles = store.Stage(SessionTileIndex.FileNameFor(next), StoreDependencyKind.Index);
             bytes += SessionTileIndex.Write(
-                tiles.Content, manifest.SessionId, manifest.Generation, [.. described.Zip(segments)], cancellationToken);
+                tiles.Content, manifest.SessionId, manifest.Generation, [.. described.Zip(segments)], processes, relations,
+                cancellationToken);
             _ = tiles.Complete();
 
             // Everything read is written, so the lease goes before the commit: a writer removes superseded manifests
@@ -185,7 +186,8 @@ public static class SessionCheckpoints
     /// readable operation index keeping its exchanges and a readable tile index, each covering exactly the segments it
     /// names. A checkpoint written before revision 166 holds no activity, which a reopen would count from every segment,
     /// so it is replaced, and so is a generation published before revision 440, which names no operation index, 441, whose
-    /// index keeps no exchanges, or 456, which names no tile index.
+    /// index keeps no exchanges, 456, which names no tile index, or 457, whose tile index keeps no bindings - or keeps them
+    /// under a derivation other than the checkpoint's.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -218,7 +220,8 @@ public static class SessionCheckpoints
                 && SessionTileIndex.NamedBy(manifest) is { } tiles
                 && SessionTileIndex.Open(directory, tiles, manifest.SessionId) is { } file
                 && file.Segments.Count == segments.Length
-                && SessionOverviewIndex.ObservationSegments(manifest).All(file.Describes);
+                && SessionOverviewIndex.ObservationSegments(manifest).All(file.Describes)
+                && file.Derivation.Matches(saved.Processes, saved.Relations);
         }
         catch (InvalidDataException)
         {

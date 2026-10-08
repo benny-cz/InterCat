@@ -112,10 +112,16 @@ internal static class SegmentBindings
 internal readonly struct PackedOwners(uint[] packed)
 {
     public ProcessBinding this[int row] => SegmentBindings.UnpackOwner(packed[row]);
+
+    /// <summary>A row's binding as it is packed: what a tile index keeps of it (`tile-index-v1` §1).</summary>
+    public uint Raw(int row) => packed[row];
 }
 
 /// <summary>A segment's channel bindings under one derivation, four bytes a row (<see cref="SegmentBindings"/>).</summary>
 internal readonly struct PackedChannels(uint[] packed)
 {
     public ChannelBinding this[int row] => SegmentBindings.UnpackChannel(packed[row]);
+
+    /// <summary>A row's binding as it is packed: what a tile index keeps of it (`tile-index-v1` §1).</summary>
+    public uint Raw(int row) => packed[row];
 }
