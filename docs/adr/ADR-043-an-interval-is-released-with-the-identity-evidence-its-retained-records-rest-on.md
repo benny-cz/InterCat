@@ -1,10 +1,10 @@
 # ADR-043: An interval is released with the identity evidence its retained records rest on
 
-- Status: accepted; revision 434, decision 6 revision 435
+- Status: accepted; revision 434, decision 6 revision 435, decision 7 revision 436
 - Date: 2026-10-08
 - Amends: ADR-024 (what a release of a recording's oldest chunks gives up)
-- Relates to: §12.1 S6, §20.2, IC-016a, I15, I18, I20, ADR-010, ADR-013, ADR-016, ADR-024, ADR-026,
-  `contracts/store-v1.md` §8, `contracts/entities-v1.md`, `contracts/relations-v1.md`
+- Relates to: §12.1 S5, S6, §20.2, IC-016a, I15, I18, I20, R21, ADR-010, ADR-013, ADR-016, ADR-024, ADR-026,
+  `contracts/store-v1.md` §8, `contracts/entities-v1.md`, `contracts/relations-v1.md`, `contracts/coverage-v2.md` §4
 
 ## Context
 
@@ -64,6 +64,17 @@ checkpoint must not turn a missing start into an observed one.
    earlier one. These rows are kept within the same rounds as decision 3's, so an operation's process and a kept row's
    operation are kept in turn. An operation is then complete rather than censored at a retention boundary; one whose
    start the capture never saw is still stated as such.
+7. **Readers say the interval before the boundary was released** (revision 436, R21). A generation's reader places the
+   latest release's boundary on its coverage ledger, at the first native reading at or after it, and coverage over any
+   scope reaching before it - a mechanism's, a timeline column's, the whole capture's - is no better than a partial
+   gap, because the records read before it were released by retention but for those kept as evidence (`coverage-v2`
+   §4). A worse state stays, and a scope already a partial gap says the release before its own fact. A session's
+   overview says, beneath its size, from when it keeps every record and when, how many and why the records before it
+   went. Kept rows are still counted, drawn and listed where they were read: they are evidence, and the columns they
+   lie in are partial gaps like their neighbours. A redacted package holding time before the boundary states it in its
+   policy, so the package's readers say the same of it, and say that its source had released those records
+   (`redacted-session-v1` §6-§7): a package is a reader that publishes what it read, and must not make the released
+   interval quiet.
 
 ## Alternatives considered
 
@@ -84,9 +95,10 @@ checkpoint must not turn a missing start into an observed one.
   few rows each - not by their traffic.
 - A connection open across the boundary keeps its key, lifetime, holders and witnessed open; its records and bytes are
   what stays of it, and its first and last readings are those of the rows that stay.
-- Not yet decided, and each its own revision: readers stating the interval as released rather than quiet; the
-  command line's release; and a rolling policy, which must run inside the recorder, since a release published beneath
-  a running recorder fails its next publication (ADR-024).
+- Not yet decided, and each its own revision: the command line's release; and a rolling policy, which must run inside
+  the recorder, since a release published beneath a running recorder fails its next publication (ADR-024).
+- A rate or count over a scope reaching before the boundary takes only what stays, and its coverage says so: it is a
+  partial gap, never covered, so nothing reads the released interval as quiet.
 - An RPC call, link or exchange straddling the boundary is kept whole, so its records before the boundary are counted
   wherever its own rule counts it; a long call keeps the ALPC records of its window.
 - A release reads every row several times and derives the processes and connections of the whole generation: an

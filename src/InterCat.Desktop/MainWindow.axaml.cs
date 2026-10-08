@@ -159,7 +159,7 @@ public sealed partial class MainWindow : Window, IDisposable
 
     // §12.1 S5: the session's size as its newest generation measured it, with the wall-clock moment its capture began,
     // and the limits and volume of a capture that records, from which the window says when it stops.
-    private (SessionSize Size, DateTimeOffset? Began)? growth;
+    private (SessionSize Size, DateTimeOffset? Began, string? Retained)? growth;
     private CaptureLimits? captureLimits;
     private RecordingVolume? recordingVolume;
 
@@ -2420,6 +2420,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 Paragraph($"Saved {Spoken.Count(result.Counts.Rows, "record")} to {result.Directory}."
                     + (result.Source.Interval is { } interval
                         ? " " + SessionRedaction.Holds(interval, CultureInfo.CurrentCulture)
+                        : string.Empty)
+                    + (result.Source.ReleasedBeforeNanoseconds is { } released
+                        ? " " + SessionRedaction.Released(released, CultureInfo.CurrentCulture)
                         : string.Empty)),
                 Paragraph($"Before it was saved, the package was reopened as a recipient would open it, every value "
                     + $"was checked against the pseudonyms it issued, and {CountText.Of(result.FilesVerified, "file")} "
@@ -2557,7 +2560,7 @@ public sealed partial class MainWindow : Window, IDisposable
         recordingVolume = update.Volume;
         if (update.Overview is { Size: { } measured } newest)
         {
-            growth = (measured, newest.Began);
+            growth = (measured, newest.Began, newest.Retained);
         }
 
         if (!forceOverview && displayedOverview is null && update.Overview is null)
@@ -3165,13 +3168,14 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// §12.1 S5: the session's size, bytes per record and tier, as its newest generation measured them, and while it
-    /// records, when its capture's limits stop it - in `icat session`'s and `icat capture`'s words (R18). It reads as a
-    /// caution when that stop is a minute away, or when the session is past the sizes any release is qualified at.
+    /// §12.1 S5: the session's size, bytes per record and tier, as its newest generation measured them, while it records
+    /// when its capture's limits stop it, and after an interval release what it retains - in `icat session`'s and
+    /// `icat capture`'s words (R18). It reads as a caution when that stop is a minute away, or when the session is past
+    /// the sizes any release is qualified at.
     /// </summary>
     private void UpdateSessionGrowth()
     {
-        if (growth is not ({ } size, var began))
+        if (growth is not ({ } size, var began, var retained))
         {
             SessionGrowthText.Text = string.Empty;
             SessionGrowthText.IsVisible = false;
@@ -3182,7 +3186,8 @@ public sealed partial class MainWindow : Window, IDisposable
         CaptureHeadroom? headroom = phase == CaptureUiPhase.Recording && captureLimits is { } limits && began is { } start
             ? SessionGrowth.Headroom(size, start, DateTimeOffset.UtcNow, limits, recordingVolume)
             : null;
-        SessionGrowthText.Text = SessionGrowth.Statement(size, headroom, stopOnItsOwnLine: true);
+        SessionGrowthText.Text = SessionGrowth.Statement(size, headroom, stopOnItsOwnLine: true)
+            + (retained is null ? string.Empty : "\n" + retained);
         SessionGrowthText.IsVisible = true;
         SessionGrowthText.Classes.Set("caution",
             size.Tier == SessionSizeTier.Qualification || headroom?.Remaining <= SessionGrowth.Imminent);

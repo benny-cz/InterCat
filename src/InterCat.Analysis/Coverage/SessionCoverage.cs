@@ -78,12 +78,27 @@ public static class SessionCoverage
             return new(mechanism, CoverageState.UnknownCoverage, "outside the readings the capture's sources delivered");
         }
 
-        // The worst epoch decides, and its fact is the reason: a state is never averaged across epochs (§10.3).
-        return spanned
+        // The worst epoch decides, and its fact is the reason: a state is never averaged across epochs (§10.3). A scope
+        // reaching before a release's boundary is no better than a partial gap, for that reason.
+        MechanismCoverage worst = spanned
             .Select(epoch => StateIn(epoch, mechanism))
             .OrderByDescending(coverage => coverage.State)
             .First();
+        return Released(ledger, interval) is not { } released || worst.State > CoverageState.PartialGap
+            ? worst
+            : new(mechanism, CoverageState.PartialGap, worst.State == CoverageState.PartialGap ? $"{released}; {worst.Reason}" : released);
     }
+
+    /// <summary>
+    /// Why a scope is no better than a partial gap after an interval release (ADR-043): it reaches before the boundary
+    /// from which every record is kept, before which the records were released but for those kept as evidence. Null when
+    /// the generation states no release, or the scope lies wholly after it.
+    /// </summary>
+    public static string? Released(CoverageLedgerV1? ledger, TimeRange? interval) =>
+        ledger?.ReleasedBefore is { } released && (interval is not { } range || range.StartTicks < released.NativeTicks)
+            ? "the records read before " + SessionTimeText.Seconds(released.Nanoseconds, CultureInfo.InvariantCulture)
+                + " were released by retention, but for those kept as the evidence of later ones"
+            : null;
 
     /// <summary>
     /// The capture's own state over each native interval, whatever was observed in it: the worst state of every mechanism
@@ -122,6 +137,10 @@ public static class SessionCoverage
             if (spanned.Count > 0 && Spans([.. spanned.Select(epoch => ledger.Epochs[epoch])], range))
             {
                 states[index] = Worst(spanned.Select(epoch => judged[epoch]));
+                if (Released(ledger, range) is not null)
+                {
+                    states[index] = Worst([states[index], CoverageState.PartialGap]);
+                }
             }
         }
 
@@ -141,7 +160,8 @@ public static class SessionCoverage
         }
 
         ledger.Validate();
-        return Worst(ledger.Epochs.Select(CaptureStateIn));
+        CoverageState state = Worst(ledger.Epochs.Select(CaptureStateIn));
+        return ledger.ReleasedBefore is null ? state : Worst([state, CoverageState.PartialGap]);
     }
 
     /// <summary>One epoch's own state: the worst of every mechanism it collected, or not collected when it collected none.</summary>

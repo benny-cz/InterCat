@@ -1,9 +1,12 @@
 using Avalonia.Automation;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
@@ -69,6 +72,55 @@ public sealed class SessionGrowthWindowTests
         Assert.Equal(SessionGrowth.Statement(measured, null), growth.Text);
         Assert.DoesNotContain("caution", growth.Classes);
         window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§12.1: after an interval release the window says what the session keeps and since when, beneath its size, and states each interval before it as a partial gap whole")]
+    public void TheWindowStatesWhatASessionRetains()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2) with { SessionRelativeTicks = 1_000 },
+        ]);
+        Publish(session.Store,
+        [
+            Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3) with { SessionRelativeTicks = 5_000 },
+        ], coverage: TransportLedger(tcp: true, udp: false));
+        _ = InterCat.Analysis.IntervalRelease.Release(session.Store, 2_000, "older than the retained window", Committed, Committed);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        session.Store.ReleaseSegmentReaders();
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+            Overview: overview), forceOverview: true);
+        Dispatch();
+
+        // Its size first, then what it keeps: the line a person reads to know the interval before it is not quiet.
+        TextBlock growth = window.GetControl<TextBlock>("SessionGrowthText");
+        Assert.Equal(SessionGrowth.Statement(overview.Size!, null) + "\n" + overview.Retained, growth.Text);
+        Assert.StartsWith("Kept from ", overview.Retained, StringComparison.Ordinal);
+
+        // Each interval before the boundary is a partial gap, which its column states whole rather than under the bytes.
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        workspace.ShowTables = true;
+        Render(window);
+        IntervalRow gap = workspace.Intervals.First(row => row.Coverage == CoverageStateText.Value(CoverageState.PartialGap));
+        TextBlock[] cells = [.. window.GetControl<ListBox>("IntervalList").ContainerFromItem(gap)!.GetVisualDescendants().OfType<TextBlock>()];
+        TextBlock coverage = cells.Single(cell => Grid.GetColumn(cell) == 3);
+        TextBlock bytes = cells.Single(cell => Grid.GetColumn(cell) == 4);
+        Assert.True(coverage.TextLayout.WidthIncludingTrailingWhitespace <= coverage.Bounds.Width + 0.5,
+            $"{gap.Coverage} is {coverage.TextLayout.WidthIncludingTrailingWhitespace} wide in {coverage.Bounds.Width}.");
+        Assert.True(coverage.Bounds.Right <= bytes.Bounds.Left, $"{gap.Coverage} runs under {gap.KnownBytes}.");
+        window.Close();
+    }
+
+    private static void Render(Window window)
+    {
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
     }
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

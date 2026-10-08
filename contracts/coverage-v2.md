@@ -162,6 +162,16 @@ interval its epochs speak for; its reader takes that from the package's policy, 
 its whole time is then `UnknownCoverage` for every mechanism, because "this package holds records from outside the
 interval its coverage speaks for". Nothing in this file changes for it.
 
+After an interval release (`store-v1` §8, ADR-043) a generation holds, before the release's boundary, only the rows
+kept as the evidence of later ones and records delivered with later ones, while its epochs still speak for every
+reading they delivered. Its reader takes the boundary from the latest `Interval` retention record the generation states
+- or, in a redacted package of such a session, from its policy (`redacted-session-v1` §6) - and places it at the first
+native reading at or after it. Coverage over any scope reaching before that reading - a mechanism's, the capture's own
+over an interval, or the whole generation's - is then no better than `PartialGap`, because "the records read before
+<boundary> were released by retention, but for those kept as the evidence of later ones". A worse state stays as it is,
+since a release makes nothing better known, and a scope already a partial gap states the release before its own fact.
+A scope wholly at or after the boundary is as its epochs say. Nothing in this file changes for it.
+
 `Covered` states only what this evidence supports. For an import it means a collected descriptor of the mechanism
 delivered records and the file reported no loss. It does not prove the file's session was enabled before its first
 record or after its last, which is why an epoch is bounded by its readings.

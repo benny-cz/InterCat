@@ -153,6 +153,14 @@ copied, and delivered and recorded readings moved as in §3.4, as `coverage-v2` 
 coverage state and reason is the source's. A source without a ledger gives a package without one, whose coverage is
 unknown as the source's is.
 
+A source that released an interval (`store-v1` §8, ADR-043) holds, before the release's boundary, only the rows it kept
+as the evidence of later ones, which its reader says by stating coverage there as a partial gap (`coverage-v2` §4). The
+package holds those rows as its source does, so its policy states the boundary (§7) whenever the package holds time
+before it - always for a whole package, and for an interval that starts before it - and its reader says coverage before
+the boundary is a partial gap for the same reason, from the package's own clock. Every reader of the package says, after
+its summary and what an interval package holds: "Its source had released the records read before B by retention, but
+for those kept as the evidence of later ones, so its coverage before then is a partial gap."
+
 ## 7. The policy file
 
 `redaction-policy-0000000001.json` is built only from this contract's constants and counts, never from a source value.
@@ -160,8 +168,11 @@ It names the contract and policy, when the package was made, its provenance ("ma
 whose identity is deliberately not recorded), the warning, the pseudonym scope, `false` for original sources, raw
 locators, payload bytes and re-derivability, the retained, pseudonymized, redacted, omitted and fixed-point lists, and
 counts of rows, fields and pseudonyms issued per namespace, and an interval package's `interval` (§11), which a
-whole-session package's file does not name. A reader refuses an unknown member, another contract or policy, and any
-claim that original sources, locators or payload are included. Retention cannot release the policy, and a replacement
+whole-session package's file does not name. A package of a source that released an interval names
+`releasedBeforeNanoseconds`, the release's boundary in session time, when it holds time before it (§6), and its omitted
+list says what its source no longer held; a package that holds none of that time, like one whose source released none,
+does not name it. A reader refuses an unknown member, another contract or policy, a boundary that is not a positive
+session time, and any claim that original sources, locators or payload are included. Retention cannot release the policy, and a replacement
 generation carries it (`store-v1`).
 
 ## 8. Verification before publication
@@ -207,7 +218,9 @@ the source untouched.
 
 - `icat package <session> --redacted --output <new-directory> [--interval <start:end>] [--check] [--json]
   [--report <path>]`. `--check` measures and writes nothing. The destination must not exist and must not overlap the
-  source. `--interval` makes an interval package (§11); its document adds `sourceRows` and `interval`.
+  source. `--interval` makes an interval package (§11); its document adds `sourceRows` and `interval`. Its
+  `releasedBeforeNanoseconds` is the boundary the policy states (§6, §7), null where it states none, and its notes say
+  what the source had released in the sentence the package's readers use.
 - Desktop: "Share redacted session…" in the inspector, for a saved or stopped session. It states what is kept, replaced
   and left out, asks where to put the new folder (`intercat-redacted-session-<local time>`, numbered rather than
   reused), shows progress and can be cancelled from the same button, then offers to open the package to review what a

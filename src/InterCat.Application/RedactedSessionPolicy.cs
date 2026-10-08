@@ -121,6 +121,15 @@ public sealed record RedactedSessionPolicyV1
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public RedactedSessionInterval? Interval { get; init; }
 
+    /// <summary>
+    /// The session time before which the package's source had released its records by retention, but for those it kept as
+    /// the evidence of later ones (ADR-043); absent when it released none, or the package holds none of that time. The
+    /// package's reader says coverage before it is a partial gap, as its source's reader does; a reader that does not know
+    /// the member refuses the package rather than read that time as covered.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public long? ReleasedBeforeNanoseconds { get; init; }
+
     public byte[] Encode()
     {
         Validate();
@@ -189,6 +198,12 @@ public sealed record RedactedSessionPolicyV1
                 "The redaction policy's interval does not end after it starts, or holds more records from outside it than "
                 + "the package holds within it.");
         }
+
+        // A release's boundary is a nanosecond after a record it released, so it is a positive session time.
+        if (ReleasedBeforeNanoseconds is <= 0)
+        {
+            throw new InvalidDataException("The redaction policy's release boundary is not a positive session time.");
+        }
     }
 }
 
@@ -213,12 +228,25 @@ public sealed record SessionRedaction(
     public RedactedSessionInterval? Interval { get; init; }
 
     /// <summary>
-    /// What every reader says of the package, in these words: what it is, the part of its source's time it holds when it
-    /// holds a part, and its warning.
+    /// The session time before which the package's source had released its records by retention, when the package holds
+    /// any of that time; null otherwise.
     /// </summary>
-    public string Statement(IFormatProvider? culture = null) => Interval is { } interval
-        ? Summary + " " + Holds(interval, culture) + " " + Warning
-        : Summary + " " + Warning;
+    public long? ReleasedBeforeNanoseconds { get; init; }
+
+    /// <summary>
+    /// What every reader says of the package, in these words: what it is, the part of its source's time it holds when it
+    /// holds a part, what its source had released before it was made, and its warning.
+    /// </summary>
+    public string Statement(IFormatProvider? culture = null) =>
+        Summary
+        + (Interval is { } interval ? " " + Holds(interval, culture) : string.Empty)
+        + (ReleasedBeforeNanoseconds is { } released ? " " + Released(released, culture) : string.Empty)
+        + " " + Warning;
+
+    /// <summary>What a package of a session that had released an interval says of it, wherever it is read.</summary>
+    public static string Released(long nanoseconds, IFormatProvider? culture = null) =>
+        "Its source had released the records read before " + SessionTimeText.Seconds(nanoseconds, culture)
+        + " by retention, but for those kept as the evidence of later ones, so its coverage before then is a partial gap.";
 
     /// <summary>What an interval package holds, said wherever it is read.</summary>
     public static string Holds(RedactedSessionInterval interval, IFormatProvider? culture = null)
@@ -247,6 +275,7 @@ public sealed record SessionRedaction(
         return new(policy.Contract, policy.Policy, policy.CreatedUtc, policy.Warning, policy.PseudonymScope, policy.Counts)
         {
             Interval = policy.Interval,
+            ReleasedBeforeNanoseconds = policy.ReleasedBeforeNanoseconds,
         };
     }
 }

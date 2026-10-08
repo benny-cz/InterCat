@@ -197,21 +197,18 @@ public static class IntervalRelease
                 $"No {unit} of this session but its newest holds a record read at a session time, and a release always keeps "
                 + $"the newest {unit}, so no boundary releases anything.",
             IntervalReleaseObstacle.NothingBefore =>
-                $"No record read before {Seconds(preview.RequestedNanoseconds)} can be released: its oldest {unit} holds records "
+                $"No record read before {SessionTimeText.Seconds(preview.RequestedNanoseconds, CultureInfo.CurrentCulture)} can be released: its oldest {unit} holds records "
                 + $"read later, and a {unit} is released whole. The earliest boundary that releases anything is "
-                + $"{Seconds(preview.EarliestReleasingNanoseconds!.Value)}.",
+                + $"{SessionTimeText.Seconds(preview.EarliestReleasingNanoseconds!.Value, CultureInfo.CurrentCulture)}.",
             IntervalReleaseObstacle.ContentBesideJournal =>
                 "This session keeps content beside its journal. Releasing the journal's first batches would leave content "
                 + "whose records it no longer holds, so its content is released on its own first.",
             IntervalReleaseObstacle.AllKept =>
-                $"Every row read before {Seconds(preview.RequestedNanoseconds)} that this session can still release is kept as "
+                $"Every row read before {SessionTimeText.Seconds(preview.RequestedNanoseconds, CultureInfo.CurrentCulture)} that this session can still release is kept as "
                 + $"the identity evidence of processes and connections after it, and no {unit} lies wholly before it.",
             _ => preview.Obstacle.ToString(),
         };
     }
-
-    private static string Seconds(long nanoseconds) =>
-        (nanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
 
     /// <summary>
     /// What a release before <paramref name="boundary"/> takes and keeps. Three reads of the rows: their times, by the unit

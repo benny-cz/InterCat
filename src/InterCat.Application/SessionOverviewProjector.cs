@@ -59,6 +59,12 @@ public sealed record SessionOverviewBundle(
     public TimeRange? Recording { get; init; }
 
     /// <summary>
+    /// What the session retains after an interval release, as a sentence (<see cref="SessionGrowth.Retained"/>); null when
+    /// it states none.
+    /// </summary>
+    public string? Retained { get; init; }
+
+    /// <summary>
     /// The process instances the capture's collectors are, InterCat's own (`collector-binding-v1`), and the collectors no
     /// instance is; none recorded for a capture that names none.
     /// </summary>
@@ -348,6 +354,7 @@ public static class SessionOverviewProjector
             WallClock = SessionRecording.WallClock(store.Root, manifest, clock),
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
+            Retained = SessionGrowth.Retained(manifest),
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
             Collectors = collectors,

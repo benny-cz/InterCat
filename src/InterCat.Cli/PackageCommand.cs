@@ -26,6 +26,12 @@ internal sealed record PackageDocument
 
     /// <summary>The interval an interval package holds (redacted-session-v1 §11); null for a whole session's.</summary>
     public required RedactedSessionInterval? Interval { get; init; }
+
+    /// <summary>
+    /// The session time before which the source had released its records by retention, when the package holds any of that
+    /// time (redacted-session-v1 §7); null otherwise.
+    /// </summary>
+    public required long? ReleasedBeforeNanoseconds { get; init; }
     public required long SourceFieldRows { get; init; }
     public required long SourceFieldRowsRedacted { get; init; }
     public required bool CoverageLedger { get; init; }
@@ -242,6 +248,11 @@ internal static class PackageCommand
             notes.Add(SessionRedaction.Holds(interval, CultureInfo.CurrentCulture));
         }
 
+        if (source.ReleasedBeforeNanoseconds is { } released)
+        {
+            notes.Add(SessionRedaction.Released(released, CultureInfo.CurrentCulture));
+        }
+
         if (!source.SourceCoverageLedger)
         {
             notes.Add("The source published no coverage ledger, so the package's coverage and loss are unknown, as the "
@@ -268,6 +279,7 @@ internal static class PackageCommand
             Rows = source.Rows,
             SourceRows = source.SourceRows,
             Interval = source.Interval,
+            ReleasedBeforeNanoseconds = source.ReleasedBeforeNanoseconds,
             SourceFieldRows = source.SourceFieldRows,
             SourceFieldRowsRedacted = source.SourceFieldRowsRedacted,
             CoverageLedger = source.CoverageLedger,

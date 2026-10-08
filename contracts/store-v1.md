@@ -472,7 +472,10 @@ journal release keeps. It is asked for as a session time, and works in the journ
   release digests its chunks, and `interval: { boundaryNanoseconds, releasedRows, keptRows }`, which only this kind
   states. The interval is appended to the canonical text as `|interval|<boundary>|<released rows>|<kept rows>`.
 - **Afterwards.** Before the boundary a generation holds only the kept rows and records delivered with later ones, so an
-  interval before it is released, not quiet. Re-derivation is refused while kept rows remain: their records are gone.
+  interval before it is released, not quiet. Since revision 436 its reader places the boundary on the coverage ledger,
+  and coverage over any scope reaching before it is no better than a partial gap, saying why (`coverage-v2` §4); a
+  session's overview says from when it keeps every record, and when, how many and why the records before went.
+  Re-derivation is refused while kept rows remain: their records are gone.
 
 The release is planned under a lease, which is released before publication, so the files it replaces go at once unless
 another reader holds them (I18). A generation that changed meanwhile refuses the publication.

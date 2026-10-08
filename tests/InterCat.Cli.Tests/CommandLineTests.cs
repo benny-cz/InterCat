@@ -2444,6 +2444,59 @@ public sealed class CommandLineTests : IDisposable
         static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
+    [Fact(DisplayName = "R18: icat package of a released session says what its source had released, and the package's readers say so too")]
+    public async Task APackageOfAReleasedSessionSaysSo()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "intercat-released-package-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            // Two chunks of one recording; a release before 0.1 ms gives up the first, keeping the client's creation and
+            // its connection's first send as the evidence of the send after it.
+            string held = Directory.CreateDirectory(Path.Combine(folder, "source")).FullName;
+            SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(held), Guid.NewGuid(), "command-line-tests");
+            CaptureId capture = CaptureId.New();
+            SourceClockDescriptor clock = ClockFor(ClockId.New(), "released-host");
+            Publish(store,
+            [
+                Timed(Lifecycle(10, ObservationKind.Create, 4_242, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+                Timed(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 2).Between("10.0.0.1:40000", "10.0.0.2:443")),
+                Timed(Transfer(200, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 3).Between("10.0.0.1:40000", "10.0.0.2:443")),
+            ], capture: capture, clock: clock);
+            Publish(store,
+            [
+                Timed(Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 400, 4_242, 4).Between("10.0.0.1:40000", "10.0.0.2:443")),
+            ], capture: capture, clock: clock, coverage: TestSessions.TransportLedger(tcp: true, udp: false));
+            IntervalReleaseResult release = IntervalRelease.Release(store, 100_000, "older than the retained window", Committed, Committed);
+            store.ReleaseSegmentReaders();
+            long boundary = release.Preview.BoundaryNanoseconds!.Value;
+
+            string package = Path.Combine(folder, "package");
+            (InterCatExitCode code, string output, string said) = await Run("package", held, "--redacted", "--output", package, "--json");
+            Assert.True(code == InterCatExitCode.Success, said);
+            using JsonDocument document = JsonDocument.Parse(output);
+            Assert.Equal(boundary, document.RootElement.GetProperty("releasedBeforeNanoseconds").GetInt64());
+            Assert.Contains(SessionRedaction.Released(boundary, CultureInfo.CurrentCulture),
+                document.RootElement.GetProperty("notes").EnumerateArray().Select(note => note.GetString()));
+
+            // The package says so wherever it is read, and its coverage before the boundary is a partial gap that says why.
+            SessionStore opened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(package));
+            SessionRedaction redaction = SessionRedaction.Read(opened.Root, opened.Current!)!;
+            opened.ReleaseSegmentReaders();
+            Assert.Contains(SessionRedaction.Released(boundary, CultureInfo.CurrentCulture), redaction.Statement(CultureInfo.CurrentCulture),
+                StringComparison.Ordinal);
+            (InterCatExitCode shown, string text, string error) = await Run("session", package);
+            Assert.True(shown == InterCatExitCode.Success, error);
+            Assert.Contains(redaction.Statement(CultureInfo.CurrentCulture), text, StringComparison.Ordinal);
+            Assert.Matches(@"(?m)^\s*TCP\s+partial gap, not extrapolated\s+the records read before \S+ s were released by retention", text);
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+
+        static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+    }
+
     [Fact(DisplayName = "§6.3: icat metric --group-by session ranks each terminal session's records and states the processes whose records named none")]
     public async Task MetricGroupsByTerminalSession()
     {

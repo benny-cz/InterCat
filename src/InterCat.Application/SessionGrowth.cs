@@ -162,6 +162,29 @@ public static class SessionGrowth
     }
 
     /// <summary>
+    /// What a session retains after an interval release (§12.1 S5, ADR-043): the instant every record from which on is kept,
+    /// and what went before it - when, how many records, how many of their rows were kept as the evidence of what came
+    /// after, and why. Null when the generation states no interval release.
+    /// </summary>
+    public static string? Retained(SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(manifest);
+        if (manifest.LatestRelease(RetentionExtentKind.Interval) is not { Record: { Interval: { } interval } record })
+        {
+            return null;
+        }
+
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        return string.Create(culture, $"Kept from {SessionTimeText.Seconds(interval.BoundaryNanoseconds, culture)} on: the records read before it were released ")
+            + string.Create(CultureInfo.InvariantCulture, $"on {record.ReleasedUtc.UtcDateTime:yyyy-MM-dd HH:mm} UTC")
+            + " - " + CountText.Of(record.ReleasedRecords, "record")
+            + (interval.KeptRows > 0
+                ? ", keeping " + CountText.Of(interval.KeptRows, "row") + " of them as the evidence of what came after"
+                : string.Empty)
+            + " (" + record.Reason + ").";
+    }
+
+    /// <summary>
     /// A session's size as a sentence, followed by when its capture stops while it records: on one line for a terminal's
     /// progress, or with the stop on a line of its own where a narrow pane wraps it, so it reads at a glance.
     /// </summary>

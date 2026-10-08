@@ -1102,9 +1102,46 @@ public static class SessionSegments
         }
 
         CoverageLedgerV1 ledger = CoverageLedgerV1.Decode(bytes);
-        return RedactionPolicy(directory, manifest) is { } policy && HoldsRecordsOutsideItsInterval(policy)
-            ? ledger with { HoldsRecordsOutsideItsEpochs = true }
+        byte[]? policy = RedactionPolicy(directory, manifest);
+        if (policy is not null && HoldsRecordsOutsideItsInterval(policy))
+        {
+            ledger = ledger with { HoldsRecordsOutsideItsEpochs = true };
+        }
+
+        // Records read before the latest interval release's boundary are gone but for those kept as evidence, so no scope
+        // reaching before it is covered, whatever its epochs say (ADR-043); a package made after one states its boundary.
+        long? boundary = manifest.LatestRelease(RetentionExtentKind.Interval)?.Record.Interval?.BoundaryNanoseconds
+            ?? (policy is null ? null : ReleasedBefore(policy));
+        return boundary is { } released && SourceClock(directory, manifest) is { } clock
+            ? ledger with
+            {
+                ReleasedBefore = new(SourceClockMath.FirstNativeAtOrAfter(clock, new SessionTimestamp(released)), released),
+            }
             : ledger;
+    }
+
+    /// <summary>
+    /// The release boundary a redaction policy states (`redacted-session-v1` §7): the session time before which the
+    /// package's source had released its records, but for those kept as evidence. Null when it states none, or none this
+    /// can read, which the package's own reader refuses.
+    /// </summary>
+    private static long? ReleasedBefore(byte[] policy)
+    {
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(policy);
+            return document.RootElement.ValueKind == JsonValueKind.Object
+                && document.RootElement.TryGetProperty("releasedBeforeNanoseconds", out JsonElement released)
+                && released.ValueKind == JsonValueKind.Number
+                && released.TryGetInt64(out long nanoseconds)
+                && nanoseconds > 0
+                    ? nanoseconds
+                    : null;
+        }
+        catch (JsonException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

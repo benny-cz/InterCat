@@ -52,6 +52,13 @@ public sealed record RedactedSessionPackagePreview(
 
     /// <summary>The interval an interval package holds, with the lifecycle records it holds from outside it; null for a whole one.</summary>
     public RedactedSessionInterval? Interval { get; init; }
+
+    /// <summary>
+    /// The session time before which the source released its records by retention, but for those it kept as the evidence
+    /// of later ones (ADR-043), when the package holds any of that time; null otherwise. The package's policy states it, so
+    /// its readers say that coverage before it is a partial gap, as the source's readers do.
+    /// </summary>
+    public long? ReleasedBeforeNanoseconds { get; init; }
 }
 
 /// <summary>A published, verified package: where it is, its new identity, and what the verification covered.</summary>
@@ -777,9 +784,21 @@ public static class RedactedSessionPackage
                         LifecycleRowsOutside = selection.LifecycleRowsOutside,
                     }
                     : null,
+                ReleasedBeforeNanoseconds = ReleasedBefore(manifest, selection.Interval),
             },
         };
     }
+
+    /// <summary>
+    /// The boundary of the latest interval release the source states (ADR-043), when the package holds time before it: all
+    /// of a whole package's, or an interval that starts before it. Null when the source released no interval, or the
+    /// package's interval lies wholly at or after the boundary, where every record was kept.
+    /// </summary>
+    private static long? ReleasedBefore(SessionManifestV1 manifest, TimeRange? interval) =>
+        manifest.LatestRelease(RetentionExtentKind.Interval)?.Record.Interval is { } released
+        && (interval is not { } range || (Int128)range.StartTicks * 100 < released.BoundaryNanoseconds)
+            ? released.BoundaryNanoseconds
+            : null;
 
     /// <summary>
     /// What a row an interval package leaves out (§11) holds that no pseudonym may be and the byte scan looks for: its
@@ -1070,7 +1089,7 @@ public static class RedactedSessionPackage
                 StartSequences = pseudonyms.SequenceCount,
                 KernelObjects = pseudonyms.PointerCount,
             };
-            policyBytes = PolicyFor(createdUtc, counts, scan.Preview.Interval).Encode();
+            policyBytes = PolicyFor(createdUtc, counts, scan.Preview.Interval, scan.Preview.ReleasedBeforeNanoseconds).Encode();
             builder.StageRedactionPolicy(policyBytes);
             builder.Complete(createdUtc, cancellationToken);
         }
@@ -1237,7 +1256,7 @@ public static class RedactedSessionPackage
     };
 
     internal static RedactedSessionPolicyV1 PolicyFor(DateTimeOffset createdUtc, RedactedSessionCounts counts,
-        RedactedSessionInterval? interval = null) => new()
+        RedactedSessionInterval? interval = null, long? releasedBeforeNanoseconds = null) => new()
     {
         Contract = Contract,
         Policy = Policy,
@@ -1292,6 +1311,13 @@ public static class RedactedSessionPackage
                     "Every row whose session time lies outside the interval, but the lifecycle records of the processes "
                         + "it holds, and every row with no session time that is not one of them",
                 ]),
+            .. (releasedBeforeNanoseconds is null
+                ? Array.Empty<string>()
+                :
+                [
+                    "The records its source released by retention before the boundary this file states, which it no longer "
+                        + "held, but for those it kept as the evidence of later ones",
+                ]),
         ],
         FixedPoints =
         [
@@ -1301,6 +1327,7 @@ public static class RedactedSessionPackage
         ],
         Counts = counts,
         Interval = interval,
+        ReleasedBeforeNanoseconds = releasedBeforeNanoseconds,
     };
 
     // ---------------------------------------------------------------------------------------------------------------

@@ -147,8 +147,8 @@ public static class JournalRederivation
                 + UnrebuildableRows
             : manifest.LatestRelease(RetentionExtentKind.Interval) is { Record.Interval: { KeptRows: > 0 } interval } released
                 ? $"Generation {released.Generation} released the records read before "
-                    + (interval.BoundaryNanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.InvariantCulture)
-                    + " s and kept "
+                    + SessionTimeText.Seconds(interval.BoundaryNanoseconds, CultureInfo.InvariantCulture)
+                    + " and kept "
                     + interval.KeptRows.ToString("N0", CultureInfo.InvariantCulture)
                     + " of their rows as the identity evidence of the processes and connections after it, which "
                     + (released.Generation == manifest.Generation ? "it" : $"generation {manifest.Generation}")

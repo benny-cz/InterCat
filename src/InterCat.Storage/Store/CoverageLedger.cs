@@ -15,6 +15,12 @@ public enum CoverageAcquisition
 }
 
 /// <summary>
+/// Where an interval release's boundary lies: the first native reading of the session's clock at or after it, which a
+/// coverage interval is compared with, and its session time, which a person reads it at.
+/// </summary>
+public sealed record LedgerRelease(long NativeTicks, long Nanoseconds);
+
+/// <summary>
 /// `coverage-v2`: what a capture's sources could observe, over which readings, and what they are known to have lost.
 /// It is evidence about the capture rather than a derivation of its journal, which holds admitted records only, so
 /// nothing can rebuild it: a generation keeps it the way it keeps its normalizer plan (R21, §7.1 `CoverageInterval`).
@@ -45,6 +51,15 @@ public sealed record CoverageLedgerV1
     /// </summary>
     [JsonIgnore]
     public bool HoldsRecordsOutsideItsEpochs { get; init; }
+
+    /// <summary>
+    /// The boundary of the latest interval release its generation states (ADR-043): the records read before it were
+    /// released but for those kept as the evidence of later ones, so coverage over any scope reaching before it is a
+    /// partial gap. It is not in the file; the generation's reader sets it, as it sets
+    /// <see cref="HoldsRecordsOutsideItsEpochs"/>.
+    /// </summary>
+    [JsonIgnore]
+    public LedgerRelease? ReleasedBefore { get; init; }
 
     public byte[] Encode()
     {

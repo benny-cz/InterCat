@@ -45,8 +45,10 @@ public sealed class IntervalReleaseTests
             Transfer(300, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 15).Between(Client, Server),
             Transfer(305, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 16).Between(Server, Client),
             Lifecycle(310, ObservationKind.Exit, 100, 17, exitCode: 0),
-            Transfer(320, ObservationKind.Send, AccountingSide.SendSide, 5, 300, 18).Between(Server, "10.0.0.7:5555")));
+            Transfer(320, ObservationKind.Send, AccountingSide.SendSide, 5, 300, 18).Between(Server, "10.0.0.7:5555")),
+            coverage: TransportLedger(tcp: true, udp: false));
         SessionManifestV1 before = session.Store.Current!;
+        Assert.Null(SessionSegments.CoverageLedger(session.Store.Root, before)!.ReleasedBefore);
         Facts recorded = FactsOf(session.Store);
         TransportRelation whole = Assert.Single(Relations(session.Store).Relations);
 
@@ -105,6 +107,10 @@ public sealed class IntervalReleaseTests
         // The connection keeps its key, both its lifecycle ends and its first reading; it holds the records retained.
         TransportRelation connection = Assert.Single(Relations(reopened).Relations);
         Assert.Equal((whole.StableKey, true, true, 50L, 8L), (connection.StableKey, connection.OpenWitnessed, connection.CloseWitnessed, connection.FirstNativeTicks, connection.Records));
+
+        // Its coverage ledger is read with the boundary, so no scope reaching before it reads as covered.
+        Assert.Equal(new LedgerRelease(SourceClockMath.FirstNativeAtOrAfter(TestClock, new SessionTimestamp(6_501)), 6_501),
+            SessionSegments.CoverageLedger(reopened.Root, reopened.Current!)!.ReleasedBefore);
 
         // The recording goes on: its next generation states the release, as every later one does.
         Publish(reopened, Timed(Transfer(400, ObservationKind.Send, AccountingSide.SendSide, 5, 300, 19).Between(Server, "10.0.0.7:5555")));

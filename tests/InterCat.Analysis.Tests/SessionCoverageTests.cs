@@ -259,6 +259,33 @@ public sealed class SessionCoverageTests
         Assert.Equal("9 records from its 2 admitted descriptors, and nothing was reported lost", coverage.Reason);
     }
 
+    [Fact(DisplayName = "R21: a scope reaching before an interval release's boundary is a partial gap that says so, never covered")]
+    public void AReleasedIntervalIsAPartialGap()
+    {
+        CoverageLedgerV1 ledger = Ledger(CoverageAcquisition.LiveCapture) with { ReleasedBefore = new LedgerRelease(15, 1_500) };
+        const string Released = "the records read before 0.0000015 s were released by retention, but for those kept as the evidence of later ones";
+
+        // Before the boundary, or across it, a covered mechanism is a partial gap for that reason; wholly after it, as the
+        // epochs say. A worse state stays: a release makes nothing better known.
+        MechanismCoverage across = SessionCoverage.Of(ledger, Mechanism.Tcp, new TimeRange(10, 16));
+        Assert.Equal((CoverageState.PartialGap, Released), (across.State, across.Reason));
+        Assert.Equal(CoverageState.Covered, SessionCoverage.Of(ledger, Mechanism.Tcp, new TimeRange(15, 21)).State);
+        Assert.Equal((CoverageState.PartialGap, Released), (SessionCoverage.Of(ledger, Mechanism.Tcp).State, SessionCoverage.Of(ledger, Mechanism.Tcp).Reason));
+        Assert.Equal(CoverageState.NotCollected, SessionCoverage.Of(ledger, Mechanism.NamedPipe, new TimeRange(10, 16)).State);
+        Assert.Equal(CoverageState.UnknownCoverage, SessionCoverage.Of(ledger, Mechanism.Tcp, new TimeRange(9, 16)).State);
+        Assert.Equal([CoverageState.PartialGap, CoverageState.Covered],
+            SessionCoverage.CaptureStates(ledger, [new TimeRange(10, 16), new TimeRange(15, 21)]));
+        Assert.Equal(CoverageState.PartialGap, SessionCoverage.Capture(ledger));
+        Assert.Equal(CoverageState.Covered, SessionCoverage.Capture(ledger with { ReleasedBefore = null }));
+
+        // A loss in the same scope is said after the release.
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        CoverageLedgerV1 lossy = ledger with { Epochs = [epoch with { Losses = [.. epoch.Losses.Select(loss => loss with { Lost = loss.Layer == LossLayer.SourceSession ? 3 : 0 })] }] };
+        MechanismCoverage both = SessionCoverage.Of(lossy, Mechanism.Tcp);
+        Assert.Equal(CoverageState.PartialGap, both.State);
+        Assert.StartsWith(Released + "; ", both.Reason, StringComparison.Ordinal);
+    }
+
     private static CoverageLedgerV1 Ledger(CoverageAcquisition acquisition) => new()
     {
         Contract = CoverageLedgerV1.ContractName,

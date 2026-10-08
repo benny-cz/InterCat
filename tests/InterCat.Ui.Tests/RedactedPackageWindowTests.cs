@@ -284,6 +284,41 @@ public sealed class RedactedPackageWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "11.3: what the window saved of a released session says what its source had released, as the package will")]
+    public void ThePackageOfAReleasedSessionSaysSo()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 2_000 },
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 3)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 3_000 },
+        ]);
+        Publish(session.Store,
+        [
+            Transfer(200, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 4)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 20_000 },
+        ], coverage: TransportLedger(tcp: true, udp: false));
+        _ = IntervalRelease.Release(session.Store, 10_000, "older than the retained window", Committed, Committed);
+        string destination = MainWindow.NewPackageDirectory(Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Packages"),
+            DateTimeOffset.Now);
+        try
+        {
+            RedactedSessionPackageResult result = RedactedSessionPackage.Create(
+                SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)), destination, Committed);
+            string released = SessionRedaction.Released(result.Source.ReleasedBeforeNanoseconds!.Value,
+                System.Globalization.CultureInfo.CurrentCulture);
+            Assert.Contains(MainWindow.RedactedPackageResultPrompt(result).GetLogicalDescendants().OfType<TextBlock>(),
+                text => text.Text?.EndsWith(released, StringComparison.Ordinal) == true);
+        }
+        finally
+        {
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
+        }
+    }
+
     /// <summary>A client's creation, its sends at ticks 5,000 and 9,000, and another process's send.</summary>
     private static ObservationRowV1[] IntervalSource() =>
     [
