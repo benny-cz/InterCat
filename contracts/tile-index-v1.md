@@ -422,8 +422,9 @@ its other queries, took 55 to 87 ms the first time and 27 to 36 ms at the 95th p
 
 - The focus of an operation, or of a channel and owners at once, whose columns count what the tallies do not hold apart
   (§10.3): an operation's records, a channel's records of some processes. Such a focus reads its rows, from the
-  segments the interval meets. So, at this version, does a focus on the whole session's records of one mechanism or one
-  source direction: a tile's counts hold the first, and no tally the second.
+  segments the interval meets. So does a focus on the whole session's records of one source direction, which no tally
+  holds apart. A focus on its records of one mechanism alone is what the zoom's own counts hold of it, and since
+  revision 461 is taken from them.
 - Byte sums, which a zoom's lanes read from the segments.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.

@@ -733,6 +733,84 @@ public sealed class SessionTileIndexTests
         Assert.Equal((1, 0, 0), (reading.TilesOfTalliesRead, reading.TilesUntallied, reading.TilesOfRecordsRead));
     }
 
+    [Theory(DisplayName = "I4: a focus on the whole session's records of one mechanism counts what its rows count from the whole timeline's own counts, and opens no segment the whole does not; narrowed to a direction too, it reads its rows")]
+    [InlineData(8)]
+    [InlineData(57)]
+    [InlineData(20_261_011)]
+    public void AMechanismOfTheWholeSessionCountsFromTheWhole(int seed)
+    {
+        var random = new Random(seed);
+        Mechanism[] kinds = [Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc, Mechanism.ProcessLifecycle, Mechanism.NamedPipe];
+        for (int trial = 0; trial < 4; trial++)
+        {
+            // A capture with its checkpoint's tiles, and the same without, whose whole timeline comes from its segments.
+            using var tiled = new TemporarySession();
+            using var untiled = new TemporarySession();
+            long stretch = trial % 2 == 0 ? 1 : 1_000;
+            int rowsPerSegment = random.Next(5, 80);
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in Stretched(random, stretch))
+            {
+                _ = Publish(tiled.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+                _ = Publish(untiled.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+            }
+
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tiled.Store, Committed).Outcome);
+            tiled.Store.ReleaseSegmentReaders();
+            Bound bound = Bind(untiled.Store);
+            long[] ticks = [.. bound.Segments.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
+                .Select(row => segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row))
+                .Where(nanoseconds => nanoseconds is not null).Select(nanoseconds => nanoseconds!.Value / 100))];
+            long low = ticks.Min() - stretch;
+            long high = ticks.Max() + 1 + stretch;
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            for (int query = 0; query < 10; query++)
+            {
+                // The last two narrowed to one source direction as well, which no count holds apart.
+                Mechanism mechanism = kinds[random.Next(kinds.Length)];
+                Direction? direction = query >= 8 ? SessionTimelineQuery.LaneDirections[random.Next(2)] : null;
+                var focus = new TimelineFocus(null, [], mechanism: mechanism, direction: direction);
+                long start = low + random.NextInt64(0, high - low);
+                TimeRange interval = query is 0 or 9 ? new(low, high) : new(start, start + 1 + random.NextInt64(0, high - start));
+                int columns = random.Next(3) == 0 ? random.Next(1, 6) : random.Next(1, 300);
+
+                // What every row of the mechanism counts, each in the column holding its reading.
+                var rowsCount = new TimelineColumns(interval, columns, tallyMechanisms: true);
+                foreach (SegmentReaderV1 segment in bound.Segments)
+                {
+                    for (int row = 0; row < segment.RowCount; row++)
+                    {
+                        if (segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is { } nanoseconds
+                            && rowsCount.ColumnOf(nanoseconds / 100) is { } column
+                            && (Mechanism)segment.UnsignedValue(SegmentColumnId.Mechanism, row)!.Value == mechanism
+                            && (direction is not { } way || (Direction)segment.UnsignedValue(SegmentColumnId.Direction, row)!.Value == way))
+                        {
+                            rowsCount.Add(column, mechanism);
+                        }
+                    }
+                }
+
+                SessionFocusedTimeline counted = SessionTimelineQuery.Focused(reopened, interval, columns, focus);
+                Assert.Equal(rowsCount.Counts, counted.Focus.Select(bucket => bucket.ObservationCount));
+                Assert.Equal(Focused(SessionTimelineQuery.Focused(untiled.Store, interval, columns, focus)), Focused(counted));
+            }
+
+            // A direction's focus read the rows of the segments its interval met.
+            Assert.NotEqual(0, reopened.SegmentReaderCache.Entries);
+            reopened.ReleaseSegmentReaders();
+            SessionStore fresh = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            _ = SessionTimelineQuery.Focused(fresh, new TimeRange(low, high), 40, new TimelineFocus(null, [], mechanism: Mechanism.Tcp));
+            Assert.Equal(0, fresh.SegmentReaderCache.Entries);
+            fresh.ReleaseSegmentReaders();
+
+            // A code no mechanism is, which no count holds, is read from the rows, none of which has it.
+            var undefined = new TimelineFocus(null, [], mechanism: (Mechanism)999);
+            Assert.All(SessionTimelineQuery.Focused(reopened, new TimeRange(low, high), 40, undefined).Focus,
+                bucket => Assert.Equal(0, bucket.ObservationCount));
+            reopened.ReleaseSegmentReaders();
+            untiled.Store.ReleaseSegmentReaders();
+        }
+    }
+
     [Theory(DisplayName = "I4: a record or a tally whose kind no record can have, or that names no end of its channel where a focus counts its ends, is refused: the query counts from the segments' rows instead")]
     [InlineData(0)]
     [InlineData(1)]

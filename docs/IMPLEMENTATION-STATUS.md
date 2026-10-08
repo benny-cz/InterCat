@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 460 · Branch: `main`
+Updated: 2026-10-08 · Plan revision: 461 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -86,6 +86,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 461 — a whole-session mechanism focus comes from the whole timeline's counts (S3):**
+  - Choosing an L0 mechanism lane focuses the whole session's records of that mechanism, which are the timeline's own
+    count of it in each column: the focus now takes them from that count, opening no segment the whole does not. At
+    10M rows its first view took 36 ms, from 1.32 s, and later ones 4 to 12 ms, from about 120.
+  - Narrowed to a source direction too, or to a code no mechanism is, it reads its rows, exactly as before.
+  - Debug and Release each ran 1,976 tests, with revision 460's 93 failures and 4 skips; the tests caught each of 5
+    mutations of the new path.
 
 - **Revision 460 — a channel's ends count from the tile index (`tile-index-v1` minor 3, S3):**
   - Each record keeps which end of its connection it was made at, and each tile's channel tallies are kept by
@@ -1423,8 +1431,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      in different ones (P25). A search reads the overview, never a segment.
    - An operation's focused count, and a channel's and owners' at once, still read their rows (§10.3: the tallies hold
      neither apart); since revisions 458, 459 and 460 a group's, a process's and a channel's count from the tile index.
-     A focus on the whole session's records of one mechanism, which a tile's counts hold, reads rows too, and could
-     count from tiles.
+     A focus on the whole session's records of one source direction reads rows too; since revision 461 one mechanism's
+     comes from the whole timeline's own counts.
    - Since revision 204 metric queries (`icat metric`, `icat processes`) take the checkpoint's derivation. What remains of
      a query's time at 1M rows is opening and verifying the store (0.86 s) and binding each row.
    - Revision 206's interval bytes read the listed rows once, when the table is shown: about 70 ms at 1M rows.

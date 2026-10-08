@@ -1104,6 +1104,7 @@
         "I4: a burst of a thousand records filling two tiles is counted from their records exactly, by a zoom and by a brush",
         "I4: a damaged tile index is refused, never misread: the zoom counts from the segments' rows instead",
         "I4: a focus narrowed to a code no direction is reads its rows, which a tile index does not keep apart, and counts what they count",
+        "I4: a focus on the whole session's records of one mechanism counts what its rows count from the whole timeline's own counts, and opens no segment the whole does not; narrowed to a direction too, it reads its rows",
         "I4: a generation's tile index refused once is not read again for it, and says why",
         "I4: a persisted overview of a few records over a long extent reads back: its column widths bound nothing that follows",
         "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged",

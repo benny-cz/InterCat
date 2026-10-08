@@ -344,13 +344,20 @@ public static class SessionTimelineQuery
         bool tiledFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 0 } or { ChannelKey: not null, OwnerProcesses.Count: 0 }
             && (focus.Direction is not { } narrowed || Enum.IsDefined(narrowed));
 
-        // The whole timeline comes from tiles (S4). Unfocused, or with an owner or a channel's focus, it comes from the
-        // tiles the generation's checkpoint persisted where they describe its segments, and no segment is opened; otherwise,
-        // and with a focus that reads its rows, from the tiles of each segment the interval meets. Either way only a tile a
-        // column boundary crosses has its records read.
+        // The whole session's records of one mechanism are what the whole timeline counts of that mechanism, column by
+        // column: such a focus is those counts, and reads nothing the whole does not.
+        Mechanism? wholeMechanism = focus is { ChannelKey: null, OperationKey: null, OwnerProcesses.Count: 0, Direction: null, Mechanism: { } only }
+            && Enum.IsDefined(only) ? only : null;
+
+        // The whole timeline comes from tiles (S4). Unfocused, or with an owner's, a channel's or one mechanism's focus, it
+        // comes from the tiles the generation's checkpoint persisted where they describe its segments, and no segment is
+        // opened; otherwise, and with a focus that reads its rows, from the tiles of each segment the interval meets. Either
+        // way only a tile a column boundary crosses has its records read.
         SegmentReaderV1[]? met = null;
         SegmentReaderV1[] Met() => met ??= SessionNativeInterval.Segments(store, manifest, interval, clock);
-        TimelineColumns counted = (rows is null || tiledFocus ? PersistedWhole(store, manifest, interval, columns, cancellationToken) : null)
+        TimelineColumns counted = (rows is null || tiledFocus || wholeMechanism is not null
+                ? PersistedWhole(store, manifest, interval, columns, cancellationToken)
+                : null)
             ?? CountWhole(Met(), interval, columns, cancellationToken);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         (ProcessInstanceId[] laneOwners, ProcessInstanceId[] folded, string? laneProblem) =
@@ -374,10 +381,11 @@ public static class SessionTimelineQuery
         if (rows is not null)
         {
             int[]? laneOf = laneCount == 0 ? null : rows.LanesOf(laneOwners, folded);
-            total = tiledFocus
-                ? PersistedFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
-                    laneColumns, directionLanes, endRelation, cancellationToken)
-                : null;
+            total = wholeMechanism is { } mechanism ? FocusTally.Of(counted, mechanism)
+                : tiledFocus
+                    ? PersistedFocus(store, manifest, generation, rows, focus!, policy, laneOf, interval, columns, laneCount,
+                        laneColumns, directionLanes, endRelation, cancellationToken)
+                    : null;
             if (total is null)
             {
                 total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
@@ -706,6 +714,21 @@ public static class SessionTimelineQuery
                 new(0, ends.First.Id, ends.FirstEndpoint, ends.Mechanism, interval, columns),
                 new(1, ends.Second.Id, ends.SecondEndpoint, ends.Mechanism, interval, columns),
             ];
+        }
+
+        /// <summary>The whole session's records of <paramref name="mechanism"/>: the counts of it <paramref name="whole"/> holds.</summary>
+        public static FocusTally Of(TimelineColumns whole, Mechanism mechanism)
+        {
+            var tally = new FocusTally(whole.Interval, whole.Counts.Count, lanes: 0, laneColumns: 0, directions: false, ends: null);
+            for (int column = 0; column < whole.Counts.Count; column++)
+            {
+                if (whole.CountOf(column, mechanism) is > 0 and int count)
+                {
+                    tally.Focused.Add(column, mechanism, count);
+                }
+            }
+
+            return tally;
         }
 
         public TimelineColumns Focused { get; }
