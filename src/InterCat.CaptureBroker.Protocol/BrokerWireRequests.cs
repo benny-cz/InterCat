@@ -61,25 +61,58 @@ public static class BrokerJournalPublicationPolicy
     /// </summary>
     public const int MaximumLiveChunks = 1_024;
 
-    /// <summary>The interval a policy compiles to for a capture of this maximum duration; null publishes on stop.</summary>
-    public static TimeSpan? Interval(BrokerJournalPublication publication, int maximumDurationSeconds) => publication switch
+    /// <summary>
+    /// The interval a policy compiles to for a capture of this maximum duration; null publishes on stop. A capture that
+    /// releases what its follow gave up and names the window its follow keeps (<paramref name="keptWindowSeconds"/>) holds
+    /// about a quarter more than that window, so it may publish as often as keeps that within <see cref="MaximumLiveChunks"/>
+    /// chunks: the window, not its maximum duration, then sets how fresh its follow's view is.
+    /// </summary>
+    public static TimeSpan? Interval(
+        BrokerJournalPublication publication,
+        int maximumDurationSeconds,
+        int? keptWindowSeconds = null) => publication switch
     {
         BrokerJournalPublication.OnStop => null,
         BrokerJournalPublication.Live => TimeSpan.FromSeconds(Math.Max(
             MinimumLiveInterval.TotalSeconds,
-            Math.Ceiling(maximumDurationSeconds / (double)MaximumLiveChunks))),
+            Math.Min(
+                Math.Ceiling(maximumDurationSeconds / (double)MaximumLiveChunks),
+                keptWindowSeconds is { } window ? Math.Ceiling(window * 1.25 / MaximumLiveChunks) : double.MaxValue))),
         _ => throw new ArgumentOutOfRangeException(nameof(publication), publication, "Unknown journal publication policy."),
     };
 
     /// <summary>When the first chunk of this policy publishes, or null when it publishes only on stop.</summary>
-    public static TimeSpan? FirstPublication(BrokerJournalPublication publication, int maximumDurationSeconds) =>
-        Interval(publication, maximumDurationSeconds) is { } interval
+    public static TimeSpan? FirstPublication(
+        BrokerJournalPublication publication,
+        int maximumDurationSeconds,
+        int? keptWindowSeconds = null) =>
+        Interval(publication, maximumDurationSeconds, keptWindowSeconds) is { } interval
             ? (interval < FirstLivePublication ? interval : FirstLivePublication)
             : null;
 
     /// <summary>The compiled interval in whole milliseconds as the effective summary states it; zero for OnStop.</summary>
-    public static int IntervalMilliseconds(BrokerJournalPublication publication, int maximumDurationSeconds) =>
-        Interval(publication, maximumDurationSeconds) is { } interval ? checked((int)interval.TotalMilliseconds) : 0;
+    public static int IntervalMilliseconds(
+        BrokerJournalPublication publication,
+        int maximumDurationSeconds,
+        int? keptWindowSeconds = null) =>
+        Interval(publication, maximumDurationSeconds, keptWindowSeconds) is { } interval
+            ? checked((int)interval.TotalMilliseconds)
+            : 0;
+
+    /// <summary>The longest window a capture's follow may say it keeps: a day, the longest a capture records.</summary>
+    public const int MaximumKeptWindowSeconds = 86_400;
+
+    /// <summary>
+    /// Why a kept window cannot go with this retention, or null when it can: only a capture that releases what its follow
+    /// gave up names one, of one second to a day.
+    /// </summary>
+    public static string? KeptWindowProblem(BrokerRetentionPolicy retention, int? keptWindowSeconds) =>
+        keptWindowSeconds is not { } window ? null
+            : retention != BrokerRetentionPolicy.ReleaseFollowed
+                ? "A kept window goes only with a capture that releases what its follow gave up."
+                : window is < 1 or > MaximumKeptWindowSeconds
+                    ? "A kept window is one second to a day."
+                    : null;
 }
 
 public sealed record BrokerCaptureQuota(
@@ -139,7 +172,8 @@ public sealed record BrokerPrepareCaptureRequest(
     BrokerCaptureQuota Quota,
     BrokerRetentionPolicy Retention,
     ContentCaptureRequest? Content,
-    BrokerJournalPublication Publication = BrokerJournalPublication.OnStop) : BrokerWireRequest
+    BrokerJournalPublication Publication = BrokerJournalPublication.OnStop,
+    int? KeptWindowSeconds = null) : BrokerWireRequest
 {
     public override BrokerMessageType MessageType => BrokerMessageType.PrepareCapture;
 }
@@ -180,7 +214,7 @@ public static class BrokerWireRequestCodec
 {
     private static readonly IReadOnlySet<ushort> HelloFields = Set(1, 2, 3, 4, 5);
     private static readonly IReadOnlySet<ushort> PrepareFields = Set(
-        1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+        1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11,
         20, 21, 22, 23, 24, 25, 26, 27);
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2);
     private static readonly IReadOnlySet<ushort> CaptureFields = Set(1);
@@ -328,7 +362,8 @@ public static class BrokerWireRequestCodec
             content,
             fields.OptionalInt32(10) is int publication
                 ? (BrokerJournalPublication)publication
-                : BrokerJournalPublication.OnStop);
+                : BrokerJournalPublication.OnStop,
+            fields.OptionalInt32(11));
         ValidatePrepare(request);
         return request;
     }
@@ -397,6 +432,10 @@ public static class BrokerWireRequestCodec
         fields.WriteInt64(8, request.Quota.MinimumFreeDiskBytes);
         fields.WriteInt32(9, (int)request.Retention);
         fields.WriteInt32(10, (int)request.Publication, required: false);
+        if (request.KeptWindowSeconds is { } kept)
+        {
+            fields.WriteInt32(11, kept, required: false);
+        }
 
         if (request.Content is not null)
         {
@@ -459,6 +498,11 @@ public static class BrokerWireRequestCodec
         {
             throw new InvalidDataException(
                 "A capture that releases what its follow gave up publishes live chunks, which a follow needs.");
+        }
+
+        if (BrokerJournalPublicationPolicy.KeptWindowProblem(request.Retention, request.KeptWindowSeconds) is { } kept)
+        {
+            throw new InvalidDataException(kept);
         }
 
         bool validProcessIds = request.FocusedProcessIds.Count <= 64

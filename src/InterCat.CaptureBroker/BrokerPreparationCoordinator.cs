@@ -108,13 +108,14 @@ public sealed class BrokerPreparationCoordinator : IDisposable
                 .CompileAsync(BrokerPrepareRequestPolicy.ToProfileRequest(request), cancellationToken)
                 .ConfigureAwait(false);
             BrokerEffectiveCaptureSummary summary = ToSummary(
-                effective, request.Quota, request.Retention, request.Publication);
+                effective, request.Quota, request.Retention, request.Publication, request.KeptWindowSeconds);
             BrokerPrepareResult preparation = BrokerPrepareCompiler.Prepare(
                 effective,
                 request.Quota,
                 request.Retention,
                 runtime,
-                request.Publication);
+                request.Publication,
+                request.KeptWindowSeconds);
             if (!preparation.IsPrepared)
             {
                 return new(false, preparation.Refusal!.Code, Bound(preparation.Refusal.Message, 512), null, summary);
@@ -177,7 +178,8 @@ public sealed class BrokerPreparationCoordinator : IDisposable
         EffectiveCapturePlan plan,
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
-        BrokerJournalPublication publication) =>
+        BrokerJournalPublication publication,
+        int? keptWindowSeconds) =>
         new(
             Bound(plan.RequestedProfileId, 64),
             BoundOptional(plan.EffectiveProfileId, 64),
@@ -205,8 +207,9 @@ public sealed class BrokerPreparationCoordinator : IDisposable
             [.. plan.Diagnostics.Take(32).Select(item => Bound(item, 512))],
             publication,
             Enum.IsDefined(publication) && quota.Validate() is null
-                ? BrokerJournalPublicationPolicy.IntervalMilliseconds(publication, quota.MaximumDurationSeconds)
-                : 0);
+                ? BrokerJournalPublicationPolicy.IntervalMilliseconds(publication, quota.MaximumDurationSeconds, keptWindowSeconds)
+                : 0,
+            keptWindowSeconds);
 
     private static string? BoundOptional(string? value, int maximumBytes) =>
         value is null ? null : Bound(value, maximumBytes);

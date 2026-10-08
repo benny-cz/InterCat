@@ -85,6 +85,12 @@ public sealed record LiveCaptureResult
     /// Why the recording stopped releasing what its follow gave up, keeping every later chunk; null when it never had to.
     /// </summary>
     public string? ReleaseProblem { get; init; }
+
+    /// <summary>
+    /// True when the recording stopped because its follow had stopped giving chunks up, so its evidence held as many chunks
+    /// as it may (<see cref="LiveRecorder.MaximumHeldChunks"/>); what it recorded is published.
+    /// </summary>
+    public bool FollowStalled { get; init; }
 }
 
 /// <summary>
@@ -98,6 +104,13 @@ public static class LiveRecorder
 {
     /// <summary>The reason a recording's release of the chunks its follow gave up states (ADR-048).</summary>
     public const string FollowedReason = "its follow gave these chunks up";
+
+    /// <summary>
+    /// The most chunks a recording that releases what its follow gave up holds before it stops: twice the chunks a window's
+    /// publication interval is set to hold (`contracts/broker-v1.md` §5.1), so a follow that pauses is not mistaken for one
+    /// that stopped giving chunks up, and every publication's manifest stays bounded.
+    /// </summary>
+    public const int MaximumHeldChunks = 2_048;
 
     /// <summary>
     /// Starts the capture, records until <paramref name="recordUntil"/> completes, then stops and publishes. Cancelling
@@ -132,6 +145,11 @@ public static class LiveRecorder
     /// not everything it recorded - counts against <paramref name="maximumJournalBytes"/> (ADR-048 decision 5). Null keeps
     /// every chunk. Only an evidence-only recording that publishes chunks releases them.
     /// </param>
+    /// <param name="heldChunkLimit">
+    /// How many chunks a recording that releases what its follow gave up may hold: once a publication leaves it holding that
+    /// many, its follow has stopped giving them up and the capture stops, publishing what it recorded. Null is
+    /// <see cref="MaximumHeldChunks"/>.
+    /// </param>
     /// <param name="collectors">
     /// The processes collecting the capture - its broker and the client that asked for it, or the recorder itself - published
     /// with its first generation (`contracts/collector-identities-v1.md`), so a reader can label their own activity in it.
@@ -154,6 +172,7 @@ public static class LiveRecorder
         ClockCalibrationSource? calibration = null,
         IReadOnlyList<CollectorProcessV1>? collectors = null,
         Func<long>? releasableChunks = null,
+        int? heldChunkLimit = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -206,6 +225,12 @@ public static class LiveRecorder
             throw new ArgumentException(
                 "Only an evidence-only recording that publishes chunks releases those its follow gave up.",
                 nameof(releasableChunks));
+        }
+
+        if (heldChunkLimit is { } limit && (releasableChunks is null || limit < 2))
+        {
+            throw new ArgumentOutOfRangeException(nameof(heldChunkLimit),
+                "A held-chunk limit bounds a recording that releases what its follow gave up, at two chunks or more.");
         }
 
         if (diskFloor is not null && derive is not null)
@@ -274,7 +299,8 @@ public static class LiveRecorder
                     Samples = [startSample],
                 },
             collected,
-            releasableChunks);
+            releasableChunks,
+            heldChunkLimit ?? MaximumHeldChunks);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -390,6 +416,7 @@ public static class LiveRecorder
             Collectors = collected,
             ReleasedChunks = chunks.ReleasedChunks,
             ReleaseProblem = chunks.ReleaseProblem,
+            FollowStalled = chunks.FollowStalled,
         };
     }
 
@@ -426,6 +453,7 @@ public static class LiveRecorder
         private readonly LivePreviewTally? preview;
         private readonly AdmittedEventEnvelopeMapper mapper;
         private readonly Func<long>? releasableChunks;
+        private readonly int heldChunkLimit;
 
         // The published chunks the evidence still holds, oldest first, each with its records and journal bytes, so the
         // ones its follow gave up are released whole and stated in all (ADR-048).
@@ -476,10 +504,12 @@ public static class LiveRecorder
             LivePreviewTally? preview,
             ClockCalibrationV1? started,
             CollectorIdentitiesV1? collectors,
-            Func<long>? releasableChunks)
+            Func<long>? releasableChunks,
+            int heldChunkLimit)
         {
             this.session = session;
             this.releasableChunks = releasableChunks;
+            this.heldChunkLimit = heldChunkLimit;
             this.started = started;
             this.collectors = collectors;
             this.preview = preview;
@@ -521,6 +551,9 @@ public static class LiveRecorder
 
         /// <summary>Why the recording stopped releasing what its follow gave up; null while it can.</summary>
         public string? ReleaseProblem { get; private set; }
+
+        /// <summary>Whether the capture stopped because its follow stopped giving chunks up.</summary>
+        public bool FollowStalled { get; private set; }
 
         private bool AcquisitionLimited => JournalQuotaReached || DiskReserveReached;
 
@@ -607,7 +640,7 @@ public static class LiveRecorder
         /// waking on the publication timer, which would otherwise spin once the interval has passed.
         /// </summary>
         private bool RolloverPossible =>
-            !AcquisitionLimited && !rolloverBlocked && publishEvery is not null && recordsInChunk != 0
+            !AcquisitionLimited && !FollowStalled && !rolloverBlocked && publishEvery is not null && recordsInChunk != 0
             && !DiskBlocksRollover();
 
         /// <summary>
@@ -881,6 +914,15 @@ public static class LiveRecorder
             // chunks the follow gave up go.
             held.Enqueue((published.JournalName, published.JournalRecords, published.JournalBytes));
             ReleaseFollowed();
+
+            // A follow that stopped giving chunks up leaves the evidence one more each publication: at the limit the capture
+            // stops, as a full journal stops it, and what it recorded is published.
+            if (releasableChunks is not null && held.Count >= heldChunkLimit && !FollowStalled)
+            {
+                FollowStalled = true;
+                onAcquisitionLimit();
+            }
+
             builder = BeginChunk(stagePlan: false);
             rolloverBlocked = false;
         }

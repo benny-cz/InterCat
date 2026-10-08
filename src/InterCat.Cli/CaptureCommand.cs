@@ -104,10 +104,15 @@ internal static class CaptureCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        // A capture that keeps a window has the broker release its own copy of what the session gave up (ADR-048).
+        // A capture that keeps a window has the broker release its own copy of what the session gave up (ADR-048), and
+        // publish as often as the window needs rather than its duration (broker-v1 §5.1).
         if (rolling is not null)
         {
-            request = request! with { Retention = BrokerRetentionPolicy.ReleaseFollowed };
+            request = request! with
+            {
+                Retention = BrokerRetentionPolicy.ReleaseFollowed,
+                KeptWindowSeconds = (int)Math.Ceiling(rolling.Policy.Keep.TotalSeconds),
+            };
         }
 
         BrokerLaunchTarget? target = brokerOption is not null

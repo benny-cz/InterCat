@@ -113,15 +113,18 @@ public static class DesktopCaptureRunner
     private static readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FinishTimeout = TimeSpan.FromSeconds(60);
 
-    /// <param name="releaseFollowed">
-    /// Whether the broker releases the evidence the session gave up, as a capture that keeps a window asks (ADR-048 decision
-    /// 5), so its journal limit bounds what the evidence holds rather than everything it recorded.
+    /// <param name="keepWindow">
+    /// The newest stretch of session time the session keeps, or null when it keeps every record. A capture that keeps a
+    /// window has the broker release the evidence the session gave up (ADR-048 decision 5), so its journal limit bounds what
+    /// the evidence holds rather than everything it recorded, and publish as often as that window needs rather than its
+    /// day-long limit (`contracts/broker-v1.md` §5.1).
     /// </param>
-    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, bool releaseFollowed = false) => new(
+    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, TimeSpan? keepWindow = null) => new(
         "explore", null, [], false, false,
         new BrokerCaptureQuota(maximumDurationSeconds, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024),
-        releaseFollowed ? BrokerRetentionPolicy.ReleaseFollowed : BrokerRetentionPolicy.StopAtLimit,
-        null, BrokerJournalPublication.Live);
+        keepWindow is null ? BrokerRetentionPolicy.StopAtLimit : BrokerRetentionPolicy.ReleaseFollowed,
+        null, BrokerJournalPublication.Live,
+        keepWindow is { } keep ? (int)Math.Ceiling(keep.TotalSeconds) : null);
 
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
@@ -206,7 +209,7 @@ public static class DesktopCaptureRunner
             }
 
             BrokerWireResponse response = await client.SendAsync(
-                    ExploreRequest(options.MaximumDurationSeconds, releaseFollowed: options.Rolling is not null), stop)
+                    ExploreRequest(options.MaximumDurationSeconds, options.Rolling?.Keep), stop)
                 .ConfigureAwait(false);
             if (response is not BrokerPrepareCaptureResponse prepared)
             {

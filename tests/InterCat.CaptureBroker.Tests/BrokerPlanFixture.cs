@@ -141,6 +141,9 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
     /// <summary>The client PID each start was given, in order.</summary>
     public List<int?> StartedClients { get; } = [];
 
+    /// <summary>The prepared plan each start was given, in order.</summary>
+    public List<PreparedCapturePlan> StartedPlans { get; } = [];
+
     public ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -162,6 +165,7 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
         cancellationToken.ThrowIfCancellationRequested();
         StartCount++;
         StartedClients.Add(clientProcessId);
+        StartedPlans.Add(plan);
         if (BeforeStart is not null)
         {
             await BeforeStart(ownership.CaptureId);

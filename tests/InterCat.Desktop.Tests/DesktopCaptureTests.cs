@@ -85,9 +85,15 @@ public sealed class DesktopCaptureTests
         // Every record of the capture is kept by default; a capture that keeps a window has the broker release its own
         // copy of what the session gave up (ADR-048 decision 5), which its review says.
         Assert.Equal(BrokerRetentionPolicy.StopAtLimit, request.Retention);
-        BrokerPrepareCaptureRequest rolling = DesktopCaptureRunner.ExploreRequest(86_400, releaseFollowed: true);
-        Assert.Equal((BrokerRetentionPolicy.ReleaseFollowed, BrokerJournalPublication.Live, 86_400),
-            (rolling.Retention, rolling.Publication, rolling.Quota.MaximumDurationSeconds));
+        Assert.Null(request.KeptWindowSeconds);
+        BrokerPrepareCaptureRequest rolling = DesktopCaptureRunner.ExploreRequest(86_400, TimeSpan.FromMinutes(10));
+        Assert.Equal((BrokerRetentionPolicy.ReleaseFollowed, BrokerJournalPublication.Live, 86_400, (int?)600),
+            (rolling.Retention, rolling.Publication, rolling.Quota.MaximumDurationSeconds, rolling.KeptWindowSeconds));
+
+        // It publishes as often as its window needs, not its day-long limit: every 2 s for ten minutes, where a day takes 85.
+        Assert.Equal((2_000, 85_000), (
+            BrokerJournalPublicationPolicy.IntervalMilliseconds(rolling.Publication, 86_400, rolling.KeptWindowSeconds),
+            BrokerJournalPublicationPolicy.IntervalMilliseconds(rolling.Publication, 86_400)));
     }
 
     [Fact]

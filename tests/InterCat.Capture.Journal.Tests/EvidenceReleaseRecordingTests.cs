@@ -106,8 +106,11 @@ public sealed class EvidenceReleaseRecordingTests
             Plan(), host, store, token => host.Delivered.Task.WaitAsync(TimeSpan.FromSeconds(90), token), DateTimeOffset.UtcNow,
             publishEvery: TimeSpan.FromMilliseconds(50),
             maximumJournalBytes: 1_048_576,
-            releasableChunks: () => long.MaxValue);
+            releasableChunks: () => long.MaxValue,
+            heldChunkLimit: 3);
 
+        // A follow that keeps up never lets the evidence hold as many chunks as it may.
+        Assert.False(result.FollowStalled);
         Assert.False(result.JournalQuotaReached);
         Assert.Equal(30_000, result.JournaledRecords);
         Assert.True(result.ReleasedChunks >= 29, $"It released {result.ReleasedChunks} chunks.");
@@ -124,6 +127,47 @@ public sealed class EvidenceReleaseRecordingTests
             + units.Sum(unit => unit.Records));
     }
 
+    [Fact(DisplayName = "R16: an evidence recording whose follow stopped giving chunks up stops once it holds as many as it may, publishing what it recorded")]
+    public async Task AStalledFollowStopsTheRecording()
+    {
+        using var directory = new TemporaryDirectory();
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "release-stall-tests");
+        var host = new ScriptedHost();
+        var script = new Script(host, store);
+        for (int chunk = 1; chunk <= 3; chunk++)
+        {
+            script.Burst(2);
+            script.Published(chunk);
+        }
+
+        script.Burst(2);
+
+        // A stop takes a moment, as a broker's does: the capture records on a little after it was asked to stop.
+        LiveCaptureResult result = await LiveRecorder.RecordAsync(
+            Plan(), host, store,
+            async token =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(90), token);
+                }
+                catch (OperationCanceledException)
+                {
+                    await Task.Delay(TimeSpan.FromMilliseconds(300), CancellationToken.None);
+                }
+            },
+            DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(50),
+            releasableChunks: () => 0,
+            heldChunkLimit: 3);
+
+        // It stopped once a publication left it holding three: the chunk being written became its last, nothing more.
+        Assert.True(result.FollowStalled);
+        Assert.Equal((0, (string?)null, 4), (result.ReleasedChunks, result.ReleaseProblem, result.Publications));
+        Assert.True(result.JournaledRecords >= 6, $"It journaled {result.JournaledRecords} records.");
+        Assert.NotNull(CaptureFinalizationV1.Read(store.Root, store.Current!));
+    }
+
     [Fact(DisplayName = "R16: only an evidence-only recording that publishes chunks releases those its follow gave up")]
     public async Task OnlyAPublishingEvidenceRecordingReleases()
     {
@@ -133,6 +177,12 @@ public sealed class EvidenceReleaseRecordingTests
             Plan(), new ScriptedHost(), store, _ => Task.CompletedTask, DateTimeOffset.UtcNow,
             releasableChunks: () => 1));
         Assert.Equal("releasableChunks", once.ParamName);
+        Assert.Equal("heldChunkLimit", (await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => LiveRecorder.RecordAsync(
+            Plan(), new ScriptedHost(), store, _ => Task.CompletedTask, DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(50), heldChunkLimit: 3))).ParamName);
+        Assert.Equal("heldChunkLimit", (await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => LiveRecorder.RecordAsync(
+            Plan(), new ScriptedHost(), store, _ => Task.CompletedTask, DateTimeOffset.UtcNow,
+            publishEvery: TimeSpan.FromMilliseconds(50), releasableChunks: () => 0, heldChunkLimit: 1))).ParamName);
         Assert.Null(store.Current);
     }
 

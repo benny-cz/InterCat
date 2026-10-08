@@ -82,7 +82,8 @@ public sealed record BrokerEffectiveCaptureSummary(
     BrokerRetentionPolicy Retention,
     IReadOnlyList<string> Diagnostics,
     BrokerJournalPublication Publication = BrokerJournalPublication.OnStop,
-    int PublicationIntervalMilliseconds = 0);
+    int PublicationIntervalMilliseconds = 0,
+    int? KeptWindowSeconds = null);
 
 public sealed record BrokerPrepareCaptureResponse(
     bool Prepared,
@@ -220,7 +221,7 @@ public static class BrokerWireResponseCodec
         1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 20, 21, 22, 23, 24);
     private static readonly IReadOnlySet<ushort> PrepareFields = Set(
         1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34);
+        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35);
     private const int MaximumEvidenceDirectoryBytes = 1024;
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2, 3, 4, 5);
     private static readonly IReadOnlySet<ushort> StatusFields =
@@ -394,6 +395,10 @@ public static class BrokerWireResponseCodec
         fields.WriteStringList(32, summary.Diagnostics);
         fields.WriteInt32(33, (int)summary.Publication, required: false);
         fields.WriteInt32(34, summary.PublicationIntervalMilliseconds, required: false);
+        if (summary.KeptWindowSeconds is { } kept)
+        {
+            fields.WriteInt32(35, kept, required: false);
+        }
     }
 
     private static void WriteStart(BrokerWireFieldWriter fields, BrokerStartCaptureResponse value)
@@ -603,7 +608,8 @@ public static class BrokerWireResponseCodec
             fields.OptionalInt32(33) is int publication
                 ? (BrokerJournalPublication)publication
                 : BrokerJournalPublication.OnStop,
-            fields.OptionalInt32(34) ?? 0);
+            fields.OptionalInt32(34) ?? 0,
+            fields.OptionalInt32(35));
         return new(
             prepared,
             refusalCode is null ? null : (BrokerPrepareRefusalCode)refusalCode.Value,
@@ -942,9 +948,14 @@ public static class BrokerWireResponseCodec
             throw new InvalidDataException(quotaProblem ?? "The response retention policy is unsupported.");
         }
 
+        if (BrokerJournalPublicationPolicy.KeptWindowProblem(summary.Retention, summary.KeptWindowSeconds) is { } kept)
+        {
+            throw new InvalidDataException(kept);
+        }
+
         if (!Enum.IsDefined(summary.Publication)
             || summary.PublicationIntervalMilliseconds != BrokerJournalPublicationPolicy.IntervalMilliseconds(
-                summary.Publication, summary.Quota!.MaximumDurationSeconds))
+                summary.Publication, summary.Quota!.MaximumDurationSeconds, summary.KeptWindowSeconds))
         {
             throw new InvalidDataException(
                 "The response journal publication interval is not the one its policy compiles to.");

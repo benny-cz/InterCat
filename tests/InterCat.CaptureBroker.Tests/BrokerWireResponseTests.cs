@@ -162,6 +162,21 @@ public sealed class BrokerWireResponseTests
             Response(live with { Publication = BrokerJournalPublication.OnStop, PublicationIntervalMilliseconds = 0 }), Guid.NewGuid())));
         Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
             Response(live with { Retention = (BrokerRetentionPolicy)3 }), Guid.NewGuid())));
+
+        // A review names the window the capture's follow keeps with the interval it compiles to - a day-long capture
+        // keeping a minute publishes every 2 s, not every 85 - and only for such a capture.
+        BrokerEffectiveCaptureSummary kept = live with
+        {
+            Quota = live.Quota with { MaximumDurationSeconds = 86_400 },
+            KeptWindowSeconds = 60,
+            PublicationIntervalMilliseconds = 2_000,
+        };
+        Assert.Equal(60, Assert.IsType<BrokerPrepareCaptureResponse>(
+            BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(Response(kept), Guid.NewGuid()))).Summary.KeptWindowSeconds);
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
+            Response(kept with { KeptWindowSeconds = 86_400 }), Guid.NewGuid())));
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
+            Response(kept with { Retention = BrokerRetentionPolicy.StopAtLimit }), Guid.NewGuid())));
     }
 
     [Fact]

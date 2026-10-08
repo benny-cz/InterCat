@@ -58,6 +58,8 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 - maximum duration, journal-byte allowance, minimum free-space reserve and retention (`StopAtLimit` = 1,
   `ReleaseFollowed` = 2, written as an `int32`);
 - the journal-publication policy (`OnStop` = 1, `Live` = 2), written as an `int32` after retention;
+- since revision 449, the window a `ReleaseFollowed` capture's follow keeps, written last and only when named - the
+  string `kept-window`, then the seconds as an `int32` - so a plan that names none keeps the digest it always had;
 - body policy, retained-byte bound and extended-data allowlist;
 - extended-data and stack settings;
 - requested/effective mechanism, selected and initial-view PIDs, aggregate broader-capture state,
@@ -220,6 +222,16 @@ those words. The count is a hint for the running capture alone, never persisted:
 says less than an earlier one, changes nothing, and a release that fails is said with the stop and ends the releasing,
 never the capture. `ReleaseFollowed` needs `Live` publication, which a follow reads; with `OnStop` it is refused, as is
 any other value. The window and `icat capture --keep-last` ask for it whenever the session keeps a window.
+
+Prepare field 11 (revision 449) is the window such a capture's follow keeps, in seconds from one to a day: an optional
+`int32` that a broker predating it skips, refused with any other retention. It sets how often the capture publishes: its
+follow holds about a quarter more than the window, so `Live` compiles to
+`max(2 s, min(ceil(maximum duration / 1024), ceil(1.25 x window / 1024)))` - every 2 s for the last ten minutes of a
+day-long capture, where its duration alone would allow 85 s, every 5 s for the last hour - and its held chunks stay near
+1,024. Summary field 35 states the window, and the compiled interval is checked against it. The window and
+`icat capture --keep-last` send it. A capture whose follow stops giving chunks up would hold one more at every
+publication, so a `ReleaseFollowed` capture stops once it holds 2,048 - twice what its interval is set for - saying that
+its follow stopped giving chunks up, and its evidence is finalized as a limit's is.
 
 Focused and Content groups are mutually exclusive and
 Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before

@@ -72,7 +72,8 @@ public sealed class PreparedCapturePlan
         CaptureScopeDecision scope,
         bool preserveExtendedData,
         bool requestCallStacks,
-        string digest)
+        string digest,
+        int? keptWindowSeconds = null)
     {
         ProtocolVersion = BrokerProtocol.Version;
         CompiledAtUtc = compiledAtUtc;
@@ -86,8 +87,10 @@ public sealed class PreparedCapturePlan
         Quota = quota;
         Retention = retention;
         Publication = publication;
-        PublicationInterval = BrokerJournalPublicationPolicy.Interval(publication, quota.MaximumDurationSeconds);
-        FirstPublication = BrokerJournalPublicationPolicy.FirstPublication(publication, quota.MaximumDurationSeconds);
+        KeptWindowSeconds = keptWindowSeconds;
+        PublicationInterval = BrokerJournalPublicationPolicy.Interval(publication, quota.MaximumDurationSeconds, keptWindowSeconds);
+        FirstPublication = BrokerJournalPublicationPolicy.FirstPublication(
+            publication, quota.MaximumDurationSeconds, keptWindowSeconds);
         BodyPolicy = bodyPolicy;
         Sources = sources;
         Providers = providers;
@@ -109,6 +112,12 @@ public sealed class PreparedCapturePlan
     public BrokerCaptureQuota Quota { get; }
     public BrokerRetentionPolicy Retention { get; }
     public BrokerJournalPublication Publication { get; }
+
+    /// <summary>
+    /// The window a capture that releases what its follow gave up says its follow keeps, which sets how often it publishes;
+    /// null for every other capture.
+    /// </summary>
+    public int? KeptWindowSeconds { get; }
 
     /// <summary>How often the runtime publishes journal chunks; null publishes once, when the capture stops.</summary>
     public TimeSpan? PublicationInterval { get; }
@@ -139,7 +148,8 @@ public static class BrokerPrepareCompiler
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
         BrokerRuntimeIdentity? runtime = null,
-        BrokerJournalPublication publication = BrokerJournalPublication.OnStop)
+        BrokerJournalPublication publication = BrokerJournalPublication.OnStop,
+        int? keptWindowSeconds = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(quota);
@@ -159,6 +169,11 @@ public static class BrokerPrepareCompiler
             refusal = Refused(
                 BrokerPrepareRefusalCode.InvalidOperationalLimits,
                 "A capture that releases what its follow gave up publishes live chunks, which a follow needs.");
+        }
+
+        if (refusal is null && BrokerJournalPublicationPolicy.KeptWindowProblem(retention, keptWindowSeconds) is { } kept)
+        {
+            refusal = Refused(BrokerPrepareRefusalCode.InvalidOperationalLimits, kept);
         }
 
         if (refusal is not null)
@@ -198,7 +213,8 @@ public static class BrokerPrepareCompiler
             providers,
             scope,
             plan.PreserveExtendedData,
-            plan.RequestCallStacks);
+            plan.RequestCallStacks,
+            keptWindowSeconds);
 
         return BrokerPrepareResult.Prepared(new(
             plan.CompiledAtUtc,
@@ -218,7 +234,8 @@ public static class BrokerPrepareCompiler
             scope,
             plan.PreserveExtendedData,
             plan.RequestCallStacks,
-            digest));
+            digest,
+            keptWindowSeconds));
     }
 
     private static BrokerPrepareResult? Validate(
@@ -723,7 +740,8 @@ internal static class PreparedPlanDigest
         ImmutableArray<ProviderEnablementRequest> providers,
         CaptureScopeDecision scope,
         bool preserveExtendedData,
-        bool requestCallStacks)
+        bool requestCallStacks,
+        int? keptWindowSeconds = null)
     {
         using var stream = new MemoryStream(4096);
         using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true), leaveOpen: true))
@@ -799,6 +817,14 @@ internal static class PreparedPlanDigest
                 WriteIntegers(writer, provider.ProcessIdsToInclude);
                 writer.Write(provider.RequestCaptureState);
                 writer.Write(provider.RequestCallStacks);
+            }
+
+            // The window a capture's follow keeps sets how often it publishes, so it is digested, and last and only when
+            // named, so every plan that names none keeps the digest it always had.
+            if (keptWindowSeconds is { } kept)
+            {
+                WriteString(writer, "kept-window");
+                writer.Write(kept);
             }
         }
 

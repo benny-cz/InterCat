@@ -152,9 +152,10 @@ public sealed class BrokerConnectionDispatcherTests
     public async Task LivePublicationIsStatedInTheEffectiveSummary()
     {
         var registry = new PreparedPlanRegistry();
+        var runtime = new BrokerFakeRuntime();
         using var preparation = new BrokerPreparationCoordinator(new FakePlanSource(), registry, Runtime);
         using var lifecycle = new BrokerLifecycleCoordinator(
-            registry, new InMemoryBrokerLifecycleStore(), new BrokerFakeRuntime());
+            registry, new InMemoryBrokerLifecycleStore(), runtime);
         var owner = CreateDispatcher(OwnerA, preparation, lifecycle);
         await CompleteHello(owner);
 
@@ -166,6 +167,22 @@ public sealed class BrokerConnectionDispatcherTests
         Assert.Equal(
             BrokerJournalPublicationPolicy.IntervalMilliseconds(BrokerJournalPublication.Live, Quota.MaximumDurationSeconds),
             prepared.Summary.PublicationIntervalMilliseconds);
+
+        // A day-long capture whose follow keeps the last ten minutes publishes every 2 s, which its review states with the
+        // window, and the plan it starts holds both (`contracts/broker-v1.md` §5.1).
+        var rolling = Assert.IsType<BrokerPrepareCaptureResponse>(await Dispatch(owner, ValidPrepare() with
+        {
+            Quota = Quota with { MaximumDurationSeconds = 86_400 },
+            Retention = BrokerRetentionPolicy.ReleaseFollowed,
+            Publication = BrokerJournalPublication.Live,
+            KeptWindowSeconds = 600,
+        }));
+        Assert.True(rolling.Prepared, rolling.RefusalReason);
+        Assert.Equal(((int?)600, 2_000), (rolling.Summary.KeptWindowSeconds, rolling.Summary.PublicationIntervalMilliseconds));
+        Assert.Equal(BrokerOperationCode.Started, Assert.IsType<BrokerStartCaptureResponse>(await Dispatch(
+            owner, new BrokerStartCaptureRequest(rolling.Grant!.Token, Guid.NewGuid()))).Code);
+        PreparedCapturePlan plan = Assert.Single(runtime.StartedPlans);
+        Assert.Equal(((int?)600, TimeSpan.FromSeconds(2)), (plan.KeptWindowSeconds, plan.PublicationInterval));
     }
 
     [Fact]

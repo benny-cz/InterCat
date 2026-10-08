@@ -48,7 +48,9 @@ release of each kind, and a count could disagree with the chunks, which their by
    as the owner renews its lease, how many of the capture's oldest chunks its follow's session gave up; the broker's
    recorder releases those it still holds between two publications, by its own writer, never the chunk its committed
    boundary names, so the derived session always holds a chunk the evidence keeps. A capture's journal quota then bounds
-   what its evidence holds rather than everything it recorded (revision 448, `contracts/broker-v1.md` §5.1).
+   what its evidence holds rather than everything it recorded (revision 448, `contracts/broker-v1.md` §5.1). Since
+   revision 449 it is told the window its follow keeps, which sets how often it publishes, and it stops once it holds
+   twice the chunks that interval is set for, since its follow has then stopped giving chunks up.
 
 ## Consequences
 

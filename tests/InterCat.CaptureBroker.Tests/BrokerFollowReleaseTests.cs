@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using InterCat.Capture.Windows;
 using InterCat.Domain;
 using Xunit;
 using static InterCat.CaptureBroker.Tests.BrokerPlanFixture;
@@ -56,6 +57,56 @@ public sealed class BrokerFollowReleaseTests
             StringComparison.Ordinal);
         Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(
             Prepare((BrokerRetentionPolicy)3, BrokerJournalPublication.Live), Guid.NewGuid()));
+    }
+
+    [Fact(DisplayName = "R16: a capture that keeps a window publishes as often as the window needs, never less often than its duration needs")]
+    public void AWindowSetsThePublicationInterval()
+    {
+        // Ten minutes kept of a day-long capture: every 2 s, where its duration alone allows 85. An hour: every 5 s.
+        Assert.Equal(TimeSpan.FromSeconds(85), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 86_400));
+        Assert.Equal(TimeSpan.FromSeconds(2), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 86_400, 600));
+        Assert.Equal(TimeSpan.FromSeconds(5), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 86_400, 3_600));
+        Assert.Equal(TimeSpan.FromSeconds(85), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 86_400, 86_400));
+        Assert.Equal(TimeSpan.FromSeconds(2), BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.Live, 600, 86_400));
+        Assert.Equal(TimeSpan.FromMilliseconds(500),
+            BrokerJournalPublicationPolicy.FirstPublication(BrokerJournalPublication.Live, 86_400, 3_600));
+        Assert.Null(BrokerJournalPublicationPolicy.Interval(BrokerJournalPublication.OnStop, 86_400, 600));
+
+        // A day-long plan compiles to it and digests it, so a plan that names no window keeps the digest it always had.
+        EffectiveCapturePlan plan = CompileFocused();
+        BrokerCaptureQuota day = Quota with { MaximumDurationSeconds = 86_400 };
+        PreparedCapturePlan kept = BrokerPrepareCompiler.Prepare(
+            plan, day, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live, 600).PreparedPlan!;
+        PreparedCapturePlan whole = BrokerPrepareCompiler.Prepare(
+            plan, day, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live).PreparedPlan!;
+        Assert.Equal(((int?)600, TimeSpan.FromSeconds(2)), (kept.KeptWindowSeconds, kept.PublicationInterval));
+        Assert.Equal(((int?)null, TimeSpan.FromSeconds(85)), (whole.KeptWindowSeconds, whole.PublicationInterval));
+        Assert.NotEqual(whole.Digest, kept.Digest);
+        Assert.Equal(whole.Digest, BrokerPrepareCompiler.Prepare(
+            plan, day, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live).PreparedPlan!.Digest);
+
+        // Only a capture that releases what its follow gave up names a window, of one second to a day.
+        Assert.Contains("goes only with a capture that releases", BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.StopAtLimit, Runtime, BrokerJournalPublication.Live, 600).Refusal!.Message,
+            StringComparison.Ordinal);
+        Assert.Null(BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live, 0).PreparedPlan);
+        Assert.Null(BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live, 86_401).PreparedPlan);
+        Assert.NotNull(BrokerPrepareCompiler.Prepare(
+            plan, Quota, BrokerRetentionPolicy.ReleaseFollowed, Runtime, BrokerJournalPublication.Live, 86_400).PreparedPlan);
+
+        // On the wire it is an optional field a broker that predates it skips, refused where the compiler refuses it.
+        BrokerPrepareCaptureRequest request = Prepare(BrokerRetentionPolicy.ReleaseFollowed, BrokerJournalPublication.Live) with
+        {
+            KeptWindowSeconds = 600,
+        };
+        BrokerWireFrame frame = BrokerWireRequestCodec.Encode(request, Guid.NewGuid());
+        Assert.False(FieldHeader(frame.Payload.Span, 11).Required);
+        Assert.Equal(600, Assert.IsType<BrokerPrepareCaptureRequest>(BrokerWireRequestCodec.Decode(frame)).KeptWindowSeconds);
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(
+            request with { Retention = BrokerRetentionPolicy.StopAtLimit }, Guid.NewGuid()));
+        Assert.Throws<InvalidDataException>(() => BrokerWireRequestCodec.Encode(request with { KeptWindowSeconds = 0 }, Guid.NewGuid()));
     }
 
     [Fact(DisplayName = "R16: only an owner whose lease was renewed tells the runtime what its capture's follow gave up")]

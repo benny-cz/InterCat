@@ -317,6 +317,9 @@ public sealed class BrokerEvidenceCaptureRuntime
                             ? "The evidence reached its journal byte limit holding what the capture's follow had not given up; "
                                 + "the admitted prefix was finalized."
                             : "The configured journal byte limit was reached; the admitted prefix was finalized."
+                        : result.FollowStalled
+                            ? $"The capture's follow stopped giving chunks up, so its evidence held {LiveRecorder.MaximumHeldChunks:N0} "
+                                + "chunks, as many as it may; the admitted prefix was finalized."
                         : result.DiskReserveReached
                             ? $"{result.DiskReserveReason} The admitted prefix was finalized."
                         : capture.LimitReason ?? (!capture.UserStopRequested

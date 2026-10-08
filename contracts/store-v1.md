@@ -598,8 +598,7 @@ A session written before this rule keeps its superseded manifests until its next
   fails the recorder's next publication; since revision 446 a chunk release states what its recording gave up in all,
   and a follow goes on across the evidence's chunk releases (ADR-048); since revision 448 the broker releases the chunks
   a capture's follow gave up, between its own publications, when the capture was prepared to (`ReleaseFollowed`,
-  `contracts/broker-v1.md` §5.1). Its live publication interval still follows the capture's maximum duration, not the
-  window its follow keeps.
+  `contracts/broker-v1.md` §5.1), and since revision 449 it publishes as often as the window its follow keeps needs.
 - Materializing a pinned interval into a package of its own, §10.1's other branch: a pin keeps everything after its
   moment, and its allowance bounds that (ADR-046).
 - Binding to the broker's validated root for live capture. The interface is shared; the composition
