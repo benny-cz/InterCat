@@ -1320,6 +1320,7 @@
         "R15: below the machine rung the relationship table lists what the rung's graph draws and counts the rest",
         "R15: every focusable element and list item is named for the ear at every rung, never by a record's fields",
         "R15: every prompt the windows build names every element a screen reader lands on",
+        "R15: export, a redacted report and a re-layout are offered only where they have something to act on, and say why not",
         "R15: graph pin and re-layout commands have keyboard paths and a button equivalent",
         "R15: in mechanism lanes each lane marks the selection's own records of its mechanism",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",

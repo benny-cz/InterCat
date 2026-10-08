@@ -348,7 +348,8 @@ public sealed class LadderKeyboardTests
         Settle(window);
         Assert.Equal("L0 · MACHINE", viewModel.LevelBadge);
         Assert.True(forward.IsVisible);
-        Assert.Equal("Forward (Alt+Right)", forward.Content);
+        Assert.Equal("Forward", forward.Content);
+        Assert.EndsWith(" (Alt+Right)", viewModel.ForwardLabel, StringComparison.Ordinal);
         Assert.Equal(viewModel.ForwardLabel, ToolTip.GetTip(forward));
         Assert.Equal(viewModel.ForwardLabel, AutomationProperties.GetName(forward));
         Assert.StartsWith("Forward to Group: ", viewModel.ForwardLabel, StringComparison.Ordinal);

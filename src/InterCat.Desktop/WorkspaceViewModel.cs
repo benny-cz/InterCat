@@ -2425,6 +2425,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         OnPropertyChanged(nameof(GraphDisplay));
+        OnPropertyChanged(nameof(CanRelayoutGraph));
         OnPropertyChanged(nameof(GraphSummary));
         RaiseGraphSelectionChanged();
         if (!sameNodes)
@@ -4759,6 +4760,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseRankingChanged();
         OnPropertyChanged(nameof(ShowsGroupingChoice));
         OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(ExportTip));
+        OnPropertyChanged(nameof(ShareReportTip));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));
         OnPropertyChanged(nameof(SelectedCrumb));
@@ -5141,6 +5145,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(IsEvidenceRung));
         OnPropertyChanged(nameof(HoldsGeneration));
         OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(ExportTip));
+        OnPropertyChanged(nameof(ShareReportTip));
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
@@ -5716,6 +5723,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(ExportTip));
+        OnPropertyChanged(nameof(ShareReportTip));
         OnPropertyChanged(nameof(IsEmptyRung));
         OnPropertyChanged(nameof(ShowsRankedTable));
         OnPropertyChanged(nameof(ShowsEmptyReason));
@@ -5924,6 +5934,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
         view = ProjectLadder();
         OnPropertyChanged(nameof(GraphDisplay));
+        OnPropertyChanged(nameof(CanRelayoutGraph));
         OnPropertyChanged(nameof(GraphSummary));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
         OnPropertyChanged(nameof(Snapshot));
@@ -5934,6 +5945,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(RelationshipsAbsent));
         OnPropertyChanged(nameof(RungRows));
+        OnPropertyChanged(nameof(CanExport));
+        OnPropertyChanged(nameof(ExportTip));
+        OnPropertyChanged(nameof(ShareReportTip));
         OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
@@ -6037,6 +6051,22 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>Whether the rung shows anything to export: ranked rows, or a readable evidence scope that holds records.</summary>
     public bool CanExport => IsEvidenceRung ? evidence is { Problem: null, Records.Count: > 0 } : view.Rows.Count > 0;
+
+    /// <summary>What exporting the rung does, or why there is nothing to export yet, as its button's tooltip says it.</summary>
+    public string ExportTip => CanExport ? "Export the rows this rung shows, named by their scope (Ctrl+E)." : NothingToExport;
+
+    /// <summary>What sharing a redacted report does, or why there is nothing to share yet.</summary>
+    public string ShareReportTip => CanExport
+        ? "Share a pseudonymized metadata report of this rung, without original sources or raw record locators."
+        : NothingToExport;
+
+    /// <summary>Why the rung's rows cannot be exported or shared: no session yet, or a rung that lists nothing.</summary>
+    private string NothingToExport => emptyWorkspace ? "Open or record a session first: there is nothing to export yet."
+        : IsEvidenceRung ? "No source record is listed here yet, so there is nothing to export."
+        : "This rung lists no row, so there is nothing to export.";
+
+    /// <summary>Whether the graph draws a node to lay out afresh; a graph of none has nothing to place.</summary>
+    public bool CanRelayoutGraph => wholeDisplay.Nodes.Count > 0;
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {

@@ -439,10 +439,10 @@
         <Button Grid.Column="2" Margin="0,0,8,0" Content="{Binding TableToggleLabel}" Click="ToggleTables"
                 AutomationProperties.HelpText="Toggle the accessible table equivalents" />
         <!-- Alt+Right's visible equivalent (R15), shown while an ascent or a crumb has left a rung to re-enter. It stands
-             left of Back so Back never moves under a pointer that clicks it again and again. Its face stays short, so
-             the title and breadcrumb keep their room at the minimum width; the rung it re-enters is in its tooltip and
-             its accessible name. -->
-        <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="Forward (Alt+Right)"
+             left of Back so Back never moves under a pointer that clicks it again and again. Its face is one word, so
+             the title and breadcrumb keep their room at the minimum width; the rung it re-enters and its shortcut are in
+             its tooltip and its accessible name. -->
+        <Button x:Name="ForwardButton" Grid.Column="3" Margin="0,0,8,0" Content="Forward"
                 Click="GoForward" IsVisible="{Binding CanGoForward}" ToolTip.Tip="{Binding ForwardLabel}"
                 AutomationProperties.Name="{Binding ForwardLabel}" />
         <!-- Back's face names the rung it returns to by its kind, as Forward's names none, so the title keeps its room; the
@@ -758,15 +758,19 @@
                         Click="TogglePinNode" Margin="0,0,8,0"
                         AutomationProperties.HelpText="Pin the selected graph node where it is drawn, or release its pin" />
                 <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
+                        IsEnabled="{Binding CanRelayoutGraph}"
                         AutomationProperties.HelpText="Lay the graph out afresh, keeping pinned nodes where they are" />
               </WrapPanel>
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
                       Click="BrowseChannels"
                       AutomationProperties.HelpText="Browse all admitted paired TCP channels" />
+              <!-- Offered while the rung lists something to export, and saying why not while it lists nothing. -->
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
-                      AutomationProperties.HelpText="Export the rows this rung shows, named by their scope" />
+                      IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" ToolTip.ShowOnDisabled="True"
+                      AutomationProperties.HelpText="{Binding ExportTip}" />
               <Button x:Name="ShareRedactedButton" Content="Share redacted report" Click="ShareRedactedView"
-                      AutomationProperties.HelpText="Share a pseudonymized metadata report without original sources or raw record locators" />
+                      IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ShareReportTip}" ToolTip.ShowOnDisabled="True"
+                      AutomationProperties.HelpText="{Binding ShareReportTip}" />
               <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
               <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
                       AutomationProperties.HelpText="Save a reopenable, pseudonymized copy of this session to share" />

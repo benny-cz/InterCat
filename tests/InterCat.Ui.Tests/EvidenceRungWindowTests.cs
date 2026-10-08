@@ -1460,6 +1460,52 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: export, a redacted report and a re-layout are offered only where they have something to act on, and say why not")]
+    public async Task ActionsAreOfferedWhereTheyAct()
+    {
+        // Before any session, nothing is exported, shared or laid out, and each says why.
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        Dispatch();
+        Button export = window.GetControl<Button>("ExportButton");
+        Button share = window.GetControl<Button>("ShareRedactedButton");
+        Button relayout = window.GetControl<Button>("RelayoutButton");
+        Assert.Equal((false, false, false), (export.IsEnabled, share.IsEnabled, relayout.IsEnabled));
+        Assert.Equal("Open or record a session first: there is nothing to export yet.", ToolTip.GetTip(export));
+        Assert.Equal(ToolTip.GetTip(export), ToolTip.GetTip(share));
+        Assert.True(ToolTip.GetShowOnDisabled(export));
+
+        // A session's machine rung lists its processes: each is offered, and says what it does.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Exchange(0, 3),
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Tools\idle.exe", SessionRelativeTicks = 5 },
+        ]);
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        Assert.Equal((true, true, true), (export.IsEnabled, share.IsEnabled, relayout.IsEnabled));
+        Assert.Equal("Export the rows this rung shows, named by their scope (Ctrl+E).", ToolTip.GetTip(export));
+        Assert.StartsWith("Share a pseudonymized metadata report of this rung", (string)ToolTip.GetTip(share)!, StringComparison.Ordinal);
+
+        // A process with no channel lists no row at its rung: nothing there to export, and the button says so.
+        ProcessNode idle = workspace.Snapshot.Processes.Single(node => node.ProcessId == 300);
+        foreach (string key in new[] { idle.GroupKey, idle.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        Dispatch();
+        Assert.Empty(workspace.RungRows);
+        Assert.Equal((false, false), (export.IsEnabled, share.IsEnabled));
+        Assert.Equal("This rung lists no row, so there is nothing to export.", ToolTip.GetTip(export));
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "6.4: the window writes the applied view to the file the user chose, in either format")]
     public async Task TheWindowWritesTheAppliedViewToTheChosenFile()
     {
