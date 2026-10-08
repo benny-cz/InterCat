@@ -77,6 +77,14 @@ public sealed record LiveCaptureResult
 
     /// <summary>The processes that collected the capture, published with its first generation; null when none were named.</summary>
     public CollectorIdentitiesV1? Collectors { get; init; }
+
+    /// <summary>How many of its oldest chunks the recording released once its follow had given them up (ADR-048).</summary>
+    public int ReleasedChunks { get; init; }
+
+    /// <summary>
+    /// Why the recording stopped releasing what its follow gave up, keeping every later chunk; null when it never had to.
+    /// </summary>
+    public string? ReleaseProblem { get; init; }
 }
 
 /// <summary>
@@ -88,6 +96,9 @@ public sealed record LiveCaptureResult
 /// </summary>
 public static class LiveRecorder
 {
+    /// <summary>The reason a recording's release of the chunks its follow gave up states (ADR-048).</summary>
+    public const string FollowedReason = "its follow gave these chunks up";
+
     /// <summary>
     /// Starts the capture, records until <paramref name="recordUntil"/> completes, then stops and publishes. Cancelling
     /// <paramref name="recordUntil"/>'s token ends the recording early; what was captured is still published. Only a
@@ -115,6 +126,12 @@ public static class LiveRecorder
     /// Where to read the capture's clock against the wall clock, and its boot, when the capture starts and when it stops;
     /// the calibration is published with the last chunk. Null records none.
     /// </param>
+    /// <param name="releasableChunks">
+    /// How many of the capture's oldest chunks its follow's session gave up, read after each publication: the recording
+    /// releases those it still holds, whole, between two publications and never the newest, so what its evidence holds -
+    /// not everything it recorded - counts against <paramref name="maximumJournalBytes"/> (ADR-048 decision 5). Null keeps
+    /// every chunk. Only an evidence-only recording that publishes chunks releases them.
+    /// </param>
     /// <param name="collectors">
     /// The processes collecting the capture - its broker and the client that asked for it, or the recorder itself - published
     /// with its first generation (`contracts/collector-identities-v1.md`), so a reader can label their own activity in it.
@@ -136,6 +153,7 @@ public static class LiveRecorder
         LiveHealthProbe? healthProbe = null,
         ClockCalibrationSource? calibration = null,
         IReadOnlyList<CollectorProcessV1>? collectors = null,
+        Func<long>? releasableChunks = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(plan);
@@ -181,6 +199,13 @@ public static class LiveRecorder
             throw new ArgumentException(
                 "A byte-bounded live recorder is evidence-only: derived rows cannot precede a refused journal append.",
                 nameof(derive));
+        }
+
+        if (releasableChunks is not null && (derive is not null || publishEvery is null))
+        {
+            throw new ArgumentException(
+                "Only an evidence-only recording that publishes chunks releases those its follow gave up.",
+                nameof(releasableChunks));
         }
 
         if (diskFloor is not null && derive is not null)
@@ -248,7 +273,8 @@ public static class LiveRecorder
                     WallClock = calibration.WallClock,
                     Samples = [startSample],
                 },
-            collected);
+            collected,
+            releasableChunks);
 
         // One writer thread from the first record to the last, so the journal takes records in acquisition order (I7).
         var writerReady = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -362,6 +388,8 @@ public static class LiveRecorder
             ContentLimitReached = chunks.ContentLimitReached,
             Calibration = calibrated,
             Collectors = collected,
+            ReleasedChunks = chunks.ReleasedChunks,
+            ReleaseProblem = chunks.ReleaseProblem,
         };
     }
 
@@ -397,6 +425,11 @@ public static class LiveRecorder
         private readonly Action onAcquisitionLimit;
         private readonly LivePreviewTally? preview;
         private readonly AdmittedEventEnvelopeMapper mapper;
+        private readonly Func<long>? releasableChunks;
+
+        // The published chunks the evidence still holds, oldest first, each with its records and journal bytes, so the
+        // ones its follow gave up are released whole and stated in all (ADR-048).
+        private readonly Queue<(string Name, long Records, long JournalBytes)> held = new();
 
         // The calibration of the capture's start alone, published with its first chunk that is not its last, so a capture
         // that ends before its last publication still names its boot and its start; the last replaces it
@@ -442,9 +475,11 @@ public static class LiveRecorder
             Action onAcquisitionLimit,
             LivePreviewTally? preview,
             ClockCalibrationV1? started,
-            CollectorIdentitiesV1? collectors)
+            CollectorIdentitiesV1? collectors,
+            Func<long>? releasableChunks)
         {
             this.session = session;
+            this.releasableChunks = releasableChunks;
             this.started = started;
             this.collectors = collectors;
             this.preview = preview;
@@ -480,6 +515,12 @@ public static class LiveRecorder
 
         /// <summary>How many content bytes the capture kept, over every chunk.</summary>
         public long ContentKeptBytes => contentKept;
+
+        /// <summary>How many of its oldest chunks the recording released once its follow had given them up.</summary>
+        public int ReleasedChunks { get; private set; }
+
+        /// <summary>Why the recording stopped releasing what its follow gave up; null while it can.</summary>
+        public string? ReleaseProblem { get; private set; }
 
         private bool AcquisitionLimited => JournalQuotaReached || DiskReserveReached;
 
@@ -835,8 +876,58 @@ public static class LiveRecorder
 
             // Whatever the derivation publishes after a chunk takes a generation before the next chunk does.
             _ = derivation?.Published(published, last: false);
+
+            // Between this publication and the next chunk's staging, the only time no chunk holds a generation's name, the
+            // chunks the follow gave up go.
+            held.Enqueue((published.JournalName, published.JournalRecords, published.JournalBytes));
+            ReleaseFollowed();
             builder = BeginChunk(stagePlan: false);
             rolloverBlocked = false;
+        }
+
+        /// <summary>
+        /// Releases the oldest chunks the capture's follow gave up (ADR-048 decision 5): whole, by this writer between two
+        /// publications, and never the newest, which the committed boundary names, so a follow always holds a chunk the
+        /// evidence keeps. Each release states what the recording gave up in all, and what the evidence holds, not everything
+        /// it recorded, then counts against the journal allowance. A release that fails is remembered and ends the releasing,
+        /// never the capture, which keeps every later chunk.
+        /// </summary>
+        private void ReleaseFollowed()
+        {
+            if (releasableChunks is null || ReleaseProblem is not null)
+            {
+                return;
+            }
+
+            int count = (int)Math.Min(releasableChunks() - ReleasedChunks, held.Count - 1);
+            if (count <= 0)
+            {
+                return;
+            }
+
+            (string Name, long Records, long JournalBytes)[] given = [.. held.Take(count)];
+            try
+            {
+                _ = store.ReleaseJournalChunks(
+                    [.. given.Select(chunk => chunk.Name)],
+                    given.Sum(chunk => chunk.Records),
+                    FollowedReason,
+                    DateTimeOffset.UtcNow);
+            }
+            catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
+                or InvalidOperationException or InvalidDataException or ArgumentException)
+            {
+                ReleaseProblem = exception.Message;
+                return;
+            }
+
+            for (int index = 0; index < count; index++)
+            {
+                _ = held.Dequeue();
+            }
+
+            ReleasedChunks += count;
+            publishedJournalBytes -= given.Sum(chunk => chunk.JournalBytes);
         }
 
         private DerivedGenerationBuilder BeginChunk(bool stagePlan)

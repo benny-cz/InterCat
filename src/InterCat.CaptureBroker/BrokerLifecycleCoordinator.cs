@@ -255,9 +255,14 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
         }
     }
 
+    /// <param name="followReleased">
+    /// How many of the capture's oldest chunks its follow's session gave up, handed to a runtime that releases what a follow
+    /// gave up once the lease is renewed (ADR-048 decision 5); null says nothing.
+    /// </param>
     public async Task<BrokerLeaseOutcome> RenewOwnerLeaseAsync(
         CaptureId captureId,
         BrokerClientIdentity client,
+        long? followReleased = null,
         CancellationToken cancellationToken = default)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
@@ -346,6 +351,12 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                     ownership.State,
                     ownership.LeaseExpiresAtUtc,
                     BoundReason($"The renewed lease could not be persisted: {exception.Message}"));
+            }
+
+            // Only an owner whose lease was renewed says what its follow gave up.
+            if (followReleased is { } released && runtime is IBrokerFollowRelease follow)
+            {
+                follow.FollowReleased(captureId, released);
             }
 
             return new(

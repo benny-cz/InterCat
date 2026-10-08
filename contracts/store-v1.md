@@ -596,9 +596,10 @@ A session written before this rule keeps its superseded manifests until its next
 - Rolling retention of a broker's own evidence. Since revision 439 a follow keeps a rolling window of the session it
   derives (ADR-045), releasing between its mirrors by its own writer, since a release published beneath a recorder
   fails the recorder's next publication; since revision 446 a chunk release states what its recording gave up in all,
-  and a follow goes on across the evidence's chunk releases (ADR-048). The broker releasing the chunks its follow gave
-  up, between its own publications (ADR-048 decision 5), is next; until then its evidence keeps every record until its
-  capture's limits stop it.
+  and a follow goes on across the evidence's chunk releases (ADR-048); since revision 448 the broker releases the chunks
+  a capture's follow gave up, between its own publications, when the capture was prepared to (`ReleaseFollowed`,
+  `contracts/broker-v1.md` §5.1). Its live publication interval still follows the capture's maximum duration, not the
+  window its follow keeps.
 - Materializing a pinned interval into a package of its own, §10.1's other branch: a pin keeps everything after its
   moment, and its allowance bounds that (ADR-046).
 - Binding to the broker's validated root for live capture. The interface is shared; the composition

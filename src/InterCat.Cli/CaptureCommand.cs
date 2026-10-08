@@ -104,6 +104,12 @@ internal static class CaptureCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
+        // A capture that keeps a window has the broker release its own copy of what the session gave up (ADR-048).
+        if (rolling is not null)
+        {
+            request = request! with { Retention = BrokerRetentionPolicy.ReleaseFollowed };
+        }
+
         BrokerLaunchTarget? target = brokerOption is not null
             ? new(Path.GetFullPath(brokerOption), ["serve"])
             : BrokerLaunchTarget.BesideCurrentProcess();
@@ -379,7 +385,9 @@ internal static class CaptureCommand
             {
                 // The ticket keeps the lease's new expiry, which is how a later finish judges whether the capture can
                 // still be recording.
-                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId), cancellationToken).ConfigureAwait(false)
+                // A capture that keeps a window says what its session gave up, which the broker then releases (ADR-048).
+                long? gaveUp = rolling is null ? null : last?.ReleasedChunks;
+                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(captureId, gaveUp), cancellationToken).ConfigureAwait(false)
                     is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
                 {
                     ticket?.Renew(expires);
@@ -590,9 +598,10 @@ internal static class CaptureCommand
         ConsoleUi.Line("      Stops at --duration (default 60 s) or on Ctrl+C; everything published is kept. If this");
         ConsoleUi.Line("      process ends early, icat follow <new-session-dir> finishes the session from the ticket");
         ConsoleUi.Line("      it leaves beside it. --keep-last keeps the session to the newest stretch of session time");
-        ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on; the");
-        ConsoleUi.Line("      broker's own evidence keeps every record until the capture stops. A pin (icat pin) keeps");
-        ConsoleUi.Line("      the records read from its moment; once the session holds more than the pin allows, the");
-        ConsoleUi.Line("      capture stops rather than release them.");
+        ConsoleUi.Line("      that long, releasing the records read before it, but for what later ones rest on, and the");
+        ConsoleUi.Line("      broker releases its own copy of what the session gave up, so --max-journal-mib bounds what");
+        ConsoleUi.Line("      it holds rather than all it recorded. A pin (icat pin) keeps the records read from its");
+        ConsoleUi.Line("      moment; once the session holds more than the pin allows, the capture stops rather than");
+        ConsoleUi.Line("      release them.");
     }
 }

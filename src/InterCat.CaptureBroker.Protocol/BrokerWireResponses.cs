@@ -936,7 +936,8 @@ public static class BrokerWireResponseCodec
         }
 
         string? quotaProblem = summary.Quota?.Validate();
-        if (quotaProblem is not null || summary.Retention != BrokerRetentionPolicy.StopAtLimit)
+        if (quotaProblem is not null || !Enum.IsDefined(summary.Retention)
+            || (summary.Retention == BrokerRetentionPolicy.ReleaseFollowed && summary.Publication != BrokerJournalPublication.Live))
         {
             throw new InvalidDataException(quotaProblem ?? "The response retention policy is unsupported.");
         }

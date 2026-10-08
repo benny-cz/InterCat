@@ -1371,6 +1371,8 @@
         "R16: a capture ID cannot be empty",
         "R16: a capture attempt without elevation creates nothing and says why",
         "R16: a capture finalization marker round-trips its stop milestones",
+        "R16: a capture review states retention that releases what its follow gave up only with live chunks",
+        "R16: a capture that releases what its follow gave up is prepared only with live chunks",
         "R16: a chunk release keeps the capture-finalization marker the last chunk published",
         "R16: a client refuses a pipe served by any process but the broker it launched",
         "R16: a compacted log reopens at its new generation with the same state",
@@ -1405,6 +1407,7 @@
         "R16: a privileged recording publishes evidence only, and a follower derives the session from it",
         "R16: a provisioned root carries a protected DACL and a no-write-up label",
         "R16: a published marker is read back, protected from retention and carried by re-derivation",
+        "R16: a renewal says how many chunks the capture's follow gave up, in an optional field and within its bound",
         "R16: a replacement outside the root or onto itself never reaches the filesystem",
         "R16: a replacement whose source is missing leaves the destination untouched",
         "R16: a root owned by an untrusted principal is refused, never adopted or repaired",
@@ -1416,6 +1419,7 @@
         "R16: a terminal partial stop closes the capture, and later recovery leaves it alone",
         "R16: a viewer who is already a broker principal keeps one entry, not a weaker second",
         "R16: ample free space leaves a floored recording unlimited, and a floor refuses in-process derivation",
+        "R16: an evidence recording releases the chunks its follow gave up, never its newest, and the follow goes on numbering every record as the capture did",
         "R16: an exact journal quota stops capture and publishes a readable bounded journal",
         "R16: an existing capture directory with inherited security is not silently adopted",
         "R16: an interrupted capture closes with its published prefix and the dead writer's staging released",
@@ -1436,6 +1440,8 @@
         "R16: journal quota accounts for pending records, batch frames and terminal exactly",
         "R16: live chunk rollover under a free-disk floor never publishes past the reserve",
         "R16: only a single ordinary component is accepted as an owned name",
+        "R16: only an evidence-only recording that publishes chunks releases those its follow gave up",
+        "R16: only an owner whose lease was renewed tells the runtime what its capture's follow gave up",
         "R16: ordinary-integrity viewer can read capture evidence but cannot modify it",
         "R16: parent trust checks only its owner, even when ProgramData has unrelated SDDL rights",
         "R16: production provisioning requires an elevated broker",
@@ -1457,7 +1463,8 @@
         "R16: the production label is high integrity with no write-up",
         "R16: the production root grants only SYSTEM, Administrators and a read-only viewer",
         "R16: the publication metadata bound covers a real manifest and pointers with long names",
-        "R16: unelevated ETL capture creates no session and explains the refusal"
+        "R16: unelevated ETL capture creates no session and explains the refusal",
+        "R16: what an evidence recording holds, not everything it recorded, counts against its journal allowance once its follow gives chunks up"
       ],
       "R17": [
         "R17: WinINet's capture events are HTTP messages, and a buffer's bytes are admitted only under a policy that names them",

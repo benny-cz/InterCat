@@ -36,6 +36,13 @@ public sealed record FollowStep
 
     /// <summary>Compactions this pass published (§20.1, ADR-026).</summary>
     public required int Compactions { get; init; }
+
+    /// <summary>
+    /// How many of the capture's oldest chunks the derived session no longer holds: those its releases gave up, which the
+    /// evidence may then release in turn (ADR-048 decision 5). Mirroring never changes it; a release of the derived session
+    /// raises it from the next pass.
+    /// </summary>
+    public int ReleasedChunks { get; init; }
 }
 
 /// <summary>
@@ -183,6 +190,7 @@ public sealed class LiveSessionFollower
             DerivedChunks = start + (derived.Current is { } after ? Chunks(after).Length : 0),
             EvidenceChunks = sourceReleased + sourceChunks.Length,
             DerivedRecords = checked((long)journalIndex),
+            ReleasedChunks = start,
             Finished = finished,
             DerivedGeneration = derived.Current?.Generation,
             Compactions = compactions,

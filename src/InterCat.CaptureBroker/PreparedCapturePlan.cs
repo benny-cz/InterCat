@@ -153,6 +153,14 @@ public static class BrokerPrepareCompiler
                 "Journal publication must be OnStop or Live.");
         }
 
+        // What a follow gave up can be released only from evidence a follow reads while it records (ADR-048 decision 5).
+        if (refusal is null && retention == BrokerRetentionPolicy.ReleaseFollowed && publication != BrokerJournalPublication.Live)
+        {
+            refusal = Refused(
+                BrokerPrepareRefusalCode.InvalidOperationalLimits,
+                "A capture that releases what its follow gave up publishes live chunks, which a follow needs.");
+        }
+
         if (refusal is not null)
         {
             return refusal;
@@ -229,11 +237,11 @@ public static class BrokerPrepareCompiler
         }
 
         string? quotaProblem = quota.Validate();
-        if (quotaProblem is not null || retention != BrokerRetentionPolicy.StopAtLimit)
+        if (quotaProblem is not null || !Enum.IsDefined(retention))
         {
             return Refused(
                 BrokerPrepareRefusalCode.InvalidOperationalLimits,
-                quotaProblem ?? "Stop-at-limit is the only broker retention policy in protocol v1.");
+                quotaProblem ?? "Broker retention must stop at its limits or release what its follow gave up.");
         }
 
         if (!plan.CanStart)

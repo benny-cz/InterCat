@@ -165,6 +165,18 @@ public interface IBrokerCaptureCompletionProbe
     ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken);
 }
 
+/// <summary>
+/// A runtime whose captures may release the evidence their follow gave up (ADR-048 decision 5). The owner's renewal says how
+/// many of the capture's oldest chunks its follow's session no longer holds, and a capture prepared to release what its
+/// follow gave up releases those it still holds between its own publications. A hint for the running capture alone, never
+/// persisted: a broker that restarts stops the capture.
+/// </summary>
+public interface IBrokerFollowRelease
+{
+    /// <summary>Records that the capture's follow gave up its oldest <paramref name="chunks"/> chunks; never lowers what it said.</summary>
+    void FollowReleased(CaptureId captureId, long chunks);
+}
+
 /// <summary>Durable ownership state. Degradation stays orthogonal to lifecycle.</summary>
 public sealed record BrokerCaptureOwnership
 {

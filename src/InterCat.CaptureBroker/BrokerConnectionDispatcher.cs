@@ -205,7 +205,7 @@ public sealed class BrokerConnectionDispatcher
                     .ConfigureAwait(false)),
             BrokerRenewOwnerLeaseRequest renew =>
                 ToResponse(await lifecycle
-                    .RenewOwnerLeaseAsync(renew.CaptureId, client, cancellationToken)
+                    .RenewOwnerLeaseAsync(renew.CaptureId, client, renew.FollowReleased, cancellationToken)
                     .ConfigureAwait(false)),
             _ => throw new InvalidOperationException("A decoded request has no dispatcher command."),
         };

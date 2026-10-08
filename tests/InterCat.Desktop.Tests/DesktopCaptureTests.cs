@@ -81,6 +81,13 @@ public sealed class DesktopCaptureTests
         Assert.Equal(1_024L * 1_024 * 1_024, request.Quota.MaximumJournalBytes);
         Assert.Equal(1_024L * 1_024 * 1_024, request.Quota.MinimumFreeDiskBytes);
         Assert.Null(request.Quota.Validate());
+
+        // Every record of the capture is kept by default; a capture that keeps a window has the broker release its own
+        // copy of what the session gave up (ADR-048 decision 5), which its review says.
+        Assert.Equal(BrokerRetentionPolicy.StopAtLimit, request.Retention);
+        BrokerPrepareCaptureRequest rolling = DesktopCaptureRunner.ExploreRequest(86_400, releaseFollowed: true);
+        Assert.Equal((BrokerRetentionPolicy.ReleaseFollowed, BrokerJournalPublication.Live, 86_400),
+            (rolling.Retention, rolling.Publication, rolling.Quota.MaximumDurationSeconds));
     }
 
     [Fact]
@@ -95,6 +102,9 @@ public sealed class DesktopCaptureTests
             BrokerJournalPublication.Live, 2_000);
 
         string review = DesktopCaptureRunner.Describe(summary);
+        Assert.DoesNotContain("releasing what the session gave up", review, StringComparison.Ordinal);
+        Assert.Contains("up to 10 min / 1 GiB journal, releasing what the session gave up · ",
+            DesktopCaptureRunner.Describe(summary with { Retention = BrokerRetentionPolicy.ReleaseFollowed }), StringComparison.Ordinal);
         Assert.Contains("TCP", review, StringComparison.Ordinal);
         Assert.Contains("10 min", review, StringComparison.Ordinal);
         Assert.Contains("up to 10 min / 1 GiB journal", review, StringComparison.Ordinal);

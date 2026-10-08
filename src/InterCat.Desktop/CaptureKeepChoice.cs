@@ -35,8 +35,8 @@ public sealed record CaptureKeepChoice(string Label, int MaximumDurationSeconds,
     public string Explanation => Rolling is not { } rolling
         ? "records for up to 10 minutes and keeps every record."
         : $"records until you stop it, for up to 24 hours, and keeps {rolling.Window} of session time, releasing older "
-            + "records as it goes. The broker keeps every record until the capture stops, so its journal limit can stop "
-            + "it sooner, as the size line says.";
+            + "records as it goes. The broker releases its own copy of what the session gave up, so its journal limit "
+            + "bounds what it still holds rather than all it recorded.";
 
     /// <summary>What the runner is told: how long the capture may record, what its session keeps, and how it is projected.</summary>
     public CaptureRunOptions Options(Func<EvidencePolicy>? policy) => new()

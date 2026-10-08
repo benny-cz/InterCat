@@ -122,8 +122,13 @@ internal sealed class ManualTimeProvider(DateTimeOffset value) : TimeProvider
     public void Advance(TimeSpan duration) => value = value.Add(duration);
 }
 
-internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe
+internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe, IBrokerFollowRelease
 {
+    /// <summary>What each renewal said its capture's follow gave up, in order.</summary>
+    public List<(CaptureId Capture, long Chunks)> FollowReleases { get; } = [];
+
+    public void FollowReleased(CaptureId captureId, long chunks) => FollowReleases.Add((captureId, chunks));
+
     public BrokerRuntimeStartOutcome StartOutcome { get; init; } = new(true);
     public BrokerRuntimeStopOutcome StopOutcome { get; init; } = new(new(true, true, true, true, true));
     public Func<CaptureId, Task>? BeforeStart { get; set; }

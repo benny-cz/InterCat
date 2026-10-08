@@ -204,6 +204,9 @@ internal sealed class ScriptedHost : IEtwSessionHost
 
     public void Pause(TimeSpan pause) => script.Add(_ => Thread.Sleep(pause));
 
+    /// <summary>Runs <paramref name="step"/> at this point of the script, between the records before it and after it.</summary>
+    public void Run(Action step) => script.Add(_ => step());
+
     /// <summary>Holds delivery until <paramref name="condition"/> holds, and refuses to wait past <paramref name="timeout"/>.</summary>
     public void PauseUntil(Func<bool> condition, TimeSpan timeout) => script.Add(_ =>
     {

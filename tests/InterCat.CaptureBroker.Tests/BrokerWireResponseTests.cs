@@ -142,6 +142,28 @@ public sealed class BrokerWireResponseTests
             BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(inconsistent, Guid.NewGuid())));
     }
 
+    [Fact(DisplayName = "R16: a capture review states retention that releases what its follow gave up only with live chunks")]
+    public void SummaryReleasesWhatTheFollowGaveUpOnlyWithLiveChunks()
+    {
+        static BrokerPrepareCaptureResponse Response(BrokerEffectiveCaptureSummary summary) =>
+            new(true, null, null, new(new string('A', 43), Digest('a'), Now, Now.AddSeconds(30)), summary);
+        BrokerEffectiveCaptureSummary live = Summary() with
+        {
+            Retention = BrokerRetentionPolicy.ReleaseFollowed,
+            Publication = BrokerJournalPublication.Live,
+            PublicationIntervalMilliseconds = BrokerJournalPublicationPolicy.IntervalMilliseconds(
+                BrokerJournalPublication.Live, Summary().Quota.MaximumDurationSeconds),
+        };
+
+        var decoded = Assert.IsType<BrokerPrepareCaptureResponse>(
+            BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(Response(live), Guid.NewGuid())));
+        Assert.Equal(BrokerRetentionPolicy.ReleaseFollowed, decoded.Summary.Retention);
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
+            Response(live with { Publication = BrokerJournalPublication.OnStop, PublicationIntervalMilliseconds = 0 }), Guid.NewGuid())));
+        Assert.Throws<InvalidDataException>(() => BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(
+            Response(live with { Retention = (BrokerRetentionPolicy)3 }), Guid.NewGuid())));
+    }
+
     [Fact]
     public void PrepareGrantAndRefusalMustBeCompleteAndExclusive()
     {

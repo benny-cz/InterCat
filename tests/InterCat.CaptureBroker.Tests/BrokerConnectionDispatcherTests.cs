@@ -124,10 +124,12 @@ public sealed class BrokerConnectionDispatcherTests
         Assert.Equal(preview.Counts, carried.Counts);
         Assert.Equal(preview with { Counts = carried.Counts }, carried);
 
+        // A renewal that says what the capture's follow gave up hands it to the runtime (ADR-048 decision 5).
         var renewed = Assert.IsType<BrokerRenewOwnerLeaseResponse>(await Dispatch(
             dispatcher,
-            new BrokerRenewOwnerLeaseRequest(captureId)));
+            new BrokerRenewOwnerLeaseRequest(captureId, 4)));
         Assert.Equal(BrokerOperationCode.LeaseRenewed, renewed.Code);
+        Assert.Equal([(captureId, 4L)], runtime.FollowReleases);
 
         var stopped = Assert.IsType<BrokerStopCaptureResponse>(await Dispatch(
             dispatcher,

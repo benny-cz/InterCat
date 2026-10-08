@@ -55,7 +55,8 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 
 - compilation UTC ticks, build ID, architecture and adapter version;
 - requested/effective profile and admission;
-- maximum duration, journal-byte allowance, minimum free-space reserve and stop-at-limit retention;
+- maximum duration, journal-byte allowance, minimum free-space reserve and retention (`StopAtLimit` = 1,
+  `ReleaseFollowed` = 2, written as an `int32`);
 - the journal-publication policy (`OnStop` = 1, `Live` = 2), written as an `int32` after retention;
 - body policy, retained-byte bound and extended-data allowlist;
 - extended-data and stack settings;
@@ -170,7 +171,7 @@ PrepareCapture(profile ID, approved overrides, quota, retention policy)
 StartCapture(prepared plan token, request ID)
 GetStatus(capture ID)
 StopCapture(capture ID, request ID)
-RenewOwnerLease(capture ID)
+RenewOwnerLease(capture ID, chunks the follow gave up?)
 ```
 
 They use a bounded length-prefixed binary schema, not .NET object or unrestricted JSON deserialization.
@@ -194,7 +195,7 @@ field is refused. No runtime/domain object graph is deserialized.
 
 Typed request codecs exist for Hello, GetCapabilities, PrepareCapture, StartCapture, GetStatus,
 StopCapture and RenewOwnerLease. Prepare accepts only a canonical profile ID, typed Focused/Content
-settings, stop-at-limit retention, a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and an
+settings, a retention policy (below), a 1-second-to-24-hour duration, a 1-MiB-to-1-TiB journal limit and an
 independent 16-MiB-to-1-TiB free-space reserve. The reserve may exceed the journal limit because the two bounds
 protect different resources. The reserve is a floor for InterCat's own writes, not an exclusive volume reservation:
 Start is refused unless the evidence volume holds the reserve plus bounded finalization headroom, every journal append
@@ -206,7 +207,21 @@ Prepare field 10 is an optional journal-publication policy: `OnStop` (1, the def
 when the capture stops; `Live` (2) publishes journal chunks while recording so an ordinary process can follow it.
 A client names a policy and never an interval. `Live` compiles to `max(2 s, ceil(maximum duration / 1024))`, so one
 capture publishes at most about 1,024 chunks and its manifest stays small and far inside the dependency limit for
-the whole capture. Any other value is refused. Focused and Content groups are mutually exclusive and
+the whole capture. Any other value is refused.
+
+Prepare field 9 is the retention policy (revision 448, ADR-048 decision 5). `StopAtLimit` (1) keeps every chunk until
+a limit stops the capture. `ReleaseFollowed` (2) releases the chunks the capture's follow gave up: the owner says, as
+it renews its lease, how many of the capture's oldest chunks its follow's session no longer holds - RenewOwnerLease's
+optional `int64` field 2, from 0 to 1,048,576, which a broker that predates it skips - and the recorder releases those
+it still holds between two publications, by its own writer, whole and oldest first, never the chunk its committed
+boundary names, each release stating what the recording gave up in all (`contracts/store-v1.md` §8). The journal
+allowance then bounds what the evidence holds rather than everything it recorded; a capture that reaches it says so in
+those words. The count is a hint for the running capture alone, never persisted: a renewal that is refused, or that
+says less than an earlier one, changes nothing, and a release that fails is said with the stop and ends the releasing,
+never the capture. `ReleaseFollowed` needs `Live` publication, which a follow reads; with `OnStop` it is refused, as is
+any other value. The window and `icat capture --keep-last` ask for it whenever the session keeps a window.
+
+Focused and Content groups are mutually exclusive and
 Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
 dispatch.
 

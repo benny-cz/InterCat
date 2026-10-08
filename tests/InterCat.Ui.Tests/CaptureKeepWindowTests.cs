@@ -41,8 +41,8 @@ public sealed class CaptureKeepWindowTests
             Dispatch();
             Assert.True(note.IsVisible);
             Assert.Equal("This capture records until you stop it, for up to 24 hours, and keeps the last 10 minutes of "
-                + "session time, releasing older records as it goes. The broker keeps every record until the capture stops, "
-                + "so its journal limit can stop it sooner, as the size line says.", note.Text);
+                + "session time, releasing older records as it goes. The broker releases its own copy of what the session "
+                + "gave up, so its journal limit bounds what it still holds rather than all it recorded.", note.Text);
             Assert.Equal("The last 10 minutes: " + window.KeepChoice.Explanation, ToolTip.GetTip(selector));
             options = window.KeepChoice.Options(null);
             Assert.Equal((CaptureKeepChoice.UntilStoppedSeconds, TimeSpan.FromMinutes(10), "the last 10 minutes"),

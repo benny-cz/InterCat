@@ -14,7 +14,8 @@ namespace InterCat.CaptureBroker;
 /// through an elevated crash/restart.
 /// </summary>
 [SupportedOSPlatform("windows")]
-public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe, IAsyncDisposable
+public sealed class BrokerEvidenceCaptureRuntime
+    : IBrokerCaptureRuntime, IBrokerCaptureCompletionProbe, IBrokerFollowRelease, IAsyncDisposable
 {
     private readonly WindowsBrokerRoot root;
     private readonly IEtwSessionHost host;
@@ -25,6 +26,9 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
 
     // Read by status requests without the start/stop gate, which a stop can hold while it drains.
     private readonly ConcurrentDictionary<CaptureId, LiveHealthProbe> health = new();
+
+    // What each capture's follow gave up, as its owner last said, read by its recorder between publications (ADR-048).
+    private readonly ConcurrentDictionary<CaptureId, long> followReleased = new();
     private bool disposed;
 
     public BrokerEvidenceCaptureRuntime(
@@ -117,7 +121,8 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
             || !ownership.Session.HasFullTokenInName
             || !string.Equals(ownership.PlanDigest, plan.Digest, StringComparison.Ordinal)
             || plan.Quota.Validate() is not null
-            || plan.Retention != BrokerRetentionPolicy.StopAtLimit)
+            || !Enum.IsDefined(plan.Retention)
+            || (plan.Retention == BrokerRetentionPolicy.ReleaseFollowed && plan.PublicationInterval is null))
         {
             return new(false, "The durable capture ownership, prepared digest or operational limits are invalid.");
         }
@@ -142,7 +147,10 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                 return new(false, "The capture evidence directory already exists; a new start cannot adopt its contents.");
             }
 
-            var capture = new ActiveCapture(captureRoot);
+            var capture = new ActiveCapture(captureRoot)
+            {
+                ReleasesFollowed = plan.Retention == BrokerRetentionPolicy.ReleaseFollowed,
+            };
             active.Add(ownership.CaptureId, capture);
             bool acknowledged = false;
             try
@@ -190,9 +198,16 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                     healthProbe: probe,
                     calibration: ClockCalibrationSource.Local,
                     collectors: CollectorProcesses.ForBroker(clientProcessId),
+                    releasableChunks: capture.ReleasesFollowed
+                        ? () => followReleased.GetValueOrDefault(ownership.CaptureId)
+                        : null,
                     cancellationToken: capture.Stop.Token);
                 _ = capture.Run.ContinueWith(
-                    _ => health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _),
+                    ended =>
+                    {
+                        _ = health.TryRemove(ownership.CaptureId, out LiveHealthProbe? _);
+                        _ = followReleased.TryRemove(ownership.CaptureId, out long _);
+                    },
                     CancellationToken.None,
                     TaskContinuationOptions.ExecuteSynchronously,
                     TaskScheduler.Default);
@@ -233,6 +248,23 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
         finally
         {
             gate.Release();
+        }
+    }
+
+    /// <summary>
+    /// Records what a running capture's follow gave up, for its recorder to read between publications; a capture whose plan
+    /// keeps every chunk never reads it, and a count lower than the last one said changes nothing.
+    /// </summary>
+    public void FollowReleased(CaptureId captureId, long chunks)
+    {
+        // Only a capture still recording holds a health probe; one that ended keeps no word of its follow.
+        if (chunks > 0 && health.ContainsKey(captureId))
+        {
+            _ = followReleased.AddOrUpdate(captureId, chunks, (_, said) => Math.Max(said, chunks));
+            if (!health.ContainsKey(captureId))
+            {
+                _ = followReleased.TryRemove(captureId, out long _);
+            }
         }
     }
 
@@ -281,12 +313,23 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
                 string? reason = !result.Stop.CallbacksDrained
                     ? "The journal finalized, but the ETW delivery pump did not confirm callback drain."
                     : result.JournalQuotaReached
-                        ? "The configured journal byte limit was reached; the admitted prefix was finalized."
+                        ? capture.ReleasesFollowed
+                            ? "The evidence reached its journal byte limit holding what the capture's follow had not given up; "
+                                + "the admitted prefix was finalized."
+                            : "The configured journal byte limit was reached; the admitted prefix was finalized."
                         : result.DiskReserveReached
                             ? $"{result.DiskReserveReason} The admitted prefix was finalized."
                         : capture.LimitReason ?? (!capture.UserStopRequested
                             ? "The configured maximum capture duration elapsed; evidence was finalized."
                             : null);
+
+                // A capture that could not release what its follow gave up kept every later chunk, which is said.
+                if (result.ReleaseProblem is { } problem)
+                {
+                    string kept = $"The broker stopped releasing what the capture's follow gave up and kept every later chunk: {problem}";
+                    reason = reason is null ? kept : reason + " " + kept;
+                }
+
                 return new(new(true, true, result.Stop.CallbacksDrained, true, true), reason);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
@@ -622,6 +665,9 @@ public sealed class BrokerEvidenceCaptureRuntime : IBrokerCaptureRuntime, IBroke
         public Task<LiveCaptureResult>? Run { get; set; }
         public string? LimitReason { get; set; }
         public bool UserStopRequested { get; set; }
+
+        /// <summary>Whether its plan releases what its follow gave up (`ReleaseFollowed`, ADR-048 decision 5).</summary>
+        public bool ReleasesFollowed { get; init; }
 
         public void Dispose()
         {

@@ -13,7 +13,15 @@ public enum BrokerProtocolFeature : ulong
 
 public enum BrokerRetentionPolicy : int
 {
+    /// <summary>The evidence keeps every chunk until a limit stops the capture.</summary>
     StopAtLimit = 1,
+
+    /// <summary>
+    /// The evidence releases the chunks the capture's follow gave up, which its owner says as it renews its lease: whole,
+    /// between two publications, never the newest, so the journal allowance bounds what the evidence holds rather than
+    /// everything it recorded (ADR-048 decision 5). It publishes live chunks, which a follow needs.
+    /// </summary>
+    ReleaseFollowed = 2,
 }
 
 /// <summary>
@@ -151,8 +159,19 @@ public sealed record BrokerStopCaptureRequest(CaptureId CaptureId, Guid RequestI
     public override BrokerMessageType MessageType => BrokerMessageType.StopCapture;
 }
 
-public sealed record BrokerRenewOwnerLeaseRequest(CaptureId CaptureId) : BrokerWireRequest
+/// <param name="FollowReleased">
+/// How many of the capture's oldest chunks its follow's session gave up, which a capture that releases what its follow gave
+/// up may then release (ADR-048 decision 5); null says nothing. An optional field, so a broker that predates it renews the
+/// lease and ignores it.
+/// </param>
+public sealed record BrokerRenewOwnerLeaseRequest(CaptureId CaptureId, long? FollowReleased = null) : BrokerWireRequest
 {
+    /// <summary>
+    /// The most chunks a renewal may say were given up: far more than a day-long capture publishes at the shortest
+    /// publication interval, two seconds.
+    /// </summary>
+    public const long MaximumFollowReleased = 1_048_576;
+
     public override BrokerMessageType MessageType => BrokerMessageType.RenewOwnerLease;
 }
 
@@ -165,6 +184,7 @@ public static class BrokerWireRequestCodec
         20, 21, 22, 23, 24, 25, 26, 27);
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2);
     private static readonly IReadOnlySet<ushort> CaptureFields = Set(1);
+    private static readonly IReadOnlySet<ushort> RenewFields = Set(1, 2);
     private static readonly IReadOnlySet<ushort> StopFields = Set(1, 2);
     private static readonly IReadOnlySet<ushort> NoFields = new HashSet<ushort>();
 
@@ -204,8 +224,13 @@ public static class BrokerWireRequestCodec
                 fields.WriteGuid(2, stop.RequestId);
                 break;
             case BrokerRenewOwnerLeaseRequest renew:
-                ValidateCaptureId(renew.CaptureId);
+                ValidateRenew(renew);
                 fields.WriteGuid(1, renew.CaptureId.Value);
+                if (renew.FollowReleased is { } released)
+                {
+                    fields.WriteInt64(2, released, required: false);
+                }
+
                 break;
             default:
                 throw new NotSupportedException(
@@ -335,10 +360,21 @@ public static class BrokerWireRequestCodec
 
     private static BrokerRenewOwnerLeaseRequest ReadRenew(ReadOnlySpan<byte> payload)
     {
-        BrokerWireFieldSet fields = BrokerWireFieldSet.Parse(payload, CaptureFields);
-        var request = new BrokerRenewOwnerLeaseRequest(new(fields.RequiredGuid(1)));
-        ValidateCaptureId(request.CaptureId);
+        BrokerWireFieldSet fields = BrokerWireFieldSet.Parse(payload, RenewFields);
+        var request = new BrokerRenewOwnerLeaseRequest(new(fields.RequiredGuid(1)), fields.OptionalInt64(2));
+        ValidateRenew(request);
         return request;
+    }
+
+    private static void ValidateRenew(BrokerRenewOwnerLeaseRequest request)
+    {
+        ValidateCaptureId(request.CaptureId);
+        if (request.FollowReleased is < 0 or > BrokerRenewOwnerLeaseRequest.MaximumFollowReleased)
+        {
+            throw new InvalidDataException(
+                "A renewal says how many of the capture's chunks its follow gave up as a count from zero to "
+                + $"{BrokerRenewOwnerLeaseRequest.MaximumFollowReleased:N0}.");
+        }
     }
 
     private static void WritePrepare(BrokerWireFieldWriter fields, BrokerPrepareCaptureRequest request)
@@ -409,14 +445,20 @@ public static class BrokerWireRequestCodec
             throw new InvalidDataException(quotaProblem);
         }
 
-        if (request.Retention != BrokerRetentionPolicy.StopAtLimit)
+        if (!Enum.IsDefined(request.Retention))
         {
-            throw new InvalidDataException("Stop-at-limit is the only broker retention policy in protocol v1.");
+            throw new InvalidDataException("Broker retention must stop at its limits or release what its follow gave up.");
         }
 
         if (!Enum.IsDefined(request.Publication))
         {
             throw new InvalidDataException("Journal publication must be OnStop or Live.");
+        }
+
+        if (request.Retention == BrokerRetentionPolicy.ReleaseFollowed && request.Publication != BrokerJournalPublication.Live)
+        {
+            throw new InvalidDataException(
+                "A capture that releases what its follow gave up publishes live chunks, which a follow needs.");
         }
 
         bool validProcessIds = request.FocusedProcessIds.Count <= 64

@@ -113,16 +113,22 @@ public static class DesktopCaptureRunner
     private static readonly TimeSpan LeaseRenewal = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan FinishTimeout = TimeSpan.FromSeconds(60);
 
-    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600) => new(
+    /// <param name="releaseFollowed">
+    /// Whether the broker releases the evidence the session gave up, as a capture that keeps a window asks (ADR-048 decision
+    /// 5), so its journal limit bounds what the evidence holds rather than everything it recorded.
+    /// </param>
+    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, bool releaseFollowed = false) => new(
         "explore", null, [], false, false,
         new BrokerCaptureQuota(maximumDurationSeconds, 1_024L * 1_024 * 1_024, 1_024L * 1_024 * 1_024),
-        BrokerRetentionPolicy.StopAtLimit, null, BrokerJournalPublication.Live);
+        releaseFollowed ? BrokerRetentionPolicy.ReleaseFollowed : BrokerRetentionPolicy.StopAtLimit,
+        null, BrokerJournalPublication.Live);
 
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
         + $"up to {summary.Quota.MaximumDurationSeconds / 60:N0} min / "
-        + $"{ByteSizeText.Of(summary.Quota.MaximumJournalBytes)} journal · "
+        + $"{ByteSizeText.Of(summary.Quota.MaximumJournalBytes)} journal"
+        + (summary.Retention == BrokerRetentionPolicy.ReleaseFollowed ? ", releasing what the session gave up · " : " · ")
         + (summary.PublicationIntervalMilliseconds > 0
             ? $"first view within {BrokerJournalPublicationPolicy.FirstLivePublication.TotalSeconds:0.#} s, then every "
                 + $"{summary.PublicationIntervalMilliseconds / 1000d:0.#} s. "
@@ -199,7 +205,8 @@ public static class DesktopCaptureRunner
                 throw new InvalidDataException("The capture broker protocol is incompatible. Reinstall InterCat.");
             }
 
-            BrokerWireResponse response = await client.SendAsync(ExploreRequest(options.MaximumDurationSeconds), stop)
+            BrokerWireResponse response = await client.SendAsync(
+                    ExploreRequest(options.MaximumDurationSeconds, releaseFollowed: options.Rolling is not null), stop)
                 .ConfigureAwait(false);
             if (response is not BrokerPrepareCaptureResponse prepared)
             {
@@ -397,7 +404,10 @@ public static class DesktopCaptureRunner
 
                             if (!stopSent && closedStatus is null && DateTimeOffset.UtcNow >= nextRenewal)
                             {
-                                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started), work)
+                                // A capture that keeps a window says what its session gave up, which the broker then
+                                // releases from its evidence between publications (ADR-048 decision 5).
+                                long? gaveUp = options.Rolling is null ? null : derivation.Last?.ReleasedChunks;
+                                if (await client.SendAsync(new BrokerRenewOwnerLeaseRequest(started, gaveUp), work)
                                         .ConfigureAwait(false) is BrokerRenewOwnerLeaseResponse { LeaseExpiresAtUtc: { } expires })
                                 {
                                     ticket?.Renew(expires);

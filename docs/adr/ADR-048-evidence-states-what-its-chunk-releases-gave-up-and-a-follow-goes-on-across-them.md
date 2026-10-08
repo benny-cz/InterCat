@@ -1,6 +1,6 @@
 # ADR-048: Evidence states what its chunk releases gave up in all, and a follow goes on across them
 
-- Status: accepted; revision 446
+- Status: accepted; revision 446; decision 5 implemented in revision 448
 - Date: 2026-10-08
 - Amends: ADR-044 (decision 4, what a follower refuses), ADR-027 (what a follower refuses)
 - Relates to: §9, §20.2, R16, S5, S6, IC-016a, ADR-024, ADR-043, ADR-045, `contracts/store-v1.md` §8,
@@ -44,11 +44,11 @@ release of each kind, and a count could disagree with the chunks, which their by
 4. **What a follow still refuses.** Evidence that released chunks without stating so, as before; a derived session that
    holds none of the chunks the evidence keeps, which nothing can place; and a follow into an empty session of evidence
    that released its first chunks, which would begin after records the session never held and states no release of.
-5. **The broker releases only what its follow gave up (next).** The capture's owner tells the broker, as it renews its
-   lease, the oldest evidence chunk its derived session still holds; the broker's recorder releases the chunks before it
-   between two publications, by its own writer, never the chunk its committed boundary names, so the derived session
-   always holds a chunk the evidence keeps. A capture's journal quota then bounds what its evidence holds rather than
-   everything it recorded.
+5. **The broker releases only what its follow gave up.** A capture prepared to (`ReleaseFollowed`) is told by its owner,
+   as the owner renews its lease, how many of the capture's oldest chunks its follow's session gave up; the broker's
+   recorder releases those it still holds between two publications, by its own writer, never the chunk its committed
+   boundary names, so the derived session always holds a chunk the evidence keeps. A capture's journal quota then bounds
+   what its evidence holds rather than everything it recorded (revision 448, `contracts/broker-v1.md` §5.1).
 
 ## Consequences
 

@@ -69,6 +69,18 @@ public sealed class BrokerWireProtocolTests
         yield return [new BrokerGetStatusRequest(new(capture))];
         yield return [new BrokerStopCaptureRequest(new(capture), request)];
         yield return [new BrokerRenewOwnerLeaseRequest(new(capture))];
+        yield return [new BrokerRenewOwnerLeaseRequest(new(capture), 0)];
+        yield return [new BrokerRenewOwnerLeaseRequest(new(capture), BrokerRenewOwnerLeaseRequest.MaximumFollowReleased)];
+        yield return [new BrokerPrepareCaptureRequest(
+            "explore",
+            null,
+            [],
+            false,
+            false,
+            ValidQuota(),
+            BrokerRetentionPolicy.ReleaseFollowed,
+            null,
+            BrokerJournalPublication.Live)];
     }
 
     [Theory]
