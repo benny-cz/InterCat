@@ -133,6 +133,37 @@ public enum RetentionExtentKind
     /// record's content facts go, and every journal, row and derived file stays. Nothing can rebuild them.
     /// </summary>
     Content = 3,
+
+    /// <summary>
+    /// A session's oldest interval (ADR-043): the oldest units of its admitted journal - a recording's chunks, or a single
+    /// journal's first batches - whose records all read before a boundary, with their kept content and every row derived
+    /// from them but the identity evidence later records rest on, and the derived files that held those rows. Nothing can
+    /// rebuild them.
+    /// </summary>
+    Interval = 4,
+}
+
+/// <summary>
+/// What an interval release states beyond the files and records it gave up (ADR-043): the instant from which every record
+/// of the session is retained, how many rows went with the records it released, and how many of their rows it kept as the
+/// identity evidence of the processes and connections later records belong to, so those keep the instances, holders and
+/// pairings the whole capture gave them.
+/// </summary>
+/// <param name="BoundaryNanoseconds">
+/// Session time: every record read at or after it is retained. Before it the session holds the kept rows and the records
+/// delivered with later ones, so an interval before it is released, not empty.
+/// </param>
+public sealed record ReleasedInterval(long BoundaryNanoseconds, long ReleasedRows, long KeptRows)
+{
+    /// <summary>Returns the reason this statement is not readable, or null when it is.</summary>
+    public string? Validate() =>
+        ReleasedRows < 0 || KeptRows < 0
+            ? "An interval release states how many rows it released and kept, neither negative."
+            : null;
+
+    internal string CanonicalForm => string.Create(
+        CultureInfo.InvariantCulture,
+        $"interval|{BoundaryNanoseconds}|{ReleasedRows}|{KeptRows}");
 }
 
 /// <summary>
@@ -173,12 +204,31 @@ public sealed record RetentionRecord(
             string.Empty);
     }
 
+    /// <summary>
+    /// What an interval release states of the interval it released: present on that kind alone, and absent from the file
+    /// and the digest otherwise, so every other record is the shape it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReleasedInterval? Interval { get; init; }
+
     /// <summary>Returns the reason this record is not readable, or null when it is.</summary>
     public string? Validate()
     {
         if (!Enum.IsDefined(Kind))
         {
             return $"A retention record declares kind {(int)Kind}, which this reader does not implement.";
+        }
+
+        if ((Kind == RetentionExtentKind.Interval) != Interval is not null)
+        {
+            return Interval is null
+                ? "An interval release states the boundary from which every record is retained, and the rows it released and kept."
+                : "Only an interval release states an interval.";
+        }
+
+        if (Interval?.Validate() is { } interval)
+        {
+            return interval;
         }
 
         if (ReleasedBytes < 0 || ReleasedRecords < 0)
@@ -209,6 +259,8 @@ public sealed record RetentionRecord(
                     + "gone, so the file that held them is what stays identifiable afterwards."
                 : Kind == RetentionExtentKind.Content && !SessionManifestV1.IsDigest(SourceDigest)
                     ? "A content release names the digest of the content chunks it released, which are gone afterwards."
+                : Kind == RetentionExtentKind.Interval && !SessionManifestV1.IsDigest(SourceDigest)
+                    ? "An interval release names the digest of the files it released, which are gone afterwards."
                 : Kind == RetentionExtentKind.DerivedFiles && SourceDigest.Length > 0
                     ? "A derived-file release names no source digest; the files it released are listed instead."
                     : null,
@@ -218,13 +270,14 @@ public sealed record RetentionRecord(
     internal string CanonicalForm => string.Create(
         CultureInfo.InvariantCulture,
         $"{(int)Kind}|{ReleasedUtc.ToUniversalTime().UtcTicks}|{Reason}|{string.Join(',', ReleasedFiles)}"
-        + $"|{ReleasedBytes}|{ReleasedRecords}|{SourceDigest}");
+        + $"|{ReleasedBytes}|{ReleasedRecords}|{SourceDigest}")
+        + (Interval is { } interval ? "|" + interval.CanonicalForm : string.Empty);
 }
 
 /// <summary>
 /// A retention record and the generation that published it. A later generation carries the latest release of each extent
-/// nothing can rebuild - a journal prefix, kept content - so what was given up, when and why is still stated once the
-/// generation that released it is superseded (store-v1 §8).
+/// nothing can rebuild - a journal prefix, kept content, an interval - so what was given up, when and why is still stated
+/// once the generation that released it is superseded (store-v1 §8).
 /// </summary>
 public sealed record GenerationRelease(long Generation, RetentionRecord Record)
 {
@@ -277,8 +330,8 @@ public sealed record SessionManifestV1
     public RetentionRecord? Retention { get; init; }
 
     /// <summary>
-    /// The latest release of a journal prefix and of kept content that earlier generations published, each with the
-    /// generation that published it: every later generation carries them, so a release is still stated once the
+    /// The latest release of a journal prefix, of kept content and of an interval that earlier generations published, each
+    /// with the generation that published it: every later generation carries them, so a release is still stated once the
     /// generation that made it is superseded. Absent when there are none - from the file as well as the digest - so a
     /// manifest that carries none is the shape it always was, and verifies with the digest it always had.
     /// </summary>
@@ -359,7 +412,7 @@ public sealed record SessionManifestV1
 
     /// <summary>The releases a later generation carries: those nothing can rebuild. Derived files can be rebuilt.</summary>
     private static bool IsCarried(RetentionExtentKind kind) =>
-        kind is RetentionExtentKind.JournalPrefix or RetentionExtentKind.Content;
+        kind is RetentionExtentKind.JournalPrefix or RetentionExtentKind.Content or RetentionExtentKind.Interval;
 
     /// <summary>The manifest file name for a generation. Fixed width, so the names sort as the numbers do.</summary>
     public static string FileNameFor(long generation) =>
@@ -469,7 +522,7 @@ public sealed record SessionManifestV1
             if (!IsCarried(release.Record.Kind))
             {
                 return $"Generation {Generation} carries a {release.Record.Kind} release: a generation carries only the "
-                    + "releases nothing can rebuild, of a journal prefix and of kept content.";
+                    + "releases nothing can rebuild, of a journal prefix, of kept content and of an interval.";
             }
 
             if (!kinds.Add(release.Record.Kind) || Retention?.Kind == release.Record.Kind)

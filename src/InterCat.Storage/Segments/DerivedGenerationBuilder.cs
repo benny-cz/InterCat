@@ -89,6 +89,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
     private readonly JournalV1Writer? journal;
     private readonly CommittedBoundary? retainedBoundary;
     private readonly bool compacting;
+    private readonly bool releasing;
     private readonly bool mirroring;
     private long? mirroredRecords;
     private readonly List<StoreStagingFile> staged = [];
@@ -117,7 +118,8 @@ public sealed class DerivedGenerationBuilder : IDisposable
         CommittedBoundary? retainedBoundary = null,
         long? sourceGeneration = null,
         bool compacting = false,
-        bool mirroring = false)
+        bool mirroring = false,
+        bool releasing = false)
     {
         this.store = store;
         this.identity = identity;
@@ -129,6 +131,7 @@ public sealed class DerivedGenerationBuilder : IDisposable
         this.sourceGeneration = sourceGeneration;
         this.compacting = compacting;
         this.mirroring = mirroring;
+        this.releasing = releasing;
         open = new(identity, 0);
         openFields = new(identity, 0);
     }
@@ -530,6 +533,70 @@ public sealed class DerivedGenerationBuilder : IDisposable
     }
 
     /// <summary>
+    /// Begins an interval release of the current generation (ADR-043). The caller adds every row it keeps of the derived
+    /// files it replaces, unchanged, and publishes them with <see cref="CompleteIntervalRelease"/>; no journal is written
+    /// here, since the release gives up whole journal units.
+    /// </summary>
+    public static DerivedGenerationBuilder BeginIntervalRelease(
+        SessionStore store,
+        SegmentIdentityV1 identity,
+        long sourceGeneration,
+        DerivedGenerationOptions? options = null)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(identity);
+        DerivedGenerationOptions bounds = options ?? DerivedGenerationOptions.Default;
+        if (bounds.Validate() is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(options));
+        }
+
+        if (store.Current?.Generation != sourceGeneration)
+        {
+            throw new InvalidOperationException("An interval release needs the current generation it was planned against.");
+        }
+
+        return new(store, identity, bounds, store.NextGeneration, journalFile: null, journal: null,
+            retainedBoundary: null, sourceGeneration, releasing: true);
+    }
+
+    /// <summary>
+    /// Stages whatever is still open and publishes the interval release: the new segments hold the rows kept of the derived
+    /// files named, which the generation releases with the journal units given.
+    /// </summary>
+    public RetentionOutcome CompleteIntervalRelease(
+        IReadOnlyList<string> replaced,
+        IntervalJournalRelease journal,
+        ReleasedInterval interval,
+        string reason,
+        DateTimeOffset committedUtc,
+        DateTimeOffset? nowUtc = null,
+        CancellationToken cancellationToken = default)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!releasing || completed)
+        {
+            throw new InvalidOperationException(
+                completed ? "This generation has already been published." : "This builder is not releasing an interval.");
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        FlushSegment();
+        RetentionOutcome outcome = store.CommitIntervalRelease(
+            staged,
+            replaced,
+            journal,
+            interval,
+            reason,
+            sourceGeneration!.Value,
+            committedUtc,
+            expectedGeneration: generation,
+            nowUtc: nowUtc);
+        completed = true;
+        return outcome;
+    }
+
+    /// <summary>
     /// Publishes a mirrored generation (see <see cref="BeginMirror"/>). Its committed boundary names the copied journal
     /// and the records the caller replayed from it, which it knows only once the replay is done.
     /// </summary>
@@ -743,6 +810,11 @@ public sealed class DerivedGenerationBuilder : IDisposable
         if (compacting)
         {
             throw new InvalidOperationException("A compaction publishes through CompleteCompaction.");
+        }
+
+        if (releasing)
+        {
+            throw new InvalidOperationException("An interval release publishes through CompleteIntervalRelease.");
         }
 
         if (mirroring && mirroredRecords is null)

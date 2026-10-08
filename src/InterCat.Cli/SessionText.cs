@@ -23,6 +23,10 @@ internal static class SessionText
         return seconds.ToString("0.000000", CultureInfo.InvariantCulture);
     }
 
+    /// <summary>A session time, nanoseconds after the capture epoch, as seconds for a reader.</summary>
+    public static string SessionTime(long nanoseconds) =>
+        (nanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture) + " s";
+
     /// <summary>A reading for a reader: seconds after capture start when the clock is known, ticks otherwise.</summary>
     public static string Instant(SourceClockDescriptor? clock, long nativeTicks) =>
         Seconds(clock, nativeTicks) is { } seconds

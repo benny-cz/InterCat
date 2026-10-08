@@ -56,6 +56,29 @@ public sealed record JournalReleasePreview(
 }
 
 /// <summary>
+/// One unit of admitted evidence an interval release gives up whole (ADR-043): a recording's chunk, or one batch of a
+/// single journal - a frame's checksum covers its records, and a chunk is an immutable file. Its records are numbered from
+/// <see cref="FirstOrdinal"/> to <see cref="LastOrdinal"/>, both null for a chunk that holds none.
+/// </summary>
+public sealed record JournalReleaseUnit(string Journal, int? Batch, long Records, ulong? FirstOrdinal, ulong? LastOrdinal);
+
+/// <summary>
+/// What an interval release gives up of the admitted journal (ADR-043): a recording's oldest chunks, oldest first, or a
+/// single journal's first batches, which a retained journal staged for the release and its committed boundary replace;
+/// and how many records they held. None of either when it releases only rows whose records an earlier release gave up.
+/// </summary>
+public sealed record IntervalJournalRelease
+{
+    public IReadOnlyList<string> Chunks { get; init; } = [];
+
+    public StoreStagingFile? RetainedJournal { get; init; }
+
+    public CommittedBoundary? RetainedBoundary { get; init; }
+
+    public long Records { get; init; }
+}
+
+/// <summary>
 /// Releases a prefix of a session's admitted journal, which ADR-010 makes an explicit action rather than a
 /// default. A journal is append-only and its published file is immutable, so a release does not truncate it:
 /// it publishes a new journal holding the retained suffix, names the released extent in the generation's
@@ -151,6 +174,106 @@ public static class JournalRetention
                 record,
                 committedUtc,
                 nowUtc);
+        }
+    }
+
+    /// <summary>
+    /// The units of admitted evidence <paramref name="manifest"/> names, oldest first, each with its records' numbers
+    /// (ADR-043): the chunks of a recording, or the batches of a single journal. Every record is read, because a unit's
+    /// declared first and last bound its records only when it was stored in the order they were numbered, which is what
+    /// an interval release checks before it trusts them.
+    /// </summary>
+    public static (IReadOnlyList<JournalReleaseUnit> Units, bool Chunks) Units(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(manifest);
+        StoreDependency[] journals =
+        [
+            .. manifest.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+        ];
+        var units = new List<JournalReleaseUnit>();
+        foreach (StoreDependency journal in journals)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using FileStream stream = store.Root.OpenOwnedFile(
+                journal.Name,
+                FileMode.Open,
+                FileAccess.Read,
+                FileShare.Read,
+                FileOptions.SequentialScan);
+            byte[] bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+            using JournalV1Contents contents = JournalV1Reader.Read(bytes);
+            if (journals.Length > 1)
+            {
+                (ulong? first, ulong? last) = Numbered(contents.Batches.SelectMany(batch => batch.Records));
+                units.Add(new(journal.Name, null, contents.Batches.Sum(batch => (long)batch.Records.Count), first, last));
+                continue;
+            }
+
+            for (int index = 0; index < contents.Batches.Count; index++)
+            {
+                (ulong? first, ulong? last) = Numbered(contents.Batches[index].Records);
+                units.Add(new(journal.Name, index, contents.Batches[index].Records.Count, first, last));
+            }
+        }
+
+        return (units, journals.Length > 1);
+
+        static (ulong? First, ulong? Last) Numbered(IEnumerable<RecordEnvelopeV1> records)
+        {
+            ulong? first = null;
+            ulong? last = null;
+            foreach (RecordEnvelopeV1 record in records)
+            {
+                first = first is { } low && low <= record.RecordOrdinal ? low : record.RecordOrdinal;
+                last = last is { } high && high >= record.RecordOrdinal ? high : record.RecordOrdinal;
+            }
+
+            return (first, last);
+        }
+    }
+
+    /// <summary>
+    /// Stages the current generation's single journal without its first <paramref name="releasedRecords"/> records, which
+    /// must end on a batch: the same capture, clock frame and schema table, then every later batch (ADR-043). The file is
+    /// staged for the next generation and completed; the caller publishes it, or disposes it to leave staging for review.
+    /// </summary>
+    public static (StoreStagingFile Journal, CommittedBoundary Boundary) StageRetainedSuffix(
+        SessionStore store,
+        long releasedRecords,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegative(releasedRecords);
+        (string name, JournalV1Contents contents, long length) = Read(store);
+        using (contents)
+        {
+            JournalReleasePreview preview = Measure(name, contents, length, releasedRecords);
+            if (preview.ReleasedRecords != releasedRecords || preview.WouldEmptyTheJournal)
+            {
+                throw new InvalidOperationException(
+                    $"Releasing the first {releasedRecords} records of '{name}' does not end on one of its batches while "
+                    + "leaving records after it, so no retained journal was staged.");
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            StoreStagingFile staged = store.Stage(SegmentFormatV1.JournalFileName(store.NextGeneration), StoreDependencyKind.Journal);
+            try
+            {
+                long retained = Write(staged, contents, preview);
+                StoreDependency dependency = staged.Complete();
+                return (staged, new(dependency.Name, dependency.LengthBytes, retained, dependency.Digest));
+            }
+            catch
+            {
+                staged.Dispose();
+                throw;
+            }
         }
     }
 

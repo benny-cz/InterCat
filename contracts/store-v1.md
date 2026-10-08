@@ -1,9 +1,10 @@
 # InterCat session store v1
 
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
-dictionaries a generation publishes, evidence leases and the retention of a dependency or a journal prefix
-and journal re-derivation, the removal of superseded manifests, and the publication of an index, are implemented
-and tested; the entity-state checkpoint of §20.2 is not**. The segment and dictionary formats are frozen separately
+dictionaries a generation publishes, evidence leases and the retention of a dependency, a journal prefix or, since
+revision 434, an interval with the identity evidence its retained rows rest on, journal re-derivation, the removal of
+superseded manifests, and the publication of an index, are implemented and tested; open-operation censoring and a
+rolling retention policy are not**. The segment and dictionary formats are frozen separately
 in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
@@ -338,16 +339,18 @@ RetentionRecord = (kind, released UTC, reason, released files, released bytes, r
 
 The reason is required. A release with no stated reason is indistinguishable from data loss. The kind is
 `DerivedFiles` — segments, dictionaries or indices, all rebuildable from the journal — `JournalPrefix`,
-which ADR-010 makes the explicit action it is, or `Content` (revision 306): every content chunk at once, which nothing
-can rebuild (`contracts/content-v1.md` §2). A `JournalPrefix` or `Content` record names the digest of what it released,
-which is gone afterwards; a `DerivedFiles` record lists its files instead. A reader that does not implement a kind refuses
-the record.
+which ADR-010 makes the explicit action it is, `Content` (revision 306): every content chunk at once, which nothing
+can rebuild (`contracts/content-v1.md` §2), or `Interval` (revision 434): a session's oldest interval, its journal units
+with their rows and the derived files that held them (below). A `JournalPrefix`, `Content` or `Interval` record names the
+digest of what it released, which is gone afterwards; a `DerivedFiles` record lists its files instead. A reader that
+does not implement a kind refuses the record.
 
 The record is appended to the manifest's canonical digest text **only when it is present**, so a generation
 published before retention existed verifies with exactly the digest it always had.
 
 **A release outlives the generation that made it** (revision 315). Every later generation carries the latest release of
-each extent nothing can rebuild - a `JournalPrefix` and a `Content` release - with the generation that published it, as
+each extent nothing can rebuild - a `JournalPrefix`, a `Content` and, since revision 434, an `Interval` release - with
+the generation that published it, as
 `earlierReleases: [ { generation, record } ]`. A generation that releases one itself carries no earlier one of that kind,
 whose own record is then the latest, so a manifest carries at most one of each. A `DerivedFiles` release is not carried:
 what it released can be rebuilt. Readers state a carried release as they state a generation's own: a record's content
@@ -437,6 +440,38 @@ A live recording compacts itself. When 64 small publications have accumulated, t
 between chunks, at most one segment's worth of rows. When the capture stops, every run left is coalesced.
 `icat compact` does the same for any session.
 
+### Releasing an interval
+
+An interval release (revision 434, ADR-043) gives up a session's oldest interval: records **and** their rows, which a
+journal release keeps. It is asked for as a session time, and works in the journal's units.
+
+- **The unit and the boundary.** A release before an instant gives up the longest leading run of units - a recording's
+  chunks, or a single journal's batches - each of whose rows reads before it; a row with no session time holds no unit
+  back. The newest unit holding records is kept, and with it the chunk the committed boundary names. The release states
+  its own **boundary**, one nanosecond after the latest row it gave up: every record read at or after it is retained.
+- **Which rows go.** Each row goes with its record, which its record's number places in a unit: a journal not stored in
+  the order its records were numbered is refused. Rows whose records a journal release gave up earlier are older than
+  every unit, and go first.
+- **Which rows stay.** Every row of a retained record, and the **identity evidence** of what those rows name, kept
+  unchanged with its source fields: every lifecycle record of each PID a staying row belongs to, or its first record when
+  no lifecycle record names it, and the same of each parent its instances link to; and, at each connection end a staying
+  row names and its mirror, every connect, accept and disconnect, each incarnation's first record, and the first record
+  of each owner, bound instance and strength no staying row has. A kept row stays like a retained one, so this repeats
+  until nothing more is kept. Every row that stays binds, pairs and keys as it did before (`entities-v1` §3-§4,
+  `relations-v1` §3-§5b).
+- **Files.** Each publication holding a row that goes is replaced by one holding its other rows; a publication holding
+  none is carried, and every index goes with a replaced segment. Released chunks go with their content; a single journal
+  is replaced by the batches it keeps, as a journal prefix is, and is refused while content is kept beside it.
+- **Record.** `Interval`: every file released - journal units first, then their content, the derived files replaced
+  and the indexes - their bytes, the journal records given up, the digest of the files' dependency lines as a chunk
+  release digests its chunks, and `interval: { boundaryNanoseconds, releasedRows, keptRows }`, which only this kind
+  states. The interval is appended to the canonical text as `|interval|<boundary>|<released rows>|<kept rows>`.
+- **Afterwards.** Before the boundary a generation holds only the kept rows and records delivered with later ones, so an
+  interval before it is released, not quiet. Re-derivation is refused while kept rows remain: their records are gone.
+
+The release is planned under a lease, which is released before publication, so the files it replaces go at once unless
+another reader holds them (I18). A generation that changed meanwhile refuses the publication.
+
 ### What a reader sees afterwards
 
 A retention generation is a generation like any other: it reopens, its manifest verifies against its own
@@ -469,14 +504,14 @@ A session written before this rule keeps its superseded manifests until its next
 
 ## 10. Not yet implemented
 
-- The entity-state checkpoint of §20.2. A rolling eviction must publish the still-live process, thread and
-  resource identities, the known endpoint bindings, the continuity quality and the pending-operation
-  summaries it carries across the boundary. Nothing derives those yet — they need the entity and operation
-  revisions IC-015 owns — so the retention record deliberately carries what was released and no fields
-  nothing can fill.
-- Open-operation censoring at a capture or retention boundary (I20). It needs operations.
+- The entity-state checkpoint of §20.2 is kept as evidence since revision 434: an interval release keeps the lifecycle
+  and first records of every process and connection a retained row names, rather than a summary of them (ADR-043).
+  Thread and resource identities are not derived, so none are kept.
+- Open-operation censoring at a capture or retention boundary (I20). An RPC call whose start an interval release gave
+  up reads as one whose start is not in the evidence.
 - Rolling retention by time or size. Retention here is an explicit action on a named extent; the policy that
-  decides when to take it is separate work. S5's disclosure exists for the policy captures have, which stops at its
+  decides when to take it is separate work, and must run inside the recorder, whose next publication a release
+  published beneath it fails. S5's disclosure exists for the policy captures have, which stops at its
   limits: since revision 393 a recording says when its length, its journal or the disk's reserve stops it. A rolling
   policy will owe the point at which it begins evicting in the same place.
 - Binding to the broker's validated root for live capture. The interface is shared; the composition

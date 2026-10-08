@@ -947,6 +947,9 @@
         "I15: an exclusive publication lock prevents a second writer from committing",
         "I15: an incomplete staged file is never published",
         "I15: an index publication names what its generation named but an earlier index, and a stale one is refused",
+        "I15: an interval release gives up leading evidence and replaces only derived files, stating its interval to every later generation",
+        "I15: an interval release gives up nothing when its oldest unit reads at or after the boundary, and never the newest unit",
+        "I15: an interval release that kept rows of the records it gave up is not re-derived, by itself or a later generation",
         "I15: an observation-v2 segment has its own identity, and a reader refuses to take it for another table",
         "I15: an original package refuses a file that changed after its generation recorded it, and leaves nothing",
         "I15: an original package reopens as the same session and generation, byte for byte, holding nothing else",
@@ -1834,6 +1837,11 @@
         "R18: lanes measured together in one pass each hold what the byte measure answers over their mechanism's records",
         "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",
         "R18: two spellings of one request, and a policy that changes nothing, are one identity"
+      ],
+      "S6": [
+        "S6: a release before a boundary keeps the lifecycle and first records later records rest on, so each binds as before",
+        "S6: a single journal gives up its first batches, rewritten from the first one it keeps, and a second release goes on from it",
+        "S6: on random recordings, every row a release retains or keeps has the process, other end and channel the capture gave it"
       ]
     },
     "uncovered": {

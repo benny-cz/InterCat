@@ -132,7 +132,8 @@ public static class JournalRederivation
     /// <summary>
     /// Why a generation that states a journal-prefix release - its own, or an earlier generation's it carries - cannot be
     /// re-derived, or null for one that states none. The release keeps every derived row, including those of the records
-    /// it gave up, which only the replay would then drop, and no later generation releases those rows.
+    /// it gave up, which only the replay would then drop, and no later generation releases those rows. An interval release
+    /// that kept rows of the records it gave up, as the identity evidence of later ones, is refused the same way (ADR-043).
     /// </summary>
     private static string? ReleasedEvidenceRefusal(SessionManifestV1 manifest) =>
         manifest.LatestRelease(RetentionExtentKind.JournalPrefix) is { } release
@@ -144,7 +145,16 @@ public static class JournalRederivation
                     : $", and generation {manifest.Generation} still holds")
                 + " the rows derived from them. "
                 + UnrebuildableRows
-            : null;
+            : manifest.LatestRelease(RetentionExtentKind.Interval) is { Record.Interval: { KeptRows: > 0 } interval } released
+                ? $"Generation {released.Generation} released the records read before "
+                    + (interval.BoundaryNanoseconds / 1_000_000_000m).ToString("0.000######", CultureInfo.InvariantCulture)
+                    + " s and kept "
+                    + interval.KeptRows.ToString("N0", CultureInfo.InvariantCulture)
+                    + " of their rows as the identity evidence of the processes and connections after it, which "
+                    + (released.Generation == manifest.Generation ? "it" : $"generation {manifest.Generation}")
+                    + " still holds. "
+                    + UnrebuildableRows
+                : null;
 
     /// <summary>
     /// The oldest record each stream's rows derive from in the current generation. A replay holds every retained

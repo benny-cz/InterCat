@@ -871,6 +871,8 @@ internal static class SessionCommand
                 $"{ConsoleUi.Count(retention.ReleasedRecords)} records of the admitted journal, which can no longer be re-derived"),
             RetentionExtentKind.Content => string.Create(culture,
                 $"the content kept of {ConsoleUi.Count(retention.ReleasedRecords)} records: their bytes and each one's content facts; every record's metadata is kept"),
+            RetentionExtentKind.Interval when retention.Interval is { } interval => string.Create(culture,
+                $"the records read before {SessionText.SessionTime(interval.BoundaryNanoseconds)}: {ConsoleUi.Count(retention.ReleasedRecords)} records of the admitted journal and {ConsoleUi.Count(interval.ReleasedRows)} rows, keeping {ConsoleUi.Count(interval.KeptRows)} of their rows as the identity evidence of the processes and connections after it; every record read from then on is kept"),
             _ => retention.Kind.ToString(),
         });
         ConsoleUi.Field("When", retention.ReleasedUtc.ToString("u", CultureInfo.InvariantCulture));

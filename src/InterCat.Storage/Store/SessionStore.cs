@@ -1242,51 +1242,18 @@ public sealed class SessionStore
             RequireFreshCurrent();
             SessionManifestV1 manifest = current
                 ?? throw new InvalidOperationException("This session has published no generation to retain from.");
-            StoreDependency[] journals =
-            [
-                .. manifest.Dependencies
-                    .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
-                    .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
-            ];
-            if (chunks.Count == 0 || chunks.Count >= journals.Length)
+            if (chunks.Count == 0)
             {
                 throw new ArgumentException(
-                    $"Generation {manifest.Generation} names {journals.Length} journal chunks. A chunk release gives up "
-                    + "at least one of them and keeps at least the newest, which the committed boundary names.",
+                    "A chunk release gives up at least one chunk and keeps at least the newest, which the committed "
+                    + "boundary names.",
                     nameof(chunks));
             }
 
-            // The chunks sort in the order they were recorded, so the oldest are the first names.
-            StoreDependency[] released = journals[..chunks.Count];
-            if (!released.Select(dependency => dependency.Name)
-                    .SequenceEqual(chunks, StringComparer.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException(
-                    "A chunk release gives up the oldest chunks, in the order they were recorded: "
-                    + $"{string.Join(", ", released.Select(dependency => dependency.Name))}. Releasing any other set "
-                    + "would leave the retained chunks describing a capture with a hole in it.",
-                    nameof(chunks));
-            }
-
-            if (released.Any(dependency =>
-                dependency.Name.Equals(manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)))
-            {
-                throw new ArgumentException(
-                    "The committed boundary names one of these chunks. A generation cannot keep a boundary on "
-                    + "evidence it no longer holds.",
-                    nameof(chunks));
-            }
-
-            // A chunk's kept content goes with it: the content chunk its generation published holds content of its records
-            // only (content-v1 §2).
-            HashSet<long> releasedGenerations = [.. released.Select(dependency => SegmentFormatV1.GenerationOfJournal(dependency.Name)
-                ?? throw new InvalidOperationException($"'{dependency.Name}' is not named as a journal chunk is."))];
-            StoreDependency[] releasedContent =
-            [
-                .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content
-                    && ContentChunkV1.GenerationOf(dependency.Name) is { } generation && releasedGenerations.Contains(generation)),
-            ];
-            StoreDependency[] releasedFiles = [.. released, .. releasedContent];
+            // The chunks sort in the order they were recorded, so the oldest are the first names; a chunk's kept content
+            // goes with it, since the content chunk its generation published holds content of its records only
+            // (content-v1 §2).
+            StoreDependency[] releasedFiles = [.. LeadingChunks(manifest, chunks)];
             var record = new RetentionRecord(
                 RetentionExtentKind.JournalPrefix,
                 now,
@@ -1509,6 +1476,287 @@ public sealed class SessionStore
 
             return outcome;
         }
+    }
+
+    /// <summary>
+    /// Publishes an interval release (ADR-043). The generation stops naming the oldest units of the admitted journal - a
+    /// recording's oldest chunks, with the content each one kept, or a single journal, which the retained suffix the caller
+    /// staged replaces - and the derived files that held their rows, which the staged segments and dictionaries replace
+    /// with every row the release keeps, unchanged. An index goes with a released segment, as in any retention. The
+    /// caller derived what it releases and keeps, because this store does not read inside the files it publishes; this
+    /// step checks that the evidence released is a leading run and that only derived files are replaced, and publishes the
+    /// interval's record.
+    /// </summary>
+    public RetentionOutcome CommitIntervalRelease(
+        IReadOnlyList<StoreStagingFile> staged,
+        IReadOnlyList<string> replaced,
+        IntervalJournalRelease journal,
+        ReleasedInterval interval,
+        string reason,
+        long sourceGeneration,
+        DateTimeOffset committedUtc,
+        long? expectedGeneration = null,
+        DateTimeOffset? nowUtc = null)
+    {
+        ArgumentNullException.ThrowIfNull(staged);
+        ArgumentNullException.ThrowIfNull(replaced);
+        ArgumentNullException.ThrowIfNull(journal);
+        ArgumentNullException.ThrowIfNull(interval);
+        ArgumentException.ThrowIfNullOrWhiteSpace(reason);
+        ArgumentOutOfRangeException.ThrowIfNegative(journal.Records);
+        if (staged.Count > MaximumStagedFiles)
+        {
+            throw new ArgumentException(
+                $"An interval release publishes at most {MaximumStagedFiles} files; this one staged {staged.Count}.",
+                nameof(staged));
+        }
+
+        if (interval.Validate() is { } problem)
+        {
+            throw new ArgumentException(problem, nameof(interval));
+        }
+
+        if ((journal.RetainedJournal is null) != (journal.RetainedBoundary is null)
+            || (journal.RetainedJournal is not null && journal.Chunks.Count > 0))
+        {
+            throw new ArgumentException(
+                "An interval release gives up a recording's oldest chunks or a single journal's first batches, which a "
+                + "retained journal and its boundary replace - one or the other.",
+                nameof(journal));
+        }
+
+        DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
+        lock (gate)
+        {
+            using FileStream publicationLock = AcquirePublicationLock();
+            RequireFreshCurrent();
+            SessionManifestV1 previous = current
+                ?? throw new InvalidOperationException("This session has published no generation to release from.");
+            if (previous.Generation != sourceGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {sourceGeneration} changed while its oldest interval was being released. Reopen the "
+                    + "current generation and release again. Nothing was published.");
+            }
+
+            var released = new List<StoreDependency>();
+            CommittedBoundary boundary = previous.Boundary;
+            StoreDependency? retained = null;
+            if (journal.Chunks.Count > 0)
+            {
+                released.AddRange(LeadingChunks(previous, journal.Chunks));
+            }
+            else if (journal.RetainedJournal is { } retainedJournal)
+            {
+                StoreDependency[] journals =
+                [
+                    .. previous.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Journal),
+                ];
+                if (journals.Length != 1)
+                {
+                    throw new ArgumentException(
+                        $"Generation {previous.Generation} names {journals.Length} journals. A retained journal replaces a "
+                        + "single one; a recording gives up its oldest chunks instead.",
+                        nameof(journal));
+                }
+
+                if (previous.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
+                {
+                    throw new InvalidOperationException(
+                        "This session keeps content beside its journal. Rewriting the journal's first batches would leave "
+                        + "content whose records it no longer holds, so its content is released on its own first "
+                        + "(content-v1 §2). Nothing was published.");
+                }
+
+                retained = retainedJournal.Dependency
+                    ?? throw new InvalidOperationException(
+                        "The retained journal was not completed, so its contents are not durable and it cannot be published.");
+                if (retainedJournal.IsDisposed)
+                {
+                    throw new InvalidOperationException(
+                        "The retained journal no longer has an active staging owner and cannot be published.");
+                }
+
+                boundary = journal.RetainedBoundary!;
+                if (!boundary.JournalName.Equals(retained.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new ArgumentException(
+                        "The retained boundary names another journal than the one staged to replace the released batches.",
+                        nameof(journal));
+                }
+
+                released.Add(journals[0]);
+            }
+
+            foreach (string name in replaced)
+            {
+                StoreDependency dependency = previous.Dependencies.FirstOrDefault(candidate =>
+                    candidate.Name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                    ?? throw new ArgumentException(
+                        $"Generation {previous.Generation} does not name '{name}', so an interval release cannot replace it.",
+                        nameof(replaced));
+                if (dependency.Kind is not (StoreDependencyKind.Segment or StoreDependencyKind.Dictionary)
+                    || released.Contains(dependency))
+                {
+                    throw new ArgumentException(
+                        $"'{name}' is not a derived file this release can replace once. An interval release replaces "
+                        + "segments and dictionaries, and gives up evidence only as whole journal units.",
+                        nameof(replaced));
+                }
+
+                released.Add(dependency);
+            }
+
+            if (released.Count == 0)
+            {
+                throw new ArgumentException(
+                    "An interval release gives up journal units or replaces derived files; this one names neither.",
+                    nameof(replaced));
+            }
+
+            ReleaseIndexesWithSegments(previous, released);
+            long nextGeneration = NextAvailableGeneration();
+            if (expectedGeneration is { } expected && expected != nextGeneration)
+            {
+                throw new InvalidOperationException(
+                    $"Generation {expected} was staged, but generation {nextGeneration} is now the next unoccupied number. "
+                    + "Reopen and stage again; a generation's file names must agree with its manifest.");
+            }
+
+            if (journal.RetainedJournal is { } suffix)
+            {
+                if (!suffix.PublishedName.Equals(SegmentFormatV1.JournalFileName(nextGeneration), StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException(
+                        "The retained journal was staged for a generation that is no longer available. Release again "
+                        + "against a newly staged generation.");
+                }
+
+                RequireUnpublishedTarget(suffix.PublishedName);
+            }
+
+            List<StoreDependency> carried = [.. previous.Dependencies.Except(released)];
+            var names = new HashSet<string>(carried.Select(dependency => dependency.Name), StringComparer.OrdinalIgnoreCase);
+            if (retained is not null && !names.Add(retained.Name))
+            {
+                throw new InvalidOperationException($"'{retained.Name}' is already named, so it cannot be the retained journal.");
+            }
+
+            var published = new List<StoreDependency>(staged.Count);
+            foreach (StoreStagingFile file in staged)
+            {
+                if (file.IsDisposed)
+                {
+                    throw new InvalidOperationException(
+                        $"Staged file '{file.PublishedName}' no longer has an active owner. "
+                        + "Disposed staging cannot be published after cleanup may have claimed it.");
+                }
+
+                RequireUnpublishedTarget(file.PublishedName);
+                StoreDependency dependency = file.Dependency
+                    ?? throw new InvalidOperationException(
+                        $"Staged file '{file.PublishedName}' was not completed, so its contents are not "
+                        + "durable and it cannot be published.");
+                if (dependency.Kind is not (StoreDependencyKind.Segment or StoreDependencyKind.Dictionary)
+                    || !names.Add(dependency.Name))
+                {
+                    throw new InvalidOperationException(
+                        $"'{dependency.Name}' is not a new segment or dictionary, so an interval release cannot publish it.");
+                }
+
+                published.Add(dependency);
+            }
+
+            var record = new RetentionRecord(
+                RetentionExtentKind.Interval,
+                now,
+                reason,
+                [.. released.Select(dependency => dependency.Name)],
+                released.Sum(dependency => dependency.LengthBytes),
+                journal.Records,
+                ChunkSourceDigest(released))
+            {
+                Interval = interval,
+            };
+
+            // The retained journal is published first, as a commit publishes its journal before the files derived from it;
+            // until the manifest exists none of them is referenced, so a crash leaves unreferenced files and the previous
+            // generation current.
+            if (journal.RetainedJournal is { } written)
+            {
+                directory.ReplaceOwnedFile(written.StagingName, written.PublishedName);
+            }
+
+            foreach (StoreStagingFile file in staged)
+            {
+                directory.ReplaceOwnedFile(file.StagingName, file.PublishedName);
+            }
+
+            RetentionOutcome outcome = Publish(
+                previous,
+                [.. carried, .. retained is null ? [] : new[] { retained }, .. published],
+                boundary,
+                record,
+                committedUtc,
+                released,
+                now,
+                nextGeneration);
+            journal.RetainedJournal?.MarkPublished();
+            foreach (StoreStagingFile file in staged)
+            {
+                file.MarkPublished();
+            }
+
+            return outcome;
+        }
+    }
+
+    /// <summary>
+    /// The oldest chunks a release names, with the content each one kept (ADR-024, content-v1 §2): a leading run of the
+    /// chunks the generation names, oldest first, which keeps at least the newest - the one the committed boundary names.
+    /// </summary>
+    private static List<StoreDependency> LeadingChunks(SessionManifestV1 manifest, IReadOnlyList<string> chunks)
+    {
+        StoreDependency[] journals =
+        [
+            .. manifest.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                .OrderBy(dependency => dependency.Name, StringComparer.OrdinalIgnoreCase),
+        ];
+        if (chunks.Count >= journals.Length)
+        {
+            throw new ArgumentException(
+                $"Generation {manifest.Generation} names {journals.Length} journal chunks. A release gives up at most all "
+                + "but the newest, which the committed boundary names.",
+                nameof(chunks));
+        }
+
+        StoreDependency[] released = journals[..chunks.Count];
+        if (!released.Select(dependency => dependency.Name).SequenceEqual(chunks, StringComparer.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException(
+                "A release gives up the oldest chunks, in the order they were recorded: "
+                + $"{string.Join(", ", released.Select(dependency => dependency.Name))}. Releasing any other set would "
+                + "leave the retained chunks describing a capture with a hole in it.",
+                nameof(chunks));
+        }
+
+        if (released.Any(dependency => dependency.Name.Equals(manifest.Boundary.JournalName, StringComparison.OrdinalIgnoreCase)))
+        {
+            throw new ArgumentException(
+                "The committed boundary names one of these chunks. A generation cannot keep a boundary on evidence it no "
+                + "longer holds.",
+                nameof(chunks));
+        }
+
+        HashSet<long> generations = [.. released.Select(dependency => SegmentFormatV1.GenerationOfJournal(dependency.Name)
+            ?? throw new InvalidOperationException($"'{dependency.Name}' is not named as a journal chunk is."))];
+        return
+        [
+            .. released,
+            .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content
+                && ContentChunkV1.GenerationOf(dependency.Name) is { } generation && generations.Contains(generation)),
+        ];
     }
 
     /// <summary>

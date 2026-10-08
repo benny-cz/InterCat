@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using InterCat.Domain;
 using Xunit;
 
@@ -633,6 +634,71 @@ public sealed class EvidenceRetentionTests
 
         // Nothing was published by any refusal.
         Assert.Equal(last.Manifest.Generation, session.Store.Current!.Generation);
+    }
+
+    [Fact(DisplayName = "I15: an interval release gives up leading evidence and replaces only derived files, stating its interval to every later generation")]
+    public void AnIntervalReleaseStatesItsInterval()
+    {
+        using var session = new TemporarySession();
+        DerivedGenerationResult first = Publish(session.Store, 4, batchCapacity: 2);
+        DerivedGenerationResult second = Publish(session.Store, 5, batchCapacity: 2);
+        _ = Publish(session.Store, 6, batchCapacity: 2);
+        SessionManifestV1 recorded = session.Store.Current!;
+        string[] derived =
+        [
+            .. recorded.Dependencies
+                .Where(dependency => dependency.Kind is StoreDependencyKind.Segment or StoreDependencyKind.Dictionary
+                    && SessionSegments.PublishingGeneration(dependency.Name) == first.Manifest.Generation)
+                .Select(dependency => dependency.Name),
+        ];
+        var interval = new ReleasedInterval(450, 4, 0);
+        var chunk = new IntervalJournalRelease { Chunks = [first.JournalName], Records = 4 };
+
+        // Evidence goes only as a leading run of whole units, and only derived files are replaced.
+        Assert.Contains("the oldest chunks", Assert.Throws<ArgumentException>(() => session.Store.CommitIntervalRelease(
+            [], [], new() { Chunks = [second.JournalName], Records = 5 }, interval, "the middle", recorded.Generation, Committed)).Message,
+            StringComparison.Ordinal);
+        Assert.Contains("not a derived file", Assert.Throws<ArgumentException>(() => session.Store.CommitIntervalRelease(
+            [], [first.JournalName], new(), interval, "a journal by name", recorded.Generation, Committed)).Message,
+            StringComparison.Ordinal);
+        Assert.Contains("names neither", Assert.Throws<ArgumentException>(() => session.Store.CommitIntervalRelease(
+            [], [], new(), interval, "nothing", recorded.Generation, Committed)).Message, StringComparison.Ordinal);
+        Assert.Throws<ArgumentException>(() => session.Store.CommitIntervalRelease(
+            [], derived, chunk, new ReleasedInterval(450, -1, 0), "a negative count", recorded.Generation, Committed));
+        Assert.Contains("changed while", Assert.Throws<InvalidOperationException>(() => session.Store.CommitIntervalRelease(
+            [], derived, chunk, interval, "a stale plan", recorded.Generation - 1, Committed)).Message, StringComparison.Ordinal);
+        Assert.Equal(recorded.Generation, session.Store.Current!.Generation);
+
+        RetentionOutcome outcome = session.Store.CommitIntervalRelease(
+            [], derived, chunk, interval, "older than the retained window", recorded.Generation, Committed, nowUtc: Committed);
+        SessionManifestV1 released = outcome.Manifest;
+        RetentionRecord record = released.Retention!;
+        Assert.Equal((RetentionExtentKind.Interval, 4L, interval), (record.Kind, record.ReleasedRecords, record.Interval));
+        Assert.Equal([first.JournalName, .. derived], record.ReleasedFiles);
+        StoreDependency[] gone = [.. recorded.Dependencies.Where(dependency => record.ReleasedFiles.Contains(dependency.Name))];
+        Assert.Equal((gone.Sum(dependency => dependency.LengthBytes), SessionStore.ChunkSourceDigest([.. record.ReleasedFiles.Select(name => gone.Single(dependency => dependency.Name == name))])),
+            (record.ReleasedBytes, record.SourceDigest));
+        Assert.Equal(recorded.Boundary, released.Boundary);
+        Assert.Null(released.Validate());
+
+        // Only an interval release states an interval, and it always does.
+        Assert.Contains("states the boundary", (record with { Interval = null }).Validate()!, StringComparison.Ordinal);
+        Assert.Contains("Only an interval release", (record with { Kind = RetentionExtentKind.JournalPrefix }).Validate()!, StringComparison.Ordinal);
+
+        // A later generation carries it; the interval is written and hashed with the manifest, and a change to it fails the
+        // generation that carries it.
+        _ = Publish(session.Store, 3, batchCapacity: 2);
+        SessionManifestV1 later = session.Store.Current!;
+        Assert.Equal(new GenerationRelease(released.Generation, record), later.LatestRelease(RetentionExtentKind.Interval));
+        Assert.Equal(later.Digest, session.Reopen().Current!.Digest);
+        string path = Path.Combine(session.Path, SessionManifestV1.FileNameFor(later.Generation));
+        string written = File.ReadAllText(path);
+        Assert.Contains("\"keptRows\": 0", written, StringComparison.Ordinal);
+        Assert.DoesNotContain("interval", JsonSerializer.Serialize(RetentionRecord.ForDerivedFiles(Committed, "rebuildable", derived, 1),
+            SessionManifestV1.Json), StringComparison.Ordinal);
+        File.WriteAllText(path, written.Replace("\"keptRows\": 0", "\"keptRows\": 1", StringComparison.Ordinal));
+        SessionStore changed = session.Reopen();
+        Assert.Equal((true, released.Generation), (changed.Recovery.RolledBackToLastKnownGood, changed.Current!.Generation));
     }
 
     [Fact(DisplayName = "I15: an admitted journal is not released by dropping its name")]
