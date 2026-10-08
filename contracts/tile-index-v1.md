@@ -1,16 +1,17 @@
 # InterCat tile index v1
 
-Status: **implemented** in plan revision 456, minor 1 in revision 457; a group's lanes count from it since revision 458. It holds §12.1 S4's deeper levels, beneath the
+Status: **implemented** in plan revision 456, minor 1 in revision 457 and minor 2 in revision 459; a group's lanes count
+from it since revision 458, and a process's direction rows since revision 459. It holds §12.1 S4's deeper levels, beneath the
 persisted overview (`contracts/overview-index-v1.md`), which is the top level. For each observation segment of a
 generation, it keeps:
 
 - the segment's timeline tiles at decimal levels, each with what its records' owners and channels bind to, tallied;
-- the readings, mechanisms and bindings of the records of its finest tiles, beside them.
+- the readings, mechanisms, directions and bindings of the records of its finest tiles, beside them.
 
 A zoom of a finished session counts each segment from these. It counts a tile whole wherever its records fall in one
 column, and reads a tile's children, or a finest tile's records, only where a column boundary falls among them. A brush
-counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's tallies, and a
-group's focus counts its members' records and lanes the same way per column. So none opens a segment, and each reads in
+counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's tallies, and an
+owner focus - a group's or one process's - counts its records, lanes and directions the same way per column. So none opens a segment, and each reads in
 proportion to what it draws rather than to the session (S3).
 
 Like the overview, a tile index is a derived index. It holds counts, readings and bindings, never evidence (R1), and
@@ -41,7 +42,8 @@ tiles.
 
 ### Records
 
-Beside the finest tiles, the index keeps each timed record's reading, mechanism and bindings, tile by tile in row order.
+Beside the finest tiles, the index keeps each timed record's reading, mechanism, source direction (`EN-Direction`) and
+bindings, tile by tile in row order.
 
 ### Bindings
 
@@ -59,7 +61,7 @@ The index states that derivation (§3, the directory), and a brush counts its bi
 
 Each tile, at every level, can keep its timed records' bindings tallied:
 
-- for each owner key other than 0, and each mechanism, how many of its records have both;
+- for each owner key other than 0, each mechanism and each direction, how many of its records have all three;
 - for each channel key other than 0, how many of its records have it, by the channel's number.
 
 A wider tile's tallies are its children's, summed. A tile keeps them only where they take at most half the bytes of the
@@ -95,13 +97,15 @@ checkpoint`. Later publications treat a tile index as they treat the checkpoint:
 - a compaction or a retention that releases a segment releases it with the segments.
 
 A generation that names the other three but no readable tile index of each of its segments is not current. That
-includes every generation published before revision 456, a minor-0 index (revision 456's, which kept no bindings), and
-one whose directory states a derivation other than the checkpoint's. Its writer's next publication, or `icat
+includes every generation published before revision 456, an index of minor 0 (revision 456's, which kept no bindings)
+or minor 1 (revision 457's, which kept no directions), and one whose directory states a derivation other than the
+checkpoint's. Its writer's next publication, or `icat
 checkpoint`, publishes all four again.
 
-At 1,000,000 records of the scale gate's generator in four segments, a tile index took 6.2% of the segments' bytes,
-10.9 bytes a record, and 6.1% at 10,000,000 in forty. Its records take turns among 200 connections, record by record,
-so its narrower tiles keep no tallies (§1). Revision 456's index, which kept no bindings, took 2.9% of the same.
+At 1,000,000 records of the scale gate's generator in four segments, a tile index took 7.6% of the segments' bytes,
+13.4 bytes a record, and 7.5% at 10,000,000 in forty. Its records take turns among 200 connections, record by record,
+so its narrower tiles keep no tallies (§1). Revision 456's index, which kept no bindings, took 2.9% of the same, and
+revision 457's, which kept no directions, 6.2%.
 
 ## 3. Bytes
 
@@ -121,7 +125,7 @@ footer        the last 32 bytes
 |---|---|---|
 | 0 | 8 | magic `ICATTILE` |
 | 8 | 2 | major, 1 |
-| 10 | 2 | minor, 1 |
+| 10 | 2 | minor, 2 |
 | 12 | 4 | reserved, zero |
 | 16 | 16 | session (`guid`) |
 | 32 | 8 | the generation whose segments it describes |
@@ -208,6 +212,7 @@ is:
 - its reading's increase over the record before it in its tile, as unsigned LEB128 (for a tile's first record the
   increase is over the tile's earliest reading, so it is zero);
 - a `u8`: its mechanism's place among the section's mechanisms;
+- a `u8`: its direction's `EN-Direction` code, or 255 for a code past a byte;
 - its owner key, then its channel key, each as unsigned LEB128.
 
 ### Tallies
@@ -215,9 +220,9 @@ is:
 The tallies follow the records, level by level from the finest. For each block of a level they hold that block's
 tiles' tallies, in time order, then a CRC-32C over those bytes. A tile's tallies are, each number as unsigned LEB128:
 
-- how many owner entries, plus one, then each entry in order of owner key and then of mechanism: its key's increase
-  over the entry before's (the first entry's over zero, so its key), its mechanism's place among the section's
-  mechanisms as a `u8`, and how many records;
+- how many owner entries, plus one, then each entry in order of owner key, then of mechanism, then of direction: its
+  key's increase over the entry before's (the first entry's over zero, so its key), its mechanism's place among the
+  section's mechanisms as a `u8`, its direction's code as a `u8`, and how many records;
 - how many channel entries, then each entry in order of channel number: its number's increase over the entry before's
   (the first entry's over zero), and how many records.
 
@@ -243,7 +248,7 @@ tiles, which a group's lanes at 2,000 columns read most of.
 A reader refuses an index, or a part of it, that:
 
 - does not begin with the magic;
-- is another major, or minor 0, which keeps no bindings;
+- is another major, or minor 0 or 1, which keep no bindings or no directions;
 - describes another session;
 - states more instances or channels than a binding packs: 16,777,214 and 134,217,726;
 - fails a checksum;
@@ -253,7 +258,7 @@ A reader refuses an index, or a part of it, that:
   - a level of no tile;
   - more than 20,481 finest tiles;
   - a level below the top of at most 32 tiles, or a top level of more;
-  - records longer than 19 bytes for each timed row and 4 for each finest tile;
+  - records longer than 20 bytes for each timed row and 4 for each finest tile;
   - tallies that do not end where the section does;
   - flags or mechanisms it does not define;
 - holds a tile that:
@@ -334,34 +339,37 @@ At 10,000,000 records in forty segments, the scale gate's brushed ranking, which
 the graph and the table from the counts, took 6.3 ms the first time and 9.5 ms at the 95th percentile, from 631 and 273
 ms (§12's budget is 250 ms).
 
-### A group's lanes
+### An owner focus
 
-A group's focus counts the records whose owner binds to one of its members, where the evidence policy admits the
-binding, and of one mechanism where it names one: in the view's columns, by mechanism, and in each member's lane - or the
-lane its folded members share - in the lanes' columns. Past §6.2's cell budget the lanes have columns of their own over
-the same interval, fewer and wider, whose boundaries need not be the view's. A group's focus counts from the index under
-the same conditions as a brush, and each segment from its top level down:
+An owner focus - a group's, or one process's - counts the records whose owner binds to one of its members, where the
+evidence policy admits the binding, of one mechanism and in one source direction where it names them: in the view's
+columns, by mechanism; for a group, in each member's lane - or the lane its folded members share - in the lanes'
+columns; and for one process, in its row of each direction. Past §6.2's cell budget a group's lanes have columns of
+their own over the same interval, fewer and wider, whose boundaries need not be the view's. An owner focus counts from
+the index under the same conditions as a brush, and each segment from its top level down:
 
 - a tile none of whose records lies in the columns' interval is passed over;
 - a tile all of whose records fall in one column of the view's and one of the lanes', and that keeps tallies, adds each
-  owner entry of a member whose strength the policy admits there, to the focus and to that member's lane;
+  owner entry of a member whose strength the policy admits there, of the mechanism and direction the focus names, to
+  the focus, to that member's lane and to its direction's row;
 - any other tile gives way to its children, or, at the finest level, to its records, each counted as its row would be.
 
-That is exactly what reading every row counts. A focus on one process, which also counts its records by source
-direction, on a channel, which counts them by end, or on an operation, and any focus narrowed to one source direction or
-end, is not what the index holds, and reads its rows.
+That is exactly what reading every row counts. A direction code that no direction is refuses the index for a count by
+direction, as reading the row refuses it. A focus on a channel, which counts its records by end, or on an operation, and
+any focus narrowed to one end, is not what the index holds, and reads its rows.
 
 Each segment's section is counted by a worker of its own, side by side, as a focus that reads rows counts its segments.
 At 10,000,000 records of the scale gate's generator in forty segments, on a 4-core machine, a 40-process group's lanes
-at the window's 256 columns took 70 ms the first time, against 850 ms reading its rows, and 20 ms at the median after;
-at 2,000 columns, 48 ms the first time and 78 ms at the 95th percentile. Reading no segment, the session's working set
-at the end of the gate was 263 MB, against 1.35 GB.
+at the window's 256 columns took 52 ms the first time, against 850 ms reading its rows, and 22 ms at the median after;
+at 2,000 columns, 63 ms the first time and 96 ms at the 95th percentile. The busiest process's direction rows at 256
+columns took 156 ms the first time, against 2.5 s reading its rows, and about 45 ms after, against about 30. Reading no
+segment, the session's working set at the end of the gate was 345 MB, against 1.35 GB.
 
 ## 5. What is not defined at this version
 
-- The focus of one process, of a channel or of an operation, and any focus narrowed to one source direction or end,
-  whose columns count what tiles do not hold (§10.3): their source directions and ends. Such a focus reads its rows,
-  from the segments the interval meets.
+- The focus of a channel or of an operation, and any focus narrowed to one end, whose columns count what tiles do not
+  hold (§10.3): a channel's ends, an operation's records. Such a focus reads its rows, from the segments the interval
+  meets.
 - Byte sums, which a zoom's lanes read from the segments.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.

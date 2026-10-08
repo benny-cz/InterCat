@@ -1108,7 +1108,7 @@
         "I4: a persisted overview reads back as the counts it was written from, and is refused, never misread, when damaged",
         "I4: a record is counted in the column whose stated interval holds it, at every boundary",
         "I4: a reopened session's brush counts from its tiles' tallies and records exactly what its rows count, under every policy, and opens no segment",
-        "I4: a reopened session's group counts its focus and each member's lane from its persisted tiles exactly as its rows do, folded or not, under every policy, and opens no segment",
+        "I4: a reopened session's group or process counts its focus, each member's lane and its direction rows from its persisted tiles exactly as its rows do, under every policy, and opens no segment",
         "I4: a reopened session's zooms count from its persisted tiles exactly what its rows count, and open no segment",
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",

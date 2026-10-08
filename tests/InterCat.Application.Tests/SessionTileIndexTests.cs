@@ -505,7 +505,7 @@ public sealed class SessionTileIndexTests
         reopened.ReleaseSegmentReaders();
     }
 
-    [Theory(DisplayName = "I4: a reopened session's group counts its focus and each member's lane from its persisted tiles exactly as its rows do, folded or not, under every policy, and opens no segment")]
+    [Theory(DisplayName = "I4: a reopened session's group or process counts its focus, each member's lane and its direction rows from its persisted tiles exactly as its rows do, under every policy, and opens no segment")]
     [InlineData(6)]
     [InlineData(91)]
     [InlineData(20_261_009)]
@@ -542,12 +542,15 @@ public sealed class SessionTileIndexTests
             {
                 for (int query = 0; query < 4; query++)
                 {
-                    // Some of the instances, perhaps narrowed to one mechanism, some in lanes of their own and the rest
-                    // folded; over the whole extent or anywhere.
-                    ProcessInstanceId[] group = [.. instances.Where((_, index) => index < 2 || random.Next(3) != 0)];
+                    // Some of the instances, or one, which counts its direction rows, perhaps narrowed to one mechanism or
+                    // one source direction; some in lanes of their own and the rest folded; over the whole extent or
+                    // anywhere.
+                    ProcessInstanceId[] group = random.Next(4) == 0 ? [instances[random.Next(instances.Length)]]
+                        : [.. instances.Where((_, index) => index < 2 || random.Next(3) != 0)];
                     Mechanism? mechanism = random.Next(4) == 0 ? kinds[random.Next(kinds.Length)] : null;
-                    var focus = new TimelineFocus(null, group, mechanism: mechanism);
-                    ProcessInstanceId[]? lanes = random.Next(3) == 0 ? [.. group.Take(1 + random.Next(group.Length - 1))] : null;
+                    Direction? direction = random.Next(4) == 0 ? SessionTimelineQuery.LaneDirections[random.Next(5)] : null;
+                    var focus = new TimelineFocus(null, group, mechanism: mechanism, direction: direction);
+                    ProcessInstanceId[]? lanes = group.Length > 1 && random.Next(3) == 0 ? [.. group.Take(1 + random.Next(group.Length - 1))] : null;
                     long start = low + random.NextInt64(0, high - low);
                     TimeRange interval = query == 0 ? new(low, high) : new(start, start + 1 + random.NextInt64(0, high - start));
                     int columns = random.Next(3) == 0 ? random.Next(1, 6) : random.Next(1, 300);
@@ -561,14 +564,18 @@ public sealed class SessionTileIndexTests
             Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
             reopened.ReleaseSegmentReaders();
 
-            // A group's focus narrowed to one source direction is not what tiles hold, and reads its rows.
-            var outbound = new TimelineFocus(null, instances, direction: Direction.Outbound);
-            var whole = new TimeRange(low, high);
-            SessionStore directed = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
-            Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 50, outbound)),
-                Focused(SessionTimelineQuery.Focused(directed, whole, 50, outbound)));
-            Assert.NotEqual(0, directed.SegmentReaderCache.Entries);
-            directed.ReleaseSegmentReaders();
+            // A channel's focus, which counts its ends, is not what tiles hold, and reads its rows.
+            if (bound.Relations.Relations.FirstOrDefault(relation => relation.Mechanism == Mechanism.Tcp) is { } paired)
+            {
+                var channel = new TimelineFocus(paired.StableKey, []);
+                var whole = new TimeRange(low, high);
+                SessionStore ends = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+                Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 50, channel, EvidencePolicy.AllIncludingConflicting)),
+                    Focused(SessionTimelineQuery.Focused(ends, whole, 50, channel, EvidencePolicy.AllIncludingConflicting)));
+                Assert.NotEqual(0, ends.SegmentReaderCache.Entries);
+                ends.ReleaseSegmentReaders();
+            }
+
             twin.Store.ReleaseSegmentReaders();
         }
     }
@@ -591,8 +598,15 @@ public sealed class SessionTileIndexTests
         var group = new TimelineFocus(null, members);
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
 
-        // Half the processes, and every one narrowed to its creation records: a tile's tallies hold the others' records too.
-        foreach (TimelineFocus some in new[] { new TimelineFocus(null, members[..60]), new TimelineFocus(null, members, mechanism: Mechanism.ProcessLifecycle) })
+        // Half the processes, every one narrowed to its creation records or to what it sent, and one process by direction:
+        // a tile's tallies hold the others' records too.
+        foreach (TimelineFocus some in new[]
+        {
+            new TimelineFocus(null, members[..60]),
+            new TimelineFocus(null, members, mechanism: Mechanism.ProcessLifecycle),
+            new TimelineFocus(null, members, direction: Direction.Outbound),
+            new TimelineFocus(null, [members[7]]),
+        })
         {
             Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, extent, 64, some)), Focused(SessionTimelineQuery.Focused(reopened, extent, 64, some)));
         }
@@ -638,7 +652,7 @@ public sealed class SessionTileIndexTests
         TimeRange extent = Extent(rows);
         var focused = new TimelineColumns(extent, 256, tallyMechanisms: true);
         TimelineColumns[] lanes = [.. Enumerable.Range(0, instances).Select(_ => new TimelineColumns(extent, 166, tallyMechanisms: true))];
-        Assert.True(reading.CountGroup(section, focused, lanes, members, laneOf, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+        Assert.True(reading.CountGroup(section, focused, lanes, null, members, laneOf, null, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
         Assert.Equal(Expected(rows, extent, 256), Snapshot(focused));
         Assert.Equal(rows.Length, focused.Counts.Sum());
         Assert.Equal(rows.Length, lanes.Sum(lane => lane.Counts.Sum()));
@@ -652,7 +666,7 @@ public sealed class SessionTileIndexTests
         // view's last column and the lanes' last, which the reading last fell in.
         var other = new TimelineColumns(new TimeRange(extent.EndTicks - (extent.SpanTicks / 300), extent.EndTicks), 37, tallyMechanisms: true);
         TimelineColumns[] otherLanes = [.. Enumerable.Range(0, instances).Select(_ => new TimelineColumns(other.Interval, 11, tallyMechanisms: true))];
-        Assert.True(reading.CountGroup(section, other, otherLanes, members, laneOf, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+        Assert.True(reading.CountGroup(section, other, otherLanes, null, members, laneOf, null, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
         Assert.Equal(Expected(rows, other.Interval, 37), Snapshot(other));
         Assert.Equal(other.Counts.Sum(), otherLanes.Sum(lane => lane.Counts.Sum()));
         Assert.Equal(Expected(rows, other.Interval, 11).Where(value => value.Mechanism is null).Select(value => value.Count),
@@ -784,7 +798,7 @@ public sealed class SessionTileIndexTests
         Assert.Equal(Counted(bound, whole, EvidencePolicy.DirectOnly), Stated(SessionIntervalQuery.Count(viewer, whole, EvidencePolicy.DirectOnly)));
         Assert.Equal(1, viewer.SegmentReaderCache.Entries);
         Assert.Equal("The persisted tile index is not readable: it is minor 0, written before a tile index kept its records' "
-            + "bindings; a checkpoint publishes it again.", SessionDerivationCache.For(viewer.Current!).TilesProblem);
+            + "bindings and directions; a checkpoint publishes it again.", SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
 
         CheckpointPublication again = SessionCheckpoints.Publish(store, Committed);
@@ -1001,6 +1015,9 @@ public sealed class SessionTileIndexTests
         .. timeline.FocusLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"focus {lane.Mechanism} {bucket}")),
         .. timeline.ProcessLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"lane {lane.ProcessId} {bucket}")),
         .. timeline.FoldedLane is { } folded ? folded.Buckets.Select(bucket => $"folded {folded.Processes.Count} {bucket}") : [],
+        .. timeline.DirectionLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"direction {lane.Direction} {bucket}")),
+        .. timeline.OwnerLane.Select(bucket => $"owner {bucket}"),
+        .. timeline.ChannelEndLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"end {lane.End} {bucket}")),
         $"problem {timeline.ProcessLaneProblem}",
     ];
 

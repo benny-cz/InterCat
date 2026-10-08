@@ -52,16 +52,22 @@ internal static class SessionTileIndex
     /// <summary>The longest a section's header can be, with every mechanism and level a section may name.</summary>
     private const int MaximumSectionHeaderBytes = 71 + (2 * 256) + (12 * MaximumLevels);
 
-    /// <summary>The most a finest tile's records take apiece: the increase, the mechanism's slot, the owner and the channel.</summary>
-    private const int MaximumRecordBytes = 10 + 1 + 4 + 4;
+    /// <summary>
+    /// The most a finest tile's records take apiece: the increase, the mechanism's slot, the direction, the owner and the
+    /// channel.
+    /// </summary>
+    private const int MaximumRecordBytes = 10 + 1 + 1 + 4 + 4;
 
     private const string FilePrefix = "tiles-";
     private const string FileSuffix = ".bin";
     private const string What = "persisted tile index";
     private const ushort Major = 1;
 
-    /// <summary>Minor 1 keeps each tile's tallies and each record's owner and channel; minor 0, revision 456's, kept neither.</summary>
-    private const ushort Minor = 1;
+    /// <summary>
+    /// Minor 2 keeps each record's source direction, and tallies each tile's owners by it; minor 1, revision 457's, kept each
+    /// tile's tallies and each record's owner and channel; minor 0, revision 456's, kept none of these.
+    /// </summary>
+    private const ushort Minor = 2;
 
     private const byte Ordered = 1;
     private const byte Timed = 2;
@@ -366,9 +372,10 @@ internal static class SessionTileIndex
     {
         SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
         int[] slotOf = SlotsOf(mechanisms);
         var finest = new Level(tiles.Count, mechanisms.Length);
-        var ownerCounts = new Dictionary<(uint Owner, byte Slot), int>();
+        var ownerCounts = new Dictionary<(uint Owner, byte Slot, byte Direction), int>();
         var channelCounts = new Dictionary<int, int>();
         for (int tile = 0; tile < tiles.Count; tile++)
         {
@@ -383,7 +390,7 @@ internal static class SessionTileIndex
             }
 
             // A tile's tallies count its timed records alone, as its counts do: a bound owner by its key and the record's
-            // mechanism, a known channel by its number.
+            // mechanism and direction, a known channel by its number.
             ownerCounts.Clear();
             channelCounts.Clear();
             (int firstRow, int endRow) = tiles.RowsOf(tile);
@@ -396,7 +403,7 @@ internal static class SessionTileIndex
 
                 if (OwnerKey(owners.Raw(row)) is not 0 and uint owner)
                 {
-                    var key = (owner, (byte)slotOf[(int)(Mechanism)kinds.UnsignedAt(row)!.Value]);
+                    var key = (owner, (byte)slotOf[(int)(Mechanism)kinds.UnsignedAt(row)!.Value], DirectionCode(directions, row));
                     ownerCounts[key] = ownerCounts.GetValueOrDefault(key) + 1;
                 }
 
@@ -435,7 +442,7 @@ internal static class SessionTileIndex
         }
 
         var level = new Level(parents.Count, mechanisms);
-        var ownerCounts = new Dictionary<(uint Owner, byte Slot), int>();
+        var ownerCounts = new Dictionary<(uint Owner, byte Slot, byte Direction), int>();
         var channelCounts = new Dictionary<int, int>();
         for (int parent = 0; parent < parents.Count; parent++)
         {
@@ -459,7 +466,7 @@ internal static class SessionTileIndex
                 TileTallies tallies = below.Tallies[child];
                 for (int entry = 0; entry < tallies.Owners.Length; entry++)
                 {
-                    var key = (tallies.Owners[entry], tallies.Slots[entry]);
+                    var key = (tallies.Owners[entry], tallies.Slots[entry], tallies.Directions[entry]);
                     ownerCounts[key] = checked(ownerCounts.GetValueOrDefault(key) + tallies.OwnerCounts[entry]);
                 }
 
@@ -479,8 +486,9 @@ internal static class SessionTileIndex
     /// <summary>
     /// The records of every finest tile, each tile's after the one before and followed by its checksum, so a column
     /// boundary or a brush's end reads only the tile it falls among: each record its reading's increase over the record
-    /// before it in its tile - the first's over the tile's earliest, so none - then its mechanism's slot, its owner's key
-    /// and its channel's. The tiles' links, and where each block's last tile's records end, are set as they are written.
+    /// before it in its tile - the first's over the tile's earliest, so none - then its mechanism's slot, its direction,
+    /// its owner's key and its channel's. The tiles' links, and where each block's last tile's records end, are set as
+    /// they are written.
     /// </summary>
     private static byte[] Records(
         SegmentReaderV1 segment,
@@ -493,6 +501,7 @@ internal static class SessionTileIndex
     {
         SegmentColumnSlice times = segment.Slice(SegmentColumnId.SessionRelativeTicks);
         SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.Mechanism);
+        SegmentColumnSlice directions = segment.Slice(SegmentColumnId.Direction);
         int[] slotOf = SlotsOf(mechanisms);
         var bytes = new MemoryStream();
         Span<byte> encoded = stackalloc byte[MaximumRecordBytes];
@@ -514,6 +523,7 @@ internal static class SessionTileIndex
                 long tick = nanoseconds / 100;
                 int length = Unsigned(encoded, (ulong)(tick - previous));
                 encoded[length++] = (byte)slotOf[(int)(Mechanism)kinds.UnsignedAt(row)!.Value];
+                encoded[length++] = DirectionCode(directions, row);
                 length += Unsigned(encoded[length..], OwnerKey(owners.Raw(row)));
                 length += Unsigned(encoded[length..], ChannelKey(channels.Raw(row)));
                 bytes.Write(encoded[..length]);
@@ -535,10 +545,10 @@ internal static class SessionTileIndex
     /// tile keeps its tallies only where they take at most half the bytes of the records beneath it, so a brush that
     /// counts a tile from its children or records instead reads at most twice what its tallies would have taken; a tile
     /// whose tallies are not kept holds a single zero. Kept tallies are its owners - how many plus one, then for each,
-    /// in order of key and mechanism, its key's increase over the one before (the first's over none), its mechanism's
-    /// slot and its count - and its channels - how many, then for each, in order, its number's increase over the one
-    /// before (the first's over none) and its count. The tiles' tally links and each block's end are set as they are
-    /// written.
+    /// in order of key, mechanism and direction, its key's increase over the one before (the first's over none), its
+    /// mechanism's slot, its direction and its count - and its channels - how many, then for each, in order, its
+    /// number's increase over the one before (the first's over none) and its count. The tiles' tally links and each
+    /// block's end are set as they are written.
     /// </summary>
     private static byte[] Tallies(List<Level> levels, CancellationToken cancellationToken)
     {
@@ -574,6 +584,7 @@ internal static class SessionTileIndex
                 {
                     int length = Unsigned(encoded, tallies.Owners[entry] - previousOwner);
                     encoded[length++] = tallies.Slots[entry];
+                    encoded[length++] = tallies.Directions[entry];
                     length += Unsigned(encoded[length..], (ulong)tallies.OwnerCounts[entry]);
                     kept.Write(encoded[..length]);
                     previousOwner = tallies.Owners[entry];
@@ -612,6 +623,13 @@ internal static class SessionTileIndex
 
         return bytes.ToArray();
     }
+
+    /// <summary>
+    /// A row's source direction as a tile index keeps it: its `EN-Direction` code, or 255 for one past a byte, which no
+    /// direction is and a count by direction refuses, as it refuses any code it does not define.
+    /// </summary>
+    private static byte DirectionCode(SegmentColumnSlice directions, int row) =>
+        directions.UnsignedAt(row) is { } code && code < 255 ? (byte)code : (byte)255;
 
     /// <summary>Each mechanism code's place among <paramref name="mechanisms"/>, -1 for one not among them.</summary>
     private static int[] SlotsOf(Mechanism[] mechanisms)
@@ -682,7 +700,7 @@ internal static class SessionTileIndex
         if (minor < Minor)
         {
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
-                $"it is minor {minor}, written before a tile index kept its records' bindings; a checkpoint publishes it again."));
+                $"it is minor {minor}, written before a tile index kept its records' bindings and directions; a checkpoint publishes it again."));
         }
 
         if (new Guid(header.AsSpan(16, 16)) != sessionId)
@@ -891,18 +909,20 @@ internal static class SessionTileIndex
     private sealed record Fingerprinted(ProcessInstanceIndex Processes, TileDerivation Derivation);
 
     /// <summary>
-    /// One tile's tallies, in key order: each bound owner's key (<see cref="OwnerKey"/>) with the mechanism of the records it
-    /// owns and how many; and each known channel's number with how many.
+    /// One tile's tallies, in key order: each bound owner's key (<see cref="OwnerKey"/>) with the mechanism and direction of
+    /// the records it owns and how many; and each known channel's number with how many.
     /// </summary>
-    private sealed record TileTallies(uint[] Owners, byte[] Slots, int[] OwnerCounts, int[] Channels, int[] ChannelCounts)
+    private sealed record TileTallies(
+        uint[] Owners, byte[] Slots, byte[] Directions, int[] OwnerCounts, int[] Channels, int[] ChannelCounts)
     {
-        public static TileTallies Of(Dictionary<(uint Owner, byte Slot), int> owners, Dictionary<int, int> channels)
+        public static TileTallies Of(Dictionary<(uint Owner, byte Slot, byte Direction), int> owners, Dictionary<int, int> channels)
         {
-            (uint Owner, byte Slot)[] ownerKeys = [.. owners.Keys.Order()];
+            (uint Owner, byte Slot, byte Direction)[] ownerKeys = [.. owners.Keys.Order()];
             int[] channelKeys = [.. channels.Keys.Order()];
             return new(
                 [.. ownerKeys.Select(key => key.Owner)],
                 [.. ownerKeys.Select(key => key.Slot)],
+                [.. ownerKeys.Select(key => key.Direction)],
                 [.. ownerKeys.Select(key => owners[key])],
                 channelKeys,
                 [.. channelKeys.Select(key => channels[key])]);
@@ -1312,6 +1332,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     // The last tile's tallies read and checked (ReadTallies), in buffers each read reuses.
     private uint[] ownerKeys = new uint[64];
     private byte[] ownerSlots = new byte[64];
+    private byte[] ownerDirections = new byte[64];
     private long[] ownerCounts = new long[64];
     private int ownerEntries;
     private int[] channelNumbers = new int[64];
@@ -1406,10 +1427,11 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
-    /// Counts the records of <paramref name="section"/>'s segment that a group's focus holds into its columns,
-    /// <paramref name="focused"/>, and each member's into its lane of <paramref name="lanes"/>, as a focus counts its rows
-    /// (<see cref="FocusRows"/>): every timed record inside the columns' interval whose owner binds to a member, where the
-    /// policy admits the binding, and of <paramref name="mechanism"/> where it names one. A tile counts whole from its
+    /// Counts the records of <paramref name="section"/>'s segment that an owner focus holds into its columns,
+    /// <paramref name="focused"/>, each member's into its lane of <paramref name="lanes"/>, and each by its direction into
+    /// its row of <paramref name="directions"/>, as a focus counts its rows (<see cref="FocusRows"/>): every timed record
+    /// inside the columns' interval whose owner binds to a member, where the policy admits the binding, of
+    /// <paramref name="mechanism"/> and in <paramref name="direction"/> where it names one. A tile counts whole from its
     /// tallies wherever its records fall in one column of the focus and one of the lanes', and a finest tile's records
     /// are read where a boundary of either falls among them. The caller has checked that the file's bindings are its own.
     /// False, counting nothing, for a segment whose readings go backwards and meet the interval: its rows are read instead.
@@ -1418,9 +1440,11 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         TileSection section,
         TimelineColumns focused,
         TimelineColumns[]? lanes,
+        TimelineColumns[]? directions,
         bool[] members,
         int[]? laneOf,
         Mechanism? mechanism,
+        Direction? direction,
         EvidencePolicy policy,
         CancellationToken cancellationToken)
     {
@@ -1441,8 +1465,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         (lastColumn, lastLaneColumn) = (-1, -1);
         int top = section.Levels - 1;
-        var group = new Group(focused, lanes, lanes is null || lanes[0].Counts.Count == focused.Counts.Count, members, laneOf,
-            mechanism, SessionTileIndex.AdmittedStrengths(policy));
+        var group = new Group(focused, lanes, lanes is null || lanes[0].Counts.Count == focused.Counts.Count, directions, members,
+            laneOf, mechanism, direction, SessionTileIndex.AdmittedStrengths(policy));
         RangeGroup(section, top, 0, section.TileCount(top), group, cancellationToken);
         return true;
     }
@@ -1527,7 +1551,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             var records = new RecordCursor(this, section, block, position);
-            while (records.Next(out long reading, out int slot, out uint owner, out _))
+            while (records.Next(out long reading, out int slot, out int direction, out uint owner, out _))
             {
                 if (owner == 0 || !group.Admitted[owner & 7] || !group.Members[(owner >> 3) - 1]
                     || (column < 0 && !interval.Contains(reading)))
@@ -1536,7 +1560,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                 }
 
                 Mechanism mechanism = section.Mechanisms[slot];
-                if (group.Mechanism is { } only && mechanism != only)
+                if ((group.Mechanism is { } only && mechanism != only) || (group.Direction is { } way && direction != (int)way))
                 {
                     continue;
                 }
@@ -1548,6 +1572,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                     TimelineColumns laneColumns = group.Lanes![lane];
                     laneColumns.Add(column >= 0 ? laneColumn : group.LanesShareColumns ? at : laneColumns.ColumnOf(reading)!.Value, mechanism);
                 }
+
+                group.Directions?[DirectionRow(direction)].Add(at, mechanism);
             }
         }
     }
@@ -1616,7 +1642,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             else
             {
                 var records = new RecordCursor(this, section, block, position);
-                while (records.Next(out long reading, out int slot, out _, out _))
+                while (records.Next(out long reading, out int slot, out _, out _, out _))
                 {
                     if (columns.ColumnOf(reading) is { } column)
                     {
@@ -1677,7 +1703,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             var records = new RecordCursor(this, section, block, position);
-            while (records.Next(out long reading, out int slot, out uint owner, out uint channel))
+            while (records.Next(out long reading, out int slot, out _, out uint owner, out uint channel))
             {
                 if (!interval.Contains(reading))
                 {
@@ -1756,7 +1782,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             uint owner = ownerKeys[entry];
             int instance = (int)(owner >> 3) - 1;
             Mechanism mechanism = section.Mechanisms[ownerSlots[entry]];
-            if (!group.Admitted[owner & 7] || !group.Members[instance] || (group.Mechanism is { } only && mechanism != only))
+            if (!group.Admitted[owner & 7] || !group.Members[instance] || (group.Mechanism is { } only && mechanism != only)
+                || (group.Direction is { } way && ownerDirections[entry] != (int)way))
             {
                 continue;
             }
@@ -1767,6 +1794,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 group.Lanes![lane].Add(laneColumn, mechanism, count);
             }
+
+            group.Directions?[DirectionRow(ownerDirections[entry])].Add(column, mechanism, count);
         }
 
         return true;
@@ -1787,8 +1816,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
-    /// Reads one tile's tallies into the entry buffers, checked against the tile as they are read: owners in order of key
-    /// and mechanism, within the derivation's instances and the section's mechanisms; channels in order, within its
+    /// Reads one tile's tallies into the entry buffers, checked against the tile as they are read: owners in order of key,
+    /// mechanism and direction, within the derivation's instances and the section's mechanisms; channels in order, within its
     /// channels; no count of zero or above the tile's <paramref name="records"/>, nor sums above them; nothing after the
     /// last. False, reading no entry, for a tile that keeps no tallies. Its block's tallies are checked against their
     /// checksum once.
@@ -1813,17 +1842,18 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         ulong lastOwner = ((ulong)file.Derivation.Instances << 3) | 7;
         ulong channels = (ulong)file.Derivation.Channels;
 
-        // Each owner's key over the one before, or its mechanism after the one before under the same key.
+        // Each owner's key over the one before, or its mechanism and direction after the one before's under the same key.
         ownerEntries = 0;
         long owned = 0;
         ulong owner = 0;
-        int previousSlot = -1;
+        int previous = -1;
         for (ulong entry = 0; entry < owners - 1; entry++)
         {
             ulong increase = at.Next();
             int slot = at.Byte();
+            int direction = at.Byte();
             ulong count = at.Next();
-            if (increase > lastOwner || (entry > 0 && increase == 0 && slot <= previousSlot))
+            if (increase > lastOwner || (entry > 0 && increase == 0 && (slot << 8) + direction <= previous))
             {
                 throw Bad();
             }
@@ -1835,15 +1865,17 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             owned += (long)count;
-            previousSlot = slot;
+            previous = (slot << 8) + direction;
             if (ownerEntries == ownerKeys.Length)
             {
                 Array.Resize(ref ownerKeys, ownerEntries * 2);
                 Array.Resize(ref ownerSlots, ownerEntries * 2);
+                Array.Resize(ref ownerDirections, ownerEntries * 2);
                 Array.Resize(ref ownerCounts, ownerEntries * 2);
             }
 
-            (ownerKeys[ownerEntries], ownerSlots[ownerEntries], ownerCounts[ownerEntries]) = ((uint)owner, (byte)slot, (long)count);
+            (ownerKeys[ownerEntries], ownerSlots[ownerEntries], ownerDirections[ownerEntries], ownerCounts[ownerEntries]) =
+                ((uint)owner, (byte)slot, (byte)direction, (long)count);
             ownerEntries++;
         }
 
@@ -1949,20 +1981,32 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         return end - start;
     }
 
+    /// <summary>
+    /// The row of a process's direction rows a record's direction code is counted in; a code no direction is refuses the
+    /// index, as reading the record's row refuses it (<see cref="SessionTimelineQuery.DirectionSlot"/>).
+    /// </summary>
+    private static int DirectionRow(int code) => Enum.IsDefined((Direction)code)
+        ? SessionTimelineQuery.DirectionSlot((Direction)code)
+        : throw SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
+            $"a record names a direction no code is: {code}."));
+
     /// <summary>What one brush counts and into what: its interval, the strengths its policy admits, the channels it draws.</summary>
     private sealed record Brush(TimeRange Interval, bool[] Admitted, int[] SlotOfChannel, IntervalTally Tally);
 
     /// <summary>
-    /// What one group's focus counts and into what: its columns, its members' lanes and whether they share the columns, its
-    /// members and their lanes by instance, the one mechanism it narrows to, and the strengths its policy admits.
+    /// What one owner focus counts and into what: its columns, its members' lanes and whether they share the columns, its
+    /// rows by direction, its members and their lanes by instance, the one mechanism and the one direction it narrows to,
+    /// and the strengths its policy admits.
     /// </summary>
     private sealed record Group(
         TimelineColumns Focused,
         TimelineColumns[]? Lanes,
         bool LanesShareColumns,
+        TimelineColumns[]? Directions,
         bool[] Members,
         int[]? LaneOf,
         Mechanism? Mechanism,
+        Direction? Direction,
         bool[] Admitted);
 
     /// <summary>
@@ -2004,10 +2048,11 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         }
 
         /// <summary>
-        /// The next record: its reading, its mechanism's slot, its owner's key (<see cref="SessionTileIndex.OwnerKey"/>) and
-        /// its channel's number plus one, 0 for none. False past the last, which is then checked to end the tile.
+        /// The next record: its reading, its mechanism's slot, its direction's code, its owner's key
+        /// (<see cref="SessionTileIndex.OwnerKey"/>) and its channel's number plus one, 0 for none. False past the last,
+        /// which is then checked to end the tile.
         /// </summary>
-        public bool Next(out long next, out int slot, out uint owner, out uint channel)
+        public bool Next(out long next, out int slot, out int direction, out uint owner, out uint channel)
         {
             if (at.AtEnd)
             {
@@ -2016,7 +2061,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                     throw Bad();
                 }
 
-                (next, slot, owner, channel) = (0, 0, 0, 0);
+                (next, slot, direction, owner, channel) = (0, 0, 0, 0, 0);
                 return false;
             }
 
@@ -2028,6 +2073,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             reading += (long)increase;
             slot = at.Byte();
+            direction = at.Byte();
             ulong ownerKey = at.Next();
             ulong channelKey = at.Next();
             if (slot >= section.Mechanisms.Length || ownerKey is > 0 and < 8 || ownerKey > lastOwner || channelKey > lastChannel)
