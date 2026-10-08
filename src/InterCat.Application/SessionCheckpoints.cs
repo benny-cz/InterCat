@@ -11,7 +11,9 @@ public enum CheckpointOutcome
     /// <summary>A checkpoint of the current generation was published as the next generation.</summary>
     Published = 1,
 
-    /// <summary>The generation already names a checkpoint covering every segment it names.</summary>
+    /// <summary>
+    /// The generation already names a checkpoint, an overview and an operation index, each covering every segment it names.
+    /// </summary>
     AlreadyCurrent = 2,
 
     /// <summary>The generation names no source clock or no observation segment, so nothing derives from it.</summary>
@@ -83,11 +85,13 @@ public static class SessionCheckpoints
             if (IsCurrent(store.Root, manifest, clock, segments, fields))
             {
                 return Unpublished(CheckpointOutcome.AlreadyCurrent, manifest.Generation, started,
-                    "The generation already names a checkpoint and an overview of every segment it names.");
+                    "The generation already names a checkpoint, an overview and an index of its calls, each of every "
+                    + "segment it names.");
             }
 
-            // The derivation checkpoint and the persisted overview are published together: with both, a reopen opens no
-            // segment before its first view (overview-index-v1).
+            // The derivation checkpoint, the persisted overview and the operation index are published together: with
+            // them, a reopen opens no segment before its first view (overview-index-v1), nor before its first call
+            // ranking, listing or brush (operation-index-v1).
             SessionDerivation derivation = SessionDerivationCache.For(manifest);
             ProcessInstanceIndex processes = derivation.Processes(store.Root, segments, clock, fields, cancellationToken);
             TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
@@ -102,13 +106,11 @@ public static class SessionCheckpoints
             counts = counts with { LaneBytes = laneBytes, ProcessBytes = processBytes };
 
             // A capture that collected ALPC keeps its RPC links with the overview, so its first view follows no call
-            // (overview-index-v1 §3); one that did not keeps none, and reads nothing for them.
+            // (overview-index-v1 §3); one that did not keeps none.
+            RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
             if (RpcPeerEdges.Collected(SessionSegments.CoverageLedger(store.Root, manifest)))
             {
-                counts = counts with
-                {
-                    RpcLinks = RpcPeerEdges.Totals(derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken)),
-                };
+                counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers) };
             }
 
             long next = store.NextGeneration;
@@ -120,12 +122,23 @@ public static class SessionCheckpoints
             bytes += SessionOverviewIndex.Write(
                 overview.Content, manifest.SessionId, manifest.Generation, SessionOverviewIndex.ObservationSegments(manifest), counts);
             _ = overview.Complete();
+            using StoreStagingFile operations = store.Stage(OperationIndex.FileNameFor(next), StoreDependencyKind.Index);
+            bytes += OperationIndex.Write(
+                operations.Content,
+                manifest.SessionId,
+                manifest.Generation,
+                SessionOverviewIndex.ObservationSegments(manifest),
+                SessionOverviewIndex.FieldSegments(manifest),
+                peers.Calls,
+                peers);
+            _ = operations.Complete();
 
             // Everything read is written, so the lease goes before the commit: a writer removes superseded manifests
             // only while no lease anywhere holds the session (store-v1 §9), and this one would keep them. The commit
             // re-measures every dependency and refuses a generation that is no longer current, so nothing relies on it.
             lease.Dispose();
-            StoreCommitResult result = store.CommitIndex([checkpoint, overview], manifest.Generation, committedUtc, next, cancellationToken);
+            StoreCommitResult result = store.CommitIndex(
+                [checkpoint, overview, operations], manifest.Generation, committedUtc, next, cancellationToken);
             return new(CheckpointOutcome.Published, manifest.Generation, result.Manifest.Generation, bytes,
                 Stopwatch.GetElapsedTime(started), null);
         }
@@ -155,9 +168,10 @@ public static class SessionCheckpoints
         (DerivationCheckpoint.NamedBy(manifest), SessionOverviewIndex.NamedBy(manifest));
 
     /// <summary>
-    /// Whether the generation names a readable checkpoint holding every derivation and a readable persisted overview,
-    /// each covering exactly the segments it names. A checkpoint written before revision 166 holds no activity, which a
-    /// reopen would count from every segment, so it is replaced.
+    /// Whether the generation names a readable checkpoint holding every derivation, a readable persisted overview and a
+    /// readable operation index, each covering exactly the segments it names. A checkpoint written before revision 166
+    /// holds no activity, which a reopen would count from every segment, so it is replaced, and so is a generation
+    /// published before revision 440, which names no operation index.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -179,7 +193,14 @@ public static class SessionCheckpoints
                     SessionOverviewIndex.Read(
                         SessionSegments.ReadVerified(directory, overview, SessionOverviewIndex.MaximumBytes),
                         manifest.SessionId).Segments,
-                    manifest);
+                    manifest)
+                && OperationIndex.NamedBy(manifest) is { } operations
+                && OperationIndex.Read(
+                    SessionSegments.ReadVerified(directory, operations, OperationIndex.MaximumBytes),
+                    manifest.SessionId,
+                    clock,
+                    saved.Processes).Covers(
+                        SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest));
         }
         catch (InvalidDataException)
         {

@@ -854,15 +854,20 @@
         "I14: a finished live follow publishes the session's derivation checkpoint and shows it as the next generation",
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
+        "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
         "I14: a session reopened from its checkpoint and overview opens no segment and projects as a derivation of every segment",
         "I14: an RPC peers session keeps its links with its overview, and its first view draws them opening no segment",
         "I14: an extension declines, for a full derivation, whatever would change a decision already made",
         "I14: an import bound that would be exceeded is a refusal, not a partial import",
         "I14: an import option outside its declared range is refused before anything is read",
         "I14: an import that spills to disk produces exactly the index it would in memory",
+        "I14: an operation index cut short, changed, of another format, rule, session or clock, or contradicting its calls or their instances, is refused, never misread",
+        "I14: an operation index reads back as the calls and other ends it was written from, bound by the instances it is read with, and writes the same bytes again",
+        "I14: an operation index that cannot be read, or that covers other segments, is paired around, the overview says why, and publishing replaces it",
         "I14: an overview that cannot be read is counted around from the segments, and the overview says why",
         "I14: calls do not depend on how their records were cut into segments or delivered",
         "I14: calls read at one instant are listed by raw locator, however their records were cut into segments",
+        "I14: calls that would take more than an operation index may hold are not kept, and the index says so",
         "I14: counts decline to extend, for a full count, when a record already counted would bind otherwise",
         "I14: each generation of a live session extends the one before it and projects as a fresh derivation would",
         "I14: each instance's records extended chunk by chunk equal a count of every chunk at once",
@@ -1875,7 +1880,7 @@
         "plannedBy": "IC-009"
       },
       "P25": {
-        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; the call ranking and a time scope's HTTP and RPC listings still read every segment, an RPC capture's first brush and a page of its calls or of HTTP exchanges pair them over every one, and a zoom builds a met segment's tiles from its rows.",
+        "reason": "Since revision 403 a zoom, a brush's counts, its lanes' bytes, a time scope's byte and peer rankings, an evidence page and a process's connections open only the segments they read; since revision 408 paired calls and grouped exchanges are read without opening one; and since revision 440 a finished session keeps its RPC calls in an operation index, so a reopen's first call ranking, RPC listing or brush pairs none. A live generation's first RPC view still pairs its calls over every segment, a reopen's first HTTP listing groups its exchanges over every one, and a zoom builds a met segment's tiles from its rows.",
         "plannedBy": "M5"
       }
     }

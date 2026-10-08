@@ -111,6 +111,7 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     private OverviewCounts? overview;
     private bool overviewRead;
     private string? overviewProblem;
+    private string? operationsProblem;
     private SessionContentIndex? content;
 
     // The records the last few operation scopes asked for named, most recent first: each zoom or page of a busy channel's
@@ -154,6 +155,15 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// </summary>
     public string? OverviewProblem => Volatile.Read(ref overviewProblem);
 
+    /// <summary>
+    /// Why the operation index this generation names could not be read, once its calls were asked for; null when it names
+    /// none, or it was read. The calls are then paired from the segments, and are the same.
+    /// </summary>
+    public string? OperationsProblem => Volatile.Read(ref operationsProblem);
+
+    /// <summary>Whether the calls and their other ends were read from this generation's operation index.</summary>
+    internal bool CallsFromIndex { get; private set; }
+
     /// <summary>Whether the instances were extended from an earlier generation's rather than derived in full.</summary>
     internal bool ProcessesExtended { get; private set; }
 
@@ -190,32 +200,39 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     {
         lock (gate)
         {
-            if (processes is { } madeProcesses && relations is { } madeRelations)
-            {
-                return (madeProcesses, madeRelations, activity);
-            }
-
-            if (processes is not null
-                || relations is not null
-                || CheckpointLocked(directory, clock) is not { } saved
-                || !saved.Covers(SessionOverviewIndex.ObservationSegments(Manifest), SessionOverviewIndex.FieldSegments(Manifest)))
-            {
-                return null;
-            }
-
-            Volatile.Write(ref processes, saved.Processes);
-            Volatile.Write(ref relations, saved.Relations);
-            (ProcessesFromCheckpoint, RelationsFromCheckpoint) = (true, true);
-            if (saved.Activity is { } counted)
-            {
-                Volatile.Write(ref activity, counted);
-                ActivityFromCheckpoint = true;
-            }
-
-            // Everything it holds is taken; counts it does not hold are made from the segments, not from it.
-            checkpoint = null;
-            return (saved.Processes, saved.Relations, saved.Activity);
+            return FromCheckpointLocked(directory, clock);
         }
+    }
+
+    private (ProcessInstanceIndex Processes, TransportRelationIndex Relations, ProcessActivityIndex? Activity)? FromCheckpointLocked(
+        IOwnedDirectory directory,
+        SourceClockDescriptor clock)
+    {
+        if (processes is { } madeProcesses && relations is { } madeRelations)
+        {
+            return (madeProcesses, madeRelations, activity);
+        }
+
+        if (processes is not null
+            || relations is not null
+            || CheckpointLocked(directory, clock) is not { } saved
+            || !saved.Covers(SessionOverviewIndex.ObservationSegments(Manifest), SessionOverviewIndex.FieldSegments(Manifest)))
+        {
+            return null;
+        }
+
+        Volatile.Write(ref processes, saved.Processes);
+        Volatile.Write(ref relations, saved.Relations);
+        (ProcessesFromCheckpoint, RelationsFromCheckpoint) = (true, true);
+        if (saved.Activity is { } counted)
+        {
+            Volatile.Write(ref activity, counted);
+            ActivityFromCheckpoint = true;
+        }
+
+        // Everything it holds is taken; counts it does not hold are made from the segments, not from it.
+        checkpoint = null;
+        return (saved.Processes, saved.Relations, saved.Activity);
     }
 
     /// <summary>
@@ -256,8 +273,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     }
 
     /// <summary>
-    /// The generation's RPC calls, paired once on first use (`contracts/operations-v1.md`). They are neither checkpointed nor
-    /// extended from an earlier generation's: a call still open in one generation may close in the next.
+    /// The generation's RPC calls (`contracts/operations-v1.md`), taken on first use from the operation index the
+    /// generation names when it covers its segments (`contracts/operation-index-v1.md`), with their other ends, or else
+    /// paired from the segments. They are not extended from an earlier generation's: a call still open in one generation
+    /// may close in the next.
     /// </summary>
     public RpcCallIndex RpcCalls(
         IOwnedDirectory directory,
@@ -271,6 +290,14 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             if (rpcCalls is { } known)
             {
                 return known;
+            }
+
+            if (OperationsLocked(directory, segments, clock, fields, cancellationToken) is { Calls: { } kept, Peers: { } followed })
+            {
+                Volatile.Write(ref rpcPeers, followed);
+                Volatile.Write(ref rpcCalls, kept);
+                CallsFromIndex = true;
+                return kept;
             }
 
             ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
@@ -502,6 +529,60 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
         ProcessInstanceIndex derived = extended ?? ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
         Volatile.Write(ref processes, derived);
         return derived;
+    }
+
+    /// <summary>
+    /// The operation index this generation names, read and checked when the calls are first asked for, binding its calls
+    /// to the instances already made, or the checkpoint's, which open no segment. Null when it names none, when it covers
+    /// other segments than <paramref name="segments"/> in their order - the calls name segments by position - and when it
+    /// could not be read, which <see cref="OperationsProblem"/> then says. The caller holds the gate.
+    /// </summary>
+    private OperationIndex? OperationsLocked(
+        IOwnedDirectory directory,
+        IReadOnlyList<SegmentReaderV1> segments,
+        SourceClockDescriptor clock,
+        IReadOnlyList<SegmentReaderV1> fields,
+        CancellationToken cancellationToken)
+    {
+        // An index saves time and never changes an answer, so one that cannot be read is set aside, and why is kept
+        // (operation-index-v1 §4). The caller's lease holds the file while it is read.
+        try
+        {
+            StoreDependency[] observed = SessionOverviewIndex.ObservationSegments(Manifest);
+            IEnumerable<string?> offered = segments is IPublishedSegments published
+                ? published.Names
+                : segments.Select(segment => segment.Published?.Name);
+            if (OperationIndex.NamedBy(Manifest) is not { } named
+                || !offered.SequenceEqual(observed.Select(segment => segment.Name)))
+            {
+                return null;
+            }
+
+            ProcessInstanceIndex instances = processes
+                ?? FromCheckpointLocked(directory, clock)?.Processes
+                ?? ProcessesLocked(directory, segments, clock, fields, cancellationToken);
+            OperationIndex saved = OperationIndex.Read(
+                SessionSegments.ReadVerified(directory, named, OperationIndex.MaximumBytes),
+                Manifest.SessionId,
+                clock,
+                instances,
+                cancellationToken);
+            return saved.Covers(observed, SessionOverviewIndex.FieldSegments(Manifest)) ? saved : null;
+        }
+        catch (InvalidDataException exception)
+        {
+            Volatile.Write(ref operationsProblem, exception.Message);
+        }
+        catch (IOException exception)
+        {
+            Volatile.Write(ref operationsProblem, exception.Message);
+        }
+        catch (UnauthorizedAccessException exception)
+        {
+            Volatile.Write(ref operationsProblem, exception.Message);
+        }
+
+        return null;
     }
 
     /// <summary>

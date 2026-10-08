@@ -85,9 +85,12 @@ public sealed class RpcPairingScaleTests
                     + "Published in chunks of 500,000 records, then its derivation checkpoint.",
                 "perGenerationMs is what a live session pays when its RPC rung is open: after each chunk is published, "
                     + "every call of the generation is paired again (SessionRpcCalls.Channels on a cleared derivation cache).",
-                "firstRungColdMs is the first RPC channel list of a process after a reopen, which opens the segments and "
-                    + "pairs every call; warm is the same list again. pairingInMemoryMs pairs every call with every column "
-                    + "already read, as a distribution of five runs.",
+                "firstRungColdMs is the first RPC channel list of a process after a reopen, which reads the calls the "
+                    + "session's operation index keeps; warm is the same list again. firstRungUnindexedMs is the first list "
+                    + "in a copy of the session published again without its operation index, as a live generation, or a "
+                    + "session published before calls were kept, reads it: it opens the segments and pairs every call. "
+                    + "pairingInMemoryMs pairs every call with every column already read, as a distribution of five runs.",
+                "operationIndexMiB is the size of the operation index, and segmentsMiB that of the observation segments.",
             },
             ["sessions"] = sessions,
         }, Json));
@@ -167,6 +170,7 @@ public sealed class RpcPairingScaleTests
         clock.Restart();
         RpcCallSpanPage spans = SessionRpcCalls.Spans(store, key, OverviewWorkspace.From(overview).Extent);
         double spansMs = clock.Elapsed.TotalMilliseconds;
+        (double unindexedMs, double indexMiB, double segmentsMiB) = Unindexed(path, client);
 
         SessionManifestV1 manifest = store.Current!;
         SegmentReaderV1[] readers = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store, manifest, name))];
@@ -191,6 +195,9 @@ public sealed class RpcPairingScaleTests
             ["reopenMs"] = Round(reopen),
             ["firstRungColdMs"] = Round(coldMs),
             ["firstRungWarmMs"] = Round(warmMs),
+            ["firstRungUnindexedMs"] = unindexedMs,
+            ["operationIndexMiB"] = indexMiB,
+            ["segmentsMiB"] = segmentsMiB,
             ["heldAfterFirstRungMiB"] = Math.Round(held / 1048576.0, 1),
             ["callPageMs"] = Round(pageMs),
             ["spansMs"] = Round(spansMs),
@@ -202,6 +209,63 @@ public sealed class RpcPairingScaleTests
                 ["maximum"] = pairing[^1],
             },
         };
+    }
+
+    /// <summary>
+    /// The first RPC channel list of <paramref name="client"/> in a copy of the session published again without its
+    /// operation index, read by a viewer that has opened nothing; and the sizes of the index and of the segments.
+    /// </summary>
+    private static (double FirstRungMs, double IndexMiB, double SegmentsMiB) Unindexed(string path, ProcessInstanceId client)
+    {
+        string copy = path + "-unindexed";
+        if (Directory.Exists(copy))
+        {
+            Directory.Delete(copy, recursive: true);
+        }
+
+        foreach (string file in Directory.EnumerateFiles(path, "*", SearchOption.AllDirectories))
+        {
+            string target = Path.Combine(copy, Path.GetRelativePath(path, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target);
+        }
+
+        try
+        {
+            SessionManifestV1 manifest = SessionStore.OpenExisting(LocalOwnedDirectory.Open(copy)).Current!;
+            double index = Math.Round(OperationIndex.NamedBy(manifest)!.LengthBytes / 1048576.0, 1);
+            double segments = Math.Round(manifest.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Segment)
+                .Sum(dependency => dependency.LengthBytes) / 1048576.0, 1);
+            SessionStore writer = SessionStore.Open(LocalOwnedDirectory.Open(copy), manifest.SessionId, manifest.SourceIdentity);
+            long next = writer.NextGeneration;
+            using (StoreStagingFile checkpoint = writer.Stage(DerivationCheckpoint.FileNameFor(next), StoreDependencyKind.Index))
+            using (StoreStagingFile counts = writer.Stage(SessionOverviewIndex.FileNameFor(next), StoreDependencyKind.Index))
+            {
+                checkpoint.Content.Write(SessionSegments.ReadVerified(
+                    writer.Root, DerivationCheckpoint.NamedBy(manifest)!, DerivationCheckpoint.MaximumBytes));
+                _ = checkpoint.Complete();
+                counts.Content.Write(SessionSegments.ReadVerified(
+                    writer.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes));
+                _ = counts.Complete();
+                _ = writer.CommitIndex([checkpoint, counts], manifest.Generation, DateTimeOffset.UtcNow, next);
+            }
+
+            SessionDerivationCache.Clear();
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(copy));
+            _ = SessionOverviewProjector.Project(reopened);
+            var clock = Stopwatch.StartNew();
+            _ = SessionRpcCalls.Channels(reopened, client);
+            double first = Round(clock.Elapsed.TotalMilliseconds);
+            reopened.ReleaseSegmentReaders();
+            writer.ReleaseSegmentReaders();
+            return (first, index, segments);
+        }
+        finally
+        {
+            SessionDerivationCache.Clear();
+            Directory.Delete(copy, recursive: true);
+        }
     }
 
     private static ProcessInstanceId FirstClient(SessionStore store) =>

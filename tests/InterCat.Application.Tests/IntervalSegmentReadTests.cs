@@ -84,7 +84,7 @@ public sealed class IntervalSegmentReadTests
         Assert.Equal((90, 90), (counted.ObservedRows, counted.ChannelRecords[channel]));
     }
 
-    [Fact(DisplayName = "§12.1: a brush on a capture of RPC calls pairs them over every segment once, and a later brush opens only the segments it meets")]
+    [Fact(DisplayName = "§12.1: a finished capture of RPC calls keeps them, so a reopen's first brush opens only the segments it meets; a generation that keeps none pairs them over every segment once")]
     public void ABrushPairsRpcCallsOnce()
     {
         // The service control manager's linked calls in three segments of six records, cut as they arrived: the first spans
@@ -98,20 +98,35 @@ public sealed class IntervalSegmentReadTests
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(split.Store, Committed).Outcome);
         string edge = Assert.Single(SessionOverviewProjector.Project(twin.Store).Edges, edge => edge.Mechanism == Mechanism.Rpc).Key;
 
-        // A call's request and response can lie in different segments, so the first brush pairs the calls over all of
-        // them and their source fields, even with the checkpoint's instances; a later one reads the pairs it made, and
-        // only the segments it meets: the third call's, from tick 300, lie in the second and the third.
+        // The finished session's operation index keeps its calls and their other ends, so even a reopen's first brush
+        // reads only the segments it meets, and no source field: all three for the early interval, and the second and
+        // third for the late one, where the third call's records lie, from tick 300.
         var early = new TimeRange(0, 150);
         var late = new TimeRange(250, 400);
-        SessionDerivationCache.Clear();
-        SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
-        Assert.Equal(4, SessionIntervalQuery.Count(first, early).EdgeRecords[edge]);
-        Assert.Equal(5, first.SegmentReaderCache.Entries);
-        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
-        SessionIntervalCounts counted = SessionIntervalQuery.Count(later, late);
-        Assert.Equal(2, later.SegmentReaderCache.Entries);
+        SessionStore indexed = Reopened(split.Path);
+        Assert.Equal(4, SessionIntervalQuery.Count(indexed, early).EdgeRecords[edge]);
+        Assert.Equal(3, indexed.SegmentReaderCache.Entries);
+        Assert.True(SessionDerivationCache.For(indexed.Current!).CallsFromIndex);
+        indexed.ReleaseSegmentReaders();
+        SessionStore lateFirst = Reopened(split.Path);
+        SessionIntervalCounts counted = SessionIntervalQuery.Count(lateFirst, late);
+        Assert.Equal(2, lateFirst.SegmentReaderCache.Entries);
         Assert.Equal(4, counted.EdgeRecords[edge]);
         Assert.Equal(Text(SessionIntervalQuery.Count(twin.Store, late).EdgeRecords), Text(counted.EdgeRecords));
+        lateFirst.ReleaseSegmentReaders();
+
+        // A generation that keeps no calls, as a live one does, pairs them over every segment and their source fields at
+        // its first brush, even with the checkpoint's instances, since a call's request and its response can lie in
+        // different segments; a later brush reads the pairs it made, and only the segments it meets.
+        OperationIndexReopenTests.Republish(split.Store, operations: null);
+        SessionStore first = Reopened(split.Path);
+        Assert.Equal(4, SessionIntervalQuery.Count(first, early).EdgeRecords[edge]);
+        Assert.Equal(5, first.SegmentReaderCache.Entries);
+        Assert.False(SessionDerivationCache.For(first.Current!).CallsFromIndex);
+        SessionStore later = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
+        counted = SessionIntervalQuery.Count(later, late);
+        Assert.Equal(2, later.SegmentReaderCache.Entries);
+        Assert.Equal(4, counted.EdgeRecords[edge]);
         first.ReleaseSegmentReaders();
         later.ReleaseSegmentReaders();
     }
@@ -132,8 +147,9 @@ public sealed class IntervalSegmentReadTests
         ProcessInstanceId client = SessionOverviewProjector.Project(twin.Store).Nodes.Single(node => node.ProcessId == 400).Id;
         var late = new TimeRange(250, 400);
 
-        // The first ranking pairs the calls over every segment and their source fields, and the first listing follows their
-        // other ends over the same.
+        // In a generation that keeps no calls, as a live one does, the first ranking pairs them over every segment and
+        // their source fields, and the first listing follows their other ends over the same.
+        OperationIndexReopenTests.Republish(split.Store, operations: null);
         SessionDerivationCache.Clear();
         SessionStore first = SessionStore.OpenExisting(LocalOwnedDirectory.Open(split.Path));
         _ = SessionCallRanking.Measure(first, null);

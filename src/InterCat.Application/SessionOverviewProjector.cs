@@ -321,6 +321,13 @@ public static class SessionOverviewProjector
                     $"This generation's persisted overview was not used. {overviewProblem} The timeline and minimap were "
                         + "counted from every segment instead, which takes longer and gives the same result.",
                 }),
+            .. (derivation.OperationsProblem is not { } operationsProblem
+                ? []
+                : new[]
+                {
+                    $"This generation's index of its RPC calls was not used. {operationsProblem} Its calls were paired "
+                        + "from every segment instead, which takes longer and gives the same result.",
+                }),
         ];
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"

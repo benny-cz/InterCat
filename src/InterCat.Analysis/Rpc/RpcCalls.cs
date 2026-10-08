@@ -523,7 +523,33 @@ public sealed partial class RpcCallIndex
         // records' delivery order change no call (§3, I14).
         int[] order = CanonicalOrder(collected, cancellationToken);
         List<Entry> drafts = Walk(CollectionsMarshal.AsSpan(collected), order, cancellationToken);
-        Span<Entry> drafted = CollectionsMarshal.AsSpan(drafts);
+        return Assemble(
+            CollectionsMarshal.AsSpan(drafts),
+            processes,
+            [.. interfaces],
+            [.. segments.Select(segment => segment.Published?.Name)],
+            clock,
+            collected.Count,
+            otherRecords,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Binds each call to its process by its first record's reading, orders the calls into their groups and counts them:
+    /// what a derivation does once it has paired the calls, and a reader of an operation index once it has read them.
+    /// </summary>
+    /// <param name="placed">When given, receives where each drafted call is in the index made.</param>
+    private static RpcCallIndex Assemble(
+        Span<Entry> drafted,
+        ProcessInstanceIndex processes,
+        Guid[] interfaces,
+        string?[] segmentNames,
+        SourceClockDescriptor clock,
+        long callRecords,
+        long otherRecords,
+        CancellationToken cancellationToken,
+        int[]? placed = null)
+    {
         for (int index = 0; index < drafted.Length; index++)
         {
             drafted[index] = drafted[index] with
@@ -532,18 +558,9 @@ public sealed partial class RpcCallIndex
             };
         }
 
-        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken);
-        (RpcCallGroup[] groups, RpcCallCounts totals) = Group(entries, [.. interfaces], clock);
-        return new(
-            entries,
-            [.. interfaces],
-            [.. segments.Select(segment => segment.Published?.Name)],
-            clock,
-            processes,
-            collected.Count,
-            otherRecords,
-            groups,
-            totals);
+        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed);
+        (RpcCallGroup[] groups, RpcCallCounts totals) = Group(entries, interfaces, clock);
+        return new(entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, groups, totals);
     }
 
     /// <summary>
@@ -1018,12 +1035,14 @@ public sealed partial class RpcCallIndex
     /// <summary>
     /// The calls grouped by process binding, side and interface, the groups in the order of those identities and each
     /// group's calls in the canonical order of their first records (§3), which is what a channel lists and a page reads.
-    /// A group is numbered where its identity sorts, so one sort of plain integers orders the groups and their calls.
+    /// Every call's first record has a canonical rank of its own, so the calls are taken in rank order by placing each at
+    /// its rank, and dealt into their groups in that order: nothing is compared but the groups' identities.
     /// </summary>
-    private static Entry[] InGroupsInReadingOrder(ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken)
+    private static Entry[] InGroupsInReadingOrder(ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken, int[]? placed = null)
     {
         var numbered = new Dictionary<GroupKey, int>();
         int[] provisional = new int[drafted.Length];
+        int ranks = 0;
         for (int index = 0; index < drafted.Length; index++)
         {
             ref int number = ref CollectionsMarshal.GetValueRefOrAddDefault(numbered, GroupKey.Of(drafted[index]), out bool known);
@@ -1033,6 +1052,7 @@ public sealed partial class RpcCallIndex
             }
 
             provisional[index] = number;
+            ranks = Math.Max(ranks, drafted[index].FirstRank + 1);
         }
 
         var identities = new GroupKey[numbered.Count];
@@ -1050,19 +1070,39 @@ public sealed partial class RpcCallIndex
         }
 
         cancellationToken.ThrowIfCancellationRequested();
-        long[] keys = new long[drafted.Length];
-        int[] order = new int[drafted.Length];
+        int[] next = new int[identities.Length + 1];
+        int[] byRank = new int[ranks];
+        Array.Fill(byRank, -1);
         for (int index = 0; index < drafted.Length; index++)
         {
-            keys[index] = ((long)final[provisional[index]] << 32) | (uint)drafted[index].FirstRank;
-            order[index] = index;
+            next[final[provisional[index]] + 1]++;
+            if (byRank[drafted[index].FirstRank] >= 0)
+            {
+                throw new InvalidOperationException("Two calls begin with the same record.");
+            }
+
+            byRank[drafted[index].FirstRank] = index;
         }
 
-        Array.Sort(keys, order);
-        var entries = new Entry[drafted.Length];
-        for (int index = 0; index < entries.Length; index++)
+        for (int group = 1; group < next.Length; group++)
         {
-            entries[index] = drafted[order[index]];
+            next[group] += next[group - 1];
+        }
+
+        var entries = new Entry[drafted.Length];
+        foreach (int index in byRank)
+        {
+            if (index < 0)
+            {
+                continue;
+            }
+
+            int at = next[final[provisional[index]]]++;
+            entries[at] = drafted[index];
+            if (placed is not null)
+            {
+                placed[index] = at;
+            }
         }
 
         return entries;

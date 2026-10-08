@@ -101,7 +101,11 @@ public sealed class DerivationCheckpointOverviewTests
         // Publishing replaces the unreadable checkpoint, and the next open uses the new one without a caveat.
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
         Assert.Equal(
-            [DerivationCheckpoint.NamedBy(session.Store.Current!)!, SessionOverviewIndex.NamedBy(session.Store.Current!)!],
+            [
+                DerivationCheckpoint.NamedBy(session.Store.Current!)!,
+                SessionOverviewIndex.NamedBy(session.Store.Current!)!,
+                OperationIndex.NamedBy(session.Store.Current!)!,
+            ],
             session.Store.Current!.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Index));
         SessionDerivationCache.Clear();
         SessionOverviewBundle replaced = SessionOverviewProjector.Project(session.Store);

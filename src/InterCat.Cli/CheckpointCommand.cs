@@ -21,9 +21,10 @@ internal sealed record CheckpointDocument
 
 /// <summary>
 /// `icat checkpoint`: publishes the derivation checkpoint of a session's current generation
-/// (`contracts/derivation-checkpoint-v1.md`), for a session written before its writer published one. Opening the session
-/// then builds its processes and relationships from the checkpoint rather than from every record. It derives only
-/// what the segments already hold, so it publishes without a separate confirmation.
+/// (`contracts/derivation-checkpoint-v1.md`), with its overview and its RPC calls (`contracts/operation-index-v1.md`), for
+/// a session written before its writer published them. Opening the session then builds its processes, relationships and
+/// calls from them rather than from every record. It derives only what the segments already hold, so it publishes
+/// without a separate confirmation.
 /// </summary>
 internal static class CheckpointCommand
 {
@@ -143,9 +144,10 @@ internal static class CheckpointCommand
     {
         ConsoleUi.Line("icat checkpoint <session-dir> [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("  Publishes the derivation checkpoint of the session's current generation, so opening the");
-        ConsoleUi.Line("  session builds its processes and relationships without reading every record. Imports,");
-        ConsoleUi.Line("  finished live captures, compactions and re-derivations publish one themselves; this is for");
-        ConsoleUi.Line("  sessions written before they did. A session that already names a current one is unchanged.");
+        ConsoleUi.Line("  Publishes the derivation checkpoint of the session's current generation, with its overview");
+        ConsoleUi.Line("  and its RPC calls, so opening the session builds its processes, relationships and calls");
+        ConsoleUi.Line("  without reading every record. Imports, finished live captures, compactions and re-derivations");
+        ConsoleUi.Line("  publish one themselves; this is for sessions written before they did, or before they kept");
+        ConsoleUi.Line("  everything a checkpoint keeps now. A session that already names a current one is unchanged.");
     }
 }
