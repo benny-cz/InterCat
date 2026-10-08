@@ -165,6 +165,16 @@ state and the fact behind it; its report says RPC's in the words `icat metric` u
 whether the capture collected ALPC or only holds no record of it. A count of none never stands for a source the
 capture lacked, and a generation without a ledger says it judged nothing.
 
+## 5d. Across an interval release (revision 435)
+
+A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043) keeps every record of a call or an
+ambiguous run one of whose records stays, so a call open across its boundary is still `Completed`, with its duration,
+interface and status, and never reads as one whose start was not observed. It also keeps what a completed client call
+that stays reads its other end from - the ALPC sends on its thread in its window, the receives of its one send's message
+id before it stopped, the first server call the receiving thread began after the receive - and every client call that
+reached a server call that stays. Every call, and every call's other end or reason for none, then reads as before. A
+call whose start its capture never saw is still `StartNotObserved` (I20).
+
 ## 6. Assumptions
 
 - The provider raises a call's start and stop on one clock, in order. A stop that sorts before its start is read as

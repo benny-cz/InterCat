@@ -208,6 +208,84 @@ public sealed class IntervalReleaseTests
         Assert.Equal(IntervalReleaseObstacle.AllKept, IntervalRelease.Preview(session.Store, 3_000).Obstacle);
     }
 
+    [Fact(DisplayName = "I20: a call and an exchange open across the boundary keep their records, and a client call what its other end was read from")]
+    public void OperationsOpenAcrossTheBoundaryStayWhole()
+    {
+        using var session = new TemporarySession();
+        Guid service = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        ObservationRowV1 clientStart = RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 3, Activity(1), service);
+        ObservationRowV1 send = Alpc(101, ObservationKind.Send, 400, 401, 4);
+        ObservationRowV1 receive = Alpc(102, ObservationKind.Receive, 1_960, 1_961, 5);
+        ObservationRowV1 serverStart = RpcCall(103, ObservationKind.RequestStart, Direction.Inbound, 1_960, 6, Activity(2), service);
+        ObservationRowV1 head = Http(104, 2001, 7);
+        Publish(session.Store, Timed(
+            Lifecycle(1, ObservationKind.Create, 400, 1),
+            Lifecycle(2, ObservationKind.Create, 1_960, 2),
+            clientStart, send, receive, serverStart, head,
+            RpcCall(105, ObservationKind.RequestStart, Direction.Outbound, 400, 8, Activity(3), service),
+            RpcCall(106, ObservationKind.RequestEnd, Direction.Outbound, 400, 9, Activity(3), status: 0)),
+            fields:
+            [
+                Field(clientStart, SourceField.RpcProcedureNumber, 7),
+                Field(serverStart, SourceField.RpcProcedureNumber, 7),
+                Field(send, SourceField.AlpcMessageId, 21),
+                Field(receive, SourceField.AlpcMessageId, 21),
+                .. HttpFields(head, 1, 0, 3),
+            ]);
+        ObservationRowV1 response = Http(201, 2003, 12);
+        Publish(session.Store, Timed(
+            RpcCall(200, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 10, Activity(2), status: 0),
+            RpcCall(202, ObservationKind.RequestEnd, Direction.Outbound, 400, 11, Activity(1), status: 0),
+            response),
+            fields: [.. HttpFields(response, 1, 0, 3)]);
+        Publish(session.Store, Timed(RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 13, Activity(4), service)));
+        Operations recorded = OperationsOf(session.Store);
+
+        // The first chunk is released but for the call, the server call and the exchange its later records belong to, and
+        // the send and receive that link the two calls. The call whose records all read in it goes.
+        IntervalReleasePreview preview = IntervalRelease.Preview(session.Store, 15_000);
+        Assert.Equal((1, 9L, 2L, 7L), (preview.ReleasedUnits, preview.ReleasedRecords, preview.ReleasedRows, preview.KeptRows));
+        _ = IntervalRelease.Release(session.Store, 15_000, "older than the retained window", Committed, Committed);
+        SessionStore reopened = SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal([1UL, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13], FactsOf(reopened).Rows.Keys.Select(row => row.Ordinal).Order().ToArray());
+        Operations retained = OperationsOf(reopened);
+        Assert.Equal([3UL, 6, 7, 10, 11, 12, 13], retained.Rows.Keys.Select(row => row.Ordinal).Order().ToArray());
+        Assert.All(retained.Rows, row => Assert.Equal(recorded.Rows[row.Key], row.Value));
+        Assert.Contains(retained.Rows.Values, fact => fact.Contains(" Completed ", StringComparison.Ordinal) && fact.Contains("peer Served", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before")]
+    public void RandomReleasesKeepEveryRetainedOperationsFacts()
+    {
+        int released = 0;
+        for (int seed = 0; seed < 80; seed++)
+        {
+            var random = new Random(seed);
+            List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> chunks = Delivered(RandomOperations(random));
+            using var session = new TemporarySession();
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in chunks)
+            {
+                Publish(session.Store, rows, rowsPerSegment: random.Next(1, rows.Length + 2), fields: fields);
+            }
+
+            Operations recorded = OperationsOf(session.Store);
+            long[] times = [.. chunks.SelectMany(chunk => chunk.Rows).Select(row => row.SessionRelativeTicks).OfType<long>().Order()];
+            long boundary = times[random.Next(times.Length)] + random.Next(0, 2);
+            IntervalReleasePreview preview = IntervalRelease.Preview(session.Store, boundary);
+            if (!preview.ReleasesAnything)
+            {
+                continue;
+            }
+
+            released++;
+            _ = IntervalRelease.Release(session.Store, boundary, "rolling window", Committed, Committed);
+            Operations retained = OperationsOf(SessionStore.OpenExisting(LocalOwnedDirectory.Open(session.Path)));
+            Assert.All(retained.Rows, row => Assert.Equal(recorded.Rows[row.Key], row.Value));
+        }
+
+        Assert.InRange(released, 30, 80);
+    }
+
     [Fact(DisplayName = "I15: an interval release gives up nothing when its oldest unit reads at or after the boundary, and never the newest unit")]
     public void AnIntervalReleaseRefusesWhatItCannotGiveUp()
     {
@@ -249,6 +327,222 @@ public sealed class IntervalReleaseTests
         Assert.Contains("not stored in the order they were numbered", Assert.Throws<InvalidDataException>(() =>
             IntervalRelease.Preview(unordered.Store, 15_000)).Message, StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// A random capture of RPC calls and HTTP exchanges, cut into chunks with some delivered late: calls of two clients,
+    /// many linked through ALPC to a call a service host's thread served - now and then with a second send, a lost
+    /// receive, another procedure or a second client reaching the same call - activity ids now and then reused before their
+    /// stop or missing, starts and stops lost, and a process's HTTP exchanges, their numbers now and then used again.
+    /// </summary>
+    private static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> RandomOperations(Random random)
+    {
+        Guid service = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 400, 1),
+            Lifecycle(2, ObservationKind.Create, 1_960, 2),
+            Lifecycle(3, ObservationKind.Create, 4_242, 3),
+        };
+        var fields = new List<SourceFieldRowV1>();
+        ulong ordinal = 3;
+        long ticks = 10;
+        int activity = 0;
+        long message = 0;
+        long exchange = 0;
+        int count = random.Next(10, 40);
+        for (int index = 0; index < count; index++)
+        {
+            ticks += random.Next(1, 30);
+            int shape = random.Next(5);
+            if (shape <= 1)
+            {
+                // A client call linked to the call that served it, its records spread over the next few readings.
+                int client = random.Next(2) == 0 ? 400 : 401;
+                Guid clientActivity = Activity(++activity);
+                Guid serverActivity = Activity(++activity);
+                long id = ++message;
+                long start = ticks;
+                ObservationRowV1 clientStart = RpcCall(start, ObservationKind.RequestStart, Direction.Outbound, client, ++ordinal, clientActivity, service);
+                fields.Add(Field(clientStart, SourceField.RpcProcedureNumber, 7));
+                rows.Add(clientStart);
+                ObservationRowV1 sent = Alpc(start + 1, ObservationKind.Send, client, client + 1, ++ordinal);
+                fields.Add(Field(sent, SourceField.AlpcMessageId, id));
+                rows.Add(sent);
+                if (random.Next(6) == 0)
+                {
+                    ObservationRowV1 second = Alpc(start + 2, ObservationKind.Send, client, client + 1, ++ordinal);
+                    fields.Add(Field(second, SourceField.AlpcMessageId, ++message));
+                    rows.Add(second);
+                }
+
+                if (random.Next(6) != 0)
+                {
+                    ObservationRowV1 received = Alpc(start + 3, ObservationKind.Receive, 1_960, 1_961, ++ordinal);
+                    fields.Add(Field(received, SourceField.AlpcMessageId, id));
+                    rows.Add(received);
+                }
+
+                if (random.Next(5) == 0)
+                {
+                    // The other client's call, whose message reaches the same thread first: the server call is neither's.
+                    int other = client == 400 ? 401 : 400;
+                    Guid otherActivity = Activity(++activity);
+                    long otherId = ++message;
+                    ObservationRowV1 otherStart = RpcCall(start - 2, ObservationKind.RequestStart, Direction.Outbound, other, ++ordinal, otherActivity, service);
+                    fields.Add(Field(otherStart, SourceField.RpcProcedureNumber, 7));
+                    ObservationRowV1 otherSent = Alpc(start - 1, ObservationKind.Send, other, other + 1, ++ordinal);
+                    fields.Add(Field(otherSent, SourceField.AlpcMessageId, otherId));
+                    ObservationRowV1 otherReceived = Alpc(start + 2, ObservationKind.Receive, 1_960, 1_961, ++ordinal);
+                    fields.Add(Field(otherReceived, SourceField.AlpcMessageId, otherId));
+                    rows.AddRange([
+                        otherStart, otherSent, otherReceived,
+                        RpcCall(start + 70 + random.Next(30), ObservationKind.RequestEnd, Direction.Outbound, other, ++ordinal, otherActivity, status: 0),
+                    ]);
+                }
+
+                ObservationRowV1 serverStart = RpcCall(start + 4, ObservationKind.RequestStart, Direction.Inbound, 1_960, ++ordinal, serverActivity, service);
+                fields.Add(Field(serverStart, SourceField.RpcProcedureNumber, random.Next(8) == 0 ? 9 : 7));
+                rows.Add(serverStart);
+                rows.Add(RpcCall(start + 5 + random.Next(40), ObservationKind.RequestEnd, Direction.Inbound, 1_960, ++ordinal, serverActivity, status: 0));
+                rows.Add(RpcCall(start + 10 + random.Next(60), ObservationKind.RequestEnd, Direction.Outbound, client, ++ordinal, clientActivity, status: random.Next(4) == 0 ? 5 : 0));
+            }
+            else if (shape == 2)
+            {
+                // A call of no other end: paired, its id now and then reused before its stop, missing, or a record lost.
+                int process = random.Next(3) switch { 0 => 400, 1 => 401, _ => 1_960 };
+                Direction direction = process == 1_960 ? Direction.Inbound : Direction.Outbound;
+                Guid? id = random.Next(8) == 0 ? null : random.Next(5) == 0 && activity > 0 ? Activity(activity) : Activity(++activity);
+                if (random.Next(6) != 0)
+                {
+                    ObservationRowV1 start = RpcCall(ticks, ObservationKind.RequestStart, direction, process, ++ordinal, id, service);
+                    fields.Add(Field(start, SourceField.RpcProcedureNumber, 3));
+                    rows.Add(start);
+                }
+
+                if (random.Next(6) != 0)
+                {
+                    rows.Add(RpcCall(ticks + 1 + random.Next(80), ObservationKind.RequestEnd, direction, process, ++ordinal, id, status: 0));
+                }
+            }
+            else
+            {
+                // An exchange of process 4242: its request head, and its response's head and body, now and then a number again.
+                long number = random.Next(5) == 0 && exchange > 0 ? exchange : ++exchange;
+                (ushort Event, long Flags)[] parts = [(2001, 3), (2003, 3), (2004, 1), (2004, 2)];
+                long at = ticks;
+                foreach ((ushort part, long flags) in parts.Take(random.Next(2, 5)))
+                {
+                    at += random.Next(0, 25);
+                    ObservationRowV1 buffer = Http(at, part, ++ordinal);
+                    fields.AddRange(HttpFields(buffer, number, part == 2004 && flags == 2 ? 1 : 0, flags));
+                    rows.Add(buffer);
+                }
+            }
+        }
+
+        int chunkCount = random.Next(2, 6);
+        long last = rows.Max(row => row.NativeTicks) + 1;
+        var chunks = new List<(List<ObservationRowV1> Rows, List<SourceFieldRowV1> Fields)>();
+        for (int chunk = 0; chunk < chunkCount; chunk++)
+        {
+            chunks.Add(([], []));
+        }
+
+        var placed = new Dictionary<ulong, int>();
+        foreach (ObservationRowV1 row in rows.OrderBy(row => row.NativeTicks).ThenBy(row => row.RawRecordOrdinal))
+        {
+            int chunk = (int)(row.NativeTicks * chunkCount / last);
+            chunk = random.Next(8) == 0 ? Math.Min(chunkCount - 1, chunk + 1) : chunk;
+            placed[row.RawRecordOrdinal] = chunk;
+            chunks[chunk].Rows.Add(row with { SessionRelativeTicks = row.NativeTicks * 100 });
+        }
+
+        foreach (SourceFieldRowV1 field in fields)
+        {
+            chunks[placed[field.RawRecordOrdinal]].Fields.Add(field);
+        }
+
+        return [.. chunks.Select(chunk => (chunk.Rows.ToArray(), chunk.Fields.ToArray()))];
+    }
+
+    /// <summary>
+    /// What a generation's operations say of each record of one - its call's identity, state, duration, status, interface,
+    /// procedure, process and other end, or its exchange's identity, parts, completeness, duration and process.
+    /// </summary>
+    private static Operations OperationsOf(SessionStore store)
+    {
+        SessionManifestV1 manifest = store.Current!;
+        SegmentReaderV1[] segments = [.. SessionSegments.Names(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        SegmentReaderV1[] fields = [.. SessionSegments.FieldNames(manifest).Select(name => SessionSegments.Open(store.Root, manifest, name))];
+        ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, TestClock, fields);
+        RpcCallIndex calls = RpcCallIndex.Derive(segments, fields, processes, TestClock);
+        RpcPeerIndex peers = RpcPeerIndex.Derive(calls, segments, fields);
+        HttpExchangeIndex exchanges = HttpExchangeIndex.Derive(segments, fields, processes);
+        var rows = new Dictionary<(uint Stream, ulong Ordinal, FactKey Fact), string>();
+        foreach (RpcCallGroup group in calls.Groups)
+        {
+            IReadOnlyList<RpcCall> listed = calls.CallsOf(group, segments, 0, int.MaxValue);
+            for (int position = 0; position < listed.Count; position++)
+            {
+                RpcCall call = listed[position];
+                (RpcPeerState state, RpcCall? other) = peers.PeerOf(group, position, segments);
+                string fact = string.Create(CultureInfo.InvariantCulture,
+                    $"{Name(call.Identity)} {call.State} {call.DurationNanoseconds} {call.Status} {call.Interface} {call.Procedure} {Bound(call.Process)} peer {state} {(other is null ? "-" : Name(other.Identity))}");
+                foreach (RpcCallRecord record in new[] { call.Start, call.Stop }.OfType<RpcCallRecord>())
+                {
+                    rows.Add((record.Observation.RawRecordId.StreamId, record.Observation.RawRecordId.RecordOrdinal, record.Observation.FactKey), fact);
+                }
+            }
+        }
+
+        foreach (HttpExchangeGroup group in exchanges.Groups)
+        {
+            IReadOnlyList<HttpExchange> listed = exchanges.ExchangesOf(group);
+            for (int position = 0; position < listed.Count; position++)
+            {
+                HttpExchange exchange = listed[position];
+                string fact = string.Create(CultureInfo.InvariantCulture,
+                    $"exchange {exchange.First} {exchange.Number} {exchange.RequestHead} {exchange.RequestBody} {exchange.ResponseHead} {exchange.ResponseBody} {exchange.Complete} {exchange.DurationNanoseconds} {Bound(exchange.Process)}");
+                foreach ((int segment, int row) in exchanges.RecordsOf(group, position))
+                {
+                    ObservationRowV1 read = segments[segment].Row(row);
+                    rows.Add((read.RawStreamId, read.RawRecordOrdinal, read.FactKey), fact);
+                }
+            }
+        }
+
+        return new(rows);
+
+        string Bound(ProcessBinding binding) =>
+            binding.IsBound ? $"{processes.Instances[binding.Instance].Id} {binding.Strength}" : $"unresolved {binding.Reason}";
+
+        static string Name(ObservationId identity) => string.Create(CultureInfo.InvariantCulture,
+            $"{identity.RawRecordId.StreamId}.{identity.RawRecordId.RecordOrdinal}.{identity.FactKey}");
+    }
+
+    private sealed record Operations(Dictionary<(uint Stream, ulong Ordinal, FactKey Fact), string> Rows);
+
+    private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+
+    /// <summary>A WinINet capture record of <paramref name="eventId"/>, raised by process 4242.</summary>
+    private static ObservationRowV1 Http(long ticks, ushort eventId, ulong ordinal) =>
+        Transfer(ticks, eventId <= 2002 ? ObservationKind.Send : ObservationKind.Receive,
+            eventId <= 2002 ? AccountingSide.SendSide : AccountingSide.ReceiveSide, 64, null, ordinal) with
+        {
+            Mechanism = Mechanism.Http,
+            Layer = ObservationLayer.Application,
+            EventId = eventId,
+            HeaderProcessId = 4_242,
+            Direction = eventId <= 2002 ? Direction.Outbound : Direction.Inbound,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        };
+
+    private static SourceFieldRowV1[] HttpFields(ObservationRowV1 buffer, long number, long sequence, long flags) =>
+    [
+        Field(buffer, SourceField.HttpExchangeId, number),
+        Field(buffer, SourceField.ContentBufferSequence, sequence),
+        Field(buffer, SourceField.ContentBufferFlags, flags),
+    ];
 
     /// <summary>A capture's chunks numbered as a recorder numbers them, in the order they were delivered, each chunk's after the one before.</summary>
     private static List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> Delivered(List<(ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)> chunks)

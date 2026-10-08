@@ -2,9 +2,9 @@
 
 Status: **the commit protocol, manifests, the current-generation pointer, recovery, the derived segments and
 dictionaries a generation publishes, evidence leases and the retention of a dependency, a journal prefix or, since
-revision 434, an interval with the identity evidence its retained rows rest on, journal re-derivation, the removal of
-superseded manifests, and the publication of an index, are implemented and tested; open-operation censoring and a
-rolling retention policy are not**. The segment and dictionary formats are frozen separately
+revision 434, an interval with the identity evidence and the operations its retained rows rest on, journal
+re-derivation, the removal of superseded manifests, and the publication of an index, are implemented and tested; a
+rolling retention policy is not**. The segment and dictionary formats are frozen separately
 in `contracts/segment-v1.md`; this contract owns how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
@@ -456,9 +456,14 @@ journal release keeps. It is asked for as a session time, and works in the journ
   unchanged with its source fields: every lifecycle record of each PID a staying row belongs to, or its first record when
   no lifecycle record names it, and the same of each parent its instances link to; and, at each connection end a staying
   row names and its mirror, every connect, accept and disconnect, each incarnation's first record, and the first record
-  of each owner, bound instance and strength no staying row has. A kept row stays like a retained one, so this repeats
-  until nothing more is kept. Every row that stays binds, pairs and keys as it did before (`entities-v1` §3-§4,
-  `relations-v1` §3-§5b).
+  of each owner, bound instance and strength no staying row has. Since revision 435 an operation open across the
+  boundary keeps its records too: every record of an RPC call or ambiguous run one of whose records stays, what a
+  completed client call's other end is read from - the ALPC sends on its thread in its window, the receives of its one
+  send's message id before it stopped and the first server call the receiving thread began after it - every client
+  call that reached a server call that stays, every buffer of an HTTP exchange one of whose buffers stays, and the use
+  before a use of a number opened by repeating one of its buffers. A kept row stays like a retained one, so this repeats
+  until nothing more is kept. Every row that stays binds, pairs and keys, and belongs to the call or exchange, as it did
+  before (`entities-v1` §3-§4, `relations-v1` §3-§5b, `operations-v1` §3-§5c, `http-exchanges-v1` §2).
 - **Files.** Each publication holding a row that goes is replaced by one holding its other rows; a publication holding
   none is carried, and every index goes with a replaced segment. Released chunks go with their content; a single journal
   is replaced by the batches it keeps, as a journal prefix is, and is refused while content is kept beside it.
@@ -507,8 +512,8 @@ A session written before this rule keeps its superseded manifests until its next
 - The entity-state checkpoint of §20.2 is kept as evidence since revision 434: an interval release keeps the lifecycle
   and first records of every process and connection a retained row names, rather than a summary of them (ADR-043).
   Thread and resource identities are not derived, so none are kept.
-- Open-operation censoring at a capture or retention boundary (I20). An RPC call whose start an interval release gave
-  up reads as one whose start is not in the evidence.
+- Open-operation censoring at a retention boundary (I20) is not needed while an interval release keeps an operation open
+  across its boundary whole (revision 435); an operation whose start the capture itself never saw is stated as such.
 - Rolling retention by time or size. Retention here is an explicit action on a named extent; the policy that
   decides when to take it is separate work, and must run inside the recorder, whose next publication a release
   published beneath it fails. S5's disclosure exists for the policy captures have, which stops at its

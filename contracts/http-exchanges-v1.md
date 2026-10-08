@@ -31,6 +31,10 @@ Nothing else ends a use. WinINet raises the empty buffer that ends a request bod
 live in revision 247), so an exchange is not over when its response is. Each use is one exchange, bound to a process
 instance by its first buffer. Two uses are never merged (R22).
 
+A release of a session's oldest interval (`contracts/store-v1.md` §8, ADR-043, revision 435) keeps every buffer of an
+exchange one of whose buffers stays, and the use before a use opened only by repeating one of its buffers, so every
+exchange that stays is grouped, keyed and timed as before.
+
 ## 3. An exchange
 
 | Field | Meaning |

@@ -1842,15 +1842,15 @@
         "S6: a release before a boundary keeps the lifecycle and first records later records rest on, so each binds as before",
         "S6: a single journal gives up its first batches, rewritten from the first one it keeps, and a second release goes on from it",
         "S6: on random recordings, every row a release retains or keeps has the process, other end and channel the capture gave it"
+      ],
+      "I20": [
+        "I20: a call and an exchange open across the boundary keep their records, and a client call what its other end was read from",
+        "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before"
       ]
     },
     "uncovered": {
       "I17": {
         "reason": "Late-evidence revisions need the storage generations of IC-016.",
-        "plannedBy": "IC-016"
-      },
-      "I20": {
-        "reason": "Boundary censoring needs the checkpoint work of IC-016.",
         "plannedBy": "IC-016"
       },
       "P12": {

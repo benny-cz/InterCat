@@ -134,7 +134,7 @@ public sealed record HttpExchangeGroup
 /// same place, as a use whose request head was lost would (R22). Nothing else ends a use: WinINet raises the empty buffer
 /// that ends a request body after its response has ended, so a use is not over when its response is.
 /// </remarks>
-public sealed class HttpExchangeIndex
+public sealed partial class HttpExchangeIndex
 {
     /// <summary>The rule that groups buffers into exchanges, named in every query identity that reads by it (R20).</summary>
     public const string GroupingRule = "http-exchange-v1";
@@ -197,27 +197,10 @@ public sealed class HttpExchangeIndex
         foreach (IGrouping<(int ProcessId, long Number), Buffer> number in buffers.GroupBy(buffer => (buffer.ProcessId, buffer.Number)))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var use = new List<Buffer>();
-            var held = new HashSet<(HttpPart, long)>();
-            foreach (Buffer buffer in number.OrderBy(buffer => buffer.Ticks).ThenBy(buffer => buffer.Sequence).ThenBy(buffer => buffer.Address.Ordinal))
+            foreach ((List<Buffer> use, bool _) in Uses(number))
             {
-                bool opens = buffer.Part == HttpPart.RequestHead && (buffer.Flags & 1) != 0;
-                if (use.Count > 0 && (opens || !held.Add((buffer.Part, buffer.Sequence))))
-                {
-                    drafts.Add(Exchange(use, processes));
-                    use = [];
-                    held.Clear();
-                    held.Add((buffer.Part, buffer.Sequence));
-                }
-                else if (use.Count == 0)
-                {
-                    held.Add((buffer.Part, buffer.Sequence));
-                }
-
-                use.Add(buffer);
+                drafts.Add(Exchange(use, processes));
             }
-
-            drafts.Add(Exchange(use, processes));
         }
 
         // Grouped by instance, the bound first in index order and then the unbound by process ID; each group's exchanges in
@@ -264,6 +247,38 @@ public sealed class HttpExchangeIndex
             [.. segments.Select(segment => segment.Published?.Name)],
             processes,
             withoutExchange);
+    }
+
+    /// <summary>
+    /// One number's uses, in time and then by place (ADR-037, R22): a buffer opens another use when it is a request head
+    /// flagged first, or when the use so far already holds a buffer of its part at its place. Each use says whether it was
+    /// opened by such a repetition, which only the use before it decides.
+    /// </summary>
+    private static IEnumerable<(List<Buffer> Use, bool Repeated)> Uses(IEnumerable<Buffer> number)
+    {
+        var use = new List<Buffer>();
+        var held = new HashSet<(HttpPart, long)>();
+        bool repeated = false;
+        foreach (Buffer buffer in number.OrderBy(buffer => buffer.Ticks).ThenBy(buffer => buffer.Sequence).ThenBy(buffer => buffer.Address.Ordinal))
+        {
+            bool opens = buffer.Part == HttpPart.RequestHead && (buffer.Flags & 1) != 0;
+            if (use.Count > 0 && (opens || !held.Add((buffer.Part, buffer.Sequence))))
+            {
+                yield return (use, repeated);
+                repeated = !opens;
+                use = [];
+                held.Clear();
+                held.Add((buffer.Part, buffer.Sequence));
+            }
+            else if (use.Count == 0)
+            {
+                held.Add((buffer.Part, buffer.Sequence));
+            }
+
+            use.Add(buffer);
+        }
+
+        yield return (use, repeated);
     }
 
     /// <summary>The exchanges bound to <paramref name="instance"/>; null when it made none.</summary>

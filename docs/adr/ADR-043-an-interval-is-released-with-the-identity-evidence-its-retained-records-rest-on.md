@@ -1,6 +1,6 @@
 # ADR-043: An interval is released with the identity evidence its retained records rest on
 
-- Status: accepted; revision 434
+- Status: accepted; revision 434, decision 6 revision 435
 - Date: 2026-10-08
 - Amends: ADR-024 (what a release of a recording's oldest chunks gives up)
 - Relates to: §12.1 S6, §20.2, IC-016a, I15, I18, I20, ADR-010, ADR-013, ADR-016, ADR-024, ADR-026,
@@ -53,6 +53,17 @@ checkpoint must not turn a missing start into an observed one.
    the files' dependency lines, and states its boundary, the rows given up and the rows kept. Every later generation
    carries the latest one, as it carries a journal-prefix release. Re-derivation is refused while kept rows remain,
    since their records are gone.
+6. **An operation open across the boundary keeps its records** (revision 435, I20). An RPC call one of whose records
+   stays keeps the other, and an ambiguous run of one keeps every record of it, so the call pairs, times and names its
+   interface as before, and every later record of its key pairs as it did: a call whose records all go opened and
+   closed its key's walk. A completed client call that stays keeps what its other end is read from - every ALPC send on
+   its thread in its window, every receive of its one send's message id before it stopped, and the first server call the
+   receiving thread began after the receive - and a server call that stays keeps every client call that reached it, so
+   one two calls reached stays neither's. An HTTP exchange one of whose buffers stays keeps every buffer, and a use of a
+   number opened only because it repeated a buffer of the use before keeps that use, whose going would join it to an
+   earlier one. These rows are kept within the same rounds as decision 3's, so an operation's process and a kept row's
+   operation are kept in turn. An operation is then complete rather than censored at a retention boundary; one whose
+   start the capture never saw is still stated as such.
 
 ## Alternatives considered
 
@@ -73,10 +84,11 @@ checkpoint must not turn a missing start into an observed one.
   few rows each - not by their traffic.
 - A connection open across the boundary keeps its key, lifetime, holders and witnessed open; its records and bytes are
   what stays of it, and its first and last readings are those of the rows that stay.
-- Not yet decided, and each its own revision: operations open across the boundary (I20) - an RPC call whose start was
-  released reads as one whose start is not in the evidence; readers stating the interval as released rather than
-  quiet; the command line's release; and a rolling policy, which must run inside the recorder, since a release
-  published beneath a running recorder fails its next publication (ADR-024).
+- Not yet decided, and each its own revision: readers stating the interval as released rather than quiet; the
+  command line's release; and a rolling policy, which must run inside the recorder, since a release published beneath
+  a running recorder fails its next publication (ADR-024).
+- An RPC call, link or exchange straddling the boundary is kept whole, so its records before the boundary are counted
+  wherever its own rule counts it; a long call keeps the ALPC records of its window.
 - A release reads every row several times and derives the processes and connections of the whole generation: an
   explicit action's cost. A rolling policy needs the keeping extended between generations rather than derived again.
 - A process's kept first record may carry content, which goes with its chunk.

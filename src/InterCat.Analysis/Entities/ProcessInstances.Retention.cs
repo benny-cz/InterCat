@@ -1,4 +1,5 @@
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Analysis;
 
@@ -63,4 +64,18 @@ public sealed partial class ProcessInstanceIndex
 /// One row of a capture: its raw locator and fact key, without the capture and derivation every row of one generation
 /// shares. An interval release names the rows it keeps of the records it releases by it (ADR-043).
 /// </summary>
-internal readonly record struct RowAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
+internal readonly record struct RowAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey)
+{
+    /// <summary>The row at <paramref name="row"/> of <paramref name="segment"/>, an observation or a field segment's.</summary>
+    public static RowAddress At(SegmentReaderV1 segment, int row)
+    {
+        ArgumentNullException.ThrowIfNull(segment);
+        return new(
+            (uint)segment.Slice(SegmentColumnId.RawStreamId).UnsignedAt(row)!.Value,
+            (uint)segment.Slice(SegmentColumnId.RawSourceEpoch).UnsignedAt(row)!.Value,
+            segment.Slice(SegmentColumnId.RawRecordOrdinal).UnsignedAt(row)!.Value,
+            new FactKey(
+                segment.Slice(SegmentColumnId.FactKeyHigh).UnsignedAt(row)!.Value,
+                segment.Slice(SegmentColumnId.FactKeyLow).UnsignedAt(row)!.Value));
+    }
+}

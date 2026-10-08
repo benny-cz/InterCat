@@ -99,7 +99,7 @@ public sealed record RpcPeerTally(int ProcessId, ProcessBinding Process, Guid? I
 /// call's one ALPC send, that message's one receive and the call the receiving thread began (ADR-034), or the reason it
 /// is not. It is a derivation over published segments and the calls paired from them, so it is rebuildable (R20).
 /// </summary>
-public sealed class RpcPeerIndex
+public sealed partial class RpcPeerIndex
 {
     /// <summary>The rule's identity. A change to what links, how, or when a link is refused is a new rule (§24).</summary>
     public const string PeerRule = "rpc-call-peer-v1";
@@ -144,44 +144,21 @@ public sealed class RpcPeerIndex
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(fieldSegments);
         calls.RequireDerivedFrom(segments);
-        Dictionary<RecordAddress, long> messageIds = ReadMessageIds(fieldSegments, cancellationToken);
-        var sends = new List<Message>();
-        var receives = new List<Message>();
-        foreach (SegmentReaderV1 segment in segments)
-        {
-            cancellationToken.ThrowIfCancellationRequested();
-            CollectAlpc(segment, messageIds, sends, receives);
-        }
-
         int count = calls.Count;
         var states = new RpcPeerState[count];
         int[] peers = new int[count];
         Array.Fill(peers, -1);
-        if (sends.Count + receives.Count == 0)
+        Evidence evidence = Read(calls, segments, fieldSegments, cancellationToken);
+        if (evidence.Sends + evidence.Receives == 0)
         {
             Array.Fill(states, RpcPeerState.NoAlpcEvidence);
             return new(calls, states, peers, 0, 0);
         }
 
-        // Sends by their thread and reading; receives by message id and reading; server starts by thread and reading.
-        Span<Message> sent = CollectionsMarshal.AsSpan(sends);
-        sent.Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks).CompareTo((right.ProcessId, right.ThreadId, right.Ticks)));
-        List<Message> identified = [.. receives.Where(receive => receive.HasId)];
-        Span<Message> received = CollectionsMarshal.AsSpan(identified);
-        received.Sort(static (left, right) => (left.Id, left.Ticks).CompareTo((right.Id, right.Ticks)));
-        List<ServerStart> servers = [];
-        for (int call = 0; call < count; call++)
-        {
-            RpcCallIndex.PeerFacts facts = calls.FactsOf(call);
-            if (facts.Side == RpcCallSide.Server && facts.StartSegment >= 0)
-            {
-                servers.Add(new(facts.ProcessId, ThreadOf(segments, facts), facts.StartTicks, call));
-            }
-        }
-
-        Span<ServerStart> started = CollectionsMarshal.AsSpan(servers);
-        started.Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks, left.Call).CompareTo((right.ProcessId, right.ThreadId, right.Ticks, right.Call)));
-        long window = (long)((Int128)ServerStartWindowNanoseconds * calls.Clock.TicksPerSecond / 1_000_000_000);
+        ReadOnlySpan<Message> sent = evidence.Sent;
+        ReadOnlySpan<Message> received = evidence.Received;
+        ReadOnlySpan<ServerStart> started = evidence.Started;
+        long window = evidence.Window;
         int[] claims = new int[count];
         for (int call = 0; call < count; call++)
         {
@@ -226,8 +203,56 @@ public sealed class RpcPeerIndex
             }
         }
 
-        return new(calls, states, peers, sends.Count, receives.Count);
+        return new(calls, states, peers, evidence.Sends, evidence.Receives);
     }
+
+    /// <summary>
+    /// The ALPC sends and receives of <paramref name="segments"/> and the server calls' starts, each sorted as the rule
+    /// looks them up: sends by thread and reading, receives that carry a message id by id and reading, starts by thread and
+    /// reading; and the server-start window in the calls' clock ticks.
+    /// </summary>
+    private static Evidence Read(
+        RpcCallIndex calls,
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<RecordAddress, long> messageIds = ReadMessageIds(fieldSegments, cancellationToken);
+        var sends = new List<Message>();
+        var receives = new List<Message>();
+        for (int position = 0; position < segments.Count; position++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            CollectAlpc(segments[position], position, messageIds, sends, receives);
+        }
+
+        if (sends.Count + receives.Count == 0)
+        {
+            return new([], [], [], 0, 0, 0);
+        }
+
+        Message[] sent = [.. sends];
+        sent.AsSpan().Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks).CompareTo((right.ProcessId, right.ThreadId, right.Ticks)));
+        Message[] received = [.. receives.Where(receive => receive.HasId)];
+        received.AsSpan().Sort(static (left, right) => (left.Id, left.Ticks).CompareTo((right.Id, right.Ticks)));
+        List<ServerStart> servers = [];
+        for (int call = 0; call < calls.Count; call++)
+        {
+            RpcCallIndex.PeerFacts facts = calls.FactsOf(call);
+            if (facts.Side == RpcCallSide.Server && facts.StartSegment >= 0)
+            {
+                servers.Add(new(facts.ProcessId, ThreadOf(segments, facts), facts.StartTicks, call));
+            }
+        }
+
+        ServerStart[] started = [.. servers];
+        started.AsSpan().Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks, left.Call).CompareTo((right.ProcessId, right.ThreadId, right.Ticks, right.Call)));
+        long window = (long)((Int128)ServerStartWindowNanoseconds * calls.Clock.TicksPerSecond / 1_000_000_000);
+        return new(sent, received, started, window, sends.Count, receives.Count);
+    }
+
+    /// <summary>What the peer rule reads, sorted for its lookups (<see cref="Read"/>).</summary>
+    private sealed record Evidence(Message[] Sent, Message[] Received, ServerStart[] Started, long Window, int Sends, int Receives);
 
     /// <summary>What the call at <paramref name="call"/> in the index's call order reached.</summary>
     internal RpcPeerState StateAt(int call) => states[call];
@@ -509,6 +534,7 @@ public sealed class RpcPeerIndex
 
     private static void CollectAlpc(
         SegmentReaderV1 segment,
+        int position,
         Dictionary<RecordAddress, long> messageIds,
         List<Message> sends,
         List<Message> receives)
@@ -562,7 +588,9 @@ public sealed class RpcPeerIndex
                 (int)(threads.UnsignedAt(row) ?? 0),
                 ticks.SignedAt(row)!.Value,
                 id,
-                hasId);
+                hasId,
+                position,
+                row);
             (kind == ObservationKind.Send ? sends : receives).Add(message);
         }
     }
@@ -635,8 +663,8 @@ public sealed class RpcPeerIndex
     /// <summary>A record's raw locator and fact key: what a source field names its observation by.</summary>
     private readonly record struct RecordAddress(uint Stream, uint Epoch, ulong Ordinal, FactKey FactKey);
 
-    /// <summary>One ALPC send or receive: the thread that made it, its reading and its message id.</summary>
-    private readonly record struct Message(int ProcessId, int ThreadId, long Ticks, long Id, bool HasId);
+    /// <summary>One ALPC send or receive: the thread that made it, its reading, its message id and where its row is.</summary>
+    private readonly record struct Message(int ProcessId, int ThreadId, long Ticks, long Id, bool HasId, int Segment, int Row);
 
     /// <summary>One server call's start: the thread that began it, its reading, and the call.</summary>
     private readonly record struct ServerStart(int ProcessId, int ThreadId, long Ticks, int Call);

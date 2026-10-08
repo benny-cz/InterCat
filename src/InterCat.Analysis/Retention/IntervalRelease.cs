@@ -101,9 +101,11 @@ public sealed record IntervalReleaseResult(IntervalReleasePreview Preview, Reten
 /// Releases a session's oldest interval (ADR-043, store-v1 §8): the leading units of its admitted journal whose records
 /// all read before a boundary, with every row derived from them, except the rows later records rest on for their
 /// identities - the lifecycle records of each process a retained record belongs to, the first record of one no lifecycle
-/// record names, and the lifecycle, first record and holders' first records of each connection a retained record names.
-/// Every retained record therefore binds to the same process instance, at the same strength, and has the same other end
-/// and channel key as before, while the interval before the boundary holds only what was kept. Derived files holding a
+/// record names, the lifecycle, first record and holders' first records of each connection a retained record names - and
+/// every record of an RPC call or HTTP exchange one of whose records stays, with what a client call's other end is read
+/// from. Every retained record therefore binds to the same process instance, at the same strength, has the same other end
+/// and channel key, and belongs to the same call or exchange, while the interval before the boundary holds only what was
+/// kept. Derived files holding a
 /// released row are rewritten with every other row unchanged, and indexes go with them.
 /// </summary>
 public static class IntervalRelease
@@ -365,8 +367,20 @@ public static class IntervalRelease
             ?? throw new InvalidDataException("This session's journal names no clock, so its processes cannot be derived.");
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(segments, clock, fields, cancellationToken);
         TransportRelationIndex relations = TransportRelationIndex.Derive(segments, processes, cancellationToken);
-        // A kept row is evidence like a retained one, so its own process and connection are kept too: a process's first
-        // record can be a connection's, whose other end then stays as well. Each round only adds rows, so it ends.
+
+        // An operation open across the boundary keeps its records, and a client call what its other end is read from, so
+        // each pairs, times and links as it did (I20).
+        ReleaseDependencies[] operations =
+        [
+            RpcCallIndex.ReleaseDependenciesOf(segments, released, cancellationToken),
+            RpcPeerIndex.ReleaseDependenciesOf(
+                RpcCallIndex.Derive(segments, fields, processes, clock, cancellationToken), segments, fields, released, cancellationToken),
+            HttpExchangeIndex.ReleaseDependenciesOf(segments, fields, released, cancellationToken),
+        ];
+
+        // A kept row is evidence like a retained one, so its own process, connection and operation are kept too: a
+        // process's first record can be a connection's, whose other end then stays as well. Each round only adds rows, so
+        // it ends.
         var kept = new HashSet<RowAddress>();
         int known;
         do
@@ -375,6 +389,10 @@ public static class IntervalRelease
             HashSet<int> owners = OwnersOfStaying(segments, released, kept, cancellationToken);
             relations.KeepAcross(segments, released, kept, owners, cancellationToken);
             processes.KeepAcross(owners, released, kept);
+            foreach (ReleaseDependencies operation in operations)
+            {
+                _ = operation.Keep(kept);
+            }
         }
         while (kept.Count > known);
 

@@ -174,7 +174,7 @@ public sealed record RpcCallGroup
 /// call's observation identities and activity id are read again from its segments when it is described, so the index
 /// holds no more per call than a summary needs.
 /// </remarks>
-public sealed class RpcCallIndex
+public sealed partial class RpcCallIndex
 {
     /// <summary>The pairing rule's identity. A change to what pairs, how, or what a call holds is a new rule (§24).</summary>
     public const string OperationRule = "rpc-call-operation-v1";
@@ -864,7 +864,12 @@ public sealed class RpcCallIndex
     /// many stops as starts have been read, ambiguous. Only the keys with a call open are held, so the walk holds the calls
     /// in flight rather than every key the capture has seen.
     /// </summary>
-    private static List<Entry> Walk(ReadOnlySpan<CallRecord> records, int[] order, CancellationToken cancellationToken)
+    /// <param name="groups">When given, receives each call's records, and each ambiguous run's, by their canonical rank.</param>
+    private static List<Entry> Walk(
+        ReadOnlySpan<CallRecord> records,
+        int[] order,
+        CancellationToken cancellationToken,
+        List<int[]>? groups = null)
     {
         var calls = new List<Entry>((records.Length / 2) + 1);
         var open = new Dictionary<CallKey, OpenCall>();
@@ -879,6 +884,7 @@ public sealed class RpcCallIndex
             if (!record.HasActivity)
             {
                 calls.Add(Single(record, RpcCallState.NoActivityId, rank));
+                groups?.Add([rank]);
                 continue;
             }
 
@@ -893,6 +899,7 @@ public sealed class RpcCallIndex
                 else
                 {
                     calls.Add(Single(record, RpcCallState.StartNotObserved, rank));
+                    groups?.Add([rank]);
                 }
 
                 continue;
@@ -916,10 +923,12 @@ public sealed class RpcCallIndex
             if (closed.Run is { } run)
             {
                 AddAmbiguous(records, order, run, calls);
+                groups?.Add([.. run]);
             }
             else
             {
                 calls.Add(Paired(records[order[closed.First]], record, closed.First));
+                groups?.Add([closed.First, rank]);
             }
         }
 
@@ -928,10 +937,12 @@ public sealed class RpcCallIndex
             if (still.Run is { } run)
             {
                 AddAmbiguous(records, order, run, calls);
+                groups?.Add([.. run]);
             }
             else
             {
                 calls.Add(Single(records[order[still.First]], RpcCallState.OpenAtCaptureEnd, still.First));
+                groups?.Add([still.First]);
             }
         }
 
