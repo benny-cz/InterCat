@@ -55,6 +55,10 @@ dotnet run --project src/InterCat.Cli -- session <session directory> --rows 10
 # it is performed only with --confirm and a stated reason (ADR-010).
 dotnet run --project src/InterCat.Cli -- retain <session directory> --release-journal-before-record 4096
 
+# Measure what releasing a finished session's oldest interval would give up - its records and their
+# rows, but for the rows later records rest on (ADR-043). Also a dry run until --confirm --reason.
+dotnet run --project src/InterCat.Cli -- retain <session directory> --release-before "312.5 s"
+
 # Offline re-evaluation into shareable, fixture-scoped evidence.
 dotnet run --project src/InterCat.Cli -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence
 

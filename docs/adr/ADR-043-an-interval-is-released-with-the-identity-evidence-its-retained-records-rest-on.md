@@ -95,8 +95,9 @@ checkpoint must not turn a missing start into an observed one.
   few rows each - not by their traffic.
 - A connection open across the boundary keeps its key, lifetime, holders and witnessed open; its records and bytes are
   what stays of it, and its first and last readings are those of the rows that stay.
-- Not yet decided, and each its own revision: the command line's release; and a rolling policy, which must run inside
-  the recorder, since a release published beneath a running recorder fails its next publication (ADR-024).
+- Not yet decided, and its own revision: a rolling policy, which must run inside the recorder, since a release
+  published beneath a running recorder fails its next publication (ADR-024). For that reason the command line's release
+  (revision 437, `icat retain --release-before`) is refused while a recorder may still be writing the session.
 - A rate or count over a scope reaching before the boundary takes only what stays, and its coverage says so: it is a
   partial gap, never covered, so nothing reads the released interval as quiet.
 - An RPC call, link or exchange straddling the boundary is kept whole, so its records before the boundary are counted

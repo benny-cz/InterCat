@@ -306,7 +306,7 @@ public sealed class IntervalReleaseTests
         InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
             IntervalRelease.Release(session.Store, 10_000, "older than the retained window", Committed, Committed));
         Assert.EndsWith(
-            "The earliest boundary that releases anything is " + (10_001 / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture)
+            "The earliest boundary that can release anything is " + (10_001 / 1_000_000_000m).ToString("0.000######", CultureInfo.CurrentCulture)
                 + " s. Nothing was published.",
             refused.Message,
             StringComparison.Ordinal);

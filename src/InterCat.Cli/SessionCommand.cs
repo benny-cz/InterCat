@@ -867,12 +867,12 @@ internal static class SessionCommand
         ConsoleUi.Field("What", retention.Kind switch
         {
             RetentionExtentKind.DerivedFiles => "derived files - segments, dictionaries or indexes - all rebuildable from the journal",
-            RetentionExtentKind.JournalPrefix => string.Create(culture,
-                $"{ConsoleUi.Count(retention.ReleasedRecords)} records of the admitted journal, which can no longer be re-derived"),
-            RetentionExtentKind.Content => string.Create(culture,
-                $"the content kept of {ConsoleUi.Count(retention.ReleasedRecords)} records: their bytes and each one's content facts; every record's metadata is kept"),
-            RetentionExtentKind.Interval when retention.Interval is { } interval => string.Create(culture,
-                $"the records read before {SessionTimeText.Seconds(interval.BoundaryNanoseconds, culture)}: {ConsoleUi.Count(retention.ReleasedRecords)} records of the admitted journal and {ConsoleUi.Count(interval.ReleasedRows)} rows, keeping {ConsoleUi.Count(interval.KeptRows)} of their rows as the identity evidence of the processes and connections after it; every record read from then on is kept"),
+            RetentionExtentKind.JournalPrefix =>
+                $"{CountText.Of(retention.ReleasedRecords, "record")} of the admitted journal, which can no longer be re-derived",
+            RetentionExtentKind.Content =>
+                $"the content kept of {CountText.Of(retention.ReleasedRecords, "record")}: their bytes and each one's content facts; every record's metadata is kept",
+            RetentionExtentKind.Interval when retention.Interval is { } interval =>
+                $"the records read before {SessionTimeText.Seconds(interval.BoundaryNanoseconds, culture)}: {CountText.Of(retention.ReleasedRecords, "record")} of the admitted journal and {CountText.Of(interval.ReleasedRows, "row")}, keeping {ConsoleUi.Count(interval.KeptRows)} of their rows as the identity evidence of the processes and connections after it; every record read from then on is kept",
             _ => retention.Kind.ToString(),
         });
         ConsoleUi.Field("When", retention.ReleasedUtc.ToString("u", CultureInfo.InvariantCulture));

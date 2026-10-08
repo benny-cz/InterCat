@@ -476,6 +476,15 @@ journal release keeps. It is asked for as a session time, and works in the journ
   and coverage over any scope reaching before it is no better than a partial gap, saying why (`coverage-v2` §4); a
   session's overview says from when it keeps every record, and when, how many and why the records before went.
   Re-derivation is refused while kept rows remain: their records are gone.
+- **From the command line** (revision 437). `icat retain <session> --release-before <moment> [--confirm --reason <text>]
+  [--output <path>] [--overwrite] [--json]` places the moment as `icat evidence --from` does - a time of day on the wall
+  clock the capture's machine read, or session time with its unit - and measures what a release before it gives up and
+  keeps: the units, records and rows that go, the rows kept as evidence, the boundary it achieves and the derived files
+  it rewrites. It performs the release only with `--confirm` and a stated reason, and only once no recorder can still
+  be writing the session: its capture finished, it is a redacted package, or its coverage read only files. A capture that
+  stopped without finishing cannot be told from one still recording, and a release published beneath a recorder fails
+  the recorder's next publication (ADR-024). Its document, `release-interval` under `store-v1`, carries the moment as
+  typed and where it fell, the preview, the result and the notes.
 
 The release is planned under a lease, which is released before publication, so the files it replaces go at once unless
 another reader holds them (I18). A generation that changed meanwhile refuses the publication.

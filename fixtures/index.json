@@ -1850,6 +1850,9 @@
       "I20": [
         "I20: a call and an exchange open across the boundary keep their records, and a client call what its other end was read from",
         "I20: on random recordings, every call and exchange a release retains a record of pairs, times and links as before"
+      ],
+      "S5": [
+        "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished"
       ]
     },
     "uncovered": {

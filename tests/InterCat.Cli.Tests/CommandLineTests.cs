@@ -138,6 +138,7 @@ public sealed class CommandLineTests : IDisposable
                 ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],
                 ["content", folder, .. record], ["package", folder, "--redacted", "--output", package],
                 ["retain", folder, "--release-content"], ["retain", folder, "--release-journal-before-record", "1"],
+                ["retain", folder, "--release-before", "1 s"],
                 ["rederive", folder], ["compact", folder], ["checkpoint", folder],
                 ["recover", folder],
             ];
@@ -751,6 +752,7 @@ public sealed class CommandLineTests : IDisposable
                 ["metric", "--matrix"],
                 ["compact", session.Path, "--check"],
                 ["retain", session.Path, "--release-content"],
+                ["retain", session.Path, "--release-before", "10.5 µs"],
                 ["recover", session.Path],
                 ["staging", session.Path],
                 ["workspace", "show", workspace],
@@ -1908,6 +1910,135 @@ public sealed class CommandLineTests : IDisposable
                 missing.GetProperty("lastBuffer").GetInt64(), missing.GetProperty("length").ValueKind,
                 missing.GetProperty("partOffset").GetInt64()));
         Assert.DoesNotContain("head", output, StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]
+    public async Task AnIntervalIsReleasedOnlyWhenToldWhy()
+    {
+        // Two chunks of a finished recording whose machine's wall clock was read: the client's creation, its connection's
+        // first send and a second send, then a send 0.5 ms in.
+        using var kept = new TemporarySession();
+        var noon = new DateTimeOffset(2026, 10, 8, 12, 0, 0, TimeSpan.Zero);
+        PublishTwoChunks(kept.Store, finished: true, noon);
+        long generation = kept.Store.Current!.Generation;
+        System.Globalization.CultureInfo culture = System.Globalization.CultureInfo.CurrentCulture;
+        SessionClock wall = SessionClock.Wall(SessionRecording.WallClock(kept.Store)!, TimeZoneInfo.Local, new TimeRange(10, 5_001));
+        kept.Store.ReleaseSegmentReaders();
+        long Current() => SessionStore.OpenExisting(LocalOwnedDirectory.Open(kept.Path)).Current!.Generation;
+
+        // A time of day copied from that machine's logs, 100 µs in, is measured: nothing is written, and what would go and
+        // stay is named - the oldest chunk's records and the row derived from its second send, while its creation and first
+        // send stay as the evidence of the send after it - each instant where it falls on the wall clock and in session time.
+        string typed = TimeZoneInfo.ConvertTime(noon.AddTicks(1_000), TimeZoneInfo.Local).ToString("HH:mm:ss.fffffff",
+            System.Globalization.CultureInfo.InvariantCulture);
+        (InterCatExitCode code, string output, string said) = await Run("retain", kept.Path, "--release-before", typed);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(new Regex(@"^  Asked for +the records read before " + Regex.Escape(wall.Moment(100_000, culture)
+            + " · session time " + SessionTimeText.Seconds(100_000, culture)) + @"\r?$", RegexOptions.Multiline), output);
+        Assert.Matches(@"(?m)^  Gives up +3 records in the oldest chunk of 2, and 1 row derived from them\r?$", output);
+        Assert.Matches(@"(?m)^  Keeps as evidence +2 rows of those records, which later records rest on\r?$", output);
+        Assert.Matches(new Regex(@"^  Keeps every record from +" + Regex.Escape(wall.Moment(20_001, culture)
+            + " · session time " + SessionTimeText.Seconds(20_001, culture)) + @"\r?$", RegexOptions.Multiline), output);
+        Assert.Contains("This was a measurement. Add --confirm and --reason to perform it.", output, StringComparison.Ordinal);
+        Assert.Contains("can no longer be re-derived while it holds them", output, StringComparison.Ordinal);
+        Assert.Equal(generation, Current());
+
+        // A reason alone measures too: a release is performed only on its own confirmation.
+        (code, _, said) = await Run("retain", kept.Path, "--release-before", "100 µs", "--reason", "older than the retained window");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(generation, Current());
+
+        // A moment is placed as icat evidence --from places one; performing needs a confirmation, a reason, and one release.
+        (code, _, said) = await Run("retain", kept.Path, "--release-before", "1 s");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("1 s is outside this session", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("retain", kept.Path, "--release-before", "soon");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--release-before takes a moment", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("retain", kept.Path, "--release-before", "100 µs", "--confirm");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--confirm needs --reason", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("retain", kept.Path, "--release-before", "100 µs", "--release-content");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--release-before and --release-content are two releases", said, StringComparison.Ordinal);
+        Assert.Equal(generation, Current());
+
+        // Told why, it releases, and says what went.
+        (code, output, said) = await Run("retain", kept.Path, "--release-before", "100 µs", "--confirm", "--reason",
+            "older than the retained window", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            JsonElement root = answer.RootElement;
+            Assert.Equal(("store-v1", "release-interval", true, "100 µs"), (root.GetProperty("contract").GetString(),
+                root.GetProperty("action").GetString(), root.GetProperty("performed").GetBoolean(), root.GetProperty("moment").GetString()));
+            JsonElement preview = root.GetProperty("preview");
+            Assert.Equal((100_000L, 20_001L, "chunk", 3L, 1L, 2L, "none", true), (preview.GetProperty("requestedNanoseconds").GetInt64(),
+                preview.GetProperty("boundaryNanoseconds").GetInt64(), preview.GetProperty("releaseUnit").GetString(),
+                preview.GetProperty("releasedRecords").GetInt64(), preview.GetProperty("releasedRows").GetInt64(),
+                preview.GetProperty("keptRows").GetInt64(), preview.GetProperty("obstacle").GetString(),
+                preview.GetProperty("finished").GetBoolean()));
+            Assert.Equal(generation + 1, root.GetProperty("result").GetProperty("generation").GetInt64());
+        }
+
+        Assert.Equal(generation + 1, Current());
+
+        // The session states the release, from when it keeps every record, and the time before it as a partial gap.
+        (_, output, _) = await Run("session", kept.Path);
+        Assert.Contains("the records read before 0.000020001 s: 3 records of the admitted journal and 1 row, keeping 2 of their "
+            + "rows as the identity evidence of the processes and connections after it", output, StringComparison.Ordinal);
+        Assert.Contains("older than the retained window", output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^\s*TCP\s+partial gap, not extrapolated\s+the records read before 0\.000020001 s were released by retention", output);
+
+        // Nothing is left to release: what reads before the moment is the evidence it kept, and the newest unit stays.
+        (code, output, _) = await Run("retain", kept.Path, "--release-before", "100 µs", "--confirm", "--reason", "again");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("that this session can still release is kept as the identity evidence of processes and connections after it",
+            output, StringComparison.Ordinal);
+        Assert.Equal(generation + 1, Current());
+
+        // A recording that has not finished may still be written by its recorder, so it is measured and never released.
+        using var recording = new TemporarySession();
+        PublishTwoChunks(recording.Store, finished: false, noon);
+        long unfinished = recording.Store.Current!.Generation;
+        recording.Store.ReleaseSegmentReaders();
+        (code, output, said) = await Run("retain", recording.Path, "--release-before", "100 µs", "--confirm", "--reason", "too soon",
+            "--json");
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            Assert.False(answer.RootElement.GetProperty("performed").GetBoolean());
+            Assert.False(answer.RootElement.GetProperty("preview").GetProperty("finished").GetBoolean());
+            Assert.Contains(answer.RootElement.GetProperty("notes").EnumerateArray(), note =>
+                note.GetString()!.StartsWith("This session's capture has not finished.", StringComparison.Ordinal));
+        }
+
+        Assert.Equal(unfinished, SessionStore.OpenExisting(LocalOwnedDirectory.Open(recording.Path)).Current!.Generation);
+
+        static void PublishTwoChunks(SessionStore store, bool finished, DateTimeOffset noon)
+        {
+            // The capture's machine read its wall clock at noon when its clock read 0.
+            var calibration = new ClockCalibrationV1
+            {
+                Contract = ClockCalibrationV1.ContractName,
+                CaptureId = TestSessions.Capture.Value,
+                ClockId = TestSessions.TestClock.Id.Value,
+                WallClock = "test-wall-clock",
+                Samples = [new() { NativeTicks = 0, Utc = noon, AcquisitionUncertaintyNanoseconds = 200 }],
+            };
+            Publish(store,
+            [
+                Timed(Lifecycle(10, ObservationKind.Create, 4_242, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+                Timed(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 2).Between("10.0.0.1:40000", "10.0.0.2:443")),
+                Timed(Transfer(200, ObservationKind.Send, AccountingSide.SendSide, 300, 4_242, 3).Between("10.0.0.1:40000", "10.0.0.2:443")),
+            ], calibration: calibration);
+            Publish(store,
+            [
+                Timed(Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 400, 4_242, 4).Between("10.0.0.1:40000", "10.0.0.2:443")),
+            ], coverage: TestSessions.TransportLedger(tcp: true, udp: false), calibration: calibration, finished: finished);
+        }
+
+        static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
     }
 
     [Fact(DisplayName = "ADR-036: icat retain releases kept content only when told why, and icat session and icat content say so")]

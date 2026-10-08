@@ -77,10 +77,16 @@ public sealed record IntervalReleasePreview
     /// <summary>Rows whose records an earlier journal release gave up; the oldest a release can take, given up or kept.</summary>
     public required long RowsWithoutRecords { get; init; }
 
-    /// <summary>The smallest boundary that releases anything, or null when none does.</summary>
+    /// <summary>
+    /// The smallest boundary before which a whole unit lies, so before which nothing can be released; null when no unit can
+    /// be. A unit whose every row is kept as evidence gives nothing up even after it.
+    /// </summary>
     public long? EarliestReleasingNanoseconds { get; init; }
 
-    /// <summary>The smallest boundary that releases all a release can - every unit but the newest that holds records.</summary>
+    /// <summary>
+    /// The smallest boundary from which a release takes every unit it can - all but the newest that holds records - so a
+    /// later one releases no more; null when no unit can be taken.
+    /// </summary>
     public long? MostReleasingNanoseconds { get; init; }
 
     /// <summary>The derived files the release replaces: every segment and dictionary of a publication holding a row it gives up.</summary>
@@ -198,7 +204,7 @@ public static class IntervalRelease
                 + $"the newest {unit}, so no boundary releases anything.",
             IntervalReleaseObstacle.NothingBefore =>
                 $"No record read before {SessionTimeText.Seconds(preview.RequestedNanoseconds, CultureInfo.CurrentCulture)} can be released: its oldest {unit} holds records "
-                + $"read later, and a {unit} is released whole. The earliest boundary that releases anything is "
+                + $"read later, and a {unit} is released whole. The earliest boundary that can release anything is "
                 + $"{SessionTimeText.Seconds(preview.EarliestReleasingNanoseconds!.Value, CultureInfo.CurrentCulture)}.",
             IntervalReleaseObstacle.ContentBesideJournal =>
                 "This session keeps content beside its journal. Releasing the journal's first batches would leave content "

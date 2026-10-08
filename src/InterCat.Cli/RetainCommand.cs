@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -68,6 +69,85 @@ internal sealed record RetentionResultDocument
     public required IReadOnlyList<string> HeldByLease { get; init; }
 }
 
+/// <summary>
+/// What releasing a session's oldest interval would give up, or did (store-v1 §8, ADR-043): the records read before a
+/// moment with their rows, but for the rows later records rest on, which are kept as evidence.
+/// </summary>
+internal sealed record IntervalRetentionDocument
+{
+    public required string Contract { get; init; }
+    public required string Path { get; init; }
+    public required string Action { get; init; }
+    public required bool Performed { get; init; }
+
+    /// <summary>The moment as it was typed.</summary>
+    public required string Moment { get; init; }
+
+    /// <summary>Where it falls: on the wall clock the capture's machine read, when the session recorded one, and in session time.</summary>
+    public required string Placed { get; init; }
+    public required IntervalRetentionPreviewDocument Preview { get; init; }
+    public required IntervalRetentionResultDocument? Result { get; init; }
+    public required IReadOnlyList<string> Notes { get; init; }
+}
+
+internal sealed record IntervalRetentionPreviewDocument
+{
+    public required long Generation { get; init; }
+
+    /// <summary>The boundary asked for, in session-time nanoseconds.</summary>
+    public required long RequestedNanoseconds { get; init; }
+
+    /// <summary>The boundary the release achieves: every record read at or after it is kept. Null when nothing is released.</summary>
+    public required long? BoundaryNanoseconds { get; init; }
+
+    /// <summary>What a release gives up whole: `chunk` of a recording, or `batch` of a single journal.</summary>
+    public required string ReleaseUnit { get; init; }
+    public required int Units { get; init; }
+    public required int ReleasedUnits { get; init; }
+
+    /// <summary>The chunks given up, oldest first; empty for a single journal's batches.</summary>
+    public required IReadOnlyList<string> ReleasedChunks { get; init; }
+    public required long Records { get; init; }
+    public required long ReleasedRecords { get; init; }
+    public required long Rows { get; init; }
+
+    /// <summary>The rows of released records that go with them.</summary>
+    public required long ReleasedRows { get; init; }
+
+    /// <summary>The rows of released records kept as the evidence later records rest on.</summary>
+    public required long KeptRows { get; init; }
+
+    /// <summary>
+    /// The smallest boundary before which a whole unit lies, so before which nothing can be released, whatever is kept as
+    /// evidence; null when no unit can be.
+    /// </summary>
+    public required long? EarliestReleasingNanoseconds { get; init; }
+
+    /// <summary>The smallest boundary from which a release takes every unit it can, so a later one releases no more.</summary>
+    public required long? MostReleasingNanoseconds { get; init; }
+
+    /// <summary>The derived files the release rewrites without the rows it gives up.</summary>
+    public required IReadOnlyList<string> ReplacedFiles { get; init; }
+    public required bool ReleasesAnything { get; init; }
+
+    /// <summary>Why nothing would be released, in kebab case: `none` when something would be.</summary>
+    public required string Obstacle { get; init; }
+
+    /// <summary>Whether no recorder can still be writing the session, which a release needs.</summary>
+    public required bool Finished { get; init; }
+}
+
+internal sealed record IntervalRetentionResultDocument
+{
+    public required long Generation { get; init; }
+    public required string ManifestDigest { get; init; }
+    public required long ReleasedBytes { get; init; }
+    public required long ReclaimedBytes { get; init; }
+    public required IReadOnlyList<string> ReleasedFiles { get; init; }
+    public required IReadOnlyList<string> RemovedFiles { get; init; }
+    public required IReadOnlyList<string> HeldByLease { get; init; }
+}
+
 /// <summary>What a content release would give up, or did (content-v1 §2): every message's bytes and content facts.</summary>
 internal sealed record ContentRetentionDocument
 {
@@ -117,9 +197,9 @@ internal sealed record ContentRetentionResultDocument
 }
 
 /// <summary>
-/// Releases a prefix of a session's admitted journal, or its kept content on its own. ADR-010 makes a release explicit
-/// rather than a default, so the command is a dry run unless it is told otherwise: the extent it would give up is
-/// disclosed first and performed only on a separate decision (S5).
+/// Releases a session's oldest interval, a prefix of its admitted journal, or its kept content on its own. ADR-010 makes
+/// a release explicit rather than a default, so the command is a dry run unless it is told otherwise: the extent it would
+/// give up is disclosed first and performed only on a separate decision (S5).
 /// </summary>
 internal static class RetainCommand
 {
@@ -132,6 +212,7 @@ internal static class RetainCommand
         }
 
         string? beforeOption = command.TakeOption("--release-journal-before-record");
+        string? momentOption = command.TakeOption("--release-before");
         string? reasonOption = command.TakeOption("--reason");
         string? outputOption = command.TakeOption("--output");
         string? sessionPath = command.TakePositional();
@@ -145,19 +226,26 @@ internal static class RetainCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (sessionPath is null || (beforeOption is null && !releaseContent))
+        string[] asked =
+        [
+            .. momentOption is null ? Array.Empty<string>() : ["--release-before"],
+            .. releaseContent ? ["--release-content"] : Array.Empty<string>(),
+            .. beforeOption is null ? Array.Empty<string>() : ["--release-journal-before-record"],
+        ];
+        if (sessionPath is null || asked.Length == 0)
         {
             ConsoleUi.Failure(
-                "A session directory and what to release are required: "
-                + "icat retain <directory> --release-journal-before-record <n>, or --release-content");
+                "A session directory and what to release are required: icat retain <directory> --release-before <moment>, "
+                + "--release-journal-before-record <n>, or --release-content");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (beforeOption is not null && releaseContent)
+        if (asked.Length > 1)
         {
-            ConsoleUi.Failure("--release-content and --release-journal-before-record are two releases, each published "
-                + "with its own record; ask for one at a time.");
+            ConsoleUi.Failure(
+                (asked.Length == 2 ? $"{asked[0]} and {asked[1]} are two" : $"{asked[0]}, {asked[1]} and {asked[2]} are three")
+                + " releases, each published with its own record; ask for one at a time.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -187,6 +275,12 @@ internal static class RetainCommand
         {
             return await ReleaseContentAsync(full, confirm ? reasonOption : null, outputPath, json, cancellationToken)
                 .ConfigureAwait(false);
+        }
+
+        if (momentOption is not null)
+        {
+            return await ReleaseIntervalAsync(full, momentOption, confirm ? reasonOption : null, outputPath, json,
+                cancellationToken).ConfigureAwait(false);
         }
 
         if (!long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out long before))
@@ -426,6 +520,254 @@ internal static class RetainCommand
     }
 
     /// <summary>
+    /// Measures, and with a reason performs, the release of the session's oldest interval (ADR-043): the records read before
+    /// a moment, placed as `icat evidence --from` places one, with their rows, but for the rows later records rest on. A
+    /// session a recorder may still be writing is refused, since its next publication would fail beneath the release.
+    /// </summary>
+    private static async Task<InterCatExitCode> ReleaseIntervalAsync(string path, string moment, string? reason,
+        string? outputPath, bool json, CancellationToken cancellationToken)
+    {
+        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+        if (store.Current is not { } manifest)
+        {
+            return Icat.NoSession();
+        }
+
+        if (SessionRecording.RecordsExtent(store, cancellationToken) is not { } extent)
+        {
+            ConsoleUi.Failure($"No record of this session has a session time, so {moment} places nothing in it.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        SessionWallClock? wall = SessionRecording.WallClock(store);
+        if (!SessionMoment.TryPlace(moment, wall, TimeZoneInfo.Local, extent, CultureInfo.CurrentCulture, out long ticks,
+                out string? problem))
+        {
+            ConsoleUi.Failure(problem ?? "--release-before takes a moment: a time of day on the wall clock the capture's "
+                + "machine read, such as 14:32:05.120, with its date or offset where needed, or session time with its unit, "
+                + $"such as 312.5 s. '{moment}' is neither.");
+            ConsoleUi.Explain(PrintHelp);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        long requested = ticks * 100;
+        string placed = Instant(requested, wall, extent);
+        ConsoleUi.Progress($"Measuring what releasing the records read before {placed} would give up. Nothing is written yet.");
+        IntervalReleasePreview preview = IntervalRelease.Preview(store, requested, cancellationToken);
+        bool finished = NoRecorderWrites(store, manifest);
+        IntervalReleaseResult? released = null;
+        string? refused = null;
+        if (reason is not null && preview.ReleasesAnything && finished)
+        {
+            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(path), manifest.SessionId, manifest.SourceIdentity);
+            ConsoleUi.Progress($"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in {Units(preview)} and "
+                + "publishing the retention generation.");
+            try
+            {
+                released = IntervalRelease.Release(writable, requested, reason, DateTimeOffset.UtcNow,
+                    cancellationToken: cancellationToken);
+            }
+            catch (InvalidOperationException exception)
+            {
+                refused = exception.Message;
+            }
+        }
+
+        var notes = new List<string>
+        {
+            "An interval release gives up the records read before its boundary and the rows derived from them, but for "
+            + "the rows later records rest on - each process's lifecycle records, each connection's opening and first "
+            + "records, and the records of a call or exchange open across the boundary - kept as evidence, so every record "
+            + "it keeps binds, pairs and keys as before.",
+            "Afterwards every reader says the time before the boundary is a partial gap, never a quiet one, and the "
+            + "session says from when it keeps every record.",
+        };
+        if (!preview.ReleasesAnything)
+        {
+            notes.Add(IntervalRelease.Refusal(preview));
+        }
+        else
+        {
+            if (preview.KeptRows > 0)
+            {
+                notes.Add("The rows it keeps as evidence lose their records, so the session can no longer be re-derived "
+                    + "while it holds them (ADR-024).");
+            }
+
+            if (!finished)
+            {
+                notes.Add("This session's capture has not finished. A recorder still writing it would find the session "
+                    + "changed beneath it and fail, and a capture that stopped without finishing cannot be told from one "
+                    + "still recording, so its interval is released once it has finished.");
+            }
+        }
+
+        if (refused is not null)
+        {
+            notes.Add("Nothing was published: " + refused);
+        }
+        else if (released is null && reason is null && preview.ReleasesAnything && finished)
+        {
+            notes.Add("This was a measurement. Add --confirm and --reason to perform it.");
+        }
+
+        if (released?.Retention.AwaitingRelease == true)
+        {
+            notes.Add("The released evidence is no longer part of any generation, but a live evidence lease still holds "
+                + "its bytes. They go when that reader lets go; retention never removes evidence behind an open reader (I18).");
+        }
+
+        var document = new IntervalRetentionDocument
+        {
+            Contract = "store-v1",
+            Path = path,
+            Action = "release-interval",
+            Performed = released is not null,
+            Moment = moment,
+            Placed = placed,
+            Preview = new()
+            {
+                Generation = preview.Generation,
+                RequestedNanoseconds = preview.RequestedNanoseconds,
+                BoundaryNanoseconds = preview.BoundaryNanoseconds,
+                ReleaseUnit = preview.ReleaseUnit,
+                Units = preview.Units,
+                ReleasedUnits = preview.ReleasedUnits,
+                ReleasedChunks = preview.ReleasedChunks,
+                Records = preview.Records,
+                ReleasedRecords = preview.ReleasedRecords,
+                Rows = preview.Rows,
+                ReleasedRows = preview.ReleasedRows,
+                KeptRows = preview.KeptRows,
+                EarliestReleasingNanoseconds = preview.EarliestReleasingNanoseconds,
+                MostReleasingNanoseconds = preview.MostReleasingNanoseconds,
+                ReplacedFiles = preview.ReplacedFiles,
+                ReleasesAnything = preview.ReleasesAnything,
+                Obstacle = Kebab(preview.Obstacle.ToString()),
+                Finished = finished,
+            },
+            Result = released is null ? null : new()
+            {
+                Generation = released.Retention.Manifest.Generation,
+                ManifestDigest = released.Retention.Manifest.Digest,
+                ReleasedBytes = released.Retention.Manifest.Retention?.ReleasedBytes ?? 0,
+                ReclaimedBytes = released.Retention.ReclaimedBytes,
+                ReleasedFiles = released.Retention.ReleasedFiles,
+                RemovedFiles = released.Retention.RemovedFiles,
+                HeldByLease = released.Retention.HeldByLease,
+            },
+            Notes = notes,
+        };
+        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
+        if (json)
+        {
+            Console.Out.WriteLine(payload);
+        }
+        else
+        {
+            RenderInterval(document, wall, extent);
+        }
+
+        if (outputPath is not null)
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+            await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
+            ConsoleUi.Success($"Retention report written to {outputPath}.");
+        }
+
+        if (refused is not null)
+        {
+            ConsoleUi.Warn("Nothing was published: " + refused);
+        }
+
+        return document.Performed || (reason is null && preview.ReleasesAnything && finished)
+            ? InterCatExitCode.Success
+            : InterCatExitCode.PartialResultSuccess;
+    }
+
+    private static void RenderInterval(IntervalRetentionDocument document, SessionWallClock? wall, TimeRange extent)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        IntervalRetentionPreviewDocument preview = document.Preview;
+        ConsoleUi.Heading(document.Performed ? "Interval released" : "Interval release, measured only");
+        ConsoleUi.Field("Session", document.Path);
+        ConsoleUi.Field("Generation", preview.Generation.ToString("N0", culture));
+        ConsoleUi.Field("Asked for", "the records read before " + document.Placed);
+        ConsoleUi.Field("Journal", (preview.ReleaseUnit == "chunk"
+                ? string.Create(culture, $"{preview.Units:N0} chunks of one recording")
+                : string.Create(culture, $"one journal of {CountText.Of(preview.Units, "batch", "batches")}"))
+            + $", {CountText.Of(preview.Records, "record")}, {CountText.Of(preview.Rows, "row")}");
+        if (preview.ReleasesAnything && preview.BoundaryNanoseconds is { } boundary)
+        {
+            ConsoleUi.Heading("What this boundary gives up");
+            ConsoleUi.Field("Gives up", $"{CountText.Of(preview.ReleasedRecords, "record")} in {Units(preview)}, and "
+                + $"{CountText.Of(preview.ReleasedRows, "row")} derived from them");
+            ConsoleUi.Field("Keeps as evidence", preview.KeptRows == 0
+                ? "none of their rows"
+                : $"{CountText.Of(preview.KeptRows, "row")} of those records, which later records rest on");
+            ConsoleUi.Field("Keeps every record from", Instant(boundary, wall, extent));
+            ConsoleUi.Field("Rewrites", preview.ReplacedFiles.Count == 0
+                ? "no derived file"
+                : CountText.Of(preview.ReplacedFiles.Count, "derived file") + ", without the rows it gives up");
+            if (preview.MostReleasingNanoseconds is { } most && most > boundary)
+            {
+                ConsoleUi.Field("Gives up more", $"before a later moment, up to {SessionTimeText.Seconds(most, culture)}, "
+                    + $"from which a release takes every {preview.ReleaseUnit} but the newest");
+            }
+        }
+
+        if (document.Result is { } result)
+        {
+            ConsoleUi.Heading("Published retention generation");
+            ConsoleUi.Field("Generation", result.Generation.ToString("N0", culture));
+            ConsoleUi.Field("Given up", $"{ConsoleUi.Bytes(result.ReleasedBytes)} of evidence and derived files");
+            ConsoleUi.Field("Removed from disk", ConsoleUi.Bytes(result.ReclaimedBytes));
+            ConsoleUi.Field("Released files", string.Join(", ", result.ReleasedFiles));
+            ConsoleUi.Field("Held by a lease", result.HeldByLease.Count == 0 ? "none" : string.Join(", ", result.HeldByLease));
+            ConsoleUi.Field("Manifest digest", result.ManifestDigest);
+        }
+
+        ConsoleUi.Line();
+        foreach (string note in document.Notes)
+        {
+            ConsoleUi.Note(note);
+        }
+    }
+
+    /// <summary>The units a release gives up, as its report names them: "the oldest chunk of 3", "2 batches of 5".</summary>
+    private static string Units(IntervalReleasePreview preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
+
+    private static string Units(IntervalRetentionPreviewDocument preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
+
+    private static string Units(string unit, int released, int units) => unit == "chunk"
+        ? (released == 1 ? "the oldest chunk" : string.Create(CultureInfo.CurrentCulture, $"the {released:N0} oldest chunks"))
+            + string.Create(CultureInfo.CurrentCulture, $" of {units:N0}")
+        : CountText.Of(released, "batch", "batches") + string.Create(CultureInfo.CurrentCulture, $" of {units:N0}");
+
+    /// <summary>
+    /// An instant of the session as a release names it: its session time, as the retention record and the window's size
+    /// line say it, after where it falls on the wall clock the capture's machine read when the session recorded one.
+    /// </summary>
+    private static string Instant(long nanoseconds, SessionWallClock? wall, TimeRange extent) => wall is null
+        ? SessionTimeText.Seconds(nanoseconds, CultureInfo.CurrentCulture)
+        : SessionClock.Wall(wall, TimeZoneInfo.Local, extent).Moment(nanoseconds, CultureInfo.CurrentCulture)
+            + " · session time " + SessionTimeText.Seconds(nanoseconds, CultureInfo.CurrentCulture);
+
+    /// <summary>
+    /// Whether no recorder can still be writing the session: its capture finished, it is a redacted package, or every epoch
+    /// of its coverage read a file rather than a live session. A capture that stopped without finishing cannot be told from
+    /// one still recording, and a session that states neither is taken to be one.
+    /// </summary>
+    private static bool NoRecorderWrites(SessionStore store, SessionManifestV1 manifest) =>
+        manifest.Dependencies.Any(dependency => dependency.Kind is StoreDependencyKind.CaptureFinalization or StoreDependencyKind.RedactionPolicy)
+        || (SessionSegments.CoverageLedger(store.Root, manifest) is { Epochs.Count: > 0 } ledger
+            && ledger.Epochs.All(epoch => epoch.Acquisition == CoverageAcquisition.EtlImport));
+
+    /// <summary>An enumeration's name as a person types it: "NothingBefore" as "nothing-before".</summary>
+    private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
+        char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
+
+    /// <summary>
     /// Measures, and with a reason performs, the release of every content chunk the session keeps (content-v1 §2). The
     /// messages' bytes and each record's content facts go; every journal, row and derived file stays.
     /// </summary>
@@ -593,6 +935,14 @@ internal static class RetainCommand
 
     private static void PrintHelp()
     {
+        ConsoleUi.Line("  icat retain <directory> --release-before <moment>");
+        ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
+        ConsoleUi.Line("      Measures what releasing the records read before <moment> would give up - with their");
+        ConsoleUi.Line("      rows, but for the rows later records rest on, kept as evidence - and performs it only");
+        ConsoleUi.Line("      with --confirm and a stated reason, once the capture has finished. <moment> is a time");
+        ConsoleUi.Line("      of day on the wall clock the capture's machine read, such as 14:32:05.120, or session");
+        ConsoleUi.Line("      time with its unit, such as 312.5 s. A chunk, or a single journal's batch, is the unit");
+        ConsoleUi.Line("      of release, and the newest is always kept.");
         ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Measures what releasing a prefix of the session's admitted journal would give");

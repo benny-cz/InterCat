@@ -243,11 +243,14 @@ internal static class Icat
         ConsoleUi.Line("      Previews staged files and cleans only reviewed abandoned files with released owners.");
         ConsoleUi.Line("      Active writers and unmarked legacy staging are kept for manual review.");
         ConsoleUi.Line();
+        ConsoleUi.Line("  icat retain <directory> --release-before <moment>");
+        ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat retain <directory> --release-journal-before-record <n>");
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("  icat retain <directory> --release-content [--confirm --reason <text>] [--json]");
-        ConsoleUi.Line("      Measures what releasing a prefix of the admitted journal, or every message's kept");
-        ConsoleUi.Line("      content, would give up, and performs it only with --confirm and a stated reason (ADR-010).");
+        ConsoleUi.Line("      Measures what releasing the records read before a moment with their rows, a prefix of the");
+        ConsoleUi.Line("      admitted journal, or every message's kept content would give up, and performs it only");
+        ConsoleUi.Line("      with --confirm and a stated reason (ADR-010, ADR-043).");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat follow <evidence-dir> <session-dir> [--poll <seconds>] [--once] [--json]");
         ConsoleUi.Line("  icat follow <session-dir> [--json]");
