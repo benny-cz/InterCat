@@ -136,11 +136,6 @@ public static class SessionRecording
     }
 
     /// <summary>
-    /// The current generation's timed records' extent in presentation ticks, as the window's overview counts it: a finished
-    /// session's persisted overview holds it, and any other's segments count it from their tiles. Null where no record
-    /// has a session time.
-    /// </summary>
-    /// <summary>
     /// The presentation tick from which a session keeps every record: the first wholly at or after its latest interval
     /// release's boundary (ADR-043), so no column drawn from it reaches into what was released; null when it states none.
     /// Its timeline begins there (ADR-045), and a moment before it lies in what the session released.

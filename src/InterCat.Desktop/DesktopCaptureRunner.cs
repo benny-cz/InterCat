@@ -126,6 +126,18 @@ public static class DesktopCaptureRunner
         null, BrokerJournalPublication.Live,
         keepWindow is { } keep ? (int)Math.Ceiling(keep.TotalSeconds) : null);
 
+    /// <summary>
+    /// The limits a prepared capture stops at (§12.1 S5). One the broker releases for keeping <paramref name="rolling"/>'s
+    /// window holds that window, and what its session gave up until the next lease renewal says so and the broker's next
+    /// publication releases it.
+    /// </summary>
+    internal static CaptureLimits LimitsOf(BrokerEffectiveCaptureSummary summary, RollingRetentionPolicy? rolling) => new(
+        TimeSpan.FromSeconds(summary.Quota.MaximumDurationSeconds), summary.Quota.MaximumJournalBytes,
+        summary.Quota.MinimumFreeDiskBytes,
+        rolling is not null && summary.Retention == BrokerRetentionPolicy.ReleaseFollowed
+            ? new CaptureWindow(rolling, LeaseRenewal + TimeSpan.FromMilliseconds(summary.PublicationIntervalMilliseconds))
+            : null);
+
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
@@ -224,9 +236,7 @@ public static class DesktopCaptureRunner
             }
 
             summary = Describe(prepared.Summary);
-            BrokerCaptureQuota quota = prepared.Summary.Quota;
-            limits = new(TimeSpan.FromSeconds(quota.MaximumDurationSeconds), quota.MaximumJournalBytes,
-                quota.MinimumFreeDiskBytes);
+            limits = LimitsOf(prepared.Summary, options.Rolling);
             milestones = milestones with
             {
                 Prepared = elapsed.Elapsed,

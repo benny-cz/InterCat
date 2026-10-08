@@ -1,3 +1,4 @@
+using System.Globalization;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -8,6 +9,7 @@ using InterCat.Application;
 using InterCat.Desktop;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 
@@ -74,6 +76,62 @@ public sealed class SessionGrowthWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "S5: while a capture keeping a window records, the window projects its stop from what the window holds, and once a pin keeps the session past it, from when the pin stops it")]
+    public async Task TheWindowProjectsARollingCapturesStop()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 10) with { SessionRelativeTicks = 1_000 },
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        session.Store.ReleaseSegmentReaders();
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        try
+        {
+            // An hour into a day-long capture keeping its last ten minutes, the session kept from 3,000 s holds 60 MiB of
+            // journal and 90 MiB in all: the window fits its journal and the disk, so only its length stops it.
+            DateTimeOffset began = DateTimeOffset.UtcNow.AddHours(-1);
+            SessionSize measured = overview.Size! with
+            {
+                Bytes = 90L << 20, JournalBytes = 60L << 20, Committed = began.AddHours(1),
+                RetainedFromNanoseconds = 3_000_000_000_000,
+            };
+            var rolling = new CaptureLimits(TimeSpan.FromHours(24), 1L << 30, 1L << 30,
+                new CaptureWindow(new RollingRetentionPolicy(TimeSpan.FromMinutes(10)), TimeSpan.FromSeconds(12)));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording.", SessionPath: session.Path,
+                Overview: overview with { Began = began, Size = measured }, Limits: rolling,
+                Volume: new RecordingVolume(100L << 30, HoldsSession: true)), forceOverview: true);
+            Dispatch();
+            TextBlock growth = window.GetControl<TextBlock>("SessionGrowthText");
+            Assert.Equal(SessionGrowth.Describe(measured) + ".\nStops in about 23 h, at its 24-hour limit; at the rate so far "
+                + "keeping the last 10 minutes takes up to about 76.2 MiB of its 1 GiB journal, and free disk stays above its 1 GiB "
+                + "reserve.", growth.Text);
+
+            // A pin placed 20 s back allowing what the session holds keeps it past its window from there, and the size line
+            // says at once when the follow stops the capture for it.
+            RetentionPin pin = Assert.IsType<RetentionPin>(await window.PlacePinAsync(3_580_000_000_000, 90L << 20, "the failover"));
+            Dispatch();
+            Assert.StartsWith(SessionGrowth.Describe(measured) + ".\nStops in about 10 min at the rate so far, when the session "
+                + "outgrows the 90 MiB the pin from " + SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)
+                + " allows; its journal would reach 1 GiB in about 2 h 50 min, ", growth.Text, StringComparison.Ordinal);
+            Assert.EndsWith("\n" + RetentionPinText.SizeLine([pin]), growth.Text, StringComparison.Ordinal);
+
+            // The next generation states the pins it was projected with, and removed, the window bounds the session again.
+            Assert.Equal([pin], SessionOverviewProjector.Project(session.Store).Pins);
+            session.Store.ReleaseSegmentReaders();
+            Assert.Equal(pin, await window.RemovePinAsync(pin));
+            Dispatch();
+            Assert.Contains("keeping the last 10 minutes takes up to about 76.2 MiB", growth.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§12.1: after an interval release the window says what the session keeps and since when, beneath its size, and its intervals begin where every record is kept")]
     public void TheWindowStatesWhatASessionRetains()
     {
@@ -103,6 +161,7 @@ public sealed class SessionGrowthWindowTests
             TextBlock growth = window.GetControl<TextBlock>("SessionGrowthText");
             Assert.Equal(SessionGrowth.Statement(overview.Size!, null) + "\n" + overview.Retained, growth.Text);
             Assert.StartsWith("Kept from ", overview.Retained, StringComparison.Ordinal);
+            Assert.Equal(boundary, overview.Size!.RetainedFromNanoseconds);
 
             // The timeline, and the interval table beside it, begin at the first tick wholly after the boundary: no interval
             // reaches into what was released, so none is a gap for it, and each states its coverage whole.

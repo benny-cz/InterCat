@@ -116,5 +116,17 @@ public sealed class DesktopCaptureTests
         Assert.Contains("up to 10 min / 1 GiB journal", review, StringComparison.Ordinal);
         Assert.Contains($"first view within {0.5:0.#} s, then every 2 s", review, StringComparison.Ordinal);
         Assert.Contains("No payload contents", review, StringComparison.Ordinal);
+
+        // Its limits are the effective quota's. One the broker releases for keeping a window holds the window, and for one
+        // lease renewal and one publication after its session gives chunks up, those too (§12.1 S5).
+        var keep = new RollingRetentionPolicy(TimeSpan.FromMinutes(10));
+        CaptureLimits all = DesktopCaptureRunner.LimitsOf(summary, keep);
+        Assert.Equal((TimeSpan.FromMinutes(10), 1L << 30, 1L << 30, (CaptureWindow?)null),
+            (all.MaximumDuration, all.MaximumJournalBytes, all.MinimumFreeDiskBytes, all.Window));
+        CaptureWindow window = DesktopCaptureRunner.LimitsOf(summary with { Retention = BrokerRetentionPolicy.ReleaseFollowed }, keep)
+            .Window!;
+        Assert.Equal((keep, TimeSpan.FromSeconds(12), TimeSpan.FromSeconds(750), TimeSpan.FromSeconds(762)),
+            (window.Policy, window.Lag, window.SessionHolds, window.EvidenceHolds));
+        Assert.Null(DesktopCaptureRunner.LimitsOf(summary with { Retention = BrokerRetentionPolicy.ReleaseFollowed }, null).Window);
     }
 }

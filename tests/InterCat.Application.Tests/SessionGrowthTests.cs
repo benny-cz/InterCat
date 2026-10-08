@@ -19,6 +19,10 @@ public sealed class SessionGrowthTests
     private static readonly DateTimeOffset Began = new(2026, 10, 7, 9, 0, 0, TimeSpan.Zero);
     private static readonly CaptureLimits Explore = new(TimeSpan.FromMinutes(10), GiB, GiB);
 
+    // A day-long capture keeping its last ten minutes, its evidence released 12 s after its session gives chunks up.
+    private static readonly CaptureLimits Rolling = new(TimeSpan.FromHours(24), GiB, GiB,
+        new CaptureWindow(new RollingRetentionPolicy(TimeSpan.FromMinutes(10)), TimeSpan.FromSeconds(12)));
+
     [Fact(DisplayName = "§12.1: a session's size is every file its generation names as measured, with its bytes per record and tier")]
     public void ASessionsSizeIsEveryFileItsGenerationNames()
     {
@@ -42,6 +46,7 @@ public sealed class SessionGrowthTests
             .Sum(dependency => new FileInfo(Path.Combine(session.Path, dependency.Name)).Length), size.JournalBytes);
         Assert.Equal((long)Math.Round(onDisk / 3d, MidpointRounding.AwayFromZero), size.BytesPerRecord);
         Assert.Equal(SessionSizeTier.Interactive, size.Tier);
+        Assert.Null(size.RetainedFromNanoseconds);
 
         // The projected overview carries the same measurement of the generation it projected.
         Assert.Equal(SessionGrowth.Measure(manifest, 3), SessionOverviewProjector.Project(session.Store).Size);
@@ -143,6 +148,138 @@ public sealed class SessionGrowthTests
         Assert.Equal(SessionGrowth.Describe(size) + ".\n" + over.Statement, SessionGrowth.Statement(size, over, stopOnItsOwnLine: true));
         Assert.Equal(SessionGrowth.Describe(size) + ".", SessionGrowth.Statement(size, null));
     });
+
+    [Fact(DisplayName = "S5: a capture keeping a window projects its journal and free disk from what the window holds, so they stop it only if the window outgrows them")]
+    public void ACaptureKeepingAWindowStopsOnlyIfTheWindowOutgrowsItsLimits() => InCulture("en-US", () =>
+    {
+        // An hour in, its session keeps the 700 s from 2,900 s on in 70 MiB of journal and 105 MiB in all: 0.1 MiB and
+        // 0.15 MiB a second of session time.
+        DateTimeOffset now = Began.AddSeconds(3_600);
+        var size = new SessionSize(105 * MiB, 30, 70 * MiB, 280_000, now, RetainedFromNanoseconds: 2_900_000_000_000);
+        var roomy = new RecordingVolume(100 * GiB, HoldsSession: true);
+
+        // Its evidence holds no more than the window, the quarter past it and the 12 s before the broker releases: 762 s,
+        // 76.2 MiB. That fits its journal and the disk, so only its length stops it.
+        CaptureHeadroom fits = SessionGrowth.Headroom(size, Began, now, Rolling, roomy);
+        Assert.Equal((TimeSpan.FromHours(23), CaptureStopCause.Duration, true), (fits.Remaining, fits.Cause, fits.Measured));
+        Assert.Equal("Stops in about 23 h, at its 24-hour limit; at the rate so far keeping the last 10 minutes takes up to "
+            + "about 76.2 MiB of its 1 GiB journal, and free disk stays above its 1 GiB reserve.", fits.Statement);
+        Assert.Equal("Stops in about 23 h, at its 24-hour limit; at the rate so far keeping the last 10 minutes takes up to "
+            + "about 76.2 MiB of its 1 GiB journal, and free disk could not be read.",
+            SessionGrowth.Headroom(size, Began, now, Rolling, null).Statement);
+
+        // The same session under limits that keep everything: its journal holds all it recorded, 0.1 MiB a second over the
+        // hour, measured over what the session holds rather than the hour its released records spanned.
+        Assert.Equal("Stops in about 1 h 51 min at the rate so far, when its journal reaches 1 GiB; its 24-hour limit is in "
+            + "about 23 h, and free disk would reach its 1 GiB reserve in about 5 days.",
+            SessionGrowth.Headroom(size, Began, now, Rolling with { Window = null }, roomy).Statement);
+
+        // Five minutes in at 2 MiB a second, the window would take 1.5 GiB: its journal stops it first, while it grows.
+        DateTimeOffset early = Began.AddSeconds(300);
+        CaptureHeadroom outgrown = SessionGrowth.Headroom(new SessionSize(900 * MiB, 30, 600 * MiB, 2_400_000, early), Began,
+            early, Rolling, roomy);
+        Assert.Equal((CaptureStopCause.Journal, 212d), (outgrown.Cause, outgrown.Remaining.TotalSeconds), new Near());
+        Assert.Equal("Stops in about 4 min at the rate so far, when its journal reaches 1 GiB; keeping the last 10 minutes would "
+            + "take up to about 1.5 GiB, its 24-hour limit is in about 23 h 55 min, and free disk stays above its 1 GiB reserve.",
+            outgrown.Statement);
+
+        // 140 s in, filling the window takes 153.7 MiB more of a volume with 100 MiB above its reserve when the session
+        // grows on it too, and 62.2 MiB when only the evidence does. Its session first releases once it holds 750 s, in
+        // about 10 min: said when that comes before it stops.
+        DateTimeOffset filling = Began.AddSeconds(140);
+        var young = new SessionSize(21 * MiB, 30, 14 * MiB, 56_000, filling);
+        CaptureHeadroom disk = SessionGrowth.Headroom(young, Began, filling, Rolling,
+            new RecordingVolume(GiB + (100 * MiB), HoldsSession: true));
+        Assert.Equal((CaptureStopCause.Disk, 400d), (disk.Cause, disk.Remaining.TotalSeconds), new Near());
+        Assert.Equal("Stops in about 7 min at the rate so far, when free disk reaches its 1 GiB reserve; keeping the last 10 "
+            + "minutes takes up to about 76.2 MiB of its 1 GiB journal, and its 24-hour limit is in about 23 h 58 min.",
+            disk.Statement);
+        Assert.Equal("Stops in about 23 h 58 min, at its 24-hour limit; at the rate so far keeping the last 10 minutes takes up "
+            + "to about 76.2 MiB of its 1 GiB journal, it begins releasing its oldest records in about 10 min, and free disk "
+            + "stays above its 1 GiB reserve.",
+            SessionGrowth.Headroom(young, Began, filling, Rolling, new RecordingVolume(GiB + (100 * MiB), HoldsSession: false))
+                .Statement);
+
+        // Before it has grown measurably, it names what keeping the window must fit.
+        Assert.Equal("Stops in about 24 h, at its 24-hour limit, or sooner if keeping the last 10 minutes takes its journal to "
+            + "1 GiB or free disk to its 1 GiB reserve; how fast it grows is measured from its first publication.",
+            SessionGrowth.Headroom(new SessionSize(4_096, 3, 0, 0, Began.AddSeconds(30)), Began, Began.AddSeconds(30), Rolling,
+                roomy).Statement);
+        Assert.Throws<ArgumentOutOfRangeException>(() =>
+            new CaptureWindow(new RollingRetentionPolicy(TimeSpan.FromMinutes(10)), TimeSpan.FromSeconds(-1)));
+    });
+
+    [Fact(DisplayName = "S5: a pin keeping a rolling capture's session past its window projects when the session outgrows what the pin allows, its journal and free disk growing from the pin's moment")]
+    public void APinKeepingARollingSessionProjectsItsStop() => InCulture("en-US", () =>
+    {
+        // As above: an hour in, 0.1 MiB of journal and 0.15 MiB in all a second, kept from 2,900 s; its follow's next release
+        // step comes once the session holds more than 750 s, and then every 150 s.
+        DateTimeOffset now = Began.AddSeconds(3_600);
+        var size = new SessionSize(105 * MiB, 30, 70 * MiB, 280_000, now, RetainedFromNanoseconds: 2_900_000_000_000);
+        var roomy = new RecordingVolume(100 * GiB, HoldsSession: true);
+        string at = SessionTimeText.Seconds(3_500_000_000_000, CultureInfo.CurrentCulture);
+
+        // Pinned from 3,500 s allowing 210 MiB: the window passes the pin at 4,100 s, and from then on the session grows from
+        // 3,500 s, holding 210 MiB at 4,900 s - so the follow stops it in about 22 min. Its journal reaches 1 GiB, grown from
+        // the pin's moment, at 13,740 s; free disk, once what it holds before the pin is released, in about 5 days.
+        CaptureHeadroom pinned = SessionGrowth.Headroom(size, Began, now, Rolling, roomy, [Pin(3_500, 210)]);
+        Assert.Equal((CaptureStopCause.Pin, 1_300d), (pinned.Cause, pinned.Remaining.TotalSeconds), new Near());
+        Assert.Equal($"Stops in about 22 min at the rate so far, when the session outgrows the 210 MiB the pin from {at} "
+            + "allows; its journal would reach 1 GiB in about 2 h 49 min, its 24-hour limit is in about 23 h, and free disk would "
+            + "reach its 1 GiB reserve in about 5 days.", pinned.Statement);
+
+        // A later pin allowing less stops it first: the session holds 120 MiB at 4,300 s.
+        CaptureHeadroom least = SessionGrowth.Headroom(size, Began, now, Rolling, roomy, [Pin(3_500, 210), Pin(3_550, 120)]);
+        Assert.Equal((CaptureStopCause.Pin, 700d), (least.Cause, least.Remaining.TotalSeconds), new Near());
+        Assert.StartsWith("Stops in about 12 min at the rate so far, when the session outgrows the 120 MiB the pin from "
+            + SessionTimeText.Seconds(3_550_000_000_000, CultureInfo.CurrentCulture) + " allows; ", least.Statement,
+            StringComparison.Ordinal);
+
+        // A pin keeps the session only once the window passes its moment: one from 3,590 s allowing 100 MiB stops it when
+        // the window passes it at 4,190 s, though the session, kept from 3,000 s by another pin, holds more from 3,667 s.
+        CaptureHeadroom later = SessionGrowth.Headroom(size, Began, now, Rolling, roomy, [Pin(3_000, 10 * 1_024), Pin(3_590, 100)]);
+        Assert.Equal((CaptureStopCause.Pin, 590d), (later.Cause, later.Remaining.TotalSeconds), new Near());
+
+        // No step checks between two: a pin the window passes at 4,120 s, allowing 100 MiB, which the session holds more
+        // than by then, stops it only at the step at 4,150 s, once the session holds more than its window and the quarter
+        // from 3,400 s, where an earlier pin keeps it.
+        CaptureHeadroom idle = SessionGrowth.Headroom(size, Began, now, Rolling, roomy, [Pin(3_400, 10 * 1_024), Pin(3_520, 100)]);
+        Assert.Equal((CaptureStopCause.Pin, 550d), (idle.Cause, idle.Remaining.TotalSeconds), new Near());
+
+        // Pinned 20 s ago allowing what the session holds: the release step at 4,200 s first finds the pin keeping it, by
+        // then holding 93 MiB, so it stops there rather than at the next step once the session holds 750 s.
+        var released = new SessionSize(90 * MiB, 30, 60 * MiB, 240_000, now, RetainedFromNanoseconds: 3_000_000_000_000);
+        CaptureHeadroom first = SessionGrowth.Headroom(released, Began, now, Rolling, roomy, [Pin(3_580, 90)]);
+        Assert.Equal((CaptureStopCause.Pin, 600d), (first.Cause, first.Remaining.TotalSeconds), new Near());
+
+        // A pin from before what the session keeps holds it already, and the next step finds it outgrown.
+        CaptureHeadroom over = SessionGrowth.Headroom(size, Began, now, Rolling, roomy, [Pin(2_000, 50)]);
+        Assert.Equal((CaptureStopCause.Pin, 50d), (over.Cause, over.Remaining.TotalSeconds), new Near());
+        Assert.StartsWith("Stops in under a minute at the rate so far, when the session outgrows the 50 MiB ", over.Statement,
+            StringComparison.Ordinal);
+
+        // A window that outgrows its journal says so beside the pin, and the disk falls once the session grows from the pin.
+        DateTimeOffset early = Began.AddSeconds(300);
+        CaptureHeadroom fast = SessionGrowth.Headroom(new SessionSize(900 * MiB, 30, 600 * MiB, 2_400_000, early), Began, early,
+            Rolling, roomy, [Pin(250, 10 * 1_024)]);
+        Assert.Equal("Stops in about 4 min at the rate so far, when its journal reaches 1 GiB; keeping the last 10 minutes would "
+            + "take up to about 1.5 GiB, the session would outgrow the 10 GiB the pin from "
+            + SessionTimeText.Seconds(250_000_000_000, CultureInfo.CurrentCulture) + " allows in about 56 min, free disk would "
+            + "reach its 1 GiB reserve in about 5 h 42 min, and its 24-hour limit is in about 23 h 55 min.", fast.Statement);
+
+        // A capture that keeps everything stops for no pin: a pin only holds its session's releases back.
+        Assert.Equal(SessionGrowth.Headroom(size, Began, now, Rolling with { Window = null }, roomy).Statement,
+            SessionGrowth.Headroom(size, Began, now, Rolling with { Window = null }, roomy, [Pin(3_500, 210)]).Statement);
+    });
+
+    private static RetentionPin Pin(long fromSeconds, long allowanceMiB) => new()
+    {
+        Id = Guid.NewGuid(),
+        FromNanoseconds = fromSeconds * 1_000_000_000,
+        AllowanceBytes = allowanceMiB * MiB,
+        PlacedUtc = Began,
+        Reason = "the failover",
+    };
 
     private static void InCulture(string name, Action check)
     {

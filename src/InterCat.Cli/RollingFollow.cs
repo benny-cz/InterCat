@@ -1,6 +1,7 @@
 using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Application;
+using InterCat.CaptureBroker;
 using InterCat.Storage;
 
 namespace InterCat.Cli;
@@ -66,6 +67,21 @@ internal static class RollingFollow
     public static string GoOn(string sessionPath) =>
         $"To go on, remove the pin (icat pin {sessionPath} --remove <pin>) or pin from the same moment allowing more, "
         + "then follow again.";
+
+    /// <summary>
+    /// The limits a prepared capture stops at (§12.1 S5), as the window states them: one the broker releases for keeping
+    /// <paramref name="rolling"/>'s window holds that window, and what its session gave up until the owner's next lease
+    /// renewal, <paramref name="renewal"/> apart, says so and the broker's next publication releases it.
+    /// </summary>
+    public static CaptureLimits Limits(BrokerEffectiveCaptureSummary summary, RollingRetentionPolicy? rolling, TimeSpan renewal)
+    {
+        ArgumentNullException.ThrowIfNull(summary);
+        return new(TimeSpan.FromSeconds(summary.Quota.MaximumDurationSeconds), summary.Quota.MaximumJournalBytes,
+            summary.Quota.MinimumFreeDiskBytes,
+            rolling is not null && summary.Retention == BrokerRetentionPolicy.ReleaseFollowed
+                ? new CaptureWindow(rolling, renewal + TimeSpan.FromMilliseconds(summary.PublicationIntervalMilliseconds))
+                : null);
+    }
 
     /// <summary>What a document states of the policy: its window, its releases, from when every record is kept, and why it stopped.</summary>
     public static RollingDocument? Describe(RollingRetention? rolling, SessionStore derived) => rolling is null ? null : new()

@@ -77,6 +77,13 @@ public sealed record SessionOverviewBundle(
     public string? Pinned { get; init; }
 
     /// <summary>
+    /// The pins standing on the session when it was projected (ADR-046), from which a capture keeping a window projects when
+    /// one stops it (<see cref="SessionGrowth.Headroom"/>); empty when none stands or they could not be read, which
+    /// <see cref="Pinned"/> then says.
+    /// </summary>
+    public IReadOnlyList<RetentionPin> Pins { get; init; } = [];
+
+    /// <summary>
     /// The process instances the capture's collectors are, InterCat's own (`collector-binding-v1`), and the collectors no
     /// instance is; none recorded for a capture that names none.
     /// </summary>
@@ -342,6 +349,7 @@ public static class SessionOverviewProjector
                         + "from every segment instead, which takes longer and gives the same result.",
                 }),
         ];
+        (string? pinned, IReadOnlyList<RetentionPin> pins) = PinsOf(store);
         return new SessionOverviewBundle(
             $"session:{manifest.SessionId:N}:generation:{manifest.Generation}:digest:{manifest.Digest}"
                 + $":relation:{TransportRelationIndex.RelationRule}:policy:{policy}",
@@ -376,7 +384,8 @@ public static class SessionOverviewProjector
             Size = SessionGrowth.Measure(manifest, rows),
             Retained = SessionGrowth.Retained(manifest),
             RetainedFromNanoseconds = SessionRecording.RetainedFromNanoseconds(manifest),
-            Pinned = PinnedStatement(store),
+            Pinned = pinned,
+            Pins = pins,
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
             Collectors = collectors,
@@ -541,15 +550,17 @@ public static class SessionOverviewProjector
     };
 
     /// <summary>The size line's sentence about the session's pins, or why they could not be read; null when none stands.</summary>
-    private static string? PinnedStatement(SessionStore store)
+    /// <summary>The pins standing on the session and the size line's sentence about them, or why they could not be read.</summary>
+    private static (string? Statement, IReadOnlyList<RetentionPin> Pins) PinsOf(SessionStore store)
     {
         try
         {
-            return RetentionPinText.SizeLine(store.Pins());
+            IReadOnlyList<RetentionPin> pins = store.Pins();
+            return (RetentionPinText.SizeLine(pins), pins);
         }
         catch (InvalidDataException exception)
         {
-            return RetentionPinText.Unreadable(exception.Message);
+            return (RetentionPinText.Unreadable(exception.Message), []);
         }
     }
 

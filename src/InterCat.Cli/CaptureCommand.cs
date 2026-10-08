@@ -214,9 +214,7 @@ internal static class CaptureCommand
         using LiveFollowHold? ticket = HoldTicket(captureId, evidencePath, sessionPath, status.LeaseExpiresAtUtc);
         (FollowStep? last, BrokerCaptureStatusResponse final, SessionStore? derived) =
             await FollowUntilClosedAsync(client, captureId, evidencePath, sessionPath, json, ticket,
-                    new CaptureLimits(TimeSpan.FromSeconds(request.Quota.MaximumDurationSeconds),
-                        request.Quota.MaximumJournalBytes, request.Quota.MinimumFreeDiskBytes),
-                    rolling, cancellationToken)
+                    RollingFollow.Limits(prepared.Summary, rolling?.Policy, LeaseRenewal), rolling, cancellationToken)
                 .ConfigureAwait(false);
 
         // The follow returns only once the capture is closed, and a closed capture publishes nothing more: a session that
@@ -266,9 +264,10 @@ internal static class CaptureCommand
     }
 
     /// <summary>
-    /// The derived session's size and, while the capture records under <paramref name="limits"/>, when they stop it: the
-    /// window's words for the same facts (§12.1 S5, R18). A progress line never ends a follow: a size that cannot be read
-    /// just now is said to be, and the next publication states it.
+    /// The derived session's size and, while the capture records under <paramref name="limits"/>, when they stop it - for
+    /// a capture keeping a window, when a pin keeping the session past it does too: the window's words for the same facts
+    /// (§12.1 S5, R18). A progress line never ends a follow: a size that cannot be read just now is said to be, and the
+    /// next publication states it; pins that cannot be read stop the follow's next release step, which says why.
     /// </summary>
     private static string Growth(SessionStore derived, long records, CaptureLimits? limits, string evidencePath, string sessionPath)
     {
@@ -281,13 +280,25 @@ internal static class CaptureCommand
                 && SessionSegments.SourceClock(derived.Root, manifest) is { } clock
                 && SessionRecording.Began(derived.Root, manifest, clock) is { } began
                     ? SessionGrowth.Headroom(size, began, DateTimeOffset.UtcNow, limits,
-                        RecordingVolume.Measure(evidencePath, sessionPath))
+                        RecordingVolume.Measure(evidencePath, sessionPath), limits.Window is null ? [] : PinsOf(derived))
                     : null;
             return SessionGrowth.Statement(size, headroom);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             return "Its size could not be read just now: " + exception.Message;
+        }
+    }
+
+    private static IReadOnlyList<RetentionPin> PinsOf(SessionStore derived)
+    {
+        try
+        {
+            return derived.Pins();
+        }
+        catch (InvalidDataException)
+        {
+            return [];
         }
     }
 

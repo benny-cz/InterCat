@@ -196,9 +196,9 @@ public partial class MainWindow
     /// <summary>States the pins now standing in the size line, until the session's next generation states them again.</summary>
     private void ShowPins(IReadOnlyList<RetentionPin> pins)
     {
-        if (growth is ({ } size, var began, var retained, _))
+        if (growth is ({ } size, var began, var retained, _, _))
         {
-            growth = (size, began, retained, RetentionPinText.SizeLine(pins));
+            growth = (size, began, retained, RetentionPinText.SizeLine(pins), pins);
             UpdateSessionGrowth();
         }
     }
