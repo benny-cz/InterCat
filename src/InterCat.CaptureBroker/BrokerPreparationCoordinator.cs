@@ -58,17 +58,24 @@ public sealed class BrokerPreparationCoordinator : IDisposable
     private readonly IBrokerCapturePlanSource source;
     private readonly PreparedPlanRegistry registry;
     private readonly BrokerRuntimeIdentity runtime;
+    private readonly IBrokerProcessReader? processes;
     private readonly SemaphoreSlim gate = new(1, 1);
     private bool disposed;
 
+    /// <param name="processes">
+    /// How the processes a content request names are read - whose they are and when they started - which a broker that
+    /// cannot read them leaves out, and then keeps no content (ADR-049).
+    /// </param>
     public BrokerPreparationCoordinator(
         IBrokerCapturePlanSource source,
         PreparedPlanRegistry registry,
-        BrokerRuntimeIdentity runtime)
+        BrokerRuntimeIdentity runtime,
+        IBrokerProcessReader? processes = null)
     {
         this.source = source ?? throw new ArgumentNullException(nameof(source));
         this.registry = registry ?? throw new ArgumentNullException(nameof(registry));
         this.runtime = runtime ?? throw new ArgumentNullException(nameof(runtime));
+        this.processes = processes;
     }
 
     public async ValueTask<BrokerCapabilitiesResponse> GetCapabilitiesAsync(
@@ -107,15 +114,36 @@ public sealed class BrokerPreparationCoordinator : IDisposable
             EffectiveCapturePlan effective = await source
                 .CompileAsync(BrokerPrepareRequestPolicy.ToProfileRequest(request), cancellationToken)
                 .ConfigureAwait(false);
+
+            // A content capture keeps content only from processes the client could read itself, each read from the process
+            // and named by its ID and its start (ADR-049); a plan that cannot start is refused for that instead.
+            IReadOnlyList<BrokerNamedProcess>? named = null;
+            string? contentRefusal = null;
+            if (effective is { Content: { } content, CanStart: true })
+            {
+                named = processes is null
+                    ? null
+                    : BrokerContentProcesses.Pin(client, content.ProcessIds, processes, out contentRefusal);
+                contentRefusal ??= named is null
+                    ? "This broker cannot read the processes a content request names, so it keeps no content."
+                    : null;
+            }
+
             BrokerEffectiveCaptureSummary summary = ToSummary(
-                effective, request.Quota, request.Retention, request.Publication, request.KeptWindowSeconds);
+                effective, request.Quota, request.Retention, request.Publication, request.KeptWindowSeconds, named);
+            if (contentRefusal is not null)
+            {
+                return new(false, BrokerPrepareRefusalCode.ContentProcessRefused, Bound(contentRefusal, 512), null, summary);
+            }
+
             BrokerPrepareResult preparation = BrokerPrepareCompiler.Prepare(
                 effective,
                 request.Quota,
                 request.Retention,
                 runtime,
                 request.Publication,
-                request.KeptWindowSeconds);
+                request.KeptWindowSeconds,
+                named);
             if (!preparation.IsPrepared)
             {
                 return new(false, preparation.Refusal!.Code, Bound(preparation.Refusal.Message, 512), null, summary);
@@ -179,7 +207,8 @@ public sealed class BrokerPreparationCoordinator : IDisposable
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
         BrokerJournalPublication publication,
-        int? keptWindowSeconds) =>
+        int? keptWindowSeconds,
+        IReadOnlyList<BrokerNamedProcess>? named = null) =>
         new(
             Bound(plan.RequestedProfileId, 64),
             BoundOptional(plan.EffectiveProfileId, 64),
@@ -209,7 +238,28 @@ public sealed class BrokerPreparationCoordinator : IDisposable
             Enum.IsDefined(publication) && quota.Validate() is null
                 ? BrokerJournalPublicationPolicy.IntervalMilliseconds(publication, quota.MaximumDurationSeconds, keptWindowSeconds)
                 : 0,
-            keptWindowSeconds);
+            keptWindowSeconds,
+            plan.Content is { } content ? ContentSummary(plan, content, named) : null);
+
+    /// <summary>
+    /// What a content capture keeps, for its review: when each requested process started, in their order, once the broker
+    /// read them, and none before.
+    /// </summary>
+    private static BrokerEffectiveContentSummary ContentSummary(
+        EffectiveCapturePlan plan,
+        ContentCaptureDecision content,
+        IReadOnlyList<BrokerNamedProcess>? named)
+    {
+        Dictionary<int, DateTimeOffset> started = (named ?? []).ToDictionary(process => process.ProcessId, process => process.StartedUtc);
+        IReadOnlyList<int> requested = plan.Scope.RequestedProcessIds;
+        return new(
+            Bound(content.SourceId, 256),
+            requested.Count > 0 && requested.All(started.ContainsKey) ? [.. requested.Select(processId => started[processId])] : [],
+            content.MaximumRecordBytes,
+            content.MaximumSessionBytes,
+            content.Inspection,
+            [.. content.ChannelSelectors.Take(64).Select(selector => Bound(selector, 256))]);
+    }
 
     private static string? BoundOptional(string? value, int maximumBytes) =>
         value is null ? null : Bound(value, maximumBytes);

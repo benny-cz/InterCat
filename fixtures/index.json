@@ -1190,7 +1190,9 @@
         "P18: the elevated broker can reach no importer, content view or UI, and its own code opens no ETL file"
       ],
       "P19": [
-        "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership"
+        "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership",
+        "P19: the broker keeps content only from processes the client could read itself - its own user's, in its own sign-in, at no higher integrity - read from each process, never the request",
+        "P19: the broker prepares a content capture only of its client's own processes, read from each, says when one is not, and states each one's start for the review"
       ],
       "P2": [
         "P2: a part that is not whole is shown with each gap in place, and no byte stands in for what is missing",
@@ -1379,6 +1381,7 @@
         "R16: a compacted log reopens at its new generation with the same state",
         "R16: a compaction interrupted before its replacement keeps the last durable snapshot",
         "R16: a completed request replays after compaction instead of starting a second capture",
+        "R16: a content plan keeps content only of the source its policy names, from one slot a descriptor sizes, and its other sources keep metadata only",
         "R16: a creation owner outside the trusted owners is refused before a root is created",
         "R16: a descriptor the broker cannot resolve exactly is unreadable, never assumed empty",
         "R16: a descriptor with no DACL grants everyone and is refused",
@@ -1405,6 +1408,7 @@
         "R16: a policy that names a trustee by alias is refused before a root is created",
         "R16: a policy with an unknown mandatory level is refused",
         "R16: a pre-existing directory with default inherited security is repaired and revalidated",
+        "R16: a prepared content capture is not started until the broker holds its processes, saying so, and nothing of it is kept",
         "R16: a privileged recording publishes evidence only, and a follower derives the session from it",
         "R16: a provisioned root carries a protected DACL and a no-write-up label",
         "R16: a published marker is read back, protected from retention and carried by re-derivation",
@@ -1632,6 +1636,8 @@
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
+        "R22: a content capture's review states what it keeps and each named process's start, all or none, every start once prepared",
+        "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
         "R22: a file an earlier version wrote keeps reading, with everything that version could hold",
         "R22: a kernel record whose payload names no owner binds to no instance, whatever its header says",
         "R22: a known address translation lets mirrored endpoints meet through it, and the candidate rests on it",
@@ -1652,6 +1658,8 @@
         "R22: a person accepts or rejects a candidate join as a kept revision, and re-aligning flags it for review",
         "R22: a person chooses the sessions a package copies, and one that moved on is copied as it is, still to relink",
         "R22: a port reused by a later connection is another connection, paired with its own other end",
+        "R22: a prepared content plan keeps one source's content under its request's limits, of processes each named by its ID and start, which its digest covers",
+        "R22: a process a content capture names is its ID and its start, so one whose ID now names a later process, or that is no longer the client's, refuses the start",
         "R22: a process filter is held to running processes, each held open so its ID stays its own",
         "R22: a process's HTTP exchanges are its numbers' uses in time, each part recorded whole or said not to be",
         "R22: a process's RPC channels are its own calls by side and interface, keyed by instance",

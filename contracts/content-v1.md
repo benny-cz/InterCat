@@ -195,8 +195,8 @@ the source can hold: a source that cannot select channels before anything is kep
 `*`, every channel of the named processes, and any other selector is refused. The source's provider is enabled for
 the named processes alone, by the session's process filter; lifecycle stays whole-machine metadata. With
 `--evidence-only` the elevated recorder publishes the content beside its chunks, and `icat follow` derives the session
-with it (§2). The broker previews such a request and never starts it: its prepared plan admits the reviewed
-metadata-only policy alone (`contracts/broker-v1.md` §2).
+with it (§2). Since revision 451 the broker prepares such a request only of its client's own processes, each named by
+its ID and its start, and digests the policy (`contracts/broker-v1.md` §2.1, ADR-049); it does not start one yet.
 
 | | |
 |---|---|

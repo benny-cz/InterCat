@@ -73,7 +73,9 @@ public sealed class PreparedCapturePlan
         bool preserveExtendedData,
         bool requestCallStacks,
         string digest,
-        int? keptWindowSeconds = null)
+        int? keptWindowSeconds = null,
+        ContentCaptureDecision? content = null,
+        ImmutableArray<BrokerNamedProcess> contentProcesses = default)
     {
         ProtocolVersion = BrokerProtocol.Version;
         CompiledAtUtc = compiledAtUtc;
@@ -98,6 +100,8 @@ public sealed class PreparedCapturePlan
         PreserveExtendedData = preserveExtendedData;
         RequestCallStacks = requestCallStacks;
         Digest = digest;
+        Content = content;
+        ContentProcesses = contentProcesses.IsDefault ? [] : contentProcesses;
     }
 
     public int ProtocolVersion { get; }
@@ -131,6 +135,15 @@ public sealed class PreparedCapturePlan
     public bool PreserveExtendedData { get; }
     public bool RequestCallStacks { get; }
     public string Digest { get; }
+
+    /// <summary>What a content capture keeps: its source, processes, limits and inspection consent; null for every other.</summary>
+    public ContentCaptureDecision? Content { get; }
+
+    /// <summary>
+    /// The processes a content capture keeps content from, each its ID and its start as the broker read them from the
+    /// process (ADR-049); empty for every other capture.
+    /// </summary>
+    public ImmutableArray<BrokerNamedProcess> ContentProcesses { get; }
 }
 
 /// <summary>
@@ -149,13 +162,14 @@ public static class BrokerPrepareCompiler
         BrokerRetentionPolicy retention,
         BrokerRuntimeIdentity? runtime = null,
         BrokerJournalPublication publication = BrokerJournalPublication.OnStop,
-        int? keptWindowSeconds = null)
+        int? keptWindowSeconds = null,
+        IReadOnlyList<BrokerNamedProcess>? contentProcesses = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         ArgumentNullException.ThrowIfNull(quota);
         runtime ??= BrokerRuntimeIdentity.Current();
 
-        BrokerPrepareResult? refusal = Validate(plan, quota, retention, runtime);
+        BrokerPrepareResult? refusal = Validate(plan, quota, retention, runtime, contentProcesses);
         if (refusal is null && !Enum.IsDefined(publication))
         {
             refusal = Refused(
@@ -196,6 +210,10 @@ public static class BrokerPrepareCompiler
                 .Select(Clone),
         ];
         CaptureScopeDecision scope = Clone(plan.Scope);
+        ContentCaptureDecision? content = plan.Content is null ? null : Clone(plan.Content);
+        ImmutableArray<BrokerNamedProcess> named = content is null
+            ? []
+            : [.. contentProcesses!.OrderBy(process => process.ProcessId)];
         string digest = PreparedPlanDigest.Compute(
             plan.CompiledAtUtc,
             plan.Environment.BuildId,
@@ -214,7 +232,9 @@ public static class BrokerPrepareCompiler
             scope,
             plan.PreserveExtendedData,
             plan.RequestCallStacks,
-            keptWindowSeconds);
+            keptWindowSeconds,
+            content,
+            named);
 
         return BrokerPrepareResult.Prepared(new(
             plan.CompiledAtUtc,
@@ -235,14 +255,17 @@ public static class BrokerPrepareCompiler
             plan.PreserveExtendedData,
             plan.RequestCallStacks,
             digest,
-            keptWindowSeconds));
+            keptWindowSeconds,
+            content,
+            named));
     }
 
     private static BrokerPrepareResult? Validate(
         EffectiveCapturePlan plan,
         BrokerCaptureQuota quota,
         BrokerRetentionPolicy retention,
-        BrokerRuntimeIdentity runtime)
+        BrokerRuntimeIdentity runtime,
+        IReadOnlyList<BrokerNamedProcess>? contentProcesses)
     {
         if (string.IsNullOrWhiteSpace(runtime.BuildId)
             || string.IsNullOrWhiteSpace(runtime.Architecture)
@@ -306,11 +329,18 @@ public static class BrokerPrepareCompiler
                 $"The plan uses adapter '{plan.AdapterVersion}', but the broker uses '{runtime.AdapterVersion}'. Re-probe and review the effective plan.");
         }
 
-        if (plan.Content is not null)
+        // A content capture keeps content only from processes the broker read and found to be its client's own, each
+        // named by its ID and start (ADR-049); no other plan names a process that way.
+        if (plan.Content is not null && ValidateContent(plan, contentProcesses) is { } contentProblem)
+        {
+            return Refused(BrokerPrepareRefusalCode.InvalidCapturePlan, contentProblem);
+        }
+
+        if (plan.Content is null && contentProcesses is { Count: > 0 })
         {
             return Refused(
-                BrokerPrepareRefusalCode.UnsupportedContentCapture,
-                "Broker protocol v1 does not prepare content capture. Request-preview consent is not capture authorization.");
+                BrokerPrepareRefusalCode.InvalidCapturePlan,
+                "Processes were named for content, but the plan keeps none.");
         }
 
         if (plan.OriginalEvidence.Requested || plan.OriginalEvidence.WillStart)
@@ -385,11 +415,101 @@ public static class BrokerPrepareCompiler
             : Refused(BrokerPrepareRefusalCode.InvalidCapturePlan, providerProblem);
     }
 
+    private static string? ValidateContent(EffectiveCapturePlan plan, IReadOnlyList<BrokerNamedProcess>? named)
+    {
+        ContentCaptureDecision content = plan.Content!;
+        CompiledBodyAdmissionPolicy? policy = plan.BodyPolicy;
+        if (CaptureProfileCatalog.Find(plan.EffectiveProfileId ?? string.Empty)?.Kind != CaptureProfileKind.Content
+            || !content.AdmissionPolicyAvailable
+            || !content.SourceEvidenceComplete
+            || content.Retention != ContentRetentionMode.StopAtLimit
+            || policy is null
+            || !string.Equals(policy.PolicyId, CaptureBodyAdmissionPolicies.ScopedContentRequestPolicyId, StringComparison.Ordinal)
+            || policy.ContentSourceIds is not [{ } kept]
+            || !string.Equals(kept, content.SourceId, StringComparison.Ordinal)
+            || policy.ContentRecordLimit != content.MaximumRecordBytes
+            || policy.ContentSessionLimit != content.MaximumSessionBytes
+            || policy.ContentInspection != content.Inspection
+            || plan.Sources?.Any(source => string.Equals(source.SourceId, content.SourceId, StringComparison.Ordinal)) != true)
+        {
+            return "A content plan keeps its one admitted source's content under the request's limits and consent alone.";
+        }
+
+        if (!ValidProcessIds(content.ProcessIds)
+            || content.ProcessIds.Count == 0
+            || named is null
+            || named.Any(process => process is null || process.StartedUtc == default)
+            || !named.Select(process => process.ProcessId).Order().SequenceEqual(content.ProcessIds.Order()))
+        {
+            return "A content plan names each of its processes by its ID and its start, as the broker read them.";
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// A content capture's scope (ADR-037): its content source filtered to the named processes before anything is kept,
+    /// and every other source the whole machine's lifecycle metadata the named processes' identity rests on, which needs
+    /// no broader-capture consent because it keeps nothing of theirs but their lifetimes.
+    /// </summary>
+    private static string? ValidateContentScope(EffectiveCapturePlan plan, ContentCaptureDecision content)
+    {
+        CaptureScopeDecision scope = plan.Scope;
+        int[] processIds = [.. content.ProcessIds.Order()];
+        if (!scope.RequestedProcessIds.Order().SequenceEqual(processIds)
+            || !scope.InitialViewProcessIds.Order().SequenceEqual(processIds)
+            || scope.RequestedMechanism != scope.EffectiveMechanism
+            || scope.BroaderCaptureNeedsConsent
+            || scope.BroaderCaptureAccepted
+            || scope.Sources is null
+            || scope.Sources.Count != plan.Sources.Count
+            || scope.Sources.Select(source => source.SourceId).Distinct(StringComparer.Ordinal).Count() != scope.Sources.Count
+            || scope.CapturesOutsideRequestedProcesses != scope.Sources.Any(source => source.CapturesOutsideRequestedProcesses))
+        {
+            return "A content plan's scope is its named processes, with no broader capture to consent to.";
+        }
+
+        Dictionary<string, ProviderEnablementRequest> providers;
+        try
+        {
+            providers = plan.Providers.ToDictionary(provider => provider.SourceId, StringComparer.Ordinal);
+        }
+        catch (ArgumentException)
+        {
+            return "Provider source IDs must be unique.";
+        }
+
+        foreach (ProviderScopeDecision source in scope.Sources)
+        {
+            bool keepsContent = string.Equals(source.SourceId, content.SourceId, StringComparison.Ordinal);
+            if (!providers.TryGetValue(source.SourceId, out ProviderEnablementRequest? provider)
+                || !Enum.IsDefined(source.ProcessScope)
+                || (keepsContent
+                    ? source.ProcessScope != ProviderProcessScope.ProcessFiltered
+                        || source.CapturesOutsideRequestedProcesses
+                        || !source.AppliedProcessIds.Order().SequenceEqual(processIds)
+                        || !provider.ProcessIdsToInclude.Order().SequenceEqual(processIds)
+                    : source.ProcessScope != ProviderProcessScope.WholeMachineRequiredContext
+                        || !source.CapturesOutsideRequestedProcesses
+                        || source.AppliedProcessIds.Count != 0
+                        || provider.ProcessIdsToInclude.Count != 0))
+            {
+                return $"Source '{source.SourceId}' is not scoped as a content capture's: its content to the named processes, "
+                    + "any other source to the lifecycle metadata they rest on.";
+            }
+        }
+
+        return null;
+    }
+
     private static string? ValidateProfile(EffectiveCapturePlan plan)
     {
+        // A content request's profile compiles only with its request, which names its sources: the lifecycle its named
+        // processes' identity rests on, and the one source whose content is kept (ADR-037).
         CaptureProfileDescriptor? profile = CaptureProfileCatalog.Find(plan.EffectiveProfileId!);
+        bool content = profile is { Kind: CaptureProfileKind.Content } && plan.Content is not null;
         if (profile is null
-            || !profile.CompilationAvailable
+            || !(profile.CompilationAvailable || content)
             || profile.Admission != plan.EffectiveAdmission
             || profile.PreserveExtendedData != plan.PreserveExtendedData
             || profile.RequestCallStacks != plan.RequestCallStacks)
@@ -397,16 +517,26 @@ public static class BrokerPrepareCompiler
             return $"Effective profile '{plan.EffectiveProfileId}' does not match a startable catalog profile.";
         }
 
+        string[] required = content ? [WindowsSourceCatalog.KernelProcessSourceId, plan.Content!.SourceId] : [];
         HashSet<string> admitted = [.. plan.Sources.Select(source => source.SourceId)];
-        if (profile.Sources.Any(requirement => requirement.Required && !admitted.Contains(requirement.SourceId))
-            || admitted.Any(sourceId => !profile.Sources.Any(requirement =>
-                string.Equals(requirement.SourceId, sourceId, StringComparison.Ordinal))))
+        if (content
+                ? !admitted.SetEquals(required)
+                : profile.Sources.Any(requirement => requirement.Required && !admitted.Contains(requirement.SourceId))
+                    || admitted.Any(sourceId => !profile.Sources.Any(requirement =>
+                        string.Equals(requirement.SourceId, sourceId, StringComparison.Ordinal))))
         {
             return $"Effective profile '{profile.Id}' does not contain its exact required/allowlisted source set.";
         }
 
         return null;
     }
+
+    /// <summary>
+    /// The policy a source's descriptors carry: a scoped content policy reaches only the source it keeps content of, and
+    /// every other source of the capture keeps metadata only (ADR-036).
+    /// </summary>
+    private static CompiledBodyAdmissionPolicy PolicyOf(CompiledBodyAdmissionPolicy bodyPolicy, string sourceId) =>
+        bodyPolicy.KeepsContent && !bodyPolicy.KeepsContentOf(sourceId) ? CaptureBodyAdmissionPolicies.MetadataOnly : bodyPolicy;
 
     private static string? ValidateSources(
         IReadOnlyList<SourceAdmissionPlan> sources,
@@ -456,7 +586,7 @@ public static class BrokerPrepareCompiler
                     || !IsSha256Identity(item.SchemaFingerprint)
                     || item.Slots is null
                     || item.Slots.Count > AdmissionPlanCompiler.MaximumSlots
-                    || !BodyPoliciesEqual(bodyPolicy, item.BodyPolicy))
+                    || !BodyPoliciesEqual(PolicyOf(bodyPolicy, source.SourceId), item.BodyPolicy))
                 {
                     return $"Source '{source.SourceId}' contains an invalid admitted descriptor.";
                 }
@@ -467,6 +597,14 @@ public static class BrokerPrepareCompiler
                     return $"Descriptor {source.ProviderGuid:D}/{item.EventId}/v{item.Version} admits more addresses than a record holds.";
                 }
 
+                // Content is kept only of the source the policy names, from one slot a descriptor sizes by a length field
+                // before it (ADR-036).
+                int contentSlots = item.Slots.Count(slot => slot.Kind == AdmittedSlotKind.Content);
+                if (contentSlots > (bodyPolicy.KeepsContentOf(source.SourceId) ? 1 : 0))
+                {
+                    return $"Descriptor {source.ProviderGuid:D}/{item.EventId}/v{item.Version} keeps content its policy does not admit.";
+                }
+
                 foreach (AdmittedSlotPlan slot in item.Slots)
                 {
                     int minimumWidth = slot.Kind switch
@@ -475,6 +613,7 @@ public static class BrokerPrepareCompiler
                         AdmittedSlotKind.AnsiResourceName => 1,
                         AdmittedSlotKind.ResourceNameAfterSid => AdmissionPlanCompiler.MinimumSidLength,
                         AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => 16,
+                        AdmittedSlotKind.Content => 0,
                         _ => slot.Width,
                     };
                     bool widthValid = slot.Kind switch
@@ -484,6 +623,12 @@ public static class BrokerPrepareCompiler
                             or AdmittedSlotKind.AnsiResourceName
                             or AdmittedSlotKind.ResourceNameAfterSid => slot.Width == 0,
                         AdmittedSlotKind.Identifier or AdmittedSlotKind.Address128 => slot.Width == 16,
+                        AdmittedSlotKind.Content => slot.Width == 0
+                            && slot.LengthOffset is >= 0 and { } lengthOffset
+                            && slot.LengthWidth is 1 or 2 or 4 or 8
+                            && lengthOffset + slot.LengthWidth.Value <= slot.Offset
+                            && slot.ContentClassification is { } classification && Enum.IsDefined(classification)
+                            && slot.ContentEncoding is { } encoding && Enum.IsDefined(encoding),
                         _ => false,
                     };
                     if (string.IsNullOrWhiteSpace(slot.FieldName)
@@ -507,6 +652,11 @@ public static class BrokerPrepareCompiler
 
     private static string? ValidateScope(EffectiveCapturePlan plan)
     {
+        if (plan.Content is { } content)
+        {
+            return ValidateContentScope(plan, content);
+        }
+
         CaptureScopeDecision scope = plan.Scope;
         if (!ValidProcessIds(scope.RequestedProcessIds)
             || !ValidProcessIds(scope.InitialViewProcessIds)
@@ -659,7 +809,11 @@ public static class BrokerPrepareCompiler
         && left.RetainedBody == right.RetainedBody
         && left.MaximumRetainedBodyBytes == right.MaximumRetainedBodyBytes
         && left.RetainsOriginalSourceBytes == right.RetainsOriginalSourceBytes
-        && left.PermittedExtendedDataTypes.Order().SequenceEqual(right.PermittedExtendedDataTypes.Order());
+        && left.PermittedExtendedDataTypes.Order().SequenceEqual(right.PermittedExtendedDataTypes.Order())
+        && left.ContentRecordLimit == right.ContentRecordLimit
+        && left.ContentSessionLimit == right.ContentSessionLimit
+        && left.ContentInspection == right.ContentInspection
+        && left.ContentSourceIds.SequenceEqual(right.ContentSourceIds, StringComparer.Ordinal);
 
     private static bool ValidProcessIds(IReadOnlyList<int>? processIds) =>
         processIds is not null
@@ -682,6 +836,7 @@ public static class BrokerPrepareCompiler
     private static CompiledBodyAdmissionPolicy Clone(CompiledBodyAdmissionPolicy policy) => policy with
     {
         PermittedExtendedDataTypes = [.. policy.PermittedExtendedDataTypes.Order()],
+        ContentSourceIds = [.. policy.ContentSourceIds],
     };
 
     private static SourceAdmissionPlan Clone(SourceAdmissionPlan source, CompiledBodyAdmissionPolicy bodyPolicy) => source with
@@ -693,7 +848,9 @@ public static class BrokerPrepareCompiler
                 .ThenBy(item => item.Version)
                 .Select(item => item with
                 {
-                    BodyPolicy = bodyPolicy,
+                    BodyPolicy = bodyPolicy.KeepsContent && !bodyPolicy.KeepsContentOf(source.SourceId)
+                        ? Clone(CaptureBodyAdmissionPolicies.MetadataOnly)
+                        : bodyPolicy,
                     Slots = [.. item.Slots],
                     FieldReport = [.. item.FieldReport.Select(field => field with { })],
                 }),
@@ -706,6 +863,15 @@ public static class BrokerPrepareCompiler
         EventIdsToEnable = [.. provider.EventIdsToEnable.Distinct().Order()],
         EventIdsToDisable = [.. provider.EventIdsToDisable.Distinct().Order()],
         ProcessIdsToInclude = [.. provider.ProcessIdsToInclude.Order()],
+    };
+
+    private static ContentCaptureDecision Clone(ContentCaptureDecision content) => content with
+    {
+        ProcessIds = [.. content.ProcessIds.Order()],
+        ChannelSelectors = [.. content.ChannelSelectors],
+        ApprovedEventIds = [.. content.ApprovedEventIds],
+        ApprovedSourceFields = [.. content.ApprovedSourceFields],
+        ApprovedClassifications = [.. content.ApprovedClassifications],
     };
 
     private static CaptureScopeDecision Clone(CaptureScopeDecision scope) => scope with
@@ -741,7 +907,9 @@ internal static class PreparedPlanDigest
         CaptureScopeDecision scope,
         bool preserveExtendedData,
         bool requestCallStacks,
-        int? keptWindowSeconds = null)
+        int? keptWindowSeconds = null,
+        ContentCaptureDecision? content = null,
+        ImmutableArray<BrokerNamedProcess> contentProcesses = default)
     {
         using var stream = new MemoryStream(4096);
         using (var writer = new BinaryWriter(stream, new UTF8Encoding(false, true), leaveOpen: true))
@@ -826,10 +994,71 @@ internal static class PreparedPlanDigest
                 WriteString(writer, "kept-window");
                 writer.Write(kept);
             }
+
+            // What a content capture keeps, and of which processes, each its ID and its start (ADR-049): last, and only for
+            // a content plan, so every other plan keeps the digest it always had.
+            if (content is not null)
+            {
+                WriteContent(writer, content, contentProcesses.IsDefault ? [] : contentProcesses, bodyPolicy, sources);
+            }
         }
 
         byte[] digest = SHA256.HashData(stream.GetBuffer().AsSpan(0, checked((int)stream.Length)));
         return BrokerProtocol.PreparedPlanDigestAlgorithm + ":" + Convert.ToHexStringLower(digest);
+    }
+
+    private static void WriteContent(
+        BinaryWriter writer,
+        ContentCaptureDecision content,
+        ImmutableArray<BrokerNamedProcess> processes,
+        CompiledBodyAdmissionPolicy bodyPolicy,
+        ImmutableArray<SourceAdmissionPlan> sources)
+    {
+        WriteString(writer, "content");
+        WriteString(writer, content.SourceId);
+        writer.Write((int)content.Mechanism);
+        writer.Write(processes.Length);
+        foreach (BrokerNamedProcess process in processes)
+        {
+            writer.Write(process.ProcessId);
+            writer.Write(process.StartedUtc.UtcTicks);
+        }
+
+        writer.Write(content.ChannelSelectors.Count);
+        foreach (string selector in content.ChannelSelectors)
+        {
+            WriteString(writer, selector);
+        }
+
+        // The policy's limits and consent are the request's, which a content plan is refused unless they are.
+        writer.Write(content.MaximumRecordBytes);
+        writer.Write(content.MaximumSessionBytes);
+        writer.Write((int)content.Retention);
+        writer.Write((int)content.Inspection);
+        writer.Write(bodyPolicy.ContentSourceIds.Count);
+        foreach (string sourceId in bodyPolicy.ContentSourceIds)
+        {
+            WriteString(writer, sourceId);
+        }
+
+        // Each content slot's length field, classification and encoding, which the slot's own digest leaves out.
+        foreach (SourceAdmissionPlan source in sources)
+        {
+            foreach (AdmittedEventPlan item in source.Events)
+            {
+                foreach (AdmittedSlotPlan slot in item.Slots.Where(slot => slot.Kind == AdmittedSlotKind.Content))
+                {
+                    writer.Write(source.SourceIndex);
+                    writer.Write(item.EventId);
+                    writer.Write(item.Version);
+                    WriteString(writer, slot.FieldName);
+                    writer.Write(slot.LengthOffset ?? -1);
+                    writer.Write(slot.LengthWidth ?? -1);
+                    WriteNullableEnum(writer, slot.ContentClassification);
+                    WriteNullableEnum(writer, slot.ContentEncoding);
+                }
+            }
+        }
     }
 
     private static void WriteScope(BinaryWriter writer, CaptureScopeDecision scope)

@@ -70,6 +70,69 @@ internal static class BrokerPlanFixture
             new FixedTimeProvider(new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero)));
     }
 
+    /// <summary>A content request for WinINet's HTTP messages of the named processes, within 4 KiB a record and 16 MiB in all.</summary>
+    public static ContentCaptureRequest ContentRequest(IReadOnlyList<int>? processIds = null) => new()
+    {
+        SourceId = WindowsSourceCatalog.WinInetCaptureSourceId,
+        Mechanism = Mechanism.Http,
+        ProcessIds = processIds ?? [4_242],
+        ChannelSelectors = [ContentCapturePolicyCompiler.EveryChannel],
+        MaximumRecordBytes = 4_096,
+        MaximumSessionBytes = 16L * 1024 * 1024,
+        Retention = ContentRetentionMode.StopAtLimit,
+        Inspection = ContentInspectionMode.HexAndText,
+    };
+
+    /// <summary>
+    /// A content plan of WinINet's capture provider, compiled from the layout its registration gives (ADR-037), beside the
+    /// lifecycle its processes' identity rests on.
+    /// </summary>
+    public static EffectiveCapturePlan CompileContent(ContentCaptureRequest? request = null)
+    {
+        request ??= ContentRequest();
+        CompiledBodyAdmissionPolicy policy = CaptureBodyAdmissionPolicies.ScopedContentRequest(ContentCapturePolicyCompiler.Compile(request));
+        SourceAdmissionPlan process = BuildPlan(
+            WindowsSourceCatalog.KernelProcessSourceId,
+            Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716"),
+            0,
+            1);
+        SourceAdmissionPlan http = AdmissionPlanCompiler.Compile(
+            WindowsSourceCatalog.Find(WindowsSourceCatalog.WinInetCaptureSourceId)!,
+            ManifestParser.Parse(WinInetManifest),
+            1,
+            bodyPolicy: policy);
+        return CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.Content, Content: request),
+            new SourcePlanCompilation([process, http], []),
+            Environment,
+            new FixedTimeProvider(new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero)));
+    }
+
+    // WinINet's capture provider as TDH gave its layout on Windows 10.0.26220 (ADR-037).
+    private const string WinInetManifest = """
+        <instrumentationManifest xmlns="http://schemas.microsoft.com/win/2004/08/events">
+         <instrumentation><events>
+          <provider name="Microsoft-Windows-WinINet-Capture" guid="{a70ff94f-570b-4979-ba5c-e59c9feab61b}">
+           <templates>
+            <template tid="Capture">
+             <data name="SessionId" inType="win:UInt32" />
+             <data name="SequenceNumber" inType="win:UInt32" />
+             <data name="Flags" inType="win:UInt32" />
+             <data name="PayloadByteLength" inType="win:UInt32" />
+             <data name="Payload" inType="win:Binary" length="PayloadByteLength" />
+            </template>
+           </templates>
+           <events>
+            <event value="2001" version="0" level="win:Informational" template="Capture" />
+            <event value="2002" version="0" level="win:Informational" template="Capture" />
+            <event value="2003" version="0" level="win:Informational" template="Capture" />
+            <event value="2004" version="0" level="win:Informational" template="Capture" />
+           </events>
+          </provider>
+         </events></instrumentation>
+        </instrumentationManifest>
+        """;
+
     private static SourceAdmissionPlan BuildPlan(
         string sourceId,
         Guid providerGuid,

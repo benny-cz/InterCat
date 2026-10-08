@@ -333,6 +333,58 @@ public sealed class BrokerWireResponseTests
         [new("explore", "Explore", AdmissionMode.MetadataOnly, true, true, "Safe metadata.", null)],
         [new(Mechanism.Tcp, CapabilityState.Available, CapabilityTier.TrafficVisualization, "Measured TCP.", null)]);
 
+    [Fact(DisplayName = "R22: a content capture's review states what it keeps and each named process's start, all or none, every start once prepared")]
+    public void AContentSummaryNamesEachProcessByItsStart()
+    {
+        DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        static BrokerPrepareCaptureResponse Prepared(BrokerEffectiveCaptureSummary summary) =>
+            new(true, null, null, new(new string('A', 43), Digest('a'), Now, Now.AddSeconds(30)), summary);
+        static BrokerPrepareCaptureResponse Refused(BrokerEffectiveCaptureSummary summary) =>
+            new(false, BrokerPrepareRefusalCode.ContentProcessRefused, "Process 84 runs as another user.", null, summary);
+        static BrokerPrepareCaptureResponse RoundTrip(BrokerPrepareCaptureResponse response) =>
+            Assert.IsType<BrokerPrepareCaptureResponse>(
+                BrokerWireResponseCodec.Decode(BrokerWireResponseCodec.Encode(response, Guid.NewGuid())));
+
+        BrokerEffectiveCaptureSummary content = Summary() with
+        {
+            RequestedProfileId = "content",
+            EffectiveProfileId = "content",
+            RequestedAdmission = AdmissionMode.ScopedContent,
+            EffectiveAdmission = AdmissionMode.ScopedContent,
+            RequestedMechanism = null,
+            EffectiveMechanism = null,
+            RequestedProcessIds = [84, 85],
+            InitialViewProcessIds = [84, 85],
+            Content = new(WindowsSourceCatalog.WinInetCaptureSourceId, [started, started.AddSeconds(2)], 4_096, 16L * 1024 * 1024,
+                ContentInspectionMode.HexAndText, ["*"]),
+        };
+        BrokerEffectiveContentSummary decoded = RoundTrip(Prepared(content)).Summary.Content!;
+        Assert.Equal((WindowsSourceCatalog.WinInetCaptureSourceId, 4_096, 16L * 1024 * 1024, ContentInspectionMode.HexAndText),
+            (decoded.SourceId, decoded.MaximumRecordBytes, decoded.MaximumSessionBytes, decoded.Inspection));
+        Assert.Equal([started, started.AddSeconds(2)], decoded.ProcessStartsUtc);
+        Assert.Equal(["*"], decoded.ChannelSelectors);
+
+        // A refusal before the broker read its processes states none of their starts; a prepared one states every one.
+        Assert.Empty(RoundTrip(Refused(content with { Content = content.Content with { ProcessStartsUtc = [] } })).Summary.Content!
+            .ProcessStartsUtc);
+        foreach (BrokerPrepareCaptureResponse invalid in new[]
+        {
+            Prepared(content with { Content = content.Content with { ProcessStartsUtc = [] } }),
+            Prepared(content with { Content = content.Content with { ProcessStartsUtc = [started] } }),
+            Refused(content with { Content = content.Content with { ProcessStartsUtc = [started] } }),
+            Prepared(content with { Content = content.Content with { MaximumSessionBytes = 1_024 } }),
+            Prepared(content with { Content = content.Content with { Inspection = (ContentInspectionMode)9 } }),
+            Prepared(content with { RequestedAdmission = AdmissionMode.MetadataOnly }),
+            Prepared(content with { Content = null }),
+        })
+        {
+            Assert.Throws<InvalidDataException>(() => RoundTrip(invalid));
+        }
+
+        // A review without content states none, as one from a broker that predates the fields does.
+        Assert.Null(RoundTrip(Prepared(Summary())).Summary.Content);
+    }
+
     private static BrokerEffectiveCaptureSummary Summary() => new(
         "focused-transport",
         "focused-transport",

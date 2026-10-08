@@ -85,6 +85,22 @@ public sealed partial class ProcessHolds : IDisposable
         return true;
     }
 
+    /// <summary>
+    /// Reads a held process through the handle that holds it - when it started, whose it is - never through another
+    /// handle opened by its ID, which a reader cannot be sure names the same process (R22).
+    /// </summary>
+    public T Read<T>(int processId, Func<SafeProcessHandle, T> read)
+    {
+        ArgumentNullException.ThrowIfNull(read);
+        lock (gate)
+        {
+            ObjectDisposedException.ThrowIf(disposed, this);
+            return held.TryGetValue(processId, out SafeProcessHandle? handle)
+                ? read(handle)
+                : throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture, $"Process {processId} is not held."));
+        }
+    }
+
     /// <summary>Lets every held process go: only once nothing can deliver a record through its ID any more.</summary>
     public void Dispose()
     {

@@ -65,14 +65,7 @@ public static class BrokerPrepareRequestPolicy
                 throw new InvalidDataException(contentProblem);
             }
 
-            // A request that would keep content records through icat record only: the broker's prepared plan admits the
-            // reviewed metadata-only policy alone (broker-v1 §2), so the broker previews such a request and never starts
-            // it (ADR-036, ADR-037). An evidence session's follower mirrors content since ADR-047.
-            if (ContentCapturePolicyCompiler.Compile(request.Content!).AdmissionPolicyAvailable)
-            {
-                throw new InvalidDataException(
-                    "A content capture records through icat record only; the capture broker does not prepare one.");
-            }
+            // Its processes are checked where they can be read: prepare keeps content only from the client's own (ADR-049).
         }
         else if (request.Content is not null)
         {

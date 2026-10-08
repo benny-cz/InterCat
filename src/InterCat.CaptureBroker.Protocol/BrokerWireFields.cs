@@ -14,6 +14,7 @@ internal enum BrokerWireType : byte
     Int32List = 7,
     Utf8List = 8,
     Int32ListList = 9,
+    Int64List = 10,
 }
 
 [Flags]
@@ -85,6 +86,19 @@ internal sealed class BrokerWireFieldWriter : IDisposable
         }
 
         Write(fieldId, BrokerWireType.Int32List, required, bytes);
+    }
+
+    public void WriteInt64List(ushort fieldId, IReadOnlyList<long> values, bool required = true)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        byte[] bytes = new byte[checked(4 + values.Count * 8)];
+        BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(0, 4), values.Count);
+        for (int index = 0; index < values.Count; index++)
+        {
+            BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(4 + index * 8, 8), values[index]);
+        }
+
+        Write(fieldId, BrokerWireType.Int64List, required, bytes);
     }
 
     public void WriteStringList(ushort fieldId, IReadOnlyList<string> values, bool required = true)
@@ -322,6 +336,33 @@ internal sealed class BrokerWireFieldSet
         }
 
         return OptionalInt32List(fieldId, maximumCount);
+    }
+
+    public IReadOnlyList<long> RequiredInt64List(ushort fieldId, int maximumCount)
+    {
+        if (!fields.TryGetValue(fieldId, out Field? field))
+        {
+            throw new InvalidDataException($"Required broker wire field {fieldId} is missing.");
+        }
+
+        if (field.Type != BrokerWireType.Int64List || field.Value.Length < 4)
+        {
+            throw new InvalidDataException($"Integer-list field {fieldId} is invalid.");
+        }
+
+        int count = BinaryPrimitives.ReadInt32LittleEndian(field.Value.AsSpan(0, 4));
+        if (count is < 0 || count > maximumCount || field.Value.Length != 4 + (count * 8))
+        {
+            throw new InvalidDataException($"Integer-list field {fieldId} exceeds its count or byte bound.");
+        }
+
+        var values = new long[count];
+        for (int index = 0; index < count; index++)
+        {
+            values[index] = BinaryPrimitives.ReadInt64LittleEndian(field.Value.AsSpan(4 + (index * 8), 8));
+        }
+
+        return values;
     }
 
     public IReadOnlyList<string> OptionalStringList(

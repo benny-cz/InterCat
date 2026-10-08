@@ -13,7 +13,8 @@ public sealed record BrokerProcessDependencies(
     IEtwSessionHost EtwHost,
     IEtwSessionReclaimer EtwReclaimer,
     IBrokerCapturePlanSource PlanSource,
-    BrokerRuntimeIdentity RuntimeIdentity)
+    BrokerRuntimeIdentity RuntimeIdentity,
+    IBrokerProcessReader? ProcessReader = null)
 {
     public static BrokerProcessDependencies Production(BrokerOwnerIdentity owner)
     {
@@ -25,7 +26,8 @@ public sealed record BrokerProcessDependencies(
             new WindowsBrokerCapturePlanSource(
                 new CapabilityInventoryProbe(new TdhEtwMetadataSource()),
                 CapabilityInventoryProbe.DescribeEnvironment(etw.IsElevated)),
-            BrokerRuntimeIdentity.Current());
+            BrokerRuntimeIdentity.Current(),
+            new WindowsBrokerProcessReader());
     }
 }
 
@@ -200,7 +202,8 @@ public static class BrokerProcess
                 using var preparation = new BrokerPreparationCoordinator(
                     dependencies.PlanSource,
                     registry,
-                    dependencies.RuntimeIdentity);
+                    dependencies.RuntimeIdentity,
+                    dependencies.ProcessReader);
                 using var lifecycle = new BrokerLifecycleCoordinator(registry, store, runtime);
                 var settings = new BrokerHostSettings
                 {

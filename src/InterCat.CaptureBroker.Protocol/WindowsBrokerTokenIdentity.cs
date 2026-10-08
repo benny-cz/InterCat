@@ -71,6 +71,42 @@ public static partial class WindowsBrokerTokenIdentity
         return identity;
     }
 
+    /// <summary>
+    /// The user, logon session and integrity the primary token of <paramref name="process"/> states, opened with query
+    /// rights alone through a handle the caller opened itself (ADR-049): what a process is, never what a request says.
+    /// </summary>
+    public static BrokerClientIdentity ReadProcess(SafeProcessHandle process)
+    {
+        RequireWindows();
+        ArgumentNullException.ThrowIfNull(process);
+        if (process.IsInvalid || process.IsClosed)
+        {
+            throw new ArgumentException("An open process handle is required.", nameof(process));
+        }
+
+        bool added = false;
+        try
+        {
+            process.DangerousAddRef(ref added);
+            if (!OpenProcessToken(process.DangerousGetHandle(), TokenQuery, out SafeAccessTokenHandle token))
+            {
+                throw NativeFailure("The broker could not open the process's token.");
+            }
+
+            using (token)
+            {
+                return Read(token, requireImpersonationToken: false);
+            }
+        }
+        finally
+        {
+            if (added)
+            {
+                process.DangerousRelease();
+            }
+        }
+    }
+
     public static string CanonicalizeSid(string sid)
     {
         RequireWindows();

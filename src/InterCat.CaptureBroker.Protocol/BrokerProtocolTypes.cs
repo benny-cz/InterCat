@@ -51,6 +51,12 @@ public enum BrokerPrepareRefusalCode
     UnsupportedOriginalEvidence = 10,
     InvalidCapturePlan = 11,
     InvalidOperationalLimits = 12,
+
+    /// <summary>
+    /// A process a content request names is not one the client could read itself - another user's, another sign-in's or of
+    /// higher integrity - or could not be read at all (ADR-049).
+    /// </summary>
+    ContentProcessRefused = 13,
 }
 
 /// <summary>The only time the raw prepared token is returned. Logs and durable records use its hash.</summary>

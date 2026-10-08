@@ -42,11 +42,37 @@ The broker refuses preparation when any of these conditions holds:
 - a required source is missing, an unlisted source appears, descriptor/body-policy structure is invalid,
   or the provider request differs from the adapter allowlist;
 - source-level process scope, aggregate wider-capture state and recorded consent disagree;
-- content or separately governed original evidence is requested; or
-- the body policy is not the exact reviewed metadata-only policy.
+- separately governed original evidence is requested;
+- a content request names a process that is not its client's own, or names it other than by its ID and its start
+  (section 2.1); or
+- the body policy is not the exact reviewed metadata-only policy - or, for a content plan, a request's scoped content
+  policy keeping its one admitted source's content (section 2.1).
 
 The implementation intentionally validates the capture-affecting result again before freezing it. It
 does not repair, downgrade, substitute or reorder semantics to make an invalid plan startable.
+
+### 2.1 Content preparation (revision 451, ADR-049)
+
+A Content request (prepare fields 20 to 27) is prepared only of its client's own processes: each must run under the
+client's user, in its logon session - the owner every broker capture belongs to - at an integrity level no higher than
+the client's, so that what the broker keeps is what the client could read itself. The broker reads each process from
+itself, never from the request: it holds the process open as a content capture's process filter does (ADR-037's holds,
+the one way the product opens a process) and reads, through that handle, its primary token's user, logon session and
+integrity, and when it started. A process that is not running, has exited or cannot be read, or that is another user's,
+another logon session's or of higher integrity, refuses the preparation with `ContentProcessRefused` (13) and a reason
+naming it; a broker that cannot read processes keeps no content. Each process is then named by its ID and its start
+(R22), which the prepared plan holds and the digest covers.
+
+A content plan holds exactly the lifecycle source its processes' identity rests on and the request's one admitted
+source. That source's descriptors carry the request's scoped content policy, each with at most one content slot, sized
+per record by a length field that ends before it, with a defined classification and encoding; every other descriptor
+keeps the metadata-only policy. Its scope is the content source filtered to the named processes before anything is
+kept and every other source the whole machine's lifecycle metadata, which needs no broader-capture consent. Limits or
+consent on which the request and the policy disagree are refused, never reconciled.
+
+A prepared content capture is not started yet: Start refuses one before any durable intent is written, saying it is
+prepared for review only, until the broker holds its processes while it records and checks each is still the one
+prepared (ADR-049 decision 2).
 
 ## 3. Prepared-plan digest
 
@@ -58,8 +84,15 @@ UTF-8 domain separator `InterCat.Broker.PreparedCapturePlan` and protocol versio
 - maximum duration, journal-byte allowance, minimum free-space reserve and retention (`StopAtLimit` = 1,
   `ReleaseFollowed` = 2, written as an `int32`);
 - the journal-publication policy (`OnStop` = 1, `Live` = 2), written as an `int32` after retention;
-- since revision 449, the window a `ReleaseFollowed` capture's follow keeps, written last and only when named - the
-  string `kept-window`, then the seconds as an `int32` - so a plan that names none keeps the digest it always had;
+- since revision 449, the window a `ReleaseFollowed` capture's follow keeps, written after every other field and only
+  when named - the string `kept-window`, then the seconds as an `int32` - so a plan that names none keeps the digest it
+  always had;
+- since revision 451, a content plan's content (section 2.1), last and only for a content plan: the string `content`,
+  its source and mechanism, each named process's ID and start in UTC ticks in ID order, its channel selectors, its
+  per-record and session limits, retention and inspection consent (its policy's, which must be the same), the
+  sources its policy keeps content of, and each content slot's source index, event ID, version, field name,
+  length-field offset and width, classification and encoding - so every plan that keeps no content keeps the digest it
+  always had;
 - body policy, retained-byte bound and extended-data allowlist;
 - extended-data and stack settings;
 - requested/effective mechanism, selected and initial-view PIDs, aggregate broader-capture state,
@@ -234,7 +267,7 @@ publication, so a `ReleaseFollowed` capture stops once it holds 2,048 - twice wh
 its follow stopped giving chunks up, and its evidence is finalized as a limit's is.
 
 Focused and Content groups are mutually exclusive and
-Content's eight fields are all-or-none. Start tokens and request/capture IDs are shape-checked before
+Content's eight fields are all-or-none; a Content group is prepared only as section 2.1 says. Start tokens and request/capture IDs are shape-checked before
 dispatch.
 
 Hello uses protocol range plus requested/required feature bits. Unknown optional feature bits are
@@ -252,6 +285,13 @@ applied PID group, wider-capture flag and reason. The prepared digest now binds 
 journal limit, free-space reserve, retention and journal-publication policy as well as provider/body/scope
 semantics. Summary fields 33 and 34 state the effective publication policy and its compiled interval in
 milliseconds (0 for `OnStop`); a response whose interval is not the one its policy compiles to is refused.
+Summary fields 36 to 41 (revision 451), all or none, state what a content capture keeps: its source (36), when each
+requested process started, in UTC ticks beside field 16's IDs in their order (37, a list of signed 64-bit integers,
+wire type 10), its per-record and session limits (38, 39), its inspection consent (40) and its channel selectors (41).
+A prepared content capture states every start; one refused before the broker read its processes states none; a
+prepared scoped-content summary without the group is refused. A client may compare each start with the process it
+meant before it starts the capture. A broker that predates the fields sends none and a client that predates them skips
+them, as it skips any unknown optional field whatever its type.
 
 Start, status, stop and renewal responses preserve the lifecycle operation code, lease and independent
 stop milestones. Status is owner-only and never exposes the broker session name, session ownership token

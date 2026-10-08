@@ -127,6 +127,13 @@ public sealed class BrokerEvidenceCaptureRuntime
             return new(false, "The durable capture ownership, prepared digest or operational limits are invalid.");
         }
 
+        // A content capture holds each named process open while it records, and first checks each is still the one it was
+        // prepared for (ADR-049 decision 2); until it does, one is prepared for review and never started.
+        if (plan.Content is not null)
+        {
+            return new(false, BrokerLifecycleCoordinator.ContentNotStarted);
+        }
+
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {

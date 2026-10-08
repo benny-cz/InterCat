@@ -83,7 +83,22 @@ public sealed record BrokerEffectiveCaptureSummary(
     IReadOnlyList<string> Diagnostics,
     BrokerJournalPublication Publication = BrokerJournalPublication.OnStop,
     int PublicationIntervalMilliseconds = 0,
-    int? KeptWindowSeconds = null);
+    int? KeptWindowSeconds = null,
+    BrokerEffectiveContentSummary? Content = null);
+
+/// <summary>
+/// What a content capture keeps, as the broker prepared it (ADR-049): the source, when each named process started -
+/// beside <see cref="BrokerEffectiveCaptureSummary.RequestedProcessIds"/>, in their order, so each is named by its ID and
+/// its start, or none when the broker refused them - the per-record and session limits, the consent to inspect what is
+/// kept, and the channel selectors. Summary fields 36 to 41, all or none.
+/// </summary>
+public sealed record BrokerEffectiveContentSummary(
+    string SourceId,
+    IReadOnlyList<DateTimeOffset> ProcessStartsUtc,
+    int MaximumRecordBytes,
+    long MaximumSessionBytes,
+    ContentInspectionMode Inspection,
+    IReadOnlyList<string> ChannelSelectors);
 
 public sealed record BrokerPrepareCaptureResponse(
     bool Prepared,
@@ -221,8 +236,9 @@ public static class BrokerWireResponseCodec
         1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 20, 21, 22, 23, 24);
     private static readonly IReadOnlySet<ushort> PrepareFields = Set(
         1, 2, 3, 4, 5, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19,
-        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35);
+        20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41);
     private const int MaximumEvidenceDirectoryBytes = 1024;
+    private const int MaximumChannelSelectors = 64;
     private static readonly IReadOnlySet<ushort> StartFields = Set(1, 2, 3, 4, 5);
     private static readonly IReadOnlySet<ushort> StatusFields =
         Set(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28);
@@ -398,6 +414,16 @@ public static class BrokerWireResponseCodec
         if (summary.KeptWindowSeconds is { } kept)
         {
             fields.WriteInt32(35, kept, required: false);
+        }
+
+        if (summary.Content is { } content)
+        {
+            fields.WriteString(36, content.SourceId, required: false);
+            fields.WriteInt64List(37, [.. content.ProcessStartsUtc.Select(start => start.UtcTicks)], required: false);
+            fields.WriteInt32(38, content.MaximumRecordBytes, required: false);
+            fields.WriteInt64(39, content.MaximumSessionBytes, required: false);
+            fields.WriteInt32(40, (int)content.Inspection, required: false);
+            fields.WriteStringList(41, content.ChannelSelectors, required: false);
         }
     }
 
@@ -609,13 +635,37 @@ public static class BrokerWireResponseCodec
                 ? (BrokerJournalPublication)publication
                 : BrokerJournalPublication.OnStop,
             fields.OptionalInt32(34) ?? 0,
-            fields.OptionalInt32(35));
+            fields.OptionalInt32(35),
+            ReadContent(fields));
         return new(
             prepared,
             refusalCode is null ? null : (BrokerPrepareRefusalCode)refusalCode.Value,
             refusalReason,
             grant,
             summary);
+    }
+
+    /// <summary>A prepared content capture's summary, fields 36 to 41, all or none; null when none is present.</summary>
+    private static BrokerEffectiveContentSummary? ReadContent(BrokerWireFieldSet fields)
+    {
+        bool any = Enumerable.Range(36, 6).Any(field => fields.Contains((ushort)field));
+        if (!any)
+        {
+            return null;
+        }
+
+        if (!Enumerable.Range(36, 6).All(field => fields.Contains((ushort)field)))
+        {
+            throw new InvalidDataException("A content summary must supply its complete field group.");
+        }
+
+        return new(
+            fields.RequiredString(36, 256),
+            [.. fields.RequiredInt64List(37, 64).Select(ticks => ReadTime(ticks, 37))],
+            fields.RequiredInt32(38),
+            fields.RequiredInt64(39),
+            (ContentInspectionMode)fields.RequiredInt32(40),
+            fields.RequiredStringList(41, MaximumChannelSelectors, 256));
     }
 
     private static BrokerStartCaptureResponse ReadStart(ReadOnlySpan<byte> payload)
@@ -964,6 +1014,39 @@ public static class BrokerWireResponseCodec
         if (value.Prepared && (summary.EffectiveProfileId is null || summary.EffectiveAdmission is null))
         {
             throw new InvalidDataException("A prepared response requires an effective profile and admission mode.");
+        }
+
+        if (summary.Content is { } content)
+        {
+            // Each named process is its ID and its start, so a prepared one states every start; a refused one may state none.
+            RequireText(content.SourceId, 256, nameof(content.SourceId));
+            if (summary.RequestedAdmission != AdmissionMode.ScopedContent
+                || summary.RequestedProcessIds.Count == 0
+                || (content.ProcessStartsUtc.Count != summary.RequestedProcessIds.Count
+                    && (value.Prepared || content.ProcessStartsUtc.Count != 0))
+                || content.MaximumRecordBytes <= 0
+                || content.MaximumSessionBytes < content.MaximumRecordBytes
+                || !Enum.IsDefined(content.Inspection))
+            {
+                throw new InvalidDataException(
+                    "A content summary names a scoped content capture of its requested processes, with each one's start once "
+                    + "prepared, and limits a record within the session.");
+            }
+
+            foreach (DateTimeOffset start in content.ProcessStartsUtc)
+            {
+                RequireTime(start, nameof(content.ProcessStartsUtc));
+            }
+
+            RequireCount(content.ChannelSelectors, MaximumChannelSelectors, nameof(content.ChannelSelectors));
+            foreach (string selector in content.ChannelSelectors)
+            {
+                RequireText(selector, 256, "channel selector");
+            }
+        }
+        else if (value.Prepared && summary.EffectiveAdmission == AdmissionMode.ScopedContent)
+        {
+            throw new InvalidDataException("A prepared content capture's summary states what it keeps.");
         }
     }
 
