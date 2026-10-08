@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 461 · Branch: `main`
+Updated: 2026-10-08 · Plan revision: 462 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -35,6 +35,8 @@ their records bind to, since revision 458 a group's lanes, since revision 459 a 
 revision 460 a channel's two ends, so none opens a segment: at 10M rows a brushed ranking takes 15 ms at the 95th
 percentile, a 40-process group's first lanes 52 ms, a process's first direction rows 156 ms, a connection's first ends
 192 ms, and the session's working set ends near 320 MB.
+Since revision 462 a zoomed view is counted a column per device pixel and drawn as §6.2's density: a lone record's
+mark is drawn 5 px wide, a point beside it snaps to it, and its card and a click keep its own interval.
 Since revision 166 the ranked table ranks groups and processes by each process's own records, kept in the checkpoint,
 where it ranked by paired TCP alone and showed a real capture as zeros.
 L4's duration bars are drawn for the operations derived so far: an RPC channel's calls since revision 181 and a
@@ -86,6 +88,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 462 — a zoomed timeline is counted a column per device pixel and drawn as density (§6.2):**
+  - A view a person zooms or pans to is counted in a column per device pixel, up to 2,000, where it was counted in
+    columns of about 10 px. A row whose cells are under 3 device px is drawn as density: cells edge to edge, each as
+    high as its log intensity above the occupied floor, in its hue at full strength.
+  - A run of occupied cells under 5 px is widened around its centre, never over its neighbour, so a lone record is a
+    mark a pointer can find. A point within 5 px of a mark snaps to it, the earlier on a tie; further off, it names
+    the empty interval under it. A card and a click always state the cell's own interval.
+  - Coverage, unmeasured bytes and the selection's share are drawn once per run of cells, so they read at a column
+    per pixel. The whole session is still drawn from the overview's 64 columns until it is counted per pixel too.
+  - The evidence rung's repaint allocated its marks anew every frame, which the new allocation test found; they are
+    kept now.
+  - Debug and Release each ran 1,996 tests, with revision 461's 93 failures and 4 skips, once the fixture index named
+    the two new tests and an exchange test let its window lay out before asking for its columns; those were re-run
+    in both. The tests caught each of 21 mutations, two of them once tightened to compare cells by identity and to
+    reach the records rung. At 2,000 columns the scale gate's 95th percentile for a 40-process group's lanes was 71
+    to 89 ms at 1M records over five runs, and 54 to 89 ms at 10M over four, a fifth made while the machine was still
+    busy reaching 137 ms; a connection's two ends took 25 to 79 ms. A group's first view in a fresh process took 110
+    to 138 ms at 1M records, where at 256 columns it took 75 to 82 ms.
 
 - **Revision 461 — a whole-session mechanism focus comes from the whole timeline's counts (S3):**
   - Choosing an L0 mechanism lane focuses the whole session's records of that mechanism, which are the timeline's own
@@ -1409,7 +1430,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
         9.5 ms at p95, from 631 and 273. A live generation's brush still binds the rows of the segments it meets.
      2. Done in revision 210 as far as the lanes go: past the 20,000-cell bound a group's lanes are counted in the
         columns it allows (§12's 2,000 × 40 query answers with lanes at 500 columns). Lanes at every view column for
-        large groups wait on §6.2's density regime.
+        large groups remain bounded by the cell budget; since revision 462 lanes counted coarser are drawn as
+        density where their columns are under 3 device pixels, and as bars where wider.
      3. Done in revision 458 for a finished session: its zooms, brushes and groups open no segment, and the working set
         at the scale gate's end is 263 MB at 10M rows, from 1.35 GB; a live session, and a focus that reads its rows,
         still cache segment readers within the reader cache's budget.
@@ -1492,8 +1514,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      4. Name more RPC interfaces. Only interfaces a protocol specification names get a name; a real session's busiest
         (COM's `00000134-…`, `e60c73e6-…`, `00000136-…`, `00000132-…`, the DHCP client's) are named by none, so a name
         for them needs another source of truth than a guess.
-     5. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. The other lanes'
-        §6.2 density regime remains (item 5).
+     5. Done in revision 185 for the call lane: a view denser than its budget is drawn as density. Since revision
+        462 every other lane of a zoomed view is too, a column per device pixel; the call lane keeps its own
+        columns of about 5 px, each its own pointer target.
    - **Content (§11, M3).** Revision 233 says per record why it holds none and which source could; revision 234 keeps
      content beside the journal (ADR-036, `content-v1`); revision 235 captures it from InterCat's own fixture through
      the `content-fixture` profile; revision 236 shows it in the bounded hex and text viewer (§3.7); revision 237
@@ -1574,9 +1597,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
      - (done in revision 205: the set's rows are marked in the ranked table itself.)
      Indexed/progressive search belongs to the later M4 scale gate.
-   - §6.2's minimum drawn width (5 px) and pointer snapping belong with the density regime, where a column is one
-     device pixel. Revision 154 recorded why they wait for it: today every bar's column, at least 5 px, is its pointer
-     target, and snapping would take an empty neighbouring interval away from the pointer.
+   - §6.2's minimum drawn width (5 px) and pointer snapping: done in revision 462 with the density regime, for every
+     zoomed view. The whole session is still drawn from the overview's 64 columns, as bars, each its column's
+     target; counting it per device pixel is next.
    - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
      allocation per row, and since revision 291 it runs alone, where no other test can empty the derivation cache.
      The admission and decode loops keep IC-019's Windows allocation measurements and have no test that runs here. A

@@ -167,6 +167,9 @@ public sealed class TimelineView : Control, IHoverCardSource
     // (R11, §19.4). A label is formatted again only when the value it states changes.
     private readonly List<TimelineBucket> coarseBuckets = [];
     private readonly List<TimelineBucket> fineBuckets = [];
+
+    /// <summary>Each drawn row's cells as laid out over the view, which drawing, hover and clicks share (§6.2, R11).</summary>
+    private readonly TimelineCellLayouts cellLayouts = new();
     private readonly Memo<long> generationNote = new();
     private readonly Memo<long> byteGenerationNote = new();
     private readonly Memo<(long, long, SessionClock)> startLabel = new();
@@ -547,13 +550,27 @@ public sealed class TimelineView : Control, IHoverCardSource
         RequestDetailNow();
     }
 
+    /// <summary>Device pixels per logical pixel where this control is shown; 1 before it is.</summary>
+    private double Scaling => TopLevel.GetTopLevel(this)?.RenderScaling is > 0 and var scaling ? scaling : 1;
+
+    /// <summary>
+    /// The columns a view is counted in (§6.2, §10.3): one per device pixel across the published plot, so a dense lane reads
+    /// its true shape and the density regime draws each cell where it lies, within what one query counts. A rung whose
+    /// rows arrive with its count names them in a wider gutter, so until the view next moves its cells are a little
+    /// narrower than a pixel, which the density regime draws as it draws any.
+    /// </summary>
+    internal int DeviceColumns => (int)Math.Clamp(Math.Round(PlotWidth * Scaling), 16, SessionTimelineQuery.MaximumColumns);
+
+    /// <summary>The view rows are laid out over now: the time in view across the published plot (§6.2).</summary>
+    private CellView CurrentCells => new(Viewport, PlotLeft, PlotWidth, Scaling);
+
     /// <summary>Asks at once for the detail the resting viewport needs, without waiting for it to settle.</summary>
     internal void RequestDetailNow()
     {
         detailTimer.Stop();
         if (DataContext is WorkspaceViewModel viewModel)
         {
-            viewModel.RequestTimelineDetail(Viewport, (int)Math.Clamp(PlotWidth / 10, 16, 256));
+            viewModel.RequestTimelineDetail(Viewport, DeviceColumns, Scaling);
 
             // The settled viewport is the ranking's scope while nothing is brushed (§6.4).
             viewModel.ShowVisibleRange(IsFit ? null : Viewport);
@@ -703,10 +720,10 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         TimeRange visible = Viewport;
         double left = PlotLeft;
-        double right = left + PlotWidth;
+        double plotWidth = PlotWidth;
+        double right = left + plotWidth;
         double top = PlotTop;
         double bottom = Math.Max(top + 1, Bounds.Height - PlotBottomMargin);
-        double plotWidth = right - left;
         double plotHeight = bottom - top;
         context.DrawLine(GridPen, new(left, bottom), new(right, bottom));
         for (int line = 1; !ShowingLanes && line <= 3; line++)
@@ -781,7 +798,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         // A focused rung draws every record as grey context and its own records in their mechanism's hue on the same
         // rate scale, inside the grey bar of the same interval: when the focus was active, against the machine (§3.2).
         bool focused = viewModel.TimelineShowsFocus;
-        var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused);
+        var scale = new BarScale(visible, left, plotWidth, top, bottom, maximumRate, focused, cellLayouts, Scaling);
         RowBand band = drawnBand = BandToDraw();
         RowsDrawn = 0;
         if (ShowingMechanismLanes || rows is not null)
@@ -844,25 +861,26 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
         else if (detail is null)
         {
-            DrawBuckets(context, viewModel, coarse, scale);
+            DrawBuckets(context, viewModel, overview, scale);
         }
         else
         {
+            // Each row is laid out whole, as hover and clicks read it, and drawn only where it answers the view.
             double x1 = scale.X(Math.Max(detail.Interval.StartTicks, visible.StartTicks));
             double x2 = scale.X(Math.Min(detail.Interval.EndTicks, visible.EndTicks));
             using (context.PushClip(new Rect(left, 0, Math.Max(0, x1 - left), Bounds.Height)))
             {
-                DrawBuckets(context, viewModel, coarse, scale);
+                DrawBuckets(context, viewModel, overview, scale);
             }
 
             using (context.PushClip(new Rect(x2, 0, Math.Max(0, right - x2), Bounds.Height)))
             {
-                DrawBuckets(context, viewModel, coarse, scale);
+                DrawBuckets(context, viewModel, overview, scale);
             }
 
             using (context.PushClip(new Rect(x1, 0, Math.Max(0, x2 - x1), Bounds.Height)))
             {
-                DrawBuckets(context, viewModel, fine, scale);
+                DrawBuckets(context, viewModel, detail.Buckets, scale);
             }
 
             if (detail.Generation != viewModel.DisplayedGeneration)
@@ -876,12 +894,12 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         if (rows is null && focused && viewModel.TimelineFocusBuckets is { } focus)
         {
-            DrawFocus(context, focus, scale);
+            DrawFocus(context, focus, scale, detail?.Buckets ?? overview);
         }
 
         if (rows is null && !ShowingMechanismLanes && viewModel.TimelineHighlightBuckets is { } highlighted)
         {
-            DrawHighlight(context, highlighted, scale);
+            DrawHighlight(context, highlighted, scale, detail?.Buckets ?? overview);
         }
 
         if (LiveEdgePlacement is { } live)
@@ -952,18 +970,19 @@ public sealed class TimelineView : Control, IHoverCardSource
             DrawText(context, peak, RateLabelBounds(peak).TopLeft);
         }
 
-        if (HoveredBucket is { } hovered)
+        if (HoveredCell is { } hovered)
         {
-            // The hovered bucket is outlined in ink over its whole column, lighter than the selection's accent.
-            double x1 = scale.X(Math.Max(hovered.Interval.StartTicks, visible.StartTicks));
-            double x2 = scale.X(Math.Min(hovered.Interval.EndTicks, visible.EndTicks));
+            // The hovered cell is outlined in ink, lighter than the selection's accent: a bar over its whole column, a
+            // density cell around the mark it is drawn as, which a point beside it snapped to (§6.2).
             Rect row = HoveredLaneIndex is { } index
                 ? LaneRow(index, LaneCount, top, bottom)
                 : new Rect(left, top, plotWidth, bottom - top);
+            Rect outline = hovered.Density
+                ? new Rect(hovered.X1 - 1, row.Top, Math.Max(2, hovered.X2 - hovered.X1 + 2), row.Height)
+                : new Rect(hovered.X1 - 1, row.Top, Math.Max(2, hovered.X2 - hovered.X1), row.Height);
             using (context.PushOpacity(0.5))
             {
-                context.DrawRectangle(Brushes.Transparent, HoverPen,
-                    new Rect(x1 - 1, row.Top, Math.Max(2, x2 - x1), row.Height));
+                context.DrawRectangle(Brushes.Transparent, HoverPen, outline);
             }
         }
 
@@ -1000,36 +1019,66 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>The bucket drawn under the pointer, if it rests on the plot; hover never changes selection (§6.4).</summary>
-    internal TimelineBucket? HoveredBucket
+    internal TimelineBucket? HoveredBucket => HoveredCell?.Bucket;
+
+    /// <summary>
+    /// The cell under the resting pointer and where it is drawn, resolved as a click at the same point would be: in the
+    /// density regime a point near a mark but on none snaps to it (§6.2).
+    /// </summary>
+    private CellHit? HoveredCell
     {
         get
         {
-            if (HoverTick is not { } tick || DataContext is not WorkspaceViewModel viewModel)
+            if (HoverTick is null || DataContext is not WorkspaceViewModel viewModel)
             {
                 return null;
             }
 
-            if (HoveredLaneIndex is not { } index)
-            {
-                return ShowingLanes ? null : BucketAt(viewModel, tick);
-            }
-
-            return LaneBucketAt(viewModel, index, tick);
+            int? index = HoveredLaneIndex;
+            return index is null && ShowingLanes ? null : CellAt(viewModel, index, HoverPoint.X);
         }
     }
 
+    /// <summary>A cell a point resolves to, and where it is drawn across the plot: its mark in density, else its column.</summary>
+    private readonly record struct CellHit(TimelineBucket Bucket, double X1, double X2, bool Density);
+
     /// <summary>
-    /// The bucket lane <paramref name="index"/> draws at a tick: a focused rung's row - its machine context first - or a
+    /// The cell a point at <paramref name="x"/> resolves to on lane row <paramref name="lane"/>, or on the aggregate plot
+    /// where no lane is given, through the layout the row is drawn with (§6.2): the mark under the point; in the density
+    /// regime, else a mark within reach of it; else the cell whose column holds it, empty or not. Null on a call lane.
+    /// </summary>
+    private CellHit? CellAt(WorkspaceViewModel viewModel, int? lane, double x)
+    {
+        long tick = TickAt(x);
+        IReadOnlyList<TimelineBucket>? buckets = lane is { } index ? LaneBucketsAt(viewModel, index, tick) : DrawnBucketsAt(viewModel, tick);
+        if (buckets is null)
+        {
+            return null;
+        }
+
+        TimelineCells cells = cellLayouts.For(buckets, CurrentCells);
+        if (cells.CellAt(x) is not { } cell)
+        {
+            return null;
+        }
+
+        return cells.Density
+            ? new CellHit(buckets[cell], cells.X1(cell), cells.X2(cell), Density: true)
+            : new CellHit(buckets[cell], cells.ColumnX1(cell), cells.ColumnX2(cell), Density: false);
+    }
+
+    /// <summary>
+    /// The buckets lane <paramref name="index"/> draws at a tick: a focused rung's row - its machine context first - or a
     /// mechanism's lane at the machine rung, from the zoomed detail where it covers every lane. Null on a call lane, whose
     /// bars are calls.
     /// </summary>
-    private TimelineBucket? LaneBucketAt(WorkspaceViewModel viewModel, int index, long tick)
+    private IReadOnlyList<TimelineBucket>? LaneBucketsAt(WorkspaceViewModel viewModel, int index, long tick)
     {
         if (FocusRows is { } rows)
         {
             return rows.Kind == FocusRowKind.Calls && index == 1
                 ? null
-                : BucketContaining(index == 0 ? rows.Context : rows.Rows[index - 1], tick);
+                : index == 0 ? rows.Context : rows.Rows[index - 1];
         }
 
         Mechanism mechanism = viewModel.Snapshot.MechanismLanes[index].Mechanism;
@@ -1037,7 +1086,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             && detail.Interval.Contains(tick)
             && CoversEveryLane(detail, viewModel.Snapshot.MechanismLanes)
                 ? detail.MechanismLanes : viewModel.Snapshot.MechanismLanes;
-        return BucketContaining(LaneOf(lanes, mechanism)?.Buckets, tick);
+        return LaneOf(lanes, mechanism)?.Buckets;
     }
 
     private int? HoveredLaneIndex => HoverTick is not null ? LaneIndexAt(HoverPoint.Y) : null;
@@ -1212,32 +1261,72 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// <inheritdoc />
     public event EventHandler? HoverChanged;
 
-    /// <summary>Where on the plot a bucket's column is, in this control's coordinates, for pointing at it.</summary>
+    /// <summary>
+    /// Where on the plot a bucket is drawn, in this control's coordinates, for pointing at it: the middle of its bar's
+    /// column, or of the mark a density cell is drawn as (§6.2).
+    /// </summary>
     internal Point? PointOf(TimelineBucket bucket)
     {
         ArgumentNullException.ThrowIfNull(bucket);
         TimeRange visible = Viewport;
-        if (!Intersects(bucket.Interval, visible)) return null;
-        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
-        int index = ShowingMechanismLanes && DataContext is WorkspaceViewModel viewModel
-            ? viewModel.Snapshot.MechanismLanes.ToList().FindIndex(lane => lane.Buckets.Contains(bucket)
-                || viewModel.TimelineDetail?.MechanismLanes.Any(detailLane => detailLane.Mechanism == lane.Mechanism
-                    && detailLane.Buckets.Contains(bucket)) == true)
-            : -1;
-        if (FocusRows is { } rows)
+        if (!Intersects(bucket.Interval, visible) || DataContext is not WorkspaceViewModel viewModel) return null;
+        int index = -1;
+        IReadOnlyList<TimelineBucket>? row = null;
+        if (ShowingMechanismLanes)
+        {
+            IReadOnlyList<MechanismTimelineLane> lanes = viewModel.Snapshot.MechanismLanes;
+            for (int lane = 0; lane < lanes.Count && row is null; lane++)
+            {
+                IReadOnlyList<TimelineBucket>? fine = LaneOf(viewModel.TimelineDetail?.MechanismLanes, lanes[lane].Mechanism)?.Buckets;
+                row = fine is not null && fine.Contains(bucket) ? fine : lanes[lane].Buckets.Contains(bucket) ? lanes[lane].Buckets : null;
+                index = row is null ? -1 : lane;
+            }
+        }
+        else if (FocusRows is { } rows)
         {
             int rowIndex = rows.Rows.ToList().FindIndex(buckets =>
                 buckets.Any(candidate => ReferenceEquals(candidate, bucket)));
-            if (rowIndex >= 0) index = rowIndex + 1;
-            else if (rows.Context.Any(candidate => ReferenceEquals(candidate, bucket))) index = 0;
+            (index, row) = rowIndex >= 0 ? (rowIndex + 1, rows.Rows[rowIndex])
+                : rows.Context.Any(candidate => ReferenceEquals(candidate, bucket)) ? (0, rows.Context)
+                : (-1, null);
+        }
+        else
+        {
+            row = viewModel.TimelineDetail?.Buckets is { } detail && detail.Contains(bucket) ? detail : viewModel.Snapshot.Timeline;
         }
 
         double y = index >= 0
             ? LaneRow(index, LaneCount, PlotTop,
                 Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y
             : Math.Max(PlotTop, Bounds.Height - 40);
-        return new(PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
-            y);
+        return new(CentreOf(row, bucket), y);
+    }
+
+    /// <summary>
+    /// The middle of where <paramref name="bucket"/> is drawn in <paramref name="row"/>: its mark in the density regime,
+    /// else its column; the middle of its interval where the row does not lay it out.
+    /// </summary>
+    private double CentreOf(IReadOnlyList<TimelineBucket>? row, TimelineBucket bucket)
+    {
+        TimeRange visible = Viewport;
+        int index = -1;
+        for (int candidate = 0; row is not null && candidate < row.Count && index < 0; candidate++)
+        {
+            if (ReferenceEquals(row[candidate], bucket)) index = candidate;
+        }
+
+        for (int candidate = 0; row is not null && candidate < row.Count && index < 0; candidate++)
+        {
+            if (row[candidate] == bucket) index = candidate;
+        }
+
+        if (row is not null && index >= 0 && cellLayouts.For(row, CurrentCells) is { } cells && cells.Holds(index))
+        {
+            return cells.Density ? (cells.X1(index) + cells.X2(index)) / 2 : (cells.ColumnX1(index) + cells.ColumnX2(index)) / 2;
+        }
+
+        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
+        return PlotLeft + ViewportMath.PixelAtTick(visible, Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth);
     }
 
     /// <summary>A process ID disambiguates two owner rows whose bucket values and intervals happen to match.</summary>
@@ -1276,9 +1365,7 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         TimeRange visible = Viewport;
         if (!Intersects(bucket.Interval, visible)) return null;
-        long middle = bucket.Interval.StartTicks + (bucket.Interval.SpanTicks / 2);
-        return new(PlotLeft + ViewportMath.PixelAtTick(visible,
-                Math.Clamp(middle, visible.StartTicks, visible.EndTicks - 1), PlotWidth),
+        return new(CentreOf(rows.Rows[index], bucket),
             LaneRow(index + 1, rows.Rows.Count + 1, PlotTop,
                 Math.Max(PlotTop + 1, Bounds.Height - PlotBottomMargin)).Center.Y);
     }
@@ -1306,9 +1393,16 @@ public sealed class TimelineView : Control, IHoverCardSource
     };
 
     private readonly record struct BarScale(
-        TimeRange Visible, double Left, double PlotWidth, double Top, double Bottom, double MaximumRate, bool Focused)
+        TimeRange Visible, double Left, double PlotWidth, double Top, double Bottom, double MaximumRate, bool Focused,
+        TimelineCellLayouts Layouts, double Scaling)
     {
         public double X(long tick) => Left + ViewportMath.PixelAtTick(Visible, tick, PlotWidth);
+
+        /// <summary>The view a row of cells is laid out over.</summary>
+        public CellView View => new(Visible, Left, PlotWidth, Scaling);
+
+        /// <summary>A row of buckets laid out over the view, as hover and clicks read it (§6.2).</summary>
+        public TimelineCells Cells(IReadOnlyList<TimelineBucket> buckets) => Layouts.For(buckets, View);
 
         /// <summary>A bar for this bucket: its rate's share of the plot, never under 3 px so a lone record stays visible.</summary>
         public Rect Bar(TimelineBucket bucket)
@@ -1320,15 +1414,126 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
-    /// <summary>A focused rung's own records, each in its bucket's dominant mechanism's hue over the grey of all records.</summary>
-    private static void DrawFocus(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale)
+    /// <summary>
+    /// A focused rung's own records, each in its bucket's dominant mechanism's hue over the grey of all records. In the
+    /// density regime each is drawn across the mark of the grey cell it was counted beside, so it stands inside it.
+    /// </summary>
+    private static void DrawFocus(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale,
+        IReadOnlyList<TimelineBucket> drawn)
     {
+        TimelineCells cells = scale.Cells(SameColumns(buckets, drawn) ? drawn : buckets);
+        if (cells.Density)
+        {
+            double plot = scale.Bottom - scale.Top;
+            using (context.PushRenderOptions(AliasedEdges))
+            {
+                for (int index = cells.First; index < cells.End; index++)
+                {
+                    TimelineBucket bucket = buckets[index];
+                    if (bucket.ObservationCount > 0)
+                    {
+                        double height = DensityHeight(Rate(bucket), scale.MaximumRate, cells.CellSpan, plot);
+                        context.DrawRectangle(BrushFor(bucket.DominantMechanism), null,
+                            new Rect(cells.X1(index), scale.Bottom - height, cells.X2(index) - cells.X1(index), height));
+                    }
+                }
+            }
+
+            return;
+        }
+
         for (int index = 0; index < buckets.Count; index++)
         {
             TimelineBucket bucket = buckets[index];
             if (bucket.ObservationCount > 0 && Intersects(bucket.Interval, scale.Visible))
             {
                 context.DrawRectangle(BrushFor(bucket.DominantMechanism), null, scale.Bar(bucket));
+            }
+        }
+    }
+
+    /// <summary>Whether two rows of buckets were counted in the same columns, so one's cells can be drawn across the other's marks.</summary>
+    private static bool SameColumns(IReadOnlyList<TimelineBucket> left, IReadOnlyList<TimelineBucket> right) =>
+        left.Count == right.Count && left.Count > 0
+        && left[0].Interval == right[0].Interval && left[^1].Interval == right[^1].Interval;
+
+    /// <summary>Density cells are drawn with aliased edges, so cells side by side meet without a seam between them.</summary>
+    private static readonly RenderOptions AliasedEdges = new() { EdgeMode = EdgeMode.Aliased };
+
+    /// <summary>
+    /// §6.2's cell intensity as a height in a plot of <paramref name="plot"/> pixels: an occupied density cell keeps the
+    /// occupied floor and grows above it by <c>log2(1 + v) / log2(1 + vScale)</c>, where v is what the cell counts or sums
+    /// and vScale what the busiest rate in the scope would in a cell of the row's span. Display only: no count changes.
+    /// </summary>
+    private static double DensityHeight(double rate, double peakRate, double cellSpan, double plot)
+    {
+        double scale = Math.Log2(1 + (peakRate * cellSpan));
+        double intensity = scale <= 0 ? 1 : Math.Clamp(Math.Log2(1 + (rate * cellSpan)) / scale, 0, 1);
+        return plot * (OccupiedFloor + ((1 - OccupiedFloor) * intensity));
+    }
+
+    /// <summary>
+    /// A density row's occupied cells (§6.2): each across its mark, edge to edge with its neighbours, as high as its
+    /// count's intensity above the occupied floor, in its lane's hue, its bucket's dominant mechanism's, or the context
+    /// grey; the analysis interval's cell outlined.
+    /// </summary>
+    private static void DrawDensityCells(DrawingContext context, WorkspaceViewModel viewModel, Mechanism? mechanism,
+        IReadOnlyList<TimelineBucket> buckets, TimelineCells cells, BarScale scale, bool contextRow, double outline)
+    {
+        double plot = scale.Bottom - scale.Top;
+        TimeRange? chosen = viewModel.SelectedInterval;
+        Rect? selected = null;
+        using (context.PushRenderOptions(AliasedEdges))
+        {
+            for (int index = cells.First; index < cells.End; index++)
+            {
+                TimelineBucket bucket = buckets[index];
+                if (bucket.ObservationCount == 0)
+                {
+                    continue;
+                }
+
+                double height = DensityHeight(Rate(bucket), scale.MaximumRate, cells.CellSpan, plot);
+                var cell = new Rect(cells.X1(index), scale.Bottom - height, cells.X2(index) - cells.X1(index), height);
+                context.DrawRectangle(contextRow ? ContextBarBrush : BrushFor(mechanism ?? bucket.DominantMechanism), null, cell);
+                if (chosen == bucket.Interval)
+                {
+                    selected = cell;
+                }
+            }
+        }
+
+        if (selected is { } mark)
+        {
+            context.DrawRectangle(Brushes.Transparent, SelectionPen, mark.Inflate(outline));
+        }
+    }
+
+    /// <summary>
+    /// A density row's coverage: each run of cells the capture did not fully cover is one hatch across their columns, so
+    /// the hatch reads at a column per pixel. In a lane, unknown coverage is the thin strip along its foot, as for bars.
+    /// </summary>
+    private static void DrawCoverageRuns(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, TimelineCells cells,
+        Rect row, bool strips)
+    {
+        int from = -1;
+        bool strip = false;
+        for (int index = cells.First; index <= cells.End; index++)
+        {
+            CoverageState coverage = index < cells.End ? buckets[index].Coverage : CoverageState.Covered;
+            bool thin = strips && coverage == CoverageState.UnknownCoverage;
+            if (from >= 0 && (coverage == CoverageState.Covered || thin != strip))
+            {
+                double x1 = cells.ColumnX1(from);
+                double width = Math.Max(1, cells.ColumnX2(index - 1) - x1);
+                DrawCoverageGap(context, strip ? new Rect(x1, row.Bottom - 5, width, 5) : new Rect(x1, row.Top, width, row.Height));
+                from = -1;
+            }
+
+            if (coverage != CoverageState.Covered && from < 0)
+            {
+                from = index;
+                strip = thin;
             }
         }
     }
@@ -1340,8 +1545,16 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// fill, so it never reads as a mechanism's hue; it marks part of a bar, so it is not the selected interval's frame
     /// around a whole one, nor the pointer's full-height outline.
     /// </summary>
-    private static void DrawHighlight(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale)
+    private static void DrawHighlight(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, BarScale scale,
+        IReadOnlyList<TimelineBucket> drawn)
     {
+        TimelineCells cells = scale.Cells(SameColumns(buckets, drawn) ? drawn : buckets);
+        if (cells.Density)
+        {
+            DrawDensityHighlight(context, buckets, cells, scale);
+            return;
+        }
+
         for (int index = 0; index < buckets.Count; index++)
         {
             TimelineBucket bucket = buckets[index];
@@ -1352,17 +1565,60 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
-    /// <summary>The overview's bars from the buffers <see cref="Render"/> gathered, already limited to the viewport.</summary>
+    /// <summary>
+    /// The selection's share of a density row (§6.4): an accent rule across each cell at the height its own records draw,
+    /// and down each side of every run of them, so the share is outlined as one shape over the cells it crosses, never
+    /// filled and never a box per one-pixel cell.
+    /// </summary>
+    private static void DrawDensityHighlight(DrawingContext context, IReadOnlyList<TimelineBucket> buckets, TimelineCells cells,
+        BarScale scale)
+    {
+        double plot = scale.Bottom - scale.Top;
+        IBrush accent = SelectedBrush;
+        int last = -1;
+        double lastTop = 0;
+        for (int index = cells.First; index <= cells.End; index++)
+        {
+            if (index < cells.End && buckets[index].ObservationCount > 0)
+            {
+                double top = scale.Bottom - DensityHeight(Rate(buckets[index]), scale.MaximumRate, cells.CellSpan, plot);
+                context.DrawRectangle(accent, null, new Rect(cells.X1(index), top - 1, cells.X2(index) - cells.X1(index), 2));
+                if (last != index - 1)
+                {
+                    context.DrawRectangle(accent, null, new Rect(cells.X1(index) - 1, top - 1, 2, scale.Bottom - top + 1));
+                }
+
+                last = index;
+                lastTop = top;
+            }
+            else if (last >= 0 && last == index - 1)
+            {
+                context.DrawRectangle(accent, null, new Rect(cells.X2(last) - 1, lastTop - 1, 2, scale.Bottom - lastTop + 1));
+            }
+        }
+    }
+
+    /// <summary>
+    /// The aggregate plot's buckets in the viewport: bars where its columns are wide, and where they are narrower than 3
+    /// device pixels density cells, a column per pixel (§6.2).
+    /// </summary>
     private static void DrawBuckets(
-        DrawingContext context, WorkspaceViewModel viewModel, List<TimelineBucket> buckets, BarScale scale)
+        DrawingContext context, WorkspaceViewModel viewModel, IReadOnlyList<TimelineBucket> buckets, BarScale scale)
     {
         double plotHeight = scale.Bottom - scale.Top;
-        for (int index = 0; index < buckets.Count; index++)
+        TimelineCells cells = scale.Cells(buckets);
+        if (cells.Density)
+        {
+            DrawDensityCells(context, viewModel, null, buckets, cells, scale, contextRow: scale.Focused, outline: 2);
+            DrawCoverageRuns(context, buckets, cells, new Rect(scale.Left, scale.Top, scale.PlotWidth, plotHeight), strips: false);
+            return;
+        }
+
+        for (int index = cells.First; index < cells.End; index++)
         {
             TimelineBucket bucket = buckets[index];
-            double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
-            double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
-            double width = Math.Max(1, x2 - x1 - 2);
+            double x1 = cells.ColumnX1(index);
+            double width = cells.X2(index) - cells.X1(index);
             if (bucket.ObservationCount > 0)
             {
                 // Coverage and observation are separate facts. A gap or unknown coverage cannot erase records that
@@ -1627,8 +1883,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         context.DrawLine(RulePen, new(scale.Left, machineRow.Bottom), new(scale.Left + scale.PlotWidth, machineRow.Bottom));
         DrawText(context, "Machine · all records", new(9, machineRow.Center.Y - 7));
         DrawLaneSeries(context, viewModel, null, machine,
-            new BarScale(scale.Visible, scale.Left, scale.PlotWidth, machineRow.Top + 3, machineRow.Bottom - 5,
-                scale.MaximumRate, Focused: false),
+            scale with { Top = machineRow.Top + 3, Bottom = machineRow.Bottom - 5, Focused = false },
             machineRow, contextRow: true);
 
         Rect operationRow = LaneRow(1, 2, scale.Top, scale.Bottom);
@@ -1738,8 +1993,10 @@ public sealed class TimelineView : Control, IHoverCardSource
                 // its name says beneath it, in the ranked table's words, rather than leaving it to look quiet.
                 DrawText(context, NothingToPlot(bytes.Metric), new(19, row.Center.Y + 4));
             }
-            var laneScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, baseline, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
+            var laneScale = scale with
+            {
+                Top = row.Top + 3, Bottom = baseline, MaximumRate = PeakOf(peaks, index, scale.MaximumRate), Focused = false,
+            };
 
             // Byte bars come first, so a coverage hatch crosses them as it crosses a record bar. The selection's share is
             // a count of records, which has no height on a byte scale, so bytes draw none.
@@ -1756,7 +2013,7 @@ public sealed class TimelineView : Control, IHoverCardSource
                 DrawLaneSeries(context, viewModel, lane.Mechanism, coarse, laneScale, row, coverageOnly: coverageOnly);
                 if (!coverageOnly)
                 {
-                    DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+                    DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale, coarse);
                 }
 
                 continue;
@@ -1781,7 +2038,7 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             if (!coverageOnly)
             {
-                DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale);
+                DrawLaneHighlight(context, viewModel, lane.Mechanism, laneScale, detailLane.Buckets);
             }
         }
 
@@ -1897,23 +2154,24 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         double plot = scale.Bottom - scale.Top;
         double floor = plot * OccupiedFloor;
-        for (int column = 0; column < lane.Columns.Count; column++)
+        TimelineCells cells = scale.Layouts.For(lane, metric, scale.View);
+        if (cells.Density)
+        {
+            DrawByteDensity(context, viewModel, lane, metric, cells, scale, hue);
+            return;
+        }
+
+        for (int column = cells.First; column < cells.End; column++)
         {
             TimeRange interval = lane.IntervalOf(column);
-            if (!Intersects(interval, scale.Visible))
-            {
-                continue;
-            }
-
             (long? value, _, long unmeasured) = lane.Columns[column].ValueOf(metric);
             if (value is not > 0 && (value is not null || unmeasured == 0))
             {
                 continue;
             }
 
-            double x1 = scale.X(Math.Max(interval.StartTicks, scale.Visible.StartTicks));
-            double x2 = scale.X(Math.Min(interval.EndTicks, scale.Visible.EndTicks));
-            double width = Math.Max(1, x2 - x1 - 2);
+            double x1 = cells.ColumnX1(column);
+            double width = cells.X2(column) - cells.X1(column);
             Rect bar;
             long middle = interval.StartTicks + (interval.SpanTicks / 2);
             if (value is { } sum)
@@ -1938,12 +2196,84 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
     }
 
+    /// <summary>
+    /// One lane's byte columns as density (§6.2): a measured sum across its mark, as high as its intensity above the
+    /// occupied floor; a run of columns whose records declared sizes none of them recorded, one open cross-hatched cell at
+    /// that floor across their marks, so the hatch reads at a column per pixel (§6.6, R3); a measured zero, nothing.
+    /// </summary>
+    private static void DrawByteDensity(DrawingContext context, WorkspaceViewModel viewModel, SessionIntervalByteMeasures lane,
+        RankingMetric metric, TimelineCells cells, BarScale scale, ByteHue hue)
+    {
+        double plot = scale.Bottom - scale.Top;
+        double floor = plot * OccupiedFloor;
+        TimeRange? chosen = viewModel.SelectedInterval;
+        Rect? selected = null;
+        using (context.PushRenderOptions(AliasedEdges))
+        {
+            for (int column = cells.First; column < cells.End; column++)
+            {
+                long? value = lane.Columns[column].ValueOf(metric).Value;
+                if (value is not > 0)
+                {
+                    continue;
+                }
+
+                long sum = value.Value;
+
+                TimeRange interval = lane.IntervalOf(column);
+                double height = DensityHeight((double)sum / interval.SpanTicks, scale.MaximumRate, cells.CellSpan, plot);
+                var cell = new Rect(cells.X1(column), scale.Bottom - height, cells.X2(column) - cells.X1(column), height);
+                context.DrawRectangle(hue.Fill(interval.StartTicks + (interval.SpanTicks / 2)), null, cell);
+                if (chosen == interval)
+                {
+                    selected = cell;
+                }
+            }
+        }
+
+        int from = -1;
+        for (int column = cells.First; column <= cells.End; column++)
+        {
+            bool open = false;
+            if (column < cells.End)
+            {
+                (long? value, _, long unmeasured) = lane.Columns[column].ValueOf(metric);
+                open = value is null && unmeasured > 0;
+                if (open && chosen == lane.IntervalOf(column))
+                {
+                    selected = new Rect(cells.X1(column), scale.Bottom - floor, cells.X2(column) - cells.X1(column), floor);
+                }
+            }
+
+            if (!open && from >= 0)
+            {
+                var cell = new Rect(cells.X1(from), scale.Bottom - floor, cells.X2(column - 1) - cells.X1(from), floor);
+                TimeRange first = lane.IntervalOf(from);
+                Pen pen = hue.Hatch(first.StartTicks + (first.SpanTicks / 2));
+                context.DrawRectangle(null, pen, cell);
+                GraphView.CrossHatch(context, pen, cell);
+                from = -1;
+            }
+
+            if (open && from < 0)
+            {
+                from = column;
+            }
+        }
+
+        if (selected is { } mark)
+        {
+            context.DrawRectangle(Brushes.Transparent, SelectionPen, mark.Inflate(1));
+        }
+    }
+
     /// <summary>A mechanism lane's share of the selection's highlight, when the selection holds records of that mechanism.</summary>
-    private static void DrawLaneHighlight(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism, BarScale scale)
+    private static void DrawLaneHighlight(DrawingContext context, WorkspaceViewModel viewModel, Mechanism mechanism, BarScale scale,
+        IReadOnlyList<TimelineBucket> drawn)
     {
         if (LaneOf(viewModel.TimelineHighlightLanes, mechanism) is { } marked)
         {
-            DrawHighlight(context, marked.Buckets, scale);
+            DrawHighlight(context, marked.Buckets, scale, drawn);
         }
     }
 
@@ -1970,8 +2300,10 @@ public sealed class TimelineView : Control, IHoverCardSource
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
-            var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, row.Bottom - 5, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
+            var rowScale = scale with
+            {
+                Top = row.Top + 3, Bottom = row.Bottom - 5, MaximumRate = PeakOf(peaks, index, scale.MaximumRate), Focused = false,
+            };
             if (index == 0)
             {
                 DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
@@ -2090,8 +2422,10 @@ public sealed class TimelineView : Control, IHoverCardSource
             Rect row = LaneRow(index, count, scale.Top, scale.Bottom);
             context.DrawLine(RulePen, new(scale.Left, row.Bottom),
                 new(scale.Left + scale.PlotWidth, row.Bottom));
-            var rowScale = new BarScale(scale.Visible, scale.Left, scale.PlotWidth,
-                row.Top + 3, row.Bottom - 5, PeakOf(peaks, index, scale.MaximumRate), Focused: false);
+            var rowScale = scale with
+            {
+                Top = row.Top + 3, Bottom = row.Bottom - 5, MaximumRate = PeakOf(peaks, index, scale.MaximumRate), Focused = false,
+            };
             if (index == 0)
             {
                 DrawText(context, bytes is null ? "Machine · all records" : MachineBytesLabel(bytes.Metric), new(9, row.Center.Y - 7));
@@ -2286,8 +2620,10 @@ public sealed class TimelineView : Control, IHoverCardSource
                 DrawText(context, "Machine · all records", new(9, row.Center.Y - 7));
                 DrawLaneSeries(context, viewModel, null,
                     machine,
-                    new BarScale(scale.Visible, scale.Left, scale.PlotWidth, row.Top + 3, row.Bottom - 5,
-                        PeakOf(peaks, 0, scale.MaximumRate), Focused: false),
+                    scale with
+                    {
+                        Top = row.Top + 3, Bottom = row.Bottom - 5, MaximumRate = PeakOf(peaks, 0, scale.MaximumRate), Focused = false,
+                    },
                     row, contextRow: true);
                 continue;
             }
@@ -2313,13 +2649,19 @@ public sealed class TimelineView : Control, IHoverCardSource
             context.DrawLine(RulePen, new(scale.Left, middle), new(scale.Left + scale.PlotWidth, middle));
             DrawText(context, "↑", new(scale.Left - 12, middle - 13));
             DrawText(context, "↓", new(scale.Left - 12, middle - 1));
-            for (int bucketIndex = 0; bucketIndex < end.Buckets.Count; bucketIndex++)
+            TimelineCells cells = scale.Cells(end.Buckets);
+            if (cells.Density)
+            {
+                DrawEndDensity(context, viewModel, end, cells, middle, half, endRate);
+                DrawCoverageRuns(context, end.Buckets, cells, row, strips: true);
+                continue;
+            }
+
+            for (int bucketIndex = cells.First; bucketIndex < cells.End; bucketIndex++)
             {
                 TimelineBucket total = end.Buckets[bucketIndex];
-                if (!Intersects(total.Interval, scale.Visible)) continue;
-                double x1 = scale.X(Math.Max(total.Interval.StartTicks, scale.Visible.StartTicks));
-                double x2 = scale.X(Math.Min(total.Interval.EndTicks, scale.Visible.EndTicks));
-                double width = Math.Max(1, x2 - x1 - 2);
+                double x1 = cells.ColumnX1(bucketIndex);
+                double width = cells.X2(bucketIndex) - cells.X1(bucketIndex);
                 Rect? drawn = null;
                 if (end.Outbound[bucketIndex] is { ObservationCount: > 0 } sent)
                 {
@@ -2362,6 +2704,66 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     /// <summary>
+    /// One end's density cells (§6.2): what it sent rising above its midline and what it received falling below it, each
+    /// across the mark of the end's cell and as high as its intensity above the band's occupied floor, and a record with no
+    /// data direction a neutral mark on the midline, outlined where its mark is wide enough to show it.
+    /// </summary>
+    private static void DrawEndDensity(DrawingContext context, WorkspaceViewModel viewModel, ChannelEndTimelineLane end,
+        TimelineCells cells, double middle, double half, double endRate)
+    {
+        TimeRange? chosen = viewModel.SelectedInterval;
+        Rect? selected = null;
+        using (context.PushRenderOptions(AliasedEdges))
+        {
+            for (int index = cells.First; index < cells.End; index++)
+            {
+                TimelineBucket total = end.Buckets[index];
+                if (total.ObservationCount == 0)
+                {
+                    continue;
+                }
+
+                double x1 = cells.X1(index);
+                double width = cells.X2(index) - x1;
+                Rect? drawn = null;
+                TimelineBucket sent = end.Outbound[index];
+                if (sent.ObservationCount > 0)
+                {
+                    double height = DensityHeight(Rate(sent), endRate, cells.CellSpan, half);
+                    var bar = new Rect(x1, middle - 1 - height, width, height);
+                    context.DrawRectangle(BrushFor(sent.DominantMechanism), null, bar);
+                    drawn = bar;
+                }
+
+                TimelineBucket received = end.Inbound[index];
+                if (received.ObservationCount > 0)
+                {
+                    var bar = new Rect(x1, middle + 1, width, DensityHeight(Rate(received), endRate, cells.CellSpan, half));
+                    context.DrawRectangle(BrushFor(received.DominantMechanism), null, bar);
+                    drawn = drawn is { } upper ? upper.Union(bar) : bar;
+                }
+
+                if (total.ObservationCount - sent.ObservationCount - received.ObservationCount > 0)
+                {
+                    var mark = new Rect(x1, middle - 2.5, width, 5);
+                    context.DrawRectangle(ContextBarBrush, width >= 3 ? MarkPen : null, mark);
+                    drawn = drawn is { } union ? union.Union(mark) : mark;
+                }
+
+                if (drawn is { } marked && chosen == total.Interval)
+                {
+                    selected = marked;
+                }
+            }
+        }
+
+        if (selected is { } cell)
+        {
+            context.DrawRectangle(Brushes.Transparent, SelectionPen, cell.Inflate(1));
+        }
+    }
+
+    /// <summary>
     /// One row's bars and coverage for the buckets of <paramref name="buckets"/> that the viewport shows; with
     /// <paramref name="coverageOnly"/>, only their coverage, beneath bars that plot something other than their records.
     /// </summary>
@@ -2369,17 +2771,23 @@ public sealed class TimelineView : Control, IHoverCardSource
         Mechanism? mechanism, IReadOnlyList<TimelineBucket> buckets, BarScale scale, Rect row,
         bool contextRow = false, bool coverageOnly = false)
     {
-        for (int index = 0; index < buckets.Count; index++)
+        TimelineCells cells = scale.Cells(buckets);
+        if (cells.Density)
         {
-            TimelineBucket bucket = buckets[index];
-            if (!Intersects(bucket.Interval, scale.Visible))
+            if (!coverageOnly)
             {
-                continue;
+                DrawDensityCells(context, viewModel, mechanism, buckets, cells, scale, contextRow, outline: 1);
             }
 
-            double x1 = scale.X(Math.Max(bucket.Interval.StartTicks, scale.Visible.StartTicks));
-            double x2 = scale.X(Math.Min(bucket.Interval.EndTicks, scale.Visible.EndTicks));
-            double width = Math.Max(1, x2 - x1 - 2);
+            DrawCoverageRuns(context, buckets, cells, row, strips: true);
+            return;
+        }
+
+        for (int index = cells.First; index < cells.End; index++)
+        {
+            TimelineBucket bucket = buckets[index];
+            double x1 = cells.ColumnX1(index);
+            double width = cells.X2(index) - cells.X1(index);
             if (bucket.ObservationCount > 0 && !coverageOnly)
             {
                 Rect measured = scale.Bar(bucket);
@@ -2451,8 +2859,9 @@ public sealed class TimelineView : Control, IHoverCardSource
         Pen pen = TextPen;
         double markTop = bottom - 10;
         double lastX = double.NaN;
-        foreach (long tick in marks)
+        for (int index = 0; index < marks.Count; index++)
         {
+            long tick = marks[index];
             if (!visible.Contains(tick))
             {
                 continue;
@@ -2750,15 +3159,16 @@ public sealed class TimelineView : Control, IHoverCardSource
                     RpcCallDensity.ColumnOf(density.Interval, density.Columns, anchor)));
             }
         }
-        else if (wasClick && LaneIndexAt(pressY) is { } lane && LaneBucketAt(viewModel, lane, anchor) is { } cell)
+        else if (wasClick && LaneIndexAt(pressY) is { } lane && CellAt(viewModel, lane, pressX) is { } cell)
         {
             // A click chooses the cell it landed on - its lane's own, which a group's lanes counted coarser than the view
-            // hold wider than the machine column beneath - and the inspector explains it (§6.8, R13).
-            ChooseCell(viewModel, lane, cell);
+            // hold wider than the machine column beneath, or in the density regime the mark it landed on or beside - and
+            // the inspector explains it: its own interval, however wide its mark is drawn (§6.2, §6.8, R13).
+            ChooseCell(viewModel, lane, cell.Bucket);
         }
-        else if (wasClick && BucketAt(viewModel, anchor) is { } bucket)
+        else if (wasClick && LaneIndexAt(pressY) is null && CellAt(viewModel, null, pressX) is { } bucket)
         {
-            viewModel.ChooseTimelineCell(bucket);
+            viewModel.ChooseTimelineCell(bucket.Bucket);
         }
 
         pressedCall = null;
@@ -2779,11 +3189,11 @@ public sealed class TimelineView : Control, IHoverCardSource
             foldedLane: IsFoldedRow(viewModel, kind, index));
     }
 
-    /// <summary>The finest bucket drawn at a tick: the zoomed detail where it has arrived, else the overview's.</summary>
-    private static TimelineBucket? BucketAt(WorkspaceViewModel viewModel, long tick) =>
-        BucketContaining(viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
+    /// <summary>The finest buckets drawn at a tick: the zoomed detail's where it has arrived, else the overview's.</summary>
+    private static IReadOnlyList<TimelineBucket> DrawnBucketsAt(WorkspaceViewModel viewModel, long tick) =>
+        viewModel.TimelineDetail is { } detail && detail.Interval.Contains(tick)
             ? detail.Buckets
-            : viewModel.Snapshot.Timeline, tick);
+            : viewModel.Snapshot.Timeline;
 
     protected override void OnPointerExited(PointerEventArgs e)
     {
@@ -3494,20 +3904,6 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         return false;
-    }
-
-    /// <summary>The bucket whose half-open interval holds <paramref name="tick"/>, if any.</summary>
-    private static TimelineBucket? BucketContaining(IReadOnlyList<TimelineBucket>? buckets, long tick)
-    {
-        for (int index = 0; buckets is not null && index < buckets.Count; index++)
-        {
-            if (buckets[index].Interval.Contains(tick))
-            {
-                return buckets[index];
-            }
-        }
-
-        return null;
     }
 
     /// <summary>Hue comes from the mechanism's family token; nothing else may assign it (section 6.6, R5).</summary>

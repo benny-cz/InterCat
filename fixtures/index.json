@@ -1331,7 +1331,9 @@
       ],
       "R11": [
         "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not",
+        "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes",
         "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
+        "R11: a row's layout is kept while its cells and the view stay, and laid out again when either changes",
         "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row"
       ],
       "R12": [

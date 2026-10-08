@@ -25,7 +25,7 @@ public sealed class CoarserLanesWindowTests
     {
         using var session = new TemporarySession();
         Publish(session.Store, Pool(100));
-        // As wide as a 4K screen: the view then asks its widest 256 columns, and a hundred lanes of them would not fit.
+        // As wide as a 4K screen: the view then asks its widest 2,000 columns, and a hundred lanes of them would not fit.
         var window = new MainWindow { Width = 3_600, Height = 1_400 };
         window.Show();
         window.ApplyCaptureUpdate(Update(session));

@@ -166,6 +166,10 @@ public sealed class HttpExchangeLaneTests
         Assert.True(workspace.Descend());
         Assert.True(workspace.IsHttpChannelRung);
         await workspace.HttpReady;
+
+        // Laid out at the rung first, so the view asks for the columns it draws.
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
         timeline.RequestDetailNow();
         await workspace.HttpSpansReady;
         Dispatch();

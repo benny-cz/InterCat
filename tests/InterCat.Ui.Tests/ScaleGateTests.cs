@@ -68,8 +68,8 @@ public sealed class ScaleGateTests
     private const double TimelineBudgetMs = 100;
     private const double RankingBudgetMs = 250;
     private const double DetailBudgetMs = 150;
-    private const int Columns = 2_000;
-    private const int WindowColumns = 256;
+    /// <summary>The most columns a view asks for: a column per device pixel of a plot as wide as 2,000 (§6.2, §10.3).</summary>
+    private const int Columns = SessionTimelineQuery.MaximumColumns;
     private const int Pairs = 200;
     private const int ExecutablesPerSide = 5;
     private const long RowSpacingTicks = 600;
@@ -126,11 +126,10 @@ public sealed class ScaleGateTests
                     + "derived is in memory and no segment is open, but the operating system's file cache may hold the "
                     + "files. Warm is the same question asked again over other viewports, brushes or scopes.",
                 "The reopen is the store's open and the first overview projection; the window's open to laid out is "
-                    + "reported beside it. The L0 timeline query counts 2,000 columns. At a 40-process group it is timed "
-                    + "twice: with the group's 40 process lanes, counted in the same pass, at the window's widest request "
-                    + "of 256 columns; and at 2,000 columns, where the 40 lanes are counted in the 500 columns the "
-                    + "20,000-cell bound allows (revision 210), in the same pass as the group's own 2,000. At the busiest "
-                    + "connection it counts the two ends' lanes at the window's 256 columns.",
+                    + "reported beside it. Every timeline query counts 2,000 columns, the most a view asks, which counts "
+                    + "a column per device pixel of its plot. At a 40-process group the group's 40 process lanes are "
+                    + "counted in the same pass, in the 500 columns the 20,000-cell bound allows (revision 210); at the "
+                    + "busiest connection, its two ends' lanes.",
                 "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it "
                     + "includes counting the interval's records per process, edge and channel.",
             },
@@ -247,32 +246,26 @@ public sealed class ScaleGateTests
         Assert.True(ladder.TryDescend(LadderProjection.DescentFor(group, ladder.Current, extent), out string? refusal), refusal);
         TimelineFocus focus = TimelineFocus.Of(EvidenceScopes.Resolve(snapshot, ladder.Current))!;
 
-        // As the window asks: its widest request is 256 columns, and the group's 40 process lanes come in the same pass.
+        // As the window asks at its widest, a column per device pixel: at §12's 2,000 columns the 40 lanes would need
+        // 40,000 cells, so they are counted in the 500 columns the bound allows, in the same pass as the group's own 2,000.
         int lanes = 0;
-        result["timelineL1FortyLanesAtWindowColumns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
-        {
-            SessionFocusedTimeline focused = SessionTimelineQuery.Focused(store, viewport, WindowColumns, focus);
-            lanes = focused.ProcessLanes.Count;
-        });
-        result["processLanesCounted"] = lanes;
-
-        // At §12's 2,000 columns the 40 lanes would need 40,000 cells: they are counted in the 500 columns the bound
-        // allows, in the same pass as the group's own 2,000.
         int laneColumns = 0;
         result["timelineL1At2000Columns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
         {
             SessionFocusedTimeline focused = SessionTimelineQuery.Focused(store, viewport, Columns, focus);
             Assert.Null(focused.ProcessLaneProblem);
+            lanes = focused.ProcessLanes.Count;
             laneColumns = focused.ProcessLanes[0].Buckets.Count;
         });
+        result["processLanesCounted"] = lanes;
         result["processLaneColumnsAt2000Columns"] = laneColumns;
 
         // L3: the busiest connection's two ends, each with what it sent and what it received apart, at the window's widest
         // request.
         var busiest = snapshot.Channels.Where(channel => channel.Mechanism == Mechanism.Tcp).MaxBy(channel => channel.ObservationCount)!;
         var ends = new TimelineFocus(busiest.Key, []);
-        result["timelineL3ChannelEndsAtWindowColumns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
-            Assert.Equal(2, SessionTimelineQuery.Focused(store, viewport, WindowColumns, ends).ChannelEndLanes.Count));
+        result["timelineL3ChannelEndsAt2000Columns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
+            Assert.Equal(2, SessionTimelineQuery.Focused(store, viewport, Columns, ends).ChannelEndLanes.Count));
         Retain("timeline");
 
         // The bounded graph and the top 100 rows of the machine and group rungs, from the overview in memory.

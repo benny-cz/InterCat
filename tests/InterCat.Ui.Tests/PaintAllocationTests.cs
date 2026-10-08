@@ -100,6 +100,85 @@ public sealed class PaintAllocationTests
         Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
     }
 
+    [AvaloniaFact(DisplayName = "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes")]
+    public async Task ADensityRepaintAllocatesNothingOfItsOwn()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Spread(30));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+            Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await Settle(window, workspace);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        TimeRange extent = workspace.Snapshot.Extent;
+        var zoomed = new TimeRange(extent.StartTicks + (extent.SpanTicks / 10), extent.EndTicks - (extent.SpanTicks / 10));
+        var report = new List<string>();
+
+        // The machine rung's lanes a column per device pixel, then with an exchange's cell, which a point beside its mark
+        // snapped to, and its card under the pointer.
+        await Zoom(window, workspace, timeline, zoomed);
+        Measure(window, "machine as density", report);
+        TimelineBucket lone = workspace.TimelineDetail!.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets
+            .Where(bucket => bucket.ObservationCount > 0).ElementAt(10);
+        window.MouseMove(timeline.TranslatePoint(timeline.PointOf(lone)!.Value, window)!.Value + new Point(5, 0));
+        await Settle(window, workspace);
+        Assert.Equal(lone, timeline.HoveredBucket);
+        Measure(window, "machine as density, a cell beside the pointer", report);
+        window.MouseMove(new Point(1, 1));
+
+        // Ranked by bytes sent, whose lanes plot the zoomed view's own byte columns as density, the send that recorded no
+        // size cross-hatched.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+        await Settle(window, workspace);
+        Assert.NotNull(workspace.TimelineBytes?.Zoomed);
+        Assert.True(workspace.TimelineDrawsUnmeasured);
+        Measure(window, "machine as density, plotting bytes sent", report);
+        workspace.RankBy = RankingMetric.Records;
+        await workspace.RankingReady;
+
+        // Down the ladder, zoomed again at each rung: a group's owner rows, a process's direction rows, a channel's ends.
+        foreach (string rung in new[] { "group", "process", "channel" })
+        {
+            workspace.SelectedRung = workspace.RungRows[0];
+            Assert.True(workspace.Descend(), rung);
+            await Zoom(window, workspace, timeline, zoomed);
+            Measure(window, $"{rung} as density", report);
+        }
+
+        Assert.Equal(2, workspace.TimelineChannelEndLanes?.Count);
+
+        // And on to the channel's records (E), each a mark the timeline draws beside its cells.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        await Zoom(window, workspace, timeline, zoomed);
+        Assert.True(workspace.IsEvidenceRung, workspace.TimelineCaption);
+        Assert.NotEmpty(workspace.EvidenceMarkTicks);
+        Measure(window, "records as density", report);
+
+        window.Close();
+        Assert.True(report.Count == 0, string.Join(Environment.NewLine, report));
+    }
+
+    /// <summary>
+    /// Shows <paramref name="range"/> and waits for its count, a column per device pixel of the plot: asked again once a
+    /// rung's rows, arriving with the first count, have narrowed the plot, as the view itself asks once it settles.
+    /// </summary>
+    private static async Task Zoom(Window window, WorkspaceViewModel workspace, TimelineView timeline, TimeRange range)
+    {
+        timeline.SetViewport(range);
+        for (int ask = 0; ask < 2; ask++)
+        {
+            timeline.RequestDetailNow();
+            await Settle(window, workspace);
+        }
+
+        Assert.Equal(timeline.DeviceColumns, workspace.TimelineDetail!.Buckets.Count);
+    }
+
     [AvaloniaFact(DisplayName = "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not")]
     public async Task AnOperationLaneRepaintAllocatesNothingOfItsOwn()
     {
@@ -266,6 +345,10 @@ public sealed class PaintAllocationTests
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
         Assert.True(workspace.Descend());
         await workspace.RpcReady;
+
+        // Laid out at the rung first, so the view asks for the columns it draws.
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
         timeline.RequestDetailNow();
         await workspace.RpcSpansReady;
         Dispatch();
@@ -313,6 +396,25 @@ public sealed class PaintAllocationTests
         }),
         Transfer(10 + (2 * count), ObservationKind.Send, AccountingSide.SendSide, null, 100, (ulong)(100 + (2 * count)))
             .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = (10 + (2 * count)) * 100L },
+    ];
+
+    /// <summary>
+    /// <paramref name="count"/> exchanges between a client and a server a millisecond apart, so a zoomed view draws each as
+    /// a lone mark, and halfway between two of them a send that recorded no size.
+    /// </summary>
+    private static ObservationRowV1[] Spread(int count) =>
+    [
+        .. Enumerable.Range(0, count).SelectMany(index => new[]
+        {
+            Transfer(10_000 * (index + 1), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(100 + (2 * index)))
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000_000L * (index + 1) },
+            Transfer((10_000 * (index + 1)) + 1, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
+                (ulong)(101 + (2 * index))).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = (1_000_000L * (index + 1)) + 100 },
+        }),
+        Transfer((10_000 * (count / 2)) + 5_000, ObservationKind.Send, AccountingSide.SendSide, null, 100,
+                (ulong)(100 + (2 * count)))
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = (1_000_000L * (count / 2)) + 500_000 },
     ];
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

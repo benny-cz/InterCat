@@ -213,6 +213,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     // with its own focus.
     private (TimeRange Viewport, int Columns, string? Focus, string? Lanes)? requestedTimeline;
     private (TimeRange Viewport, int Columns)? drawnTimeline;
+
+    /// <summary>The drawn timeline's device pixels per logical pixel, as its view last asked; 1 until one does.</summary>
+    private double drawnScaling = 1;
     private SessionTimelineDetail? timelineDetail;
 
     // The rung's timeline focus: what E would read from it, counted beside the whole timeline (§3.2).
@@ -474,11 +477,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public Task TimelineDetailReady { get; private set; } = Task.CompletedTask;
 
     /// <summary>
-    /// Asks for the timeline over a viewport in <paramref name="columns"/> columns. The overview's coarse buckets stay
-    /// on screen until the answer arrives, a newer viewport cancels an older request, and the whole extent needs none
-    /// (P25). A request that fails leaves the coarse buckets, which remain true at their own resolution.
+    /// Asks for the timeline over a viewport in <paramref name="columns"/> columns, drawn at <paramref name="scaling"/>
+    /// device pixels per logical pixel where the view says. The overview's coarse buckets stay on screen until the answer
+    /// arrives, a newer viewport cancels an older request, and the whole extent needs none (P25). A request that fails
+    /// leaves the coarse buckets, which remain true at their own resolution.
     /// </summary>
-    public void RequestTimelineDetail(TimeRange viewport, int columns)
+    public void RequestTimelineDetail(TimeRange viewport, int columns, double? scaling = null)
     {
         columns = Math.Clamp(columns, 1, SessionTimelineQuery.MaximumColumns);
         if (disposed)
@@ -487,6 +491,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         drawnTimeline = (viewport, columns);
+        if (scaling is > 0 and var drawn && double.IsFinite(drawn))
+        {
+            drawnScaling = drawn;
+        }
+
         RequestHighlight();
         RequestRpcSpans(viewport);
         RequestHttpSpans(viewport);
@@ -4923,11 +4932,35 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
-    /// <summary>Reading times of the loaded records, in workspace ticks, drawn as individual marks on the timeline.</summary>
-    public IReadOnlyList<long> EvidenceMarkTicks => IsEvidenceRung && evidence is { } list
-        ? [.. list.Records.Where(record => record.Observation.SessionRelativeTicks is not null)
-            .Select(record => record.Observation.SessionRelativeTicks!.Value / 100)]
-        : [];
+    /// <summary>
+    /// Reading times of the loaded records, in workspace ticks, drawn as individual marks on the timeline. Every repaint
+    /// reads them, so they are kept for the records loaded and made again only when more are (R11).
+    /// </summary>
+    public IReadOnlyList<long> EvidenceMarkTicks
+    {
+        get
+        {
+            if (!IsEvidenceRung || evidence is not { } list)
+            {
+                return [];
+            }
+
+            // A list only grows, by a page loaded, until another replaces it.
+            if (!ReferenceEquals(evidenceMarksOf, list) || evidenceMarksRead != list.Records.Count)
+            {
+                evidenceMarksOf = list;
+                evidenceMarksRead = list.Records.Count;
+                evidenceMarks = [.. list.Records.Where(record => record.Observation.SessionRelativeTicks is not null)
+                    .Select(record => record.Observation.SessionRelativeTicks!.Value / 100)];
+            }
+
+            return evidenceMarks;
+        }
+    }
+
+    private EvidenceList? evidenceMarksOf;
+    private int evidenceMarksRead;
+    private IReadOnlyList<long> evidenceMarks = [];
 
     public long? SelectedEvidenceTick => SelectedEvidence?.Observation.SessionRelativeTicks is { } nanoseconds
         ? nanoseconds / 100
@@ -5221,10 +5254,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public RpcCallDensity? RpcCallDensity => ShowsRpcCallLane ? rpcSpans!.Density : null;
 
     /// <summary>
-    /// How many density columns the call lane asks for: twice the timeline's detail columns, about five logical pixels
-    /// each, which is §6.2's minimum drawn width, so every column is a pointer target without widening.
+    /// How many density columns the call lane asks for: one per five logical pixels of the timeline's columns, which are
+    /// one per device pixel, so each is §6.2's minimum drawn width and every column is a pointer target without widening.
     /// </summary>
-    private int CallDensityColumns => Math.Clamp((drawnTimeline?.Columns ?? 128) * 2, 32, 512);
+    private int CallDensityColumns =>
+        Math.Clamp((int)((drawnTimeline?.Columns ?? 1_280) / (5 * drawnScaling)), 32, 512);
 
     /// <summary>Whether the timeline draws the RPC channel's calls as a lane of duration bars under the machine row.</summary>
     public bool ShowsRpcCallLane => IsRpcChannelRung && rpcSpans is { Problem: null };
