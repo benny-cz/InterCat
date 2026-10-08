@@ -108,7 +108,7 @@ public sealed class DemoEntryWindowTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "§6.1: with a session shown the card drops its first-run guidance and empty lines, so the smallest window's ranked list has three rows in view, and the demo waits in the Investigation menu")]
+    [AvaloniaFact(DisplayName = "§6.1: with a session opened the card drops its first-run guidance and empty lines and says in a line which generation is open, so the smallest window's ranked list keeps two rows and the start of a third, and the demo waits in the Investigation menu")]
     public async Task TheDemoLeavesTheRankedListItsRoom()
     {
         string root = Path.Combine(Path.GetTempPath(), "intercat-demo-menu-" + Guid.NewGuid().ToString("N"));
@@ -118,25 +118,34 @@ public sealed class DemoEntryWindowTests
             Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
             Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
             Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\third.exe", SessionRelativeTicks = 300 },
-            .. Enumerable.Range(0, 21).Select(index => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 10,
-                100 * (1 + index % 3), (ulong)(10 + index)).Between("127.0.0.1:50000", "127.0.0.1:8080")
-                with { SessionRelativeTicks = (10 + index) * 100L }),
+            // The client and the server are paired over TCP; the third process sends to an end no record holds.
+            .. Enumerable.Range(0, 21).Select(index => (index % 3) switch
+            {
+                0 => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 10, 100, (ulong)(10 + index))
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080"),
+                1 => Transfer(10 + index, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 200, (ulong)(10 + index))
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000"),
+                _ => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 10, 300, (ulong)(10 + index))
+                    .Between("127.0.0.1:50001", "127.0.0.1:9090"),
+            } with { SessionRelativeTicks = (10 + index) * 100L }),
         ];
         Publish(session.Store, rows);
         var window = new MainWindow { Width = 1_080, Height = 700, DemoRoot = root };
         try
         {
+            // Opened as a person opens a saved session, with the words the card then says.
             window.Show();
-            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
-                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            Assert.True(await window.OpenSessionAsync(session.Path));
             for (int pass = 0; pass < 4; pass++)
             {
                 Avalonia.Threading.Dispatcher.UIThread.RunJobs();
                 _ = window.CaptureRenderedFrame();
             }
 
-            // The card no longer offers the demo or says what exploring records, and keeps no line that says nothing, so it
-            // shows all it holds unscrolled and leaves the ranked list room for each of the three processes' rows.
+            // The card no longer offers the demo or says what exploring records, keeps no line that says nothing, and says in
+            // a line which generation is open, so it shows all it holds unscrolled and leaves the ranked list its room.
+            Assert.Equal(("Saved session open", "Published generation 1."),
+                (window.GetControl<TextBlock>("CaptureStatus").Text, window.GetControl<TextBlock>("CaptureDetail").Text));
             Assert.False(window.GetControl<Button>("ExploreDemoButton").IsVisible);
             Assert.False(window.GetControl<TextBlock>("CaptureEyebrow").IsVisible);
             Assert.False(window.GetControl<TextBlock>("CaptureIntro").IsVisible);
@@ -157,6 +166,15 @@ public sealed class DemoEntryWindowTests
             ListBox list = window.GetControl<ListBox>("RungList");
             Assert.Equal(3, list.ItemCount);
             Assert.All(Enumerable.Range(0, 3), index => Assert.NotNull(list.ContainerFromIndex(index)));
+            double third = list.ContainerFromIndex(2)!.Bounds.Top;
+            Assert.True(list.Bounds.Height - third >= 12, $"The third row shows {list.Bounds.Height - third:F0} px of itself.");
+
+            // What the graph draws its relationships from is said where they are drawn, in full on hover.
+            TextBlock graph = window.GetControl<TextBlock>("GraphSummaryText");
+            Assert.Equal("3 processes · 1 relationship among 2 of them · paired TCP only", graph.Text);
+            Assert.Equal(graph.Text + ". The graph draws admitted paired TCP; a process's RPC calls are on its rung, and all "
+                + "other observed activity is in the timeline.", ToolTip.GetTip(graph));
+            Assert.Equal(ToolTip.GetTip(graph), AutomationProperties.GetHelpText(graph));
 
             // The Investigation menu still offers it, described as the card did, and it opens beside the session.
             MenuItem item = window.GetControl<MenuItem>("ExploreDemoItem");

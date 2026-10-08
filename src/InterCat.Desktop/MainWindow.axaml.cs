@@ -1520,11 +1520,9 @@ public sealed partial class MainWindow : Window, IDisposable
             (string headline, string detail) = overview.Redaction is { } redaction
                 ? ("Redacted session package open", redaction.Statement(CultureInfo.CurrentCulture))
                 : status ?? ("Saved session open",
-                    overview.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc)
-                        ? "This is a published generation. The graph contains admitted paired TCP and RPC calls linked "
-                            + "through ALPC; a process's RPC calls are on its rung, and all other activity is in the timeline."
-                        : "This is a published generation. The graph contains admitted paired TCP; a process's RPC calls are "
-                            + "on its rung, and all other observed activity remains in the timeline.");
+                    // What the graph draws is said in its own header (GraphScope), so the card keeps one line and the
+                    // smallest window's ranked list its room (§6.1).
+                    string.Create(CultureInfo.CurrentCulture, $"Published generation {overview.Generation:N0}."));
 
             // Opening on the last complete generation is stated, never passed off as the newest (S7).
             if (store.RollbackReason is { } fallback)

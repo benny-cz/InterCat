@@ -432,6 +432,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         OnPropertyChanged(nameof(GraphLayoutProblem));
         OnPropertyChanged(nameof(GraphSummary));
+        OnPropertyChanged(nameof(GraphScope));
     }
 
     /// <summary>The last laid-out position of each node of <paramref name="display"/> that has one.</summary>
@@ -1750,7 +1751,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 int nodes = graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.Context);
                 return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
-                    + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty);
+                    + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
+                    + GraphScopeNote(brief: true);
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -1760,11 +1762,41 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     + (relatedProcesses.Count < processes
                         ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
                         : string.Empty));
-            return graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
+            return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count, "node", "nodes")
-                : text;
+                : text) + GraphScopeNote(brief: true);
         }
+    }
+
+    /// <summary>
+    /// The graph's summary with what its relationships are drawn from in full, for its hover and a screen reader's help
+    /// text: a published session's graph draws admitted paired TCP, and RPC calls linked through ALPC where it has them,
+    /// never every observation, which the timeline holds (R21).
+    /// </summary>
+    public string GraphScope => GraphScopeNote(brief: false) is { Length: > 0 } scope
+        ? GraphSummary + ". " + scope
+        : GraphSummary;
+
+    /// <summary>
+    /// What a published session's graph draws its relationships from, in the ranked table's words: briefly after its
+    /// summary, or in full. Empty for a workspace that is not a published session's, or one with no relationship, whose
+    /// summary already says the timeline may hold what was observed.
+    /// </summary>
+    private string GraphScopeNote(bool brief)
+    {
+        if (!realOverview || wholeSnapshot.Edges.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        bool calls = wholeSnapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
+        return brief
+            ? calls ? " · paired TCP and RPC calls" : " · paired TCP only"
+            : (calls
+                ? "The graph draws admitted paired TCP and RPC calls linked through ALPC"
+                : "The graph draws admitted paired TCP")
+                + "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.";
     }
 
     private static string Counted(int count, string one, string many) =>
@@ -2427,6 +2459,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(CanRelayoutGraph));
         OnPropertyChanged(nameof(GraphSummary));
+        OnPropertyChanged(nameof(GraphScope));
         RaiseGraphSelectionChanged();
         if (!sameNodes)
         {
@@ -5936,6 +5969,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(CanRelayoutGraph));
         OnPropertyChanged(nameof(GraphSummary));
+        OnPropertyChanged(nameof(GraphScope));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
         OnPropertyChanged(nameof(Snapshot));
         OnPropertyChanged(nameof(IsRankedWithinInterval));

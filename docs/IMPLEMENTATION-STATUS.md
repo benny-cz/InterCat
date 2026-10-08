@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 446 · Branch: `main`
+Updated: 2026-10-08 · Plan revision: 447 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -81,6 +81,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5). Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates; the eviction point of a rolling retention policy, once there is one (S5). |
 
 ## Recent slices
+
+- **Revision 447 — the smallest window's ranked list keeps its room with a saved session open (§6.1, R21):**
+  - The graph pane's summary ends with what its relationships are drawn from - paired TCP only, or paired TCP and RPC
+    calls - and says it in full on hover and to a screen reader; the card says in one line which generation is open.
+  - Opened through the window's own path at 1080 × 700, the card shows all it holds and the list has two rows and the
+    start of a third, 168 px where it had its 120 px floor.
 
 - **Revision 446 — a follow goes on across the evidence's chunk releases (ADR-048, IC-016a):**
   - A chunk release states what its recording gave up in all, `recording: { chunks, records }`, its own added to the
@@ -1420,10 +1426,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      rolling follow stops at (ADR-046, `icat pin`); done in revision 443, the window's pins - from its time scope's start,
      listed and removable, stated in its size line; done in revision 445, the window's rolling capture, its timeline
      starting at the window (ADR-045 decision 6); done in revision 446, a follow that goes on across the evidence's
-     chunk releases, each stating what the recording gave up in all (ADR-048). Next, after giving the smallest window's
-     ranked list its room with a saved session open: the broker releasing the chunks its follow gave up, between its own
-     publications, told by the capture's owner as it renews its lease (ADR-048 decision 5), so a rolling capture can
-     outlast its journal quota.
+     chunk releases, each stating what the recording gave up in all (ADR-048). Next: the broker releasing the chunks its
+     follow gave up, between its own publications, told by the capture's owner as it renews its lease (ADR-048 decision
+     5), so a rolling capture can outlast its journal quota.
 4. §11.3's redacted packages above 10,000,000 rows: done in revision 397 from the command line, `icat package --redacted
    --interval`, which keeps every lifecycle record of the PIDs its interval's records belong to, so they keep their
    names and bindings, and whose coverage speaks only for the interval; done in revision 399 in the window, whose

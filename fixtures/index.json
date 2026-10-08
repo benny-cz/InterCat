@@ -1533,6 +1533,7 @@
         "R21: a process lane's quiet interval is judged by what the capture collected, not left unknown",
         "R21: a process row states what the capture collected and a channel row TCP, over the session and within an interval",
         "R21: a publication's counts stand in with their coverage, never styled as the new generation's limit",
+        "R21: a published session's graph says what its relationships are drawn from, briefly and in full",
         "R21: a range that could not be counted has no coverage said for it, and the tour states none",
         "R21: a real session's interval table reads each interval's bytes over exactly the records it lists",
         "R21: a real session's interval table states each interval's bytes once the table is shown",
