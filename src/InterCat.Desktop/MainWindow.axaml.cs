@@ -158,8 +158,9 @@ public sealed partial class MainWindow : Window, IDisposable
     private BrokerCaptureHealth? liveHealth;
 
     // §12.1 S5: the session's size as its newest generation measured it, with the wall-clock moment its capture began,
-    // and the limits and volume of a capture that records, from which the window says when it stops.
-    private (SessionSize Size, DateTimeOffset? Began, string? Retained)? growth;
+    // what it retains after a release and what its pins keep, and the limits and volume of a capture that records, from
+    // which the window says when it stops.
+    private (SessionSize Size, DateTimeOffset? Began, string? Retained, string? Pinned)? growth;
     private CaptureLimits? captureLimits;
     private RecordingVolume? recordingVolume;
 
@@ -2560,7 +2561,7 @@ public sealed partial class MainWindow : Window, IDisposable
         recordingVolume = update.Volume;
         if (update.Overview is { Size: { } measured } newest)
         {
-            growth = (measured, newest.Began, newest.Retained);
+            growth = (measured, newest.Began, newest.Retained, newest.Pinned);
         }
 
         if (!forceOverview && displayedOverview is null && update.Overview is null)
@@ -3169,13 +3170,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// §12.1 S5: the session's size, bytes per record and tier, as its newest generation measured them, while it records
-    /// when its capture's limits stop it, and after an interval release what it retains - in `icat session`'s and
-    /// `icat capture`'s words (R18). It reads as a caution when that stop is a minute away, or when the session is past
+    /// when its capture's limits stop it, after an interval release what it retains, and what its pins keep - in
+    /// `icat session`'s and `icat capture`'s words (R18). It reads as a caution when that stop is a minute away, or when the session is past
     /// the sizes any release is qualified at.
     /// </summary>
     private void UpdateSessionGrowth()
     {
-        if (growth is not ({ } size, var began, var retained))
+        if (growth is not ({ } size, var began, var retained, var pinned))
         {
             SessionGrowthText.Text = string.Empty;
             SessionGrowthText.IsVisible = false;
@@ -3187,7 +3188,8 @@ public sealed partial class MainWindow : Window, IDisposable
             ? SessionGrowth.Headroom(size, start, DateTimeOffset.UtcNow, limits, recordingVolume)
             : null;
         SessionGrowthText.Text = SessionGrowth.Statement(size, headroom, stopOnItsOwnLine: true)
-            + (retained is null ? string.Empty : "\n" + retained);
+            + (retained is null ? string.Empty : "\n" + retained)
+            + (pinned is null ? string.Empty : "\n" + pinned);
         SessionGrowthText.IsVisible = true;
         SessionGrowthText.Classes.Set("caution",
             size.Tier == SessionSizeTier.Qualification || headroom?.Remaining <= SessionGrowth.Imminent);
@@ -3422,6 +3424,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ? "Save an exact copy of this redacted package to share"
             : "Save an exact, unredacted copy of this session's evidence to share");
         ShareOriginalButton.IsEnabled = packagingCopy || canPackage;
+        UpdatePinAction(session);
         ToolTip.SetTip(ShareOriginalButton, packagingCopy
             ? "Stop copying. Nothing is saved, and the session is unchanged."
             : canPackage

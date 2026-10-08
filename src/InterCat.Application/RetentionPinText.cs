@@ -25,6 +25,32 @@ public static class RetentionPinText
     }
 
     /// <summary>
+    /// The size line's sentence about the pins standing on a session (§12.1 S5): from when the earliest keeps every record,
+    /// and the least any lets the session hold. Null when none stands.
+    /// </summary>
+    public static string? SizeLine(IReadOnlyList<RetentionPin> pins)
+    {
+        ArgumentNullException.ThrowIfNull(pins);
+        if (pins.Count == 0)
+        {
+            return null;
+        }
+
+        RetentionPin earliest = pins.MinBy(pin => pin.FromNanoseconds)!;
+        return $"Pinned from {SessionTimeText.Seconds(earliest.FromNanoseconds, CultureInfo.CurrentCulture)} ({earliest.Reason})"
+            + (pins.Count > 1 ? " and by " + CountText.Of(pins.Count - 1, "more pin") : string.Empty)
+            + ": every record from then on is kept through every release, and the session may hold "
+            + ByteSizeText.Of(pins.Min(pin => pin.AllowanceBytes)) + ".";
+    }
+
+    /// <summary>What the size line says of pins that could not be read: why, and that nothing is released meanwhile.</summary>
+    public static string Unreadable(string problem)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(problem);
+        return problem + " No release is made until they can be read.";
+    }
+
+    /// <summary>
     /// What a follow keeping a rolling window says once a pin holds it back: from then on the session keeps more than its
     /// window, up to what the pin allows.
     /// </summary>

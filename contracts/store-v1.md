@@ -4,8 +4,8 @@ Status: **the commit protocol, manifests, the current-generation pointer, recove
 dictionaries a generation publishes, evidence leases and the retention of a dependency, a journal prefix or, since
 revision 434, an interval with the identity evidence and the operations its retained rows rest on, journal
 re-derivation, the removal of superseded manifests, the publication of an index, a follow's rolling retention (revision
-439, ADR-045) and, since revision 442, the pins that keep a session's records from a moment (ADR-046), are implemented
-and tested**. The segment and dictionary formats are frozen separately in `contracts/segment-v1.md`; this contract owns
+439, ADR-045) and, since revisions 442 and 443, the pins that keep a session's records from a moment (ADR-046), are
+implemented and tested**. The segment and dictionary formats are frozen separately in `contracts/segment-v1.md`; this contract owns
 how a generation publishes them.
 
 This contract freezes the first IC-016 boundary: how a generation is published, what a manifest says,
@@ -376,6 +376,10 @@ moment, and the session may hold up to its **allowance**. Session times are nano
   characters. Its document, under `store-v1`, lists the pins with the one placed or removed, the session's size and the
   latest release's boundary. `icat session` lists the pins in the same words, and `icat retain --release-before` names
   the pin that held a release.
+- **In the window** (revision 443). **Keep records…** offers to pin from the time scope's start - the session's first
+  record without one, and never before the latest release's boundary - asks why and how large the session may grow,
+  at least what it holds, and lists the pins standing, each removable. The size line states the pins beneath the
+  session's size: from when the earliest keeps every record, and the least any allows.
 
 ### Retention
 

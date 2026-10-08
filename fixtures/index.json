@@ -1018,7 +1018,10 @@
         "I18: released evidence goes once the last lease on it is released",
         "I18: retention cannot remove evidence a live lease holds",
         "I18: retention in a second store cannot remove another process's leased evidence",
-        "I18: stale retention cannot release files from a newer generation"
+        "I18: stale retention cannot release files from a newer generation",
+        "I18: the pins dialog asks why, and how large the session may grow - at least what it holds - and lists each pin standing to remove",
+        "I18: the window keeps a session's records from its time scope's start, says so in its size line, and removes the pin",
+        "I18: the window keeps from a release's boundary when its scope began before it, states several pins by the earliest and the least allowed, and says when pins cannot be read"
       ],
       "I19": [
         "I19: clearing view selection does not mutate source data",

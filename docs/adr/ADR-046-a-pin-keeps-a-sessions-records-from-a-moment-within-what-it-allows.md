@@ -1,6 +1,6 @@
 # ADR-046: A pin keeps a session's records from a moment, within what it allows
 
-- Status: accepted; revision 442
+- Status: accepted; revision 442, the window revision 443
 - Date: 2026-10-08
 - Relates to: §10.1, §12.1 S5, S6, §20.2, I18, IC-016, ADR-010, ADR-024, ADR-036, ADR-043, ADR-044, ADR-045,
   `contracts/store-v1.md` §8
@@ -61,7 +61,8 @@ rolling window grows past it while anything is kept.
   session never grows past what a person allowed because of a pin.
 - `icat pin` lists, places and removes pins; `icat session` lists them, `icat retain` says when a pin stopped a release,
   and the follows say when one holds them past their window and when one stops them.
-- The window does not yet pin its time scope or show the pins in its size line; that is the next revision.
+- Since revision 443 the window offers the same pin from its time scope's start, lists and removes the pins standing,
+  and states them in its size line, in `icat pin`'s words (R18).
 - Pins are not copied into a package or an investigation: a pin is a person's hold on one session's retention, and a
   package is a new session with its own.
 - A pin keeps everything after its moment, since releases take leading runs. Materializing an interval into a package

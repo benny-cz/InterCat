@@ -65,6 +65,12 @@ public sealed record SessionOverviewBundle(
     public string? Retained { get; init; }
 
     /// <summary>
+    /// What the pins standing on the session keep and allow, as the size line says it
+    /// (<see cref="RetentionPinText.SizeLine"/>), or why they could not be read; null when none stands (ADR-046).
+    /// </summary>
+    public string? Pinned { get; init; }
+
+    /// <summary>
     /// The process instances the capture's collectors are, InterCat's own (`collector-binding-v1`), and the collectors no
     /// instance is; none recorded for a capture that names none.
     /// </summary>
@@ -362,6 +368,7 @@ public static class SessionOverviewProjector
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
             Retained = SessionGrowth.Retained(manifest),
+            Pinned = PinnedStatement(store),
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
             Collectors = collectors,
@@ -496,6 +503,19 @@ public static class SessionOverviewProjector
         ProcessWitness.ActivityOnly => "seen only in its own records",
         _ => witness.ToString(),
     };
+
+    /// <summary>The size line's sentence about the session's pins, or why they could not be read; null when none stands.</summary>
+    private static string? PinnedStatement(SessionStore store)
+    {
+        try
+        {
+            return RetentionPinText.SizeLine(store.Pins());
+        }
+        catch (InvalidDataException exception)
+        {
+            return RetentionPinText.Unreadable(exception.Message);
+        }
+    }
 
     private static (ProcessInstanceId First, ProcessInstanceId Second) Pair(
         ProcessInstanceId first, ProcessInstanceId second) =>

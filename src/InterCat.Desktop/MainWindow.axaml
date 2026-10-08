@@ -777,6 +777,11 @@
               <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
               <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
                       AutomationProperties.HelpText="Save an exact, unredacted copy of this session's evidence to share" />
+              <!-- A pin keeps the session's records from the time scope's start through every release, within the size it
+                   allows (ADR-046); the same dialog lists the pins standing and removes one. -->
+              <Button x:Name="KeepRecordsButton" Content="Keep records…" Click="KeepRecords" IsEnabled="False"
+                      ToolTip.Tip="Open or record a session first." ToolTip.ShowOnDisabled="True"
+                      AutomationProperties.HelpText="Keep this session's records from the time scope's start through every release, or remove a pin" />
               <!-- §20.6: what support needs to see why a capture or a view went wrong, and nothing a record holds (P16). -->
               <Button x:Name="SupportBundleButton" Content="Save support bundle…" Click="SaveSupportBundle"
                       AutomationProperties.HelpText="Save InterCat's version and this session's files, counts and coverage for support, with no names, addresses or content" />
