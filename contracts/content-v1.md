@@ -145,6 +145,20 @@ and it refuses bytes after the last fragment. A refused chunk is not read in par
   Enter lists them, each with what was recorded of its four parts and how long it took, and Enter on one opens its
   buffers, where the viewer reads a buffer and its part. Listing exchanges reads metadata and source fields, never
   content.
+- **A decoding** (revision 455, §11.2's `DecodedFields`). Where a decoder reads a record - at this version only
+  InterCat's content fixture decoder (`intercat-content-fixture`, version 1), which reads the records
+  `InterCat-Fixture-Content` raises as events 1 and 2 - a person may ask the viewer (Decode) or
+  `icat content --decode` to decode its fragment, and nothing decodes one unasked. A decoding reads only bytes kept
+  under `hex-text` inspection: bytes kept without that consent are never decoded, and it says so. It reads at most the
+  first 64 KiB of the kept bytes, as a view shows, within 250 ms, and says where it stopped when either bound stops it.
+  It names its decoder and that decoder's version, the record whose fragment it read and the kept bytes it read; each
+  field it decoded with the bytes it came from, by offset in the message, which the viewer shows in its hex view on
+  request; and what it did not decode and why: bytes past those it read, bytes the capture never kept, a header the
+  bytes end inside or leave. A fixture text message is `InterCat content fixture message <n> on conversation <c>. `
+  followed by its filler sentence, repeated; a number is decoded only once a byte past its digits shows it whole, and
+  the fixture's byte messages carry no fields. A decoding is made again each time it is asked for and never kept: no
+  file, JSON (`icat content --json` refuses `--decode`) or package holds one, and the fragment's bytes stay the
+  evidence. Its fields are inert text that nothing renders, runs or fetches.
 - **`icat session`** states what a generation keeps in sum: how many records' messages were kept whole, cut or not
   kept, the bytes kept, and the policies with their record limits and inspection. It keeps and shows no byte.
 - **Nothing else.** Search, rankings, metrics, the share report (`intercat-share-report-v1`), the detailed export,
@@ -227,3 +241,5 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 - A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
   content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).
 - Content an imported file already holds (§11.1).
+- A decoder of any other format, and a decoding kept or shared: a decoding is made when a person asks for it, from the
+  fragment, and never stored.

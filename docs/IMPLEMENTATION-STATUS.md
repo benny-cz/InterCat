@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 454 · Branch: `main`
+Updated: 2026-10-08 · Plan revision: 455 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -81,6 +81,12 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 455 — a fixture decoder, asked for, whose fields name the bytes they came from (§11.2, content-v1 §4):**
+  - Decode in the content viewer, or `icat content --decode`, reads a content fixture message's kept bytes: its decoder
+    and version, the bytes read, and each field with its bytes, which the viewer shows in its hex view on request.
+  - It reads only bytes kept with consent, at most 64 KiB within 250 ms, says what it did not decode and why, and is
+    made again each time, never kept; `--json` refuses it.
 
 - **Revision 454 — the window keeps the messages of your own processes, reviewed before it starts (§11.1, ADR-049):**
   - The Keep choice lists them; its start asks which processes - each by name, ID and start - the limits and the
@@ -1446,8 +1452,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      releases kept content on its own; revision 444 mirrors it in a follow (ADR-047), so `icat record --evidence-only`
      keeps it; revision 451 has the broker prepare a content capture of its client's own processes, each named by its
      ID and start (ADR-049), and revision 452 start one, holding those processes while it records; revision 453 has
-     `icat capture --profile content` ask for one, and revision 454 the window, reviewed before it starts. Next: HTTP/2
-     and compressed responses through it, and a fixture decoder (§11.2's `DecodedFields`).
+     `icat capture --profile content` ask for one, and revision 454 the window, reviewed before it starts; revision 455
+     decodes the fixture's messages when a person asks (§11.2's `DecodedFields`). Next: HTTP/2 and compressed responses
+     through it.
 
    - **One-sided connections (§7.1).** Revision 248 lists a process's connections no record's other end holds on its
      rung, and revision 249 counts its records apart in the timeline. Later: naming the other host where a source

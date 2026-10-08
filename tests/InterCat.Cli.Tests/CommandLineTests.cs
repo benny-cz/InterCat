@@ -1912,6 +1912,104 @@ public sealed class CommandLineTests : IDisposable
         Assert.DoesNotContain("head", output, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON")]
+    public async Task ContentIsDecodedOnlyWhenAsked()
+    {
+        // A fixture message kept whole, one the record limit cut, and a TCP record's bytes, which no decoder reads.
+        using var kept = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            .. new ulong[] { 1, 2 }.Select(ordinal => Transfer(10 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 1,
+                100, ordinal) with
+            {
+                ProviderId = System.Diagnostics.Tracing.EventSource.GetGuid(typeof(ContentFixtureEventSource)),
+                EventId = ContentFixtureEventSource.MessageSentId,
+                Mechanism = Mechanism.ApplicationSdk,
+                Layer = ObservationLayer.Application,
+                ByteDomain = ByteDomain.ApplicationPayload,
+            }),
+            Transfer(14, ObservationKind.Send, AccountingSide.SendSide, 6, 100, 3),
+        ];
+        const string Whole = "InterCat content fixture message 17 on conversation 3. The quick";
+        const string Cut = "InterCat content fixture message 4 on conversation 2. The quick brown fox jumps over the lazy dog. ";
+        Publish(kept.Store, rows, content: (ContentHeader(recordLimit: 64),
+        [
+            Content(rows[0], System.Text.Encoding.ASCII.GetBytes(Whole), 64, ContentEncodingV1.Binary),
+            Content(rows[1], System.Text.Encoding.ASCII.GetBytes(Cut), 64, ContentEncodingV1.Binary),
+            Content(rows[2], "other"u8.ToArray(), 64, ContentEncodingV1.Binary),
+        ]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(kept.Store);
+        kept.Store.ReleaseSegmentReaders();
+        string[] Locator(ulong ordinal)
+        {
+            SessionEvidenceRecord record = page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);
+            return
+            [
+                "content", kept.Path, "--session-id", page.SessionId.ToString(), "--generation",
+                page.Generation.ToString(CultureInfo.InvariantCulture), "--segment", record.SegmentName, "--row",
+                record.SegmentRow.ToString(CultureInfo.InvariantCulture),
+            ];
+        }
+
+        // Asked, the decoder names itself and its version, the kept bytes it read and each field with the bytes it came
+        // from; the bytes themselves stay hidden unless --reveal shows them too.
+        (InterCatExitCode code, string output, string said) = await Run([.. Locator(1), "--decode"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("DECODED BY INTERCAT'S CONTENT FIXTURE DECODER, VERSION 1", output, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Read +bytes 0 to 63 \(64 bytes\)\r?$", output);
+        Assert.Matches(@"(?m)^  Field +Bytes +Value\r?$", output);
+        Assert.Matches(@"(?m)^  message +bytes 33 to 34 \(2 bytes\) +17\r?$", output);
+        Assert.Matches(@"(?m)^  conversation +bytes 52 to 52 \(1 byte\) +3\r?$", output);
+        Assert.Matches(@"(?m)^  filler +bytes 55 to 63 \(9 bytes\) +the fixture's filler sentence, repeated \(9 bytes\)\r?$", output);
+        Assert.DoesNotContain("Not decoded", output, StringComparison.Ordinal);
+        string hex = ContentBytesView.Rows(System.Text.Encoding.ASCII.GetBytes(Whole), 0)[0].Line;
+        Assert.DoesNotContain(hex, output, StringComparison.Ordinal);
+        (code, output, said) = await Run([.. Locator(1), "--decode", "--reveal"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.True(output.IndexOf("DECODED BY", StringComparison.Ordinal) < output.IndexOf(hex, StringComparison.Ordinal), output);
+
+        // A cut message decodes as far as its kept bytes go, and says the rest was never kept.
+        (code, output, said) = await Run([.. Locator(2), "--decode"]);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  filler +bytes 54 to 63 \(10 bytes\) ", output);
+        Assert.Contains($"Not decoded: The capture kept the first 64 of the message's {Cut.Length} bytes; the rest was never "
+            + "kept, so it is not decoded.", output, StringComparison.Ordinal);
+
+        // A record no decoder reads is said to be read by none, and the answer is partial.
+        (code, output, said) = await Run([.. Locator(3), "--decode"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains("No decoder reads this record's content", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("DECODED BY", output, StringComparison.Ordinal);
+
+        // Asked for its bytes as well, they are shown, and the answer stays as partial as its decoding.
+        (code, output, said) = await Run([.. Locator(3), "--decode", "--reveal"]);
+        Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
+        Assert.Contains(ContentBytesView.Rows("other"u8, 0)[0].Line, output, StringComparison.Ordinal);
+
+        // A decoding is never written into JSON, and reads one record's bytes, not a part's.
+        (code, _, said) = await Run([.. Locator(1), "--decode", "--json"]);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("decoded with --decode, never written into JSON", said, StringComparison.Ordinal);
+        (code, _, said) = await Run([.. Locator(1), "--decode", "--part"]);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--decode reads one record's kept bytes", said, StringComparison.Ordinal);
+
+        // Bytes kept without consent to inspect them are never decoded, and the answer is partial, as --reveal's is.
+        using var withheld = new TemporarySession();
+        Publish(withheld.Store, [rows[0]], content: (ContentHeader(recordLimit: 64, inspection: ContentInspectionV1.Disabled),
+            [Content(rows[0], System.Text.Encoding.ASCII.GetBytes(Whole), 64, ContentEncodingV1.Binary)]));
+        SessionEvidencePage hidden = SessionEvidenceQuery.Read(withheld.Store);
+        withheld.Store.ReleaseSegmentReaders();
+        (code, output, said) = await Run("content", withheld.Path, "--session-id", hidden.SessionId.ToString(), "--generation",
+            hidden.Generation.ToString(CultureInfo.InvariantCulture), "--segment", hidden.Records[0].SegmentName, "--row",
+            hidden.Records[0].SegmentRow.ToString(CultureInfo.InvariantCulture), "--decode");
+        Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
+        Assert.Contains("Not decoded: The capture kept these bytes without consent to inspect them, so they are never decoded.",
+            output, StringComparison.Ordinal);
+        Assert.DoesNotContain("  Read ", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("17", output.Split("DECODED BY")[1], StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "S5: icat retain --release-before discloses what an interval release gives up and keeps, and performs it only when told why, once the capture has finished")]
     public async Task AnIntervalIsReleasedOnlyWhenToldWhy()
     {

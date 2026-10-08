@@ -19,9 +19,10 @@ namespace InterCat.Desktop;
 /// One record's kept content (§3.7, ADR-036): what the bytes are, how many of the message were kept and which are
 /// missing, and - only after the person asks - the bytes themselves, as inert hexadecimal and, where the source declares
 /// text, that text with every control and invisible character made visible. A typed range chooses which bytes are shown,
-/// copied or saved; at most a bounded window is shown at once, and nothing is decoded, searched or sent anywhere. A
-/// buffer of a part shows its part instead when asked: whole, as one run of bytes, or, when it is not whole, buffer by
-/// buffer with each gap a line of its own, chosen by buffer and never saved as one (M8).
+/// copied or saved; at most a bounded window is shown at once, and nothing is searched or sent anywhere. A buffer of a
+/// part shows its part instead when asked: whole, as one run of bytes, or, when it is not whole, buffer by buffer with
+/// each gap a line of its own, chosen by buffer and never saved as one (M8). Where a decoder reads the record, Decode
+/// lists the fields it reads, each with the bytes it came from, and what it did not decode - only when asked (§11.2).
 /// </summary>
 internal sealed class SessionContentWindow : Window, IDisposable
 {
@@ -53,6 +54,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private readonly TextBlock partStatement = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly Button partToggle = new() { Content = "Show its whole part", IsVisible = false };
     private readonly TextBlock rangeFrom = new() { Text = "Bytes from", VerticalAlignment = VerticalAlignment.Center };
+    private readonly Button decode = new() { Content = "Decode", IsVisible = false };
+    private readonly TextBlock decodedHeading = new() { FontWeight = FontWeight.SemiBold, TextWrapping = TextWrapping.Wrap };
+    private readonly TextBlock decodedRead = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly Grid decodedFields = new() { ColumnDefinitions = new ColumnDefinitions("Auto,Auto,*,Auto"), ColumnSpacing = 16, RowSpacing = 3 };
+    private readonly TextBlock notDecoded = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap };
+    private readonly TabItem decodedTab = new() { Header = "Decoded", IsVisible = false };
     private SessionContentDetail? detail;
     private SessionContentPartDetail? part;
     private byte[]? shownBytes;
@@ -62,6 +69,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private ContentRange? range;
     private bool loading;
     private bool saving;
+    private bool decoding;
     private bool closed;
     private bool disposed;
 
@@ -88,8 +96,8 @@ internal sealed class SessionContentWindow : Window, IDisposable
         status.Classes.Add("muted");
         disclosure.Text = "Message bytes may be sensitive. They stay hidden until you choose to show them. Then they are "
             + "shown as inert hexadecimal and, where the source declares text, as that text with control characters made "
-            + "visible; at most 64 KiB at once. Nothing is decoded, searched or sent anywhere, and a copy or a saved file "
-            + "holds exactly the bytes you chose.";
+            + "visible; at most 64 KiB at once. Nothing is searched or sent anywhere, nothing is decoded unless you ask, "
+            + "and a copy or a saved file holds exactly the bytes you chose.";
 
         AutomationProperties.SetName(reveal, "Show the kept bytes");
         AutomationProperties.SetName(status, "Content status");
@@ -104,6 +112,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         AutomationProperties.SetHelpText(save, "Save the chosen bytes to a file");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
         AutomationProperties.SetName(partToggle, "Switch between this buffer and its part");
+        AutomationProperties.SetName(decode, "Decode the kept bytes");
         rangeProblem.Classes.Add("caution");
 
         // A hex dump reads line under line: its lines keep a text line's height rather than a menu row's, and its one or
@@ -162,6 +171,22 @@ internal sealed class SessionContentWindow : Window, IDisposable
         views.Items.Add(new TabItem { Header = "Hex", Content = hex });
         views.Items.Add(textTab);
 
+        // What a decoder made of the record's kept bytes, once asked: its name and version, the bytes it read, each field
+        // with the bytes it came from, and what it did not decode and why (§11.2).
+        var decodedView = new ScrollViewer
+        {
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+            Content = new StackPanel
+            {
+                Spacing = 8,
+                Margin = new Thickness(0, 6, 0, 0),
+                Children = { decodedHeading, decodedRead, decodedFields, notDecoded },
+            },
+        };
+        AutomationProperties.SetName(decodedView, "What the decoder made of the kept bytes");
+        decodedTab.Content = decodedView;
+        views.Items.Add(decodedTab);
+
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
         showRange.Click += (_, _) => ApplyTypedRange();
         showAll.Click += (_, _) =>
@@ -174,6 +199,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         partToggle.Click += (_, _) => TogglePart();
         copy.Click += (_, _) => _ = CopyAsync();
         save.Click += (_, _) => _ = SaveAsync();
+        decode.Click += (_, _) => _ = DecodeAsync();
         var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
 
@@ -213,7 +239,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
             Spacing = 8,
-            Children = { copy, save, close },
+            Children = { decode, copy, save, close },
         };
         var grid = new Grid
         {
@@ -351,16 +377,21 @@ internal sealed class SessionContentWindow : Window, IDisposable
             }
             textTab.IsVisible = ContentBytesView.DeclaresText(entry.Fragment.Encoding);
             textTab.Header = entry.Fragment.Encoding == ContentEncodingV1.Utf8 ? "Text (UTF-8)" : "Text (UTF-16)";
+
+            // A decoding is offered where a decoder reads the record, and made only when asked (§11.2).
+            if (ContentDecoders.For(result.Observation) is { } decoder)
+            {
+                string reads = $"Reads the kept bytes with {decoder}: each field it reads, with the bytes it came from, and "
+                    + "what it did not decode. The decoding is made each time you ask, and never kept.";
+                ToolTip.SetTip(decode, reads);
+                AutomationProperties.SetHelpText(decode, reads);
+                decode.IsVisible = true;
+            }
+
             Show(kept.Value);
 
-            // The reveal button is gone, so the keyboard moves to the first line of bytes once it is laid out: a list
-            // takes no focus of its own, and the arrows then read on from there.
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (closed || hex.ItemCount == 0) return;
-                hex.ScrollIntoView(0);
-                if (hex.ContainerFromIndex(0) is Control line) line.Focus(NavigationMethod.Directional);
-            }, Avalonia.Threading.DispatcherPriority.Loaded);
+            // The reveal button is gone, so the keyboard moves to the first line of bytes.
+            FocusFirstLine();
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -380,6 +411,17 @@ internal sealed class SessionContentWindow : Window, IDisposable
             loading = false;
         }
     }
+
+    /// <summary>
+    /// Moves the keyboard to the first line of bytes once it is laid out: a list takes no focus of its own, and the arrows
+    /// then read on from there.
+    /// </summary>
+    private void FocusFirstLine() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || hex.ItemCount == 0) return;
+        hex.ScrollIntoView(0);
+        if (hex.ContainerFromIndex(0) is Control line) line.Focus(NavigationMethod.Directional);
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     private void ShowFacts(IReadOnlyList<ContentFact> known)
     {
@@ -440,6 +482,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         if (shownBytes is not { } bytes || detail?.Entry is null || kept is not { } all) return;
         range = chosen;
         rangeProblem.IsVisible = false;
+        if (ReferenceEquals(views.SelectedItem, decodedTab)) views.SelectedIndex = 0;
         first.Text = chosen.First.ToString(CultureInfo.InvariantCulture);
         last.Text = chosen.Last.ToString(CultureInfo.InvariantCulture);
         ContentRange shown = ContentBytesView.Shown(chosen);
@@ -481,6 +524,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     {
         if (GappedPart() is not { } gapped || ContentBytesView.RecordedBuffers(gapped) is not { } recorded) return;
         rangeProblem.IsVisible = false;
+        if (ReferenceEquals(views.SelectedItem, decodedTab)) views.SelectedIndex = 0;
         first.Text = chosen.First.ToString(CultureInfo.InvariantCulture);
         last.Text = chosen.Last.ToString(CultureInfo.InvariantCulture);
         CultureInfo culture = CultureInfo.CurrentCulture;
@@ -542,6 +586,120 @@ internal sealed class SessionContentWindow : Window, IDisposable
         shownBytes = showingPart ? found.Bytes : recordBytes;
         kept = showingPart ? new ContentRange(0, found.Bytes!.Length - 1) : ContentBytesView.Kept(entry.Fragment);
         if (kept is { } all) Show(all);
+    }
+
+    /// <summary>
+    /// Decodes the record's kept bytes with the decoder that reads it, when the person asks (§11.2), and shows what it made
+    /// of them on a tab of its own. The decoding is made again each time it is asked for, and never kept.
+    /// </summary>
+    private async Task DecodeAsync()
+    {
+        if (decoding || closed || detail is not { Bytes: not null } read) return;
+        decoding = true;
+        decode.IsEnabled = false;
+        status.Text = "Decoding the kept bytes…";
+        try
+        {
+            DecodedContent? decoded = await Task.Run(() => ContentDecoders.Decode(read), lifetime.Token);
+            if (closed) return;
+            if (decoded is null)
+            {
+                status.Text = "No decoder reads this record's content.";
+                return;
+            }
+
+            ShowDecoded(decoded);
+            views.SelectedItem = decodedTab;
+            int count = decoded.Fields.Count;
+            status.Text = count == 0
+                ? "Decoded no field; the Decoded tab says why."
+                : "Decoded " + CountText.Of(count, "field") + "; the Decoded tab lists " + CountText.Agree(count, "it", "them")
+                    + (decoded.NotDecoded is null ? "." : " and what was not decoded.");
+        }
+        catch (OperationCanceledException) when (closed)
+        {
+            // Closing cancels a decoding in flight; nothing was kept of it.
+        }
+        finally
+        {
+            decoding = false;
+            if (!closed) decode.IsEnabled = true;
+        }
+    }
+
+    /// <summary>
+    /// What <paramref name="decoded"/> holds, on the Decoded tab: which decoder read the record, at which version, the
+    /// bytes it read, each field with the bytes it came from - its value selectable, read aloud with its name and bytes,
+    /// and those bytes a button away in the hex view - and what it did not decode, and why.
+    /// </summary>
+    private void ShowDecoded(DecodedContent decoded)
+    {
+        CultureInfo culture = CultureInfo.CurrentCulture;
+        decodedHeading.Text = decoded.Heading;
+        decodedRead.Text = decoded.Read is { } read
+            ? "It read " + read.Describe(culture) + " of the record's message."
+            : "It read no byte of the record's message.";
+        decodedFields.Children.Clear();
+        decodedFields.RowDefinitions.Clear();
+        decodedFields.IsVisible = decoded.Fields.Count > 0;
+        decodedFields.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+        string[] headers = ["Field", "Bytes", "Value"];
+        for (int column = 0; column < headers.Length; column++)
+        {
+            var header = new TextBlock { Text = headers[column], FontSize = 12 };
+            header.Classes.Add("muted");
+            Grid.SetColumn(header, column);
+            decodedFields.Children.Add(header);
+        }
+
+        for (int index = 0; index < decoded.Fields.Count; index++)
+        {
+            DecodedField field = decoded.Fields[index];
+            string bytes = field.Bytes.Describe(culture);
+            decodedFields.RowDefinitions.Add(new RowDefinition(GridLength.Auto));
+            var name = new TextBlock { Text = field.Name, FontSize = 12 };
+            var span = new TextBlock { Text = bytes, FontSize = 12 };
+            var value = new SelectableTextBlock { Text = field.Value, FontSize = 12, TextWrapping = TextWrapping.Wrap };
+            AutomationProperties.SetName(value, $"{field.Name}, {bytes}: {field.Value}");
+            var show = new Button
+            {
+                Content = "Show its bytes",
+                FontSize = 12,
+                Padding = new Thickness(8, 1),
+                MinHeight = 0,
+                VerticalAlignment = VerticalAlignment.Center,
+            };
+            AutomationProperties.SetName(show, $"Show its bytes: the {field.Name} field");
+            show.Click += (_, _) => ShowField(field);
+            Grid.SetRow(name, index + 1);
+            Grid.SetRow(span, index + 1);
+            Grid.SetColumn(span, 1);
+            Grid.SetRow(value, index + 1);
+            Grid.SetColumn(value, 2);
+            Grid.SetRow(show, index + 1);
+            Grid.SetColumn(show, 3);
+            decodedFields.Children.Add(name);
+            decodedFields.Children.Add(span);
+            decodedFields.Children.Add(value);
+            decodedFields.Children.Add(show);
+        }
+
+        notDecoded.Text = decoded.NotDecoded is { } why ? "Not decoded: " + why : string.Empty;
+        notDecoded.IsVisible = decoded.NotDecoded is not null;
+        decodedTab.IsVisible = true;
+    }
+
+    /// <summary>
+    /// Shows the bytes a decoded field came from in the hex view, where a person checks a field against its evidence (P2):
+    /// the record's own bytes, which the decoder read, whatever part the view showed.
+    /// </summary>
+    private void ShowField(DecodedField field)
+    {
+        if (closed) return;
+        if (showingPart) TogglePart();
+        Show(field.Bytes);
+        status.Text = $"Showing the bytes of the {field.Name} field, {field.Bytes.Describe(CultureInfo.CurrentCulture)}.";
+        FocusFirstLine();
     }
 
     private async Task CopyAsync()

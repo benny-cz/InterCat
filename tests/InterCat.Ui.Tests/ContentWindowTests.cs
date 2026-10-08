@@ -285,6 +285,101 @@ public sealed class ContentWindowTests
         gapped.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§11.2: the content viewer decodes a fixture message only when asked, listing each field with the bytes it came from and what it did not decode")]
+    public void AFixtureMessageIsDecodedOnlyWhenAsked()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1 fixture = Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 99, 100, 1) with
+        {
+            ProviderId = System.Diagnostics.Tracing.EventSource.GetGuid(typeof(ContentFixtureEventSource)),
+            EventId = ContentFixtureEventSource.MessageSentId,
+            Mechanism = Mechanism.ApplicationSdk,
+            Layer = ObservationLayer.Application,
+            ByteDomain = ByteDomain.ApplicationPayload,
+        };
+        ObservationRowV1[] rows = [fixture, Rows()[1]];
+        const string Message = "InterCat content fixture message 4 on conversation 2. The quick brown fox jumps over the lazy dog. ";
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 64),
+        [
+            Content(rows[0], Encoding.ASCII.GetBytes(Message), 64, ContentEncodingV1.Binary),
+            Content(rows[1], Encoding.UTF8.GetBytes("0123456789ABCDEF"), 64),
+        ]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord Record(ulong ordinal) => page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);
+
+        using var window = new SessionContentWindow(session.Path, page.SessionId, Record(1));
+        window.Show();
+        WaitFor(() => Texts(window).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
+        Assert.Contains(Texts(window), text => text.Contains("nothing is decoded unless you ask", StringComparison.Ordinal));
+
+        // Until its bytes are shown nothing offers to decode them; shown, the decoder that reads them is offered, and
+        // nothing is decoded until the person asks.
+        Button decode = Named<Button>(window, "Decode the kept bytes");
+        Assert.False(decode.IsEffectivelyVisible);
+        Named<Button>(window, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
+            AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
+        Assert.True(decode.IsEffectivelyVisible && decode.IsEnabled);
+        Assert.StartsWith("Reads the kept bytes with InterCat's content fixture decoder", AutomationProperties.GetHelpText(decode),
+            StringComparison.Ordinal);
+        TabItem decoded = window.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Decoded"));
+        Assert.False(decoded.IsVisible);
+
+        // Asked, it names itself and its version and the bytes it read, lists each field with the bytes it came from - a
+        // value read aloud with its field and bytes - and says what it did not decode, on a tab of its own.
+        decode.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => decoded.IsVisible && decoded.IsSelected);
+        Settle(window);
+        Assert.Equal("Decoded 3 fields; the Decoded tab lists them and what was not decoded.",
+            Named<TextBlock>(window, "Content status").Text);
+        ScrollViewer view = Named<ScrollViewer>(window, "What the decoder made of the kept bytes");
+        List<string> read =
+        [
+            .. view.GetVisualDescendants().OfType<TextBlock>().Where(text => text.IsEffectivelyVisible)
+                .Select(text => text.Text ?? string.Empty),
+        ];
+        Assert.Contains("Decoded by InterCat's content fixture decoder, version 1", read);
+        Assert.Contains("It read bytes 0 to 63 (64 bytes) of the record's message.", read);
+        Assert.Equal(
+        [
+            "message, bytes 33 to 33 (1 byte): 4",
+            "conversation, bytes 51 to 51 (1 byte): 2",
+            "filler, bytes 54 to 63 (10 bytes): the fixture's filler sentence, repeated (10 bytes)",
+        ], view.GetVisualDescendants().OfType<SelectableTextBlock>().Select(AutomationProperties.GetName));
+        Assert.Contains($"Not decoded: The capture kept the first 64 of the message's {Message.Length} bytes; the rest was never "
+            + "kept, so it is not decoded.", read);
+        Assert.Empty(AccessibilityAuditTests.Unheard(window, out _));
+
+        // A field's bytes are a button away: the hex view shows them, chosen as a typed range is, the keyboard on them.
+        Named<Button>(window, "Show its bytes: the conversation field").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
+        Assert.Equal(0, window.GetVisualDescendants().OfType<TabControl>().Single().SelectedIndex);
+        Assert.Equal(ContentBytesView.Rows("2"u8, 51).Single().Line, Lines(hex).Single());
+        Assert.Equal(("51", "51"), (Named<TextBox>(window, "First byte of the range").Text, Named<TextBox>(window, "Last byte of the range").Text));
+        Assert.Equal("Showing the bytes of the conversation field, bytes 51 to 51 (1 byte).", Named<TextBlock>(window, "Content status").Text);
+        Assert.Same(hex.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+
+        // A range chosen while the decoding is in view is shown in the hex view, where its bytes are.
+        window.GetVisualDescendants().OfType<TabControl>().Single().SelectedItem = decoded;
+        Settle(window);
+        Named<Button>(window, "All kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Settle(window);
+        Assert.Equal(0, window.GetVisualDescendants().OfType<TabControl>().Single().SelectedIndex);
+        Assert.Equal(4, Lines(hex).Count());
+        window.Close();
+
+        // A record no decoder reads offers no decoding.
+        using var other = new SessionContentWindow(session.Path, page.SessionId, Record(2));
+        other.Show();
+        WaitFor(() => Texts(other).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
+        Named<Button>(other, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => other.GetVisualDescendants().OfType<ListBox>().Any(list =>
+            AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
+        Assert.False(Named<Button>(other, "Decode the kept bytes").IsEffectivelyVisible);
+        other.Close();
+    }
+
     /// <summary>A WinINet response body record of process 4242, whose payload names no owner.</summary>
     private static ObservationRowV1 Http(long ticks, ulong ordinal) =>
         Transfer(ticks, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, null, ordinal) with
