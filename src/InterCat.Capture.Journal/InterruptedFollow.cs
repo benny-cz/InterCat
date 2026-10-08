@@ -68,7 +68,8 @@ public sealed record InterruptedFollow(
     {
         ArgumentNullException.ThrowIfNull(ticket);
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
-        (int sessionChunks, bool sessionFinished) = SessionProgress(ticket.SessionDirectory);
+        SessionManifestV1? session = SessionManifest(ticket.SessionDirectory);
+        (int sessionChunks, bool sessionFinished) = LiveSessionFollower.Progress(session);
         int? evidenceChunks = null;
         bool evidenceFinished = false;
         string? problem = null;
@@ -77,9 +78,11 @@ public sealed record InterruptedFollow(
             try
             {
                 // A look for the card, repeated while a capture stops: it reads the manifest and lists the files.
-                // The finish hashes the evidence it derives from.
-                (evidenceChunks, evidenceFinished) = LiveSessionFollower.Progress(
-                    SessionStore.OpenForViewing(LocalOwnedDirectory.Open(ticket.EvidenceDirectory)).Current);
+                // The finish hashes the evidence it derives from. A session that released its oldest chunks has followed
+                // them too, which only the evidence's chunks can say (ADR-044).
+                SessionManifestV1? source = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(ticket.EvidenceDirectory)).Current;
+                (evidenceChunks, evidenceFinished) = LiveSessionFollower.Progress(source);
+                sessionChunks = LiveSessionFollower.Followed(source, session);
             }
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                 or InvalidDataException)
@@ -174,17 +177,17 @@ public sealed record InterruptedFollow(
         return new(step, derived, completed);
     }
 
-    private static (int Chunks, bool Finished) SessionProgress(string sessionDirectory)
+    private static SessionManifestV1? SessionManifest(string sessionDirectory)
     {
         try
         {
             return Directory.Exists(sessionDirectory)
-                ? LiveSessionFollower.Progress(SessionStore.OpenForViewing(LocalOwnedDirectory.Open(sessionDirectory)).Current)
-                : (0, false);
+                ? SessionStore.OpenForViewing(LocalOwnedDirectory.Open(sessionDirectory)).Current
+                : null;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or InvalidDataException)
         {
-            return (0, false);
+            return null;
         }
     }
 }

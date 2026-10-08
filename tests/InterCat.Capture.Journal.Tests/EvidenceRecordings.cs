@@ -35,25 +35,32 @@ internal static class EvidenceRecordings
     };
 
     /// <summary>
-    /// Records two bursts of records as evidence only, publishing every 100 ms, and finalizes it. The second burst waits
-    /// for the first to be published, so the recording always has a generation before its last: a fixed pause did not
-    /// guarantee that, because under load one publication could take every record and the finality.
+    /// Records bursts of records as evidence only, publishing every 100 ms, and finalizes it. Each burst after the first
+    /// starts at a record <paramref name="bursts"/> names - by default the third - and waits for the bursts before it to be
+    /// published, so the recording has a chunk of its own for every burst but the last, which ends with its finality: a
+    /// fixed pause did not guarantee that, because under load one publication could take every record and the finality.
     /// </summary>
     public static async Task<LiveRecordingResult> RecordEvidence(
         string directory,
         int[] ordinals,
         bool failLossRead = false,
         ClockCalibrationSource? calibration = null,
-        IReadOnlyList<CollectorProcessV1>? collectors = null)
+        IReadOnlyList<CollectorProcessV1>? collectors = null,
+        IReadOnlyList<int>? bursts = null)
     {
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "live-tests");
         var host = new ScriptedHost { FailLossRead = failLossRead };
         long now = Stopwatch.GetTimestamp();
+        int[] starts = [.. bursts ?? [2]];
         for (int index = 0; index < ordinals.Length; index++)
         {
-            if (index == 2)
+            int burst = Array.IndexOf(starts, index);
+            if (burst >= 0)
             {
-                host.PauseUntil(() => store.Current is not null, TimeSpan.FromSeconds(30));
+                host.PauseUntil(
+                    () => store.Current is { } current
+                        && current.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal) > burst,
+                    TimeSpan.FromSeconds(30));
             }
 
             var admitted = new AdmittedEvent

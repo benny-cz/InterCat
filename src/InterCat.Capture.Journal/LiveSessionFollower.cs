@@ -14,7 +14,10 @@ public sealed record FollowStep
 
     public required long MirroredRecords { get; init; }
 
-    /// <summary>Chunks the derived session now holds, and chunks the evidence session has committed.</summary>
+    /// <summary>
+    /// The evidence session's chunks the derived session has followed - those it holds, and the oldest ones a release of it
+    /// gave up since (ADR-044) - and the chunks the evidence session has committed. They are equal once it holds every one.
+    /// </summary>
     public required int DerivedChunks { get; init; }
 
     public required int EvidenceChunks { get; init; }
@@ -45,8 +48,10 @@ public sealed record FollowStep
 /// </summary>
 /// <remarks>
 /// The follower resumes: opening it reads what the derived session already mirrored, so a follower that stopped - or
-/// crashed between two publications - continues from the next chunk and never mirrors one twice. The evidence session
-/// must still hold every chunk from the first; following across a release of the evidence's own chunks is refused.
+/// crashed between two publications - continues from the next chunk and never mirrors one twice. The derived session may
+/// release its own oldest interval meanwhile (ADR-043): the chunks it still holds are found among the evidence's by their
+/// bytes, so the follow goes on from them, counting the capture's chunks and records as before (ADR-044). The evidence
+/// session must still hold every chunk from the first; following across a release of the evidence's own chunks is refused.
 /// </remarks>
 public sealed class LiveSessionFollower
 {
@@ -123,12 +128,12 @@ public sealed class LiveSessionFollower
         RequireEvidenceOnly(source);
         StoreDependency[] sourceChunks = Chunks(source);
         StoreDependency[] mirrored = derived.Current is { } current ? Chunks(current) : [];
-        RequireMirrorOf(sourceChunks, mirrored);
+        int released = RequireMirrorOf(sourceChunks, mirrored, derived.Current);
         bool finished = IsFinished(derived.Current);
         int chunks = 0;
         long records = 0;
         int compactions = 0;
-        for (int index = mirrored.Length; index < sourceChunks.Length && chunks < maximumChunks && !finished; index++)
+        for (int index = released + mirrored.Length; index < sourceChunks.Length && chunks < maximumChunks && !finished; index++)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -165,7 +170,7 @@ public sealed class LiveSessionFollower
         {
             MirroredChunks = chunks,
             MirroredRecords = records,
-            DerivedChunks = derived.Current is { } after ? Chunks(after).Length : 0,
+            DerivedChunks = released + (derived.Current is { } after ? Chunks(after).Length : 0),
             EvidenceChunks = sourceChunks.Length,
             DerivedRecords = checked((long)journalIndex),
             Finished = finished,
@@ -209,30 +214,76 @@ public sealed class LiveSessionFollower
         mirroredCalibration = lease.Manifest.Dependencies
             .SingleOrDefault(dependency => dependency.Kind == StoreDependencyKind.ClockCalibration)?.Digest;
         mirroredCollectors = lease.Manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.CollectorIdentities);
-        foreach (StoreDependency chunk in Chunks(lease.Manifest))
+        StoreDependency[] mirrored = Chunks(lease.Manifest);
+
+        // The chunks a release of the derived session gave up are still the evidence's, which holds every chunk from the
+        // first: they are read there, checked as a mirror checks them, so the next chunk continues the capture's journal
+        // index and every stream's ordinals as if they had stayed (ADR-044).
+        using (EvidenceLease source = evidence.AcquireLease())
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            using FileStream stream = derived.Root.OpenOwnedFile(
-                chunk.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
-            (CaptureId capture, SourceClockDescriptor clock) = JournalV1Reader.ReadSourceClock(stream);
-            Continue(capture, clock, chunk.Name);
-            _ = JournalV1Reader.ReplayBatches(
-                stream,
-                (_, _, _, batch) =>
-                {
-                    foreach (RecordEnvelopeV1 envelope in batch.Records)
-                    {
-                        (uint, uint) key = (envelope.StreamId, envelope.SourceEpoch);
-                        endedAt[key] = endedAt.TryGetValue(key, out ulong highest)
-                            ? Math.Max(highest, envelope.RecordOrdinal)
-                            : envelope.RecordOrdinal;
-                        journalIndex = checked(journalIndex + 1);
-                    }
-                },
-                cancellationToken);
+            RequireWholeEvidence(source.Manifest);
+            StoreDependency[] sourceChunks = Chunks(source.Manifest);
+            int released = RequireMirrorOf(sourceChunks, mirrored, lease.Manifest);
+            foreach (StoreDependency chunk in sourceChunks.Take(released))
+            {
+                Replay(evidence, chunk, source.Manifest, cancellationToken);
+            }
+        }
+
+        foreach (StoreDependency chunk in mirrored)
+        {
+            Replay(derived, chunk, manifest: null, cancellationToken);
         }
 
         smallUnits = SegmentCompaction.Plan(derived, compaction, cancellationToken).SmallUnits;
+    }
+
+    /// <summary>
+    /// Reads one chunk's records into the follow's journal index and each stream's highest ordinal. A chunk read from the
+    /// evidence (<paramref name="manifest"/> given) is checked against the digest its generation recorded first.
+    /// </summary>
+    private void Replay(SessionStore store, StoreDependency chunk, SessionManifestV1? manifest, CancellationToken cancellationToken)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        using FileStream stream = store.Root.OpenOwnedFile(
+            chunk.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+        if (manifest is not null)
+        {
+            RequireRecorded(stream, chunk, manifest);
+            stream.Position = 0;
+        }
+
+        (CaptureId capture, SourceClockDescriptor clock) = JournalV1Reader.ReadSourceClock(stream);
+        Continue(capture, clock, chunk.Name);
+        _ = JournalV1Reader.ReplayBatches(
+            stream,
+            (_, _, _, batch) =>
+            {
+                foreach (RecordEnvelopeV1 envelope in batch.Records)
+                {
+                    (uint, uint) key = (envelope.StreamId, envelope.SourceEpoch);
+                    endedAt[key] = endedAt.TryGetValue(key, out ulong highest)
+                        ? Math.Max(highest, envelope.RecordOrdinal)
+                        : envelope.RecordOrdinal;
+                    journalIndex = checked(journalIndex + 1);
+                }
+            },
+            cancellationToken);
+    }
+
+    /// <summary>An evidence chunk must be the bytes its generation recorded, measured by length and digest.</summary>
+    private static void RequireRecorded(FileStream stream, StoreDependency chunk, SessionManifestV1 source)
+    {
+        if (stream.Length != chunk.LengthBytes
+            || !string.Equals(
+                "sha256:" + Convert.ToHexStringLower(SHA256.HashData(stream)),
+                chunk.Digest,
+                StringComparison.Ordinal))
+        {
+            throw new InvalidDataException(
+                $"The evidence chunk '{chunk.Name}' does not match what generation {source.Generation} recorded for it; "
+                + "nothing was mirrored.");
+        }
     }
 
     /// <summary>
@@ -248,17 +299,7 @@ public sealed class LiveSessionFollower
     {
         using FileStream stream = evidence.Root.OpenOwnedFile(
             chunk.Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
-        if (stream.Length != chunk.LengthBytes
-            || !string.Equals(
-                "sha256:" + Convert.ToHexStringLower(SHA256.HashData(stream)),
-                chunk.Digest,
-                StringComparison.Ordinal))
-        {
-            throw new InvalidDataException(
-                $"The evidence chunk '{chunk.Name}' does not match what generation {source.Generation} recorded for it; "
-                + "nothing was mirrored.");
-        }
-
+        RequireRecorded(stream, chunk, source);
         stream.Position = 0;
         (CaptureId capture, SourceClockDescriptor clock) = JournalV1Reader.ReadSourceClock(stream);
         Continue(capture, clock, chunk.Name);
@@ -431,6 +472,7 @@ public sealed class LiveSessionFollower
 
     private static void RequireEvidenceOnly(SessionManifestV1 source)
     {
+        RequireWholeEvidence(source);
         if (SessionSegments.Names(source).Count > 0)
         {
             throw new InvalidOperationException(
@@ -449,30 +491,95 @@ public sealed class LiveSessionFollower
     }
 
     /// <summary>
-    /// The derived session's chunks must be the evidence session's first chunks, byte for byte. Anything else is another
-    /// capture, a session that was changed by hand, or evidence that released chunks, and following on would be a guess.
+    /// Evidence that released its own oldest chunks no longer holds the capture's journal from its first record, so a follow
+    /// would number what it derives from the wrong one: it is refused (ADR-027).
     /// </summary>
-    private static void RequireMirrorOf(StoreDependency[] source, StoreDependency[] mirrored)
+    private static void RequireWholeEvidence(SessionManifestV1 source)
     {
-        // Identity first: a chunk that differs means other evidence however many chunks either holds, and saying so is
-        // the useful refusal. Only a matching prefix can be the same evidence holding fewer chunks than were mirrored.
-        for (int index = 0; index < Math.Min(mirrored.Length, source.Length); index++)
+        if (source.LatestRelease(RetentionExtentKind.JournalPrefix) is not null
+            || source.LatestRelease(RetentionExtentKind.Interval) is not null)
         {
-            if (mirrored[index].LengthBytes != source[index].LengthBytes
-                || !string.Equals(mirrored[index].Digest, source[index].Digest, StringComparison.Ordinal))
+            throw new InvalidDataException(
+                $"Evidence generation {source.Generation} released its oldest records, so it no longer holds the capture's "
+                + "journal from its first one, and a follow would number what it derives from the wrong record. Nothing was "
+                + "followed.");
+        }
+    }
+
+    /// <summary>
+    /// The derived session's chunks must be a run of the evidence session's chunks, byte for byte: from its first, or from
+    /// a later one once a release the derived session states gave up the ones before it (ADR-044). Returns how many of the
+    /// evidence's chunks lie before the run. Anything else is another capture, a session that was changed by hand, or
+    /// evidence that released chunks, and following on would be a guess.
+    /// </summary>
+    private static int RequireMirrorOf(StoreDependency[] source, StoreDependency[] mirrored, SessionManifestV1? derivedManifest)
+    {
+        if (mirrored.Length == 0)
+        {
+            return 0;
+        }
+
+        // Identity first: a chunk that is none of the evidence's means other evidence however many chunks either holds, and
+        // saying so is the useful refusal. Where it lies says how many chunks the derived session gave up.
+        int released = Array.FindIndex(source, chunk => Same(chunk, mirrored[0]));
+        if (released < 0)
+        {
+            throw new InvalidDataException(
+                $"The derived session's oldest chunk is not the evidence session's '{(source.Length > 0 ? source[0].Name : "first chunk")}' "
+                + "nor any later chunk of it. It mirrors other evidence, or the evidence released chunks it had; following on "
+                + "would be a guess.");
+        }
+
+        if (released > 0
+            && derivedManifest?.LatestRelease(RetentionExtentKind.Interval) is null
+            && derivedManifest?.LatestRelease(RetentionExtentKind.JournalPrefix) is null)
+        {
+            throw new InvalidDataException(
+                $"The derived session begins at the evidence session's chunk {released + 1}, '{source[released].Name}', but "
+                + "states no release of the chunks before it, so it was changed by hand; following on would be a guess.");
+        }
+
+        for (int index = 1; index < mirrored.Length && released + index < source.Length; index++)
+        {
+            if (!Same(mirrored[index], source[released + index]))
             {
                 throw new InvalidDataException(
-                    $"The derived session's chunk {index + 1} is not the evidence session's '{source[index].Name}'. It "
-                    + "mirrors other evidence, or the evidence released chunks it had; following on would be a guess.");
+                    $"The derived session's chunk {released + index + 1} is not the evidence session's "
+                    + $"'{source[released + index].Name}'. It mirrors other evidence, or the evidence released chunks it had; "
+                    + "following on would be a guess.");
             }
         }
 
-        if (mirrored.Length > source.Length)
+        if (released + mirrored.Length > source.Length)
         {
             throw new InvalidDataException(
                 $"The derived session holds {mirrored.Length} chunks and the evidence session only {source.Length}; "
                 + "it does not mirror this evidence.");
         }
+
+        return released;
+    }
+
+    /// <summary>Whether two chunks are the same bytes, whatever name each session gives them.</summary>
+    private static bool Same(StoreDependency left, StoreDependency right) =>
+        left.LengthBytes == right.LengthBytes && string.Equals(left.Digest, right.Digest, StringComparison.Ordinal);
+
+    /// <summary>
+    /// How many of <paramref name="evidence"/>'s chunks <paramref name="derived"/> has followed: the ones it holds and,
+    /// after a release of it, the oldest ones it gave up (ADR-044). Without the evidence, or when the derived session holds
+    /// none of its chunks, only the chunks it holds. Reads the manifests only.
+    /// </summary>
+    public static int Followed(SessionManifestV1? evidence, SessionManifestV1? derived)
+    {
+        if (derived is null)
+        {
+            return 0;
+        }
+
+        StoreDependency[] mirrored = Chunks(derived);
+        return mirrored.Length == 0 || evidence is null
+            ? mirrored.Length
+            : Math.Max(0, Array.FindIndex(Chunks(evidence), chunk => Same(chunk, mirrored[0]))) + mirrored.Length;
     }
 
     /// <summary>

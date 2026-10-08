@@ -1,6 +1,6 @@
 # ADR-027: A privileged recording publishes evidence only, and an ordinary process derives the session
 
-- Status: accepted for M1 and M2
+- Status: accepted for M1 and M2; decision 3 amended by ADR-044 (revision 438)
 - Date: 2026-09-23
 - Decision owners: InterCat maintainers
 - Relates to: §9 (architecture, broker boundary), §18.1 (journal writer), §20.1, R16, P18, IC-014, ADR-021, ADR-022,
@@ -40,7 +40,8 @@ ordinary-integrity process can write derived segments there. §9 draws the deriv
 3. **The follower resumes and refuses.**
    - It continues from what the derived session already holds.
    - It refuses evidence whose chunks are not the ones it mirrored: another capture, changed files, or released
-     evidence.
+     evidence. Since ADR-044 the chunks it mirrored are found among the evidence's by their bytes, so it goes on across
+     a release of the derived session's own oldest chunks.
    - It refuses an ordinary session, which already has its rows.
    - It refuses an evidence session that has published nothing; `icat follow` waits for one.
 4. **Plan correction:** the derived store of a broker-owned capture is the viewer's own session directory, not the
