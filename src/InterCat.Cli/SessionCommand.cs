@@ -923,6 +923,14 @@ internal static class SessionCommand
                 $"the records read before {SessionTimeText.Seconds(interval.BoundaryNanoseconds, culture)}: {CountText.Of(retention.ReleasedRecords, "record")} of the admitted journal and {CountText.Of(interval.ReleasedRows, "row")}, keeping {ConsoleUi.Count(interval.KeptRows)} of their rows as the identity evidence of the processes and connections after it; every record read from then on is kept",
             _ => retention.Kind.ToString(),
         });
+
+        // A chunk release states what its recording gave up in all, which places the chunks it still holds (ADR-048).
+        if (retention.Recording is { } recording)
+        {
+            ConsoleUi.Field("In all", $"{CountText.Of(recording.Chunks, "chunk")} and {CountText.Of(recording.Records, "record")}, "
+                + "the recording's oldest, by this release and every chunk release before it");
+        }
+
         ConsoleUi.Field("When", retention.ReleasedUtc.ToString("u", CultureInfo.InvariantCulture));
         ConsoleUi.Field("Why", retention.Reason);
         int listed = Math.Min(retention.ReleasedFiles.Count, 4);

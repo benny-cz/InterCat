@@ -69,7 +69,9 @@ comes with a capture's last chunk.
 
 A finish takes the ticket as a follow does, so two launches cannot finish one capture at once. It follows the evidence
 into the session with the ordinary follower, which resumes from what the session holds and refuses evidence that is not
-the session's own or that released chunks the session needs (ADR-027). It removes the ticket when the session holds the
+the session's own, that released chunks the session needs, or that released chunks without stating what it gave up in
+all (ADR-027, ADR-048). Evidence that released chunks the session gave up is finished from what remains, and the card
+counts the capture's chunks whole, the released ones among them. It removes the ticket when the session holds the
 finalization marker, or when the capture has settled and the session holds every chunk it published. Otherwise the
 ticket stays for the next launch. A cancelled or failed finish keeps what it derived.
 

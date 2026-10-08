@@ -142,6 +142,13 @@ public sealed class DemoEntryWindowTests
             Assert.False(window.GetControl<TextBlock>("CaptureIntro").IsVisible);
             Assert.False(window.GetControl<TextBlock>("CaptureLatency").IsVisible);
 
+            // The session's path takes one line however long it is, whole on hover, so how a path wraps never decides how
+            // much of the ranked list is in view.
+            TextBlock path = window.GetControl<TextBlock>("CaptureSessionPath");
+            Assert.Equal(session.Path, path.Text);
+            Assert.Equal(session.Path, ToolTip.GetTip(path));
+            Assert.True(path.Bounds.Height < 2 * path.FontSize, $"The path takes {path.Bounds.Height:F0} px, more than a line.");
+
             // What the next capture keeps is still chosen there, before it starts.
             Assert.True(window.GetControl<Grid>("CaptureKeepRow").IsVisible);
             Control actions = window.GetControl<Control>("RailActions");

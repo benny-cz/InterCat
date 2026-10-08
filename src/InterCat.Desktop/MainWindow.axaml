@@ -414,7 +414,10 @@
                           IsVisible="{Binding #CaptureSummary.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
               <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
             </ScrollViewer>
-            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextWrapping="Wrap"
+            <!-- One line however long the path: its middle segments give way to an ellipsis, the session's own folder stays,
+                 and the whole path is on hover, so the card's height never turns on how a path wraps (§6.1). -->
+            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextTrimming="PathSegmentEllipsis"
+                       ToolTip.Tip="{Binding $self.Text}"
                        IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
           </StackPanel>
         </Border>

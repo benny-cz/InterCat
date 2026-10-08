@@ -1,6 +1,6 @@
 # ADR-027: A privileged recording publishes evidence only, and an ordinary process derives the session
 
-- Status: accepted for M1 and M2; decision 3 amended by ADR-044 (revision 438)
+- Status: accepted for M1 and M2; decision 3 amended by ADR-044 (revision 438) and ADR-048 (revision 446)
 - Date: 2026-09-23
 - Decision owners: InterCat maintainers
 - Relates to: §9 (architecture, broker boundary), §18.1 (journal writer), §20.1, R16, P18, IC-014, ADR-021, ADR-022,

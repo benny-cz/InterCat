@@ -1159,6 +1159,16 @@ public sealed partial class SessionStore
                 nameof(record));
         }
 
+        // A rewrite gives up part of one journal rather than whole chunks, so no count of a recording's chunks follows from
+        // it (ADR-048); a later chunk release states none.
+        if (record.Recording is not null)
+        {
+            throw new ArgumentException(
+                "A journal rewrite gives up part of one journal rather than whole chunks, so its record states no chunks "
+                + "given up in all.",
+                nameof(record));
+        }
+
         DateTimeOffset now = nowUtc ?? DateTimeOffset.UtcNow;
         using FileStream pinsLock = AcquirePinsLock();
         lock (gate)
@@ -1267,7 +1277,10 @@ public sealed partial class SessionStore
                 [.. releasedFiles.Select(dependency => dependency.Name)],
                 releasedFiles.Sum(dependency => dependency.LengthBytes),
                 releasedRecords,
-                ChunkSourceDigest(releasedFiles));
+                ChunkSourceDigest(releasedFiles))
+            {
+                Recording = ReleasedInAll(manifest, chunks.Count, releasedRecords),
+            };
             return Publish(
                 manifest,
                 [.. manifest.Dependencies.Except(releasedFiles)],
@@ -1769,6 +1782,26 @@ public sealed partial class SessionStore
             .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.Content
                 && ContentChunkV1.GenerationOf(dependency.Name) is { } generation && generations.Contains(generation)),
         ];
+    }
+
+    /// <summary>
+    /// The recording's chunks and records given up in all once this chunk release gives up <paramref name="chunks"/> more,
+    /// holding <paramref name="records"/> (ADR-048): the previous chunk release's statement and these, or these alone when
+    /// it is the first. Null when an earlier release gave up chunks without stating them in all - a chunk release before
+    /// this statement, a journal prefix rewritten or an interval released - since then no count is known.
+    /// </summary>
+    private static ReleasedRecording? ReleasedInAll(SessionManifestV1 manifest, int chunks, long records)
+    {
+        if (manifest.LatestRelease(RetentionExtentKind.Interval) is not null)
+        {
+            return null;
+        }
+
+        return manifest.LatestRelease(RetentionExtentKind.JournalPrefix) is not { } earlier
+            ? new(chunks, records)
+            : earlier.Record.Recording is { } stated
+                ? new(checked(stated.Chunks + chunks), checked(stated.Records + records))
+                : null;
     }
 
     /// <summary>

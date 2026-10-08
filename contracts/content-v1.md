@@ -50,8 +50,9 @@ Since revision 444 a follow (ADR-027) mirrors a chunk with its journal chunk (AD
 checked against the length and digest its generation recorded and read whole first, in the generation that mirrors the
 journal chunk and under its number, so the two stay paired in the derived session and are released together there. A
 chunk names its capture and no generation, so the copy needs no rewriting. A follow refuses evidence that released its
-content, as it refuses evidence that released its records: the records' content would be gone without the session
-saying so.
+content on its own, since the records' content would be gone without the session saying so. Since revision 446 it goes
+on across evidence that released its oldest chunks, their content with them, once the evidence states what it gave up
+in all (ADR-048): the derived session gave those chunks up first, with their content.
 
 Since revision 306 every chunk can also be released at once, on its own: a **content release** (store-v1 §8). It
 publishes a generation that names no chunk and keeps everything else - every journal, row and derived file, the plan,

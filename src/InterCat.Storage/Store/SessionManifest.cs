@@ -167,6 +167,24 @@ public sealed record ReleasedInterval(long BoundaryNanoseconds, long ReleasedRow
 }
 
 /// <summary>
+/// What a recording's chunk releases gave up in all (ADR-048): how many of its oldest chunks, and how many records they held,
+/// the release stating it and every chunk release before it gave up. Only the latest release of a kind is carried, so a
+/// reader places the chunks a session still holds among the recording's by it - a follow does, whose evidence released
+/// chunks it had mirrored - without the chunks that are gone.
+/// </summary>
+public sealed record ReleasedRecording(long Chunks, long Records)
+{
+    /// <summary>Returns the reason this statement is not readable, or null when it is.</summary>
+    public string? Validate() =>
+        Chunks < 1 || Records < 0
+            ? "A chunk release states the recording's chunks and records it gave up in all: at least one chunk, and no "
+                + "fewer than no records."
+            : null;
+
+    internal string CanonicalForm => string.Create(CultureInfo.InvariantCulture, $"recording|{Chunks}|{Records}");
+}
+
+/// <summary>
 /// What one retention action released, published in the generation that no longer names it. §20.2 requires
 /// the released extent to be visible, and ADR-010 requires a journal release to state exactly what it gave
 /// up: a retention that cannot be read afterwards is indistinguishable from data loss.
@@ -211,12 +229,38 @@ public sealed record RetentionRecord(
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ReleasedInterval? Interval { get; init; }
 
+    /// <summary>
+    /// What a chunk release states of the recording's chunks it and every chunk release before it gave up: present on a
+    /// release of a recording's oldest chunks whose earlier releases each stated it, and absent from the file and the
+    /// digest otherwise, so every other record is the shape it always was.
+    /// </summary>
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ReleasedRecording? Recording { get; init; }
+
     /// <summary>Returns the reason this record is not readable, or null when it is.</summary>
     public string? Validate()
     {
         if (!Enum.IsDefined(Kind))
         {
             return $"A retention record declares kind {(int)Kind}, which this reader does not implement.";
+        }
+
+        if (Recording is { } recording)
+        {
+            if (Kind != RetentionExtentKind.JournalPrefix)
+            {
+                return "Only a release of a recording's oldest chunks states the chunks the recording gave up in all.";
+            }
+
+            if (recording.Validate() is { } problem)
+            {
+                return problem;
+            }
+
+            if (recording.Records < ReleasedRecords)
+            {
+                return "A chunk release states fewer records given up in all than it gave up itself.";
+            }
         }
 
         if ((Kind == RetentionExtentKind.Interval) != Interval is not null)
@@ -271,7 +315,8 @@ public sealed record RetentionRecord(
         CultureInfo.InvariantCulture,
         $"{(int)Kind}|{ReleasedUtc.ToUniversalTime().UtcTicks}|{Reason}|{string.Join(',', ReleasedFiles)}"
         + $"|{ReleasedBytes}|{ReleasedRecords}|{SourceDigest}")
-        + (Interval is { } interval ? "|" + interval.CanonicalForm : string.Empty);
+        + (Interval is { } interval ? "|" + interval.CanonicalForm : string.Empty)
+        + (Recording is { } recording ? "|" + recording.CanonicalForm : string.Empty);
 }
 
 /// <summary>

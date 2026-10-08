@@ -1,6 +1,6 @@
 # ADR-044: A follow goes on across releases of the session it derives into
 
-- Status: accepted; revision 438
+- Status: accepted; revision 438; decision 4 amended by ADR-048 (revision 446)
 - Date: 2026-10-08
 - Amends: ADR-027 (what a follower refuses)
 - Relates to: §9, §20.2, R16, S5, S6, IC-016a, ADR-024, ADR-027, ADR-043, `contracts/store-v1.md` §8

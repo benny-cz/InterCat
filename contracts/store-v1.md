@@ -461,6 +461,19 @@ content, the content chunk of its generation, is released with it. The retention
 oldest first, then their content chunks. Its source digest is the digest of their dependency lines,
 `name|length|digest` joined by a line feed, exactly as the superseded manifest held them.
 
+**A chunk release states what its recording gave up in all** (revision 446, ADR-048). Its record carries
+`recording: { chunks, records }`: how many of the recording's oldest chunks, and how many records they held, it and
+every chunk release before it gave up - the previous chunk release's statement plus its own, or its own alone when it is
+the first. A generation carries only the latest release of a kind, and this one says it all, so a reader places the
+chunks a generation still holds among the recording's without the chunks that are gone: a follow does, whose evidence
+released chunks its derived session gave up (`live-follow-v1`). A chunk release after one that stated nothing - one
+published before revision 446 - or after a journal prefix rewrite or an interval release, both of which give records up
+without counting whole chunks, states nothing, and a rewrite refuses a record that states it. Only a `JournalPrefix`
+record states it, of at least one chunk and of no fewer records than the record gave up itself; anything else is
+refused. It is written only when present and appended to the canonical text then alone, after any interval, as
+`|recording|<chunks>|<records>`, so every other record is the file and the digest it always was. `icat session` says it
+beside the release.
+
 **Released records cannot be re-derived, and neither can their rows be re-derived away.** A release keeps every
 derived row, including the released records' rows. A re-derivation replaces every row with rows derived from the
 retained journals, so after a release it is refused:
@@ -582,7 +595,10 @@ A session written before this rule keeps its superseded manifests until its next
   across its boundary whole (revision 435); an operation whose start the capture itself never saw is stated as such.
 - Rolling retention of a broker's own evidence. Since revision 439 a follow keeps a rolling window of the session it
   derives (ADR-045), releasing between its mirrors by its own writer, since a release published beneath a recorder
-  fails the recorder's next publication; the broker's evidence keeps every record until its capture's limits stop it.
+  fails the recorder's next publication; since revision 446 a chunk release states what its recording gave up in all,
+  and a follow goes on across the evidence's chunk releases (ADR-048). The broker releasing the chunks its follow gave
+  up, between its own publications (ADR-048 decision 5), is next; until then its evidence keeps every record until its
+  capture's limits stop it.
 - Materializing a pinned interval into a package of its own, §10.1's other branch: a pin keeps everything after its
   moment, and its allowance bounds that (ADR-046).
 - Binding to the broker's validated root for live capture. The interface is shared; the composition

@@ -11,7 +11,7 @@ namespace InterCat.Capture.Journal.Tests;
 /// the evidence's by their bytes, so the follow goes on from them, counting the capture's chunks and numbering every record
 /// as the capture did, whether the same follower goes on or a fresh one resumes.
 /// </summary>
-public sealed class FollowAcrossReleaseTests
+public sealed partial class FollowAcrossReleaseTests
 {
     [Fact(DisplayName = "R16: a follower goes on across releases of the session it derives into, numbering every record as the capture did")]
     public async Task AFollowGoesOnAcrossItsSessionsReleases()
@@ -125,26 +125,6 @@ public sealed class FollowAcrossReleaseTests
         Assert.True(finished.Completed);
         Assert.Equal((published, published, 6L), (finished.Step.DerivedChunks, finished.Step.EvidenceChunks, finished.Step.DerivedRecords));
         Assert.Equal(InterruptedFollowState.Complete, InterruptedFollow.Assess(ticket, now).State);
-    }
-
-    [Fact(DisplayName = "R16: evidence that released its own oldest records is not followed, since it no longer says where the capture's journal began")]
-    public async Task EvidenceThatReleasedRecordsIsNotFollowed()
-    {
-        using var evidenceDirectory = new TemporaryDirectory();
-        using var derivedDirectory = new TemporaryDirectory();
-        _ = await RecordEvidence(evidenceDirectory.Path, ordinals: [1, 2, 3, 4, 5, 6], bursts: [2, 4]);
-        SessionManifestV1 recorded = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path)).Current!;
-        SessionStore writer = SessionStore.Open(LocalOwnedDirectory.Open(evidenceDirectory.Path), recorded.SessionId, recorded.SourceIdentity);
-        JournalReleasePreview preview = JournalRetention.Preview(writer, 3);
-        Assert.True(preview.ReleasesAnything, preview.ToString());
-        _ = JournalRetention.Release(writer, 3, "older than the retained window", DateTimeOffset.UtcNow);
-
-        // A follow numbered from its first chunk now would give its records the indices of the ones it released.
-        SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidenceDirectory.Path));
-        LiveSessionFollower follower = LiveSessionFollower.Open(evidence, Open(derivedDirectory.Path, recorded));
-        Assert.Contains("released its oldest records", Assert.Throws<InvalidDataException>(() => follower.CatchUp()).Message,
-            StringComparison.Ordinal);
-        Assert.Null(SessionStore.OpenExisting(LocalOwnedDirectory.Open(derivedDirectory.Path)).Current);
     }
 
     /// <summary>Releases every chunk of the session but its newest, as rolling retention would: by interval (ADR-043).</summary>

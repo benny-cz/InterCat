@@ -2098,6 +2098,43 @@ public sealed class CommandLineTests : IDisposable
         Assert.Contains("--keep-last expects whole seconds", said, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat session states what a recording's chunk releases gave up in all, and icat follow goes on across them")]
+    public async Task AFollowGoesOnAcrossTheEvidencesChunkRelease()
+    {
+        using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        using var fresh = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
+            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+
+        // A follow keeping the last two seconds gives up the oldest chunks it mirrored; the evidence then releases its oldest,
+        // and says what it gave up in all.
+        (InterCatExitCode code, string output, string said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2");
+        Assert.True(code == InterCatExitCode.Success, said);
+        (code, _, said) = await Run("retain", evidence.Path, "--release-journal-before-record", "2", "--confirm", "--reason",
+            "its follow gave these up");
+        Assert.True(code == InterCatExitCode.Success, said);
+        (_, output, _) = await Run("session", evidence.Path);
+        Assert.Matches(@"(?m)^  In all +\d+ chunks? and \d+ records?, the recording's oldest, by this release and every chunk release "
+            + @"before it\r?$", output);
+        Assert.Contains("\"recording\": {", (await Run("session", evidence.Path, "--json")).Output, StringComparison.Ordinal);
+
+        // Following again goes on from the evidence that remains and counts the capture whole; a follow into an empty session
+        // would begin after records it never held, and is refused.
+        (code, output, said) = await Run("follow", evidence.Path, followed.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        using (JsonDocument answer = JsonDocument.Parse(output))
+        {
+            Assert.True(answer.RootElement.GetProperty("finished").GetBoolean());
+            Assert.Equal(answer.RootElement.GetProperty("evidenceChunks").GetInt32(), answer.RootElement.GetProperty("derivedChunks").GetInt32());
+            Assert.Equal(8, answer.RootElement.GetProperty("derivedRecords").GetInt64());
+        }
+
+        (code, _, said) = await Run("follow", evidence.Path, fresh.Path);
+        Assert.Equal(InterCatExitCode.CorruptedInput, code);
+        Assert.Contains("before this session mirrored any", said, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "I18: icat pin keeps a followed session's records from a moment: a rolling follow keeps them, icat retain stops at the pin, and icat session lists it")]
     public async Task APinKeepsAFollowedSessionsRecords()
     {
