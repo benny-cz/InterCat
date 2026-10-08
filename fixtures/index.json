@@ -1190,6 +1190,8 @@
         "P18: the elevated broker can reach no importer, content view or UI, and its own code opens no ETL file"
       ],
       "P19": [
+        "P19: a broker content capture holds its client's processes while it records, refuses another's before creating anything, and lets them go once finalized",
+        "P19: a content capture starts with the authenticated client that started it, whose processes its runtime then holds",
         "P19: only the identity a capture was started by reads, renews or stops it - no token, session name or other logon of its user proves ownership",
         "P19: the broker keeps content only from processes the client could read itself - its own user's, in its own sign-in, at no higher integrity - read from each process, never the request",
         "P19: the broker prepares a content capture only of its client's own processes, read from each, says when one is not, and states each one's start for the review"
@@ -1408,7 +1410,6 @@
         "R16: a policy that names a trustee by alias is refused before a root is created",
         "R16: a policy with an unknown mandatory level is refused",
         "R16: a pre-existing directory with default inherited security is repaired and revalidated",
-        "R16: a prepared content capture is not started until the broker holds its processes, saying so, and nothing of it is kept",
         "R16: a privileged recording publishes evidence only, and a follower derives the session from it",
         "R16: a provisioned root carries a protected DACL and a no-write-up label",
         "R16: a published marker is read back, protected from retention and carried by re-derivation",
@@ -1520,6 +1521,8 @@
         "R21: a capture that did not collect RPC ranks by records under a call ranking, and says why",
         "R21: a channel rung states the bytes sent across it, and the tables read what a real session's timeline does not sum",
         "R21: a column of none opened in the investigation says why that is no proof of inactivity, in each coverage state's words",
+        "R21: a content capture that reached the content its request allows says so, not that its length elapsed",
+        "R21: a content capture whose content source was not enabled refuses its start, saying why, as no other capture does",
         "R21: a coverage ledger round-trips every outcome and refuses unknown members",
         "R21: a descriptor the schema does not declare is refused with a reason",
         "R21: a field behind a variable-length field is reported unknown, never guessed",
@@ -1636,6 +1639,7 @@
         "R22: a capture is one member however many copies of it there are, and a store's source name makes none the same",
         "R22: a channel is a connection incarnation, counted once at both ends, never from a port pair alone",
         "R22: a connection whose two ends each have one holder relates them, and nothing else is paired",
+        "R22: a content capture holds its processes from before it records, checked through the handles that hold them, and holds none it refuses",
         "R22: a content capture's review states what it keeps and each named process's start, all or none, every start once prepared",
         "R22: a content plan is refused without each of its processes named by its start, and a plan keeping no content is refused one naming processes",
         "R22: a file an earlier version wrote keeps reading, with everything that version could hold",

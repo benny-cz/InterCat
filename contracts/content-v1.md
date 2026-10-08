@@ -196,7 +196,8 @@ the source can hold: a source that cannot select channels before anything is kep
 the named processes alone, by the session's process filter; lifecycle stays whole-machine metadata. With
 `--evidence-only` the elevated recorder publishes the content beside its chunks, and `icat follow` derives the session
 with it (§2). Since revision 451 the broker prepares such a request only of its client's own processes, each named by
-its ID and its start, and digests the policy (`contracts/broker-v1.md` §2.1, ADR-049); it does not start one yet.
+its ID and its start, and digests the policy, and since revision 452 starts one, holding those processes while it
+records and stopping at the session limit (`contracts/broker-v1.md` §2.1, ADR-049).
 
 | | |
 |---|---|
@@ -221,6 +222,6 @@ their requests by path, all 1,024 parts matched the server's bodies and none the
 - HTTP/2, compressed responses and asynchronous WinINet are unmeasured, and so are the other client libraries, which
   raise no such records.
 - Several fragments of one record, and reassembly across records: a stream's missing ranges between fragments.
-- A broker capture that keeps content. An evidence follow mirrors it since revision 444; the broker's prepared plan
-  admits the metadata-only policy alone (`contracts/broker-v1.md` §2).
+- A broker content capture of another user's, another sign-in's or a higher integrity's process: the broker keeps
+  content only from its client's own processes (`contracts/broker-v1.md` §2.1, ADR-049).
 - Content an imported file already holds (§11.1).

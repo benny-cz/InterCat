@@ -197,7 +197,8 @@ public static class BrokerProcess
                 await using var runtime = new BrokerEvidenceCaptureRuntime(
                     root,
                     dependencies.EtwHost,
-                    dependencies.EtwReclaimer);
+                    dependencies.EtwReclaimer,
+                    processes: dependencies.ProcessReader);
                 var registry = new PreparedPlanRegistry();
                 using var preparation = new BrokerPreparationCoordinator(
                     dependencies.PlanSource,

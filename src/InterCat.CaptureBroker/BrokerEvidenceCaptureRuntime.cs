@@ -29,18 +29,25 @@ public sealed class BrokerEvidenceCaptureRuntime
 
     // What each capture's follow gave up, as its owner last said, read by its recorder between publications (ADR-048).
     private readonly ConcurrentDictionary<CaptureId, long> followReleased = new();
+    private readonly IBrokerProcessReader? processes;
     private bool disposed;
 
+    /// <param name="processes">
+    /// How a content capture's processes are held open while it records and read through the handles that hold them; a
+    /// runtime without one starts no content capture (ADR-049).
+    /// </param>
     public BrokerEvidenceCaptureRuntime(
         WindowsBrokerRoot root,
         IEtwSessionHost host,
         IEtwSessionReclaimer reclaimer,
-        Func<string, VolumeSpace>? volumeProbe = null)
+        Func<string, VolumeSpace>? volumeProbe = null,
+        IBrokerProcessReader? processes = null)
     {
         this.root = root ?? throw new ArgumentNullException(nameof(root));
         this.host = host ?? throw new ArgumentNullException(nameof(host));
         this.reclaimer = reclaimer ?? throw new ArgumentNullException(nameof(reclaimer));
         this.volumeProbe = volumeProbe ?? WindowsVolumeSpace.Probe;
+        this.processes = processes;
     }
 
     /// <summary>Where this capture's evidence is published; its owner may read and follow it but never write.</summary>
@@ -112,7 +119,8 @@ public sealed class BrokerEvidenceCaptureRuntime
         BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
         int? clientProcessId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BrokerClientIdentity? client = null)
     {
         ObjectDisposedException.ThrowIf(disposed, this);
         ArgumentNullException.ThrowIfNull(ownership);
@@ -125,13 +133,6 @@ public sealed class BrokerEvidenceCaptureRuntime
             || (plan.Retention == BrokerRetentionPolicy.ReleaseFollowed && plan.PublicationInterval is null))
         {
             return new(false, "The durable capture ownership, prepared digest or operational limits are invalid.");
-        }
-
-        // A content capture holds each named process open while it records, and first checks each is still the one it was
-        // prepared for (ADR-049 decision 2); until it does, one is prepared for review and never started.
-        if (plan.Content is not null)
-        {
-            return new(false, BrokerLifecycleCoordinator.ContentNotStarted);
         }
 
         await gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -147,16 +148,47 @@ public sealed class BrokerEvidenceCaptureRuntime
                 return new(false, diskProblem);
             }
 
-            WindowsBrokerRoot captureRoot = root.OpenCaptureDirectory(ownership.CaptureId);
+            // A content capture holds each named process open from before its session starts until it is finalized, checked
+            // through the handle that holds it to be the process it was prepared for and still its client's own, so no
+            // other process can be given its ID while a record could still arrive through it (ADR-049 decision 2).
+            IBrokerHeldProcesses? held = null;
+            if (plan.Content is not null)
+            {
+                string? refusal = client is null
+                    ? "The broker was not told who started this content capture, so it keeps no content."
+                    : processes is null
+                        ? "This broker cannot hold the processes a content capture names, so it keeps no content."
+                        : null;
+                held = refusal is null ? BrokerContentProcesses.Hold(client!, plan.ContentProcesses, processes!, out refusal) : null;
+                if (held is null)
+                {
+                    return new(false, refusal + " Nothing was recorded.");
+                }
+            }
+
+            WindowsBrokerRoot captureRoot;
+            try
+            {
+                captureRoot = root.OpenCaptureDirectory(ownership.CaptureId);
+            }
+            catch
+            {
+                held?.Dispose();
+                throw;
+            }
+
             if (!captureRoot.Report.CreatedByThisBroker)
             {
                 captureRoot.Dispose();
+                held?.Dispose();
                 return new(false, "The capture evidence directory already exists; a new start cannot adopt its contents.");
             }
 
             var capture = new ActiveCapture(captureRoot)
             {
                 ReleasesFollowed = plan.Retention == BrokerRetentionPolicy.ReleaseFollowed,
+                Holds = held,
+                ContentLimitBytes = plan.Content?.MaximumSessionBytes,
             };
             active.Add(ownership.CaptureId, capture);
             bool acknowledged = false;
@@ -197,7 +229,19 @@ public sealed class BrokerEvidenceCaptureRuntime
                     ownership.CreatedAtUtc,
                     publishEvery: plan.PublicationInterval,
                     derive: null,
-                    onReady: _ => capture.Ready.TrySetResult(),
+                    onReady: start =>
+                    {
+                        // A content capture whose content source could not be enabled would keep none of what it was started
+                        // for: it stops at once and its start says why, rather than record lifecycle alone (ADR-049).
+                        if (BrokerCaptureReasons.ContentNotEnabled(plan, start) is { } refused)
+                        {
+                            capture.StartRefusal = refused;
+                            capture.Stop.Cancel();
+                            return;
+                        }
+
+                        capture.Ready.TrySetResult();
+                    },
                     maximumJournalBytes: plan.Quota.MaximumJournalBytes,
                     diskFloor: new LiveDiskFloor(
                         plan.Quota.MinimumFreeDiskBytes, () => volumeProbe(captureRoot.Path)),
@@ -227,7 +271,9 @@ public sealed class BrokerEvidenceCaptureRuntime
                 }
 
                 LiveCaptureResult result = await capture.Run.ConfigureAwait(false);
-                return new(false, result.Start.FailureReason ?? "Capture stopped before its start could be acknowledged.");
+                return new(false, capture.StartRefusal
+                    ?? result.Start.FailureReason
+                    ?? "Capture stopped before its start could be acknowledged.");
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -317,30 +363,9 @@ public sealed class BrokerEvidenceCaptureRuntime
                         $"The journal finalized, but the owned ETW session could not be confirmed stopped: {exception.Message}");
                 }
 
-                string? reason = !result.Stop.CallbacksDrained
-                    ? "The journal finalized, but the ETW delivery pump did not confirm callback drain."
-                    : result.JournalQuotaReached
-                        ? capture.ReleasesFollowed
-                            ? "The evidence reached its journal byte limit holding what the capture's follow had not given up; "
-                                + "the admitted prefix was finalized."
-                            : "The configured journal byte limit was reached; the admitted prefix was finalized."
-                        : result.FollowStalled
-                            ? $"The capture's follow stopped giving chunks up, so its evidence held {LiveRecorder.MaximumHeldChunks:N0} "
-                                + "chunks, as many as it may; the admitted prefix was finalized."
-                        : result.DiskReserveReached
-                            ? $"{result.DiskReserveReason} The admitted prefix was finalized."
-                        : capture.LimitReason ?? (!capture.UserStopRequested
-                            ? "The configured maximum capture duration elapsed; evidence was finalized."
-                            : null);
-
-                // A capture that could not release what its follow gave up kept every later chunk, which is said.
-                if (result.ReleaseProblem is { } problem)
-                {
-                    string kept = $"The broker stopped releasing what the capture's follow gave up and kept every later chunk: {problem}";
-                    reason = reason is null ? kept : reason + " " + kept;
-                }
-
-                return new(new(true, true, result.Stop.CallbacksDrained, true, true), reason);
+                return new(new(true, true, result.Stop.CallbacksDrained, true, true),
+                    BrokerCaptureReasons.Stopped(result, capture.ReleasesFollowed, capture.ContentLimitBytes, capture.LimitReason,
+                        capture.UserStopRequested));
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)
             {
@@ -679,10 +704,21 @@ public sealed class BrokerEvidenceCaptureRuntime
         /// <summary>Whether its plan releases what its follow gave up (`ReleaseFollowed`, ADR-048 decision 5).</summary>
         public bool ReleasesFollowed { get; init; }
 
+        /// <summary>The processes a content capture holds open while it records (ADR-049); null for any other capture.</summary>
+        public IBrokerHeldProcesses? Holds { get; init; }
+
+        /// <summary>How much content a content capture may keep in all, which stops it once kept; null for any other.</summary>
+        public long? ContentLimitBytes { get; init; }
+
+        /// <summary>Why its start was refused once its session was ready, such as a content source that was not enabled.</summary>
+        public string? StartRefusal { get; set; }
+
+        // Disposed only once its run has ended, so the processes it held are let go once no record can come through them.
         public void Dispose()
         {
             Stop.Dispose();
             Root.Dispose();
+            Holds?.Dispose();
         }
     }
 }

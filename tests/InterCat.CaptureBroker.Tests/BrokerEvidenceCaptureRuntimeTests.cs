@@ -36,6 +36,38 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.Equal(plan.Digest, reopened.Current.SourceIdentity);
     }
 
+    [Fact(DisplayName = "P19: a broker content capture holds its client's processes while it records, refuses another's before creating anything, and lets them go once finalized")]
+    public async Task AContentCaptureHoldsItsProcesses()
+    {
+        DateTimeOffset started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
+        using TemporaryBrokerRoot temporary = TemporaryBrokerRoot.Create();
+        var host = new ScriptedEtwHost();
+        var reader = new FakeProcessReader { [4_242] = new(OwnerA, started) };
+        await using var runtime = new BrokerEvidenceCaptureRuntime(temporary.Root, host, host, processes: reader);
+        PreparedCapturePlan plan = BrokerPrepareCompiler.Prepare(CompileContent(), Quota, BrokerRetentionPolicy.StopAtLimit, Runtime,
+            contentProcesses: [new(4_242, started)]).PreparedPlan!;
+
+        // Another user's process by the time it starts, or a start that names no client: refused before any session.
+        reader[4_242] = new(OwnerB, started);
+        BrokerRuntimeStartOutcome refused = await runtime.StartAsync(Ownership(plan), plan, null, CancellationToken.None, OwnerA);
+        Assert.False(refused.Started);
+        Assert.StartsWith("Process 4242 runs as another user.", refused.FailureReason, StringComparison.Ordinal);
+        Assert.EndsWith(" Nothing was recorded.", refused.FailureReason, StringComparison.Ordinal);
+        Assert.False((await runtime.StartAsync(Ownership(plan), plan, null, CancellationToken.None)).Started);
+        Assert.Empty(host.Created);
+        Assert.Empty(reader.Held);
+
+        // Its own, still the one prepared: held while it records, let go once its evidence is finalized.
+        reader[4_242] = new(OwnerA, started);
+        BrokerCaptureOwnership ownership = Ownership(plan);
+        BrokerRuntimeStartOutcome outcome = await runtime.StartAsync(ownership, plan, null, CancellationToken.None, OwnerA);
+        Assert.True(outcome.Started, outcome.FailureReason);
+        Assert.Equal([4_242], reader.Held);
+        BrokerRuntimeStopOutcome stopped = await runtime.StopAsync(ownership, CancellationToken.None);
+        Assert.True(stopped.Milestones.FullyFinalized, stopped.FailureReason);
+        Assert.Empty(reader.Held);
+    }
+
     [Fact(DisplayName = "R8: a broker capture reads its live counters only while it records")]
     public async Task LiveCountersAreReadOnlyWhileRecording()
     {

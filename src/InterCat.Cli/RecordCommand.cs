@@ -566,7 +566,6 @@ internal static class RecordCommand
         ConsoleUi.Line("  exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture (ADR-037) - from the processes --pid");
         ConsoleUi.Line("  names only, which the provider's own process filter holds before anything is kept; --channel *");
         ConsoleUi.Line("  says every exchange of theirs is kept. It stops when kept content reaches --max-session-bytes.");
-        ConsoleUi.Line("  icat capture --profile content takes the same request through the broker. --profile");
-        ConsoleUi.Line("  content-fixture, InterCat's own test instrument, records through icat record only.");
+        ConsoleUi.Line("  --profile content-fixture, InterCat's own test instrument, records through icat record only.");
     }
 }

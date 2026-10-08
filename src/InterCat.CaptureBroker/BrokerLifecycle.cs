@@ -145,11 +145,16 @@ public interface IBrokerCaptureRuntime
     /// authentication or ownership (`contracts/broker-v1.md`). The capture names it as its client
     /// (`contracts/collector-identities-v1.md`); null when no pipe named one.
     /// </param>
+    /// <param name="client">
+    /// The authenticated client whose request started the capture, whom a content capture's processes must belong to
+    /// (ADR-049); null when the caller names none, and then no content capture starts.
+    /// </param>
     Task<BrokerRuntimeStartOutcome> StartAsync(
         BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
         int? clientProcessId,
-        CancellationToken cancellationToken);
+        CancellationToken cancellationToken,
+        BrokerClientIdentity? client = null);
 
     Task<BrokerRuntimeStopOutcome> StopAsync(
         BrokerCaptureOwnership ownership,

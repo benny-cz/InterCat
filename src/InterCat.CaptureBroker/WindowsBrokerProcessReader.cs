@@ -29,6 +29,33 @@ public sealed partial class WindowsBrokerProcessReader : IBrokerProcessReader
         return reading;
     }
 
+    public IBrokerHeldProcesses? Hold(IReadOnlyList<int> processIds, out string? problem)
+    {
+        ArgumentNullException.ThrowIfNull(processIds);
+        var holds = new ProcessHolds();
+        if (!holds.TryHold(processIds, out problem))
+        {
+            holds.Dispose();
+            return null;
+        }
+
+        var readings = new Dictionary<int, BrokerProcessReading>(processIds.Count);
+        foreach (int processId in processIds)
+        {
+            (BrokerProcessReading? reading, string? failure) = holds.Read(processId, handle => ReadThrough(processId, handle));
+            if (reading is null)
+            {
+                holds.Dispose();
+                problem = failure;
+                return null;
+            }
+
+            readings[processId] = reading;
+        }
+
+        return new Held(holds, readings);
+    }
+
     private static (BrokerProcessReading? Reading, string? Problem) ReadThrough(int processId, SafeProcessHandle process)
     {
         if (!GetProcessTimes(process, out long created, out _, out _, out _))
@@ -46,6 +73,14 @@ public sealed partial class WindowsBrokerProcessReader : IBrokerProcessReader
             return (null, string.Create(CultureInfo.InvariantCulture, $"process {processId}'s token could not be read: ")
                 + exception.Message.TrimEnd('.'));
         }
+    }
+
+    /// <summary>The holds a content capture keeps while it records, with what was read through them.</summary>
+    private sealed class Held(ProcessHolds holds, IReadOnlyDictionary<int, BrokerProcessReading> readings) : IBrokerHeldProcesses
+    {
+        public IReadOnlyDictionary<int, BrokerProcessReading> Readings { get; } = readings;
+
+        public void Dispose() => holds.Dispose();
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]

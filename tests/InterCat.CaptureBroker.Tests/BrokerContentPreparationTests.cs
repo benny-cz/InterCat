@@ -200,19 +200,17 @@ public sealed class BrokerContentPreparationTests
         Assert.Equal("This broker cannot read the processes a content request names, so it keeps no content.", unread.RefusalReason);
     }
 
-    [Fact(DisplayName = "R16: a prepared content capture is not started until the broker holds its processes, saying so, and nothing of it is kept")]
-    public async Task AContentCaptureIsNotStartedYet()
+    [Fact(DisplayName = "P19: a content capture starts with the authenticated client that started it, whose processes its runtime then holds")]
+    public async Task AContentCaptureStartsWithItsClient()
     {
         var registry = new PreparedPlanRegistry();
         PreparedPlanGrant grant = registry.Issue(Prepare(CompileContent(), [new(4_242, Started)]).PreparedPlan!, OwnerA);
         var runtime = new BrokerFakeRuntime();
-        var store = new InMemoryBrokerLifecycleStore();
-        using var lifecycle = new BrokerLifecycleCoordinator(registry, store, runtime);
+        using var lifecycle = new BrokerLifecycleCoordinator(registry, new InMemoryBrokerLifecycleStore(), runtime);
         BrokerStartOutcome outcome = await lifecycle.StartAsync(grant.Token, Guid.NewGuid(), OwnerA);
-        Assert.Equal((BrokerOperationCode.StartFailed, (CaptureId?)null, CaptureLifecycle.Idle),
-            (outcome.Code, outcome.CaptureId, outcome.State));
-        Assert.Equal("A content capture is prepared for review only: this broker does not start one yet.", outcome.FailureReason);
-        Assert.Empty(runtime.StartedPlans);
+        Assert.Equal(BrokerOperationCode.Started, outcome.Code);
+        Assert.Equal([OwnerA], runtime.StartedIdentities);
+        Assert.Equal([new(4_242, Started)], runtime.StartedPlans.Single().ContentProcesses.ToArray());
     }
 
     private static BrokerPrepareResult Prepare(EffectiveCapturePlan plan, IReadOnlyList<BrokerNamedProcess>? named) =>
@@ -226,17 +224,5 @@ public sealed class BrokerContentPreparationTests
 
         public ValueTask<EffectiveCapturePlan> CompileAsync(CaptureProfileRequest request, CancellationToken cancellationToken) =>
             ValueTask.FromResult(CompileContent(request.Content));
-    }
-
-    /// <summary>Processes by ID, as a test sets them; any other ID is not running.</summary>
-    private sealed class FakeProcessReader : Dictionary<int, BrokerProcessReading>, IBrokerProcessReader
-    {
-        public BrokerProcessReading? Read(int processId, out string? problem)
-        {
-            problem = TryGetValue(processId, out BrokerProcessReading? reading)
-                ? null
-                : $"process {processId} is not running, so its ID could be given to any process";
-            return reading;
-        }
     }
 }

@@ -132,7 +132,8 @@ public static class CaptureProfileCatalog
             "Content",
             AdmissionMode.ScopedContent,
             "A bounded request compiles only for a source whose content contract, process scope and impact are proven - "
-                + "WinINet's HTTP exchanges (ADR-037) - and records through icat record only; the broker never starts one.",
+                + "WinINet's HTTP exchanges (ADR-037) - and records through icat record, or through the broker from your own "
+                + "processes alone (ADR-049).",
             requestPreviewAvailable: true),
         Unavailable(
             CaptureProfileKind.FlightRecorder,

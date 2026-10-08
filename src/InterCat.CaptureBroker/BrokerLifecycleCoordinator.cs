@@ -9,9 +9,6 @@ namespace InterCat.CaptureBroker;
 /// </summary>
 public sealed class BrokerLifecycleCoordinator : IDisposable
 {
-    /// <summary>Why a prepared content capture does not start in this broker.</summary>
-    internal const string ContentNotStarted = "A content capture is prepared for review only: this broker does not start one yet.";
-
     public static readonly TimeSpan MinimumLease = TimeSpan.FromSeconds(10);
     public static readonly TimeSpan MaximumLease = TimeSpan.FromMinutes(10);
     public static readonly TimeSpan DefaultLease = TimeSpan.FromSeconds(30);
@@ -115,13 +112,6 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
                     "The prepared plan already belongs to a capture. Reuse its original request result instead of starting another session.");
             }
 
-            // A content capture holds each named process open and checks it is still the one prepared before it records
-            // (ADR-049 decision 2); until the runtime does, one is prepared for review and never started.
-            if (resolution.Plan!.Content is not null)
-            {
-                return new(BrokerOperationCode.StartFailed, null, CaptureLifecycle.Idle, null, ContentNotStarted);
-            }
-
             cancellationToken.ThrowIfCancellationRequested();
             DateTimeOffset now = clock.GetUtcNow();
             CaptureId captureId = CaptureId.New();
@@ -170,7 +160,7 @@ public sealed class BrokerLifecycleCoordinator : IDisposable
             try
             {
                 runtimeOutcome = await runtime
-                    .StartAsync(ownership, resolution.Plan, clientProcessId, CancellationToken.None)
+                    .StartAsync(ownership, resolution.Plan, clientProcessId, CancellationToken.None, client)
                     .ConfigureAwait(false);
             }
             catch (Exception exception) when (exception is not OutOfMemoryException)

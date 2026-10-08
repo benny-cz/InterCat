@@ -12,8 +12,18 @@ public sealed record BrokerNamedProcess(int ProcessId, DateTimeOffset StartedUtc
 public sealed record BrokerProcessReading(BrokerClientIdentity Token, DateTimeOffset StartedUtc);
 
 /// <summary>
+/// The processes a content capture holds open while it records, each read through the handle that holds it, so no other
+/// process can be given their IDs until it is disposed (ADR-037's holds).
+/// </summary>
+public interface IBrokerHeldProcesses : IDisposable
+{
+    /// <summary>What each held process's token and start said, read through the handle that holds it, by its ID.</summary>
+    IReadOnlyDictionary<int, BrokerProcessReading> Readings { get; }
+}
+
+/// <summary>
 /// Reads the process now holding an ID: the user, logon session and integrity its token states, and when it started.
-/// Windows's reader opens it with limited query rights.
+/// Windows's reader holds it open with limited query rights and reads it through that handle.
 /// </summary>
 public interface IBrokerProcessReader
 {
@@ -22,6 +32,12 @@ public interface IBrokerProcessReader
     /// a clause that names it: "process 700 is not running, so its ID could be given to any process".
     /// </summary>
     BrokerProcessReading? Read(int processId, out string? problem);
+
+    /// <summary>
+    /// Holds each of <paramref name="processIds"/> open, read through the handle that holds it, until the result is
+    /// disposed; null, with why as <see cref="Read"/> says it, when one cannot be held or read - and then none is held.
+    /// </summary>
+    IBrokerHeldProcesses? Hold(IReadOnlyList<int> processIds, out string? problem);
 }
 
 /// <summary>
@@ -46,12 +62,13 @@ public static class BrokerContentProcesses
         var pinned = new List<BrokerNamedProcess>(processIds.Count);
         foreach (int processId in processIds.Order())
         {
-            if (Owned(client, processId, reader, out refusal) is not { } reading)
+            BrokerProcessReading? reading = reader.Read(processId, out string? problem);
+            if (Owned(client, processId, reading, problem, out refusal) is null)
             {
                 return null;
             }
 
-            pinned.Add(new(processId, reading.StartedUtc));
+            pinned.Add(new(processId, reading!.StartedUtc));
         }
 
         refusal = null;
@@ -59,27 +76,58 @@ public static class BrokerContentProcesses
     }
 
     /// <summary>
-    /// Why the processes a plan pinned may no longer be recorded: one is no longer the process the plan named - its ID
-    /// now names one that started at another time - or no longer the client's own. Null when every one still is.
+    /// Holds the processes a prepared content capture names and checks, through the handles that hold them, that each is
+    /// still the process it was prepared for - started when it was, not another given its ID - and still the client's
+    /// own (ADR-049 decision 2). Null, with why, when one is not; then nothing is held.
     /// </summary>
-    public static string? Verify(BrokerClientIdentity client, IReadOnlyList<BrokerNamedProcess> pinned, IBrokerProcessReader reader)
+    public static IBrokerHeldProcesses? Hold(
+        BrokerClientIdentity client,
+        IReadOnlyList<BrokerNamedProcess> pinned,
+        IBrokerProcessReader reader,
+        out string? refusal)
     {
         ArgumentNullException.ThrowIfNull(client);
         ArgumentNullException.ThrowIfNull(pinned);
         ArgumentNullException.ThrowIfNull(reader);
+        if (reader.Hold([.. pinned.Select(named => named.ProcessId)], out string? problem) is not { } held)
+        {
+            refusal = Unread(pinned.Count == 0 ? 0 : pinned[0].ProcessId, problem);
+            return null;
+        }
+
+        refusal = Verify(client, pinned, held.Readings);
+        if (refusal is not null)
+        {
+            held.Dispose();
+            return null;
+        }
+
+        return held;
+    }
+
+    /// <summary>
+    /// Why the processes a plan pinned may no longer be recorded, as read through the handles that hold them: one is no
+    /// longer the process the plan named - its ID now names one that started at another time - or no longer the client's
+    /// own. Null when every one still is.
+    /// </summary>
+    private static string? Verify(
+        BrokerClientIdentity client,
+        IReadOnlyList<BrokerNamedProcess> pinned,
+        IReadOnlyDictionary<int, BrokerProcessReading> readings)
+    {
         foreach (BrokerNamedProcess named in pinned)
         {
-            if (Owned(client, named.ProcessId, reader, out string? refusal) is not { } reading)
+            BrokerProcessReading? reading = readings.GetValueOrDefault(named.ProcessId);
+            if (Owned(client, named.ProcessId, reading, null, out string? refusal) is null)
             {
                 return refusal;
             }
 
-            if (reading.StartedUtc != named.StartedUtc)
+            if (reading!.StartedUtc != named.StartedUtc)
             {
                 return string.Create(CultureInfo.InvariantCulture,
                     $"Process {named.ProcessId} is no longer the process the capture was prepared for: the one holding its ID ")
-                    + string.Create(CultureInfo.InvariantCulture,
-                        $"started at {reading.StartedUtc.UtcDateTime:yyyy-MM-dd HH:mm:ss.fff} UTC, not {named.StartedUtc.UtcDateTime:yyyy-MM-dd HH:mm:ss.fff} UTC. ")
+                    + $"started at {Instant(reading.StartedUtc)}, not {Instant(named.StartedUtc)}. "
                     + "Prepare the capture again for the process now running.";
             }
         }
@@ -87,14 +135,16 @@ public static class BrokerContentProcesses
         return null;
     }
 
-    private static BrokerProcessReading? Owned(BrokerClientIdentity client, int processId, IBrokerProcessReader reader, out string? refusal)
+    private static BrokerProcessReading? Owned(
+        BrokerClientIdentity client,
+        int processId,
+        BrokerProcessReading? reading,
+        string? problem,
+        out string? refusal)
     {
-        if (reader.Read(processId, out string? problem) is not { } reading)
+        if (reading is null)
         {
-            string why = string.IsNullOrWhiteSpace(problem)
-                ? string.Create(CultureInfo.InvariantCulture, $"process {processId} could not be read")
-                : problem.TrimEnd('.');
-            refusal = char.ToUpperInvariant(why[0]) + why[1..] + ". Content is kept only from processes the broker can show are yours.";
+            refusal = Unread(processId, problem);
             return null;
         }
 
@@ -111,5 +161,17 @@ public static class BrokerContentProcesses
                         + "such as an elevated one. Content is kept only from processes you could read yourself."
                     : null;
         return refusal is null ? reading : null;
+    }
+
+    private static string Instant(DateTimeOffset value) =>
+        value.UtcDateTime.ToString("yyyy-MM-dd HH:mm:ss.fff", CultureInfo.InvariantCulture) + " UTC";
+
+    /// <summary>Why a process that could not be held or read is not recorded, in the clause the reader gave.</summary>
+    private static string Unread(int processId, string? problem)
+    {
+        string why = string.IsNullOrWhiteSpace(problem)
+            ? string.Create(CultureInfo.InvariantCulture, $"process {processId} could not be read")
+            : problem.TrimEnd('.');
+        return char.ToUpperInvariant(why[0]) + why[1..] + ". Content is kept only from processes the broker can show are yours.";
     }
 }

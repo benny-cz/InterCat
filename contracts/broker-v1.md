@@ -70,9 +70,20 @@ keeps the metadata-only policy. Its scope is the content source filtered to the 
 kept and every other source the whole machine's lifecycle metadata, which needs no broader-capture consent. Limits or
 consent on which the request and the policy disagree are refused, never reconciled.
 
-A prepared content capture is not started yet: Start refuses one before any durable intent is written, saying it is
-prepared for review only, until the broker holds its processes while it records and checks each is still the one
-prepared (ADR-049 decision 2).
+Start holds a content capture's processes from before its session starts until its evidence is finalized (ADR-049
+decision 2, revision 452): the broker opens each named process again, as at preparation, and keeps the handles, so no
+other process can be given its ID while a record could still arrive through it, and through those handles checks that
+each is still the process prepared - started when the plan says - and still the client's own as above. One that has
+exited, whose ID now names a process that started at another time, or that is no longer the client's fails the start
+with a reason naming it and both starts where they differ - `Process 4242 is no longer the process the capture was
+prepared for: the one holding its ID started at 2026-10-08 09:03:00.000 UTC, not 2026-10-08 09:00:00.000 UTC. Prepare
+the capture again for the process now running. Nothing was recorded.` - before any capture directory or session
+exists; a broker that cannot hold processes, or a start that names no authenticated client, keeps no content. A
+session whose content source could not be enabled - its process exited before the provider's filter held it, say -
+stops at once and fails the start, saying why, rather than record lifecycle alone; what it finalizes is those few
+moments' lifecycle and no content. A capture whose kept content reaches the session limit its request allows stops
+(stop-at-limit, ADR-049 decision 4), and its status says so in place of its duration's: `The content it kept reached
+the 16 MiB its request allows; the admitted prefix was finalized.`
 
 ## 3. Prepared-plan digest
 

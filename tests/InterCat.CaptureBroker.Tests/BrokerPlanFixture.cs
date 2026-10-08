@@ -207,6 +207,9 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
     /// <summary>The prepared plan each start was given, in order.</summary>
     public List<PreparedCapturePlan> StartedPlans { get; } = [];
 
+    /// <summary>The authenticated client each start was given, in order.</summary>
+    public List<BrokerClientIdentity?> StartedIdentities { get; } = [];
+
     public ValueTask<bool> HasCompletedAsync(CaptureId captureId, CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
@@ -217,7 +220,8 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
         BrokerCaptureOwnership ownership,
         PreparedCapturePlan plan,
         int? clientProcessId,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        BrokerClientIdentity? client = null)
     {
         ArgumentNullException.ThrowIfNull(plan);
         if (!ownership.Session.IsValidFor(ownership.CaptureId))
@@ -229,6 +233,7 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
         StartCount++;
         StartedClients.Add(clientProcessId);
         StartedPlans.Add(plan);
+        StartedIdentities.Add(client);
         if (BeforeStart is not null)
         {
             await BeforeStart(ownership.CaptureId);
@@ -251,5 +256,61 @@ internal sealed class BrokerFakeRuntime : IBrokerCaptureRuntime, IBrokerCaptureC
         CompletedCaptures.Remove(ownership.CaptureId);
         StoppedSessions.Add(ownership.Session);
         return Task.FromResult(StopOutcomes.Count > 0 ? StopOutcomes.Dequeue() : StopOutcome);
+    }
+}
+
+/// <summary>
+/// Processes by ID, as a test sets them; any other ID is not running. What it holds stays held until disposed, read as
+/// the processes were when held, and a test can see what is held still.
+/// </summary>
+internal sealed class FakeProcessReader : Dictionary<int, BrokerProcessReading>, IBrokerProcessReader
+{
+    /// <summary>The process IDs held now, across every hold not yet disposed.</summary>
+    public List<int> Held { get; } = [];
+
+    public BrokerProcessReading? Read(int processId, out string? problem)
+    {
+        problem = TryGetValue(processId, out BrokerProcessReading? reading)
+            ? null
+            : $"process {processId} is not running, so its ID could be given to any process";
+        return reading;
+    }
+
+    public IBrokerHeldProcesses? Hold(IReadOnlyList<int> processIds, out string? problem)
+    {
+        var readings = new Dictionary<int, BrokerProcessReading>();
+        foreach (int processId in processIds)
+        {
+            if (Read(processId, out problem) is not { } reading)
+            {
+                return null;
+            }
+
+            readings[processId] = reading;
+        }
+
+        problem = null;
+        Held.AddRange(processIds);
+        return new Holding(this, [.. processIds], readings);
+    }
+
+    private sealed class Holding(FakeProcessReader reader, int[] processIds, IReadOnlyDictionary<int, BrokerProcessReading> readings)
+        : IBrokerHeldProcesses
+    {
+        private bool disposed;
+
+        public IReadOnlyDictionary<int, BrokerProcessReading> Readings { get; } = readings;
+
+        public void Dispose()
+        {
+            if (!disposed)
+            {
+                disposed = true;
+                foreach (int processId in processIds)
+                {
+                    _ = reader.Held.Remove(processId);
+                }
+            }
+        }
     }
 }

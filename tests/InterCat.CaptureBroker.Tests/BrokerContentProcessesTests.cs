@@ -50,32 +50,71 @@ public sealed class BrokerContentProcessesTests
         BrokerClientIdentity client = BrokerPlanFixture.OwnerA;
         var reader = new FakeProcessReader { [100] = new(client, Started) };
         IReadOnlyList<BrokerNamedProcess> pinned = BrokerContentProcesses.Pin(client, [100], reader, out _)!;
-        Assert.Null(BrokerContentProcesses.Verify(client, pinned, reader));
+        BrokerContentProcesses.Hold(client, pinned, reader, out string? refusal)!.Dispose();
+        Assert.Null(refusal);
 
-        // Its ID given to a process that started later.
-        reader[100] = new(client, Started.AddMinutes(3));
-        Assert.Equal("Process 100 is no longer the process the capture was prepared for: the one holding its ID started at "
-            + "2026-10-08 09:03:00.000 UTC, not 2026-10-08 09:00:00.000 UTC. Prepare the capture again for the process now running.",
-            BrokerContentProcesses.Verify(client, pinned, reader));
+        // Its ID given to a process that started later, or earlier: both starts are said.
+        foreach ((DateTimeOffset now, string was) in new[]
+        {
+            (Started.AddMinutes(3), "2026-10-08 09:03:00.000"),
+            (Started.AddMilliseconds(-1), "2026-10-08 08:59:59.999"),
+        })
+        {
+            reader[100] = new(client, now);
+            Assert.Null(BrokerContentProcesses.Hold(client, pinned, reader, out refusal));
+            Assert.Equal($"Process 100 is no longer the process the capture was prepared for: the one holding its ID started at {was} "
+                + "UTC, not 2026-10-08 09:00:00.000 UTC. Prepare the capture again for the process now running.", refusal);
+        }
 
         // Exited, or another user's by then.
         reader.Remove(100);
-        Assert.StartsWith("Process 100 is not running, so its ID could be given to any process.",
-            BrokerContentProcesses.Verify(client, pinned, reader), StringComparison.Ordinal);
+        Assert.Null(BrokerContentProcesses.Hold(client, pinned, reader, out refusal));
+        Assert.Equal("Process 100 is not running, so its ID could be given to any process. Content is kept only from processes "
+            + "the broker can show are yours.", refusal);
         reader[100] = new(BrokerPlanFixture.OwnerB, Started);
-        Assert.StartsWith("Process 100 runs as another user.", BrokerContentProcesses.Verify(client, pinned, reader),
-            StringComparison.Ordinal);
+        Assert.Null(BrokerContentProcesses.Hold(client, pinned, reader, out refusal));
+        Assert.Equal("Process 100 runs as another user. Content is kept only from your own processes.", refusal);
+        Assert.Empty(reader.Held);
     }
 
-    /// <summary>Processes by ID, as a test sets them; any other ID is not running.</summary>
-    private sealed class FakeProcessReader : Dictionary<int, BrokerProcessReading>, IBrokerProcessReader
+    [Fact(DisplayName = "R22: a content capture holds its processes from before it records, checked through the handles that hold them, and holds none it refuses")]
+    public void AStartHoldsItsProcessesCheckedThroughTheirHandles()
     {
-        public BrokerProcessReading? Read(int processId, out string? problem)
+        BrokerClientIdentity client = BrokerPlanFixture.OwnerA;
+        var reader = new FakeProcessReader { [100] = new(client, Started), [200] = new(client, Started.AddSeconds(1)) };
+        IReadOnlyList<BrokerNamedProcess> pinned = BrokerContentProcesses.Pin(client, [100, 200], reader, out _)!;
+
+        // Its own processes, still the ones prepared: held until it lets them go.
+        using (IBrokerHeldProcesses held = BrokerContentProcesses.Hold(client, pinned, reader, out string? refusal)!)
         {
-            problem = TryGetValue(processId, out BrokerProcessReading? reading)
-                ? null
-                : $"process {processId} is not running, so its ID could be given to any process";
-            return reading;
+            Assert.Null(refusal);
+            Assert.Equal([100, 200], reader.Held);
+            Assert.Equal([Started, Started.AddSeconds(1)],
+                held.Readings.OrderBy(entry => entry.Key).Select(entry => entry.Value.StartedUtc));
+        }
+
+        Assert.Empty(reader.Held);
+
+        // One whose ID now names a later process, another user's, or one that is gone: refused, and nothing stays held.
+        foreach ((BrokerProcessReading? second, string why) in new (BrokerProcessReading?, string)[]
+        {
+            (new(client, Started.AddMinutes(1)), "Process 200 is no longer the process the capture was prepared for"),
+            (new(BrokerPlanFixture.OwnerB, Started.AddSeconds(1)), "Process 200 runs as another user."),
+            (null, "Process 200 is not running, so its ID could be given to any process."),
+        })
+        {
+            if (second is null)
+            {
+                reader.Remove(200);
+            }
+            else
+            {
+                reader[200] = second;
+            }
+
+            Assert.Null(BrokerContentProcesses.Hold(client, pinned, reader, out string? refusal));
+            Assert.StartsWith(why, refusal, StringComparison.Ordinal);
+            Assert.Empty(reader.Held);
         }
     }
 }
