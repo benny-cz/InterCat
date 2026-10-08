@@ -1,6 +1,6 @@
 # InterCat tile index v1
 
-Status: **implemented** in plan revision 456, minor 1 in revision 457. It holds §12.1 S4's deeper levels, beneath the
+Status: **implemented** in plan revision 456, minor 1 in revision 457; a group's lanes count from it since revision 458. It holds §12.1 S4's deeper levels, beneath the
 persisted overview (`contracts/overview-index-v1.md`), which is the top level. For each observation segment of a
 generation, it keeps:
 
@@ -9,8 +9,9 @@ generation, it keeps:
 
 A zoom of a finished session counts each segment from these. It counts a tile whole wherever its records fall in one
 column, and reads a tile's children, or a finest tile's records, only where a column boundary falls among them. A brush
-counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's tallies. So
-neither opens a segment, and each reads in proportion to what it draws rather than to the session (S3).
+counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's tallies, and a
+group's focus counts its members' records and lanes the same way per column. So none opens a segment, and each reads in
+proportion to what it draws rather than to the session (S3).
 
 Like the overview, a tile index is a derived index. It holds counts, readings and bindings, never evidence (R1), and
 the segments it describes, with the derivation the checkpoint holds, rebuild it (R20). One that is missing, stale or
@@ -230,7 +231,12 @@ A tile index carries its own checksums, so it is read by the block and never has
 - its header, footer and directory are checked when it is opened;
 - a section's header when a zoom or a brush first needs it;
 - a block when a zoom or a brush reads it, and a block's tallies when a brush counts one of its tiles from them;
-- a finest tile's records when a column boundary or a brush's end falls among them.
+- a finest tile's records when a column boundary or a brush's end falls among them. They are read with the records of
+  the tiles after them in their block, so a count that reads a block's every tile reads its records once, and each
+  tile's are checked as they are counted.
+
+A reader keeps up to 16,384 blocks decoded for the queries after it, about 25 MB: every block of a 10M-record session's
+tiles, which a group's lanes at 2,000 columns read most of.
 
 ### What is refused
 
@@ -328,10 +334,34 @@ At 10,000,000 records in forty segments, the scale gate's brushed ranking, which
 the graph and the table from the counts, took 6.3 ms the first time and 9.5 ms at the 95th percentile, from 631 and 273
 ms (§12's budget is 250 ms).
 
+### A group's lanes
+
+A group's focus counts the records whose owner binds to one of its members, where the evidence policy admits the
+binding, and of one mechanism where it names one: in the view's columns, by mechanism, and in each member's lane - or the
+lane its folded members share - in the lanes' columns. Past §6.2's cell budget the lanes have columns of their own over
+the same interval, fewer and wider, whose boundaries need not be the view's. A group's focus counts from the index under
+the same conditions as a brush, and each segment from its top level down:
+
+- a tile none of whose records lies in the columns' interval is passed over;
+- a tile all of whose records fall in one column of the view's and one of the lanes', and that keeps tallies, adds each
+  owner entry of a member whose strength the policy admits there, to the focus and to that member's lane;
+- any other tile gives way to its children, or, at the finest level, to its records, each counted as its row would be.
+
+That is exactly what reading every row counts. A focus on one process, which also counts its records by source
+direction, on a channel, which counts them by end, or on an operation, and any focus narrowed to one source direction or
+end, is not what the index holds, and reads its rows.
+
+Each segment's section is counted by a worker of its own, side by side, as a focus that reads rows counts its segments.
+At 10,000,000 records of the scale gate's generator in forty segments, on a 4-core machine, a 40-process group's lanes
+at the window's 256 columns took 70 ms the first time, against 850 ms reading its rows, and 20 ms at the median after;
+at 2,000 columns, 48 ms the first time and 78 ms at the 95th percentile. Reading no segment, the session's working set
+at the end of the gate was 263 MB, against 1.35 GB.
+
 ## 5. What is not defined at this version
 
-- A focused timeline's columns, which count one owner's, direction's or channel's records per column and are not what
-  tiles hold (§10.3). A focus reads its rows, from the segments the interval meets.
+- The focus of one process, of a channel or of an operation, and any focus narrowed to one source direction or end,
+  whose columns count what tiles do not hold (§10.3): their source directions and ends. Such a focus reads its rows,
+  from the segments the interval meets.
 - Byte sums, which a zoom's lanes read from the segments.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.

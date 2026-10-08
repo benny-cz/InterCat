@@ -1128,8 +1128,11 @@ internal sealed class TileBlock
 /// </summary>
 internal sealed class TileIndexFile
 {
-    /// <summary>The most blocks kept decoded for later zooms: a few megabytes, whatever the session's size (S2).</summary>
-    private const int MaximumCachedBlocks = 4_096;
+    /// <summary>
+    /// The most blocks kept decoded for later zooms, brushes and groups: about 25 MB, whatever the session's size (S2), and
+    /// every block of a 10M-record session's tiles, which a group's lanes at 2,000 columns read most of.
+    /// </summary>
+    private const int MaximumCachedBlocks = 16_384;
 
     private readonly Dictionary<string, TileSectionEntry> entries;
     private readonly Dictionary<string, TileSection> sections = new(StringComparer.Ordinal);
@@ -1299,8 +1302,26 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private long lastStart;
     private long lastEnd;
 
-    // The last finest tile's records read and checked, in a buffer each read reuses.
-    private byte[] recordsBytes = new byte[256];
+    // The records of the last finest tile read, and of the tiles after it in its block, read at once in a buffer each read
+    // reuses: a dense count reads a block's records in one read, a boundary's barely more than its tile's.
+    private byte[] recordsBytes = new byte[4_096];
+    private TileSection? recordsSection;
+    private int recordsBlock = -1;
+    private int recordsFrom;
+
+    // The last tile's tallies read and checked (ReadTallies), in buffers each read reuses.
+    private uint[] ownerKeys = new uint[64];
+    private byte[] ownerSlots = new byte[64];
+    private long[] ownerCounts = new long[64];
+    private int ownerEntries;
+    private int[] channelNumbers = new int[64];
+    private long[] channelCounts = new long[64];
+    private int channelEntries;
+
+    // The column of a group's lanes the last tile counted whole fell in, kept as the focus's own is.
+    private int lastLaneColumn = -1;
+    private long lastLaneStart;
+    private long lastLaneEnd;
 
     public void Dispose() => stream.Dispose();
 
@@ -1382,6 +1403,153 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         var brush = new Brush(interval, SessionTileIndex.AdmittedStrengths(policy), slotOfChannel, tally);
         RangeInterval(section, top, 0, section.TileCount(top), brush, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Counts the records of <paramref name="section"/>'s segment that a group's focus holds into its columns,
+    /// <paramref name="focused"/>, and each member's into its lane of <paramref name="lanes"/>, as a focus counts its rows
+    /// (<see cref="FocusRows"/>): every timed record inside the columns' interval whose owner binds to a member, where the
+    /// policy admits the binding, and of <paramref name="mechanism"/> where it names one. A tile counts whole from its
+    /// tallies wherever its records fall in one column of the focus and one of the lanes', and a finest tile's records
+    /// are read where a boundary of either falls among them. The caller has checked that the file's bindings are its own.
+    /// False, counting nothing, for a segment whose readings go backwards and meet the interval: its rows are read instead.
+    /// </summary>
+    public bool CountGroup(
+        TileSection section,
+        TimelineColumns focused,
+        TimelineColumns[]? lanes,
+        bool[] members,
+        int[]? laneOf,
+        Mechanism? mechanism,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(focused);
+        ArgumentNullException.ThrowIfNull(members);
+        TimeRange interval = focused.Interval;
+        if (section.First is not { } first || section.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return true;
+        }
+
+        if (!section.Ordered)
+        {
+            return false;
+        }
+
+        (lastColumn, lastLaneColumn) = (-1, -1);
+        int top = section.Levels - 1;
+        var group = new Group(focused, lanes, lanes is null || lanes[0].Counts.Count == focused.Counts.Count, members, laneOf,
+            mechanism, SessionTileIndex.AdmittedStrengths(policy));
+        RangeGroup(section, top, 0, section.TileCount(top), group, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Counts the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a group's focus:
+    /// each whole from its tallies that falls in one column of the focus and of its lanes, the children of each that does
+    /// not or keeps no tallies, and the records of a finest one.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void RangeGroup(TileSection section, int level, int from, int end, Group group, CancellationToken cancellationToken)
+    {
+        TimelineColumns focused = group.Focused;
+        TimeRange interval = focused.Interval;
+        TileBlock? block = null;
+        int blockIndex = -1;
+        for (int position = from; position < end; position++)
+        {
+            if (position / SessionTileIndex.TilesPerBlock != blockIndex)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                blockIndex = position / SessionTileIndex.TilesPerBlock;
+                block = file.Block(stream, section, level, blockIndex);
+            }
+
+            int tile = position % SessionTileIndex.TilesPerBlock;
+            long low = block!.Lows[tile];
+            long high = block.Highs[tile];
+            if (low >= interval.EndTicks)
+            {
+                return;
+            }
+
+            if (high < interval.StartTicks)
+            {
+                continue;
+            }
+
+            // A tile lying in one column of the view's and one of the lanes' counts there whole: from its tallies, or where
+            // it keeps none from its children, or its records, without looking up each one's column.
+            int column = -1;
+            int laneColumn = -1;
+            if (low >= interval.StartTicks && high < interval.EndTicks)
+            {
+                if (lastColumn < 0 || low < lastStart || low >= lastEnd)
+                {
+                    lastColumn = focused.ColumnOf(low)!.Value;
+                    TimeRange bounds = TimelineColumns.IntervalOf(interval, focused.Counts.Count, lastColumn);
+                    (lastStart, lastEnd) = (bounds.StartTicks, bounds.EndTicks);
+                }
+
+                // The lanes past the cell budget have columns of their own over the same interval, which a tile must fall
+                // in one of too.
+                bool whole = high < lastEnd;
+                if (whole && !group.LanesShareColumns)
+                {
+                    TimelineColumns laneColumns = group.Lanes![0];
+                    if (lastLaneColumn < 0 || low < lastLaneStart || low >= lastLaneEnd)
+                    {
+                        lastLaneColumn = laneColumns.ColumnOf(low)!.Value;
+                        TimeRange bounds = TimelineColumns.IntervalOf(interval, laneColumns.Counts.Count, lastLaneColumn);
+                        (lastLaneStart, lastLaneEnd) = (bounds.StartTicks, bounds.EndTicks);
+                    }
+
+                    whole = high < lastLaneEnd;
+                }
+
+                if (whole)
+                {
+                    (column, laneColumn) = (lastColumn, group.LanesShareColumns ? lastColumn : lastLaneColumn);
+                    if (AddGroupTallies(section, level, block, position, group, column, laneColumn))
+                    {
+                        continue;
+                    }
+                }
+            }
+
+            if (level > 0)
+            {
+                RangeGroup(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], group, cancellationToken);
+                continue;
+            }
+
+            var records = new RecordCursor(this, section, block, position);
+            while (records.Next(out long reading, out int slot, out uint owner, out _))
+            {
+                if (owner == 0 || !group.Admitted[owner & 7] || !group.Members[(owner >> 3) - 1]
+                    || (column < 0 && !interval.Contains(reading)))
+                {
+                    continue;
+                }
+
+                Mechanism mechanism = section.Mechanisms[slot];
+                if (group.Mechanism is { } only && mechanism != only)
+                {
+                    continue;
+                }
+
+                int at = column >= 0 ? column : focused.ColumnOf(reading)!.Value;
+                focused.Add(at, mechanism);
+                if (group.LaneOf?[(owner >> 3) - 1] is >= 0 and int lane)
+                {
+                    TimelineColumns laneColumns = group.Lanes![lane];
+                    laneColumns.Add(column >= 0 ? laneColumn : group.LanesShareColumns ? at : laneColumns.ColumnOf(reading)!.Value, mechanism);
+                }
+            }
+        }
     }
 
     /// <summary>
@@ -1534,11 +1702,99 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// <summary>
     /// Adds one tile's records to a brush's tally whole: all of them observed, each bound owner's the policy admits to its
     /// instance by mechanism, and each drawn channel's to it. False, adding nothing, for a tile that keeps no tallies,
-    /// whose children or records are counted instead. Its block's tallies are checked against their checksum once, and
-    /// its own against the tile: in order, within the derivation's instances and channels, none above its count.
+    /// whose children or records are counted instead.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private bool AddTallies(TileSection section, int level, TileBlock block, int position, Brush brush)
+    {
+        long records = RecordsIn(section, block, position);
+        if (!ReadTallies(section, level, block, position, records))
+        {
+            return false;
+        }
+
+        IntervalTally tally = brush.Tally;
+        tally.Observed += records;
+        int slots = TimelineColumns.SlotCount;
+        for (int entry = 0; entry < ownerEntries; entry++)
+        {
+            uint owner = ownerKeys[entry];
+            if (brush.Admitted[owner & 7])
+            {
+                tally.Processes[((int)(owner >> 3) - 1) * slots + section.CountSlots[ownerSlots[entry]]] += ownerCounts[entry];
+            }
+        }
+
+        for (int entry = 0; entry < channelEntries; entry++)
+        {
+            int number = channelNumbers[entry];
+            if (number < brush.SlotOfChannel.Length && brush.SlotOfChannel[number] is >= 0 and int drawn)
+            {
+                tally.Graph += channelCounts[entry];
+                tally.Channels[drawn] += channelCounts[entry];
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Adds one tile's records to a group's focus whole, in <paramref name="column"/> of its columns and
+    /// <paramref name="laneColumn"/> of its lanes': each bound owner's the policy admits, of a member, by mechanism, to the
+    /// focus and to the member's lane. False, adding nothing, for a tile that keeps no tallies.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private bool AddGroupTallies(TileSection section, int level, TileBlock block, int position, Group group, int column, int laneColumn)
+    {
+        if (!ReadTallies(section, level, block, position, RecordsIn(section, block, position)))
+        {
+            return false;
+        }
+
+        for (int entry = 0; entry < ownerEntries; entry++)
+        {
+            uint owner = ownerKeys[entry];
+            int instance = (int)(owner >> 3) - 1;
+            Mechanism mechanism = section.Mechanisms[ownerSlots[entry]];
+            if (!group.Admitted[owner & 7] || !group.Members[instance] || (group.Mechanism is { } only && mechanism != only))
+            {
+                continue;
+            }
+
+            int count = (int)ownerCounts[entry];
+            group.Focused.Add(column, mechanism, count);
+            if (group.LaneOf?[instance] is >= 0 and int lane)
+            {
+                group.Lanes![lane].Add(laneColumn, mechanism, count);
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>How many timed records one tile holds: its counts' sum.</summary>
+    private static long RecordsIn(TileSection section, TileBlock block, int position)
+    {
+        int tile = position % SessionTileIndex.TilesPerBlock;
+        int mechanisms = section.Mechanisms.Length;
+        long records = 0;
+        for (int slot = 0; slot < mechanisms; slot++)
+        {
+            records += block.Counts[(tile * mechanisms) + slot];
+        }
+
+        return records;
+    }
+
+    /// <summary>
+    /// Reads one tile's tallies into the entry buffers, checked against the tile as they are read: owners in order of key
+    /// and mechanism, within the derivation's instances and the section's mechanisms; channels in order, within its
+    /// channels; no count of zero or above the tile's <paramref name="records"/>, nor sums above them; nothing after the
+    /// last. False, reading no entry, for a tile that keeps no tallies. Its block's tallies are checked against their
+    /// checksum once.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private bool ReadTallies(TileSection section, int level, TileBlock block, int position, long records)
     {
         int tile = position % SessionTileIndex.TilesPerBlock;
         byte[] bytes = TalliesOf(section, level, block, position / SessionTileIndex.TilesPerBlock);
@@ -1554,19 +1810,11 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         TilesOfTalliesRead++;
         int mechanisms = section.Mechanisms.Length;
-        long records = 0;
-        for (int slot = 0; slot < mechanisms; slot++)
-        {
-            records += block.Counts[(tile * mechanisms) + slot];
-        }
-
-        IntervalTally tally = brush.Tally;
-        tally.Observed += records;
-        int slots = TimelineColumns.SlotCount;
         ulong lastOwner = ((ulong)file.Derivation.Instances << 3) | 7;
         ulong channels = (ulong)file.Derivation.Channels;
 
         // Each owner's key over the one before, or its mechanism after the one before under the same key.
+        ownerEntries = 0;
         long owned = 0;
         ulong owner = 0;
         int previousSlot = -1;
@@ -1588,13 +1836,19 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             owned += (long)count;
             previousSlot = slot;
-            if (brush.Admitted[owner & 7])
+            if (ownerEntries == ownerKeys.Length)
             {
-                tally.Processes[((int)(owner >> 3) - 1) * slots + section.CountSlots[slot]] += (long)count;
+                Array.Resize(ref ownerKeys, ownerEntries * 2);
+                Array.Resize(ref ownerSlots, ownerEntries * 2);
+                Array.Resize(ref ownerCounts, ownerEntries * 2);
             }
+
+            (ownerKeys[ownerEntries], ownerSlots[ownerEntries], ownerCounts[ownerEntries]) = ((uint)owner, (byte)slot, (long)count);
+            ownerEntries++;
         }
 
         // Each channel's number over the one before.
+        channelEntries = 0;
         long bound = 0;
         ulong number = 0;
         ulong numbered = at.Next();
@@ -1614,11 +1868,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             bound += (long)count;
-            if (number < (ulong)brush.SlotOfChannel.Length && brush.SlotOfChannel[number] is >= 0 and int drawn)
+            if (channelEntries == channelNumbers.Length)
             {
-                tally.Graph += (long)count;
-                tally.Channels[drawn] += (long)count;
+                Array.Resize(ref channelNumbers, channelEntries * 2);
+                Array.Resize(ref channelCounts, channelEntries * 2);
             }
+
+            (channelNumbers[channelEntries], channelCounts[channelEntries]) = ((int)number, (long)count);
+            channelEntries++;
         }
 
         if (!at.AtEnd || owned > records || bound > records)
@@ -1659,23 +1916,31 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
-    /// The records of the finest tile at <paramref name="position"/>, read and checked against their checksum into the
-    /// buffer every such read reuses: how many bytes they take, the checksum after them.
+    /// The records of the finest tile at <paramref name="position"/>, checked against their checksum: where they begin in
+    /// the buffer every such read reuses, and how many bytes they take. They are read with the records of the tiles after
+    /// them in their block, unless an earlier read of the block holds them already.
     /// </summary>
-    private int RecordsOf(TileSection section, TileBlock block, int position)
+    private int RecordsOf(TileSection section, TileBlock block, int position, out int offset)
     {
         TilesOfRecordsRead++;
         int tile = position % SessionTileIndex.TilesPerBlock;
         int start = block.Links[tile];
         int end = tile + 1 < block.Links.Length ? block.Links[tile + 1] - 4 : block.RecordsEnd;
-        if (end + 4 > recordsBytes.Length)
+        int index = position / SessionTileIndex.TilesPerBlock;
+        if (!ReferenceEquals(recordsSection, section) || recordsBlock != index || start < recordsFrom)
         {
-            recordsBytes = new byte[Math.Max(end + 4 - start, recordsBytes.Length * 2)];
+            int rest = block.RecordsEnd + 4 - start;
+            if (rest > recordsBytes.Length)
+            {
+                recordsBytes = new byte[Math.Max(rest, recordsBytes.Length * 2)];
+            }
+
+            SessionTileIndex.ReadInto(stream, section.RecordsAt + start, recordsBytes.AsSpan(0, rest));
+            (recordsSection, recordsBlock, recordsFrom) = (section, index, start);
         }
 
-        Span<byte> read = recordsBytes.AsSpan(0, end - start + 4);
-        SessionTileIndex.ReadInto(stream, section.RecordsAt + start, read);
-        if (!SessionTileIndex.Matches(read))
+        offset = start - recordsFrom;
+        if (!SessionTileIndex.Matches(recordsBytes.AsSpan(offset, end - start + 4)))
         {
             throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
                 $"the records of tile {position} of the section of '{section.Entry.Name}'"));
@@ -1686,6 +1951,19 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
     /// <summary>What one brush counts and into what: its interval, the strengths its policy admits, the channels it draws.</summary>
     private sealed record Brush(TimeRange Interval, bool[] Admitted, int[] SlotOfChannel, IntervalTally Tally);
+
+    /// <summary>
+    /// What one group's focus counts and into what: its columns, its members' lanes and whether they share the columns, its
+    /// members and their lanes by instance, the one mechanism it narrows to, and the strengths its policy admits.
+    /// </summary>
+    private sealed record Group(
+        TimelineColumns Focused,
+        TimelineColumns[]? Lanes,
+        bool LanesShareColumns,
+        bool[] Members,
+        int[]? LaneOf,
+        Mechanism? Mechanism,
+        bool[] Admitted);
 
     /// <summary>
     /// One finest tile's records, read in row order, each checked against the tile: the first at its earliest reading,
@@ -1712,8 +1990,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             tile = position % SessionTileIndex.TilesPerBlock;
 
             // Read first: the read can give the buffer a larger array.
-            int length = source.RecordsOf(section, block, position);
-            at = new VarintReader(source.recordsBytes, 0, length);
+            int length = source.RecordsOf(section, block, position, out int offset);
+            at = new VarintReader(source.recordsBytes, offset, offset + length);
             int mechanisms = section.Mechanisms.Length;
             for (int slot = 0; slot < mechanisms; slot++)
             {
@@ -1777,6 +2055,12 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         public ulong Next()
         {
+            // Most values take one byte.
+            if (at < to && bytes[at] < 0x80)
+            {
+                return bytes[at++];
+            }
+
             ulong value = 0;
             int shift = 0;
             byte next;

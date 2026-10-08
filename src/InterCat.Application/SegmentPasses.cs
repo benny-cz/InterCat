@@ -20,6 +20,18 @@ internal static class SegmentPasses
         Func<TState> start,
         Action<SegmentReaderV1, TState> pass,
         Action<TState> merge,
+        CancellationToken cancellationToken) =>
+        Run<SegmentReaderV1, TState>(segments, start, pass, merge, cancellationToken);
+
+    /// <summary>
+    /// One pass per segment named some other way - by its section of a persisted index, say - with the same workers,
+    /// merging and failures.
+    /// </summary>
+    public static void Run<TSegment, TState>(
+        IReadOnlyList<TSegment> segments,
+        Func<TState> start,
+        Action<TSegment, TState> pass,
+        Action<TState> merge,
         CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(segments);

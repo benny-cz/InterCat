@@ -116,6 +116,17 @@ public sealed class SessionTileIndexTests
         Assert.Equal(300, columns.Counts.Sum());
         Assert.InRange(narrow.TilesOfRecordsRead, 0, 51);
         Assert.InRange(fresh.BlocksDecoded, 1, 4 * 8);
+
+        // A boundary among the records of a tile before the last one the reading read in the same block reads them anew.
+        int read = narrow.TilesOfRecordsRead;
+        foreach (TimeRange back in new[] { new TimeRange(203_400, 209_000), new TimeRange(53_400, 59_000) })
+        {
+            var backward = new TimelineColumns(back, 2, tallyMechanisms: true);
+            Assert.True(narrow.CountInto(narrow.Section(SessionSegments.Names(manifest)[0]), backward, CancellationToken.None));
+            Assert.Equal(Expected(rows, back, 2), Snapshot(backward));
+        }
+
+        Assert.Equal(read + 2, narrow.TilesOfRecordsRead);
     }
 
     [Fact(DisplayName = "I4: a damaged tile index is refused, never misread: the zoom counts from the segments' rows instead")]
@@ -463,14 +474,15 @@ public sealed class SessionTileIndexTests
         reopened.ReleaseSegmentReaders();
     }
 
-    [Fact(DisplayName = "I4: a burst that fills one tile with hundreds of records is counted from them exactly, by a zoom and by a brush")]
+    [Fact(DisplayName = "I4: a burst of a thousand records filling two tiles is counted from their records exactly, by a zoom and by a brush")]
     public void ABurstIsCountedFromItsTile()
     {
-        // 600 sends a tick apart, then one every ten milliseconds for a minute: the burst's records fill one tile.
+        // 1,200 sends 128 ticks apart, each increase taking two bytes, then one every ten milliseconds for a minute: the
+        // burst's records fill two tiles, more bytes than a first read of a block's records holds.
         ObservationRowV1[] rows =
         [
-            .. Enumerable.Range(0, 600).Select(index => Send(index, 1_000 + index)),
-            .. Enumerable.Range(600, 6_000).Select(index => Send(index, 1_000 + (index * 100_000L))),
+            .. Enumerable.Range(0, 1_200).Select(index => Send(index, 1_000 + (index * 128L))),
+            .. Enumerable.Range(1_200, 6_000).Select(index => Send(index, 1_000 + (index * 100_000L))),
         ];
         using var session = Published(rows);
         SessionManifestV1 manifest = session.Store.Current!;
@@ -479,18 +491,172 @@ public sealed class SessionTileIndexTests
         {
             TileSection section = reading.Section(SessionSegments.Names(manifest)[0]);
             Assert.Equal(100_000L, section.Width);
-            var burst = new TimelineColumns(new TimeRange(1_000, 1_600), 7, tallyMechanisms: true);
+            var burst = new TimelineColumns(new TimeRange(1_000, 1_000 + (1_200 * 128)), 7, tallyMechanisms: true);
             Assert.True(reading.CountInto(section, burst, CancellationToken.None));
             Assert.Equal(Expected(rows, burst.Interval, 7), Snapshot(burst));
-            Assert.Equal(1, reading.TilesOfRecordsRead);
+            Assert.Equal(2, reading.TilesOfRecordsRead);
         }
 
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
-        var half = new TimeRange(1_000, 1_301);
+        var half = new TimeRange(1_000, 39_000);
         Assert.Equal(Expected(rows, half, 3), Drawn(SessionTimelineQuery.Detail(reopened, half, 3, Kinds)));
         Assert.Equal(Counted(Bind(session.Store), half, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(reopened, half)));
         Assert.Equal(0, reopened.SegmentReaderCache.Entries);
         reopened.ReleaseSegmentReaders();
+    }
+
+    [Theory(DisplayName = "I4: a reopened session's group counts its focus and each member's lane from its persisted tiles exactly as its rows do, folded or not, under every policy, and opens no segment")]
+    [InlineData(6)]
+    [InlineData(91)]
+    [InlineData(20_261_009)]
+    public void GroupLanesCountWhatRowsCount(int seed)
+    {
+        var random = new Random(seed);
+        Mechanism[] kinds = [Mechanism.Tcp, Mechanism.Udp, Mechanism.Rpc, Mechanism.ProcessLifecycle];
+        for (int trial = 0; trial < 6; trial++)
+        {
+            // The same capture twice: with its checkpoint's tiles, and without, where a focus reads its rows.
+            using var tiled = new TemporarySession();
+            using var twin = new TemporarySession();
+            long stretch = trial % 3 == 0 ? 1 : trial % 3 == 1 ? 1_000 : 1_000_000;
+            int rowsPerSegment = random.Next(5, 80);
+            foreach ((ObservationRowV1[] rows, SourceFieldRowV1[] fields) in Stretched(random, stretch))
+            {
+                _ = Publish(tiled.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+                _ = Publish(twin.Store, rows, rowsPerSegment: rowsPerSegment, fields: fields);
+            }
+
+            Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tiled.Store, Committed).Outcome);
+            tiled.Store.ReleaseSegmentReaders();
+            Bound bound = Bind(twin.Store);
+            ProcessInstanceId[] instances = [.. bound.Processes.Instances.Select(instance => instance.Id)];
+            long[] ticks = [.. bound.Segments.SelectMany(segment => Enumerable.Range(0, segment.RowCount)
+                .Select(row => segment.SignedValue(SegmentColumnId.SessionRelativeTicks, row))
+                .Where(nanoseconds => nanoseconds is not null).Select(nanoseconds => nanoseconds!.Value / 100))];
+            Assert.True(instances.Length >= 2);
+            long low = ticks.Min() - stretch;
+            long high = ticks.Max() + 1 + stretch;
+
+            SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+            {
+                for (int query = 0; query < 4; query++)
+                {
+                    // Some of the instances, perhaps narrowed to one mechanism, some in lanes of their own and the rest
+                    // folded; over the whole extent or anywhere.
+                    ProcessInstanceId[] group = [.. instances.Where((_, index) => index < 2 || random.Next(3) != 0)];
+                    Mechanism? mechanism = random.Next(4) == 0 ? kinds[random.Next(kinds.Length)] : null;
+                    var focus = new TimelineFocus(null, group, mechanism: mechanism);
+                    ProcessInstanceId[]? lanes = random.Next(3) == 0 ? [.. group.Take(1 + random.Next(group.Length - 1))] : null;
+                    long start = low + random.NextInt64(0, high - low);
+                    TimeRange interval = query == 0 ? new(low, high) : new(start, start + 1 + random.NextInt64(0, high - start));
+                    int columns = random.Next(3) == 0 ? random.Next(1, 6) : random.Next(1, 300);
+                    Assert.Equal(
+                        Focused(SessionTimelineQuery.Focused(twin.Store, interval, columns, focus, policy, lanes)),
+                        Focused(SessionTimelineQuery.Focused(reopened, interval, columns, focus, policy, lanes)));
+                }
+            }
+
+            Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+            Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);
+            reopened.ReleaseSegmentReaders();
+
+            // A group's focus narrowed to one source direction is not what tiles hold, and reads its rows.
+            var outbound = new TimelineFocus(null, instances, direction: Direction.Outbound);
+            var whole = new TimeRange(low, high);
+            SessionStore directed = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+            Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, whole, 50, outbound)),
+                Focused(SessionTimelineQuery.Focused(directed, whole, 50, outbound)));
+            Assert.NotEqual(0, directed.SegmentReaderCache.Entries);
+            directed.ReleaseSegmentReaders();
+            twin.Store.ReleaseSegmentReaders();
+        }
+    }
+
+    [Theory(DisplayName = "S3: a group of 120 processes counts its lanes from persisted tiles exactly, in the lanes' own columns past the cell budget and folded past the lanes a view names, and opens no segment")]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AWideGroupCountsItsLanesFromTiles(bool interleaved)
+    {
+        // 120 processes, in 60 pairs whose records take turns record by record, so a narrow tile keeps no tallies, or that
+        // talk in turn, a pair at a time, so every tile does. At 256 columns their 120 lanes need 30,720 cells, so they are
+        // counted in 166 columns of their own, whose boundaries cross the view's columns.
+        ObservationRowV1[] rows = interleaved ? Interleaved(60, 24_000) : Shifts(60, 24_000);
+        TimeRange extent = Extent(rows);
+        using var tiled = Published(rows);
+        using var twin = new TemporarySession();
+        Publish(twin.Store, rows);
+        ProcessInstanceId[] members = [.. Bind(twin.Store).Processes.Instances.Select(instance => instance.Id)];
+        Assert.Equal(120, members.Length);
+        var group = new TimelineFocus(null, members);
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
+
+        // Half the processes, and every one narrowed to its creation records: a tile's tallies hold the others' records too.
+        foreach (TimelineFocus some in new[] { new TimelineFocus(null, members[..60]), new TimelineFocus(null, members, mechanism: Mechanism.ProcessLifecycle) })
+        {
+            Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, extent, 64, some)), Focused(SessionTimelineQuery.Focused(reopened, extent, 64, some)));
+        }
+
+        foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
+        {
+            // The whole extent, and intervals each of whose ends falls among a tile's records.
+            foreach (TimeRange interval in new[] { extent, new(1_000_150, 1_604_550), new(150_150, 6_777_550) })
+            {
+                // Every member in a lane, past the cell budget; a hundred named and the rest folded, past it too; thirty
+                // named and the rest folded, within it.
+                foreach (ProcessInstanceId[]? lanes in new[] { null, members[..100], members[..30] })
+                {
+                    SessionFocusedTimeline counted = SessionTimelineQuery.Focused(reopened, interval, 256, group, policy, lanes);
+                    Assert.Equal(Focused(SessionTimelineQuery.Focused(twin.Store, interval, 256, group, policy, lanes)), Focused(counted));
+                    Assert.Equal(lanes is null ? 166 : lanes.Length == 100 ? 198 : 256, counted.ProcessLanes[0].Buckets.Count);
+                }
+            }
+        }
+
+        Assert.Equal(0, reopened.SegmentReaderCache.Entries);
+        reopened.ReleaseSegmentReaders();
+        twin.Store.ReleaseSegmentReaders();
+    }
+
+    [Fact(DisplayName = "S3: a group's focus counts a tile whole from its tallies wherever it falls in one column of the view's and one of its lanes', and reads records only where a boundary of either falls among them")]
+    public void AGroupCountsWholeTilesFromTheirTallies()
+    {
+        // 60 pairs talking in turn, a pair at a time, so each tile's records have one or two owners: every tile ten records
+        // wide or wider keeps its tallies, and a finest tile's three or so records take fewer bytes than its tallies would.
+        ObservationRowV1[] rows = Shifts(60, 24_000);
+        using var session = Published(rows);
+        SessionManifestV1 manifest = session.Store.Current!;
+        Bound bound = Bind(session.Store);
+        int instances = bound.Processes.Instances.Count;
+        bool[] members = [.. Enumerable.Repeat(true, instances)];
+        int[] laneOf = [.. Enumerable.Range(0, instances)];
+        TileIndexFile file = SessionTileIndex.Open(session.Store.Root, SessionTileIndex.NamedBy(manifest)!, manifest.SessionId);
+        using TileReading reading = file.Read(session.Store.Root);
+        TileSection section = reading.Section(Assert.Single(SessionSegments.Names(manifest)));
+
+        // The view's 256 columns and the lanes' 166, over the whole extent: most tiles fall in one of each.
+        TimeRange extent = Extent(rows);
+        var focused = new TimelineColumns(extent, 256, tallyMechanisms: true);
+        TimelineColumns[] lanes = [.. Enumerable.Range(0, instances).Select(_ => new TimelineColumns(extent, 166, tallyMechanisms: true))];
+        Assert.True(reading.CountGroup(section, focused, lanes, members, laneOf, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+        Assert.Equal(Expected(rows, extent, 256), Snapshot(focused));
+        Assert.Equal(rows.Length, focused.Counts.Sum());
+        Assert.Equal(rows.Length, lanes.Sum(lane => lane.Counts.Sum()));
+
+        // At each of the 424 boundaries, the finest tile it falls among and at most nine beside it, which keep no tallies.
+        Assert.InRange(reading.TilesOfTalliesRead, 256, 20 * 256);
+        Assert.InRange(reading.TilesOfRecordsRead, 1, 10 * (257 + 167));
+        Assert.InRange(reading.TilesUntallied, 1, 9 * (257 + 167));
+
+        // The same reading counts other columns afresh: a three-hundredth of the extent in 37 columns, beginning inside the
+        // view's last column and the lanes' last, which the reading last fell in.
+        var other = new TimelineColumns(new TimeRange(extent.EndTicks - (extent.SpanTicks / 300), extent.EndTicks), 37, tallyMechanisms: true);
+        TimelineColumns[] otherLanes = [.. Enumerable.Range(0, instances).Select(_ => new TimelineColumns(other.Interval, 11, tallyMechanisms: true))];
+        Assert.True(reading.CountGroup(section, other, otherLanes, members, laneOf, null, EvidencePolicy.IncludeCorrelated, CancellationToken.None));
+        Assert.Equal(Expected(rows, other.Interval, 37), Snapshot(other));
+        Assert.Equal(other.Counts.Sum(), otherLanes.Sum(lane => lane.Counts.Sum()));
+        Assert.Equal(Expected(rows, other.Interval, 11).Where(value => value.Mechanism is null).Select(value => value.Count),
+            Enumerable.Range(0, 11).Select(column => otherLanes.Sum(lane => lane.Counts[column])));
     }
 
     [Fact(DisplayName = "R22: a tile index's derivation is its rules, instances and channels: another instance, paired channel or unpaired channel is another derivation")]
@@ -541,12 +707,15 @@ public sealed class SessionTileIndexTests
         ], processes, relations, CancellationToken.None, stated: derivation with { Fingerprint = new byte[32] }));
         store.ReleaseSegmentReaders();
 
-        // A zoom still counts from the tiles; a brush counts from the segments, the same as their rows.
+        // A zoom still counts from the tiles; a brush and a group's lanes count from the segments, the same as their rows.
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(Expected(rows, whole, 20), Drawn(SessionTimelineQuery.Detail(viewer, whole, 20, Kinds)));
         Assert.Equal(0, viewer.SegmentReaderCache.Entries);
         Bound bound = Bind(store);
         Assert.Equal(Counted(bound, whole, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(viewer, whole)));
+        Assert.Equal(SessionSegments.Names(published).Count, viewer.SegmentReaderCache.Entries);
+        var group = new TimelineFocus(null, [.. bound.Processes.Instances.Select(instance => instance.Id)]);
+        List<string> lanes = Focused(SessionTimelineQuery.Focused(viewer, whole, 20, group));
         Assert.Equal(SessionSegments.Names(published).Count, viewer.SegmentReaderCache.Entries);
         Assert.Null(SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
@@ -557,6 +726,7 @@ public sealed class SessionTileIndexTests
         store.ReleaseSegmentReaders();
         SessionStore later = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(Counted(bound, whole, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(later, whole)));
+        Assert.Equal(lanes, Focused(SessionTimelineQuery.Focused(later, whole, 20, group)));
         Assert.Equal(0, later.SegmentReaderCache.Entries);
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(store, Committed).Outcome);
         store.ReleaseSegmentReaders();
@@ -703,6 +873,41 @@ public sealed class SessionTileIndexTests
     }
 
     /// <summary>
+    /// <paramref name="rows"/> records 30 microseconds apart over <paramref name="pairs"/> loopback connections, each
+    /// between a client and a server process of its own, the connections talking in turn, one at a time for an equal
+    /// share of the records: each sends from its client, receives at its server, sends from its server and receives at its
+    /// client, over and over; after every process's creation.
+    /// </summary>
+    private static ObservationRowV1[] Shifts(int pairs, int rows)
+    {
+        var made = new List<ObservationRowV1>();
+        ulong ordinal = 0;
+        for (int pair = 0; pair < pairs; pair++)
+        {
+            made.Add(Lifecycle(1 + pair, ObservationKind.Create, 10_000 + pair, ++ordinal) with { SessionRelativeTicks = (1 + pair) * 100L });
+            made.Add(Lifecycle(1 + pair, ObservationKind.Create, 20_000 + pair, ++ordinal) with { SessionRelativeTicks = (1 + pair) * 100L });
+        }
+
+        int share = (rows - made.Count + pairs - 1) / pairs;
+        for (int index = made.Count; index < rows; index++)
+        {
+            long tick = 1_000 + (index * 300L);
+            int pair = Math.Min(pairs - 1, (index - (2 * pairs)) / share);
+            string client = $"127.0.0.1:{40_000 + pair}";
+            string server = $"127.0.0.1:{8_000 + pair}";
+            made.Add((index % 4) switch
+            {
+                0 => Transfer(tick, ObservationKind.Send, AccountingSide.SendSide, 512, 10_000 + pair, ++ordinal).Between(client, server),
+                1 => Transfer(tick, ObservationKind.Receive, AccountingSide.ReceiveSide, 512, 20_000 + pair, ++ordinal).Between(server, client),
+                2 => Transfer(tick, ObservationKind.Send, AccountingSide.SendSide, 64, 20_000 + pair, ++ordinal).Between(server, client),
+                _ => Transfer(tick, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 10_000 + pair, ++ordinal).Between(client, server),
+            } with { SessionRelativeTicks = tick * 100 });
+        }
+
+        return [.. made];
+    }
+
+    /// <summary>
     /// A random capture's chunks (<see cref="RandomCaptures"/>), each reading <paramref name="stretch"/> times as far from
     /// the session's start and moved within that stretch by its ordinal, so a tile can hold records at several readings.
     /// </summary>
@@ -787,6 +992,17 @@ public sealed class SessionTileIndexTests
             .. made.Select(entry => $"process {entry.Key.Id} {entry.Key.Mechanism}: {entry.Value}").Order(StringComparer.Ordinal),
         ];
     }
+
+    /// <summary>A focused timeline as it is drawn: the whole, the focus and its mechanism lanes, each member's lane and the fold.</summary>
+    private static List<string> Focused(SessionFocusedTimeline timeline) =>
+    [
+        .. timeline.Whole.Buckets.Select(bucket => $"whole {bucket}"),
+        .. timeline.Focus.Select(bucket => $"focus {bucket}"),
+        .. timeline.FocusLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"focus {lane.Mechanism} {bucket}")),
+        .. timeline.ProcessLanes.SelectMany(lane => lane.Buckets.Select(bucket => $"lane {lane.ProcessId} {bucket}")),
+        .. timeline.FoldedLane is { } folded ? folded.Buckets.Select(bucket => $"folded {folded.Processes.Count} {bucket}") : [],
+        $"problem {timeline.ProcessLaneProblem}",
+    ];
 
     /// <summary>A brush's counts as the query states them: what it observed and drew, and each edge's, channel's and process's.</summary>
     private static List<string> Stated(SessionIntervalCounts counts) =>

@@ -333,16 +333,21 @@ public static class SessionTimelineQuery
         // reopened session opened every segment and built every segment's tiles, wherever it was (P25, S4). A focus resolves
         // its rows over the whole session, from the derivation or the checkpoint where one holds them, and is counted only
         // in the segments its interval meets.
-        FocusRows? rows = focus is null ? null
-            : FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock), focus, policy, cancellationToken);
+        var generation = new GenerationSegments(store, manifest, clock);
+        FocusRows? rows = focus is null ? null : FocusRows.Resolve(store, manifest, generation, focus, policy, cancellationToken);
 
-        // The whole timeline comes from tiles (S4). Unfocused, it comes from the tiles the generation's checkpoint
-        // persisted where they describe its segments, and no segment is opened; otherwise, and with a focus, which reads
-        // its rows, from the tiles of each segment the interval meets. Either way only a tile a column boundary crosses
-        // has its records read.
-        SegmentReaderV1[] met = [];
-        TimelineColumns counted = (rows is null ? PersistedWhole(store, manifest, interval, columns, cancellationToken) : null)
-            ?? CountWhole(met = SessionNativeInterval.Segments(store, manifest, interval, clock), interval, columns, cancellationToken);
+        // A group's focus - its members' records, of one mechanism or every one - is what the persisted tiles' owner tallies
+        // hold; a focus on one process, which counts its source directions, or on a channel or an operation reads its rows.
+        bool tiledFocus = focus is { ChannelKey: null, OperationKey: null, Direction: null, End: null, OwnerProcesses.Count: > 1 };
+
+        // The whole timeline comes from tiles (S4). Unfocused, or with a group's focus, it comes from the tiles the
+        // generation's checkpoint persisted where they describe its segments, and no segment is opened; otherwise, and with
+        // a focus that reads its rows, from the tiles of each segment the interval meets. Either way only a tile a column
+        // boundary crosses has its records read.
+        SegmentReaderV1[]? met = null;
+        SegmentReaderV1[] Met() => met ??= SessionNativeInterval.Segments(store, manifest, interval, clock);
+        TimelineColumns counted = (rows is null || tiledFocus ? PersistedWhole(store, manifest, interval, columns, cancellationToken) : null)
+            ?? CountWhole(Met(), interval, columns, cancellationToken);
         bool groupFocus = focus is { ChannelKey: null, OwnerProcesses.Count: > 1 };
         (ProcessInstanceId[] laneOwners, ProcessInstanceId[] folded, string? laneProblem) =
             groupFocus ? LanesOf(focus!, lanes) : ([], [], null);
@@ -358,19 +363,27 @@ public static class SessionTimelineQuery
         // A channel has exactly two ends, each with its total and two directional bands: six series at most.
         TransportRelation? endRelation = focus is { OwnerProcesses.Count: 0 } ? rows?.Relation : null;
 
-        // A focus reads its rows. Each segment is counted by one worker into columns of its own, and the workers' columns
-        // are summed (SegmentPasses): at 10M records a group's lanes answer within §12's budget only side by side.
+        // A group's focus counts from the persisted tiles' owner tallies, opening no segment (S3). Any other focus reads
+        // its rows: each segment is counted by one worker into columns of its own, and the workers' columns are summed
+        // (SegmentPasses): at 10M records a group's lanes answer within §12's budget only side by side.
         FocusTally? total = null;
         if (rows is not null)
         {
             int[]? laneOf = laneCount == 0 ? null : rows.LanesOf(laneOwners, folded);
-            total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
-            SegmentPasses.Run(
-                met,
-                () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation),
-                (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
-                total.Add,
-                cancellationToken);
+            total = tiledFocus
+                ? PersistedFocus(store, manifest, generation, rows, focus!.Mechanism, policy, laneOf, interval, columns, laneCount,
+                    laneColumns, cancellationToken)
+                : null;
+            if (total is null)
+            {
+                total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
+                SegmentPasses.Run(
+                    Met(),
+                    () => new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation),
+                    (segment, tally) => CountFocus(segment, rows, laneOf, tally, cancellationToken),
+                    total.Add,
+                    cancellationToken);
+            }
         }
 
         CoverageLedgerV1? coverage = SessionSegments.CoverageLedger(store.Root, manifest);
@@ -453,6 +466,80 @@ public static class SessionTimelineQuery
             }
 
             return counted;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// A group's focus from the tiles the generation's checkpoint persisted (`contracts/tile-index-v1.md` §4): its records
+    /// and each member's lane, of <paramref name="mechanism"/> where it names one, from each tile's owner tallies where its
+    /// records fall in one column of both, and from the records of the tiles a boundary falls among, opening no segment
+    /// but one whose readings go backwards, which keeps no tiles and has its rows read. Null when the generation names no
+    /// tile index, or one without a section of each of its segments, or one whose bindings are not this derivation's; and
+    /// when a part of it could not be read, which is said once, and the index is not read again for the generation. The
+    /// focus is then counted from its segments' rows, and counts the same.
+    /// </summary>
+    private static FocusTally? PersistedFocus(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        GenerationSegments generation,
+        FocusRows rows,
+        Mechanism? mechanism,
+        EvidencePolicy policy,
+        int[]? laneOf,
+        TimeRange interval,
+        int columns,
+        int laneCount,
+        int laneColumns,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { } tiles || rows.Processes is not { } processes || rows.Members is not { } members)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes) || !tiles.Derivation.Matches(processes, generation.Relations(cancellationToken)))
+        {
+            return null;
+        }
+
+        // Each section the interval meets is counted by one worker, with a reading and columns of its own, and the workers'
+        // columns are summed (SegmentPasses): a wide group's widest tiles each tally hundreds of owners, and its narrow ones
+        // hundreds of records, which side by side meet §12's budget at 10M records.
+        var total = new FocusTally(interval, columns, laneCount, laneColumns, directions: false, ends: null);
+        try
+        {
+            StoreDependency[] met;
+            using (TileReading headers = tiles.Read(store.Root))
+            {
+                met = [.. segments.Where(segment => headers.Section(segment.Name) is { First: { } first, Last: { } last }
+                    && last >= interval.StartTicks && first < interval.EndTicks)];
+            }
+
+            SegmentPasses.Run(
+                met,
+                () => (Reading: tiles.Read(store.Root), Tally: new FocusTally(interval, columns, laneCount, laneColumns, directions: false, ends: null)),
+                (segment, worker) =>
+                {
+                    if (!worker.Reading.CountGroup(worker.Reading.Section(segment.Name), worker.Tally.Focused, worker.Tally.Lanes, members,
+                        laneOf, mechanism, policy, cancellationToken))
+                    {
+                        CountFocus(SessionSegments.Open(store, manifest, segment.Name), rows, laneOf, worker.Tally, cancellationToken);
+                    }
+                },
+                worker =>
+                {
+                    worker.Reading.Dispose();
+                    total.Add(worker.Tally);
+                },
+                cancellationToken);
+            return total;
         }
         catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
         {
@@ -761,6 +848,12 @@ internal sealed class FocusRows
 
     /// <summary>The one admitted paired incarnation a channel focus reads; null for an owner-only focus.</summary>
     public TransportRelation? Relation { get; }
+
+    /// <summary>The instances an owner focus binds with; null when the focus names no owner.</summary>
+    internal ProcessInstanceIndex? Processes => processes;
+
+    /// <summary>Whether each instance position is a focused owner; null when the focus names no owner.</summary>
+    internal bool[]? Members => members;
 
     /// <summary>
     /// The rows a focus names, resolved over the whole generation: its instances and channels as the derivation or the
