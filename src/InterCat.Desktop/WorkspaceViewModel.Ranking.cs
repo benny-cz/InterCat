@@ -589,11 +589,10 @@ public sealed partial class WorkspaceViewModel
         }
 
         RaiseRankingChanged();
-        OnPropertyChanged(nameof(RungRows));
+        RaiseRungRows(rowKey);
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
-        OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(GraphDisplay));

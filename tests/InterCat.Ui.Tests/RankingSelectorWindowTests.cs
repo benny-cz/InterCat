@@ -157,6 +157,53 @@ public sealed class RankingSelectorWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§3.2: a ranked row stays chosen, in the rail too, when a brush or another ranking restates the rows")]
+    public async Task AChosenRowOutlivesItsRowsBeingRestated()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        ListBox rail = window.GetControl<ListBox>("RungList");
+
+        // big.exe's group is chosen in the rail, where a person chooses it.
+        rail.SelectedItem = workspace.RungRows.Single(row => row.Label == "big.exe");
+        Dispatch();
+        string chosen = Assert.IsType<RungRow>(workspace.SelectedRung).Key;
+        Assert.Equal("big.exe", workspace.SelectionTitle);
+
+        // A brush restates the rows with the range's counts: the group is still chosen, in the rail too, read as the range
+        // counts it - its three sends - and the inspector still names it. The rail's new rows let the choice go, and it
+        // was written back as none chosen while the graph still ringed the group.
+        workspace.SelectInterval(new TimeRange(10, 13));
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal((chosen, "3"), (workspace.SelectedRung?.Key, workspace.SelectedRung?.Observations));
+        Assert.Equal(chosen, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+        Assert.Equal("big.exe", workspace.SelectionTitle);
+
+        // Another ranking restates them in another order, and the choice stays.
+        window.GetControl<ComboBox>("RankBySelector").SelectedIndex = 1;
+        await workspace.RankingReady;
+        Dispatch();
+        Assert.Equal(RankingMetric.BytesSent, workspace.AppliedRanking);
+        Assert.Equal(chosen, workspace.SelectedRung?.Key);
+        Assert.Equal(chosen, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+
+        // Letting the brush go restates them with the whole session's counts, and the choice stays still.
+        workspace.ClearSelection();
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Null(workspace.SelectedInterval);
+        Assert.Equal(chosen, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+        window.Close();
+    }
+
     private static string? FirstLabel(ListBox rail) =>
         rail.GetVisualDescendants().OfType<ListBoxItem>().Select(item => (item.DataContext as RungRow)?.Label).FirstOrDefault();
 

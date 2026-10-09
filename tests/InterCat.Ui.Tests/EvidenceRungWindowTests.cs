@@ -47,11 +47,18 @@ public sealed class EvidenceRungWindowTests
         Assert.True(window.GetControl<ListBox>("RungList").IsVisible);
         Assert.False(window.GetControl<Button>("ShowRecordsButton").IsEnabled);
 
+        // A record chosen stays chosen, in the table too, when M loads the next page beneath it.
+        ListBox records = window.GetControl<ListBox>("RungList");
+        records.SelectedIndex = 3;
+        Dispatch();
+        SessionEvidenceRecord chosen = Assert.IsType<SessionEvidenceRecord>(reading.SelectedEvidence);
         window.KeyPressQwerty(PhysicalKey.M, RawInputModifiers.None);
         await reading.EvidenceReady;
         Dispatch();
         Assert.Equal(2 * SessionEvidenceQuery.DefaultPageSize, reading.RungRows.Count);
         Assert.True(reading.CanLoadMoreEvidence);
+        Assert.Same(chosen, reading.SelectedEvidence);
+        Assert.Equal(3, records.SelectedIndex);
 
         // A live publication while records are read is held; the rows the user is reading stay where they are.
         Publish(session.Store, Exchange(150, 10));

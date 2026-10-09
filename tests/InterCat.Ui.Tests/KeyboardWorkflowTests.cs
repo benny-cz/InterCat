@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -175,6 +176,189 @@ public sealed class KeyboardWorkflowTests
         Assert.True(window.GetControl<GraphView>("GraphSurface").IsKeyboardFocusWithin, Focused(window));
         Press(window, PhysicalKey.F6, RawInputModifiers.Shift);
         Assert.True(explore.IsFocused, Focused(window));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Enter on an interval row lists the moment's records in E, as E does, and an empty moment's says why it lists none")]
+    public async Task EnterOnAnIntervalListsItsRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+
+        // client.exe's group is chosen in the ranked table, and the interval table, reached by F6, chooses the first moment
+        // with Home: the group stays chosen, in the ranked table too, counted for the moment - its start and three datagrams.
+        RungRow group = workspace.RungRows[0];
+        workspace.SelectedRung = group;
+        Press(window, PhysicalKey.T);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        ListBox intervals = window.GetControl<ListBox>("IntervalList");
+        ListBox rail = window.GetControl<ListBox>("RungList");
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.Home);
+        TimeRange moment = Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval;
+        Assert.Equal(moment, workspace.SelectedInterval);
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal((group.Key, "4"), (workspace.SelectedRung?.Key, workspace.SelectedRung?.Observations));
+        Assert.Equal(group.Key, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+
+        // Enter lists those four records, as E would, rather than opening the group's rung, and E's table has the keyboard.
+        Press(window, PhysicalKey.Enter);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(moment, workspace.SelectedInterval);
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+        // Esc comes back to the moment. Two rows down is a run of empty intervals, one row, and Enter on it lists nothing:
+        // the reason has the keyboard, named by what it says, rather than nothing.
+        Press(window, PhysicalKey.Escape);
+        Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.ArrowDown);
+        Press(window, PhysicalKey.ArrowDown);
+        IntervalRow empty = Assert.IsType<IntervalRow>(intervals.SelectedItem);
+        Assert.Equal((0L, 2), (empty.ObservationCount, empty.Cells));
+        Press(window, PhysicalKey.Enter);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(empty.Interval, workspace.SelectedInterval);
+        Assert.Empty(workspace.RungRows);
+        ScrollViewer reason = window.GetControl<ScrollViewer>("EmptyReasonCard");
+        Assert.True(reason.IsFocused, Focused(window));
+        Assert.StartsWith("No admitted source record is in this scope.", AutomationProperties.GetName(reason), StringComparison.Ordinal);
+
+        // Esc leaves it as from any record, and the ranked table has the keyboard again.
+        Press(window, PhysicalKey.Escape);
+        Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+        // E in the interval table on the first moment does what Enter does: the table's rows are rebuilt for E, so E's
+        // table has the keyboard rather than nothing.
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.Home);
+        Assert.Equal(moment, workspace.SelectedInterval);
+        await workspace.IntervalReady;
+        Dispatch();
+        Press(window, PhysicalKey.E);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(4, workspace.RungRows.Count);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: E pressed in a list E rebuilds - a cell's records, the relationship table - gives E's table the keyboard")]
+    public async Task EFromAListItRebuildsGivesItsTableTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        ListBox rail = window.GetControl<ListBox>("RungList");
+
+        // client.exe's process is opened, ] chooses its first moment with records, and F6 reaches the records the inspector
+        // lists for that cell: E there lists them, and E's table has the keyboard rather than nothing.
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.Enter);
+        Press(window, PhysicalKey.Enter);
+        Assert.Equal("L2 · PROCESS", workspace.LevelBadge);
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.BracketRight);
+        await workspace.IntervalReady;
+        await workspace.CellRecordsReady;
+        Dispatch();
+        ListBox records = window.GetControl<ListBox>("CellRecordsList");
+        int listed = records.ItemCount;
+        Assert.True(listed > 0, "no record listed");
+        Press(window, PhysicalKey.F6);
+        Assert.True(records.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.E);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(listed, workspace.RungRows.Count);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+        // Back at the process, T shows the tables and F6 reaches the relationship table: E there lists the moment's records
+        // of the process, and E's table has the keyboard again.
+        Press(window, PhysicalKey.Escape);
+        Assert.Equal("L2 · PROCESS", workspace.LevelBadge);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.T);
+        Press(window, PhysicalKey.F6);
+        Assert.True(window.GetControl<ListBox>("RelationshipList").IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.E);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.NotEmpty(workspace.RungRows);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: a rung with no rows gives the reason it has none the keyboard, which F6 reaches as the rail")]
+    public async Task F6ReachesAnEmptyRungsReason()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+
+        // A moment with no record is the analysis interval, and E is pressed with the keyboard on the timeline, which keeps
+        // it: E lists nothing, and says why.
+        workspace.SelectInterval(new TimeRange(3, 5));
+        await workspace.IntervalReady;
+        Dispatch();
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        Assert.True(timeline.IsFocused, Focused(window));
+        Press(window, PhysicalKey.E);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Empty(workspace.RungRows);
+        Assert.True(timeline.IsFocused, Focused(window));
+
+        // F6 goes on to the inspector and round to the rail, whose ranked table lists nothing: the reason has the keyboard,
+        // not the search box above it.
+        Press(window, PhysicalKey.F6);
+        Assert.True(window.GetControl<Control>("Inspector").IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.F6);
+        ScrollViewer reason = window.GetControl<ScrollViewer>("EmptyReasonCard");
+        Assert.True(reason.IsFocused, Focused(window));
+        Assert.Equal(workspace.EmptyReason, AutomationProperties.GetName(reason));
         window.Close();
     }
 

@@ -228,14 +228,7 @@ public sealed partial class WorkspaceViewModel
         httpExchangeRows = httpExchanges is { Channel: not null } exchanges
             ? [.. exchanges.Exchanges.Select(exchange => HttpExchangeRungRow(exchange, tokens, TimeBase))]
             : [];
-        string? selectedKey = selectedRung?.Key;
         RaiseRpcChanged();
-        if (selectedKey is not null && RungRows.FirstOrDefault(row => row.Key == selectedKey) is { } kept)
-        {
-            selectedRung = kept;
-            OnPropertyChanged(nameof(SelectedRung));
-            RaiseSelectionDescribed();
-        }
     }
 
     /// <summary>A process's HTTP exchanges as one row: how many, how they were recorded, and the bytes of their messages.</summary>

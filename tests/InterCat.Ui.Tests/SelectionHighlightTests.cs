@@ -293,6 +293,62 @@ public sealed class SelectionHighlightTests
         return window.CaptureRenderedFrame()!;
     }
 
+    [AvaloniaFact(DisplayName = "§6.4: a channel chosen among its process's rows stays chosen through a brush, described, counted and highlighted")]
+    public async Task AChosenChannelOutlivesABrush()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(20)]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        ListBox rail = window.GetControl<ListBox>("RungList");
+
+        // client.exe's process is opened, and its channel to the server chosen in the rail: the inspector describes the
+        // channel, the card counts it, and the timeline highlights its records.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        await workspace.ConnectionsReady;
+        Dispatch();
+        RungRow channel = workspace.RungRows.Single(row => row.Label.StartsWith("↔ server.exe", StringComparison.Ordinal));
+        rail.SelectedItem = channel;
+        Dispatch();
+        await workspace.HighlightReady;
+        Dispatch();
+        (string? Described, string Heading, string? Highlighted) chosen =
+            (workspace.DescribedRow?.Key, workspace.EvidenceHeading, workspace.TimelineHighlightName);
+        Assert.Equal((channel.Key, "Selected channel"), (chosen.Described, chosen.Heading));
+        Assert.NotNull(chosen.Highlighted);
+
+        // A brush restates the rows with its counts: the channel is still the rail's choice, still described, counted on the
+        // card and highlighted, as the list's new rows would otherwise have let it go - and never let go on the way, so
+        // the inspector is never told it went, nor the timeline to highlight anything else meanwhile.
+        var told = new List<(string? Described, string? Highlighted)>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName is nameof(WorkspaceViewModel.DescribedRow) or nameof(WorkspaceViewModel.TimelineHighlightName))
+            {
+                told.Add((workspace.DescribedRow?.Key, workspace.TimelineHighlightName));
+            }
+        };
+        workspace.SelectInterval(new TimeRange(10, 30));
+        await workspace.IntervalReady;
+        await workspace.ConnectionsReady;
+        Dispatch();
+        await workspace.HighlightReady;
+        Dispatch();
+        Assert.Equal(channel.Key, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+        Assert.Equal(chosen, (workspace.DescribedRow?.Key, workspace.EvidenceHeading, workspace.TimelineHighlightName));
+        Assert.NotEmpty(told);
+        Assert.All(told, said => Assert.Equal((chosen.Described, chosen.Highlighted), said));
+        window.Close();
+    }
+
     private static CaptureUiUpdate Update(TemporarySession session) => new(
         CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
         Overview: SessionOverviewProjector.Project(session.Store));

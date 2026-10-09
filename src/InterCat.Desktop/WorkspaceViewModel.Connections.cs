@@ -113,14 +113,7 @@ public sealed partial class WorkspaceViewModel
             return;
         }
 
-        string? selectedKey = selectedRung?.Key;
         RaiseRpcChanged();
-        if (selectedKey is not null && RungRows.FirstOrDefault(row => row.Key == selectedKey) is { } kept)
-        {
-            selectedRung = kept;
-            OnPropertyChanged(nameof(SelectedRung));
-            RaiseSelectionDescribed();
-        }
     }
 
     /// <summary>

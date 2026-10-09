@@ -487,6 +487,16 @@ public sealed partial class MainWindow : Window, IDisposable
                     break;
                 }
 
+                if (IntervalList.IsKeyboardFocusWithin)
+                {
+                    // An interval is a moment of the timeline, not a row to descend into: Enter lists its records, as E
+                    // does with the analysis interval it sets (§6.4), and E's table then has the keyboard. It descended
+                    // into the ranked table's chosen row, which the interval table does not show.
+                    e.Handled = viewModel.ShowEvidence();
+                    if (e.Handled) FocusRail();
+                    break;
+                }
+
                 if (CrumbWithKeyboard() is { IsCurrent: false } crumb)
                 {
                     // A crumb with the keyboard says "press Enter to return to this level"; the rung's table then has it.
@@ -508,8 +518,15 @@ public sealed partial class MainWindow : Window, IDisposable
                 }
                 break;
             case Key.E when e.KeyModifiers == KeyModifiers.None:
+            {
+                // A list E rebuilds or hides - a table's rows, a chosen cell's records - would leave the keyboard on nothing,
+                // so E's table takes it there, as after Enter; on a surface or a control that stays, it stays.
+                bool rebuilt = RelationshipList.IsKeyboardFocusWithin || IntervalList.IsKeyboardFocusWithin
+                    || CellRecordsList.IsKeyboardFocusWithin;
                 e.Handled = viewModel.ShowEvidence();
+                if (e.Handled && rebuilt) FocusRail();
                 break;
+            }
             case Key.C when e.KeyModifiers == KeyModifiers.None && viewModel.HasSelectedContent:
                 OpenContent();
                 e.Handled = true;
@@ -592,15 +609,15 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Gives <paramref name="pane"/> the keyboard where a person works it: the ranked table's selected row or its first, or
-    /// its rung's evidence step when it has no rows; the graph's or the timeline's own surface; a table's selected row or
-    /// its first; or else the control in the pane that last had the keyboard while it still can, or the pane's first list
-    /// with rows or first control a Tab would reach, as the rail's recent sessions before any is open. False when it has
-    /// none.
+    /// its rung's evidence step or the reason it has none when it has no rows; the graph's or the timeline's own surface; a
+    /// table's selected row or its first; or else the control in the pane that last had the keyboard while it still can,
+    /// or the pane's first list with rows or first control a Tab would reach, as the rail's recent sessions before any is
+    /// open. False when it has none.
     /// </summary>
     private bool FocusPane(Control pane)
     {
         if (ReferenceEquals(pane, Rail) && (RungList is { IsEffectivelyVisible: true, ItemCount: > 0 }
-            || EmptyEvidenceButton.IsEffectivelyVisible))
+            || EmptyReasonCard.IsEffectivelyVisible))
         {
             // The ranked table's own path, which waits for rows still being laid out.
             FocusRail();
@@ -663,10 +680,13 @@ public sealed partial class MainWindow : Window, IDisposable
         if (RungList.ItemCount == 0 || !RungList.IsEffectivelyVisible)
         {
             // A rung with no rows offers its evidence step beside the reason it has none. The step has the keyboard, so
-            // Enter lists the rung's records, and a screen reader reads the reason beside it.
-            if (EmptyEvidenceButton.IsEffectivelyVisible && !ReferenceEquals(focused, EmptyEvidenceButton))
+            // Enter lists the rung's records, and a screen reader reads the reason beside it. A rung offering none, as E
+            // with no record in its scope, gives it the reason itself rather than leave it on nothing.
+            InputElement? step = EmptyEvidenceButton.IsEffectivelyVisible ? EmptyEvidenceButton
+                : EmptyReasonCard.IsEffectivelyVisible ? EmptyReasonCard : null;
+            if (step is not null && !ReferenceEquals(focused, step))
             {
-                EmptyEvidenceButton.Focus(NavigationMethod.Directional);
+                step.Focus(NavigationMethod.Directional);
             }
 
             return;
@@ -690,7 +710,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
         railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
-            || ReferenceEquals(target, EmptyEvidenceButton);
+            || ReferenceEquals(target, EmptyEvidenceButton) || ReferenceEquals(target, EmptyReasonCard);
 
         // F6 gives a pane the keyboard back where it last was, as a person left it there.
         Control[] remembering = [Rail, Inspector, RelationshipList, IntervalList];

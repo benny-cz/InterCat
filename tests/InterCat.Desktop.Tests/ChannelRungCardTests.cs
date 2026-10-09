@@ -169,6 +169,41 @@ public sealed class ChannelRungCardTests
         Assert.Equal("HTTP exchange at " + wall.Record(8_000, culture), workspace.RungRows[0].Source.Label);
     });
 
+    [Fact(DisplayName = "§6.4: a channel chosen among its process's rows stays chosen under a brush, and the inspector is told what the brush counts of it")]
+    public void AChosenChannelIsDescribedAsTheBrushCountsIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        PublishClient(session);
+        using WorkspaceViewModel workspace = Open(session);
+        await OpenClient(workspace);
+
+        // What the inspector says of the chosen channel is what it was last told, which is all a binding knows.
+        string? said = null;
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.SelectionSubtitle)) said = workspace.SelectionSubtitle;
+        };
+        RungRow channel = workspace.RungRows.Single(Kinds[0].IsKind);
+        workspace.SelectedRung = channel;
+        Assert.DoesNotContain("records", said, StringComparison.Ordinal);
+
+        // Ranked by bytes sent, a row's line names the records behind its bytes: the channel stays chosen, and the
+        // inspector is told its line as the new ranking reads it.
+        workspace.RankBy = RankingMetric.BytesSent;
+        await workspace.RankingReady;
+        Assert.Equal(channel.Key, workspace.SelectedRung?.Key);
+        Assert.Contains("3 records", said, StringComparison.Ordinal);
+
+        // A brush holding the first send and its receipt restates the rows: the channel is still chosen, read as the brush
+        // counts it, and the inspector is told so.
+        workspace.SelectInterval(new TimeRange(50, 56));
+        await workspace.IntervalReady;
+        await workspace.RankingReady;
+        Assert.Equal((channel.Key, "2"), (workspace.SelectedRung?.Key, workspace.SelectedRung?.Observations));
+        Assert.Contains("2 records", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Equal(workspace.SelectionSubtitle, said);
+    });
+
     private static readonly (Func<RungRow, bool> IsKind, string Noun, string Heading, int Records)[] Kinds =
     [
         (row => row.Label == "↔ server.exe · PID 200", "channel", "This channel", 3),

@@ -281,8 +281,12 @@
           </ListBox>
 
           <!-- A rung with no data names the source that would supply it, never an empty pane (section 3.2).
-               At the minimum window height the reason scrolls rather than being clipped. -->
-          <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" IsVisible="{Binding ShowsEmptyReason}">
+               At the minimum window height the reason scrolls rather than being clipped. Where the rung offers no step,
+               as E with no record in its scope, the card itself takes the keyboard, named by its reason, so the
+               keyboard is never left on nothing and a screen reader says why the level is empty. -->
+          <ScrollViewer x:Name="EmptyReasonCard" Grid.Row="1" VerticalScrollBarVisibility="Auto"
+                        IsVisible="{Binding ShowsEmptyReason}" Focusable="True"
+                        AutomationProperties.Name="{Binding EmptyReason}">
             <Border Classes="card" Padding="11" CornerRadius="8" VerticalAlignment="Top"
                     Background="{DynamicResource Surface.Elevated}">
               <StackPanel Spacing="6">

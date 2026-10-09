@@ -136,6 +136,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private FilterRow? selectedFilter;
     private RelationshipRow? selectedRelationship;
     private bool restatingRelationships;
+    private bool restatingRungs;
     private IntervalRow? selectedIntervalRow;
     private LadderView view;
     private bool showTables;
@@ -3237,6 +3238,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         get => selectedRung;
         set
         {
+            // While the ranked table restates its rows the list lets its choice go for a moment; the choice is kept by key.
+            if (restatingRungs) return;
             selectedRung = value;
             OnPropertyChanged();
             if (IsEvidenceRung)
@@ -3302,6 +3305,45 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string lead = row.Source.Label.Contains(row.Label, StringComparison.Ordinal) ? string.Empty : row.Label;
         string detail = row.DetailLine;
         return lead.Length == 0 ? detail : detail.Length == 0 ? lead : $"{lead} · {detail}";
+    }
+
+    /// <summary>
+    /// Says the ranked table's rows changed, keeping the row chosen among them by its key (§3.2). A list given new rows
+    /// lets its choice go and wrote that back as none chosen, so in the window a brush, an interval's row or another
+    /// ranking lost the row the user was on, and a chosen channel its description, while the graph still ringed its
+    /// group. The new rows' row under the chosen key is chosen instead, described as they now count it, or the choice goes
+    /// as when let go where they no longer list it.
+    /// </summary>
+    private void RaiseRungRows() => RaiseRungRows(selectedRung?.Key);
+
+    /// <summary>Says the ranked table's rows changed, keeping <paramref name="chosen"/>, the key chosen before they did.</summary>
+    private void RaiseRungRows(string? chosen)
+    {
+        restatingRungs = true;
+        try
+        {
+            OnPropertyChanged(nameof(RungRows));
+        }
+        finally
+        {
+            restatingRungs = false;
+        }
+
+        if (chosen is null)
+        {
+            OnPropertyChanged(nameof(SelectedRung));
+            return;
+        }
+
+        if (RungRows.FirstOrDefault(row => row.Key == chosen) is not { } kept)
+        {
+            SelectedRung = null;
+            return;
+        }
+
+        selectedRung = kept;
+        OnPropertyChanged(nameof(SelectedRung));
+        RaiseSelectionDescribed();
     }
 
     private void RaiseSelectionDescribed()
@@ -4876,11 +4918,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         SyncConnections();
         RaiseRankingChanged();
         OnPropertyChanged(nameof(ShowsGroupingChoice));
-        OnPropertyChanged(nameof(RungRows));
+        RaiseRungRows();
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
-        OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(Crumbs));
         OnPropertyChanged(nameof(SelectedCrumb));
         OnPropertyChanged(nameof(Filters));
@@ -5286,7 +5327,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         OnPropertyChanged(nameof(IsEvidenceRung));
         OnPropertyChanged(nameof(HoldsGeneration));
-        OnPropertyChanged(nameof(RungRows));
+        RaiseRungRows();
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
@@ -5748,16 +5789,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         rpcCallRows = rpcCalls is { Channel: { } summary } calls
             ? [.. calls.Calls.Select(call => RpcCallRungRow(call, summary, tokens, TimeBase))]
             : [];
-        string? selectedKey = selectedRung?.Key;
         RaiseRpcChanged();
-        if (selectedKey is not null && RungRows.FirstOrDefault(row => row.Key == selectedKey) is { } kept)
-        {
-            selectedRung = kept;
-            OnPropertyChanged(nameof(SelectedRung));
-
-            // The kept row is read for the new scope: the inspector describes it as it now reads.
-            RaiseSelectionDescribed();
-        }
     }
 
     /// <summary>
@@ -5865,7 +5897,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return;
         }
 
-        OnPropertyChanged(nameof(RungRows));
+        RaiseRungRows();
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
@@ -6088,11 +6120,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RestateRelationships();
         OnPropertyChanged(nameof(RelationshipTableScope));
         OnPropertyChanged(nameof(RelationshipsAbsent));
-        OnPropertyChanged(nameof(RungRows));
+        RaiseRungRows(rowKey);
         OnPropertyChanged(nameof(CanExport));
         OnPropertyChanged(nameof(ExportTip));
         OnPropertyChanged(nameof(ShareReportTip));
-        OnPropertyChanged(nameof(SelectedRung));
         OnPropertyChanged(nameof(LevelSummary));
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(EmptyReason));

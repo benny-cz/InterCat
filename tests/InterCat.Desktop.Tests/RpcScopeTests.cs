@@ -48,10 +48,27 @@ public sealed class RpcScopeTests
         Assert.True(workspace.Descend());
         await workspace.RpcReady;
         Assert.Equal(2, workspace.RungRows.Count);
+
+        // The first call is chosen, and the inspector describes it and offers its keys - as far as it was last told, which
+        // is all a binding knows.
+        RungRow call = workspace.RungRows[0];
+        bool? offered = null;
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.HasSelectionActions)) offered = workspace.HasSelectionActions;
+        };
+        workspace.SelectedRung = call;
+        Assert.Equal((call.Key, true), (workspace.DescribedRow?.Key, offered));
+
+        // The brush moves past it: the rows no longer list it, so it is no longer chosen, and the inspector is told the
+        // call's keys are gone with it rather than go on offering them.
         workspace.SelectInterval(new TimeRange(250, 500));
         await workspace.IntervalReady;
         await workspace.RpcReady;
-        Assert.Single(workspace.RungRows);
+        Assert.NotEqual(call.Key, Assert.Single(workspace.RungRows).Key);
+        Assert.Null(workspace.SelectedRung);
+        Assert.Null(workspace.DescribedRow);
+        Assert.False(offered);
 
         // Cleared, the channel's rung lists all three again.
         workspace.ClearSelection();
