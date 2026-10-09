@@ -4,6 +4,8 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Media;
+using Avalonia.Media.Imaging;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -14,6 +16,7 @@ using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
+using static InterCat.Ui.Tests.RenderedPixels;
 
 namespace InterCat.Ui.Tests;
 
@@ -141,6 +144,122 @@ public sealed class CellEvidenceWindowTests
             Assert.Equal(3, list.ItemCount);
             return list;
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.4: a clicked cell highlights its relationship in the graph, or at a process's rung the process's node, fainter than a selection")]
+    public async Task AClickedCellHighlightsTheGraph()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        TextBlock summary = window.GetControl<TextBlock>("GraphSummaryText");
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        await DrawnTimeline.Counted(window, workspace, timeline);
+
+        // A pixel beside the TCP edge, nearer the end no other edge meets: inside the halo a highlight draws, outside the
+        // edge's own stroke and clear of the ring an edge may wear at its middle.
+        GraphDisplayEdge tcp = workspace.GraphDisplay.Edges.Single(edge => edge.Mechanism == Mechanism.Tcp);
+        bool sourceShared = workspace.GraphDisplay.Edges.Any(edge => edge != tcp
+            && (edge.SourceKey == tcp.SourceKey || edge.TargetKey == tcp.SourceKey));
+        Point lone = graph.PointOf(sourceShared ? tcp.TargetKey : tcp.SourceKey)!.Value;
+        Vector along = graph.PointOf(sourceShared ? tcp.SourceKey : tcp.TargetKey)!.Value - lone;
+        Vector across = new Vector(-along.Y, along.X) / along.Length;
+        Point beside = graph.TranslatePoint(lone + (along * 0.35) + (across * 3.75), window)!.Value;
+
+        // A TCP cell, clicked: once the graph counts its interval, its relationship is highlighted, and the summary says so.
+        TimelineBucket cell = DrawnTimeline.Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        Point at = timeline.TranslatePoint(timeline.PointOf(cell)!.Value, window)!.Value;
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Dispatch();
+        await workspace.IntervalReady;
+        Color highlighted = At(Settle(window), beside);
+        Assert.Equal([tcp.Key], workspace.CellGraphEdges);
+        Assert.EndsWith(" · the chosen cell's relationship highlighted", summary.Text, StringComparison.Ordinal);
+
+        // A process selected is what E would list, so over the same interval the highlight goes; the relationship chosen
+        // is haloed at the selection's whole strength, which the cell's highlight stays short of.
+        workspace.SelectedProcess = client;
+        Color plain = At(Settle(window), beside);
+        Assert.DoesNotContain("highlighted", summary.Text, StringComparison.Ordinal);
+        workspace.SelectedRelationship = workspace.Relationships.Single(row => tcp.Relationships.Contains(row.Key));
+        Color selected = At(Settle(window), beside);
+        Assert.InRange(Distance(highlighted, plain), 1, Distance(selected, plain) - 1);
+
+        // At the client's own rung, with the server selected, a cell of the client's sent row highlights the client's node:
+        // a ring fainter than a selection's.
+        workspace.ClearSelection();
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+            await workspace.TimelineDetailReady;
+        }
+
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        GraphDisplayNode node = workspace.GraphDisplay.Nodes.Single(candidate => candidate.Process == client.Id);
+        TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
+        await workspace.IntervalReady;
+        workspace.SelectedProcess = workspace.Snapshot.Processes.Single(candidate => candidate.ProcessId == 200);
+        WriteableBitmap frame = Settle(window);
+        Point ring = graph.TranslatePoint(RingPoint(graph, workspace.GraphDisplay, node), window)!.Value;
+        Assert.Equal([node.Key], workspace.CellGraphNodes);
+        Assert.EndsWith(" · the chosen cell's process highlighted", summary.Text, StringComparison.Ordinal);
+        highlighted = At(frame, ring);
+        workspace.SelectedRelationship = workspace.Relationships[0];
+        plain = At(Settle(window), ring);
+        Assert.Empty(workspace.CellGraphNodes);
+        workspace.SelectedProcess = client;
+        selected = At(Settle(window), ring);
+        Assert.InRange(Distance(highlighted, plain), 1, Distance(selected, plain) - 1);
+        window.Close();
+    }
+
+    /// <summary>
+    /// A point on the ring a selection draws around <paramref name="node"/>, where neither an edge nor a placed label is
+    /// drawn: the first of sixteen bearings at least ten pixels from every edge's line and outside every label.
+    /// </summary>
+    private static Point RingPoint(GraphView graph, GraphDisplay display, GraphDisplayNode node)
+    {
+        Point centre = graph.PointOf(node.Key)!.Value;
+        double radius = graph.RadiusOf(node.Key)!.Value + GraphView.SelectionHalo;
+        (Point From, Point To)[] lines = [.. display.Edges
+            .Where(edge => graph.PointOf(edge.SourceKey) is not null && graph.PointOf(edge.TargetKey) is not null)
+            .Select(edge => (graph.PointOf(edge.SourceKey)!.Value, graph.PointOf(edge.TargetKey)!.Value))];
+        return Enumerable.Range(0, 16)
+            .Select(step => centre + (new Vector(Math.Cos(step * Math.PI / 8), Math.Sin(step * Math.PI / 8)) * radius))
+            .First(point => lines.All(line => FromLine(point, line.From, line.To) >= 10)
+                && graph.PlacedLabels.All(label => !label.Inflate(3).Contains(point)));
+    }
+
+    /// <summary>How far a point lies from a drawn line between two points.</summary>
+    private static double FromLine(Point point, Point from, Point to)
+    {
+        Vector line = to - from;
+        double along = Math.Clamp(Vector.Dot(point - from, line) / Math.Max(line.SquaredLength, 1e-9), 0, 1);
+        return ((Vector)(point - (from + (line * along)))).Length;
+    }
+
+    /// <summary>How far apart two colours are, channel by channel.</summary>
+    private static int Distance(Color first, Color second) =>
+        Math.Abs(first.R - second.R) + Math.Abs(first.G - second.G) + Math.Abs(first.B - second.B);
+
+    private static WriteableBitmap Settle(Window window)
+    {
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        return window.CaptureRenderedFrame()!;
     }
 
     private static CaptureUiUpdate Update(TemporarySession session) => new(

@@ -495,6 +495,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         string? highlightedNode = highlightedRelationship is { } internalRelationship
             ? display.NodeOfRelationship(internalRelationship)?.Key
             : null;
+
+        // A chosen timeline cell's relationships, or the processes whose records it counts, are highlighted in the
+        // selection's accent at under half its strength, so a highlight never reads as the selection itself (§6.4).
+        IReadOnlySet<string> cellEdges = viewModel.CellGraphEdges;
+        IReadOnlySet<string> cellNodes = viewModel.CellGraphNodes;
         for (int edgeIndex = 0; edgeIndex < display.Edges.Count; edgeIndex++)
         {
             GraphDisplayEdge edge = display.Edges[edgeIndex];
@@ -508,6 +513,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 // The edge that contributes to the rung is haloed in the accent under its own stroke, so its hue,
                 // thickness and dash keep their meanings (section 3.2 L3 and L5, section 6.6).
                 context.DrawLine(HaloPen, source, target);
+            }
+            else if (cellEdges.Contains(edge.Key))
+            {
+                using (context.PushOpacity(CellHighlightOpacity))
+                {
+                    context.DrawLine(HaloPen, source, target);
+                }
             }
             else if (edge.Key == hovered)
             {
@@ -569,6 +581,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 // Part of the selection is inside this aggregate among other processes: a broken ring, never the solid
                 // one, so an aggregate is not mistaken for the selected process or group itself.
                 DrawDashedCircle(context, null, PartialSelectionDashes, point, radius + SelectionHalo);
+            }
+            else if (cellNodes.Contains(node.Key))
+            {
+                using (context.PushOpacity(CellHighlightOpacity))
+                {
+                    context.DrawEllipse(Brushes.Transparent, SelectionPen, point, radius + SelectionHalo, radius + SelectionHalo);
+                }
             }
 
             if (node.Key == highlightedNode)
@@ -668,6 +687,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>Where a drawn node is, in this control's coordinates; null when it is not drawn.</summary>
     internal Point? PointOf(string nodeKey) => DataContext is WorkspaceViewModel viewModel ? Position(nodeKey, viewModel) : null;
+
+    /// <summary>How large a node was drawn in the last frame; null when it was not drawn.</summary>
+    internal double? RadiusOf(string nodeKey) => drawnRadii.TryGetValue(nodeKey, out double radius) ? radius : null;
 
     /// <summary>The card for the hovered mark, described once per key and drawing - a brush re-describes it.</summary>
     public HoverCard? HoverCard
@@ -905,7 +927,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>How far outside a node its selection's ring is drawn, and a selected node's label kept clear of it.</summary>
-    private const double SelectionHalo = 6;
+    internal const double SelectionHalo = 6;
+
+    /// <summary>How strongly a chosen timeline cell's relationships and processes are highlighted, against the selection's whole.</summary>
+    private const double CellHighlightOpacity = 0.45;
 
     /// <summary>The label boxes drawn in the last frame, in the order placed.</summary>
     internal IReadOnlyList<Rect> PlacedLabels => placedLabels;

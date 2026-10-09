@@ -105,6 +105,14 @@ public sealed class FoldedLaneTests
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.StartsWith("Records owned by the 31 processes of pool.exe's folded lane", workspace.EvidenceSummary,
             StringComparison.Ordinal);
+
+        // The graph highlights the node the folded members are drawn in, as holding the cell's processes (§6.4).
+        await workspace.IntervalReady;
+        GraphDisplayNode holding = Assert.Single(workspace.GraphDisplay.Nodes,
+            node => node.Members.Intersect(folded.Processes).Any());
+        Assert.Equal([holding.Key], workspace.CellGraphNodes);
+        Assert.EndsWith(" · the node holding the chosen cell's processes highlighted", workspace.GraphSummary,
+            StringComparison.Ordinal);
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.Equal(cell.ObservationCount, workspace.EvidenceMarkTicks.Count);

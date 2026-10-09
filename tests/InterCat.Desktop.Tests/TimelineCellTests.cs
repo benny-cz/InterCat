@@ -152,9 +152,13 @@ public sealed class TimelineCellTests
         ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
         Assert.DoesNotContain(workspace.TimelineDetail!.Buckets, bucket => bucket.Interval == cell.Interval);
 
-        // The cell itself becomes the analysis interval, not the machine column beneath it, and its card says so.
+        // The cell itself becomes the analysis interval, not the machine column beneath it, and its card says so; the graph
+        // highlights the node its owner is drawn in, among the group's members with no relationship (§6.4).
         workspace.ChooseTimelineCell(cell, ownerLane: owner);
         Assert.Equal(cell.Interval, workspace.SelectedInterval);
+        await workspace.IntervalReady;
+        Assert.Equal([workspace.GraphDisplay.Nodes.Single(node => node.Members.Contains(owner.Id)).Key], workspace.CellGraphNodes);
+        Assert.EndsWith(" · the node holding the chosen cell's process highlighted", workspace.GraphSummary, StringComparison.Ordinal);
         Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(cell, 1, ownerLane: owner).Lines[^1]);
         string cells = 20_000.ToString("N0", CultureInfo.CurrentCulture);
         Assert.Equal(Counted(cell.ObservationCount, "record") + $" {Have(cell.ObservationCount)} a session time in this interval "
@@ -514,6 +518,115 @@ public sealed class TimelineCellTests
         Assert.Contains(workspace.Filters, filter => filter.Chip == "Mechanism: TCP");
     });
 
+    [Fact(DisplayName = "§6.4: a chosen cell highlights the graph's relationships its records belong to, or the process whose records they are, once the graph counts its interval")]
+    public void AChosenCellHighlightsItsRelationships() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+
+        // A datagram to a resolver, sent as the first TCP record is: UDP's lane has a cell a TCP record shares. And
+        // peer.exe, which client.exe sends to as it sends to the server: a second relationship, busy when the first is.
+        Publish(session.Store, [.. Rows(), Timed(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 900)
+            .Between("127.0.0.1:50001", "127.0.0.1:53") with { Mechanism = Mechanism.Udp }), .. Peer()]);
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single(candidate => candidate.Name.Contains(ServerEnd, StringComparison.Ordinal));
+        string[] tcp = [.. workspace.GraphDisplay.Edges.Where(edge => edge.Mechanism == Mechanism.Tcp).Select(edge => edge.Key)];
+        Assert.Equal(2, tcp.Length);
+        Assert.Empty(workspace.CellGraphEdges);
+
+        // A TCP cell: once the graph counts its interval, the TCP relationships holding records in it are highlighted, and
+        // the graph's summary says so. Until then the graph's counts are the session's, and nothing is.
+        TimelineBucket cell = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(cell, Mechanism.Tcp);
+        Assert.Empty(workspace.CellGraphEdges);
+        await workspace.IntervalReady;
+        Assert.Equal(tcp.Order(StringComparer.Ordinal), workspace.CellGraphEdges.Order(StringComparer.Ordinal));
+        Assert.Empty(workspace.CellGraphNodes);
+        Assert.EndsWith(" · the chosen cell's 2 relationships highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+
+        // The datagram belongs to no relationship the graph draws, so its cell highlights none, the TCP one beside it too.
+        TimelineBucket datagram = Lane(workspace, Mechanism.Udp).Single(bucket => bucket.ObservationCount > 0);
+        Assert.Contains(Lane(workspace, Mechanism.Tcp), bucket => bucket.Interval == datagram.Interval && bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(datagram, Mechanism.Udp);
+        await workspace.IntervalReady;
+        Assert.Empty(workspace.CellGraphEdges);
+        Assert.DoesNotContain("highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+
+        // A process selected is what E lists, so the cell highlights nothing; nor does a brushed range, which is no cell.
+        workspace.ChooseTimelineCell(cell, Mechanism.Tcp);
+        await workspace.IntervalReady;
+        Assert.Equal(2, workspace.CellGraphEdges.Count);
+        workspace.SelectedProcess = client;
+        Assert.Empty(workspace.CellGraphEdges);
+        Assert.DoesNotContain("highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        workspace.ClearSelection();
+        workspace.SelectInterval(new TimeRange(cell.Interval.StartTicks, cell.Interval.EndTicks + 1));
+        await workspace.IntervalReady;
+        Assert.Empty(workspace.CellGraphEdges);
+
+        // At the client's group rung, a cell of the machine row highlights every relationship holding records in it.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        await workspace.TimelineDetailReady;
+        TimelineBucket machine = workspace.TimelineDetail!.Buckets.First(bucket => bucket.Interval.Contains(cell.Interval.StartTicks));
+        workspace.ChooseTimelineCell(machine);
+        await workspace.IntervalReady;
+        Assert.Equal(workspace.GraphDisplay.Edges.Where(edge => edge.Mechanism == Mechanism.Tcp).Select(edge => edge.Key)
+            .Order(StringComparer.Ordinal), workspace.CellGraphEdges.Order(StringComparer.Ordinal));
+        Assert.Equal(2, workspace.CellGraphEdges.Count);
+
+        // A cell of a process's source-direction row highlights that process's node: a relationship's count holds both its
+        // ends' records, so it cannot say whether the process's own are among the cell's. The process the rung was reached
+        // with is selected there, whose ring says more than the cell's could, so the cell highlights its node only once
+        // another process is selected.
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+        TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
+        await workspace.IntervalReady;
+        string clientNode = workspace.GraphDisplay.Nodes.Single(node => node.Process == client.Id).Key;
+        Assert.Contains(clientNode, workspace.SelectedGraphNodeKeys);
+        Assert.Empty(workspace.CellGraphNodes);
+        Assert.DoesNotContain("highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        workspace.SelectedProcess = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
+        Assert.Equal([clientNode], workspace.CellGraphNodes);
+        Assert.Empty(workspace.CellGraphEdges);
+        Assert.EndsWith(" · the chosen cell's process highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+
+        // An empty cell holds no record to belong anywhere, so it highlights nothing.
+        workspace.ChooseTimelineCell(workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .First(bucket => bucket.ObservationCount == 0), directionLane: Direction.Outbound);
+        await workspace.IntervalReady;
+        Assert.Empty(workspace.CellGraphNodes);
+        Assert.DoesNotContain("highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+
+        // A channel end's cell highlights its channel's relationship, though the other relationship holds records in its
+        // interval too.
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        ChannelEndTimelineLane end = workspace.TimelineChannelEndLanes![0];
+        workspace.ChooseTimelineCell(end.Buckets.First(bucket => bucket.ObservationCount > 0), endLane: end);
+        await workspace.IntervalReady;
+        Assert.Equal([workspace.GraphDisplay.Edges.Single(edge => edge.Relationships.Contains(channel.EdgeKey)).Key],
+            workspace.CellGraphEdges);
+    });
+
+    [Fact(DisplayName = "§6.4: the graph's summary names what a chosen cell highlights: its relationships, its process, or the nodes holding its processes")]
+    public void TheGraphSaysWhatACellHighlights()
+    {
+        Assert.Equal(string.Empty, WorkspaceViewModel.CellHighlightNote(0, 0, 0, processNode: false));
+        Assert.Equal(" · the chosen cell's relationship highlighted", WorkspaceViewModel.CellHighlightNote(1, 0, 0, processNode: false));
+        Assert.Equal(" · the chosen cell's 3 relationships highlighted", WorkspaceViewModel.CellHighlightNote(3, 0, 0, processNode: false));
+        Assert.Equal(" · the chosen cell's process highlighted", WorkspaceViewModel.CellHighlightNote(0, 1, 1, processNode: true));
+        Assert.Equal(" · the node holding the chosen cell's process highlighted",
+            WorkspaceViewModel.CellHighlightNote(0, 1, 1, processNode: false));
+        Assert.Equal(" · the node holding the chosen cell's processes highlighted",
+            WorkspaceViewModel.CellHighlightNote(0, 1, 31, processNode: false));
+        Assert.Equal(" · the 2 nodes holding the chosen cell's processes highlighted",
+            WorkspaceViewModel.CellHighlightNote(0, 2, 31, processNode: false));
+    }
+
     [Fact(DisplayName = "R5: a timeline card at every rung's lanes says cell and column, never bucket, as the inspector does")]
     public void TimelineCardsSayCellAndColumn() => SingleThreadedContext.Run(async () =>
     {
@@ -689,6 +802,19 @@ public sealed class TimelineCellTests
                 (ulong)(100 + (2 * index))).Between(ClientEnd, ServerEnd)),
             Timed(Transfer(11 + (5 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
                 (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd)),
+        }),
+    ];
+
+    /// <summary>peer.exe, receiving from client.exe over a second connection as each exchange with the server is made.</summary>
+    private static ObservationRowV1[] Peer() =>
+    [
+        Timed(Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\peer.exe" }),
+        .. Enumerable.Range(0, Exchanges).SelectMany(index => new[]
+        {
+            Timed(Transfer(10 + (5 * index), ObservationKind.Send, AccountingSide.SendSide, 32, 100,
+                (ulong)(1_000 + (2 * index))).Between("127.0.0.1:50002", "127.0.0.1:9090")),
+            Timed(Transfer(11 + (5 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 300,
+                (ulong)(1_001 + (2 * index))).Between("127.0.0.1:9090", "127.0.0.1:50002")),
         }),
     ];
 

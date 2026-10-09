@@ -505,6 +505,128 @@ public sealed partial class WorkspaceViewModel
         }
     }
 
+    private static readonly IReadOnlySet<string> NoKeys = new HashSet<string>(StringComparer.Ordinal);
+
+    // What the graph highlights of the chosen cell, kept as it changes so a frame reads it rather than working it out.
+    private CellHighlight cellGraph = CellHighlight.None;
+
+    /// <summary>
+    /// The drawn relationships a chosen cell's records belong to, which the graph highlights (§6.4: selecting a timeline
+    /// cell highlights graph relationships): a mechanism's lane's, the edges of that mechanism holding records in its
+    /// interval; a channel end's, its channel's edge; the machine row's, every edge holding any. Empty while the graph's
+    /// counts are not yet the cell's interval's, and while anything else selected is what E lists.
+    /// </summary>
+    public IReadOnlySet<string> CellGraphEdges => cellGraph.Edges;
+
+    /// <summary>
+    /// The drawn nodes holding the processes whose records a chosen cell of a process's lane, the folded lane or a
+    /// process's source-direction row counts, which the graph highlights in place of edges: a relationship's count holds
+    /// both its ends' records, so it cannot say whether the process's own are among those in the cell. A node the
+    /// selection already rings is not among them.
+    /// </summary>
+    public IReadOnlySet<string> CellGraphNodes => cellGraph.Nodes;
+
+    /// <summary>What the graph's summary adds while it highlights a chosen cell's relationships or processes; empty otherwise.</summary>
+    private string CellGraphNote => CellHighlightNote(cellGraph.Edges.Count, cellGraph.Nodes.Count, cellGraph.Processes,
+        cellGraph.Nodes.Count == 1 && graphDisplay.Node(cellGraph.Nodes.First())?.Kind == GraphNodeKind.Process);
+
+    /// <summary>
+    /// What the graph's summary adds while it highlights a chosen cell's <paramref name="relationships"/>, or the
+    /// <paramref name="nodes"/> holding its <paramref name="processes"/>, one a process's own node when
+    /// <paramref name="processNode"/>: the node is named for the process it is, or for holding the cell's processes.
+    /// </summary>
+    internal static string CellHighlightNote(int relationships, int nodes, int processes, bool processNode) =>
+        relationships == 1 ? " · the chosen cell's relationship highlighted"
+        : relationships > 1 ? " · the chosen cell's " + Counted(relationships, "relationship", "relationships") + " highlighted"
+        : nodes == 0 ? string.Empty
+        : nodes == 1 && processes == 1 && processNode ? " · the chosen cell's process highlighted"
+        : nodes == 1 ? " · the node holding the chosen cell's " + (processes == 1 ? "process" : "processes") + " highlighted"
+        : " · the " + Counted(nodes, "node", "nodes") + " holding the chosen cell's processes highlighted";
+
+    /// <summary>What the graph highlights of the cell the analysis interval is, as <see cref="CellGraphEdges"/> and <see cref="CellGraphNodes"/> say.</summary>
+    private CellHighlight CellGraphWanted()
+    {
+        if (!realOverview || IsEvidenceRung || HasMultiSelection || selectedInterval is not { } interval
+            || appliedInterval != interval || CellOf(ExplainedLane, interval) is not { Bucket.ObservationCount: > 0 }
+            || SelectionEvidenceDescent(interval) is not null)
+        {
+            return CellHighlight.None;
+        }
+
+        TimelineCellLane lane = ExplainedLane;
+        IReadOnlyList<ProcessInstanceId>? owners = lane.Owner is { } owner ? [owner]
+            : lane.Folded ? FoldedLane?.Processes
+            : lane.Direction is not null ? timelineFocus?.OwnerProcesses
+            : null;
+        if (owners is not null)
+        {
+            // A node the selection rings keeps that ring, which says more than the cell's fainter one could: the process a
+            // rung was reached with is selected there, so a cell of its own rows highlights no node of it.
+            (IReadOnlySet<string> whole, IReadOnlySet<string> part) = GraphSelection();
+            HashSet<ProcessInstanceId> counted = [.. owners];
+            HashSet<ProcessInstanceId> held = [];
+            HashSet<string> nodes = new(StringComparer.Ordinal);
+            foreach (GraphDisplayNode node in graphDisplay.Nodes)
+            {
+                if (whole.Contains(node.Key) || part.Contains(node.Key))
+                {
+                    continue;
+                }
+
+                foreach (ProcessInstanceId process in node.Members)
+                {
+                    if (counted.Contains(process))
+                    {
+                        held.Add(process);
+                        nodes.Add(node.Key);
+                    }
+                }
+            }
+
+            return new(NoKeys, nodes, held.Count);
+        }
+
+        string? channel = lane.End is not null ? FocusedRealChannel?.EdgeKey : null;
+        HashSet<string> edges = new(StringComparer.Ordinal);
+        foreach (GraphDisplayEdge edge in graphDisplay.Edges)
+        {
+            if (edge.ObservationCount > 0
+                && (lane.Mechanism is { } mechanism ? edge.Mechanism == mechanism
+                    : lane.End is not null ? channel is not null && edge.Relationships.Contains(channel)
+                    : true))
+            {
+                edges.Add(edge.Key);
+            }
+        }
+
+        return new(edges, NoKeys, 0);
+    }
+
+    /// <summary>Works out the chosen cell's graph highlight again when the cell, its lane, the selection or the graph's counts changed.</summary>
+    private void FollowCellGraph()
+    {
+        CellHighlight wanted = CellGraphWanted();
+        if (wanted.Edges.SetEquals(cellGraph.Edges) && wanted.Nodes.SetEquals(cellGraph.Nodes) && wanted.Processes == cellGraph.Processes)
+        {
+            return;
+        }
+
+        cellGraph = wanted;
+        OnPropertyChanged(nameof(CellGraphEdges));
+        OnPropertyChanged(nameof(CellGraphNodes));
+        OnPropertyChanged(nameof(GraphSummary));
+        OnPropertyChanged(nameof(GraphScope));
+    }
+
+    /// <summary>
+    /// What the graph highlights of a chosen cell: the relationships its records belong to, or the nodes holding the
+    /// processes whose records it counts and how many of those processes they hold.
+    /// </summary>
+    private sealed record CellHighlight(IReadOnlySet<string> Edges, IReadOnlySet<string> Nodes, int Processes)
+    {
+        public static readonly CellHighlight None = new(NoKeys, NoKeys, 0);
+    }
+
     /// <summary>A record of a chosen cell as the inspector lists it, in the evidence rung's words.</summary>
     private static CellRecordRow CellRecord(SessionEvidenceRecord record, SessionClock timeBase)
     {

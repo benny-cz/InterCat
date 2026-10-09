@@ -1782,7 +1782,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
-                    + GraphScopeNote(brief: true);
+                    + GraphScopeNote(brief: true) + CellGraphNote;
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -1795,7 +1795,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count, "node", "nodes")
-                : text) + GraphScopeNote(brief: true);
+                : text) + GraphScopeNote(brief: true) + CellGraphNote;
         }
     }
 
@@ -6285,8 +6285,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         if (IsCellExplanationInput(propertyName) || propertyName is nameof(EvidenceSummary) or nameof(EvidenceHeading))
         {
-            // The chosen cell's records follow what E would list from it, which a selection elsewhere takes over.
+            // The chosen cell's records follow what E would list from it, which a selection elsewhere takes over, and so
+            // does what the graph highlights of it: the graph's counts for an interval arrive with the snapshot they
+            // scope, and the nodes the selection rings change with the selection, both inputs here.
             FollowCellRecords();
+            FollowCellGraph();
         }
     }
 }
