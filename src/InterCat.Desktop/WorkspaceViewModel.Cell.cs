@@ -2,7 +2,9 @@ using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
+using InterCat.Desktop.Theme;
 using InterCat.Domain;
+using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
@@ -313,11 +315,227 @@ public sealed partial class WorkspaceViewModel
         }, TimeBase).Description
         : null;
 
+    /// <summary>
+    /// The inspector's title with an analysis interval chosen and nothing else: the timeline cell it is, or a time range
+    /// that is no cell - a brush, or a step at the machine rung with no lane selected; null without one. A cell is a
+    /// selection as a node or a row is (§6.4), so the inspector never calls itself empty beside one.
+    /// </summary>
+    private string? IntervalTitle => selectedInterval is not { } interval ? null
+        : CellOf(ExplainedLane, interval) is not null ? "Timeline cell"
+        : "Time range";
+
+    /// <summary>Beneath the title: the cell's row and how many records it holds, or what the range scopes.</summary>
+    private string? IntervalSubtitle => selectedInterval is not { } interval ? null
+        : CellOf(ExplainedLane, interval) is { } cell
+            ? CellLaneName(ExplainedLane) + " · " + Counted(cell.Bucket.ObservationCount, "record", "records")
+        : "The analysis interval: the ranking, the graph and E count only what it holds";
+
+    /// <summary>The row a cell lies in, in the words its label on the timeline uses.</summary>
+    private string CellLaneName(TimelineCellLane lane) =>
+        lane.Mechanism is { } mechanism ? EvidenceRowText.MechanismName(mechanism) + " lane"
+        : lane.Owner is { } owner ? "Lane of " + (wholeSnapshot.Processes.FirstOrDefault(process => process.Id == owner)?.NameWithPid
+            ?? "instance " + owner.ToString()[..8])
+        : lane.Folded ? "Lane of " + FoldedLaneLabel
+        : lane.Direction is { } direction ? DirectionLabel(direction) + " row"
+        : lane.End is { } end
+            ? timelineChannelEnds?.FirstOrDefault(candidate => candidate.End == end) is { } endLane
+                ? "End at " + endLane.Endpoint
+                : "End of this channel"
+        : "Machine row";
+
+    /// <summary>How many of a chosen cell's records the inspector lists beneath its explanation.</summary>
+    internal const int CellRecordsListed = 5;
+
+    private IReadOnlyList<CellRecordRow> cellRecordRows = [];
+    private string cellRecordsNote = string.Empty;
+
+    // The scope the inspector's list of a chosen cell's records was read for, how many records E lists from it where that
+    // is known, and whether they are the rung's among a machine-row cell's rather than all of the cell's own.
+    private (EvidenceScope Scope, int? Count, bool Rungs)? listedCellRecords;
+    private CancellationTokenSource? cellRecordsQuery;
+
+    /// <summary>Completes when the most recent read of a chosen cell's records has applied, been superseded or failed.</summary>
+    public Task CellRecordsReady { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// The first records of the cell the analysis interval is, exactly as E would list them, beneath the cell's
+    /// explanation: §6.2's overlapping marks expanded to a detail list, and §6.4's chosen cell opening its contributing
+    /// evidence without leaving the rung. Empty while they are read, and without such a cell.
+    /// </summary>
+    public IReadOnlyList<CellRecordRow> CellRecordRows => cellRecordRows;
+
+    /// <summary>Whether the inspector lists a chosen cell's records: one holding any, whose records E would list.</summary>
+    public bool ListsCellRecords => listedCellRecords is not null;
+
+    /// <summary>
+    /// What the list holds: the cell's records, or the first of them; in the machine row, whose cell counts the whole
+    /// machine's, how many of them E lists - the rung's own.
+    /// </summary>
+    public string CellRecordsHeading => listedCellRecords is not { Count: var count } listed ? string.Empty
+        : listed.Rungs
+            ? count is { } rungs
+                ? string.Create(CultureInfo.CurrentCulture, $"E lists {rungs:N0} of its records")
+                : "Its records E lists"
+        : cellRecordRows.Count == 0
+            ? count is { } held ? "Its " + Counted(held, "record", "records") : "Its records"
+        : count is { } total && total > cellRecordRows.Count
+            ? string.Create(CultureInfo.CurrentCulture, $"Its first {cellRecordRows.Count:N0} of {total:N0} records")
+        : count is null && cellRecordsMore
+            ? string.Create(CultureInfo.CurrentCulture, $"Its first {cellRecordRows.Count:N0} records")
+        : "Its " + Counted(cellRecordRows.Count, "record", "records");
+
+    /// <summary>That they are being read, how many more E lists, or why they could not be read; empty otherwise.</summary>
+    public string CellRecordsNote => cellRecordsNote;
+
+    public bool HasCellRecordsNote => cellRecordsNote.Length > 0;
+
+    // Whether a read of a cell whose count is not E's found more records than the list holds.
+    private bool cellRecordsMore;
+
+    /// <summary>
+    /// The records E would list from the cell the analysis interval is, with how many there are where that is known;
+    /// null where the inspector lists none: no such cell, one holding no record E lists, something selected whose records
+    /// E lists instead, several processes chosen, the evidence rung, and the tour.
+    /// </summary>
+    private (EvidenceScope Scope, int? Count, bool Rungs)? CellRecordsWanted()
+    {
+        if (disposed || evidenceSource is null || !realOverview || IsEvidenceRung || HasMultiSelection
+            || selectedInterval is not { } interval)
+        {
+            return null;
+        }
+
+        TimelineCellLane lane = ExplainedLane;
+        TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
+        if (CellOf(lane, interval) is not { } cell || cell.Bucket.ObservationCount == 0
+            || SelectionEvidenceDescent(viewport) is not null)
+        {
+            return null;
+        }
+
+        // A lane's cell counts exactly the records E lists from it. The machine row counts the whole machine's, of which
+        // E lists the rung's own, as its focus counts them where the timeline draws one.
+        bool rungs = lane == MachineRow;
+        int? count = !rungs ? cell.Bucket.ObservationCount
+            : TimelineShowsFocus ? TimelineFocusBuckets?.FirstOrDefault(bucket => bucket.Interval == interval)?.ObservationCount
+            : null;
+        if (count == 0)
+        {
+            return null;
+        }
+
+        LadderDescent? descent = CellEvidenceDescent(viewport);
+        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot, ladder.Current with
+        {
+            Viewport = viewport,
+            Filters = descent is null ? ladder.Current.Filters : [.. ladder.Current.Filters, .. descent.AddedFilters],
+        }, TimeBase);
+        return scope.Problem is null ? (scope, count, rungs) : null;
+    }
+
+    /// <summary>Reads the chosen cell's first records when the cell, its lane or its scope changed, and cancels an older read.</summary>
+    private void FollowCellRecords()
+    {
+        (EvidenceScope Scope, int? Count, bool Rungs)? wanted = CellRecordsWanted();
+        if (wanted is { } next && listedCellRecords is { } listed
+                ? SameRecords(next.Scope, listed.Scope) && next.Count == listed.Count && next.Rungs == listed.Rungs
+            : wanted is null && listedCellRecords is null)
+        {
+            return;
+        }
+
+        listedCellRecords = wanted;
+        cellRecordsQuery?.Cancel();
+        cellRecordsQuery?.Dispose();
+        cellRecordsQuery = null;
+        cellRecordRows = [];
+        cellRecordsMore = false;
+        cellRecordsNote = wanted is null ? string.Empty : "Reading them…";
+        RaiseCellRecordsChanged();
+        if (wanted is not { } read || evidenceSource is not { } source)
+        {
+            CellRecordsReady = Task.CompletedTask;
+            return;
+        }
+
+        var query = new CancellationTokenSource();
+        cellRecordsQuery = query;
+        CellRecordsReady = LoadCellRecordsAsync(source, read.Scope, read.Count, query);
+    }
+
+    private async Task LoadCellRecordsAsync(SessionEvidenceSource source, EvidenceScope scope, int? count, CancellationTokenSource query)
+    {
+        try
+        {
+            // One more than the list holds says whether more remain where the cell's count is not E's.
+            SessionEvidencePage page = await source.ReadScopeAsync(scope, CellRecordsListed + 1, query.Token).AnsweredLater();
+            if (disposed || !ReferenceEquals(cellRecordsQuery, query))
+            {
+                return;
+            }
+
+            cellRecordRows = [.. page.Records.Take(CellRecordsListed).Select(record => CellRecord(record, TimeBase))];
+            cellRecordsMore = page.Records.Count > CellRecordsListed;
+            int? more = count is { } total ? total - cellRecordRows.Count : null;
+            cellRecordsNote = more is > 0 ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, which E lists")
+                : more is null && cellRecordsMore ? "More, which E lists"
+                : string.Empty;
+            RaiseCellRecordsChanged();
+        }
+        catch (OperationCanceledException) when (query.IsCancellationRequested)
+        {
+            // A newer cell, scope or rung superseded this read.
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException
+            or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
+        {
+            if (!disposed && ReferenceEquals(cellRecordsQuery, query))
+            {
+                cellRecordRows = [];
+                cellRecordsNote = "They could not be read: " + exception.Message;
+                RaiseCellRecordsChanged();
+            }
+        }
+    }
+
+    /// <summary>A record of a chosen cell as the inspector lists it, in the evidence rung's words.</summary>
+    private static CellRecordRow CellRecord(SessionEvidenceRecord record, SessionClock timeBase)
+    {
+        ObservationRowV1 row = record.Observation;
+        FamilyTokens tokens = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(row.Mechanism));
+        string title = EvidenceRowText.Title(row);
+        string? size = EvidenceRowText.Size(row, CultureInfo.CurrentCulture);
+        string when = EvidenceRowText.When(row, timeBase, CultureInfo.CurrentCulture);
+        string pid = EvidenceRowText.OwnerProcessId(row) is { } id ? string.Create(CultureInfo.CurrentCulture, $"PID {id}") : "no owner";
+        string endpoints = EvidenceRowText.Endpoints(row) is { } pair ? ", " + pair : string.Empty;
+        return new(size is null ? title : title + " · " + size, when + " · " + pid, tokens.Glyph, tokens.Label)
+        {
+            AccessibleName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, "
+                + EvidenceRowText.Ownership(record, CultureInfo.CurrentCulture) + ".",
+        };
+    }
+
+    /// <summary>Whether two scopes read the same records: every part of each the same, their owners in the same order.</summary>
+    private static bool SameRecords(EvidenceScope left, EvidenceScope right) =>
+        left with { OwnerProcesses = Array.Empty<ProcessInstanceId>() } == right with { OwnerProcesses = Array.Empty<ProcessInstanceId>() }
+        && left.OwnerProcesses.SequenceEqual(right.OwnerProcesses);
+
+    private void RaiseCellRecordsChanged()
+    {
+        OnPropertyChanged(nameof(CellRecordRows));
+        OnPropertyChanged(nameof(ListsCellRecords));
+        OnPropertyChanged(nameof(CellRecordsHeading));
+        OnPropertyChanged(nameof(CellRecordsNote));
+        OnPropertyChanged(nameof(HasCellRecordsNote));
+    }
+
     private void RaiseCellExplanationChanged()
     {
         OnPropertyChanged(nameof(CellExplanation));
         OnPropertyChanged(nameof(HasCellExplanation));
         OnPropertyChanged(nameof(EvidenceSummary));
+        OnPropertyChanged(nameof(SelectionTitle));
+        OnPropertyChanged(nameof(SelectionSubtitle));
     }
 
     /// <summary>What the cell's explanation reads, by the name its change is raised under.</summary>

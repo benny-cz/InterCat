@@ -1,12 +1,15 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -44,6 +47,21 @@ public sealed class CellEvidenceWindowTests
         Dispatch();
         Assert.Equal(cell.Interval, workspace.SelectedInterval);
         Assert.EndsWith(" · UDP records only", window.GetControl<TextBlock>("EvidenceSummaryText").Text, StringComparison.Ordinal);
+
+        // The inspector lists the cell's own records beneath the time scope, each named for a screen reader.
+        await workspace.CellRecordsReady;
+        Dispatch();
+        Assert.True(window.GetControl<StackPanel>("CellRecordsPanel").IsEffectivelyVisible);
+        Assert.Equal("Its " + (cell.ObservationCount == 1 ? "1 record" : $"{cell.ObservationCount} records"),
+            window.GetControl<TextBlock>("CellRecordsHeadingText").Text);
+        ItemsControl records = window.GetControl<ItemsControl>("CellRecordsList");
+        Assert.Equal(cell.ObservationCount, records.ItemCount);
+        CellRecordRow first = Assert.IsType<CellRecordRow>(records.Items[0]);
+        Assert.StartsWith("UDP ", first.Title, StringComparison.Ordinal);
+        Assert.Contains(records.GetVisualDescendants().OfType<TextBlock>(), block => block.Text == first.Title && block.IsEffectivelyVisible);
+        Assert.Contains(records.GetVisualDescendants().OfType<Control>(),
+            control => AutomationProperties.GetName(control) == first.AccessibleName);
+        Assert.Contains(", at ", first.AccessibleName, StringComparison.Ordinal);
 
         // E lists exactly them, and the filter bar says why.
         window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);

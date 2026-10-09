@@ -729,6 +729,27 @@
                              Classes="muted" Classes.caution="{Binding ScopeCoverageLimited}"
                              IsVisible="{Binding ShowsScopeCoverage}" />
                 </StackPanel>
+                <!-- §6.2, §6.4: a chosen cell's marks open into its records where it was chosen - the first of exactly those
+                     E lists, in the evidence rung's words - so a dense mark is read without leaving the rung. They come
+                     before how the cell was counted, which is longer and read less often. -->
+                <StackPanel x:Name="CellRecordsPanel" Spacing="3" IsVisible="{Binding ListsCellRecords}">
+                  <TextBlock x:Name="CellRecordsHeadingText" Text="{Binding CellRecordsHeading}" Classes="muted" />
+                  <ItemsControl x:Name="CellRecordsList" ItemsSource="{Binding CellRecordRows}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="pres:CellRecordRow">
+                        <Grid ColumnDefinitions="18,*" RowDefinitions="Auto,Auto" Margin="0,2"
+                              AutomationProperties.Name="{Binding AccessibleName}">
+                          <TextBlock Grid.RowSpan="2" Text="{Binding Glyph}" />
+                          <TextBlock Grid.Column="1" Text="{Binding Title}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                          <TextBlock Grid.Column="1" Grid.Row="1" Text="{Binding Detail}" Classes="muted" FontSize="12"
+                                     TextWrapping="Wrap" />
+                        </Grid>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock x:Name="CellRecordsNoteText" Text="{Binding CellRecordsNote}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding HasCellRecordsNote}" />
+                </StackPanel>
                 <!-- §6.8: a timeline cell chosen by a click, a step or the interval table is one action from how it was
                      counted: its lane's records and the rule behind them, what its bar plots, its column and its coverage. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasCellExplanation}">

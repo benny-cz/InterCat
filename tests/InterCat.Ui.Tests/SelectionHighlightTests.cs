@@ -138,10 +138,11 @@ public sealed class SelectionHighlightTests
         await workspace.HighlightReady;
         Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
         Assert.NotNull(workspace.TimelineHighlightBuckets);
+        // The range brushed above is still the analysis interval, which the inspector then titles.
         table.SelectedIndex = -1;
         Dispatch();
         await workspace.HighlightReady;
-        Assert.Equal((null, null, "Nothing selected"),
+        Assert.Equal((null, null, "Time range"),
             (workspace.HighlightedEdgeKey, workspace.TimelineHighlightBuckets, workspace.SelectionTitle));
         window.Close();
     }

@@ -2,6 +2,7 @@ using System.Globalization;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -383,6 +384,204 @@ public sealed class TimelineCellTests
     private static string Is(int count) => count == 1 ? "is" : "are";
 
     private static string Its(int count) => count == 1 ? "its" : "their";
+
+    [Fact(DisplayName = "§6.2: a chosen cell lists its first records in the inspector, exactly those E lists first, and says how many more E lists")]
+    public void AChosenCellListsItsFirstRecords() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.False(workspace.ListsCellRecords);
+
+        // A cell of few records lists them all and says nothing more.
+        TimelineBucket few = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(few, Mechanism.Tcp);
+        Assert.True(workspace.ListsCellRecords);
+        Assert.Equal("Reading them…", workspace.CellRecordsNote);
+        await workspace.CellRecordsReady;
+        Assert.Equal(few.ObservationCount, workspace.CellRecordRows.Count);
+        Assert.Equal("Its " + (few.ObservationCount == 1 ? "1 record" : $"{few.ObservationCount} records"), workspace.CellRecordsHeading);
+        Assert.False(workspace.HasCellRecordsNote);
+        Assert.All(workspace.CellRecordRows, row => Assert.StartsWith("TCP ", row.Title, StringComparison.Ordinal));
+
+        // A cell of ten, in a view counted coarse enough to hold them: its first five, and how many more E lists.
+        workspace.RequestTimelineDetail(new TimeRange(10, 60), 2);
+        await workspace.TimelineDetailReady;
+        TimelineBucket dense = Lane(workspace, Mechanism.Tcp)[0];
+        Assert.Equal(10, dense.ObservationCount);
+        workspace.ChooseTimelineCell(dense, Mechanism.Tcp);
+        Assert.Equal("Its 10 records", workspace.CellRecordsHeading);
+        await workspace.CellRecordsReady;
+        Assert.Equal(WorkspaceViewModel.CellRecordsListed, workspace.CellRecordRows.Count);
+        Assert.Equal("Its first 5 of 10 records", workspace.CellRecordsHeading);
+        Assert.Equal("5 more, which E lists", workspace.CellRecordsNote);
+        Assert.All(workspace.CellRecordRows, row => Assert.True(row.Detail.EndsWith(" · PID 100", StringComparison.Ordinal)
+            || row.Detail.EndsWith(" · PID 200", StringComparison.Ordinal), row.Detail));
+        CellRecordRow[] listed = [.. workspace.CellRecordRows];
+
+        // Something else selected is what E lists, so the cell lists none; nor does a brushed range or an empty cell.
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.SelectedProcess = client;
+        Assert.False(workspace.ListsCellRecords);
+        Assert.Empty(workspace.CellRecordRows);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith($"Records owned by {client.NameWithPid}", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.DoesNotContain(workspace.Filters, filter => filter.Field == EvidenceScopes.MechanismField);
+        Assert.True(workspace.Ascend());
+        workspace.ClearSelection();
+        workspace.SelectInterval(new TimeRange(dense.Interval.StartTicks, dense.Interval.EndTicks + 1));
+        Assert.False(workspace.ListsCellRecords);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 64);
+        await workspace.TimelineDetailReady;
+        workspace.ChooseTimelineCell(Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount == 0), Mechanism.Tcp);
+        Assert.False(workspace.ListsCellRecords);
+
+        // The dense cell chosen again: E lists the same records first, in the same words.
+        workspace.RequestTimelineDetail(new TimeRange(10, 60), 2);
+        await workspace.TimelineDetailReady;
+        workspace.ChooseTimelineCell(Lane(workspace, Mechanism.Tcp)[0], Mechanism.Tcp);
+        await workspace.CellRecordsReady;
+        Assert.Equal(listed.Select(row => (row.Title, row.Detail)), workspace.CellRecordRows.Select(row => (row.Title, row.Detail)));
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(listed.Select(row => (row.Title, row.Detail)), workspace.RungRows.Take(listed.Length).Select(row => (row.Label, row.Detail)));
+        Assert.False(workspace.ListsCellRecords);
+    });
+
+    [Fact(DisplayName = "§6.4: the inspector titles a chosen cell by its lane and count and a brushed range as a time range, never as nothing selected")]
+    public void TheInspectorTitlesAChosenCell() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.Equal("Nothing selected", workspace.SelectionTitle);
+        var raised = new List<string?>();
+        workspace.PropertyChanged += (_, changed) => raised.Add(changed.PropertyName);
+
+        // A cell is titled as one, beneath it its lane and how many records it holds.
+        TimelineBucket cell = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 1);
+        workspace.ChooseTimelineCell(cell, Mechanism.Tcp);
+        await workspace.CellRecordsReady;
+        Assert.Contains(nameof(WorkspaceViewModel.SelectionTitle), raised);
+        Assert.Equal("Timeline cell", workspace.SelectionTitle);
+        Assert.Equal("TCP lane · " + Counted(cell.ObservationCount, "record"), workspace.SelectionSubtitle);
+
+        // The same interval chosen in another lane is that lane's cell, with that lane's count.
+        TimelineBucket created = Lane(workspace, Mechanism.ProcessLifecycle).Single(bucket => bucket.Interval == cell.Interval);
+        raised.Clear();
+        workspace.ChooseTimelineCell(created, Mechanism.ProcessLifecycle);
+        await workspace.CellRecordsReady;
+        Assert.Contains(nameof(WorkspaceViewModel.SelectionSubtitle), raised);
+        Assert.Equal("Process lane · " + Counted(created.ObservationCount, "record"), workspace.SelectionSubtitle);
+
+        // A brushed range is no cell; a selected process is named whatever interval is chosen; with neither, nothing is.
+        raised.Clear();
+        workspace.SelectInterval(new TimeRange(cell.Interval.StartTicks, cell.Interval.EndTicks + 1));
+        Assert.Contains(nameof(WorkspaceViewModel.SelectionTitle), raised);
+        Assert.Equal("Time range", workspace.SelectionTitle);
+        Assert.Equal("The analysis interval: the ranking, the graph and E count only what it holds", workspace.SelectionSubtitle);
+        workspace.SelectedProcess = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Assert.Equal(workspace.SelectedProcess.Name, workspace.SelectionTitle);
+        workspace.ClearSelection();
+        Assert.Equal("Nothing selected", workspace.SelectionTitle);
+        Assert.Equal("Choose a node, ranked row, or timeline bucket.", workspace.SelectionSubtitle);
+    });
+
+    [Fact(DisplayName = "§6.4: the inspector's title follows the lane an interval is explained in, as one is selected or a cell is restored in another")]
+    public void TheInspectorsTitleFollowsTheExplainedLane() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        List<(string Title, string Subtitle)> told = Told(workspace);
+
+        // An interval a step chose at the machine rung, with no lane selected, is no cell of a lane drawn there; selecting a
+        // lane makes it that lane's cell, and the title says so as it changes.
+        TimelineBucket cell = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 1);
+        workspace.SelectInterval(cell.Interval);
+        Assert.Equal(("Time range", "The analysis interval: the ranking, the graph and E count only what it holds"), told[^1]);
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        Assert.Equal(("Timeline cell", "TCP lane · " + Counted(cell.ObservationCount, "record")), told[^1]);
+
+        // A cell a click chose in another lane than the one selected is restored in its own, and titled so.
+        TimelineBucket created = Lane(workspace, Mechanism.ProcessLifecycle).Single(bucket => bucket.Interval == cell.Interval);
+        workspace.ChooseTimelineCell(created, Mechanism.ProcessLifecycle);
+        await workspace.CellRecordsReady;
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        using WorkspaceViewModel next = Open(session);
+        List<(string Title, string Subtitle)> restored = Told(next);
+        Assert.Null(next.RestoreNavigation(saved));
+        await next.CellRecordsReady;
+        Assert.Equal(("Timeline cell", "Process lane · " + Counted(created.ObservationCount, "record")), restored[^1]);
+    });
+
+    /// <summary>The inspector's title and subtitle as each change of either is announced, read when it is.</summary>
+    private static List<(string Title, string Subtitle)> Told(WorkspaceViewModel workspace)
+    {
+        var told = new List<(string Title, string Subtitle)>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName is nameof(WorkspaceViewModel.SelectionTitle) or nameof(WorkspaceViewModel.SelectionSubtitle))
+            {
+                told.Add((workspace.SelectionTitle, workspace.SelectionSubtitle));
+            }
+        };
+        return told;
+    }
+
+    [Fact(DisplayName = "§6.4: a cell chosen at a process's or a channel's rung lists what E lists from it, and a machine-row cell the rung's records among the machine's")]
+    public void ACellAtAProcesssRungListsWhatEListsFromIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        // The process the rung was reached with stays selected, as its context: a cell of its outbound row still lists the
+        // records E lists from it, its sends.
+        Assert.Equal(client.Id, workspace.SelectedProcess?.Id);
+        TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
+        Assert.True(workspace.ListsCellRecords);
+        await workspace.CellRecordsReady;
+        Assert.Equal("Its " + Counted(sent.ObservationCount, "record"), workspace.CellRecordsHeading);
+        Assert.Equal(sent.ObservationCount, workspace.CellRecordRows.Count);
+        Assert.All(workspace.CellRecordRows, row => Assert.StartsWith("TCP send", row.Title, StringComparison.Ordinal));
+        Assert.Equal(client.Name, workspace.SelectionTitle);
+
+        // The machine row's cell counts the whole machine's records, of which E lists the rung's own, as the focus counts them.
+        TimelineBucket machine = workspace.TimelineDetail!.Buckets.First(bucket => bucket.ObservationCount
+            > workspace.TimelineFocusBuckets!.Single(focus => focus.Interval == bucket.Interval).ObservationCount
+            && workspace.TimelineFocusBuckets!.Single(focus => focus.Interval == bucket.Interval).ObservationCount > 0);
+        int own = workspace.TimelineFocusBuckets!.Single(focus => focus.Interval == machine.Interval).ObservationCount;
+        workspace.ChooseTimelineCell(machine);
+        Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"E lists {own:N0} of its records"), workspace.CellRecordsHeading);
+        await workspace.CellRecordsReady;
+        Assert.Equal(Math.Min(own, WorkspaceViewModel.CellRecordsListed), workspace.CellRecordRows.Count);
+        Assert.All(workspace.CellRecordRows, row => Assert.EndsWith(" · PID 100", row.Detail, StringComparison.Ordinal));
+        CellRecordRow[] listed = [.. workspace.CellRecordRows];
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(listed.Select(row => (row.Title, row.Detail)), workspace.RungRows.Take(listed.Length).Select(row => (row.Label, row.Detail)));
+
+        // A channel's end lists the records made there.
+        Assert.True(workspace.Ascend());
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        ChannelEndTimelineLane end = workspace.TimelineChannelEndLanes!.Single(candidate => candidate.Endpoint == ServerEnd);
+        TimelineBucket made = end.Buckets.First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(made, endLane: end);
+        await workspace.CellRecordsReady;
+        Assert.Equal(made.ObservationCount, workspace.CellRecordRows.Count);
+        Assert.All(workspace.CellRecordRows, row => Assert.StartsWith("TCP receive", row.Title, StringComparison.Ordinal));
+    });
 
     /// <summary>A mechanism's lane as the machine rung draws it: the view's own count where it has arrived, else the overview's.</summary>
     private static IReadOnlyList<TimelineBucket> Lane(WorkspaceViewModel workspace, Mechanism mechanism) =>

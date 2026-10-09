@@ -2725,6 +2725,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
+        cellRecordsQuery?.Cancel();
+        cellRecordsQuery?.Dispose();
+        cellRecordsQuery = null;
         CancelHighlight();
         graphLayout.Dispose();
     }
@@ -3596,7 +3599,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedCluster is { } cluster ? cluster.Label
         : SelectedGroup is { } group ? group.Name
         : DescribesOpened ? OpenedTitle!
-        : selectedProcess is null ? "Nothing selected" : selectedProcess.Name;
+        : selectedProcess is null ? IntervalTitle ?? "Nothing selected" : selectedProcess.Name;
 
     public string SelectionSubtitle => selectedRelationship is { } chosen ? $"{chosen.Mechanism} · {chosen.Explanation}"
         : DescribedRow is { } row ? DescribeRow(row)
@@ -3605,7 +3608,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedGroup is { } group ? DescribeGroup(group)
         : DescribesOpened ? OpenedSubtitle
         : selectedProcess is null
-            ? "Choose a node, ranked row, or timeline bucket."
+            ? IntervalSubtitle ?? "Choose a node, ranked row, or timeline bucket."
             : selectedProcess.Caption;
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
@@ -4615,10 +4618,28 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5): the button
         // that takes it stands beneath the card that counts the selection.
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
+        LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
+            ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+        if (!TryDescend(descent))
+        {
+            return false;
+        }
+
+        AfterNavigation();
+        return true;
+    }
+
+    /// <summary>
+    /// E's step from what is selected, before a chosen cell's or the rung's own records: a chosen relationship's records,
+    /// a chosen row's, an aggregate's processes, or the process or group selected at the machine or a group's rung, where
+    /// choosing one is a choice made there. Null where E lists the chosen cell's records or the rung's own - at a
+    /// process's or a channel's rung the process it was reached with is its context, not such a choice.
+    /// </summary>
+    private LadderDescent? SelectionEvidenceDescent(TimeRange viewport)
+    {
         DetailLevel level = ladder.Current.Level;
-        bool machine = realOverview && level == DetailLevel.Machine;
         string rung = NavigationState.Name(level).ToLowerInvariant();
-        LadderDescent descent = realOverview && ChosenRelationshipRecords() is { } relationship
+        return realOverview && ChosenRelationshipRecords() is { } relationship
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, relationship,
                 $"Evidence was reached from the {rung} rung with this relationship chosen.")
             : ChosenRow is { } row
@@ -4632,18 +4653,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.ProcessInstance, process.Id.ToString(), process.NameWithPid),
                 $"Evidence was reached from the {rung} rung with this process selected.")
-            : machine && SelectedGroup is { } group
+            : realOverview && level == DetailLevel.Machine && SelectedGroup is { } group
                 ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                     new(DetailLevel.Group, group.Key, group.Name),
                     $"Evidence was reached from the machine rung with this {GroupNoun(group)} selected.")
-                : CellEvidenceDescent(viewport) ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
-        if (!TryDescend(descent))
-        {
-            return false;
-        }
-
-        AfterNavigation();
-        return true;
+                : null;
     }
 
     /// <summary>
@@ -6259,11 +6273,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         if (IsCellExplanationInput(propertyName))
         {
-            // A chosen cell's explanation reads the interval, the lane selected and the lanes drawn (§6.8), and so does
-            // what E lists from it.
+            // A chosen cell's explanation reads the interval, the lane selected and the lanes drawn (§6.8), and so do
+            // what E lists from it and the inspector's title for it.
             PropertyChanged?.Invoke(this, new(nameof(CellExplanation)));
             PropertyChanged?.Invoke(this, new(nameof(HasCellExplanation)));
             PropertyChanged?.Invoke(this, new(nameof(EvidenceSummary)));
+            PropertyChanged?.Invoke(this, new(nameof(SelectionTitle)));
+            PropertyChanged?.Invoke(this, new(nameof(SelectionSubtitle)));
+        }
+
+        if (IsCellExplanationInput(propertyName) || propertyName is nameof(EvidenceSummary) or nameof(EvidenceHeading))
+        {
+            // The chosen cell's records follow what E would list from it, which a selection elsewhere takes over.
+            FollowCellRecords();
         }
     }
 }

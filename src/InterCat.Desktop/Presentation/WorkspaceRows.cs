@@ -68,6 +68,16 @@ public sealed record RelationshipRow(
 }
 
 /// <summary>
+/// One of a chosen timeline cell's records as the inspector lists it beneath the cell's explanation (§6.2): what happened
+/// and its size, then when and whose, as the evidence rung's row says them.
+/// </summary>
+public sealed record CellRecordRow(string Title, string Detail, string Glyph, string Mechanism) : IAccessibleRow
+{
+    /// <summary>The record read aloud: what, its size, when, its endpoints and how it was bound.</summary>
+    public string AccessibleName { get; init; } = string.Empty;
+}
+
+/// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
 /// holding no record, of one coverage state, as one row spanning them.
 /// </summary>
