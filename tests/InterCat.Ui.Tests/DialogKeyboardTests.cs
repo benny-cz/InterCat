@@ -50,9 +50,12 @@ public sealed class DialogKeyboardTests
         };
         var offer = new MainWindow.PinOffer(500_000_000, "0.500 s", FromScope: true, ReleasedBefore: null, HeldBytes: 3L << 20,
             Pins: [(pin, RetentionPinText.Describe(pin, "0.300 s"))]);
+        SessionEvidenceRecord record = SessionEvidenceQuery.Read(session.Store, pageSize: 1).Records[0];
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         var problems = new List<string>();
 
-        // The prompts the windows build, and the windows they open over the main one.
+        // The prompts the windows build, and the windows they open over the main one - a record's among them, which give
+        // the keyboard to what they show once they have read it.
         var owner = new Window { Width = 400, Height = 300 };
         owner.Show();
         foreach ((string name, Window prompt) in new (string, Window)[]
@@ -71,6 +74,9 @@ public sealed class DialogKeyboardTests
             ("content capture", new ContentCaptureWindow([new(4_242, "client", Started)])),
             ("content capture review", new ContentCaptureReviewWindow(Summary(), Mechanism.Http,
                 new Dictionary<int, SeenProcess> { [4_242] = new(4_242, "client", Started) })),
+            ("original record", new SessionRawRecordWindow(session.Path, overview.SessionId, record)),
+            ("record's content", new SessionContentWindow(session.Path, overview.SessionId, record)),
+            ("channels", new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null)),
         })
         {
             problems.AddRange(await OpenAndEscape(prompt, owner, name));
@@ -117,6 +123,46 @@ public sealed class DialogKeyboardTests
         }
 
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    [AvaloniaFact(DisplayName = "R15: a record's window leaves the keyboard where the person moved it while the window read")]
+    public async Task ARecordWindowLeavesTheKeyboardWhereItWasMoved()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 6, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 6, 200, 11)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+        ];
+        Publish(session.Store, rows, content: (ContentHeader(), [Content(rows[0], "GET /x"u8.ToArray())]));
+        SessionEvidenceRecord record = SessionEvidenceQuery.Read(session.Store).Records.Single(kept => kept.Content is not null);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        foreach ((Window window, string status, string read) in new (Window, string, string)[]
+        {
+            (new SessionRawRecordWindow(session.Path, overview.SessionId, record), "Original record status", "Verified generation"),
+            (new SessionContentWindow(session.Path, overview.SessionId, record), "Content status", "Checked "),
+            (new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null), "Channels status", "Generation "),
+        })
+        {
+            // Close takes the keyboard before the window has read anything, and keeps it once the window has: what the
+            // window read is a Tab away, and does not take the keyboard from where the person put it.
+            Task shown = window.ShowDialog(owner);
+            Button close = window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Close"));
+            Assert.True(close.Focus(NavigationMethod.Tab));
+            TextBlock said = Named<TextBlock>(window, status);
+            WaitFor(() => said.Text?.StartsWith(read, StringComparison.Ordinal) == true);
+            Dispatch();
+            Assert.True(close.IsFocused, window.Title);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            await shown;
+        }
+
+        owner.Close();
     }
 
     [AvaloniaFact(DisplayName = "R15: the Align dialog opens on the way chosen to align, and Enter aligns, as Align does")]
@@ -287,13 +333,15 @@ public sealed class DialogKeyboardTests
     {
         var problems = new List<string>();
         _ = dialog.ShowDialog<object?>(owner);
-        for (int pass = 0; pass < 5; pass++)
+
+        // A dialog that reads before it shows anything has a while to give the keyboard to what it shows.
+        for (int pass = 0; pass < 250 && (pass < 5 || !HasKeyboard(dialog)); pass++)
         {
             Dispatch();
             await Task.Delay(10);
         }
 
-        if (dialog.FocusManager?.GetFocusedElement() is not Control focused || !dialog.IsVisualAncestorOf(focused))
+        if (!HasKeyboard(dialog))
         {
             problems.Add($"{name}: opens with the keyboard on nothing of its own");
             dialog.Close();
@@ -312,6 +360,10 @@ public sealed class DialogKeyboardTests
 
         return problems;
     }
+
+    /// <summary>Whether one of <paramref name="dialog"/>'s own controls has the keyboard.</summary>
+    private static bool HasKeyboard(Window dialog) =>
+        dialog.FocusManager?.GetFocusedElement() is Control focused && dialog.IsVisualAncestorOf(focused);
 
     /// <summary>What the broker would keep of a content capture of process 4242, as its review states it.</summary>
     private static BrokerEffectiveCaptureSummary Summary() => new(

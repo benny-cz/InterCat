@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -38,6 +39,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     private readonly TextBox detail = new() { IsReadOnly = true, AcceptsReturn = true,
         TextWrapping = TextWrapping.Wrap };
     private readonly Button reveal = new() { Content = "Reveal up to 256 retained body bytes", IsEnabled = false };
+    private readonly Button close = new() { Content = "Close" };
     private bool loading;
     private bool closed;
     private bool disposed;
@@ -63,7 +65,6 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         AutomationProperties.SetName(status, "Original record status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
-        var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
         KeyDown += (_, key) =>
@@ -156,7 +157,20 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         finally
         {
             loading = false;
+            if (!closed) KeepKeyboard();
         }
+    }
+
+    /// <summary>
+    /// Gives the record's text the keyboard once it is read - or Close, when there is none to read - unless a control of
+    /// the window has it: the window opened with it on nothing of its own, and Reveal, which waits disabled while it reads,
+    /// let it go, so a screen reader said only the title, and the bytes revealed were reached only by Tab. Its caret reads
+    /// the record a line at a time.
+    /// </summary>
+    private void KeepKeyboard()
+    {
+        if (FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
+        (string.IsNullOrEmpty(detail.Text) ? close : (Control)detail).Focus(NavigationMethod.Tab);
     }
 
     private static string Describe(SessionRawRecordDetail result)

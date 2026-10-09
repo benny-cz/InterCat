@@ -1,4 +1,5 @@
 using System.Text;
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
@@ -45,11 +46,13 @@ public sealed class ContentWindowTests
         Assert.Contains("Bytes 0 to 7 (8 bytes), cut by the 8-byte record limit", Texts(window));
         Assert.Contains("Bytes 8 to 15 (8 bytes). They were never recorded, and nothing stands in for them", Texts(window));
 
-        // The bytes stay hidden until the person asks.
+        // The bytes stay hidden until the person asks, the keyboard on the button that shows them.
         Button reveal = Named<Button>(window, "Show the kept bytes");
         Assert.True(reveal.IsEffectivelyVisible && reveal.IsEnabled);
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible);
-        reveal.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Same(reveal, window.FocusManager?.GetFocusedElement());
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
             AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
@@ -159,6 +162,10 @@ public sealed class ContentWindowTests
         Assert.Contains(Texts(window), text => text.StartsWith("The capture kept these bytes without consent to inspect them",
             StringComparison.Ordinal));
         Assert.False(Named<Button>(window, "Save bytes…").IsEnabled);
+
+        // With nothing to show, Close has the keyboard.
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Same(Named<Button>(window, "Close"), window.FocusManager?.GetFocusedElement());
         window.Close();
     }
 
@@ -326,10 +333,13 @@ public sealed class ContentWindowTests
         Assert.False(decoded.IsVisible);
 
         // Asked, it names itself and its version and the bytes it read, lists each field with the bytes it came from - a
-        // value read aloud with its field and bytes - and says what it did not decode, on a tab of its own.
-        decode.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        // value read aloud with its field and bytes - and says what it did not decode, on a tab of its own. Decode waits
+        // disabled while it decodes, and gives the keyboard to that tab, from where Tab goes on into what it lists.
+        Assert.True(decode.Focus(NavigationMethod.Tab));
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => decoded.IsVisible && decoded.IsSelected);
         Settle(window);
+        Assert.Same(decoded, window.FocusManager?.GetFocusedElement());
         Assert.Equal("Decoded 3 fields; the Decoded tab lists them and what was not decoded.",
             Named<TextBlock>(window, "Content status").Text);
         ScrollViewer view = Named<ScrollViewer>(window, "What the decoder made of the kept bytes");
@@ -349,6 +359,8 @@ public sealed class ContentWindowTests
         Assert.Contains($"Not decoded: The capture kept the first 64 of the message's {Message.Length} bytes; the rest was never "
             + "kept, so it is not decoded.", read);
         Assert.Empty(AccessibilityAuditTests.Unheard(window, out _));
+        window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        Assert.True(window.FocusManager?.GetFocusedElement() is Visual inView && view.IsVisualAncestorOf(inView));
 
         // A field's bytes are a button away: the hex view shows them, chosen as a typed range is, the keyboard on them.
         Named<Button>(window, "Show its bytes: the conversation field").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));

@@ -52,9 +52,9 @@ public sealed class ChannelBrowserWindowTests
             Assert.IsType<string>(Assert.Single(list.Items)));
         Assert.Equal("Paired TCP channels. Enter shows the selected channel's source records.", AutomationProperties.GetName(list));
 
-        // Enter on the selected row opens it, as a double click does.
+        // The chosen row has the keyboard once the page is read, and Enter opens it, as a double click does.
         Dispatch();
-        Assert.True(list.ContainerFromIndex(0)!.Focus());
+        Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
         browser.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatch();
         Channel opened = Assert.IsType<Channel>(await chosen);
@@ -130,6 +130,62 @@ public sealed class ChannelBrowserWindowTests
             + "descriptor records it.", status.Text);
         Assert.DoesNotContain(browser.GetVisualDescendants().OfType<TextBlock>(), block =>
             block != status && block.Text?.Contains("was not collected", StringComparison.Ordinal) == true);
+
+        // With no channel to choose, Close has the keyboard.
+        Dispatch();
+        Assert.Equal("Close", Assert.IsType<Button>(browser.FocusManager?.GetFocusedElement()).Content);
+        browser.Close();
+        Assert.Null(await closed);
+        owner.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Next, which waits disabled while it reads, gives the keyboard to the next page's first channel")]
+    public async Task NextGivesTheNextPagesFirstChannelTheKeyboard()
+    {
+        // One channel more than a page holds, each between its own two ports.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Enumerable.Range(0, SessionChannelQuery.DefaultPageSize + 1).SelectMany(index => new[]
+            {
+                Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(1 + (2 * index)))
+                    .Between($"127.0.0.1:{40_000 + index}", $"127.0.0.1:{10_000 + index}"),
+                Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(2 + (2 * index)))
+                    .Between($"127.0.0.1:{10_000 + index}", $"127.0.0.1:{40_000 + index}"),
+            }),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+        using var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
+        Task<Channel?> closed = browser.ShowDialog<Channel?>(owner);
+        ListBox list = browser.GetVisualDescendants().OfType<ListBox>().Single();
+        Button next = browser.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, "Next 100 channels"));
+        for (int wait = 0; wait < 250 && !next.IsEnabled; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        // Tab goes on from the chosen channel past Show to Next, and Enter there reads the next page; its one channel,
+        // chosen, has the keyboard, so Up, Down and Enter act on it at once.
+        Dispatch();
+        Assert.Equal(SessionChannelQuery.DefaultPageSize, list.ItemCount);
+        Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
+        browser.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        browser.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
+        Assert.True(next.IsFocused);
+        browser.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        for (int wait = 0; wait < 250 && list.ItemCount != 1; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        Dispatch();
+        Assert.Equal(1, list.ItemCount);
+        Assert.False(next.IsEnabled);
+        Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
         browser.Close();
         Assert.Null(await closed);
         owner.Close();

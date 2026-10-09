@@ -9,6 +9,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -51,6 +52,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private readonly TabControl views = new() { IsVisible = false };
     private readonly Button copy = new() { Content = "Copy as hex", IsEnabled = false };
     private readonly Button save = new() { Content = "Save bytes…", IsEnabled = false };
+    private readonly Button close = new() { Content = "Close" };
     private readonly TextBlock partStatement = new() { TextWrapping = TextWrapping.Wrap, FontSize = 12, IsVisible = false };
     private readonly Button partToggle = new() { Content = "Show its whole part", IsVisible = false };
     private readonly TextBlock rangeFrom = new() { Text = "Bytes from", VerticalAlignment = VerticalAlignment.Center };
@@ -200,7 +202,6 @@ internal sealed class SessionContentWindow : Window, IDisposable
         copy.Click += (_, _) => _ = CopyAsync();
         save.Click += (_, _) => _ = SaveAsync();
         decode.Click += (_, _) => _ = DecodeAsync();
-        var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
 
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
@@ -360,7 +361,6 @@ internal sealed class SessionContentWindow : Window, IDisposable
             {
                 reveal.IsVisible = true;
                 reveal.IsEnabled = true;
-                reveal.Focus();
                 return;
             }
 
@@ -389,9 +389,6 @@ internal sealed class SessionContentWindow : Window, IDisposable
             }
 
             Show(kept.Value);
-
-            // The reveal button is gone, so the keyboard moves to the first line of bytes.
-            FocusFirstLine();
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -409,8 +406,25 @@ internal sealed class SessionContentWindow : Window, IDisposable
         finally
         {
             loading = false;
+            if (!closed) KeepKeyboard();
         }
     }
+
+    /// <summary>
+    /// Gives the keyboard to what the window shows once it has read or decoded the record's content, unless a control of
+    /// the window has it: the first line of bytes shown, or the tab shown, else the button that shows the bytes, else
+    /// Close. With nothing to show, or no consent to show it, the window kept the keyboard on nothing of its own, so a
+    /// screen reader said only its title; and Show the kept bytes and Decode, which wait disabled while they read, let it
+    /// go. Posted, once the lines are laid out.
+    /// </summary>
+    private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
+        Control place = !views.IsVisible ? (reveal.IsEffectivelyVisible && reveal.IsEnabled ? reveal : close)
+            : views.SelectedIndex == 0 && hex.ContainerFromIndex(0) is Control line ? line
+            : views.SelectedItem as Control ?? close;
+        place.Focus(NavigationMethod.Tab);
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>
     /// Moves the keyboard to the first line of bytes once it is laid out: a list takes no focus of its own, and the arrows
@@ -623,7 +637,11 @@ internal sealed class SessionContentWindow : Window, IDisposable
         finally
         {
             decoding = false;
-            if (!closed) decode.IsEnabled = true;
+            if (!closed)
+            {
+                decode.IsEnabled = true;
+                KeepKeyboard();
+            }
         }
     }
 

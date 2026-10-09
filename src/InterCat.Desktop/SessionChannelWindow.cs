@@ -7,6 +7,7 @@ using Avalonia.Controls.Templates;
 using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.VisualTree;
 using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
@@ -33,6 +34,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     private readonly TextBlock selectedDetail = new() { TextWrapping = TextWrapping.Wrap };
     private readonly Button inspect = new() { Content = "Show this channel's source records", IsEnabled = false };
     private readonly Button next = new() { Content = "Next 100 channels", IsEnabled = false };
+    private readonly Button close = new() { Content = "Close" };
     private readonly Func<ProcessInstanceId, string?> processName;
     private IReadOnlyList<Channel> currentChannels = [];
     private string? nextCursor;
@@ -96,7 +98,6 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         };
         inspect.Click += (_, _) => ChooseSelected();
         rows.DoubleTapped += (_, _) => ChooseSelected();
-        var close = new Button { Content = "Close" };
         close.Click += (_, _) => Close();
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
         KeyDown += (_, key) =>
@@ -206,9 +207,25 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         finally
         {
             loading = false;
-            if (!closed) UpdateSelection();
+            if (!closed)
+            {
+                UpdateSelection();
+                KeepKeyboard();
+            }
         }
     }
+
+    /// <summary>
+    /// Gives the chosen channel's row the keyboard once a page is read - or Close, with no channel to choose - unless a
+    /// control of the window has it: the browser opened with it on nothing of its own, and Next, which waits disabled
+    /// while the next page is read, let it go, so Up, Down and Enter did nothing until Tab found the list. Posted, once the
+    /// rows are laid out.
+    /// </summary>
+    private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused)) return;
+        (rows.ContainerFromIndex(rows.SelectedIndex) ?? close).Focus(NavigationMethod.Tab);
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     private void UpdateSelection()
     {
