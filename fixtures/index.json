@@ -1364,6 +1364,7 @@
         "R15: E pressed in a list E rebuilds - a cell's records, the relationship table - gives E's table the keyboard",
         "R15: Enter on a pinned note shows it on the timeline, which takes the keyboard and says its column; a note it cannot show stays, and the status says why",
         "R15: Enter on an interval row lists the moment's records in E, as E does, and an empty moment's says why it lists none",
+        "R15: F1 lists the investigation window's keys by where they act, and Esc gives the keyboard back to the session",
         "R15: F1 lists the window's keys by where they act, each row named for a screen reader, and Esc gives the keyboard back",
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
         "R15: a button that disables itself by what it did gives the keyboard to its page; Remove and Find keep it while they can",

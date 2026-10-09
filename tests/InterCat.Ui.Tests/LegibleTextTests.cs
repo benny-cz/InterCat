@@ -141,27 +141,34 @@ public sealed class LegibleTextTests
         Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
     }
 
-    [AvaloniaFact(DisplayName = "§6.8: the keys sheet cuts off no text at its smallest, each of its rows in turn")]
-    public async Task TheKeysSheetCutsOffNoText()
+    [AvaloniaFact(DisplayName = "§6.8: the keys sheets cut off no text at their smallest, each of their rows in turn")]
+    public async Task TheKeysSheetsCutOffNoText()
     {
         var owner = new Window { Width = 1080, Height = 700 };
         owner.Show();
-        var sheet = new KeysWindow();
-        sheet.Width = sheet.MinWidth;
-        sheet.Height = sheet.MinHeight;
-        _ = sheet.ShowDialog(owner);
-        await Pause();
         var cut = new List<string>();
-
-        // The list draws the rows in view; each is brought into view in turn, its place's heading with the first of it.
-        for (int row = 0; row < WindowKeys.All.Count; row++)
+        foreach ((string window, KeysWindow sheet) in new[]
         {
-            sheet.List.ScrollIntoView(row);
-            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-            cut.AddRange(CutOff(sheet, $"keys, row {row}"));
+            ("main", new KeysWindow()),
+            ("investigation", new KeysWindow(InvestigationKeys.All, InvestigationKeys.Intro)),
+        })
+        {
+            sheet.Width = sheet.MinWidth;
+            sheet.Height = sheet.MinHeight;
+            _ = sheet.ShowDialog(owner);
+            await Pause();
+
+            // The list draws the rows in view; each is brought into view in turn, its place's heading with the first of it.
+            for (int row = 0; row < sheet.List.ItemCount; row++)
+            {
+                sheet.List.ScrollIntoView(row);
+                Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+                cut.AddRange(CutOff(sheet, $"{window} keys, row {row}"));
+            }
+
+            sheet.Close();
         }
 
-        sheet.Close();
         owner.Close();
         Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut.Distinct()));
     }

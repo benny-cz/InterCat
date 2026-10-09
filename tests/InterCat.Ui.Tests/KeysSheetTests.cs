@@ -47,7 +47,9 @@ public sealed class KeysSheetTests
         KeysWindow sheet = Assert.IsType<KeysWindow>(window.KeysSheet);
         Assert.True(sheet.IsVisible);
         Assert.Equal("Keys", sheet.Title);
+        Assert.Equal(WindowKeys.Intro, sheet.Intro);
         ListBox keys = sheet.List;
+        Assert.Same(WindowKeys.All, keys.ItemsSource);
         Assert.Same(keys.ContainerFromIndex(0), sheet.FocusManager?.GetFocusedElement());
         Save(sheet.CaptureRenderedFrame()!, "keys-sheet.png");
 

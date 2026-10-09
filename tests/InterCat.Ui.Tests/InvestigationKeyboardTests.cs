@@ -440,6 +440,69 @@ public sealed class InvestigationKeyboardTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: F1 lists the investigation window's keys by where they act, and Esc gives the keyboard back to the session")]
+    public void F1ListsTheInvestigationWindowsKeys()
+    {
+        using var root = new TemporaryDirectory();
+        (string workspace, _, _) = Aligned(root.Path);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = Open(main, workspace);
+            Control session = Assert.IsAssignableFrom<Control>(Focus(window));
+
+            // F1 opens the sheet over the window, its list given the keyboard on its first row.
+            Press(window, PhysicalKey.F1);
+            KeysWindow sheet = Assert.IsType<KeysWindow>(window.KeysSheet);
+            Assert.True(sheet.IsVisible);
+            Assert.Equal("Keys", sheet.Title);
+            Assert.Equal(InvestigationKeys.Intro, sheet.Intro);
+            ListBox keys = sheet.List;
+            Assert.Same(keys.ContainerFromIndex(0), sheet.FocusManager?.GetFocusedElement());
+            Save(sheet, "investigation-keys-sheet.png");
+
+            // It lists this window's keys, not the main window's, each place's first row saying the place.
+            IReadOnlyList<WindowKey> listed = InvestigationKeys.All;
+            Assert.Same(listed, keys.ItemsSource);
+            Assert.Equal(["Anywhere", "A page's tab", "Sessions", "Candidate joins", "Timeline", "Notes"],
+                listed.Where(key => key.Heads).Select(key => key.Where));
+            Assert.Equal("Anywhere. F1: list the keys this window takes.", AutomationProperties.GetName(keys.ContainerFromIndex(0)!));
+            int pages = listed.ToList().FindIndex(key => key.Keys == "Ctrl+Tab or Ctrl+Shift+Tab");
+            Assert.Equal("Ctrl+Tab or Ctrl+Shift+Tab: show the next or previous page: the sessions, the candidate joins, the "
+                + "timeline or the notes.", listed[pages].AccessibleName);
+            int zoom = listed.ToList().FindIndex(key => key.Keys == "+ or -");
+            Assert.Equal("Plus or minus: zoom in or out around the chosen column.", listed[zoom].AccessibleName);
+            Assert.Equal("Timeline. Left or Right: choose the previous or next column.",
+                listed.Single(key => key is { Where: "Timeline", Heads: true }).AccessibleName);
+
+            // Asked for again while it is open, it stays the one sheet; Esc closes it, the keyboard back on the session.
+            Assert.True(window.ShowKeysAsync().IsCompleted);
+            Assert.Same(sheet, window.KeysSheet);
+            sheet.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Null(window.KeysSheet);
+            Assert.True(window.IsVisible);
+            Assert.Same(session, Focus(window));
+
+            // Keys (F1) at the footer's start opens the same sheet, for a pointer as for a screen reader's invoke.
+            Button button = Named<Button>(window, "Keys (F1)");
+            Assert.Equal("List every key this window takes, by where it acts", AutomationProperties.GetHelpText(button));
+            button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            Dispatch();
+            sheet = Assert.IsType<KeysWindow>(window.KeysSheet);
+            Assert.Same(listed, sheet.List.ItemsSource);
+            sheet.Close();
+            Dispatch();
+            Assert.Null(window.KeysSheet);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>An investigation of alpha and beta, beta aligned so its start is alpha's 1 s.</summary>
     private static (string Workspace, Guid Alpha, Guid Beta) Aligned(string root)
     {
@@ -505,6 +568,14 @@ public sealed class InvestigationKeyboardTests
         }
 
         Assert.True(target.IsFocused, Focused(window));
+    }
+
+    private static void Save(Window window, string name)
+    {
+        Avalonia.Media.Imaging.WriteableBitmap frame = Assert.IsAssignableFrom<Avalonia.Media.Imaging.WriteableBitmap>(window.CaptureRenderedFrame());
+        string directory = Path.Combine(AppContext.BaseDirectory, "rendered");
+        Directory.CreateDirectory(directory);
+        frame.Save(Path.Combine(directory, name));
     }
 
     private static void Press(Window window, PhysicalKey key, RawInputModifiers modifiers = RawInputModifiers.None)

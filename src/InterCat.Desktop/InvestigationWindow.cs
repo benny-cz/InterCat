@@ -109,6 +109,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private TimeRange? zoom;
     private TimeRange? whole;
     private readonly Button package = new() { Content = "Package…", IsEnabled = false };
+    private readonly Button keysButton = new() { Content = "Keys (F1)" };
     private CancellationTokenSource? packaging;
     private bool timelineLoaded;
     private Task? timelineLoad;
@@ -199,6 +200,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(rejectJoin, "Reject the selected candidate, as your decision");
         AutomationProperties.SetHelpText(withdrawJoin, "Withdraw your decision about the selected candidate");
         AutomationProperties.SetName(package, PackageName);
+        AutomationProperties.SetHelpText(keysButton, "List every key this window takes, by where it acts");
         AccessibleItems.Name(members);
         AccessibleItems.Name(candidates);
         members.ItemTemplate = new FuncDataTemplate<InvestigationMemberRow>((row, _) => new StackPanel
@@ -282,6 +284,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
         package.Click += (_, _) => _ = PackageAsync();
+        keysButton.Click += (_, _) => _ = ShowKeysAsync();
         notesList.SelectionChanged += (_, _) =>
         {
             if (!restating) ShowSelectedNote();
@@ -313,9 +316,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
             key.Handled = true;
         };
 
-        // Ctrl+Tab and Ctrl+Shift+Tab, or Ctrl+Page Down and Ctrl+Page Up, show the next or previous page from wherever the
-        // keyboard is, as Windows' tabbed windows do; taken before Tab moves the keyboard, which reads Ctrl+Tab as Tab.
-        AddHandler(KeyDownEvent, ShowAnotherPage, RoutingStrategies.Tunnel);
+        // F1 lists the window's keys, and Ctrl+Tab and Ctrl+Shift+Tab, or Ctrl+Page Down and Ctrl+Page Up, show the next or
+        // previous page, from wherever the keyboard is, as Windows' tabbed windows do; taken before Tab moves the keyboard,
+        // which reads Ctrl+Tab as Tab.
+        AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
 
         var sessionActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, add, refresh })
@@ -440,13 +444,12 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
         overlapsView.Content = overlaps;
         var header = new StackPanel { Spacing = 4, Children = { heading, summary, time, overlapsView, status } };
-        var footer = new StackPanel
-        {
-            Orientation = Orientation.Horizontal,
-            Spacing = 8,
-            HorizontalAlignment = HorizontalAlignment.Right,
-            Children = { package, close },
-        };
+        // Keys (F1) stands apart at the footer's start, as a window's help does; Package and Close end it.
+        var footer = new Grid { ColumnDefinitions = new ColumnDefinitions("Auto,*,Auto") };
+        var ending = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, Children = { package, close } };
+        Grid.SetColumn(ending, 2);
+        footer.Children.Add(keysButton);
+        footer.Children.Add(ending);
         var grid = new Grid { Margin = new Thickness(16), RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 10 };
         Grid.SetRow(header, 0);
         Grid.SetRow(tabs, 1);
@@ -1332,12 +1335,41 @@ internal sealed class InvestigationWindow : Window, IDisposable
     /// <summary>Whether a control of this window has the keyboard, rather than nothing or another window.</summary>
     private bool KeyboardInWindow() => FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused);
 
+    /// <summary>The keys sheet while it is open; a test reads it.</summary>
+    internal KeysWindow? KeysSheet { get; private set; }
+
     /// <summary>
-    /// Shows the next page, or with Shift the previous, for Ctrl+Tab, or Ctrl+Page Down and Ctrl+Page Up, from wherever the
-    /// keyboard is, and gives the keyboard to the page's tab, which a screen reader says, as Windows' tabbed windows do.
+    /// Lists every key the window takes, by where it acts (R15), as F1 and Keys (F1) do. The sheet is the window's own
+    /// dialog, so once it closes the keyboard is back where it was.
     /// </summary>
-    private void ShowAnotherPage(object? sender, KeyEventArgs e)
+    internal async Task ShowKeysAsync()
     {
+        if (KeysSheet is not null || closed) return;
+        KeysSheet = new KeysWindow(InvestigationKeys.All, InvestigationKeys.Intro);
+        try
+        {
+            await KeysSheet.ShowDialog(this);
+        }
+        finally
+        {
+            KeysSheet = null;
+        }
+    }
+
+    /// <summary>
+    /// F1 lists the window's keys; Ctrl+Tab, or Ctrl+Page Down and Ctrl+Page Up, show the next page, or with Shift the
+    /// previous, and give the keyboard to the page's tab, which a screen reader says, as Windows' tabbed windows do - each
+    /// from wherever the keyboard is.
+    /// </summary>
+    private void OnShortcutKey(object? sender, KeyEventArgs e)
+    {
+        if (e.Key == Key.F1 && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            _ = ShowKeysAsync();
+            return;
+        }
+
         int step = (e.Key, e.KeyModifiers) switch
         {
             (Key.Tab, KeyModifiers.Control) or (Key.PageDown, KeyModifiers.Control) => 1,

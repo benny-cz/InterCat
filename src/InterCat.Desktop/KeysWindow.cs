@@ -11,8 +11,8 @@ using InterCat.Desktop.Presentation;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// One key the investigation window takes: where it acts, the key or keys, and what it does (§6.7). The first row of each
-/// place heads it, and says the place as a screen reader enters it.
+/// One key a window takes: where it acts, the key or keys, and what it does (§6.7). The first row of each place heads it,
+/// and says the place as a screen reader enters it.
 /// </summary>
 internal sealed record WindowKey(string Where, string Keys, string Does) : IAccessibleRow
 {
@@ -32,11 +32,15 @@ internal sealed record WindowKey(string Where, string Keys, string Does) : IAcce
 }
 
 /// <summary>
-/// Every key the investigation window takes, by where it acts (§6.7, R15), as the sheet F1 opens lists them: a key no
-/// person can find is a key nobody uses. Each also has a button, a menu item or a pointer gesture.
+/// Every key InterCat's window takes, by where it acts (§6.7, R15), as the sheet F1 opens lists them: a key no person can
+/// find is a key nobody uses. Each also has a button, a menu item or a pointer gesture.
 /// </summary>
 internal static class WindowKeys
 {
+    /// <summary>What the sheet says above the window's keys.</summary>
+    public const string Intro = "Every key this window takes, by where it acts. Each has a button, a menu item or a pointer "
+        + "gesture as well; Tab reaches every control, and F6 moves the keyboard from pane to pane.";
+
     public static IReadOnlyList<WindowKey> All { get; } = Headed(
     [
         new("Anywhere", "F1", "list the keys this window takes"),
@@ -92,13 +96,47 @@ internal static class WindowKeys
     ]);
 
     /// <summary>Marks the first row of each place, which heads it.</summary>
-    private static WindowKey[] Headed(WindowKey[] keys) =>
+    internal static WindowKey[] Headed(WindowKey[] keys) =>
         [.. keys.Select((key, index) => key with { Heads = index == 0 || keys[index - 1].Where != key.Where })];
 }
 
 /// <summary>
-/// The keys sheet (§6.7, R15): every key the investigation window takes, by where it acts, one row each, which a screen
-/// reader reads row by row. F1 opens it from anywhere, as the strip's Keys button does, and Esc or F1 closes it.
+/// Every key the investigation window takes, by where it acts (§8.2, R15), as the sheet F1 opens there lists them. Its
+/// timeline's spoken help named its own, and nothing named them where a sighted person could find them.
+/// </summary>
+internal static class InvestigationKeys
+{
+    /// <summary>What the sheet says above the investigation window's keys.</summary>
+    public const string Intro = "Every key this window takes, by where it acts. Each has a button or a pointer gesture as "
+        + "well; Tab reaches every control, and Ctrl+Tab shows the next page.";
+
+    public static IReadOnlyList<WindowKey> All { get; } = WindowKeys.Headed(
+    [
+        new("Anywhere", "F1", "list the keys this window takes"),
+        new("Anywhere", "Tab or Shift+Tab", "move through the window's controls in reading order"),
+        new("Anywhere", "Ctrl+Tab or Ctrl+Shift+Tab", "show the next or previous page: the sessions, the candidate joins, "
+            + "the timeline or the notes"),
+        new("Anywhere", "Ctrl+Page Down or Ctrl+Page Up", "show the next or previous page, as Ctrl+Tab does"),
+        new("Anywhere", "Esc", "close the window"),
+        new("A page's tab", "Left or Right", "show the previous or next page"),
+        new("Sessions", "Up or Down", "choose the previous or next session"),
+        new("Sessions", "Enter", "open the chosen session in InterCat"),
+        new("Candidate joins", "Up or Down", "choose the previous or next candidate"),
+        new("Timeline", "Left or Right", "choose the previous or next column"),
+        new("Timeline", "Home or End", "choose the lane's first or last column"),
+        new("Timeline", "Up or Down", "move to the previous or next session's lane"),
+        new("Timeline", "Enter", "open the column's records in InterCat"),
+        new("Timeline", "+ or -", "zoom in or out around the chosen column") { SpokenKeys = "Plus or minus" },
+        new("Timeline", "0", "show the whole investigation") { SpokenKeys = "Zero" },
+        new("Notes", "Up or Down", "choose the previous or next note"),
+        new("Notes", "Enter", "show the chosen note on the timeline, where it is pinned"),
+    ]);
+}
+
+/// <summary>
+/// The keys sheet (§6.7, R15): every key a window takes, by where it acts, one row each, which a screen reader reads row by
+/// row - InterCat's window's, or the investigation window's. F1 opens it from anywhere in the window, as its Keys button
+/// does, and Esc or F1 closes it.
 /// </summary>
 internal sealed class KeysWindow : Window
 {
@@ -107,13 +145,23 @@ internal sealed class KeysWindow : Window
 
     private readonly ListBox keys = new()
     {
-        ItemsSource = WindowKeys.All,
         SelectionMode = SelectionMode.Single,
         Background = Brushes.Transparent,
     };
 
+    private readonly TextBlock intro = new() { TextWrapping = TextWrapping.Wrap };
+
+    /// <summary>The sheet of InterCat's window's keys.</summary>
     public KeysWindow()
+        : this(WindowKeys.All, WindowKeys.Intro)
     {
+    }
+
+    /// <summary>The sheet of <paramref name="listed"/>, the keys of the window it opens over, said after <paramref name="introduced"/>.</summary>
+    internal KeysWindow(IReadOnlyList<WindowKey> listed, string introduced)
+    {
+        keys.ItemsSource = listed;
+        intro.Text = introduced;
         Title = "Keys";
         Width = 680;
         Height = 620;
@@ -137,12 +185,7 @@ internal sealed class KeysWindow : Window
         };
 
         var layout = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), Margin = new Thickness(18), RowSpacing = 10 };
-        layout.Children.Add(new TextBlock
-        {
-            Text = "Every key this window takes, by where it acts. Each has a button, a menu item or a pointer gesture as "
-                + "well; Tab reaches every control, and F6 moves the keyboard from pane to pane.",
-            TextWrapping = TextWrapping.Wrap,
-        });
+        layout.Children.Add(intro);
         Grid.SetRow(keys, 1);
         layout.Children.Add(keys);
         Grid.SetRow(close, 2);
@@ -157,6 +200,9 @@ internal sealed class KeysWindow : Window
 
     /// <summary>The sheet's list; a test reads its rows' names and where the keyboard is.</summary>
     internal ListBox List => keys;
+
+    /// <summary>What the sheet says above its keys.</summary>
+    internal string Intro => intro.Text ?? string.Empty;
 
     /// <summary>
     /// A key's row, bound to the key it is given: its place's heading above the first of its place, then the keys and what
