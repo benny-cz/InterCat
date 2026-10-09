@@ -321,6 +321,58 @@ public sealed class KeyboardWorkflowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: at E the chosen record's facts are a list the keyboard reads a fact at a time, each said as its name and value")]
+    public async Task ARecordsFactsAreReadAFactAtATime()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        ListBox rail = window.GetControl<ListBox>("RungList");
+
+        // E lists the session's records, its table holding the keyboard, and Down chooses the second.
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.E);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.ArrowDown);
+        string chosen = Assert.IsType<RungRow>(workspace.SelectedRung).Key;
+        Assert.True(workspace.HasSelectedEvidence);
+
+        // Shift+F6 goes round to the inspector, whose list of the record's facts has the keyboard on the first, said as its
+        // name and its value; Down reads the next, and the record stays the one chosen.
+        Press(window, PhysicalKey.F6, RawInputModifiers.Shift);
+        ListBox facts = window.GetControl<ListBox>("EvidenceFieldList");
+        Assert.True(facts.IsKeyboardFocusWithin, Focused(window));
+        IReadOnlyList<EvidenceField> fields = workspace.SelectedEvidenceFields;
+        Assert.True(fields.Count > 2, $"{fields.Count} facts");
+        Control first = Assert.IsAssignableFrom<Control>(facts.ContainerFromIndex(0));
+        Assert.Same(first, window.FocusManager?.GetFocusedElement());
+        Assert.Equal($"{fields[0].Label}: {fields[0].Value}", AutomationProperties.GetName(first));
+        Press(window, PhysicalKey.ArrowDown);
+        Control second = Assert.IsAssignableFrom<Control>(facts.ContainerFromIndex(1));
+        Assert.Same(second, window.FocusManager?.GetFocusedElement());
+        Assert.Equal($"{fields[1].Label}: {fields[1].Value}", AutomationProperties.GetName(second));
+        Assert.Equal(chosen, workspace.SelectedRung?.Key);
+
+        // Every fact is there for a screen reader, the last too, though the inspector shows only the first few.
+        Control last = Assert.IsAssignableFrom<Control>(facts.ContainerFromIndex(fields.Count - 1));
+        Assert.Equal($"{fields[^1].Label}: {fields[^1].Value}", AutomationProperties.GetName(last));
+
+        // F6 goes on round to E's table, on the record chosen.
+        Press(window, PhysicalKey.F6);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(chosen, Assert.IsType<RungRow>(Assert.IsAssignableFrom<Control>(window.FocusManager?.GetFocusedElement()).DataContext).Key);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a rung with no rows gives the reason it has none the keyboard, which F6 reaches as the rail")]
     public async Task F6ReachesAnEmptyRungsReason()
     {

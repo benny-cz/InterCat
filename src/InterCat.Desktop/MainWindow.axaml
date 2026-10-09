@@ -701,17 +701,33 @@
               <TextBlock Text="{Binding SelectedEvidenceTitle}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap" />
               <TextBlock Text="{Binding EvidenceScopeText}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                          AutomationProperties.Name="What these records are" />
-              <ItemsControl x:Name="EvidenceFieldList" ItemsSource="{Binding SelectedEvidenceFields}"
-                            AutomationProperties.Name="Facts of the selected record">
-                <ItemsControl.ItemTemplate>
+              <!-- R15: a list the keyboard reads a fact at a time, F6 reaching it as the inspector, each fact said as its
+                   name and value; read-only, so choosing a fact does nothing but say it. -->
+              <ListBox x:Name="EvidenceFieldList" ItemsSource="{Binding SelectedEvidenceFields}" Background="Transparent"
+                       BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       AutomationProperties.Name="Facts of the selected record; Up and Down read them one at a time">
+                <!-- A handful of facts, laid out whole within the inspector's own scroll, so a screen reader finds every
+                     one, not only those the inspector shows, and the wheel scrolls the inspector over them. -->
+                <ListBox.ItemsPanel>
+                  <ItemsPanelTemplate>
+                    <StackPanel />
+                  </ItemsPanelTemplate>
+                </ListBox.ItemsPanel>
+                <ListBox.Styles>
+                  <Style Selector="ListBoxItem">
+                    <Setter Property="Padding" Value="4,2" />
+                    <Setter Property="MinHeight" Value="0" />
+                  </Style>
+                </ListBox.Styles>
+                <ListBox.ItemTemplate>
                   <DataTemplate x:DataType="local:EvidenceField">
-                    <StackPanel Margin="0,0,0,7" Spacing="1">
+                    <StackPanel Margin="0,0,0,5" Spacing="1">
                       <TextBlock Text="{Binding Label}" Classes="muted" FontSize="10" />
                       <TextBlock Text="{Binding Value}" FontSize="12" TextWrapping="Wrap" />
                     </StackPanel>
                   </DataTemplate>
-                </ItemsControl.ItemTemplate>
-              </ItemsControl>
+                </ListBox.ItemTemplate>
+              </ListBox>
               <Button Content="{Binding OriginalRecordLabel}" Click="OpenOriginalRecord"
                       IsEnabled="{Binding HasSelectedEvidence}"
                       AutomationProperties.Name="Open the selected record's original journal entry" />
