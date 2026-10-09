@@ -5,9 +5,11 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Controls.Templates;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using Avalonia.Platform.Storage;
+using Avalonia.VisualTree;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
@@ -115,6 +117,15 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
+    /// <summary>Whether the investigation has been read once, which gives its selected session the keyboard.</summary>
+    private bool read;
+
+    /// <summary>
+    /// Whether the lists are being given new rows, which lets their choice go before it is restored: their buttons are
+    /// stated once it is, not disabled in between, which took the keyboard from the button it was on at every reading.
+    /// </summary>
+    private bool restating;
+
     // What the window showing a member wrote of its layout, and of its panes, while the investigation was being read, which
     // that reading may have missed.
     private readonly Dictionary<Guid, WorkspaceLayout?> keptWhileReading = [];
@@ -148,7 +159,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         AutomationProperties.SetName(alignButton, "Align the selected session to the investigation's time");
         AutomationProperties.SetHelpText(withdraw, "Withdraw the selected session's alignment");
         AutomationProperties.SetHelpText(oneHost, "Say whether the selected session's host is one host with another");
-        AutomationProperties.SetName(notesList, "Notes on this investigation");
+        AutomationProperties.SetName(notesList, "Notes on this investigation; press Enter to show a pinned one on the timeline");
         AutomationProperties.SetName(addNote, "Add a note, pinned at the timeline's chosen column when there is one");
         AutomationProperties.SetName(rewordNote, "Reword the selected note");
         AutomationProperties.SetName(removeNote, "Remove the selected note");
@@ -230,7 +241,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
             },
         });
 
-        members.SelectionChanged += (_, _) => ShowSelected();
+        members.SelectionChanged += (_, _) =>
+        {
+            if (!restating) ShowSelected();
+        };
         members.DoubleTapped += (_, _) => _ = OpenSelectedAsync();
         members.KeyDown += (_, key) =>
         {
@@ -268,12 +282,27 @@ internal sealed class InvestigationWindow : Window, IDisposable
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
         withdrawJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
         package.Click += (_, _) => _ = PackageAsync();
-        notesList.SelectionChanged += (_, _) => ShowSelectedNote();
+        notesList.SelectionChanged += (_, _) =>
+        {
+            if (!restating) ShowSelectedNote();
+        };
+
+        // Enter or a double click on a note shows it on the timeline, as Show on the timeline does for a pinned one.
+        notesList.DoubleTapped += (_, _) => _ = ShowSelectedNoteAsync();
+        notesList.KeyDown += (_, key) =>
+        {
+            if (key.Key != Key.Enter) return;
+            _ = ShowSelectedNoteAsync();
+            key.Handled = true;
+        };
         addNote.Click += (_, _) => _ = WriteNoteAsync(reword: false);
         rewordNote.Click += (_, _) => _ = WriteNoteAsync(reword: true);
         removeNote.Click += (_, _) => _ = RemoveSelectedNoteAsync();
         showNote.Click += (_, _) => _ = ShowSelectedNoteAsync();
-        candidates.SelectionChanged += (_, _) => ShowSelectedCandidate();
+        candidates.SelectionChanged += (_, _) =>
+        {
+            if (!restating) ShowSelectedCandidate();
+        };
         var close = new Button { Content = "Close" };
         AutomationProperties.SetName(close, "Close the investigation window");
         close.Click += (_, _) => Close();
@@ -283,6 +312,10 @@ internal sealed class InvestigationWindow : Window, IDisposable
             Close();
             key.Handled = true;
         };
+
+        // Ctrl+Tab and Ctrl+Shift+Tab, or Ctrl+Page Down and Ctrl+Page Up, show the next or previous page from wherever the
+        // keyboard is, as Windows' tabbed windows do; taken before Tab moves the keyboard, which reads Ctrl+Tab as Tab.
+        AddHandler(KeyDownEvent, ShowAnotherPage, RoutingStrategies.Tunnel);
 
         var sessionActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, add, refresh })
@@ -424,6 +457,12 @@ internal sealed class InvestigationWindow : Window, IDisposable
         Content = grid;
 
         Opened += (_, _) => _ = RefreshAsync(opening);
+
+        // A control that loses the keyboard to nothing - a button disabled by what it did, a row its list's new rows replace -
+        // gives it to the page's place, and so does the window come back to with the keyboard on nothing of it, or read
+        // before it was first active.
+        AddHandler(LostFocusEvent, (_, _) => KeepKeyboard(), RoutingStrategies.Bubble, handledEventsToo: true);
+        Activated += (_, _) => KeepKeyboard(opening: true);
         Closed += (_, _) => Dispose();
     }
 
@@ -633,21 +672,37 @@ internal sealed class InvestigationWindow : Window, IDisposable
             overlaps.Text = string.Join("\n", view.Overlaps ?? []);
             overlaps.IsVisible = overlapsView.IsVisible = view.Overlaps is { Count: > 0 };
             caveats.Text = string.Join(" ", view.Caveats);
-            members.ItemsSource = view.Members;
             Guid? noted = (notesList.SelectedItem as InvestigationNoteRow)?.NoteId;
-            notesList.ItemsSource = view.Notes;
-            notesList.SelectedItem = view.Notes.FirstOrDefault(row => row.NoteId == noted);
+            restating = true;
+            try
+            {
+                members.ItemsSource = view.Members;
+                members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)
+                    ?? (view.Members.Count > 0 ? view.Members[0] : null);
+                notesList.ItemsSource = view.Notes;
+                notesList.SelectedItem = view.Notes.FirstOrDefault(row => row.NoteId == noted);
+            }
+            finally
+            {
+                restating = false;
+            }
+
             ShowSelectedNote();
             package.IsEnabled = packaging is not null || view.Members.Count > 0;
             compareInstants.IsEnabled = view.Members.Count > 0;
-            members.SelectedItem = view.Members.FirstOrDefault(row => row.SessionId == selected)
-                ?? (view.Members.Count > 0 ? view.Members[0] : null);
             int unresolved = view.Members.Count(row => !row.HoldsItsCapture);
             status.Text = message ?? (unresolved == 0
                 ? "Every session is where it was last found."
                 : string.Create(CultureInfo.CurrentCulture,
                     $"{unresolved:N0} {(unresolved == 1 ? "session is" : "sessions are")} not where {(unresolved == 1 ? "it was" : "they were")} last found: relink {(unresolved == 1 ? "it" : "them")} to open {(unresolved == 1 ? "it" : "them")}."));
             ShowSelected();
+            if (!read)
+            {
+                // The window opened with the keyboard on nothing of it. A row given the keyboard since, which new rows take
+                // from it, gives it back as it loses it.
+                read = true;
+                KeepKeyboard(opening: true);
+            }
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -695,8 +750,16 @@ internal sealed class InvestigationWindow : Window, IDisposable
         if (ReferenceEquals(kept, view)) return;
         Guid? selected = (members.SelectedItem as InvestigationMemberRow)?.SessionId;
         View = kept;
-        members.ItemsSource = kept.Members;
-        members.SelectedItem = kept.Members.FirstOrDefault(row => row.SessionId == selected);
+        restating = true;
+        try
+        {
+            members.ItemsSource = kept.Members;
+            members.SelectedItem = kept.Members.FirstOrDefault(row => row.SessionId == selected);
+        }
+        finally
+        {
+            restating = false;
+        }
     }
 
     /// <summary>
@@ -742,7 +805,8 @@ internal sealed class InvestigationWindow : Window, IDisposable
     {
         if (finding || closed) return;
         finding = true;
-        find.IsEnabled = false;
+
+        // Its button stays enabled, so the keyboard stays on it as it reads; the flag refuses a second reading meanwhile.
         candidateSummary.Text = "Reading every session's connections and comparing their endpoints, mirrored…";
         try
         {
@@ -751,8 +815,17 @@ internal sealed class InvestigationWindow : Window, IDisposable
             if (closed) return;
             int selected = candidates.SelectedIndex;
             Candidates = found;
-            candidates.ItemsSource = found.Rows;
-            candidates.SelectedIndex = selected >= 0 && selected < found.Rows.Count ? selected : -1;
+            restating = true;
+            try
+            {
+                candidates.ItemsSource = found.Rows;
+                candidates.SelectedIndex = selected >= 0 && selected < found.Rows.Count ? selected : -1;
+            }
+            finally
+            {
+                restating = false;
+            }
+
             candidateSummary.Text = found.Summary;
 
             // A capture that did not cover what a mirror is made of is said in the caution ink, before the rules every
@@ -773,7 +846,6 @@ internal sealed class InvestigationWindow : Window, IDisposable
         finally
         {
             finding = false;
-            find.IsEnabled = true;
         }
     }
 
@@ -1190,13 +1262,23 @@ internal sealed class InvestigationWindow : Window, IDisposable
         }
     }
 
-    /// <summary>Removes the selected note, kept as a revision, and shows the investigation again.</summary>
+    /// <summary>
+    /// Removes the selected note, kept as a revision, and shows the investigation again with the note in its place chosen -
+    /// the next, or the one before the last - as a list chooses the next row when one is removed, so Remove stays where the
+    /// keyboard is for it; with none left, the page takes the keyboard.
+    /// </summary>
     internal async Task RemoveSelectedNoteAsync()
     {
         if (notesList.SelectedItem is not InvestigationNoteRow row) return;
         try
         {
             _ = await Task.Run(() => InvestigationWorkspace.RemoveNote(path, row.NoteId, DateTimeOffset.UtcNow));
+            if (ReferenceEquals(notesList.SelectedItem, row) && notesList.ItemCount > 1)
+            {
+                int at = notesList.SelectedIndex;
+                notesList.SelectedIndex = at + 1 < notesList.ItemCount ? at + 1 : at - 1;
+            }
+
             await RefreshAsync("The note is removed; its revisions are kept in the file.");
             if (timelineLoaded) await ShowTimelineAsync();
         }
@@ -1207,12 +1289,23 @@ internal sealed class InvestigationWindow : Window, IDisposable
         }
     }
 
-    /// <summary>Shows the selected pinned note on the timeline: zoomed around its instant, the cursor on its column.</summary>
+    /// <summary>
+    /// Shows the selected pinned note on the timeline: zoomed around its instant, the cursor on its column, and the keyboard
+    /// on the timeline, which says that column - the notes it was on are hidden with their page, which left it on nothing.
+    /// A note about the whole investigation, or one whose session has no place, stays listed where it was, and the status
+    /// says why.
+    /// </summary>
     internal async Task ShowSelectedNoteAsync()
     {
-        if (notesList.SelectedItem is not InvestigationNoteRow { At: not null } row) return;
-        ShowTab(2);
+        if (notesList.SelectedItem is not InvestigationNoteRow row) return;
+        if (row.At is null)
+        {
+            status.Text = "That note is about the whole investigation, not an instant, so the timeline has no place for it.";
+            return;
+        }
+
         if (!timelineLoaded) await ShowTimelineAsync();
+        if (closed) return;
         if (Timeline?.Notes.FirstOrDefault(note => note.Note.NoteId == row.NoteId) is not { Lane: { } lane, Ticks: { } ticks }
             || (whole ?? Timeline.Interval) is not { } all)
         {
@@ -1220,12 +1313,41 @@ internal sealed class InvestigationWindow : Window, IDisposable
             return;
         }
 
-        await ZoomToAsync(InvestigationTimelineControl.Zoomed(all, ticks, 1m / 16));
-        if (Timeline?.Lanes[lane].Buckets is { Count: > 0 } buckets)
+        ShowTab(2);
+        try
         {
-            int column = Math.Max(0, buckets.ToList().FindLastIndex(bucket => bucket.Interval.StartTicks <= ticks));
-            timelineChart.MoveTo(new(lane, column));
+            await ZoomToAsync(InvestigationTimelineControl.Zoomed(all, ticks, 1m / 16));
+            if (Timeline?.Lanes[lane].Buckets is { Count: > 0 } buckets)
+            {
+                int column = Math.Max(0, buckets.ToList().FindLastIndex(bucket => bucket.Interval.StartTicks <= ticks));
+                timelineChart.MoveTo(new(lane, column));
+            }
         }
+        finally
+        {
+            KeepKeyboard();
+        }
+    }
+
+    /// <summary>Whether a control of this window has the keyboard, rather than nothing or another window.</summary>
+    private bool KeyboardInWindow() => FocusManager?.GetFocusedElement() is Visual focused && this.IsVisualAncestorOf(focused);
+
+    /// <summary>
+    /// Shows the next page, or with Shift the previous, for Ctrl+Tab, or Ctrl+Page Down and Ctrl+Page Up, from wherever the
+    /// keyboard is, and gives the keyboard to the page's tab, which a screen reader says, as Windows' tabbed windows do.
+    /// </summary>
+    private void ShowAnotherPage(object? sender, KeyEventArgs e)
+    {
+        int step = (e.Key, e.KeyModifiers) switch
+        {
+            (Key.Tab, KeyModifiers.Control) or (Key.PageDown, KeyModifiers.Control) => 1,
+            (Key.Tab, KeyModifiers.Control | KeyModifiers.Shift) or (Key.PageUp, KeyModifiers.Control) => -1,
+            _ => 0,
+        };
+        if (step == 0 || tabs.ItemCount == 0) return;
+        ShowTab((tabs.SelectedIndex + step + tabs.ItemCount) % tabs.ItemCount);
+        (tabs.ContainerFromIndex(tabs.SelectedIndex) as Control)?.Focus(NavigationMethod.Tab);
+        e.Handled = true;
     }
 
     private void ShowSelectedNote()
@@ -1272,6 +1394,51 @@ internal sealed class InvestigationWindow : Window, IDisposable
             AllowMultiple = true,
         });
         if (folders.Count > 0 && !closed) await AddAsync([.. folders.Select(folder => folder.Path.LocalPath)]);
+    }
+
+    /// <summary>
+    /// Gives the keyboard to the shown page's own place while the window is active and the keyboard is on nothing: the
+    /// chosen session, candidate or note, or the timeline, else the page's first action. The window opened with the
+    /// keyboard on nothing of it, so a person pressed Tab before Up, Down or Enter did anything, and a screen reader said
+    /// only its title; and a button that disabled itself by what it did - Whole investigation, Zoom out, Withdraw
+    /// alignment, the last note's Remove - a list read again, and a note shown on the timeline, whose page was hidden, each
+    /// left it on nothing, so the next key did nothing at all. As the window opens or is come back to, nothing of it has
+    /// the keyboard; otherwise a move to another window is never taken back. Posted, so it acts once the keyboard has
+    /// settled - after the window restores its own as it is activated - and the rows are laid out.
+    /// </summary>
+    private void KeepKeyboard(bool opening = false) => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || !IsActive || View is null || (opening ? KeyboardInWindow() : FocusManager?.GetFocusedElement() is not null)) return;
+        foreach (Control? place in Places())
+        {
+            if (place is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } && place.Focus(NavigationMethod.Tab)) return;
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Where the shown page takes the keyboard, in order: its chosen row, else its first action. The keyboard is let go to
+    /// nothing as its control is disabled, hidden or removed, never moved on, so nothing marks where it was.
+    /// </summary>
+    private IEnumerable<Control?> Places()
+    {
+        static Control? Chosen(ListBox list) => list.SelectedItem is { } item ? list.ContainerFromItem(item) : null;
+        switch (tabs.SelectedIndex)
+        {
+            case 0:
+                yield return Chosen(members);
+                yield return add;
+                break;
+            case 1:
+                yield return Chosen(candidates);
+                break;
+            case 2:
+                yield return timelineChart;
+                break;
+            default:
+                yield return Chosen(notesList);
+                yield return addNote;
+                break;
+        }
     }
 
     private void ShowSelected()

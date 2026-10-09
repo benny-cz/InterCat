@@ -141,6 +141,31 @@ public sealed class LegibleTextTests
         Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: the keys sheet cuts off no text at its smallest, each of its rows in turn")]
+    public async Task TheKeysSheetCutsOffNoText()
+    {
+        var owner = new Window { Width = 1080, Height = 700 };
+        owner.Show();
+        var sheet = new KeysWindow();
+        sheet.Width = sheet.MinWidth;
+        sheet.Height = sheet.MinHeight;
+        _ = sheet.ShowDialog(owner);
+        await Pause();
+        var cut = new List<string>();
+
+        // The list draws the rows in view; each is brought into view in turn, its place's heading with the first of it.
+        for (int row = 0; row < WindowKeys.All.Count; row++)
+        {
+            sheet.List.ScrollIntoView(row);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            cut.AddRange(CutOff(sheet, $"keys, row {row}"));
+        }
+
+        sheet.Close();
+        owner.Close();
+        Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut.Distinct()));
+    }
+
     [AvaloniaFact(DisplayName = "§6.8: the investigation window and its dialogs cut off no text at their smallest, and each page keeps two of its sessions, lanes or notes in view")]
     public async Task TheInvestigationWindowKeepsItsPagesLegible()
     {
@@ -197,7 +222,7 @@ public sealed class LegibleTextTests
             AssertKeepsTwoRows(Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one"));
             tabs.SelectedIndex = 3;
             await Pause();
-            AssertKeepsTwoRows(Named<ListBox>(window, "Notes on this investigation"));
+            AssertKeepsTwoRows(Named<ListBox>(window, "Notes on this investigation; press Enter to show a pinned one on the timeline"));
             tabs.SelectedIndex = 2;
             await Until(() => window.Timeline is not null);
             await Pause();

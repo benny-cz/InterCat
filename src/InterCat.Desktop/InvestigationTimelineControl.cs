@@ -4,6 +4,7 @@ using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
@@ -19,13 +20,17 @@ internal readonly record struct TimelineColumn(int Lane, int Column);
 /// shared columns where its alignment places them, its extent shaded, each lane scaled to its own busiest column - and a
 /// session with no place said in its lane. A person moves a column cursor with the arrow keys, Home and End, or a click,
 /// zooms with the wheel or the plus and minus keys (0 shows the whole), and opens a column with Enter or a double click.
-/// The window beside it states every lane, and the column chosen, in words.
+/// The window beside it states every lane, and the column chosen, in words, and while it has the keyboard it is named by
+/// the column chosen.
 /// </summary>
 internal sealed class InvestigationTimelineControl : Control
 {
     public const double LabelWidth = 240;
     public const double LaneHeight = 48;
     public const double AxisHeight = 26;
+
+    /// <summary>The merged time's own name, which the column its cursor is on follows while it has the keyboard.</summary>
+    internal const string SpokenName = "The investigation's timeline";
 
     private InvestigationTimelineView? view;
     private IReadOnlyList<string> labels = [];
@@ -34,7 +39,7 @@ internal sealed class InvestigationTimelineControl : Control
     public InvestigationTimelineControl()
     {
         Focusable = true;
-        AutomationProperties.SetName(this, Spoken(null));
+        Say();
     }
 
     /// <summary>The column the cursor is on moved, or the view it is on changed.</summary>
@@ -57,7 +62,7 @@ internal sealed class InvestigationTimelineControl : Control
         // The cursor keeps its lane and its place along the axis, as far as the new view has them.
         cursor = cursor is { } kept && Placed(kept.Lane) ? kept with { Column = Math.Min(kept.Column, view!.Lanes[kept.Lane].Buckets.Count - 1) }
             : FirstPlaced() is { } lane ? new TimelineColumn(lane, Busiest(lane)) : null;
-        AutomationProperties.SetName(this, Spoken(cursor));
+        Say();
         InvalidateMeasure();
         InvalidateVisual();
         CursorMoved?.Invoke(this, EventArgs.Empty);
@@ -68,7 +73,7 @@ internal sealed class InvestigationTimelineControl : Control
     {
         if (!Placed(column.Lane) || column.Column < 0 || column.Column >= view!.Lanes[column.Lane].Buckets.Count) return;
         cursor = column;
-        AutomationProperties.SetName(this, Spoken(cursor));
+        Say();
         InvalidateVisual();
         CursorMoved?.Invoke(this, EventArgs.Empty);
     }
@@ -385,9 +390,27 @@ internal sealed class InvestigationTimelineControl : Control
         return best;
     }
 
-    private string Spoken(TimelineColumn? at) => at is null
-        ? "The investigation's timeline: no session is placed on it"
-        : "The investigation's timeline. " + Describe() + " Arrow keys choose a column, plus and minus zoom, 0 shows it all.";
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        Say();
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        Say();
+    }
+
+    /// <summary>
+    /// Names the merged time by the column its cursor is on while it has the keyboard - its session, its time, its records
+    /// and what its capture covered there, as the line beneath it says them - and tells a screen reader, as a list names
+    /// its focused row (R15). The arrows, Home and End, a zoom and a note shown move the cursor, and the canvas has no item
+    /// for a column to take the focus, so the screen reader heard none of them: it was renamed untold, the keys a reader
+    /// could not hear repeated in every name. Elsewhere it keeps its own name; with no session placed, it says so.
+    /// </summary>
+    private void Say() => CanvasAutomationPeer.Rename(this, Describe() is not { } column ? SpokenName + ": no session is placed on it"
+        : IsKeyboardFocusWithin ? $"{SpokenName}: {column}" : SpokenName);
 
     // Brushes are built once per theme mode and reused every frame (R11), as the session timeline's are.
     private static readonly Dictionary<ThemeMode, Ink> Inks = [];
