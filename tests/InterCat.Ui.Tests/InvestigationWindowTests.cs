@@ -408,6 +408,86 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R22: an investigation keeps the widths a person gave the ranked table and the inspector by their edges, and puts them back for any of its sessions")]
+    public async Task AnInvestigationKeepsTheColumnsWidths()
+    {
+        using var root = new TemporaryDirectory();
+        string alpha = PairedSession(root.Path, "alpha");
+        string beta = PairedSession(root.Path, "beta");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        InvestigationWorkspace.Add(workspace, alpha, Committed);
+        InvestigationWorkspace.Add(workspace, beta, Committed);
+        static (double?, double?) Widths(WorkspacePanes? panes) => (panes!.RailWidth, panes.InspectorWidth);
+        var main = new MainWindow { Width = 1456, Height = 939 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            Button open = Named<Button>(window, "Open in InterCat");
+            list.SelectedIndex = 0;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == alpha);
+            ColumnDefinitions columns = main.GetControl<Grid>("WindowGrid").ColumnDefinitions;
+
+            // Arrow keys on the inspector's edge widen it, kept as it moves; a drag of the rail's edge is kept once let go.
+            GridSplitter inspectorEdge = main.GetControl<GridSplitter>("InspectorSplitter");
+            Assert.True(inspectorEdge.Focus());
+            for (int press = 0; press < 6; press++)
+            {
+                main.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+            }
+
+            Render(main);
+            await main.InvestigationWritten;
+            double inspector = columns[2].ActualWidth;
+            Assert.True(inspector > 330, $"The inspector is {inspector:F0} px wide.");
+            GridSplitter railEdge = main.GetControl<GridSplitter>("RailSplitter");
+            Point grip = railEdge.TranslatePoint(new Point(railEdge.Bounds.Width / 2, railEdge.Bounds.Height / 2), main)!.Value;
+            main.MouseDown(grip, MouseButton.Left);
+            main.MouseMove(grip + new Vector(40, 0));
+            main.MouseMove(grip + new Vector(70, 0));
+            Render(main);
+            await main.InvestigationWritten;
+            Assert.Null(InvestigationWorkspace.Read(workspace).Panes!.RailWidth);
+            main.MouseUp(grip + new Vector(70, 0), MouseButton.Left);
+            Render(main);
+            await main.InvestigationWritten;
+            double rail = columns[0].ActualWidth;
+            Assert.Equal(((double?)Math.Round(rail), (double?)Math.Round(inspector)), Widths(InvestigationWorkspace.Read(workspace).Panes));
+            string said = string.Create(CultureInfo.CurrentCulture,
+                $"the ranked table {Math.Round(rail):N0} pixels wide and the inspector {Math.Round(inspector):N0} pixels wide");
+            WaitFor(() => window.View!.Panes == $"Its sessions open with {said}, as the window was left here.");
+
+            // A window narrowed below what they leave the main panes takes the room back, which is the window's, not kept.
+            main.Width = 1080;
+            Render(main);
+            await main.InvestigationWritten;
+            Assert.Equal(WorkspacePanes.InspectorDesign, columns[2].ActualWidth, 0.5);
+            Assert.Equal(((double?)Math.Round(rail), (double?)Math.Round(inspector)), Widths(InvestigationWorkspace.Read(workspace).Panes));
+            main.Width = 1456;
+            Render(main);
+
+            // A session opened on its own leaves the columns as they are; any opened from the investigation puts them back,
+            // and its notice says so.
+            Assert.True(await main.OpenSessionAsync(beta));
+            list.SelectedIndex = 1;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == beta
+                && Math.Abs(columns[2].ActualWidth - inspector) < 1);
+            Render(main);
+            Assert.Equal(Math.Round(rail), columns[0].ActualWidth, 0.5);
+            Assert.EndsWith($"which put back {said}.", main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>The line beneath an investigation's sessions that says what opening any of them puts back of the window's panes.</summary>
     private static TextBlock? PanesLine(InvestigationWindow window)
     {

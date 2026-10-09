@@ -172,7 +172,7 @@ public static class InvestigationRows
     /// here."; null when it keeps none, and a session opened from it leaves the panes as they are.
     /// </summary>
     public static string? PanesKept(WorkspacePanes? panes, CultureInfo culture) =>
-        panes?.Describe(culture) is { Length: > 0 } kept ? $"Its sessions open with {kept}, as the panes were left here." : null;
+        panes?.Describe(culture) is { Length: > 0 } kept ? $"Its sessions open with {kept}, as the window was left here." : null;
 
     /// <summary>
     /// The investigation's candidate joins (ADR-041), in words: each one's endpoints and timing, its two ends with their

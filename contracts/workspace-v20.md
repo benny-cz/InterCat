@@ -1,7 +1,7 @@
-# Workspace contract, version 19
+# Workspace contract, version 20
 
-Status: M4, revision 422 (ADR-038 to ADR-042); versions 1 to 18 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
-270, 271, 280, 301, 339, 343, 360, 388, 406 and 419's, and packages revision 263's
+Status: M4, revision 470 (ADR-038 to ADR-042); versions 1 to 19 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
+270, 271, 280, 301, 339, 343, 360, 388, 406, 419 and 422's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | package`
 Read by: `icat workspace show | compare | correlate`
@@ -18,11 +18,12 @@ what they rank each session's rows by (§7), version 13 how strongly a record mu
 own there (§7), version 14 whether each of its timeline lanes is read against its own peak (§7), version 15 how they
 left the window's two main panes (§7), version 16 which process lanes they pinned at the top of each session's
 timeline (§7), version 17 whether they grouped each session's processes by terminal session (§7), version 18
-whether they set InterCat's own processes aside from each session's view (§7), and version 19 whether they read each
-session's times on the wall clock its capture's machine read (§7). An earlier
+whether they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each
+session's times on the wall clock its capture's machine read (§7), and version 20 the widths they gave the ranked table
+and the inspector by their edges (§7). An earlier
 version's file is read as one without what later versions added - a `workspace-v1` file holds members and host names
 and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each aligned to the
-reference itself - and each is written as version 19. A kind of fact is
+reference itself - and each is written as version 20. A kind of fact is
 refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
 before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
 version appeared.
@@ -31,7 +32,7 @@ version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v19"` (`"workspace-v1"` to `"workspace-v18"` are read) |
+| `contract` | `"workspace-v20"` (`"workspace-v1"` to `"workspace-v19"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -44,7 +45,7 @@ version appeared.
 | `notes` | Every revision of a person's notes, in the order written (§7) |
 | `views` | Every revision of a person's saved views of the investigation's time, in the order saved (§7) |
 | `layouts` | How a person laid out each member's graph and timeline, ranked its rows and counted its records: at most one per member, replaced as it changes (§7) |
-| `panes` | How a person left the window's two main panes while showing its sessions: the graph's share of their height and the pane filling the column; null when it keeps none (§7) |
+| `panes` | How a person left the window's panes while showing its sessions: the graph's share of the main panes' height, the pane filling the column, and the widths they gave the ranked table and the inspector; null when it keeps none (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
 new one, and only over the text it was read from: a change made meanwhile is refused, never written over. It is kept
@@ -88,7 +89,7 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v22`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v23`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
 reference, nearest first) and, since revision 395, `demo` (whether the session found for it is InterCat's generated demo,
@@ -97,7 +98,8 @@ reference, nearest first) and, since revision 395, `demo` (whether the session f
 overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
 read to place them, with its session, the one generation read and its manifest's digest - the layouts, each with its
 `grouping` since revision 406, its `collectorsAside` since revision 419 and its `wallClock` since revision 422, and the
-panes (§7), and caveats. It exits 0 when every member is present and 1 otherwise.
+panes (§7), with their `railWidth` and `inspectorWidth` since revision 470, and caveats. It exits 0 when every member is
+present and 1 otherwise.
 
 ## 4. Hosts
 
@@ -363,25 +365,31 @@ by no metric §6.1 offers, count under `IncludeCorrelated` by name or under any 
 in a file before version 16, group in a file before version 17, set InterCat's own processes aside in a file before
 version 18, or read its times on the wall clock in a file before version 19, is refused.
 
-The panes are how a person left the window's two main panes - the graph above the timeline - while showing the
-investigation's sessions (§6.1's persistence): the graph's share of the height the two share, and the pane filling the
-column by their command, if one does. They are the window's rather than a session's, so the investigation keeps them
+The panes are how a person left the window's two main panes - the graph above the timeline - and the columns beside
+them while showing the investigation's sessions (§6.1's persistence): the graph's share of the height the two share, the
+pane filling the column by their command, if one does, and the widths they gave the ranked table on the left and the
+inspector on the right by their edges. They are the window's rather than a session's, so the investigation keeps them
 once, for every session opened from it, replaced as they change, and none is kept as a revision:
 
 | Panes field | Meaning |
 |---|---|
 | `graphShare` | The graph's share of the height it shares with the timeline, above 0 and below 1, kept to four decimal places; the timeline has the rest. 0.5, equal halves, is how a window first lays them out |
 | `expanded` | The pane filling the column, the other one command away: `Graph` or `Timeline`; null when the two share it |
+| `railWidth` | The ranked table's width in whole logical pixels as a person set it by its edge, from 220 to 560; null while it follows the window's width, as a window first lays it out. Since version 20 |
+| `inspectorWidth` | The inspector's width in whole logical pixels as a person widened it by its edge, above its design width of 286 and at most 640; null at its design width. Since version 20 |
 | `updatedUtc` | When they last changed |
 
 The Desktop keeps the panes in the investigation the shown session was opened from whenever a person drags the split
-between them, lets one fill the column or gives both their places back, and puts them back when one of its sessions is
-opened from it again, its status listing them with what else was put back. An investigation that keeps none leaves the
+between them, lets one fill the column or gives both their places back, or moves the ranked table's or the inspector's
+edge - a drag once it is let go, a key as it moves it - and puts them back when one of its sessions is opened from it
+again, its status listing them with what else was put back. A width the window fits to itself is not kept: a rail that
+follows the window's width, or room a narrowed window takes back for its main panes, which keep at least the width the
+smallest window gives them; a column put back wider than the window allows gives that room back as it would then. An investigation that keeps none leaves the
 panes as they are, as a session opened on its own does. A split gives neither pane less than its minimum height, so a
 kept share shows both on any window; only letting one fill the column hides the other (§6.1's collapse floor). Equal
 halves with both shown keep nothing, and are removed. A file whose panes keep nothing, give the graph a share that is
-not above 0 and below 1, let a pane the window does not have fill the column, or appear in a file before version 15, is
-refused.
+not above 0 and below 1, let a pane the window does not have fill the column, give a column a width its edge does not
+set, appear in a file before version 15, or keep a column's width in a file before version 20, is refused.
 
 ## 8. A package
 
@@ -402,7 +410,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `layouts` and `panes`. The file is written as
-  `workspace-v18`.
+  the current version, `workspace-v20`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-09 · Plan revision: 469 · Branch: `main`
+Updated: 2026-10-09 · Plan revision: 470 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -89,6 +89,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 470 — an investigation keeps the ranked table's and the inspector's widths (§6.1, `workspace-v20`):**
+  - The widths a person gives the ranked table and the inspector by their edges are kept in the investigation with the
+    split, in whole pixels, as a drag is let go or a key moves an edge, and put back when any of its sessions is
+    opened from it; kept panes that set no rail width let the rail follow the window again.
+  - Its window, the notice of a session opened from it and `icat workspace show` say them in one series with the
+    panes, "the ranked table 320 pixels wide and the inspector 400 pixels wide"; the show document carries
+    `railWidth` and `inspectorWidth` (`workspace-resolution-v23`). A width the window fits to itself is not kept.
+  - A version 19 file is read as one that keeps no width and written as version 20; a width no edge sets, or one in
+    an earlier version's file, is refused. The contract's package section now names the current version.
+  - Debug and Release each ran 2,013 tests, with revision 469's 93 failures and 4 skips. The tests caught each of
+    11 mutations: widths keeping nothing, the rail's width unsaid, a rail wider than its edge sets taken, widths read
+    in a version 19 file, the inspector's design kept as a width, an inspector key move not kept, an edge drag kept
+    while held, a narrowed window's fit kept, widths not put back, widths unsaid in the notice, and a dragged rail
+    still following the window.
 
 - **Revision 469 — the inspector widens by its edge (§6.1):**
   - The inspector has an edge like the rail's, dragged or moved by arrow keys and named for a screen reader, so
@@ -1676,8 +1691,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      the pins since revision 406 (`workspace-v17`), which `icat workspace show` states, and exported by `icat export
      --group-by session` since revision 407 as the window exports it. §19.5's view filter, InterCat's own processes
      set aside, is kept since revision 419 (`workspace-v18`), and the time base since revision 422 (`workspace-v19`).
-     §6.1's column widths: the rail's edge resizes it, and since revision 469 the inspector's edge resizes the
-     inspector; keeping both in the investigation, as the split is kept, is next.
+     §6.1's column widths: the rail's edge resizes it, since revision 469 the inspector's edge resizes the inspector,
+     and since revision 470 both widths are kept with the split, once for every session (`workspace-v20`).
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
@@ -3642,4 +3657,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`, `operation-index-v1.md`, `tile-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v19.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v20.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

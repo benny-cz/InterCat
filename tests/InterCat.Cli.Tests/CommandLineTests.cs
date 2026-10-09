@@ -1504,7 +1504,7 @@ public sealed class CommandLineTests : IDisposable
                 + "when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
-            Assert.Equal("workspace-resolution-v22", WorkspaceCommand.ResolutionContract);
+            Assert.Equal("workspace-resolution-v23", WorkspaceCommand.ResolutionContract);
             Assert.Contains("\"collectorsAside\": false", json, StringComparison.Ordinal);
             Assert.Contains("\"wallClock\": false", json, StringComparison.Ordinal);
             Assert.Matches(new Regex($"\"pinnedLanes\": \\[\\s*\"{lane}\"\\s*\\]"), json);
@@ -1537,6 +1537,18 @@ public sealed class CommandLineTests : IDisposable
             json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains("\"graphShare\": 0.3712", json, StringComparison.Ordinal);
             Assert.Contains("\"expanded\": \"Timeline\"", json, StringComparison.Ordinal);
+            Assert.Contains("\"railWidth\": null", json, StringComparison.Ordinal);
+
+            // The widths a person gave the ranked table and the inspector by their edges are said after the main panes.
+            InvestigationWorkspace.SetPanes(workspace, 0.3712, WorkspacePane.Timeline, DateTimeOffset.UtcNow, railWidth: 320,
+                inspectorWidth: 400);
+            Assert.Contains("The window: the timeline filling the column, the graph at "
+                + 0.37.ToString("P0", System.Globalization.CultureInfo.CurrentCulture) + " of the panes' height when both are shown, "
+                + "the ranked table 320 pixels wide and the inspector 400 pixels wide, put back when any session is opened from this "
+                + "investigation.", (await Run("workspace", "show", workspace)).Output, StringComparison.Ordinal);
+            json = (await Run("workspace", "show", workspace, "--json")).Output;
+            Assert.Contains("\"railWidth\": 320", json, StringComparison.Ordinal);
+            Assert.Contains("\"inspectorWidth\": 400", json, StringComparison.Ordinal);
         }
         finally
         {

@@ -1026,7 +1026,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v19", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v20", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1062,7 +1062,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v19", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v20", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1081,6 +1081,68 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: true, wallClock: true);
         InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
         Assert.Equal((InvestigationWorkspace.Contract, true), (rewritten.Contract, rewritten.Layouts.Single().WallClock));
+    }
+
+    [Fact(DisplayName = "§26.3: the widths a person gave the ranked table and the inspector are kept with the panes, in whole pixels, and an earlier version keeps none")]
+    public void TheColumnWidthsAreKept()
+    {
+        string workspace = NewWorkspace();
+        InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now);
+        static (double?, double?) Widths(WorkspacePanes? panes) => (panes!.RailWidth, panes.InspectorWidth);
+
+        // Kept in whole pixels beside equal halves; an inspector at its design width keeps none, and nothing else kept
+        // removes the panes.
+        WorkspacePanes kept = InvestigationWorkspace.SetPanes(workspace, 0.5, null, Now, railWidth: 320.4, inspectorWidth: 399.6)!;
+        Assert.Equal(((double?)320, (double?)400), Widths(kept));
+        Assert.Equal(((double?)320, (double?)400), Widths(InvestigationWorkspace.Read(workspace).Panes));
+        Assert.Equal("the ranked table 320 pixels wide and the inspector 400 pixels wide", kept.Describe(CultureInfo.InvariantCulture));
+        Assert.Null(InvestigationWorkspace.SetPanes(workspace, 0.5, null, Now, inspectorWidth: 286));
+        Assert.Null(InvestigationWorkspace.Read(workspace).Panes);
+
+        // Refused: a width no edge sets.
+        foreach (double rail in new[] { 219, 561, double.NaN })
+        {
+            Assert.Contains("the ranked table's width is not from 220 to 560 pixels", Assert.Throws<InvalidOperationException>(() =>
+                InvestigationWorkspace.SetPanes(workspace, 0.5, null, Now, railWidth: rail)).Message, StringComparison.Ordinal);
+        }
+
+        foreach (double inspector in new[] { 285, 641, double.PositiveInfinity })
+        {
+            Assert.Contains("the inspector's width is not above its design width of 286 pixels and at most 640",
+                Assert.Throws<InvalidOperationException>(() =>
+                    InvestigationWorkspace.SetPanes(workspace, 0.5, null, Now, inspectorWidth: inspector)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A file of the version before keeps no column's width, and one whose widths no edge sets is refused.
+        InvestigationWorkspace.SetPanes(workspace, 0.5, null, Now, railWidth: 300);
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"railWidth\": 300", written, StringComparison.Ordinal);
+        Assert.Contains("\"inspectorWidth\": null", written, StringComparison.Ordinal);
+        foreach ((string text, string problem) in new[]
+        {
+            (written.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.NineteenthContract}\"", StringComparison.Ordinal),
+                "file keeps no column's width"),
+            (written.Replace("\"railWidth\": 300", "\"railWidth\": 600", StringComparison.Ordinal), "the ranked table's width is not from 220"),
+            (written.Replace("\"inspectorWidth\": null", "\"inspectorWidth\": 286", StringComparison.Ordinal),
+                "the inspector's width is not above its design width"),
+        })
+        {
+            Assert.NotEqual(written, text);
+            File.WriteAllText(workspace, text);
+            Assert.Contains(problem, Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message,
+                StringComparison.Ordinal);
+        }
+
+        // A file of the version before, keeping a split and no width, reads so, and is written as the current one.
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetPanes(workspace, 0.25, null, Now);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.NineteenthContract}\"", StringComparison.Ordinal));
+        Assert.Equal(((double?)null, (double?)null), Widths(InvestigationWorkspace.Read(workspace).Panes));
+        InvestigationWorkspace.SetPanes(workspace, 0.25, null, Now, inspectorWidth: 420);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, (double?)420), (rewritten.Contract, rewritten.Panes!.InspectorWidth));
     }
 
     [Fact(DisplayName = "§26.3: what the window's panes keep is said in one series, only what differs from equal halves with both shown")]
@@ -1104,6 +1166,12 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(string.Empty, WorkspacePanes.Describe(0.500_04, null, culture));
         Assert.Equal("the graph at 37% of the panes' height",
             new WorkspacePanes { GraphShare = 0.3712, UpdatedUtc = Now }.Describe(culture));
+
+        // The widths a person gave the columns by their edges are said after the main panes, the ranked table's before the
+        // inspector's, as they stand left to right, in whole pixels.
+        Assert.Equal("the graph at 37% of the panes' height, the ranked table 320 pixels wide and the inspector 400 pixels wide",
+            WorkspacePanes.Describe(0.3712, null, culture, 320, 400));
+        Assert.Equal("the inspector 400 pixels wide", WorkspacePanes.Describe(0.5, null, culture, inspectorWidth: 400.4));
 
         // Listed with what a layout keeps, they are one series.
         Assert.Equal("1 node pinned on its graph, the timeline filling the column and the graph at 37% of the panes' height when "

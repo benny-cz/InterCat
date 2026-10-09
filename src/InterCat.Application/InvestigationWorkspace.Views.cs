@@ -103,7 +103,7 @@ public static partial class InvestigationWorkspace
     private static int NextViewRevision(InvestigationWorkspaceFile workspace) =>
         workspace.Views.Count == 0 ? 1 : checked(workspace.Views.Max(view => view.Revision) + 1);
 
-    /// <summary>What makes a file's views contradict themselves, or null (`contracts/workspace-v19.md` §7).</summary>
+    /// <summary>What makes a file's views contradict themselves, or null (`contracts/workspace-v20.md` §7).</summary>
     private static string? ViewProblem(InvestigationWorkspaceFile workspace)
     {
         // Saved views arrived with the tenth version (revision 271).

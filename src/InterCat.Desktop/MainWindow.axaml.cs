@@ -71,16 +71,21 @@ public sealed partial class MainWindow : Window, IDisposable
     private (GridLength Graph, GridLength Timeline)? sharedSplit;
     private bool layingPanes;
 
-    // Whether the splitter between the panes is being dragged, which is kept once it is let go, and whether a split moved
-    // otherwise is waiting to be kept once every row it moved has its height.
+    // Whether the splitter between the panes, or a column's edge, is being dragged, which is kept once it is let go, and
+    // whether a split moved otherwise is waiting to be kept once every row or column it moved has its size.
     private bool draggingSplit;
     private bool splitToKeep;
 
+    // Whether the window is fitting a column's width to itself - the rail following its width, or a narrowed window taking
+    // room back for the main panes - which is no person's choice and is not kept.
+    private bool fittingColumns;
+
     /// <summary>
-    /// The panes as the shown session's investigation last kept them, or put them back - equal halves with both shown when it
-    /// keeps none - or null when that is not known, so the next change is written whatever it is.
+    /// The panes as the shown session's investigation last kept them, or put them back - equal halves with both shown and
+    /// columns as a window lays them out when it keeps none - or null when that is not known, so the next change is written
+    /// whatever it is.
     /// </summary>
-    private (double GraphShare, WorkspacePane? Expanded)? keptPanes;
+    private (double GraphShare, WorkspacePane? Expanded, double? RailWidth, double? InspectorWidth)? keptPanes;
 
     /// <summary>
     /// The least height a split leaves each main pane (§6.1's collapse floor): the graph its header and a legible plot, the
@@ -244,6 +249,20 @@ public sealed partial class MainWindow : Window, IDisposable
         }, RoutingStrategies.Bubble, handledEventsToo: true);
         PanesGrid.RowDefinitions[0].PropertyChanged += PaneRowChanged;
         PanesGrid.RowDefinitions[2].PropertyChanged += PaneRowChanged;
+
+        // The widths a person gives the rail and the inspector by their edges are kept there too, as the split is.
+        foreach (GridSplitter edge in new[] { RailSplitter, InspectorSplitter })
+        {
+            edge.AddHandler(Thumb.DragStartedEvent, (_, _) => draggingSplit = true, RoutingStrategies.Bubble, handledEventsToo: true);
+            edge.AddHandler(Thumb.DragCompletedEvent, (_, _) =>
+            {
+                draggingSplit = false;
+                KeepSplit();
+            }, RoutingStrategies.Bubble, handledEventsToo: true);
+        }
+
+        WindowGrid.ColumnDefinitions[0].PropertyChanged += SideColumnChanged;
+        WindowGrid.ColumnDefinitions[2].PropertyChanged += SideColumnChanged;
         workspace = viewModel;
         DataContext = workspace;
         workspace.PropertyChanged += OnWorkspaceChanged;
@@ -1279,7 +1298,8 @@ public sealed partial class MainWindow : Window, IDisposable
         [
             .. WorkspaceLayout.Parts(pins, lanes, settings.Grouping, settings.RankBy, settings.PerSecond, settings.Policy,
                 settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside, settings.WallClock),
-            .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture),
+            .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture,
+                panes.RailWidth, panes.InspectorWidth),
         ]) is { Length: > 0 } restored
             ? $", which put back {restored}."
             : ".";
@@ -1345,16 +1365,21 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void KeepPanes((string Workspace, Guid Session) home)
     {
-        (double share, WorkspacePane? expanded) = PanesNow();
-        (double GraphShare, WorkspacePane? Expanded) keeping = (WorkspacePanes.Kept(share), expanded);
+        (double share, WorkspacePane? expanded, double? rail, double? inspector) = PanesNow();
+        (double GraphShare, WorkspacePane? Expanded, double? RailWidth, double? InspectorWidth) keeping = (
+            WorkspacePanes.Kept(share), expanded,
+            rail is { } ranked ? WorkspacePanes.KeptWidth(ranked) : null,
+            inspector is { } inspecting && WorkspacePanes.KeptWidth(inspecting) != WorkspacePanes.InspectorDesign
+                ? WorkspacePanes.KeptWidth(inspecting)
+                : null);
         if (keptPanes == keeping)
         {
             return;
         }
 
         keptPanes = keeping;
-        Task<WorkspacePanes?> written = WriteToInvestigation(() =>
-            InvestigationWorkspace.SetPanes(home.Workspace, keeping.GraphShare, keeping.Expanded, DateTimeOffset.UtcNow));
+        Task<WorkspacePanes?> written = WriteToInvestigation(() => InvestigationWorkspace.SetPanes(home.Workspace,
+            keeping.GraphShare, keeping.Expanded, DateTimeOffset.UtcNow, keeping.RailWidth, keeping.InspectorWidth));
         _ = SayPanesKeptAsync(written, home.Workspace);
     }
 
@@ -1385,9 +1410,10 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// The panes as a person left them: the graph's share of the height the two share - the split they return to, while one
-    /// fills the column - and the pane filling it, if one does.
+    /// fills the column - the pane filling it, if one does, and the widths a person gave the rail and the inspector by their
+    /// edges: none for a rail that follows the window.
     /// </summary>
-    private (double GraphShare, WorkspacePane? Expanded) PanesNow()
+    private (double GraphShare, WorkspacePane? Expanded, double? RailWidth, double? InspectorWidth) PanesNow()
     {
         RowDefinitions rows = PanesGrid.RowDefinitions;
         (GridLength graph, GridLength timeline) = expandedPane is null
@@ -1405,7 +1431,33 @@ public sealed partial class MainWindow : Window, IDisposable
             MainPane.Graph => WorkspacePane.Graph,
             MainPane.Timeline => WorkspacePane.Timeline,
             _ => null,
-        });
+        }, followedRailWidth is null ? WindowGrid.ColumnDefinitions[0].Width.Value : null, WindowGrid.ColumnDefinitions[2].Width.Value);
+    }
+
+    /// <summary>
+    /// A column beside the main panes changed its width. A width a person set by any means but a drag - which is kept once it
+    /// is let go - is kept once the columns have their widths; one the window fit to itself is not kept.
+    /// </summary>
+    private void SideColumnChanged(object? sender, AvaloniaPropertyChangedEventArgs change)
+    {
+        if (change.Property != ColumnDefinition.WidthProperty || layingPanes || fittingColumns)
+        {
+            return;
+        }
+
+        // A rail whose width a person changed no longer follows the window, from the change on.
+        if (ReferenceEquals(sender, WindowGrid.ColumnDefinitions[0]))
+        {
+            followedRailWidth = null;
+        }
+
+        if (draggingSplit || splitToKeep)
+        {
+            return;
+        }
+
+        splitToKeep = true;
+        Dispatcher.UIThread.Post(KeepSplit, DispatcherPriority.Background);
     }
 
     /// <summary>
@@ -2907,13 +2959,38 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>Lays the panes out as an investigation kept them: the graph's share of the height, and the pane filling the column.</summary>
-    private void PutBackPanes(WorkspacePanes panes) =>
+    private void PutBackPanes(WorkspacePanes panes)
+    {
         LayPanes(panes.Expanded switch
         {
             WorkspacePane.Graph => MainPane.Graph,
             WorkspacePane.Timeline => MainPane.Timeline,
             _ => null,
         }, (new GridLength(panes.GraphShare, GridUnitType.Star), new GridLength(1 - panes.GraphShare, GridUnitType.Star)));
+
+        // The columns take the widths a person gave them, a rail kept so no longer following the window; one kept at none
+        // follows the window again, or stands at its design width. The window then keeps the main panes their room, as it
+        // does as it narrows.
+        layingPanes = true;
+        ColumnDefinition rail = WindowGrid.ColumnDefinitions[0];
+        if (panes.RailWidth is { } width)
+        {
+            followedRailWidth = null;
+            rail.Width = new GridLength(width);
+        }
+        else
+        {
+            followedRailWidth = rail.Width.Value;
+        }
+
+        WindowGrid.ColumnDefinitions[2].Width = new GridLength(panes.InspectorWidth ?? WorkspacePanes.InspectorDesign);
+        layingPanes = false;
+        if (Bounds.Width > 0)
+        {
+            FollowRailWidth(Bounds.Width);
+            KeepMainPanesWidth(Bounds.Width);
+        }
+    }
 
     private void CountCorrelatedOnly(object? sender, RoutedEventArgs eventArgs) =>
         _ = ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCorrelated);
@@ -3151,8 +3228,8 @@ public sealed partial class MainWindow : Window, IDisposable
                 laneGrouping = kept.Settings.Grouping;
                 collectorsAside = kept.Settings.CollectorsAside;
                 keptPanes = kept.Panes is { } panes
-                    ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded)
-                    : (WorkspacePanes.EqualShare, null);
+                    ? (WorkspacePanes.Kept(panes.GraphShare), panes.Expanded, panes.RailWidth, panes.InspectorWidth)
+                    : (WorkspacePanes.EqualShare, null, null, null);
                 if (kept.Panes is { } put)
                 {
                     PutBackPanes(put);
@@ -3594,8 +3671,10 @@ public sealed partial class MainWindow : Window, IDisposable
         double width = Math.Clamp(Math.Round(windowWidth * 0.14), RailDesignWidth, RailWidestFollowed);
         if (Math.Abs(width - followed) > 0.5)
         {
+            fittingColumns = true;
             rail.Width = new GridLength(width);
             followedRailWidth = width;
+            fittingColumns = false;
         }
     }
 
@@ -3611,6 +3690,7 @@ public sealed partial class MainWindow : Window, IDisposable
         ColumnDefinition inspector = WindowGrid.ColumnDefinitions[2];
         double excess = rail.Width.Value + main.MinWidth + inspector.Width.Value - windowWidth;
         double fromInspector = Math.Clamp(excess, 0, inspector.Width.Value - inspector.MinWidth);
+        fittingColumns = true;
         if (fromInspector > 0)
         {
             inspector.Width = new GridLength(inspector.Width.Value - fromInspector);
@@ -3622,6 +3702,8 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             rail.Width = new GridLength(rail.Width.Value - fromRail);
         }
+
+        fittingColumns = false;
     }
 
     /// <summary>

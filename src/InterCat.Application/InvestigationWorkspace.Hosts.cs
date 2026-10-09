@@ -1,6 +1,6 @@
 namespace InterCat.Application;
 
-/// <summary>What a person decided of two host identities (`contracts/workspace-v19.md` §4).</summary>
+/// <summary>What a person decided of two host identities (`contracts/workspace-v20.md` §4).</summary>
 public enum WorkspaceHostDecision
 {
     /// <summary>A person confirmed the two are one host: a machine renamed or reinstalled, or a file imported from it.</summary>
@@ -141,7 +141,7 @@ public static partial class InvestigationWorkspace
 
     private static (Guid, Guid) HostPair(Guid a, Guid b) => a.CompareTo(b) <= 0 ? (a, b) : (b, a);
 
-    /// <summary>What makes a file's host confirmations contradict themselves, or null (`contracts/workspace-v19.md` §4).</summary>
+    /// <summary>What makes a file's host confirmations contradict themselves, or null (`contracts/workspace-v20.md` §4).</summary>
     private static string? HostProblem(InvestigationWorkspaceFile workspace)
     {
         // A person's confirmation that two hosts are one arrived with the seventh version (revision 266).
