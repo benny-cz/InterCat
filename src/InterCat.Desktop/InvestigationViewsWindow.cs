@@ -126,7 +126,23 @@ internal sealed class InvestigationViewsWindow : Window
                 new StackPanel { Orientation = Orientation.Horizontal, HorizontalAlignment = HorizontalAlignment.Right, Children = { close } },
             },
         };
-        Opened += (_, _) => Load();
+        Opened += (_, _) =>
+        {
+            Load();
+
+            // The first view has the keyboard, chosen, so Enter shows it; with none, the name to save the view shown under, or
+            // with nothing to save, Close. The dialog opened with the keyboard on nothing of its own.
+            if (views.ItemCount > 0)
+            {
+                views.SelectedIndex = 0;
+                Avalonia.Threading.Dispatcher.UIThread.Post(
+                    () => views.ContainerFromIndex(0)?.Focus(NavigationMethod.Tab), Avalonia.Threading.DispatcherPriority.Loaded);
+            }
+            else
+            {
+                (save.IsEnabled ? (Control)name : close).Focus(NavigationMethod.Tab);
+            }
+        };
     }
 
     /// <summary>The views listed, as the list holds them.</summary>

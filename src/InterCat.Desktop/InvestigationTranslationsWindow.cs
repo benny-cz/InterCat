@@ -70,9 +70,17 @@ internal sealed class InvestigationTranslationsWindow : Window
         close.Click += (_, _) => Close(Changed);
         KeyDown += (_, key) =>
         {
-            if (key.Key != Key.Escape) return;
-            Close(Changed);
-            key.Handled = true;
+            if (key.Key == Key.Escape)
+            {
+                Close(Changed);
+                key.Handled = true;
+            }
+            else if (key.Key == Key.Enter && (seen.IsKeyboardFocusWithin || actual.IsKeyboardFocusWithin || note.IsKeyboardFocusWithin))
+            {
+                // Enter in a field states the translation entered, as State translation does.
+                _ = StateAsync();
+                key.Handled = true;
+            }
         };
 
         Content = new StackPanel

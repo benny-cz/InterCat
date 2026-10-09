@@ -130,6 +130,10 @@ internal static class InvestigationKeys
         new("Timeline", "0", "show the whole investigation") { SpokenKeys = "Zero" },
         new("Notes", "Up or Down", "choose the previous or next note"),
         new("Notes", "Enter", "show the chosen note on the timeline, where it is pinned"),
+        new("A dialog", "Enter", "in one of its fields, do what the dialog is for: align, compare, state a translation or save "
+            + "a view"),
+        new("A dialog", "Ctrl+Enter", "save a note, whose words take Enter as a new line"),
+        new("A dialog", "Esc", "close it"),
     ]);
 }
 

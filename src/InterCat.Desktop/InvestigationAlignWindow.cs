@@ -112,10 +112,23 @@ internal sealed class InvestigationAlignWindow : Window
         cancel.Click += (_, _) => Close(false);
         KeyDown += (_, key) =>
         {
-            if (key.Key != Key.Escape) return;
-            Close(false);
-            key.Handled = true;
+            if (key.Key == Key.Escape)
+            {
+                Close(false);
+                key.Handled = true;
+            }
+            else if (key.Key == Key.Enter)
+            {
+                // Enter in a field aligns, as Align does; a button or a choice the keyboard is on, and an open list of
+                // sessions, take their own Enter first.
+                _ = AlignAsync();
+                key.Handled = true;
+            }
         };
+
+        // The way chosen to align has the keyboard as the dialog opens, which a screen reader says; Tab goes on to what it
+        // asks for. The dialog opened with the keyboard on nothing of its own.
+        Opened += (_, _) => new[] { byBoot, byWallClock, byInstant }.FirstOrDefault(choice => choice.IsChecked == true)?.Focus(NavigationMethod.Tab);
 
         Content = new StackPanel
         {

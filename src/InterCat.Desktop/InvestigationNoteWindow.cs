@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
@@ -77,6 +78,14 @@ internal sealed class InvestigationNoteWindow : Window
             Close(false);
             key.Handled = true;
         };
+
+        // Ctrl+Enter saves the note, as Save does: its words take Enter as a new line, before the window would see it.
+        AddHandler(KeyDownEvent, (_, key) =>
+        {
+            if (key.Key != Key.Enter || key.KeyModifiers != KeyModifiers.Control) return;
+            _ = SaveAsync();
+            key.Handled = true;
+        }, RoutingStrategies.Tunnel);
 
         var body = new StackPanel { Margin = new Thickness(18), Spacing = 10 };
         body.Children.Add(new TextBlock { Text = "Words", FontWeight = FontWeight.SemiBold });

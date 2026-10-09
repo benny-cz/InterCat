@@ -465,8 +465,10 @@ public sealed class InvestigationKeyboardTests
             // It lists this window's keys, not the main window's, each place's first row saying the place.
             IReadOnlyList<WindowKey> listed = InvestigationKeys.All;
             Assert.Same(listed, keys.ItemsSource);
-            Assert.Equal(["Anywhere", "A page's tab", "Sessions", "Candidate joins", "Timeline", "Notes"],
+            Assert.Equal(["Anywhere", "A page's tab", "Sessions", "Candidate joins", "Timeline", "Notes", "A dialog"],
                 listed.Where(key => key.Heads).Select(key => key.Where));
+            Assert.Equal("A dialog. Enter: in one of its fields, do what the dialog is for: align, compare, state a translation or "
+                + "save a view.", listed.Single(key => key is { Where: "A dialog", Heads: true }).AccessibleName);
             Assert.Equal("Anywhere. F1: list the keys this window takes.", AutomationProperties.GetName(keys.ContainerFromIndex(0)!));
             int pages = listed.ToList().FindIndex(key => key.Keys == "Ctrl+Tab or Ctrl+Shift+Tab");
             Assert.Equal("Ctrl+Tab or Ctrl+Shift+Tab: show the next or previous page: the sessions, the candidate joins, the "
