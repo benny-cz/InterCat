@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 
@@ -22,4 +23,20 @@ internal sealed class CanvasAutomationPeer(Control owner, string role, string he
     protected override bool IsContentElementCore() => true;
 
     protected override bool IsControlElementCore() => true;
+
+    /// <summary>
+    /// Renames a drawn pane, and tells a screen reader, which says a focused element's new name once told of it: a
+    /// control's peer does not report the change of its own accord. With no peer, nothing is listening.
+    /// </summary>
+    internal static void Rename(Control owner, string spoken)
+    {
+        string? said = AutomationProperties.GetName(owner);
+        if (string.Equals(said, spoken, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        AutomationProperties.SetName(owner, spoken);
+        FromElement(owner)?.RaisePropertyChangedEvent(AutomationElementIdentifiers.NameProperty, said, spoken);
+    }
 }

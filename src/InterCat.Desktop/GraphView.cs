@@ -1,8 +1,11 @@
+using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Rendering;
@@ -106,6 +109,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private string? problemFor;
     private string? problemText;
     private int keyboardIndex;
+    private WorkspaceViewModel? observed;
 
     /// <summary>The graph's brushes and pens in one theme mode, from its verified tokens (§6.6).</summary>
     private sealed class Ink
@@ -802,8 +806,51 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     protected override void OnDataContextChanged(EventArgs e)
     {
         base.OnDataContextChanged(e);
+        if (observed is not null)
+        {
+            observed.PropertyChanged -= OnViewModelChanged;
+        }
+
+        observed = DataContext as WorkspaceViewModel;
+        if (observed is not null)
+        {
+            observed.PropertyChanged += OnViewModelChanged;
+        }
+
         RefreshHover();
+        SayNode();
     }
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        SayNode();
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        SayNode();
+    }
+
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName is nameof(WorkspaceViewModel.SelectedGraphNodeKey) or nameof(WorkspaceViewModel.GraphDisplay))
+        {
+            SayNode();
+        }
+    }
+
+    /// <summary>
+    /// Names the graph by the node its keyboard is on - the one selected - while it has the keyboard, in the words its card
+    /// titles and describes the node with, as a screen reader names a list's focused row (R15). The arrows move the
+    /// selection from node to node, and the canvas has no item for each node to take the focus, so the arrows said
+    /// nothing. Elsewhere the graph keeps its own name, and describes no node it is not on.
+    /// </summary>
+    private void SayNode() => CanvasAutomationPeer.Rename(this, IsKeyboardFocusWithin && DataContext is WorkspaceViewModel viewModel
+        && viewModel.SelectedGraphNodeKey is { } key && viewModel.DescribeGraphHover(key) is { Lines.Count: > 0 } card
+            ? $"{SpokenName}: {card.Title}, {card.Lines[0]}"
+            : SpokenName);
 
     /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
     private string? EdgeHitTest(WorkspaceViewModel viewModel, Point pointer)
@@ -1244,8 +1291,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// </summary>
     bool ICustomHitTest.HitTest(Point point) => new Rect(Bounds.Size).Contains(point);
 
+    /// <summary>The graph's own name, which the node its keyboard is on follows while the graph has the keyboard.</summary>
+    internal const string SpokenName = "Communication graph";
+
     public GraphView()
     {
+        AutomationProperties.SetName(this, SpokenName);
         DoubleTapped += OpenGroup;
 
         // A banner or a resized pane moves the graph under a pointer that stays where it is.

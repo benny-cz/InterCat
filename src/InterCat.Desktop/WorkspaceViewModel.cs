@@ -6312,6 +6312,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             PropertyChanged?.Invoke(this, new(nameof(EvidenceSummary)));
             PropertyChanged?.Invoke(this, new(nameof(SelectionTitle)));
             PropertyChanged?.Invoke(this, new(nameof(SelectionSubtitle)));
+            PropertyChanged?.Invoke(this, new(nameof(IntervalSpoken)));
         }
 
         if (IsCellExplanationInput(propertyName) || propertyName is nameof(EvidenceSummary) or nameof(EvidenceHeading))

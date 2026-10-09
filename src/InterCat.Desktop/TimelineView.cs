@@ -1,9 +1,11 @@
 using System.ComponentModel;
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
@@ -275,8 +277,12 @@ public sealed class TimelineView : Control, IHoverCardSource
                 + reads.Range(extent, CultureInfo.CurrentCulture);
     }
 
+    /// <summary>The timeline's own name, which the analysis interval follows while the timeline has the keyboard.</summary>
+    internal const string SpokenName = "Activity timeline";
+
     public TimelineView()
     {
+        AutomationProperties.SetName(this, SpokenName);
         detailTimer = new DispatcherTimer { Interval = DetailSettle };
         detailTimer.Tick += (_, _) => RequestDetailNow();
         DoubleTapped += ZoomAtDoubleClick;
@@ -601,6 +607,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         InvalidateVisual();
         DrawingMovedUnderPointer();
         ViewportChanged?.Invoke(this, EventArgs.Empty);
+        SayInterval();
     }
 
     protected override void OnSizeChanged(SizeChangedEventArgs e)
@@ -1250,7 +1257,36 @@ public sealed class TimelineView : Control, IHoverCardSource
         public override int GetHashCode() => HashCode.Combine(Row, Peak);
     }
 
-    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e) => cardKey = null;
+    private void OnViewModelChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        cardKey = null;
+        if (e.PropertyName == nameof(WorkspaceViewModel.IntervalSpoken))
+        {
+            SayInterval();
+        }
+    }
+
+    protected override void OnGotFocus(GotFocusEventArgs e)
+    {
+        base.OnGotFocus(e);
+        SayInterval();
+    }
+
+    protected override void OnLostFocus(RoutedEventArgs e)
+    {
+        base.OnLostFocus(e);
+        SayInterval();
+    }
+
+    /// <summary>
+    /// Names the timeline by the analysis interval while it has the keyboard - its range, and the cell's row and records
+    /// where it is one - so a screen reader says where [ and ] stepped to, or a click or the search chose, as the
+    /// inspector titles it (R15). Its status said the interval only when asked for. A pan or a zoom is not said: the
+    /// status reads the range in view when asked. Elsewhere the timeline keeps its own name.
+    /// </summary>
+    private void SayInterval() => CanvasAutomationPeer.Rename(this, IsKeyboardFocusWithin && observed?.IntervalSpoken is { } said
+        ? $"{SpokenName}: {said}"
+        : SpokenName);
 
     /// <inheritdoc />
     /// <remarks>The resting pointer in this control's coordinates as it lies now, however the control moved under it.</remarks>

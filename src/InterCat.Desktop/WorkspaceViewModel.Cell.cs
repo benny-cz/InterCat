@@ -330,6 +330,16 @@ public sealed partial class WorkspaceViewModel
             ? CellLaneName(ExplainedLane) + " · " + Counted(cell.Bucket.ObservationCount, "record", "records")
         : "The analysis interval: the ranking, the graph and E count only what it holds";
 
+    /// <summary>
+    /// The analysis interval as the timeline says it while it has the keyboard: its range, and the cell's row and records
+    /// where it is one, as the inspector titles them, said with commas; null without one.
+    /// </summary>
+    public string? IntervalSpoken => selectedInterval is not { } interval ? null
+        : TimeBase.Range(interval, CultureInfo.CurrentCulture)
+            + (CellOf(ExplainedLane, interval) is { } cell
+                ? ", " + CellLaneName(ExplainedLane) + ", " + Counted(cell.Bucket.ObservationCount, "record", "records")
+                : ", the analysis interval");
+
     /// <summary>The row a cell lies in, in the words its label on the timeline uses.</summary>
     private string CellLaneName(TimelineCellLane lane) =>
         lane.Mechanism is { } mechanism ? EvidenceRowText.MechanismName(mechanism) + " lane"

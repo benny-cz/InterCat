@@ -621,8 +621,8 @@
               </ToggleButton>
             </Grid>
           </Border>
-          <local:GraphView x:Name="GraphSurface" Grid.Row="1" Focusable="True"
-                           AutomationProperties.Name="Communication graph" />
+          <!-- Named by the graph itself, by the node its keyboard is on while it has the keyboard. -->
+          <local:GraphView x:Name="GraphSurface" Grid.Row="1" Focusable="True" />
         </Grid>
       </Border>
 
@@ -673,8 +673,8 @@
           <!-- The plot handles time gestures; the left lane-label gutter lets the parent scroll long lane lists. -->
           <ScrollViewer x:Name="TimelineLaneScroller" Grid.Row="1" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"
                         AutomationProperties.Name="Timeline lanes; scroll over the lane names for more rows">
-            <local:TimelineView x:Name="TimelineSurface" Focusable="True"
-                                AutomationProperties.Name="Activity timeline" />
+            <!-- Named by the timeline itself, by the analysis interval while it has the keyboard. -->
+            <local:TimelineView x:Name="TimelineSurface" Focusable="True" />
           </ScrollViewer>
           <Border Grid.Row="2" BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
             <local:MinimapView x:Name="MinimapSurface" Margin="0,4,0,2" Focusable="True"

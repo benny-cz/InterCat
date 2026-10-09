@@ -373,6 +373,119 @@ public sealed class KeyboardWorkflowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: the graph says the node its arrows move to, as a list says its row, and only its own name once the keyboard leaves")]
+    public async Task TheGraphSaysTheNodeItsKeyboardIsOn()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(graph);
+        var said = new List<string?>();
+        peer.PropertyChanged += (_, changed) =>
+        {
+            if (changed.Property == AutomationElementIdentifiers.NameProperty) said.Add(changed.NewValue as string);
+        };
+
+        // F6 twice gives the graph the keyboard; with nothing chosen it says its own name.
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Assert.True(graph.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal("Communication graph", peer.GetName());
+
+        // An arrow moves to a node: the graph is named by it, in its card's words, and a screen reader is told.
+        Press(window, PhysicalKey.ArrowRight);
+        string first = Assert.IsType<string>(workspace.SelectedGraphNodeKey);
+        Assert.Equal(Spoken(workspace, first), peer.GetName());
+        Assert.Equal(peer.GetName(), said[^1]);
+
+        // The next arrow moves on, and the name with it.
+        Press(window, PhysicalKey.ArrowRight);
+        string second = Assert.IsType<string>(workspace.SelectedGraphNodeKey);
+        Assert.NotEqual(first, second);
+        Assert.Equal(Spoken(workspace, second), peer.GetName());
+        Assert.Equal(peer.GetName(), said[^1]);
+
+        // F6 moves the keyboard on: the graph keeps its own name, describing no node it is not on, though one is chosen.
+        Press(window, PhysicalKey.F6);
+        Assert.False(graph.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(second, workspace.SelectedGraphNodeKey);
+        Assert.Equal("Communication graph", peer.GetName());
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the timeline says the moment [ and ] step to, its row and records, and only its own name once the keyboard leaves")]
+    public async Task TheTimelineSaysTheMomentItsKeysStepTo()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(timeline);
+        var said = new List<string?>();
+        peer.PropertyChanged += (_, changed) =>
+        {
+            if (changed.Property == AutomationElementIdentifiers.NameProperty) said.Add(changed.NewValue as string);
+        };
+
+        // client.exe's process is opened, and F6 twice gives the timeline the keyboard, which says its own name.
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.Enter);
+        Press(window, PhysicalKey.Enter);
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        Assert.True(timeline.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal("Activity timeline", peer.GetName());
+
+        // ] steps to the first moment the process holds records: the timeline says its range, the cell's row and its
+        // records, as the inspector titles the cell, and a screen reader is told.
+        Press(window, PhysicalKey.BracketRight);
+        await workspace.IntervalReady;
+        Dispatch();
+        string first = Assert.IsType<string>(workspace.IntervalSpoken);
+        Assert.StartsWith(workspace.TimeBase.Range(Assert.IsType<TimeRange>(workspace.SelectedInterval),
+            System.Globalization.CultureInfo.CurrentCulture) + ", ", first, StringComparison.Ordinal);
+        Assert.Matches(@", [\d,]+ records?$", first);
+        Assert.Equal("Activity timeline: " + first, peer.GetName());
+        Assert.Equal(peer.GetName(), said[^1]);
+
+        // ] again steps on, and the name with it.
+        Press(window, PhysicalKey.BracketRight);
+        await workspace.IntervalReady;
+        Dispatch();
+        string second = Assert.IsType<string>(workspace.IntervalSpoken);
+        Assert.NotEqual(first, second);
+        Assert.Equal("Activity timeline: " + second, peer.GetName());
+        Assert.Equal(peer.GetName(), said[^1]);
+
+        // F6 moves the keyboard on: the timeline keeps its own name, though the moment stays chosen.
+        Press(window, PhysicalKey.F6);
+        Assert.False(timeline.IsKeyboardFocusWithin, Focused(window));
+        Assert.NotNull(workspace.SelectedInterval);
+        Assert.Equal("Activity timeline", peer.GetName());
+        window.Close();
+    }
+
+    private static string Spoken(WorkspaceViewModel workspace, string node)
+    {
+        HoverCard card = Assert.IsType<HoverCard>(workspace.DescribeGraphHover(node));
+        return $"Communication graph: {card.Title}, {card.Lines[0]}";
+    }
+
     [AvaloniaFact(DisplayName = "R15: a rung with no rows gives the reason it has none the keyboard, which F6 reaches as the rail")]
     public async Task F6ReachesAnEmptyRungsReason()
     {
