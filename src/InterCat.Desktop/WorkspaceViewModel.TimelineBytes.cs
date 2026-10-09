@@ -478,9 +478,9 @@ public sealed partial class WorkspaceViewModel
         bool fine = zoomedLane?.For(bucket.Interval) is not null;
         long generation = fine ? plotted.Zoomed!.Generation : plotted.Overview.Generation;
         string resolution = (fine
-                ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own bytes, {zoomedLane!.Columns.Count:N0} buckets")
+                ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own bytes, {zoomedLane!.Columns.Count:N0} columns")
                 : string.Create(CultureInfo.CurrentCulture,
-                    $"Resolution: the overview's {plotted.Overview.Lanes[0].Columns.Count:N0} buckets over the whole session"))
+                    $"Resolution: the overview's {plotted.Overview.Lanes[0].Columns.Count:N0} columns over the whole session"))
             + GenerationNote(generation);
         string domain = plotted.Metric switch
         {
@@ -502,7 +502,7 @@ public sealed partial class WorkspaceViewModel
         SessionIntervalByteMeasures? lane = plotted.Measures.Of(owner.Id);
         string mechanism = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(bucket.DominantMechanism)).Label;
         string resolution = string.Create(CultureInfo.CurrentCulture,
-                $"Resolution: the lanes' own bytes, {plotted.Measures.Lanes[0].Columns.Count:N0} buckets")
+                $"Resolution: the lanes' own bytes, {plotted.Measures.Lanes[0].Columns.Count:N0} columns")
             + (plotted.Measures.Lanes[0].Columns.Count < plotted.Measures.Machine.Columns.Count
                 ? string.Create(CultureInfo.CurrentCulture,
                     $", coarser than the view's so the group's {plotted.Measures.Lanes.Count:N0} lanes stay within ")
@@ -530,7 +530,7 @@ public sealed partial class WorkspaceViewModel
         string owner = wholeSnapshot.Processes.FirstOrDefault(process => process.Id == plotted.Measures.Owner)?.NameWithPid
             ?? "instance " + plotted.Measures.Owner.ToString()[..8];
         string resolution = string.Create(CultureInfo.CurrentCulture,
-                $"Resolution: the rows' own bytes, {plotted.Measures.Machine.Columns.Count:N0} buckets")
+                $"Resolution: the rows' own bytes, {plotted.Measures.Machine.Columns.Count:N0} columns")
             + GenerationNote(plotted.Measures.Generation);
         string records = plotted.Metric switch
         {
@@ -551,7 +551,7 @@ public sealed partial class WorkspaceViewModel
         SessionIntervalByteMeasures machine, long generation)
     {
         string resolution = string.Create(CultureInfo.CurrentCulture,
-                $"Resolution: the machine row's bytes, {machine.Columns.Count:N0} buckets")
+                $"Resolution: the machine row's bytes, {machine.Columns.Count:N0} columns")
             + GenerationNote(generation);
         string domain = metric switch
         {
@@ -589,7 +589,7 @@ public sealed partial class WorkspaceViewModel
             bucket.ObservationCount == 0
                 ? bucket.Coverage == CoverageState.Covered
                     ? "No record observed · the capture covered this interval, so nothing it collects happened here"
-                    : "No record observed · an empty bucket is not proof of inactivity"
+                    : "No record observed · an empty cell is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · {row}",
             $"Basis: source observations · unit: bytes · domain: transport-observed bytes of {domain} · accounting: {accounting}",
         };

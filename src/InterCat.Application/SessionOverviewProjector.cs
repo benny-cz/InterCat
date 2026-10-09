@@ -291,7 +291,7 @@ public static class SessionOverviewProjector
                 ? "The timeline counts observed rows only. This legacy generation publishes no coverage ledger, "
                     + "so its coverage is unknown; an empty interval is not proof of inactivity."
                 : "Timeline coverage describes the captured mechanisms of observed rows within the ledger's "
-                    + "delivered readings. An empty bucket takes the capture's own coverage there: quiet where a live "
+                    + "delivered readings. An empty interval takes the capture's own coverage there: quiet where a live "
                     + "capture's sources covered it, unknown where the ledger cannot say, as an import's cannot. Source "
                     + "loss has no finer location than its epoch, and coverage does not prove a graph relationship complete.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "

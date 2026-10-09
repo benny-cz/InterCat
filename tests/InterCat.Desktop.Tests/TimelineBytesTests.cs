@@ -64,7 +64,7 @@ public sealed class TimelineBytesTests
             + $"busiest mechanism lane in this time view, {WorkspaceRowBuilder.DescribeByteRate(2_000)} (shared scale)", sent);
         Assert.Contains("Unmeasured: none; every send here recorded its size", sent);
         Assert.Contains($"Bytes: {WorkspaceRowBuilder.DescribeSize(500)} sent · no receive recorded", sent);
-        Assert.Contains($"Resolution: the overview's {workspace.WholeSnapshot.Timeline.Count} buckets over the whole session", sent);
+        Assert.Contains($"Resolution: the overview's {workspace.WholeSnapshot.Timeline.Count} columns over the whole session", sent);
         Assert.Contains("Plotted: 0 B sent on 1 measured send", Card(13));
         List<string> blind = Card(14);
         Assert.Contains("Plotted: unmeasured, drawn cross-hatched · 1 send recorded no size, so the value is unknown, not zero", blind);
@@ -92,7 +92,7 @@ public sealed class TimelineBytesTests
         TimelineBucket fine = workspace.TimelineDetail!.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets[0];
         List<string> fineCard = [.. workspace.DescribeTimelineHover(fine, 2_000, lane: Mechanism.Tcp).Lines];
         Assert.Contains($"Plotted: {WorkspaceRowBuilder.DescribeSize(750)} sent on 2 measured sends", fineCard);
-        Assert.Contains("Resolution: this view's own bytes, 3 buckets", fineCard);
+        Assert.Contains("Resolution: this view's own bytes, 3 columns", fineCard);
 
         // The whole session again: the overview's columns answer it, and the zoomed ones are not drawn.
         workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
@@ -138,7 +138,7 @@ public sealed class TimelineBytesTests
         TimelineBucket sent = workspace.TimelineDetail!.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets
             .First(bucket => bucket.ObservationCount > 0);
         Assert.Equal(((long?)500, 1L, 0L), plotted.Of(Mechanism.Tcp, sent.Interval)!.ValueOf(RankingMetric.BytesSent));
-        Assert.Contains("Resolution: this view's own bytes, 128 buckets",
+        Assert.Contains("Resolution: this view's own bytes, 128 columns",
             workspace.DescribeTimelineHover(sent, 2_000, lane: Mechanism.Tcp).Lines);
 
         // Drawn no finer than the overview, its columns answer the whole session again.
@@ -196,7 +196,7 @@ public sealed class TimelineBytesTests
         Assert.Contains($"Plotted: {WorkspaceRowBuilder.DescribeSize(500)} sent on 1 measured send", lane);
         Assert.Contains($"Rate: {WorkspaceRowBuilder.DescribeByteRate(500d * WorkspaceTime.TicksPerSecond)} · height against the "
             + $"busiest visible lane including machine context, {WorkspaceRowBuilder.DescribeByteRate(2_000)} (shared scale)", lane);
-        Assert.Contains($"Resolution: the lanes' own bytes, {workspace.ProcessLaneDisplay[0].Buckets.Count} buckets", lane);
+        Assert.Contains($"Resolution: the lanes' own bytes, {workspace.ProcessLaneDisplay[0].Buckets.Count} columns", lane);
 
         // The machine row's card: every record's sends, which the lanes are not added up to.
         List<string> machine = [.. workspace.DescribeTimelineHover(blind, 2_000).Lines];
@@ -204,6 +204,8 @@ public sealed class TimelineBytesTests
         Assert.Contains("Plotted: unmeasured, drawn cross-hatched · 1 send recorded no size, so the value is unknown, not zero", machine);
         Assert.Contains("Basis: source observations · unit: bytes · domain: transport-observed bytes of every send record with a "
             + "session time · accounting: sender-accounted", machine);
+        Assert.Contains(machine, line => line.StartsWith("Resolution: the machine row's bytes, ", StringComparison.Ordinal)
+            && line.Contains(" columns", StringComparison.Ordinal));
 
         // Records bring the record lanes back.
         workspace.RankBy = RankingMetric.Records;
@@ -259,6 +261,8 @@ public sealed class TimelineBytesTests
             + $"session time canonically owned by {sender.NameWithPid}, marked outbound · accounting: sender-accounted", row);
         Assert.Contains($"Plotted: {WorkspaceRowBuilder.DescribeSize(500)} sent on 1 measured send", row);
         Assert.Contains(row, line => line.StartsWith("Direction: outbound, as the source marks sends", StringComparison.Ordinal));
+        Assert.Contains(row, line => line.StartsWith("Resolution: the rows' own bytes, ", StringComparison.Ordinal)
+            && line.Contains(" columns", StringComparison.Ordinal));
         Assert.Contains("1 observed record · machine context, not added to the lanes",
             workspace.DescribeTimelineHover(blind, 2_000).Lines);
 

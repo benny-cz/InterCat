@@ -53,7 +53,7 @@ public sealed class TimeBuckets
         {
             throw new ArgumentOutOfRangeException(
                 nameof(widthTicks),
-                "The requested width would produce more buckets than a session may hold.");
+                "The requested width would produce more columns than a session may hold.");
         }
 
         return new(extent.StartTicks, widthTicks, (int)count);

@@ -124,7 +124,7 @@ public sealed class CoarserLanesWindowTests
         window.MouseMove(new Point(at.X + 1, at.Y));
         Dispatch();
         Assert.Equal(cell, timeline.HoveredBucket);
-        Assert.Equal("This bucket is the analysis interval", Assert.IsType<HoverCard>(timeline.HoverCard).Lines[^1]);
+        Assert.Equal("This cell is the analysis interval", Assert.IsType<HoverCard>(timeline.HoverCard).Lines[^1]);
 
         // The inspector says, beneath the time scope, whose records the cell counts and the columns they were counted in.
         ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);

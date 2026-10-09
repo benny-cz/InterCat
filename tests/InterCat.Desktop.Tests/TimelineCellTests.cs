@@ -43,7 +43,7 @@ public sealed class TimelineCellTests
 
         // A click on a TCP cell makes its interval the analysis interval, explained as a cell of the TCP lane.
         workspace.ChooseTimelineCell(first, Mechanism.Tcp);
-        Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(first, 1, lane: Mechanism.Tcp).Lines[^1]);
+        Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(first, 1, lane: Mechanism.Tcp).Lines[^1]);
         Assert.Equal(first.Interval, workspace.SelectedInterval);
         Assert.Equal(Counted(first.ObservationCount, "TCP record") + $" {Have(first.ObservationCount)} a session time in this interval: every TCP record, "
             + "whichever process it is bound to." + Count + Placement + overview + Unplaced + Unknown, workspace.CellExplanation);
@@ -155,7 +155,7 @@ public sealed class TimelineCellTests
         // The cell itself becomes the analysis interval, not the machine column beneath it, and its card says so.
         workspace.ChooseTimelineCell(cell, ownerLane: owner);
         Assert.Equal(cell.Interval, workspace.SelectedInterval);
-        Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(cell, 1, ownerLane: owner).Lines[^1]);
+        Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(cell, 1, ownerLane: owner).Lines[^1]);
         string cells = 20_000.ToString("N0", CultureInfo.CurrentCulture);
         Assert.Equal(Counted(cell.ObservationCount, "record") + $" {Have(cell.ObservationCount)} a session time in this interval "
             + $"and {Is(cell.ObservationCount)} bound to {owner.NameWithPid}, {Its(cell.ObservationCount)} canonical owner, by "
@@ -485,7 +485,59 @@ public sealed class TimelineCellTests
         Assert.Equal(workspace.SelectedProcess.Name, workspace.SelectionTitle);
         workspace.ClearSelection();
         Assert.Equal("Nothing selected", workspace.SelectionTitle);
-        Assert.Equal("Choose a node, ranked row, or timeline bucket.", workspace.SelectionSubtitle);
+        Assert.Equal("Choose a node, a ranked row or a timeline cell.", workspace.SelectionSubtitle);
+    });
+
+    [Fact(DisplayName = "R5: a timeline card at every rung's lanes says cell and column, never bucket, as the inspector does")]
+    public void TimelineCardsSayCellAndColumn() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        var cards = new List<HoverCard>();
+
+        // A mechanism's lane, a quiet cell of it, and the cell a click chose, which its card names as such.
+        TimelineBucket tcp = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        cards.Add(workspace.DescribeTimelineHover(tcp, 1, lane: Mechanism.Tcp));
+        cards.Add(workspace.DescribeTimelineHover(Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount == 0), 1,
+            lane: Mechanism.Tcp));
+        workspace.ChooseTimelineCell(tcp, Mechanism.Tcp);
+        await workspace.CellRecordsReady;
+        Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(tcp, 1, lane: Mechanism.Tcp).Lines[^1]);
+        workspace.ClearSelection();
+        Assert.Equal("Choose a node, a ranked row or a timeline cell.", workspace.SelectionSubtitle);
+
+        // The machine row above a group's lanes, a process's direction row and a channel's end, zoomed.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        DescendTo(workspace, client.GroupKey);
+        await workspace.TimelineDetailReady;
+        cards.Add(workspace.DescribeTimelineHover(workspace.TimelineDetail!.Buckets.First(bucket => bucket.ObservationCount > 0), 1));
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+        cards.Add(workspace.DescribeTimelineHover(workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound)
+            .Buckets.First(bucket => bucket.ObservationCount > 0), 1, directionLane: Direction.Outbound));
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        ChannelEndTimelineLane end = workspace.TimelineChannelEndLanes![0];
+        cards.Add(workspace.DescribeTimelineHover(end.Buckets.First(bucket => bucket.ObservationCount > 0), 1, endLane: end));
+
+        // A process's lane among its group's.
+        using var pool = new TemporarySession();
+        Publish(pool.Store, Pool(3));
+        using WorkspaceViewModel group = Open(pool);
+        DescendTo(group, group.Snapshot.Processes.First(node => node.ProcessId == 2_000).GroupKey);
+        group.RequestTimelineDetail(new TimeRange(group.Snapshot.Extent.StartTicks + 1, group.Snapshot.Extent.EndTicks), 1_000);
+        await group.TimelineDetailReady;
+        ProcessTimelineLane owned = group.ProcessLaneDisplay[0];
+        cards.Add(group.DescribeTimelineHover(owned.Buckets.First(bucket => bucket.ObservationCount > 0), 1,
+            ownerLane: group.Snapshot.Processes.Single(node => node.Id == owned.ProcessId)));
+
+        Assert.All(cards.SelectMany(card => card.Lines), line => Assert.DoesNotContain("bucket", line, StringComparison.OrdinalIgnoreCase));
+        Assert.All(cards, card => Assert.Contains(card.Lines,
+            line => line.StartsWith("Resolution: ", StringComparison.Ordinal) && line.Contains(" columns", StringComparison.Ordinal)));
+        Assert.Contains("an empty cell is not proof of inactivity", cards[1].Lines[0], StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "§6.4: the inspector's title follows the lane an interval is explained in, as one is selected or a cell is restored in another")]

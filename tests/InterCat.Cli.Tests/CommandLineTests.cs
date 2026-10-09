@@ -2712,7 +2712,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +not collected$", answer);
         Assert.Matches(@"(?m)^  2\.0 – 3\.0 µs +0 +- +unknown$", answer);
         Assert.Matches(@"(?m)^  5\.0 – 6\.0 µs +0 +- +not collected$", answer);
-        Assert.DoesNotContain("has no bucket", answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("has no column", answer, StringComparison.Ordinal);
 
         // TCP's quiet columns are covered: nothing it collects happened there.
         (code, answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6", "--mechanism", "tcp");
@@ -2720,6 +2720,28 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  Records +TCP records$", answer);
         Assert.Matches(@"(?m)^  0\.0 – 1\.0 µs +0 +- +covered$", answer);
         Assert.Matches(@"(?m)^  1\.0 – 2\.0 µs +1 +TCP +covered$", answer);
+    }
+
+    [Fact(DisplayName = "R5: icat timeline says interval and column as its table and the window do, never bucket, in its notes and both helps")]
+    public async Task TheTimelineSaysIntervalAndColumn()
+    {
+        using TemporarySession gapped = Gapped();
+
+        // The table's rows are headed Interval, and its note on an empty one says interval too.
+        (InterCatExitCode code, string answer, _) = await Run("timeline", gapped.Path, "--interval", "0:60", "--columns", "6");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("An empty interval's coverage is the capture's there: covered means nothing it collects happened",
+            answer, StringComparison.Ordinal);
+        Assert.DoesNotContain("bucket", answer, StringComparison.OrdinalIgnoreCase);
+
+        // Its own help says its columns partition the interval; icat's help says what an empty interval's coverage is.
+        string own = (await Run("timeline", "--help")).Output;
+        Assert.Contains("Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them.", own,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("bucket", own, StringComparison.OrdinalIgnoreCase);
+        string all = (await Run("--help")).Output;
+        Assert.Contains("An empty interval's coverage is the capture's.", all, StringComparison.Ordinal);
+        Assert.DoesNotContain("bucket", all, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(DisplayName = "R5: icat's tables name a mechanism, a record's kind and layer, a coverage state and a capability as the window does, never by the enumeration")]

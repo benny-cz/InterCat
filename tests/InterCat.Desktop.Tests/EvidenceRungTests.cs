@@ -288,14 +288,14 @@ public sealed class EvidenceRungTests
         Assert.StartsWith("Rate: ", card.Lines[3], StringComparison.Ordinal);
         Assert.EndsWith("height against the busiest visible bar, " + TimelineView.RateText(1_000), card.Lines[3],
             StringComparison.Ordinal);
-        Assert.Equal("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket", card.Lines[4]);
+        Assert.Equal("Unmeasured: none in this cell; a record without a usable session time is placed in no column", card.Lines[4]);
         Assert.Equal("Bytes: not summed by the timeline · the interval table (T) reads those of what it lists", card.Lines[5]);
         Assert.StartsWith("Coverage: ", card.Lines[6], StringComparison.Ordinal);
-        Assert.Equal("Resolution: this view's own count, 80 buckets", card.Lines[7]);
+        Assert.Equal("Resolution: this view's own count, 80 columns", card.Lines[7]);
 
         // A bucket that is the analysis interval says so instead of offering the click that would make it one.
         workspace.SelectInterval(bucket.Interval);
-        Assert.Equal("This bucket is the analysis interval", workspace.DescribeTimelineHover(bucket, 1_000).Lines[^1]);
+        Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(bucket, 1_000).Lines[^1]);
     });
 
     [Fact(DisplayName = "§3.2/§6.2: an instance's source-direction rows state their domain and scope the table, and survive a refresh")]

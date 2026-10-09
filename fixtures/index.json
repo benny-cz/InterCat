@@ -1824,15 +1824,18 @@
         "R5: a mechanism and a coverage state each have one set of names, for a lane, a sentence and a label",
         "R5: a mechanism's coverage is said in one sentence form wherever a layer states it, never as an enumeration's name",
         "R5: a record's kind and layer, a missing field's reason and a capability's state, tier and overhead each read as words",
+        "R5: a timeline card at every rung's lanes says cell and column, never bucket, as the inspector does",
         "R5: an accounting reads as the window labels it, its meaning after the label, an unknown one by its number",
         "R5: an operation's state reads as a call's does, and the tour's operations name their kind, direction and state in words",
         "R5: icat metric names its basis, byte domain and accounting in the words the window uses, never by the enumeration",
         "R5: icat metric states its coverage in the inspector's words, and names a mechanism as the window does",
         "R5: icat operations, exchanges and processes say why a group belongs to no process, in the window's words",
         "R5: icat overview and icat processes number a reused PID's holders alike, as the window does",
+        "R5: icat timeline says interval and column as its table and the window do, never bucket, in its notes and both helps",
         "R5: icat's tables name a mechanism, a record's kind and layer, a coverage state and a capability as the window does, never by the enumeration",
         "R5: initial normative wire codes stay stable",
         "R5: the manifest parser resolves descriptors, keyword masks and template fields",
+        "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket",
         "R5: why a record binds to no process reads in one set of words, the window's and icat's, an unknown reason by its number"
       ],
       "R6": [

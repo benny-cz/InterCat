@@ -3608,7 +3608,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : SelectedGroup is { } group ? DescribeGroup(group)
         : DescribesOpened ? OpenedSubtitle
         : selectedProcess is null
-            ? IntervalSubtitle ?? "Choose a node, ranked row, or timeline bucket."
+            ? IntervalSubtitle ?? "Choose a node, a ranked row or a timeline cell."
             : selectedProcess.Caption;
 
     /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
@@ -3946,7 +3946,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             bucket.ObservationCount == 0
                 ? bucket.Coverage == CoverageState.Covered
                     ? "No record observed · the capture covered this interval, so nothing it collects happened here"
-                    : "No record observed · an empty bucket is not proof of inactivity"
+                    : "No record observed · an empty cell is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + (ownerLane is { } owner
                         ? $" · {owner.NameWithPid} lane"
@@ -4025,7 +4025,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             bucket.ObservationCount == 0
                 ? bucket.Coverage == CoverageState.Covered
                     ? "No record observed · the capture covered this interval, so nothing it collects happened here"
-                    : "No record observed · an empty bucket is not proof of inactivity"
+                    : "No record observed · an empty cell is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records") + $" · folded lane: {FoldedLaneLabel}",
             "Basis: source observations · unit: records · domain: records canonically owned by the "
                 + $"{FoldedLaneLabel} of this group, its least busy, folded into one lane past the "
@@ -4063,7 +4063,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             bucket.ObservationCount == 0
                 ? bucket.Coverage == CoverageState.Covered
                     ? "No record observed at this end · the capture covered this interval, so nothing it collects happened here"
-                    : "No record observed at this end · an empty bucket is not proof of inactivity"
+                    : "No record observed at this end · an empty cell is not proof of inactivity"
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + $" · the {end.Endpoint} end, held by {holder}",
             $"Basis: source observations · unit: records · domain: records made at {end.Endpoint}, the end of this "
@@ -4094,7 +4094,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private HoverCard FinishTimelineHover(TimelineBucket bucket, bool zoomed, List<string> lines, IntervalByteScope scope,
         string? resolution = null, string? unmeasured = null, TransportBytes? plotted = null, string? bytes = null)
     {
-        lines.Add(unmeasured ?? "Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket");
+        lines.Add(unmeasured ?? "Unmeasured: none in this cell; a record without a usable session time is placed in no column");
         lines.Add(bytes ?? (bucket.KnownBytes is { } known ? "Bytes: " + WorkspaceRowBuilder.DescribeBytes(known)
             : plotted is not null ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(plotted)
             : ReadBytesOf(scope, bucket.Interval) is { } read ? "Bytes: " + WorkspaceRowBuilder.DescribeTransfers(read)
@@ -4103,13 +4103,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         lines.Add("Coverage: " + CoverageStateText.Value(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered ? string.Empty : " · drawn hatched"));
         lines.Add(resolution ?? (zoomed
-            ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own count, {timelineDetail!.Buckets.Count:N0} buckets")
+            ? string.Create(CultureInfo.CurrentCulture, $"Resolution: this view's own count, {timelineDetail!.Buckets.Count:N0} columns")
                 + (timelineDetail.Generation != DisplayedGeneration
                     ? string.Create(CultureInfo.CurrentCulture, $" from generation {timelineDetail.Generation:N0}")
                     : string.Empty)
-            : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} buckets over the whole session")));
+            : string.Create(CultureInfo.CurrentCulture, $"Resolution: the overview's {Snapshot.Timeline.Count:N0} columns over the whole session")));
         lines.Add(selectedInterval == bucket.Interval
-            ? "This bucket is the analysis interval"
+            ? "This cell is the analysis interval"
             : realOverview
             ? "Click makes it the analysis interval, explained in the inspector · Shift+drag brushes a range"
             : "Click makes it the analysis interval · Shift+drag brushes a range");

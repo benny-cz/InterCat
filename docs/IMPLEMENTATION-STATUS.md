@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-09 · Plan revision: 466 · Branch: `main`
+Updated: 2026-10-09 · Plan revision: 467 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -89,6 +89,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 467 — the timeline says cell and column, never bucket (R5, R18):**
+  - Hover cards, the keyboard help, the timeline's tooltip, the byte cards and the inspector's empty subtitle said
+    "bucket" where the inspector and its cell explanation said cell and column. The window now says column for how
+    a view is cut ("Resolution: this view's own count, N columns", Shift with an arrow moves one column) and cell
+    for what is drawn, hovered and chosen ("This cell is the analysis interval").
+  - `icat timeline`, whose rows are headed Interval, and the overview's caveat say interval; error messages say
+    column. JSON fields keep `buckets`, which a contract versions.
+  - Debug and Release each ran 2,008 tests, with revision 466's 93 failures and 4 skips. The tests caught each of
+    13 mutations putting bucket back: in a chosen and a quiet cell's card, the unmeasured and resolution lines, the
+    empty subtitle, the machine row's and the direction rows' bytes, the spoken help, the tooltip, icat timeline's
+    note and help, icat's help and the overview's caveat.
 
 - **Revision 466 — a chosen timeline cell lists its first records in the inspector (§6.2, §6.4, I5):**
   - A cell's mark stands for every record in its column, and its card said only how many. A chosen cell now lists

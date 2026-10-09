@@ -242,6 +242,21 @@ public sealed class LadderKeyboardTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket")]
+    public void TheTimelinesHelpSaysColumnAndCell()
+    {
+        (Window window, _) = Open();
+        string help = ControlAutomationPeer.CreatePeerForElement(window.GetControl<TimelineView>("TimelineSurface")).GetHelpText();
+        Assert.StartsWith("Left and Right pan, with Shift by one column;", help, StringComparison.Ordinal);
+        Assert.DoesNotContain("bucket", help, StringComparison.OrdinalIgnoreCase);
+        string tip = Assert.IsType<string>(ToolTip.GetTip(window.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => block.Text?.StartsWith("Wheel or double-click zooms", StringComparison.Ordinal) == true)));
+        Assert.Contains("Shift with a left/right arrow moves one column.", tip, StringComparison.Ordinal);
+        Assert.Contains("a click chooses a cell, which the inspector explains.", tip, StringComparison.Ordinal);
+        Assert.DoesNotContain("bucket", tip, StringComparison.OrdinalIgnoreCase);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: the timeline and minimap say the range in view, so a zoom and a fit are heard as well as drawn")]
     public void TheTimelineSaysWhatIsInView()
     {

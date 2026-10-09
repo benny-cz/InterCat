@@ -1190,7 +1190,7 @@ internal sealed class TimelineColumns
         if (counts[column] == int.MaxValue)
         {
             throw new InvalidOperationException(
-                "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                "One timeline column has more than 2,147,483,647 observed rows. The viewer count cannot "
                 + "represent it without compaction, so it is refused rather than wrapped to a false value.");
         }
 
@@ -1200,7 +1200,7 @@ internal sealed class TimelineColumns
             ref int tally = ref mechanisms[(column * Slots.Length) + SlotOf(mechanism)];
             if (tally == int.MaxValue)
             {
-                throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+                throw new InvalidOperationException("One mechanism exceeds the timeline column's count bound.");
             }
 
             tally++;
@@ -1225,7 +1225,7 @@ internal sealed class TimelineColumns
             if (counts[column] > int.MaxValue - other.counts[column])
             {
                 throw new InvalidOperationException(
-                    "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                    "One timeline column has more than 2,147,483,647 observed rows. The viewer count cannot "
                     + "represent it without compaction, so it is refused rather than wrapped to a false value.");
             }
 
@@ -1238,7 +1238,7 @@ internal sealed class TimelineColumns
             {
                 if (mechanisms[slot] > int.MaxValue - other.mechanisms![slot])
                 {
-                    throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+                    throw new InvalidOperationException("One mechanism exceeds the timeline column's count bound.");
                 }
 
                 mechanisms[slot] += other.mechanisms[slot];
@@ -1262,7 +1262,7 @@ internal sealed class TimelineColumns
         if (counts[column] > int.MaxValue - count)
         {
             throw new InvalidOperationException(
-                "One timeline bucket has more than 2,147,483,647 observed rows. The viewer count cannot "
+                "One timeline column has more than 2,147,483,647 observed rows. The viewer count cannot "
                 + "represent it without compaction, so it is refused rather than wrapped to a false value.");
         }
 
@@ -1272,7 +1272,7 @@ internal sealed class TimelineColumns
             ref int tally = ref mechanisms[(column * Slots.Length) + SlotOf(mechanism)];
             if (tally > int.MaxValue - count)
             {
-                throw new InvalidOperationException("One mechanism exceeds the timeline bucket's count bound.");
+                throw new InvalidOperationException("One mechanism exceeds the timeline column's count bound.");
             }
 
             tally += count;

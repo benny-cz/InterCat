@@ -133,7 +133,7 @@ internal static class TimelineCommand
         ConsoleUi.Field("Counted in", $"{elapsed.TotalMilliseconds.ToString("N0", CultureInfo.CurrentCulture)} ms");
         if (buckets.Count == 0)
         {
-            ConsoleUi.Note($"None of the {scope.Description} has a session time in this interval, so the lane has no bucket.");
+            ConsoleUi.Note($"None of the {scope.Description} has a session time in this interval, so the lane has no column.");
             return InterCatExitCode.Success;
         }
 
@@ -141,7 +141,7 @@ internal static class TimelineCommand
             measured is null ? ["Interval", "Records", "Mostly", "Coverage"] : ["Interval", "Records", "Mostly", "Coverage", "Sent", "Received"],
             [.. buckets.Select(bucket => Row(bucket, measured, clock))]);
         ConsoleUi.Note("Rows without a usable session time have no place in any interval and are not counted.");
-        ConsoleUi.Note("An empty bucket's coverage is the capture's there: covered means nothing it collects happened, a gap "
+        ConsoleUi.Note("An empty interval's coverage is the capture's there: covered means nothing it collects happened, a gap "
             + "that records were lost, unknown that the capture says nothing of it.");
         if (measured is not null)
         {
@@ -269,7 +269,7 @@ internal static class TimelineCommand
         ConsoleUi.Line("    [--bytes] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only, leased timeline over [start,end), each bound in 100-nanosecond session ticks or a time");
         ConsoleUi.Line("  with its unit (1.5s, 250ms, 40us), taken outward to whole ticks.");
-        ConsoleUi.Line("  Buckets partition the interval exactly, as the Desktop's zoomed timeline draws them.");
+        ConsoleUi.Line("  Its columns partition the interval exactly, as the Desktop's zoomed timeline draws them.");
         ConsoleUi.Line("  A scope lists the records one lane of the Desktop's interval table lists; --bytes adds what");
         ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart. --wall-clock states");
         ConsoleUi.Line("  the intervals on the wall clock its capture's machine read, in this computer's zone, as the");
