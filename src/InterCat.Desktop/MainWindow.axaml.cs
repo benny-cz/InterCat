@@ -263,7 +263,11 @@ public sealed partial class MainWindow : Window, IDisposable
         AddHandler(GotFocusEvent, FollowKeyboardOwner, RoutingStrategies.Bubble, handledEventsToo: true);
 
         Opened += (_, _) => StartExploringButton.Focus();
-        SizeChanged += (_, change) => FollowRailWidth(change.NewSize.Width);
+        SizeChanged += (_, change) =>
+        {
+            FollowRailWidth(change.NewSize.Width);
+            KeepMainPanesWidth(change.NewSize.Width);
+        };
         RailGrid.SizeChanged += (_, _) => FitRailActions();
         RankedTableHeader.SizeChanged += (_, _) => FitRailActions();
         UpdateThemeMenu();
@@ -3592,6 +3596,31 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             rail.Width = new GridLength(width);
             followedRailWidth = width;
+        }
+    }
+
+    /// <summary>
+    /// Gives the main panes back the least width the window keeps for them when it narrows below what a widened inspector or
+    /// rail leaves them: the inspector first, then a rail the user resized, each never below its own least. Its edge never
+    /// drags a column into that width; a window narrowed afterwards would otherwise push the inspector out of sight (§6.1).
+    /// </summary>
+    private void KeepMainPanesWidth(double windowWidth)
+    {
+        ColumnDefinition rail = WindowGrid.ColumnDefinitions[0];
+        ColumnDefinition main = WindowGrid.ColumnDefinitions[1];
+        ColumnDefinition inspector = WindowGrid.ColumnDefinitions[2];
+        double excess = rail.Width.Value + main.MinWidth + inspector.Width.Value - windowWidth;
+        double fromInspector = Math.Clamp(excess, 0, inspector.Width.Value - inspector.MinWidth);
+        if (fromInspector > 0)
+        {
+            inspector.Width = new GridLength(inspector.Width.Value - fromInspector);
+        }
+
+        // A rail that follows the window is never wider than the smallest window leaves it.
+        double fromRail = Math.Clamp(excess - fromInspector, 0, rail.Width.Value - rail.MinWidth);
+        if (fromRail > 0 && followedRailWidth is null)
+        {
+            rail.Width = new GridLength(rail.Width.Value - fromRail);
         }
     }
 

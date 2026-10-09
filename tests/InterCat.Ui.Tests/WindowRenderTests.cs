@@ -240,6 +240,65 @@ public sealed class WindowRenderTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.1: the inspector widens by its edge into room the main panes do not need, and a narrower window takes the room back")]
+    public void TheInspectorWidensByItsEdge()
+    {
+        var window = new MainWindow { Width = 1456, Height = 900 };
+        window.Show();
+        Dispatch();
+        ColumnDefinition main = window.GetControl<Grid>("WindowGrid").ColumnDefinitions[1];
+        ColumnDefinition inspector = window.GetControl<Grid>("WindowGrid").ColumnDefinitions[2];
+        Assert.Equal(286, inspector.ActualWidth, 0.5);
+
+        // The edge is a named control the keyboard resizes: Left widens the inspector, and the main panes give it room.
+        GridSplitter edge = window.GetControl<GridSplitter>("InspectorSplitter");
+        Assert.False(string.IsNullOrWhiteSpace(Avalonia.Automation.AutomationProperties.GetName(edge)));
+        Assert.True(edge.Focus());
+
+        // Its design width is its narrowest, the one every pane is verified legible beside.
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(286, inspector.ActualWidth, 0.5);
+        for (int press = 0; press < 6; press++)
+        {
+            window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        }
+
+        Dispatch();
+        double widened = inspector.ActualWidth;
+        Assert.True(widened > 330, $"The inspector is {widened:F0} px after a keyboard resize.");
+        Assert.Equal(widened, window.GetControl<Border>("Inspector").Bounds.Width + 16, 0.5);
+
+        // Narrower than the widened inspector leaves the main panes room for, the window takes it back for them; at the
+        // smallest window there is none to give, so the edge widens nothing.
+        window.Width = 1080;
+        Dispatch();
+        Assert.Equal(286, inspector.ActualWidth, 0.5);
+        Assert.True(main.ActualWidth >= 544 - 0.5, $"The main panes are {main.ActualWidth:F0} px wide.");
+        Assert.True(edge.Focus());
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(286, inspector.ActualWidth, 0.5);
+
+        // A rail the user widened gives its room back too, once the inspector has none left to give.
+        window.Width = 1456;
+        Dispatch();
+        Assert.True(window.GetControl<GridSplitter>("RailSplitter").Focus());
+        for (int press = 0; press < 6; press++)
+        {
+            window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.None);
+        }
+
+        Dispatch();
+        ColumnDefinition rail = window.GetControl<Grid>("WindowGrid").ColumnDefinitions[0];
+        Assert.True(rail.ActualWidth > 290, $"The rail is {rail.ActualWidth:F0} px after a keyboard resize.");
+        window.Width = 1080;
+        Dispatch();
+        Assert.Equal(1080 - 544 - 286, rail.ActualWidth, 0.5);
+        Assert.Equal(544, main.ActualWidth, 0.5);
+        window.Close();
+    }
+
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
     private static void Save(WriteableBitmap frame, string name)

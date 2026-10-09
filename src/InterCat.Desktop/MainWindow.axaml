@@ -12,11 +12,14 @@
         MinHeight="700"
         Background="{DynamicResource Surface.Canvas}">
   <Grid x:Name="WindowGrid" RowDefinitions="Auto,Auto,*,36">
-    <!-- The rail widens with a wide window, and its edge can be dragged, so long names and a channel's ends read whole. -->
+    <!-- The rail widens with a wide window, and its edge can be dragged, so long names and a channel's ends read whole.
+         The inspector's edge can be dragged too, so its explanations and a record's fields read on fewer lines. Neither
+         takes the main panes below the width the smallest window gives them beside both at their design widths,
+         1,080 - 250 - 286 pixels, where every pane is verified legible (§6.1). -->
     <Grid.ColumnDefinitions>
       <ColumnDefinition Width="250" MinWidth="220" MaxWidth="560" />
-      <ColumnDefinition Width="*" />
-      <ColumnDefinition Width="286" />
+      <ColumnDefinition Width="*" MinWidth="544" />
+      <ColumnDefinition Width="286" MinWidth="286" MaxWidth="640" />
     </Grid.ColumnDefinitions>
 
     <!-- Left rail: ranked processes. Every canvas selection is reachable from this list (R15). -->
@@ -672,7 +675,7 @@
     </Grid>
 
     <!-- Inspector -->
-    <Border Grid.Column="2" Grid.Row="2" Margin="0,16,16,16" Padding="16" CornerRadius="10"
+    <Border x:Name="Inspector" Grid.Column="2" Grid.Row="2" Margin="0,16,16,16" Padding="16" CornerRadius="10"
             Background="{DynamicResource Surface.Panel}"
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="1">
       <Grid RowDefinitions="Auto,*,Auto">
@@ -890,6 +893,10 @@
                    Text="{Binding WorkspaceDisclosure}" />
       </Grid>
     </Border>
+    <GridSplitter x:Name="InspectorSplitter" Grid.Column="2" Grid.Row="2" Width="5" HorizontalAlignment="Left"
+                  ResizeDirection="Columns" Background="Transparent"
+                  ToolTip.Tip="Drag to widen the inspector"
+                  AutomationProperties.Name="Inspector width; left and right arrows resize it" />
 
     <!-- Accessible table equivalents: the same result set the canvas shows, reachable by keyboard (R15). -->
     <Border Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="2" Margin="16,16,16,16" CornerRadius="10"
