@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-09 · Plan revision: 463 · Branch: `main`
+Updated: 2026-10-09 · Plan revision: 464 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -89,6 +89,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 464 — the interval table lists each run of empty intervals as one row (R15, R21):**
+  - Counted a column per device pixel, a sparse view's interval table listed hundreds of rows, nearly all empty,
+    and a screen reader read every one. Every interval holding a record is still a row of its own; each run of
+    consecutive empty ones of one coverage state is now one row spanning them, "0 in 282 intervals", with its
+    exact range and coverage, read aloud as such. Choosing it makes its whole span the analysis interval.
+  - The heading counts the timeline's intervals, not the rows, and says each run of empty ones is one row.
+  - Debug and Release each ran 2,000 tests, with revision 463's 93 failures and 4 skips. The tests caught each of
+    10 mutations of the joining, its heading and its spoken row.
 
 - **Revision 463 — the whole session is counted a column per device pixel too (§6.2):**
   - A view of the whole session is counted in its own columns, one per device pixel, wherever that is finer than the

@@ -343,7 +343,7 @@ public sealed class EvidenceRungTests
         workspace.SelectDirectionLane(Direction.Outbound);
         Assert.Equal(Direction.Outbound, workspace.SelectedTimelineDirection);
         Assert.StartsWith("Outbound source-direction records", workspace.IntervalTableScope, StringComparison.Ordinal);
-        Assert.Equal(lanes[0].Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        IntervalRowTests.ListsDrawn(lanes[0].Buckets, workspace.Intervals);
         Assert.Equal(sent.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
             workspace.Intervals.Single(row => row.Interval == sent.Interval).Observations);
         Assert.Contains("Outbound table/step focus", workspace.TimelineCaption, StringComparison.Ordinal);
@@ -420,7 +420,7 @@ public sealed class EvidenceRungTests
         Assert.Equal(clientEnd.End, workspace.SelectedChannelEndOption.End);
         Assert.StartsWith($"Records made at {client.NameWithPid} · {ClientEnd}", workspace.IntervalTableScope,
             StringComparison.Ordinal);
-        Assert.Equal(clientEnd.Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        IntervalRowTests.ListsDrawn(clientEnd.Buckets, workspace.Intervals);
         Assert.Equal(sent.ObservationCount.ToString("N0", System.Globalization.CultureInfo.CurrentCulture),
             workspace.Intervals.Single(row => row.Interval == sent.Interval).Observations);
         Assert.Contains("table/step focus", workspace.TimelineCaption, StringComparison.Ordinal);

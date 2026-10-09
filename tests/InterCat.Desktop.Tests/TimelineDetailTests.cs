@@ -42,7 +42,8 @@ public sealed class TimelineDetailTests
         Assert.Equal(workspace.DisplayedGeneration, detail.Generation);
 
         // The interval table is the timeline's table equivalent: it lists what is drawn, in the unit each window needs.
-        Assert.Equal(detail.Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        IntervalRowTests.ListsDrawn(detail.Buckets, workspace.Intervals);
+        Assert.Equal(detail.Buckets.Count, workspace.Intervals.Count);
         Assert.EndsWith("µs", workspace.Intervals[0].Window, StringComparison.Ordinal);
         Assert.StartsWith("Zoomed view", workspace.IntervalTableScope, StringComparison.Ordinal);
 
@@ -59,7 +60,7 @@ public sealed class TimelineDetailTests
         workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 24);
         await workspace.TimelineDetailReady;
         Assert.Null(workspace.TimelineDetail);
-        Assert.Equal(workspace.Snapshot.Timeline.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        IntervalRowTests.ListsDrawn(workspace.Snapshot.Timeline, workspace.Intervals);
         Assert.StartsWith("Whole session in", workspace.IntervalTableScope, StringComparison.Ordinal);
 
         // Drawn finer than the overview, the whole session is counted in the view's own columns, every record in one, and
@@ -70,8 +71,12 @@ public sealed class TimelineDetailTests
         Assert.Equal(workspace.Snapshot.Extent, whole.Interval);
         Assert.Equal(128, whole.Buckets.Count);
         Assert.Equal(workspace.Snapshot.Timeline.Sum(bucket => bucket.ObservationCount), whole.Buckets.Sum(bucket => bucket.ObservationCount));
-        Assert.Equal(whole.Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
-        Assert.StartsWith("Whole session in 128 intervals · ", workspace.IntervalTableScope, StringComparison.Ordinal);
+        // The table lists the 128 intervals it is drawn in, each run of empty ones as one row: the long quiet before the
+        // last send is one row, not a hundred.
+        IntervalRowTests.ListsDrawn(whole.Buckets, workspace.Intervals);
+        Assert.True(workspace.Intervals.Count < 20, $"{workspace.Intervals.Count} rows list 128 intervals.");
+        Assert.StartsWith("Whole session in 128 intervals · each run of empty ones as one row · ", workspace.IntervalTableScope,
+            StringComparison.Ordinal);
 
         // Zoomed again, the view's own count replaces it.
         workspace.RequestTimelineDetail(zoomed, 24);

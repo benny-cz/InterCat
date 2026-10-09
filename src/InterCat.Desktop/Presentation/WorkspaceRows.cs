@@ -67,7 +67,10 @@ public sealed record RelationshipRow(
         + $"evidence {Evidence}, derived by {Rule}. Press Enter to open {Opens}.";
 }
 
-/// <summary>A timeline cell as a table row, carrying the same counts and the same coverage state.</summary>
+/// <summary>
+/// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
+/// holding no record, of one coverage state, as one row spanning them.
+/// </summary>
 public sealed record IntervalRow(
     TimeRange Interval,
     string Window,
@@ -82,6 +85,9 @@ public sealed record IntervalRow(
 
     public long? FocusCount { get; init; }
 
+    /// <summary>How many of the timeline's cells the row stands for: one, or a run of empty ones it joins.</summary>
+    public int Cells { get; init; } = 1;
+
     /// <summary>
     /// Whether the row states bytes. A real session's timeline sums none per interval, so its rows state what was read for
     /// them, and a session with no directory to read from leaves the column out rather than calling every interval's
@@ -91,6 +97,7 @@ public sealed record IntervalRow(
 
     public string AccessibleName =>
         $"{Window}, {Spoken.Count(ObservationCount, "observation")}"
+        + (Cells > 1 ? string.Create(CultureInfo.CurrentCulture, $" in {Cells:N0} intervals") : string.Empty)
         + (FocusCount is { } focused ? string.Create(CultureInfo.CurrentCulture, $", {focused:N0} in focus") : string.Empty)
         + (ShowsBytes ? $", {KnownBytes}" : string.Empty) + (Mechanism.Length > 0 ? $", {Mechanism}" : string.Empty)
         + $", {Spoken.Coverage(Coverage)}";
@@ -199,7 +206,9 @@ public static class WorkspaceRowBuilder
     /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way). A focused rung's count for the same
     /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2). Where the
     /// timeline sums no bytes (<paramref name="sumsBytes"/> false), the rows state none; where they are read apart from it
-    /// (<paramref name="bytesOf"/>), each row states what was read for its interval.
+    /// (<paramref name="bytesOf"/>), each row states what was read for its interval. Every bucket holding a record is a row
+    /// of its own; a run of consecutive empty ones of one coverage state is one row spanning them, so a timeline counted a
+    /// column per device pixel lists what it holds rather than hundreds of empty rows, and still says where nothing was.
     /// </summary>
     public static IReadOnlyList<IntervalRow> Intervals(
         IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null,
@@ -208,11 +217,25 @@ public static class WorkspaceRowBuilder
         ArgumentNullException.ThrowIfNull(buckets);
 
         Dictionary<TimeRange, int>? inFocus = focus?.ToDictionary(bucket => bucket.Interval, bucket => bucket.ObservationCount);
-        var rows = new List<IntervalRow>(buckets.Count);
-        foreach (TimelineBucket bucket in buckets)
+        var rows = new List<IntervalRow>();
+        for (int index = 0; index < buckets.Count; index++)
         {
+            TimelineBucket bucket = buckets[index];
+            bool empty = bucket.ObservationCount == 0;
+
+            // The empty buckets that follow it, of the same coverage, join its row.
+            int last = index;
+            while (empty && last + 1 < buckets.Count && buckets[last + 1].ObservationCount == 0
+                && buckets[last + 1].Coverage == bucket.Coverage)
+            {
+                last++;
+            }
+
+            var interval = new TimeRange(bucket.Interval.StartTicks, buckets[last].Interval.EndTicks);
+            int cells = last - index + 1;
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(bucket.DominantMechanism));
-            string observations = bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture);
+            string observations = bucket.ObservationCount.ToString("N0", CultureInfo.CurrentCulture)
+                + (cells > 1 ? string.Create(CultureInfo.CurrentCulture, $" in {cells:N0} intervals") : string.Empty);
             int? focusCount = null;
             if (inFocus is not null && inFocus.TryGetValue(bucket.Interval, out int focused))
             {
@@ -221,11 +244,9 @@ public static class WorkspaceRowBuilder
             }
 
             // An interval holding no record keys no mechanism: a glyph or a name for it would read as an unknown one.
-            bool empty = bucket.ObservationCount == 0;
             rows.Add(new(
-                bucket.Interval,
-                clock?.Range(bucket.Interval, CultureInfo.CurrentCulture)
-                    ?? WorkspaceTime.FormatRange(bucket.Interval, CultureInfo.CurrentCulture),
+                interval,
+                clock?.Range(interval, CultureInfo.CurrentCulture) ?? WorkspaceTime.FormatRange(interval, CultureInfo.CurrentCulture),
                 observations,
                 bytesOf is null ? DescribeBytes(bucket.KnownBytes) : bytesOf(bucket),
                 empty ? string.Empty : tokens.Label,
@@ -234,8 +255,10 @@ public static class WorkspaceRowBuilder
             {
                 ObservationCount = bucket.ObservationCount,
                 FocusCount = focusCount,
+                Cells = cells,
                 ShowsBytes = sumsBytes,
             });
+            index = last;
         }
 
         return rows;

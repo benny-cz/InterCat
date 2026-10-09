@@ -615,7 +615,7 @@ public sealed class RankingSelectorTests
         Publish(session.Store, ClientAndServer());
         using WorkspaceViewModel workspace = Open(session);
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
-        string BytesAt(long tick) => workspace.Intervals.Single(row => row.Interval.StartTicks == tick).KnownBytes;
+        string BytesAt(long tick) => workspace.Intervals.Single(row => row.Interval.Contains(tick)).KnownBytes;
         string Sent(long bytes) => $"{WorkspaceRowBuilder.DescribeSize(bytes)} sent · no receive recorded";
         string Received(long bytes) => $"no send recorded · {WorkspaceRowBuilder.DescribeSize(bytes)} received";
         const string None = "no transfer recorded";

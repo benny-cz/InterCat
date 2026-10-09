@@ -1,3 +1,4 @@
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -58,6 +59,50 @@ public sealed class IntervalBytesWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: a timeline counted a column per pixel lists each interval holding a record as a row and each run of empty ones as one, which a choice selects whole")]
+    public async Task EachRunOfEmptyIntervalsIsOneRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Sparse()]);
+        var window = new MainWindow { Width = 1280, Height = 800 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        workspace.ShowTables = true;
+        Dispatch();
+        await workspace.IntervalBytesReady;
+        Dispatch();
+
+        // The whole session in a column per pixel, most of them empty: each interval holding a record is a row, and each
+        // run of empty ones between them one row, so the table holds a handful of rows rather than hundreds.
+        IReadOnlyList<TimelineBucket> drawn = DrawnTimeline.Machine(workspace);
+        Assert.Equal(timeline.DeviceColumns, drawn.Count);
+        int held = drawn.Count(bucket => bucket.ObservationCount > 0);
+        Assert.InRange(workspace.Intervals.Count, held + 1, (2 * held) + 1);
+        ListBox list = window.GetControl<ListBox>("IntervalList");
+        Assert.Equal(workspace.Intervals.Count, list.ItemCount);
+        Assert.StartsWith(string.Create(System.Globalization.CultureInfo.CurrentCulture,
+            $"Whole session in {drawn.Count:N0} intervals · each run of empty ones as one row · "), workspace.IntervalTableScope,
+            StringComparison.Ordinal);
+
+        // A run reads as one row, to the eye and aloud, and choosing it makes its whole span the analysis interval.
+        IntervalRow quiet = workspace.Intervals.First(row => row.Cells > 1);
+        Assert.Equal("no transfer recorded", quiet.KnownBytes);
+        list.ScrollIntoView(quiet);
+        Dispatch();
+        Control container = Assert.IsAssignableFrom<Control>(list.ContainerFromItem(quiet));
+        Assert.Contains(string.Create(System.Globalization.CultureInfo.CurrentCulture, $"0 observations in {quiet.Cells:N0} intervals"),
+            AutomationProperties.GetName(container), StringComparison.Ordinal);
+        list.SelectedItem = quiet;
+        Dispatch();
+        Assert.Equal(quiet.Interval, workspace.SelectedInterval);
+        Save(window, "interval-runs.png");
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {
@@ -89,6 +134,18 @@ public sealed class IntervalBytesWindowTests
                 .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = (10 + (2 * index)) * 100L },
             Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
                 (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
+        }),
+    ];
+
+    /// <summary>Three exchanges far apart, so most of the session's time holds no record.</summary>
+    private static ObservationRowV1[] Sparse() =>
+    [
+        .. new long[] { 1_000, 50_000, 100_000 }.SelectMany((tick, index) => new[]
+        {
+            Transfer(tick, ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(100 + (2 * index)))
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = tick * 100L },
+            Transfer(tick + 1, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(101 + (2 * index)))
+                .Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = (tick + 1) * 100L },
         }),
     ];
 

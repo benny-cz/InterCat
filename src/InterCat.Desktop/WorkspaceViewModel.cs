@@ -254,6 +254,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<TimelineBucket>? highlightBuckets;
     private IReadOnlyList<MechanismTimelineLane>? highlightLanes;
     private IReadOnlyList<IntervalRow> intervals;
+
+    /// <summary>How many of the timeline's cells the interval table's rows stand for, a run of empty ones joined in one.</summary>
+    private int intervalCells;
     private readonly ReadOnlyCollection<TimelineLaneOption> timelineLaneOptions;
     private TimelineLaneOption selectedTimelineLane = new(null, "All mechanisms");
     private readonly ReadOnlyCollection<DirectionLaneOption> directionLaneOptions;
@@ -356,6 +359,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ]);
         selectedDirectionLane = directionLaneOptions[0];
         intervals = WorkspaceRowBuilder.Intervals(Snapshot, ThemeResources.CurrentMode, IntervalTableShowsBytes);
+        intervalCells = Snapshot.Timeline.Count;
         if (ReadsBytes)
         {
             // Until the table is shown and reads them, a real session's rows say their bytes are not read yet.
@@ -733,6 +737,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : null;
         intervalRowsBesideFocus = listsWhole && focus is not null;
         FollowIntervalBytes(listed);
+        intervalCells = buckets.Count;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode, listsWhole ? focus : null,
             IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null, TimeBase);
         if (selectedIntervalRow is { } row)
@@ -2800,7 +2805,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public string IntervalTableScope => !realOverview ? IntervalTableHolds
         : IntervalTableHolds + " · " + IntervalBytesCaption;
 
-    private string IntervalTableHolds
+    /// <summary>
+    /// What the interval table lists, counted in the timeline's cells, and that each run of empty ones is one row where
+    /// any is joined.
+    /// </summary>
+    private string IntervalTableHolds => intervals.Count < intervalCells
+        ? IntervalTableLists + " · each run of empty ones as one row"
+        : IntervalTableLists;
+
+    private string IntervalTableLists
     {
         get
         {
@@ -2808,7 +2821,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             {
                 string owner = selectedProcess is { } process ? process.NameWithPid : processLane.ProcessId.ToString();
                 return string.Create(CultureInfo.CurrentCulture,
-                    $"{owner} owner records · {intervals.Count:N0} exact intervals");
+                    $"{owner} owner records · {intervalCells:N0} exact intervals");
             }
             if (SelectedDirectionBucketLane is { } directionLane)
             {
@@ -2830,8 +2843,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 && !(drawnTimeline is { } drawn && Whole(drawn.Viewport))
                 && (!ShowsMechanismLanes || SelectedTimelineMechanism is null || HasCompleteLaneDetail)
                 ? string.Create(CultureInfo.CurrentCulture,
-                    $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {intervals.Count:N0} intervals{lane}")
-                : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervals.Count:N0} intervals{lane}");
+                    $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {intervalCells:N0} intervals{lane}")
+                : string.Create(CultureInfo.CurrentCulture, $"Whole session in {intervalCells:N0} intervals{lane}");
         }
     }
 
