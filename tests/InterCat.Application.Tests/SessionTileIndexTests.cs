@@ -12,8 +12,10 @@ namespace InterCat.Application.Tests;
 /// A generation's persisted tiles are §12.1 S4's deeper levels (`contracts/tile-index-v1.md`): a zoom or a brush of a
 /// reopened session counts from them exactly what its rows count, opens no segment, and reads in proportion to what it
 /// draws; a part of them that cannot be read is refused, never misread, and the zoom or brush counts from the segments
-/// instead, as it does when the tiles' bindings are not the derivation's.
+/// instead, as it does when the tiles' bindings are not the derivation's. What a query found wrong with the tiles is read
+/// from the derivation cache, which tests running beside these could otherwise push the generation out of.
 /// </summary>
+[Collection(SharedDerivationCache.Name)]
 public sealed class SessionTileIndexTests
 {
     private static readonly Mechanism[] Kinds = [Mechanism.Tcp, Mechanism.Udp, Mechanism.NamedPipe, Mechanism.Rpc];
