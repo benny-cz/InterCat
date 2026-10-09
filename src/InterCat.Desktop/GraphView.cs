@@ -930,7 +930,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     internal const double SelectionHalo = 6;
 
     /// <summary>How strongly a chosen timeline cell's relationships and processes are highlighted, against the selection's whole.</summary>
-    private const double CellHighlightOpacity = 0.45;
+    private const double CellHighlightOpacity = ThemeResources.CellHighlightStrength;
 
     /// <summary>The label boxes drawn in the last frame, in the order placed.</summary>
     internal IReadOnlyList<Rect> PlacedLabels => placedLabels;

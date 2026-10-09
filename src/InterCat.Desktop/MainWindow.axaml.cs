@@ -280,8 +280,10 @@ public sealed partial class MainWindow : Window, IDisposable
         CaptureKeepChosen(CaptureKeepSelector, null);
 
         // A ranked row in §6.7's multi-selection is marked where it is drawn, and says so to a screen reader; the rows are
-        // not rebuilt, so the keyboard focus a Ctrl+Space set out from stays where it was.
+        // not rebuilt, so the keyboard focus a Ctrl+Space set out from stays where it was. So is a ranked row, or a row of
+        // the relationship table, standing for what the graph highlights for a chosen cell (§6.4, R15).
         RungList.ContainerPrepared += (_, prepared) => MarkSelectionShare(prepared.Container);
+        RelationshipList.ContainerPrepared += (_, prepared) => MarkCellRelationship(prepared.Container);
         AddHandler(GotFocusEvent, FollowKeyboardOwner, RoutingStrategies.Bubble, handledEventsToo: true);
 
         Opened += (_, _) => StartExploringButton.Focus();
@@ -3572,21 +3574,52 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Marks one ranked row by its share of the multi-selection: an accent bar at its edge, lighter for a group only some
-    /// of whose processes are in it, and an item status a screen reader announces with the row.
+    /// of whose processes are in it, and an item status a screen reader announces with the row. A process whose node the
+    /// graph rings for a chosen cell, which no selection holds, carries the bar at the highlight's strength.
     /// </summary>
     private void MarkSelectionShare(Control container)
     {
-        SelectionShare share = RungList.ItemFromContainer(container) is RungRow row ? workspace.ShareOf(row) : SelectionShare.None;
+        // A row is read from what the container holds: while it is being prepared, as one scrolled into view is, the list
+        // cannot yet say which item it holds, and a row so marked by its index came up unmarked.
+        RungRow? row = container.DataContext as RungRow;
+        SelectionShare share = row is null ? SelectionShare.None : workspace.ShareOf(row);
         container.Classes.Set("chosen", share == SelectionShare.All);
         container.Classes.Set("chosenPart", share == SelectionShare.Some);
-        if (share == SelectionShare.None)
+        MarkCellHighlight(container, share == SelectionShare.None && row is not null && workspace.HighlightsForCell(row),
+            share switch
+            {
+                SelectionShare.All => "in the selection",
+                SelectionShare.Some => "partly in the selection",
+                _ => null,
+            });
+    }
+
+    private void MarkCellRelationships()
+    {
+        foreach (Control container in RelationshipList.GetRealizedContainers())
         {
-            container.ClearValue(AutomationProperties.ItemStatusProperty);
+            MarkCellRelationship(container);
+        }
+    }
+
+    /// <summary>Marks a relationship's row whose edge the graph highlights for a chosen cell, as the edge's table equivalent.</summary>
+    private void MarkCellRelationship(Control container) => MarkCellHighlight(container,
+        container.DataContext is RelationshipRow row && workspace.HighlightsForCell(row), status: null);
+
+    /// <summary>
+    /// Gives a row the bar a chosen cell's highlight is drawn with and the item status a screen reader announces with it,
+    /// or else <paramref name="status"/>, or none.
+    /// </summary>
+    private static void MarkCellHighlight(Control container, bool highlighted, string? status)
+    {
+        container.Classes.Set("highlighted", highlighted);
+        if ((highlighted ? "highlighted for the chosen cell" : status) is { } said)
+        {
+            AutomationProperties.SetItemStatus(container, said);
         }
         else
         {
-            AutomationProperties.SetItemStatus(container,
-                share == SelectionShare.All ? "in the selection" : "partly in the selection");
+            container.ClearValue(AutomationProperties.ItemStatusProperty);
         }
     }
 
@@ -3614,9 +3647,15 @@ public sealed partial class MainWindow : Window, IDisposable
             // A search that finds a lane of the group shown scrolls it into view (§6.2: search lane names).
             Dispatcher.UIThread.Post(() => TimelineSurface.BringLaneIntoView(searched));
         }
-        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection))
+        if (eventArgs.PropertyName is nameof(WorkspaceViewModel.ChosenProcesses) or nameof(WorkspaceViewModel.HasMultiSelection)
+            or nameof(WorkspaceViewModel.CellGraphNodes))
         {
             MarkSelectionShares();
+        }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.CellGraphEdges))
+        {
+            MarkCellRelationships();
         }
 
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.RungRows) or nameof(WorkspaceViewModel.Crumbs))

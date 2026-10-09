@@ -159,6 +159,7 @@ public sealed class TimelineCellTests
         await workspace.IntervalReady;
         Assert.Equal([workspace.GraphDisplay.Nodes.Single(node => node.Members.Contains(owner.Id)).Key], workspace.CellGraphNodes);
         Assert.EndsWith(" · the node holding the chosen cell's process highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.Equal([owner.Id.ToString()], workspace.RungRows.Where(workspace.HighlightsForCell).Select(row => row.Key));
         Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(cell, 1, ownerLane: owner).Lines[^1]);
         string cells = 20_000.ToString("N0", CultureInfo.CurrentCulture);
         Assert.Equal(Counted(cell.ObservationCount, "record") + $" {Have(cell.ObservationCount)} a session time in this interval "
@@ -544,6 +545,13 @@ public sealed class TimelineCellTests
         Assert.Empty(workspace.CellGraphNodes);
         Assert.EndsWith(" · the chosen cell's 2 relationships highlighted", workspace.GraphSummary, StringComparison.Ordinal);
 
+        // The relationship table marks the rows of the relationships highlighted, its equivalent of the edges' halo (R15).
+        Assert.Equal(workspace.GraphDisplay.Edges.Where(edge => edge.Mechanism == Mechanism.Tcp).SelectMany(edge => edge.Relationships)
+                .Order(StringComparer.Ordinal),
+            workspace.Relationships.Where(workspace.HighlightsForCell).Select(row => row.Key).Order(StringComparer.Ordinal));
+        Assert.Equal(2, workspace.Relationships.Count(workspace.HighlightsForCell));
+        Assert.DoesNotContain(workspace.RungRows, workspace.HighlightsForCell);
+
         // The datagram belongs to no relationship the graph draws, so its cell highlights none, the TCP one beside it too.
         TimelineBucket datagram = Lane(workspace, Mechanism.Udp).Single(bucket => bucket.ObservationCount > 0);
         Assert.Contains(Lane(workspace, Mechanism.Tcp), bucket => bucket.Interval == datagram.Interval && bucket.ObservationCount > 0);
@@ -558,6 +566,7 @@ public sealed class TimelineCellTests
         Assert.Equal(2, workspace.CellGraphEdges.Count);
         workspace.SelectedProcess = client;
         Assert.Empty(workspace.CellGraphEdges);
+        Assert.DoesNotContain(workspace.Relationships, workspace.HighlightsForCell);
         Assert.DoesNotContain("highlighted", workspace.GraphSummary, StringComparison.Ordinal);
         workspace.ClearSelection();
         workspace.SelectInterval(new TimeRange(cell.Interval.StartTicks, cell.Interval.EndTicks + 1));
@@ -610,6 +619,7 @@ public sealed class TimelineCellTests
         await workspace.IntervalReady;
         Assert.Equal([workspace.GraphDisplay.Edges.Single(edge => edge.Relationships.Contains(channel.EdgeKey)).Key],
             workspace.CellGraphEdges);
+        Assert.Equal([channel.EdgeKey], workspace.Relationships.Where(workspace.HighlightsForCell).Select(row => row.Key));
     });
 
     [Fact(DisplayName = "§6.4: the graph's summary names what a chosen cell highlights: its relationships, its process, or the nodes holding its processes")]

@@ -113,6 +113,10 @@ public sealed class FoldedLaneTests
         Assert.Equal([holding.Key], workspace.CellGraphNodes);
         Assert.EndsWith(" · the node holding the chosen cell's processes highlighted", workspace.GraphSummary,
             StringComparison.Ordinal);
+
+        // The ranked table marks the folded members' rows, its equivalent of the node's ring (R15).
+        Assert.Equal(folded.Processes.Select(process => process.ToString()).Order(StringComparer.Ordinal),
+            workspace.RungRows.Where(workspace.HighlightsForCell).Select(row => row.Key).Order(StringComparer.Ordinal));
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
         Assert.Equal(cell.ObservationCount, workspace.EvidenceMarkTicks.Count);

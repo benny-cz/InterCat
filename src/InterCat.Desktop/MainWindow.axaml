@@ -247,6 +247,13 @@
               <Style Selector="ListBoxItem.chosenPart:selected /template/ ContentPresenter#PART_ContentPresenter">
                 <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenPartSelectedRing}" />
               </Style>
+              <!-- §6.4, R15: a process whose node the graph rings for a chosen cell carries the bar at the ring's strength. -->
+              <Style Selector="ListBoxItem.highlighted /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.HighlightBar}" />
+              </Style>
+              <Style Selector="ListBoxItem.highlighted:selected /template/ ContentPresenter#PART_ContentPresenter">
+                <Setter Property="BoxShadow" Value="{DynamicResource ListItem.HighlightSelectedRing}" />
+              </Style>
             </ListBox.Styles>
             <ListBox.ItemTemplate>
               <DataTemplate x:DataType="pres:RungRow">
@@ -925,6 +932,16 @@
                  DoubleTapped="OpenRelationshipRow"
                  Background="Transparent" BorderThickness="0"
                  AutomationProperties.Name="Relationship table, the table equivalent of the communication graph">
+          <!-- §6.4, R15: a relationship whose edge the graph highlights for a chosen cell carries the bar at the halo's
+               strength, and its item status says so; the code-behind sets both. -->
+          <ListBox.Styles>
+            <Style Selector="ListBoxItem.highlighted /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="BoxShadow" Value="{DynamicResource ListItem.HighlightBar}" />
+            </Style>
+            <Style Selector="ListBoxItem.highlighted:selected /template/ ContentPresenter#PART_ContentPresenter">
+              <Setter Property="BoxShadow" Value="{DynamicResource ListItem.HighlightSelectedRing}" />
+            </Style>
+          </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:RelationshipRow">
               <Grid ColumnDefinitions="18,200,200,90,150,100" Margin="2,4">

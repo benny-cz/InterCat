@@ -263,6 +263,12 @@ public static class ThemeResources
 
     private const double ChosenBarWidth = 4;
 
+    /// <summary>
+    /// How strongly what a chosen timeline cell highlights is drawn, against the selection's whole: the graph's halo and
+    /// ring, and the bar that marks a row standing for one in a table (§6.4, R15).
+    /// </summary>
+    internal const double CellHighlightStrength = 0.45;
+
     private static void ApplyChoiceStates(
         Avalonia.Application application, ThemeMode mode, SurfaceTokens surfaces, StatusTokens status)
     {
@@ -344,6 +350,16 @@ public static class ThemeResources
         application.Resources["ListItem.ChosenPartBar"] = new BoxShadows(chosenPart);
         application.Resources["ListItem.ChosenSelectedRing"] = new BoxShadows(selected, [chosen]);
         application.Resources["ListItem.ChosenPartSelectedRing"] = new BoxShadows(selected, [chosenPart]);
+
+        // A row standing for what the graph highlights for a chosen cell carries the bar at the highlight's own strength,
+        // so it reads as the edge's halo does: fainter than a selection.
+        BoxShadow highlighted = new()
+        {
+            IsInset = true, OffsetX = ChosenBarWidth,
+            Color = Color.FromArgb((byte)Math.Round(255 * CellHighlightStrength), ring.R, ring.G, ring.B),
+        };
+        application.Resources["ListItem.HighlightBar"] = new BoxShadows(highlighted);
+        application.Resources["ListItem.HighlightSelectedRing"] = new BoxShadows(selected, [highlighted]);
     }
 
     /// <summary>

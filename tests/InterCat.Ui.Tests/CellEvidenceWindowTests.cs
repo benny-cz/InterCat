@@ -185,11 +185,30 @@ public sealed class CellEvidenceWindowTests
         Assert.Equal([tcp.Key], workspace.CellGraphEdges);
         Assert.EndsWith(" · the chosen cell's relationship highlighted", summary.Text, StringComparison.Ordinal);
 
-        // A process selected is what E would list, so over the same interval the highlight goes; the relationship chosen
-        // is haloed at the selection's whole strength, which the cell's highlight stays short of.
+        // The relationship table marks its row as the graph haloes the edge: a bar at the halo's strength along its edge,
+        // and an item status a screen reader announces with the row (R15).
+        ListBox table = window.GetControl<ListBox>("RelationshipList");
+        workspace.ShowTables = true;
+        _ = Settle(window);
+        RelationshipRow related = workspace.Relationships.Single(row => tcp.Relationships.Contains(row.Key));
+        Control container = Assert.IsAssignableFrom<Control>(table.ContainerFromItem(related));
+        Point bar = container.TranslatePoint(new Point(2, container.Bounds.Height / 2), window)!.Value;
+        Color barred = At(Settle(window), bar);
+        Assert.Contains("highlighted", container.Classes);
+        Assert.Equal("highlighted for the chosen cell", AutomationProperties.GetItemStatus(container));
+        workspace.ShowTables = false;
+
+        // A process selected is what E would list, so over the same interval the highlight goes, and the row's mark with
+        // it; the relationship chosen is haloed at the selection's whole strength, which the cell's highlight stays short
+        // of.
         workspace.SelectedProcess = client;
         Color plain = At(Settle(window), beside);
         Assert.DoesNotContain("highlighted", summary.Text, StringComparison.Ordinal);
+        workspace.ShowTables = true;
+        Assert.NotEqual(barred, At(Settle(window), bar));
+        Assert.DoesNotContain("highlighted", container.Classes);
+        Assert.Null(AutomationProperties.GetItemStatus(container));
+        workspace.ShowTables = false;
         workspace.SelectedRelationship = workspace.Relationships.Single(row => tcp.Relationships.Contains(row.Key));
         Color selected = At(Settle(window), beside);
         Assert.InRange(Distance(highlighted, plain), 1, Distance(selected, plain) - 1);
@@ -222,6 +241,53 @@ public sealed class CellEvidenceWindowTests
         workspace.SelectedProcess = client;
         selected = At(Settle(window), ring);
         Assert.InRange(Distance(highlighted, plain), 1, Distance(selected, plain) - 1);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.4: a cell of a process's lane marks that process's ranked row, as the graph rings its node, and says so to a screen reader")]
+    public async Task AProcessLanesCellMarksItsRankedRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Pool(3));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("pool.exe", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        Dispatch();
+
+        // A cell of the first process's lane: its row carries the bar at the ring's strength, and its status says why;
+        // the other members' rows carry neither.
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        ProcessNode owner = workspace.Snapshot.Processes.Single(process => process.Id == lane.ProcessId);
+        workspace.ChooseTimelineCell(lane.Buckets.First(bucket => bucket.ObservationCount > 0), ownerLane: owner);
+        await workspace.IntervalReady;
+        await workspace.TimelineDetailReady;
+        await workspace.CellRecordsReady;
+        Assert.Single(workspace.CellGraphNodes);
+        WriteableBitmap frame = Settle(window);
+        ListBox list = window.GetControl<ListBox>("RungList");
+        Control marked = Assert.IsAssignableFrom<Control>(
+            list.ContainerFromItem(workspace.RungRows.Single(row => row.Key == owner.Id.ToString())));
+        Control other = Assert.IsAssignableFrom<Control>(
+            list.ContainerFromItem(workspace.RungRows.First(row => row.Key != owner.Id.ToString())));
+        Assert.Contains("highlighted", marked.Classes);
+        Assert.Equal("highlighted for the chosen cell", AutomationProperties.GetItemStatus(marked));
+        Assert.DoesNotContain("highlighted", other.Classes);
+        Assert.Null(AutomationProperties.GetItemStatus(other));
+        Assert.NotEqual(At(frame, marked.TranslatePoint(new Point(2, marked.Bounds.Height / 2), window)!.Value),
+            At(frame, other.TranslatePoint(new Point(2, other.Bounds.Height / 2), window)!.Value));
+
+        // The process selected is what E lists then, so the graph rings no node for the cell and its row loses the mark.
+        workspace.SelectedProcess = owner;
+        Dispatch();
+        Assert.Empty(workspace.CellGraphNodes);
+        Assert.DoesNotContain("highlighted", marked.Classes);
+        Assert.Null(AutomationProperties.GetItemStatus(marked));
         window.Close();
     }
 
@@ -280,6 +346,20 @@ public sealed class CellEvidenceWindowTests
             Timed(Transfer(12 + (5 * index), ObservationKind.Send, AccountingSide.SendSide, 16, 100, (ulong)(102 + (3 * index)))
                 .Between("127.0.0.1:50001", "127.0.0.1:53") with { Mechanism = Mechanism.Udp }),
         }),
+    ];
+
+    /// <summary><paramref name="count"/> instances of pool.exe, each created and then sending ten times across the capture.</summary>
+    private static ObservationRowV1[] Pool(int count) =>
+    [
+        .. Enumerable.Range(0, count).SelectMany(index => new[]
+        {
+            Lifecycle(index + 1, ObservationKind.Create, 2_000 + index, (ulong)(index * 20)) with
+            {
+                ResourceName = @"C:\Tools\pool.exe", SessionRelativeTicks = (index + 1) * 100L,
+            },
+        }.Concat(Enumerable.Range(0, 10).Select(step =>
+            Transfer(100 + (step * 100) + index, ObservationKind.Send, AccountingSide.SendSide, 8, 2_000 + index,
+                (ulong)((index * 20) + step + 1)) with { SessionRelativeTicks = (100 + (step * 100) + index) * 100L }))),
     ];
 
     /// <summary>Three datagrams client.exe sent to the resolver in one tick, after the exchange: a cell of three records.</summary>

@@ -527,8 +527,29 @@ public sealed partial class WorkspaceViewModel
     public IReadOnlySet<string> CellGraphNodes => cellGraph.Nodes;
 
     /// <summary>What the graph's summary adds while it highlights a chosen cell's relationships or processes; empty otherwise.</summary>
-    private string CellGraphNote => CellHighlightNote(cellGraph.Edges.Count, cellGraph.Nodes.Count, cellGraph.Processes,
+    private string CellGraphNote => CellHighlightNote(cellGraph.Edges.Count, cellGraph.Nodes.Count, cellGraph.Processes.Count,
         cellGraph.Nodes.Count == 1 && graphDisplay.Node(cellGraph.Nodes.First())?.Kind == GraphNodeKind.Process);
+
+    /// <summary>
+    /// Whether the graph highlights <paramref name="row"/>'s relationship for a chosen cell, which its row in the
+    /// relationship table marks as the table equivalent of the edge's highlight (R15).
+    /// </summary>
+    public bool HighlightsForCell(RelationshipRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return cellGraph.Relationships.Contains(row.Key);
+    }
+
+    /// <summary>
+    /// Whether <paramref name="row"/> is a process whose node the graph rings for a chosen cell, which its ranked row marks
+    /// as the table equivalent of the ring (R15).
+    /// </summary>
+    public bool HighlightsForCell(RungRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        return cellGraph.Processes.Count > 0 && TryResolveProcess(row.Key, out ProcessNode? process)
+            && cellGraph.Processes.Contains(process!.Id);
+    }
 
     /// <summary>
     /// What the graph's summary adds while it highlights a chosen cell's <paramref name="relationships"/>, or the
@@ -583,11 +604,12 @@ public sealed partial class WorkspaceViewModel
                 }
             }
 
-            return new(NoKeys, nodes, held.Count);
+            return new(NoKeys, nodes, held, NoKeys);
         }
 
         string? channel = lane.End is not null ? FocusedRealChannel?.EdgeKey : null;
         HashSet<string> edges = new(StringComparer.Ordinal);
+        HashSet<string> relationships = new(StringComparer.Ordinal);
         foreach (GraphDisplayEdge edge in graphDisplay.Edges)
         {
             if (edge.ObservationCount > 0
@@ -596,17 +618,19 @@ public sealed partial class WorkspaceViewModel
                     : true))
             {
                 edges.Add(edge.Key);
+                relationships.UnionWith(edge.Relationships);
             }
         }
 
-        return new(edges, NoKeys, 0);
+        return new(edges, NoKeys, NoProcesses, relationships);
     }
 
     /// <summary>Works out the chosen cell's graph highlight again when the cell, its lane, the selection or the graph's counts changed.</summary>
     private void FollowCellGraph()
     {
         CellHighlight wanted = CellGraphWanted();
-        if (wanted.Edges.SetEquals(cellGraph.Edges) && wanted.Nodes.SetEquals(cellGraph.Nodes) && wanted.Processes == cellGraph.Processes)
+        if (wanted.Edges.SetEquals(cellGraph.Edges) && wanted.Nodes.SetEquals(cellGraph.Nodes)
+            && wanted.Processes.SetEquals(cellGraph.Processes) && wanted.Relationships.SetEquals(cellGraph.Relationships))
         {
             return;
         }
@@ -618,13 +642,16 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(GraphScope));
     }
 
+    private static readonly IReadOnlySet<ProcessInstanceId> NoProcesses = new HashSet<ProcessInstanceId>();
+
     /// <summary>
-    /// What the graph highlights of a chosen cell: the relationships its records belong to, or the nodes holding the
-    /// processes whose records it counts and how many of those processes they hold.
+    /// What the graph highlights of a chosen cell: the edges its records belong to and the relationships they stand for,
+    /// or the nodes holding the processes whose records it counts and those of its processes they hold.
     /// </summary>
-    private sealed record CellHighlight(IReadOnlySet<string> Edges, IReadOnlySet<string> Nodes, int Processes)
+    private sealed record CellHighlight(IReadOnlySet<string> Edges, IReadOnlySet<string> Nodes,
+        IReadOnlySet<ProcessInstanceId> Processes, IReadOnlySet<string> Relationships)
     {
-        public static readonly CellHighlight None = new(NoKeys, NoKeys, 0);
+        public static readonly CellHighlight None = new(NoKeys, NoKeys, NoProcesses, NoKeys);
     }
 
     /// <summary>A record of a chosen cell as the inspector lists it, in the evidence rung's words.</summary>

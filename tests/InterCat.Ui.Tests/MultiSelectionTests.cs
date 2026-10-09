@@ -185,6 +185,36 @@ public sealed class MultiSelectionTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: a row in the selection is marked when it is drawn, as one scrolled into view after it was chosen")]
+    public void ARowScrolledIntoViewIsMarked()
+    {
+        // Forty executables, each a group of its own, so the machine rung's table runs past the window.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(0, 40).Select(index => Lifecycle(index + 1, ObservationKind.Create, 1_000 + index,
+            (ulong)(index + 1)) with { ResourceName = $@"C:\Tools\tool{index:D2}.exe" })]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        ListBox list = window.GetControl<ListBox>("RungList");
+        RungRow last = workspace.RungRows[^1];
+        Assert.Null(list.ContainerFromItem(last));
+
+        // Chosen with the first while out of sight, the last row comes into view marked as in the selection.
+        workspace.ToggleRungInSelection(workspace.RungRows[0]);
+        workspace.ToggleRungInSelection(last);
+        Dispatch();
+        list.ScrollIntoView(last);
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        Control drawn = Assert.IsAssignableFrom<Control>(list.ContainerFromItem(last));
+        Assert.Contains("chosen", drawn.Classes);
+        Assert.Equal("in the selection", AutomationProperties.GetItemStatus(drawn));
+        window.Close();
+    }
+
     /// <summary>Keeps what the window drew beside the tests' other renders, for a person to look at.</summary>
     private static void Save(Window window, string name)
     {
