@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-09 · Plan revision: 464 · Branch: `main`
+Updated: 2026-10-09 · Plan revision: 465 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -89,6 +89,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 465 — the interval table's selected row follows the analysis interval (R15):**
+  - The table's selected row was set only by the list itself, so after a row was chosen, a cell clicked on the
+    timeline, a step, a brush or Esc left that earlier row highlighted beside a different analysis interval. It is
+    now the analysis interval's row, however the interval was chosen, where one row is exactly it, and none where
+    none is: no interval, a brushed range, or one cell of a run of empty ones listed as one row.
+  - New rows, a zoom's or a focus count's, keep the row that is exactly the interval and drop one that is not; the
+    list announces the new rows before the row it selects among them.
+  - Debug and Release each ran 2,001 tests, with revision 464's 93 failures and 4 skips. The tests caught each of
+    4 mutations: a row not synced on a selection, in the view model and in the window, a row holding the interval
+    taken for it, and a row not synced on new rows.
 
 - **Revision 464 — the interval table lists each run of empty intervals as one row (R15, R21):**
   - Counted a column per device pixel, a sparse view's interval table listed hundreds of rows, nearly all empty,

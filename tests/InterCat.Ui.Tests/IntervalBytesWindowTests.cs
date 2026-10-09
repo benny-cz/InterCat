@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -100,6 +101,30 @@ public sealed class IntervalBytesWindowTests
         Dispatch();
         Assert.Equal(quiet.Interval, workspace.SelectedInterval);
         Save(window, "interval-runs.png");
+
+        // A cell clicked on the timeline is the table's selected row when the table is shown again, and Esc clears both.
+        workspace.ShowTables = false;
+        Dispatch();
+        TimelineBucket sent = DrawnTimeline.Lane(workspace, Mechanism.Tcp).Last(bucket => bucket.ObservationCount > 0);
+        Point at = timeline.TranslatePoint(timeline.PointOf(sent)!.Value, window)!.Value;
+        window.MouseDown(at, Avalonia.Input.MouseButton.Left);
+        window.MouseUp(at, Avalonia.Input.MouseButton.Left);
+        Dispatch();
+        Assert.Equal(sent.Interval, workspace.SelectedInterval);
+        workspace.ShowTables = true;
+        Dispatch();
+        IntervalRow clicked = Assert.IsType<IntervalRow>(list.SelectedItem);
+        Assert.Equal(sent.Interval, clicked.Interval);
+        Assert.Same(clicked, workspace.SelectedIntervalRow);
+        workspace.ShowTables = false;
+        Dispatch();
+        timeline.Focus();
+        window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Escape, Avalonia.Input.RawInputModifiers.None);
+        Dispatch();
+        Assert.Null(workspace.SelectedInterval);
+        workspace.ShowTables = true;
+        Dispatch();
+        Assert.Null(list.SelectedItem);
         window.Close();
     }
 

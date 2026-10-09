@@ -1,6 +1,7 @@
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -113,6 +114,54 @@ public sealed class TimelineDetailTests
         next.RequestTimelineDetail(zoomed, 24);
         await next.TimelineDetailReady;
         Assert.StartsWith("Zoomed view", next.IntervalTableScope, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "R15: the interval table's selected row is the analysis interval's however it was chosen, and none where no row is exactly it")]
+    public void TheTablesSelectedRowFollowsTheAnalysisInterval() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            .. Enumerable.Range(0, 240).Select(index => Timed(Transfer(10 + index, ObservationKind.Send,
+                AccountingSide.SendSide, 64, 100, (ulong)(100 + index)).Between(ClientEnd, ServerEnd))),
+            Timed(Transfer(4_000, ObservationKind.Send, AccountingSide.SendSide, 3, 100, 9_000).Between(ClientEnd, ServerEnd)),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 128);
+        await workspace.TimelineDetailReady;
+        IReadOnlyList<TimelineBucket> drawn = workspace.TimelineDetail!.Buckets;
+
+        // A row chosen in the table is the analysis interval.
+        IntervalRow first = workspace.Intervals[0];
+        workspace.SelectedIntervalRow = first;
+        Assert.Equal(first.Interval, workspace.SelectedInterval);
+
+        // A cell chosen on the timeline, or a step, selects its own row, and the row chosen before is no longer selected.
+        TimelineBucket last = drawn.Last(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(last);
+        Assert.Same(workspace.Intervals.Single(row => row.Interval == last.Interval), workspace.SelectedIntervalRow);
+        workspace.SelectInterval(drawn[1].Interval);
+        Assert.Equal(drawn[1].Interval, workspace.SelectedIntervalRow?.Interval);
+
+        // One cell of a run of empty ones listed as one row, or a brushed range, is no row; the run's row chosen selects
+        // the run whole.
+        IntervalRow run = workspace.Intervals.First(row => row.Cells > 1);
+        workspace.SelectInterval(drawn.First(bucket => run.Interval.Contains(bucket.Interval.StartTicks)).Interval);
+        Assert.Null(workspace.SelectedIntervalRow);
+        workspace.SelectedIntervalRow = run;
+        Assert.Equal(run.Interval, workspace.SelectedInterval);
+        workspace.SelectInterval(new TimeRange(drawn[0].Interval.StartTicks, drawn[2].Interval.EndTicks));
+        Assert.Null(workspace.SelectedIntervalRow);
+
+        // Clearing the selection clears the row, and a new resolution keeps no row that is not exactly the interval.
+        workspace.SelectedIntervalRow = first;
+        workspace.ClearSelection();
+        Assert.Null(workspace.SelectedIntervalRow);
+        workspace.SelectedIntervalRow = first;
+        workspace.RequestTimelineDetail(new TimeRange(10, 250), 24);
+        await workspace.TimelineDetailReady;
+        Assert.Equal(first.Interval, workspace.SelectedInterval);
+        Assert.Null(workspace.SelectedIntervalRow);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

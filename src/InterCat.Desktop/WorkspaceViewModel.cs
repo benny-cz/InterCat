@@ -740,16 +740,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         intervalCells = buckets.Count;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode, listsWhole ? focus : null,
             IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null, TimeBase);
-        if (selectedIntervalRow is { } row)
-        {
-            // The analysis interval stays selected. Its row follows a focus count arriving at the same resolution, and
-            // only a row gone at a new resolution is dropped.
-            selectedIntervalRow = intervals.FirstOrDefault(candidate => candidate.Interval == row.Interval);
-            OnPropertyChanged(nameof(SelectedIntervalRow));
-        }
-
         OnPropertyChanged(nameof(Intervals));
         OnPropertyChanged(nameof(IntervalTableScope));
+
+        // The analysis interval stays selected, its row the new rows' one that is exactly it: a focus count arriving at
+        // the same resolution keeps it, and a new resolution with no such row drops it.
+        SyncSelectedIntervalRow();
     }
 
     private void SetTimelineFocusState(bool loading, string? problem)
@@ -3508,6 +3504,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public bool HasSelectedRelationship => selectedRelationship is not null;
 
+    /// <summary>
+    /// The interval table's selected row: the analysis interval's, however it was chosen, where one row is exactly it
+    /// (R15). Choosing a row makes it the analysis interval.
+    /// </summary>
     public IntervalRow? SelectedIntervalRow
     {
         get => selectedIntervalRow;
@@ -3515,10 +3515,36 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             selectedIntervalRow = value;
             OnPropertyChanged();
-            if (value is not null)
+            if (value is not null && value.Interval != selectedInterval)
             {
                 SelectInterval(value.Interval);
             }
+        }
+    }
+
+    /// <summary>
+    /// Shows the analysis interval as the interval table's selected row where one row is exactly it, and none where none
+    /// is: no interval, a brushed range, or one cell of a run of empty ones listed as one row.
+    /// </summary>
+    private void SyncSelectedIntervalRow()
+    {
+        IntervalRow? row = null;
+        if (selectedInterval is { } chosen)
+        {
+            foreach (IntervalRow candidate in intervals)
+            {
+                if (candidate.Interval == chosen)
+                {
+                    row = candidate;
+                    break;
+                }
+            }
+        }
+
+        if (!ReferenceEquals(row, selectedIntervalRow))
+        {
+            selectedIntervalRow = row;
+            OnPropertyChanged(nameof(SelectedIntervalRow));
         }
     }
 
@@ -6181,6 +6207,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         selectedInterval = changed.Interval;
+        SyncSelectedIntervalRow();
         SyncIntervalScope();
         RaiseScopeChanged();
         if (changed.ProcessId is null)
