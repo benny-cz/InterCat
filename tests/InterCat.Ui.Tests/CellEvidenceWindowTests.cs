@@ -74,6 +74,75 @@ public sealed class CellEvidenceWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.4: a record listed beside a chosen cell opens in E on Enter or a double click, selected there with the keyboard on it")]
+    public async Task AListedRecordOpensInE()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows(), .. Burst()]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        TimelineBucket cell = DrawnTimeline.Lane(workspace, Mechanism.Udp).Single(bucket => bucket.ObservationCount == 3);
+        ListBox records = await Choose(cell);
+        Assert.Equal("Enter or a double click opens one in E", window.GetControl<TextBlock>("CellRecordsNoteText").Text);
+
+        // Enter on the second record opens E with it selected, and E's table has the keyboard on it.
+        CellRecordRow second = Assert.IsType<CellRecordRow>(records.Items[1]);
+        Assert.True(records.ContainerFromIndex(1)!.Focus());
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(second.Key, workspace.SelectedRung?.Key);
+        Assert.True(workspace.HasSelectedEvidence);
+        ListBox rungs = window.GetControl<ListBox>("RungList");
+        Assert.Same(workspace.SelectedRung, rungs.SelectedItem);
+        Assert.True(rungs.ContainerFromItem(rungs.SelectedItem!)!.IsKeyboardFocusWithin);
+
+        // Back at the cell, a double click on the third opens it alike.
+        Assert.True(workspace.Ascend());
+        Dispatch();
+        records = await Choose(cell);
+        CellRecordRow third = Assert.IsType<CellRecordRow>(records.Items[2]);
+        Control item = Assert.IsAssignableFrom<Control>(records.ContainerFromIndex(2));
+        item.BringIntoView();
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+        Point on = item.TranslatePoint(new(item.Bounds.Width / 2, item.Bounds.Height / 2), window)!.Value;
+        Assert.True(window.InputHitTest(on) is Visual hit && item.IsVisualAncestorOf(hit));
+        window.MouseDown(on, MouseButton.Left);
+        window.MouseUp(on, MouseButton.Left);
+        window.MouseDown(on, MouseButton.Left);
+        window.MouseUp(on, MouseButton.Left);
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(third.Key, workspace.SelectedRung?.Key);
+        window.Close();
+
+        async Task<ListBox> Choose(TimelineBucket chosen)
+        {
+            Point at = timeline.TranslatePoint(timeline.PointOf(chosen)!.Value, window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Dispatch();
+            await workspace.CellRecordsReady;
+            Dispatch();
+            ListBox list = window.GetControl<ListBox>("CellRecordsList");
+            Assert.Equal(3, list.ItemCount);
+            return list;
+        }
+    }
+
     private static CaptureUiUpdate Update(TemporarySession session) => new(
         CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
         Overview: SessionOverviewProjector.Project(session.Store));
@@ -92,6 +161,13 @@ public sealed class CellEvidenceWindowTests
             Timed(Transfer(12 + (5 * index), ObservationKind.Send, AccountingSide.SendSide, 16, 100, (ulong)(102 + (3 * index)))
                 .Between("127.0.0.1:50001", "127.0.0.1:53") with { Mechanism = Mechanism.Udp }),
         }),
+    ];
+
+    /// <summary>Three datagrams client.exe sent to the resolver in one tick, after the exchange: a cell of three records.</summary>
+    private static ObservationRowV1[] Burst() =>
+    [
+        .. Enumerable.Range(0, 3).Select(index => Timed(Transfer(150, ObservationKind.Send, AccountingSide.SendSide, 20 + index, 100,
+                (ulong)(300 + index)).Between("127.0.0.1:50002", "127.0.0.1:53") with { Mechanism = Mechanism.Udp })),
     ];
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };

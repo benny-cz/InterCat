@@ -384,8 +384,13 @@ public sealed partial class WorkspaceViewModel
             ? string.Create(CultureInfo.CurrentCulture, $"Its first {cellRecordRows.Count:N0} records")
         : "Its " + Counted(cellRecordRows.Count, "record", "records");
 
-    /// <summary>That they are being read, how many more E lists, or why they could not be read; empty otherwise.</summary>
+    /// <summary>
+    /// That they are being read, how many more E lists and how one opens there, or why they could not be read; empty
+    /// without a list.
+    /// </summary>
     public string CellRecordsNote => cellRecordsNote;
+
+    private const string OpensThere = "Enter or a double click opens one there";
 
     public bool HasCellRecordsNote => cellRecordsNote.Length > 0;
 
@@ -477,8 +482,10 @@ public sealed partial class WorkspaceViewModel
             cellRecordRows = [.. page.Records.Take(CellRecordsListed).Select(record => CellRecord(record, TimeBase))];
             cellRecordsMore = page.Records.Count > CellRecordsListed;
             int? more = count is { } total ? total - cellRecordRows.Count : null;
-            cellRecordsNote = more is > 0 ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, which E lists")
-                : more is null && cellRecordsMore ? "More, which E lists"
+            cellRecordsNote = more is > 0
+                ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, which E lists · ") + OpensThere
+                : more is null && cellRecordsMore ? "More, which E lists · " + OpensThere
+                : cellRecordRows.Count > 0 ? "Enter or a double click opens one in E"
                 : string.Empty;
             RaiseCellRecordsChanged();
         }
@@ -512,7 +519,31 @@ public sealed partial class WorkspaceViewModel
         {
             AccessibleName = $"{title}{(size is null ? string.Empty : ", " + size)}, at {when}{endpoints}, "
                 + EvidenceRowText.Ownership(record, CultureInfo.CurrentCulture) + ".",
+            Key = EvidenceKey(record),
         };
+    }
+
+    /// <summary>
+    /// Opens E from the chosen cell with one of its listed records selected there, so the inspector describes that record
+    /// (§6.4): what Enter or a double click on it in the list does. The list holds E's first records, so it is on E's
+    /// first page. False when the record is no longer listed, or E does not open.
+    /// </summary>
+    public bool OpenCellRecord(CellRecordRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (!cellRecordRows.Contains(row))
+        {
+            return false;
+        }
+
+        pendingEvidenceKey = row.Key;
+        if (ShowEvidence())
+        {
+            return true;
+        }
+
+        pendingEvidenceKey = null;
+        return false;
     }
 
     /// <summary>Whether two scopes read the same records: every part of each the same, their owners in the same order.</summary>

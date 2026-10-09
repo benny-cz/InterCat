@@ -401,7 +401,7 @@ public sealed class TimelineCellTests
         await workspace.CellRecordsReady;
         Assert.Equal(few.ObservationCount, workspace.CellRecordRows.Count);
         Assert.Equal("Its " + (few.ObservationCount == 1 ? "1 record" : $"{few.ObservationCount} records"), workspace.CellRecordsHeading);
-        Assert.False(workspace.HasCellRecordsNote);
+        Assert.Equal("Enter or a double click opens one in E", workspace.CellRecordsNote);
         Assert.All(workspace.CellRecordRows, row => Assert.StartsWith("TCP ", row.Title, StringComparison.Ordinal));
 
         // A cell of ten, in a view counted coarse enough to hold them: its first five, and how many more E lists.
@@ -414,7 +414,7 @@ public sealed class TimelineCellTests
         await workspace.CellRecordsReady;
         Assert.Equal(WorkspaceViewModel.CellRecordsListed, workspace.CellRecordRows.Count);
         Assert.Equal("Its first 5 of 10 records", workspace.CellRecordsHeading);
-        Assert.Equal("5 more, which E lists", workspace.CellRecordsNote);
+        Assert.Equal("5 more, which E lists · Enter or a double click opens one there", workspace.CellRecordsNote);
         Assert.All(workspace.CellRecordRows, row => Assert.True(row.Detail.EndsWith(" · PID 100", StringComparison.Ordinal)
             || row.Detail.EndsWith(" · PID 200", StringComparison.Ordinal), row.Detail));
         CellRecordRow[] listed = [.. workspace.CellRecordRows];
@@ -486,6 +486,32 @@ public sealed class TimelineCellTests
         workspace.ClearSelection();
         Assert.Equal("Nothing selected", workspace.SelectionTitle);
         Assert.Equal("Choose a node, a ranked row or a timeline cell.", workspace.SelectionSubtitle);
+    });
+
+    [Fact(DisplayName = "§6.4: a record listed beside a chosen cell opens in E selected there, the inspector describing it, and one no longer listed opens nothing")]
+    public void AListedRecordOpensInESelected() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RequestTimelineDetail(new TimeRange(10, 60), 2);
+        await workspace.TimelineDetailReady;
+        workspace.ChooseTimelineCell(Lane(workspace, Mechanism.Tcp)[0], Mechanism.Tcp);
+        await workspace.CellRecordsReady;
+        CellRecordRow third = workspace.CellRecordRows[2];
+
+        // A row the list does not hold opens nothing.
+        Assert.False(workspace.OpenCellRecord(third with { Key = "elsewhere" }));
+        Assert.False(workspace.IsEvidenceRung);
+
+        // A listed one opens E, behind the cell's chip, with that record selected and described.
+        Assert.True(workspace.OpenCellRecord(third));
+        Assert.True(workspace.IsEvidenceRung);
+        await workspace.EvidenceReady;
+        Assert.Equal(third.Key, workspace.SelectedRung?.Key);
+        Assert.Equal((third.Title, third.Detail), (workspace.SelectedRung!.Label, workspace.SelectedRung.Detail));
+        Assert.True(workspace.HasSelectedEvidence);
+        Assert.Contains(workspace.Filters, filter => filter.Chip == "Mechanism: TCP");
     });
 
     [Fact(DisplayName = "R5: a timeline card at every rung's lanes says cell and column, never bucket, as the inspector does")]

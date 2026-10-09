@@ -430,6 +430,13 @@ public sealed partial class MainWindow : Window, IDisposable
                 e.Handled = true;
                 break;
             case Key.Enter:
+                if (CellRecordsList.IsKeyboardFocusWithin)
+                {
+                    // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
+                    e.Handled = OpenSelectedCellRecord(viewModel);
+                    break;
+                }
+
                 if (RelationshipList.IsKeyboardFocusWithin)
                 {
                     // Enter on a relationship opens it as a double click on its edge does (R15): the row with the keyboard
@@ -1747,6 +1754,31 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
+
+    private void OpenCellRecord(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            OpenSelectedCellRecord(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Opens in E the chosen cell's record the keyboard is on, or else the one selected, selected there (§6.4); E's table
+    /// then has the keyboard, on that record once its page arrives. False when there is none.
+    /// </summary>
+    internal bool OpenSelectedCellRecord(WorkspaceViewModel viewModel)
+    {
+        CellRecordRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as CellRecordRow
+            ?? CellRecordsList.SelectedItem as CellRecordRow;
+        if (row is null || !viewModel.OpenCellRecord(row))
+        {
+            return false;
+        }
+
+        FocusRail();
+        return true;
+    }
 
     /// <summary>
     /// Opens the recent session the keyboard is on, or else the one selected: Tab reaches a row without selecting it.

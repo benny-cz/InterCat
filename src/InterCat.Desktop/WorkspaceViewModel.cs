@@ -5193,14 +5193,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             list.Loading = false;
             if (!disposed && ReferenceEquals(evidence, list))
             {
+                // The rows are announced before the row a restore or an opened record selects among them: a list given
+                // new rows lets its selection go, so the other way round it showed none beside the record described.
                 RebuildEvidenceRows();
+                RaiseEvidenceChanged();
                 if (pendingEvidenceKey is { } key && evidenceRows.FirstOrDefault(row => row.Key == key) is { } row)
                 {
                     pendingEvidenceKey = null;
                     SelectedRung = row;
                 }
-
-                RaiseEvidenceChanged();
             }
         }
     }

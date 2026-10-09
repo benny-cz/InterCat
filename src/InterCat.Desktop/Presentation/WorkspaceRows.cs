@@ -68,13 +68,16 @@ public sealed record RelationshipRow(
 }
 
 /// <summary>
-/// One of a chosen timeline cell's records as the inspector lists it beneath the cell's explanation (§6.2): what happened
-/// and its size, then when and whose, as the evidence rung's row says them.
+/// One of a chosen timeline cell's records as the inspector lists it beneath the time scope (§6.2): what happened and its
+/// size, then when and whose, as the evidence rung's row says them.
 /// </summary>
 public sealed record CellRecordRow(string Title, string Detail, string Glyph, string Mechanism) : IAccessibleRow
 {
     /// <summary>The record read aloud: what, its size, when, its endpoints and how it was bound.</summary>
     public string AccessibleName { get; init; } = string.Empty;
+
+    /// <summary>The key of the evidence rung's row for the same record, which opening it selects there.</summary>
+    public string Key { get; init; } = string.Empty;
 }
 
 /// <summary>
