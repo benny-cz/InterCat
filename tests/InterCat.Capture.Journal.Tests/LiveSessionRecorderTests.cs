@@ -577,13 +577,20 @@ public sealed class LiveSessionRecorderTests
         using var directory = new TemporaryDirectory();
         SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory.Path), Guid.NewGuid(), "preview-test");
         var host = new ScriptedHost();
+        var probe = new LiveHealthProbe();
         long now = Stopwatch.GetTimestamp();
+        int split = 0;
         for (int index = 0; index < 6; index++)
         {
             if (index == 3)
             {
-                // Longer than the publication interval: the first three records publish in a chunk of their own.
-                host.Pause(TimeSpan.FromMilliseconds(400));
+                // The first three records are published before the next arrive - in one chunk, or in two or three where the
+                // publication timer, which runs on its own, fell between them - and the next go to the chunk open then.
+                host.PauseUntil(
+                    () => probe.ReadPreview() is { } shown
+                        && shown.Counts.Where(count => count.Chunk < shown.OpenChunk).Sum(count => count.Count) == 3,
+                    TimeSpan.FromSeconds(30));
+                host.Run(() => split = probe.ReadPreview()!.OpenChunk);
             }
 
             host.Admit(new AdmittedEvent
@@ -596,7 +603,6 @@ public sealed class LiveSessionRecorderTests
             });
         }
 
-        var probe = new LiveHealthProbe();
         LivePreviewSnapshot? during = null;
         LiveCaptureResult result = await LiveRecorder.RecordAsync(
             Plan(),
@@ -621,9 +627,10 @@ public sealed class LiveSessionRecorderTests
         Assert.Equal((6L, 6L, 0L), (preview.JournaledRecords, preview.CountedRecords, preview.UnbinnedRecords));
         Assert.Equal(6, preview.Counts.Sum(count => count.Count));
         Assert.All(preview.Counts, count => Assert.Equal(Mechanism.Tcp, count.Mechanism));
-        Assert.True(preview.OpenChunk >= 2, "The pause must have published the first chunk.");
+        Assert.True(split >= 2, "The pause must have published the first chunk.");
         Assert.All(preview.Counts, count => Assert.InRange(count.Chunk, preview.FirstChunk, preview.OpenChunk));
-        Assert.Equal(3, preview.Counts.Where(count => count.Chunk == 1).Sum(count => count.Count));
+        Assert.Equal((3, 3), (preview.Counts.Where(count => count.Chunk < split).Sum(count => count.Count),
+            preview.Counts.Where(count => count.Chunk >= split).Sum(count => count.Count)));
         Assert.Equal(Math.Max(1, Stopwatch.Frequency / LivePreviewTally.BinsPerSecond), preview.BinNativeTicks);
         Assert.Equal([.. Enumerable.Range(0, 6).Select(index => (now + (index * (Stopwatch.Frequency / 20))) / preview.BinNativeTicks)
                 .Distinct().Order()],
