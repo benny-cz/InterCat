@@ -252,7 +252,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         + "fits the analysis interval, or the whole session when none is brushed; [ and ] step to the previous or next "
         + "record; Up and Down scroll lanes. P pins the selected process's lane at the top of its group's lanes, or unpins "
         + "it. A search typed at a group marks the lanes it finds and shows the first. T shows the interval table, which "
-        + "lists what the timeline draws.",
+        + "lists what the timeline draws. F6 moves to the next pane, Shift+F6 to the one before.",
         () => DataContext is WorkspaceViewModel viewModel
             ? viewModel.TimelineCaption
                 + (viewModel.SelectedInterval is { } chosen

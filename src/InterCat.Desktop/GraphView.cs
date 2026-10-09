@@ -1255,7 +1255,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The graph as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "graph",
         "Arrow keys move between drawn nodes; Enter opens a group or process; P pins or unpins the selected node; L lays "
-        + "the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here.",
+        + "the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here. "
+        + "F6 moves to the next pane, Shift+F6 to the one before.",
         () => (DataContext as WorkspaceViewModel)?.GraphSummary);
 
     private void OpenGroup(object? sender, TappedEventArgs e)

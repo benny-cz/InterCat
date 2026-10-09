@@ -124,6 +124,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
     private bool railOwnsKeyboard;
+
+    // The control that last had the keyboard in each pane F6 visits, which it gives the keyboard back to (FocusPane).
+    private readonly Dictionary<Control, InputElement> paneKeyboard = [];
     private bool closingPrompt;
     private bool closeAfterCapture;
 
@@ -384,6 +387,14 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        // Nor does F6, which moves the keyboard to the next pane from wherever it is, and Shift+F6 to the one before, as
+        // Windows applications move it between their panes (§6.7).
+        if (e.Key == Key.F6 && (e.KeyModifiers & ~KeyModifiers.Shift) == KeyModifiers.None)
+        {
+            e.Handled = MovePaneKeyboard(forward: !e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+            return;
+        }
+
         if (SearchBox.IsKeyboardFocusWithin)
         {
             if (e.Key == Key.Escape)
@@ -550,6 +561,82 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
+    /// Gives the keyboard to the pane after the one holding it, or before it, among the panes F6 visits in its order
+    /// (§6.7): the ranked table, the graph, the timeline and the inspector, or in place of the last three the relationship
+    /// and interval tables while they are shown over them. A pane with nothing to take it is passed by, as is one out of
+    /// sight, such as one the other fills the column over. From anywhere else - a header's button, the status bar - the
+    /// next pane is the first and the one before the last.
+    /// </summary>
+    private bool MovePaneKeyboard(bool forward)
+    {
+        Control[] panes = workspace.ShowTables
+            ? [Rail, RelationshipList, IntervalList]
+            : [Rail, GraphPane, TimelinePane, Inspector];
+        int holding = Array.FindIndex(panes, pane => pane.IsKeyboardFocusWithin);
+        int others = holding < 0 ? panes.Length : panes.Length - 1;
+        for (int step = 1; step <= others; step++)
+        {
+            int index = holding < 0
+                ? (forward ? step - 1 : panes.Length - step)
+                : (((holding + (forward ? step : -step)) % panes.Length) + panes.Length) % panes.Length;
+            if (FocusPane(panes[index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// Gives <paramref name="pane"/> the keyboard where a person works it: the ranked table's selected row or its first, or
+    /// its rung's evidence step when it has no rows; the graph's or the timeline's own surface; a table's selected row or
+    /// its first; or else the control in the pane that last had the keyboard while it still can, or the pane's first list
+    /// with rows or first control a Tab would reach, as the rail's recent sessions before any is open. False when it has
+    /// none.
+    /// </summary>
+    private bool FocusPane(Control pane)
+    {
+        if (ReferenceEquals(pane, Rail) && (RungList is { IsEffectivelyVisible: true, ItemCount: > 0 }
+            || EmptyEvidenceButton.IsEffectivelyVisible))
+        {
+            // The ranked table's own path, which waits for rows still being laid out.
+            FocusRail();
+            return true;
+        }
+
+        if (ReferenceEquals(pane, GraphPane)) return GraphSurface.Focus(NavigationMethod.Tab);
+        if (ReferenceEquals(pane, TimelinePane)) return TimelineSurface.Focus(NavigationMethod.Tab);
+        if (pane is ListBox table) return FocusRow(table);
+        if (paneKeyboard.TryGetValue(pane, out InputElement? last) && pane.IsVisualAncestorOf(last) && last.IsEffectivelyVisible
+            && last.IsEffectivelyEnabled && last.Focus(NavigationMethod.Tab))
+        {
+            return true;
+        }
+
+        InputElement? first = pane.GetVisualDescendants().OfType<InputElement>().FirstOrDefault(element =>
+            element.IsEffectivelyVisible
+            && (element is ListBox { ItemCount: > 0 }
+                || (element.Focusable && element.IsEffectivelyEnabled && KeyboardNavigation.GetIsTabStop(element))));
+        return first is ListBox list ? FocusRow(list) : first?.Focus(NavigationMethod.Tab) == true;
+    }
+
+    /// <summary>
+    /// Gives a list's selected row the keyboard, or its first when none is selected: a list takes no focus of its own, so
+    /// a row must (see <see cref="FocusRail"/>). False for a list with no rows, or one out of sight.
+    /// </summary>
+    private static bool FocusRow(ListBox list)
+    {
+        if (list.ItemCount == 0 || !list.IsEffectivelyVisible || (list.SelectedItem ?? list.Items[0]) is not { } row)
+        {
+            return false;
+        }
+
+        list.ScrollIntoView(row);
+        return list.ContainerFromItem(row) is Control container && container.Focus(NavigationMethod.Tab);
+    }
+
+    /// <summary>
     /// Gives the ranked table the keyboard, on its selected row or its first, once its rows are laid out. A list takes no
     /// focus of its own, so focusing the list itself left the keyboard where it was, or on nothing once the control that
     /// had it was hidden: the search box after Escape, a search hit after Enter.
@@ -602,6 +689,13 @@ public sealed partial class MainWindow : Window, IDisposable
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
         railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
             || ReferenceEquals(target, EmptyEvidenceButton);
+
+        // F6 gives a pane the keyboard back where it last was, as a person left it there.
+        Control[] remembering = [Rail, Inspector, RelationshipList, IntervalList];
+        if (target is InputElement element && remembering.FirstOrDefault(pane => pane.IsVisualAncestorOf(target)) is { } holding)
+        {
+            paneKeyboard[holding] = element;
+        }
     }
 
     /// <summary>

@@ -1372,6 +1372,7 @@
         "R15: a scope no listing names, or one this generation cannot resolve, is refused rather than measured as nothing",
         "R15: a selected group highlights its members' records; the rung's own focus is not highlighted again",
         "R15: a selected process highlights exactly its own records in the timeline, until cleared",
+        "R15: a session is walked by keyboard alone: a process opened, a moment stepped to, its records read and one opened in E, and back",
         "R15: a timeline counted a column per pixel lists each interval holding a record as a row and each run of empty ones as one, which a choice selects whole",
         "R15: an interval holding no record keys no mechanism in the interval table, by glyph or by name",
         "R15: at the minimum size a deep rung keeps its title whole, Back names the rung, and the rail's heading its badge apart",
