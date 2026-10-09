@@ -241,11 +241,13 @@ public sealed class EvidenceRungWindowTests
         Assert.StartsWith("Ranked within", workspace.RankingScopeText, StringComparison.Ordinal);
         WriteableBitmapCheck(window, "brushed-interval.png");
 
-        // A press without a drag still selects the single bucket under the pointer, as before.
+        // A press without a drag still selects the single bucket under the pointer, as before: one of the whole session's
+        // own columns once they are counted.
+        await DrawnTimeline.Counted(window, workspace, timeline);
         window.MouseDown(from, MouseButton.Left);
         window.MouseUp(from, MouseButton.Left);
         Dispatch();
-        Assert.Contains(workspace.Snapshot.Timeline, bucket => bucket.Interval == workspace.SelectedInterval);
+        Assert.Contains(DrawnTimeline.Machine(workspace), bucket => bucket.Interval == workspace.SelectedInterval);
         window.Close();
     }
 
@@ -389,11 +391,14 @@ public sealed class EvidenceRungWindowTests
         Assert.True(selected.SpanTicks < coarse.Interval.SpanTicks);
         WriteableBitmapCheck(window, "zoomed-timeline.png");
 
-        // Fitting again needs no detail: the overview answers the whole extent.
+        // Fitted again, the whole session is counted in the view's own columns too, a column per device pixel.
         timeline.SetViewport(null);
         timeline.RequestDetailNow();
         await workspace.TimelineDetailReady;
-        Assert.Null(workspace.TimelineDetail);
+        SessionTimelineDetail whole = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.Equal(workspace.Snapshot.Extent, whole.Interval);
+        Assert.Equal(timeline.DeviceColumns, whole.Buckets.Count);
+        Assert.StartsWith("Whole session in", workspace.IntervalTableScope, StringComparison.Ordinal);
         window.Close();
     }
 
@@ -452,9 +457,9 @@ public sealed class EvidenceRungWindowTests
         workspace.SelectedRung = Assert.Single(workspace.RungRows);
         Assert.True(workspace.Descend());
         await workspace.TimelineDetailReady;
-        Dispatch();
-
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
+
         Assert.True(workspace.ShowsProcessLanes, workspace.TimelineCaption);
         Assert.Equal(2, workspace.ProcessLaneDisplay.Count);
         Assert.Contains("machine context", workspace.TimelineCaption, StringComparison.Ordinal);
@@ -521,7 +526,7 @@ public sealed class EvidenceRungWindowTests
         window.MouseUp(firstLabel, MouseButton.Left);
         Assert.Equal(first.ProcessId, workspace.SelectedProcess?.Id);
         Point contextLabel = timeline.TranslatePoint(
-            new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y), window)!.Value;
+            new(30, timeline.PointOf(DrawnTimeline.Machine(workspace)[0])!.Value.Y), window)!.Value;
         window.MouseDown(contextLabel, MouseButton.Left);
         window.MouseUp(contextLabel, MouseButton.Left);
         Assert.Null(workspace.SelectedProcess);
@@ -562,8 +567,8 @@ public sealed class EvidenceRungWindowTests
             await workspace.TimelineDetailReady;
         }
 
-        Dispatch();
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
         ScrollViewer scroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
         Assert.True(workspace.ShowsDirectionLanes, workspace.TimelineCaption);
         Assert.Contains("by source direction", workspace.TimelineCaption, StringComparison.Ordinal);
@@ -631,7 +636,7 @@ public sealed class EvidenceRungWindowTests
 
         // The machine row's name returns to all directions.
         Point machine = Reveal(window, timeline, scroller,
-            new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y));
+            new(30, timeline.PointOf(DrawnTimeline.Machine(workspace)[0])!.Value.Y));
         window.MouseDown(machine, MouseButton.Left);
         window.MouseUp(machine, MouseButton.Left);
         Dispatch();
@@ -1017,8 +1022,8 @@ public sealed class EvidenceRungWindowTests
             await workspace.TimelineDetailReady;
         }
 
-        Dispatch();
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
         ScrollViewer scroller = window.GetControl<ScrollViewer>("TimelineLaneScroller");
         Assert.True(workspace.ShowsChannelEndLanes, workspace.TimelineCaption);
         Assert.Equal((3 * 30) + 54, timeline.MinHeight);
@@ -1080,7 +1085,7 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
 
         // The machine row's name returns to both ends.
-        Point machine = Reveal(window, timeline, scroller, new(30, timeline.PointOf(workspace.Snapshot.Timeline[0])!.Value.Y));
+        Point machine = Reveal(window, timeline, scroller, new(30, timeline.PointOf(DrawnTimeline.Machine(workspace)[0])!.Value.Y));
         window.MouseDown(machine, MouseButton.Left);
         window.MouseUp(machine, MouseButton.Left);
         Dispatch();
@@ -1217,7 +1222,7 @@ public sealed class EvidenceRungWindowTests
     }
 
     [AvaloniaFact(DisplayName = "§6.7: ] and [ step over empty buckets, + zooms around the interval, Shift+arrow pans a bucket, a sideways wheel pans")]
-    public void TheTimelineStepsZoomsAroundTheIntervalAndPans()
+    public async Task TheTimelineStepsZoomsAroundTheIntervalAndPans()
     {
         using var session = new TemporarySession();
         // Two bursts far apart, so most of the session's buckets are empty between them.
@@ -1229,10 +1234,12 @@ public sealed class EvidenceRungWindowTests
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
         timeline.Focus();
         TimeRange extent = workspace.Snapshot.Extent;
-        TimeRange[] held = [.. workspace.Snapshot.Timeline.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval)];
-        Assert.True(held.Length >= 2 && workspace.Snapshot.Timeline.Count > held.Length + 10);
+        IReadOnlyList<TimelineBucket> drawn = DrawnTimeline.Machine(workspace);
+        TimeRange[] held = [.. drawn.Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval)];
+        Assert.True(held.Length >= 2 && drawn.Count > held.Length + 10);
 
         // ] walks the buckets that hold records in order, never an empty one, and stops after the last; [ walks back.
         foreach (TimeRange expected in held)
@@ -1258,7 +1265,7 @@ public sealed class EvidenceRungWindowTests
         window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
         TimeRange before = timeline.Viewport;
         window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Shift);
-        Assert.Equal(before.StartTicks + workspace.Snapshot.Timeline[0].Interval.SpanTicks, timeline.Viewport.StartTicks);
+        Assert.Equal(before.StartTicks + drawn[0].Interval.SpanTicks, timeline.Viewport.StartTicks);
         Assert.Equal(before.SpanTicks, timeline.Viewport.SpanTicks);
 
         // A sideways wheel and Shift with the wheel pan a tenth of the span per notch, and never zoom.

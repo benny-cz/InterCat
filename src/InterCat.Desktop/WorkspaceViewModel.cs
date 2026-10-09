@@ -465,8 +465,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public Task IntervalReady { get; private set; } = Task.CompletedTask;
 
     /// <summary>
-    /// The timeline at the viewport's own resolution once its count has arrived; null at the whole extent, which the
-    /// overview's buckets already answer, and until a zoomed count completes (plan §6.2).
+    /// The timeline at the viewport's own resolution once its count has arrived, the whole session's included; null where
+    /// the overview's buckets already answer the view, and until its count completes (plan §6.2).
     /// </summary>
     public SessionTimelineDetail? TimelineDetail => timelineDetail;
 
@@ -479,8 +479,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Asks for the timeline over a viewport in <paramref name="columns"/> columns, drawn at <paramref name="scaling"/>
     /// device pixels per logical pixel where the view says. The overview's coarse buckets stay on screen until the answer
-    /// arrives, a newer viewport cancels an older request, and the whole extent needs none (P25). A request that fails
-    /// leaves the coarse buckets, which remain true at their own resolution.
+    /// arrives and a newer viewport cancels an older request (P25). The whole session is counted in its own columns too,
+    /// unless they are no finer than the overview's, which then answer it. A request that fails leaves the coarse
+    /// buckets, which remain true at their own resolution.
     /// </summary>
     public void RequestTimelineDetail(TimeRange viewport, int columns, double? scaling = null)
     {
@@ -500,13 +501,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RequestRpcSpans(viewport);
         RequestHttpSpans(viewport);
         FollowTimelineBytes();
-        TimeRange extent = wholeSnapshot.Extent;
-        bool whole = viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks;
-        if (whole && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
+        bool overview = OverviewAnswers(viewport, columns);
+        if (Whole(viewport))
         {
-            // At the whole extent the focus is counted on the overview's own columns, so each focus bar stands inside
-            // the bar drawn for the same interval.
-            viewport = extent;
+            viewport = wholeSnapshot.Extent;
+        }
+
+        if (overview && timelineFocus is not null && wholeSnapshot.Timeline.Count > 0)
+        {
+            // Where the overview answers the view, the focus is counted on its own columns, so each focus bar stands
+            // inside the bar drawn for the same interval.
             columns = wholeSnapshot.Timeline.Count;
         }
 
@@ -524,7 +528,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
-        if (evidenceSource is null || (whole && timelineFocus is null))
+        if (evidenceSource is null || (overview && timelineFocus is null))
         {
             SetTimelineDetail(null, null);
             TimelineDetailReady = Task.CompletedTask;
@@ -533,14 +537,27 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         var query = new CancellationTokenSource();
         timelineQuery = query;
-        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, whole, timelineFocus, lanes, query);
+        TimelineDetailReady = LoadTimelineDetailAsync(evidenceSource, viewport, columns, overview, timelineFocus, lanes, query);
     }
+
+    /// <summary>Whether a view shows the whole session.</summary>
+    private bool Whole(TimeRange viewport) =>
+        viewport.StartTicks <= wholeSnapshot.Extent.StartTicks && viewport.EndTicks >= wholeSnapshot.Extent.EndTicks;
+
+    /// <summary>
+    /// Whether the overview's own buckets answer a view drawn in <paramref name="columns"/>: the whole session drawn no
+    /// finer than they are - as it is until the view is first laid out, or once each holds a single tick - so nothing
+    /// coarser, and nothing the same, is ever counted in their place.
+    /// </summary>
+    private bool OverviewAnswers(TimeRange viewport, int columns) =>
+        Whole(viewport) && (wholeSnapshot.Timeline.Count == 0
+            || Math.Min(columns, wholeSnapshot.Extent.SpanTicks) <= wholeSnapshot.Timeline.Count);
 
     private async Task LoadTimelineDetailAsync(
         SessionEvidenceSource source,
         TimeRange viewport,
         int columns,
-        bool whole,
+        bool overview,
         TimelineFocus? focus,
         IReadOnlyList<ProcessInstanceId>? lanes,
         CancellationTokenSource query)
@@ -573,8 +590,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             {
                 bool sameSession = counted.Whole.SessionId == source.SessionId;
 
-                // At the whole extent the overview's buckets are the whole timeline; the focus was counted on their columns.
-                SetTimelineDetail(sameSession && !whole ? counted.Whole : null, sameSession ? counted.Focus : null,
+                // Where the overview's buckets answer the view, the focus was counted on their columns.
+                SetTimelineDetail(sameSession && !overview ? counted.Whole : null, sameSession ? counted.Focus : null,
                     sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null,
                     sameSession ? counted.DirectionLanes : null, sameSession ? counted.ChannelEndLanes : null,
                     sameSession ? counted.FoldedLane : null);
@@ -824,8 +841,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// Asks for the selection's records on the columns the timeline draws: the overview's at the whole extent, the zoomed
-    /// detail's otherwise, so each highlight stands inside the bar drawn for its interval. A newer selection or view
+    /// Asks for the selection's records on the columns the timeline draws: the overview's where they answer the view, the
+    /// view's own otherwise, so each highlight stands inside the bar drawn for its interval. A newer selection or view
     /// cancels an older count; a count that fails leaves nothing highlighted rather than a guess.
     /// </summary>
     private void RequestHighlight()
@@ -845,11 +862,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         (TimeRange viewport, int columns) = drawn;
-        TimeRange extent = wholeSnapshot.Extent;
-        if (viewport.StartTicks <= extent.StartTicks && viewport.EndTicks >= extent.EndTicks && wholeSnapshot.Timeline.Count > 0)
+        if (OverviewAnswers(viewport, columns) && wholeSnapshot.Timeline.Count > 0)
         {
-            viewport = extent;
             columns = wholeSnapshot.Timeline.Count;
+        }
+
+        if (Whole(viewport))
+        {
+            viewport = wholeSnapshot.Extent;
         }
 
         (TimeRange, int, string) request = (viewport, columns, highlight.Key);
@@ -2760,10 +2780,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + " A connection whose other end is outside the session - on another host, or in a process it did not record - "
                 + "is listed on its process's rung, and every record is in the timeline.";
 
-    /// <summary>Table equivalent of the timeline, with the same counts and coverage states (R15).</summary>
     /// <summary>
-    /// The table equivalent of the timeline (R15): the buckets it draws, which are the zoomed viewport's own once they
-    /// have arrived and the whole session's otherwise.
+    /// The table equivalent of the timeline (R15), with the same counts and coverage states: the buckets it draws, which
+    /// are the view's own once they have arrived and the overview's otherwise.
     /// </summary>
     public IReadOnlyList<IntervalRow> Intervals => intervals;
 
@@ -2805,7 +2824,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             string lane = ShowsMechanismLanes && SelectedTimelineMechanism is { } mechanism
                 ? $" · {EvidenceRowText.MechanismName(mechanism)} lane" : string.Empty;
-            return timelineDetail is { } detail
+
+            // A view of the whole session lists it as such, an earlier publication's count standing in for its own too.
+            return timelineDetail is { } detail && !Whole(detail.Interval)
+                && !(drawnTimeline is { } drawn && Whole(drawn.Viewport))
                 && (!ShowsMechanismLanes || SelectedTimelineMechanism is null || HasCompleteLaneDetail)
                 ? string.Create(CultureInfo.CurrentCulture,
                     $"Zoomed view {TimeBase.Range(detail.Interval, CultureInfo.CurrentCulture)} in {intervals.Count:N0} intervals{lane}")

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-08 · Plan revision: 462 · Branch: `main`
+Updated: 2026-10-09 · Plan revision: 463 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -35,8 +35,9 @@ their records bind to, since revision 458 a group's lanes, since revision 459 a 
 revision 460 a channel's two ends, so none opens a segment: at 10M rows a brushed ranking takes 15 ms at the 95th
 percentile, a 40-process group's first lanes 52 ms, a process's first direction rows 156 ms, a connection's first ends
 192 ms, and the session's working set ends near 320 MB.
-Since revision 462 a zoomed view is counted a column per device pixel and drawn as §6.2's density: a lone record's
-mark is drawn 5 px wide, a point beside it snaps to it, and its card and a click keep its own interval.
+Since revision 462 a zoomed view, and since revision 463 the whole session, is counted a column per device pixel and
+drawn as §6.2's density: a lone record's mark is drawn 5 px wide, a point beside it snaps to it, and its card and a
+click keep its own interval.
 Since revision 166 the ranked table ranks groups and processes by each process's own records, kept in the checkpoint,
 where it ranked by paired TCP alone and showed a real capture as zeros.
 L4's duration bars are drawn for the operations derived so far: an RPC channel's calls since revision 181 and a
@@ -88,6 +89,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 463 — the whole session is counted a column per device pixel too (§6.2):**
+  - A view of the whole session is counted in its own columns, one per device pixel, wherever that is finer than the
+    overview's 64, and drawn as density as a zoomed view is. The overview's bars stand in until the count arrives,
+    and still answer a view no finer than they are: before the window is first laid out, or a session so short
+    that each overview column holds a single tick.
+  - A rung's focus, the selection's share and the lanes' bytes under a byte ranking are counted in the same columns,
+    so each stands inside its cell. The interval table lists the whole session in them and says it is the whole
+    session, also while an earlier publication's count stands in for its own; a count read from another
+    generation is noted as "counted from generation N".
+  - Window and view-model tests that pointed at the overview's columns at the whole extent now wait for the
+    session's own count and point at what is drawn.
+  - Debug and Release each ran 1,997 tests, with revision 462's 93 failures and 4 skips. The interval table's heading
+    over a stand-in was fixed after them, and the 216 view-model tests and the 52 window tests that read the table
+    or point at its cells were re-run in both. The tests caught each of 12 mutations.
 
 - **Revision 462 — a zoomed timeline is counted a column per device pixel and drawn as density (§6.2):**
   - A view a person zooms or pans to is counted in a column per device pixel, up to 2,000, where it was counted in
@@ -1597,9 +1613,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
      - (done in revision 205: the set's rows are marked in the ranked table itself.)
      Indexed/progressive search belongs to the later M4 scale gate.
-   - §6.2's minimum drawn width (5 px) and pointer snapping: done in revision 462 with the density regime, for every
-     zoomed view. The whole session is still drawn from the overview's 64 columns, as bars, each its column's
-     target; counting it per device pixel is next.
+   - §6.2's minimum drawn width (5 px) and pointer snapping: done in revision 462 with the density regime for every
+     zoomed view, and in revision 463 for the whole session. Cells 3 device px wide or more are reached only at
+     sub-tick zoom, where they stay bars, one per tick, each its column's target (plan revision 463 says how the
+     band and event regimes' intent is met elsewhere). Direction arrows between a channel's ends remain unbuilt,
+     since nothing pairs a channel's records one by one.
    - R11 beyond paint and aggregation: since revision 155 a test holds the window's four aggregate queries to no
      allocation per row, and since revision 291 it runs alone, where no other test can empty the derivation cache.
      The admission and decode loops keep IC-019's Windows allocation measurements and have no test that runs here. A

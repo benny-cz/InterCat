@@ -9,8 +9,8 @@ using static InterCat.Analysis.Tests.TestSessions;
 namespace InterCat.Desktop.Tests;
 
 /// <summary>
-/// The timeline at a zoomed viewport's own resolution: asked for off the input path, superseded by a newer viewport,
-/// and not asked for at all where the overview already counts the whole extent (plan §6.2, P25).
+/// The timeline at a view's own resolution, the whole session's included: asked for off the input path, superseded by a
+/// newer viewport, and not asked for at all where the overview's columns already answer the view (plan §6.2, P25).
 /// </summary>
 public sealed class TimelineDetailTests
 {
@@ -18,7 +18,7 @@ public sealed class TimelineDetailTests
     private const string ServerEnd = "127.0.0.1:8080";
 
     [Fact]
-    public void AZoomedViewportGetsItsOwnResolutionAndTheWholeExtentNeedsNone() => SingleThreadedContext.Run(async () =>
+    public void AViewGetsItsOwnResolutionUnlessTheOverviewAnswersIt() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
         Publish(session.Store,
@@ -54,13 +54,68 @@ public sealed class TimelineDetailTests
         await workspace.TimelineDetailReady;
         Assert.Equal(new TimeRange(100, 200), workspace.TimelineDetail!.Interval);
 
-        // The overview already counts the whole extent: nothing is asked for, and its coarse buckets draw alone.
+        // The overview already counts the whole extent in more columns than the view draws: nothing is asked for, and its
+        // coarse buckets draw alone.
         workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 24);
         await workspace.TimelineDetailReady;
         Assert.Null(workspace.TimelineDetail);
         Assert.Equal(workspace.Snapshot.Timeline.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
         Assert.StartsWith("Whole session in", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        // Drawn finer than the overview, the whole session is counted in the view's own columns, every record in one, and
+        // the interval table lists them as the whole session.
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 128);
+        await workspace.TimelineDetailReady;
+        SessionTimelineDetail whole = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.Equal(workspace.Snapshot.Extent, whole.Interval);
+        Assert.Equal(128, whole.Buckets.Count);
+        Assert.Equal(workspace.Snapshot.Timeline.Sum(bucket => bucket.ObservationCount), whole.Buckets.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal(whole.Buckets.Select(bucket => bucket.Interval), workspace.Intervals.Select(row => row.Interval));
+        Assert.StartsWith("Whole session in 128 intervals · ", workspace.IntervalTableScope, StringComparison.Ordinal);
+
+        // Zoomed again, the view's own count replaces it.
+        workspace.RequestTimelineDetail(zoomed, 24);
+        await workspace.TimelineDetailReady;
+        Assert.Equal(zoomed, workspace.TimelineDetail!.Interval);
     });
+
+    [Fact(DisplayName = "§6.2: a view of the whole session lists it as the whole session while the previous publication's count stands in for its own")]
+    public void AStandInForTheWholeSessionIsListedAsTheWholeSession() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Enumerable.Range(0, 240).Select(index => Timed(Transfer(10 + index, ObservationKind.Send,
+            AccountingSide.SendSide, 64, 100, (ulong)(100 + index)).Between(ClientEnd, ServerEnd)))]);
+        using WorkspaceViewModel first = Open(session);
+        first.RequestTimelineDetail(first.Snapshot.Extent, 128);
+        await first.TimelineDetailReady;
+        Assert.StartsWith("Whole session in 128 intervals · ", first.IntervalTableScope, StringComparison.Ordinal);
+
+        // A later publication runs on. Until its own count arrives the earlier one stands in, which covers less than the
+        // whole session now, and the table still says it lists the whole session rather than a zoomed view.
+        Publish(session.Store, [Timed(Transfer(4_000, ObservationKind.Send, AccountingSide.SendSide, 3, 100, 9_000)
+            .Between(ClientEnd, ServerEnd))]);
+        using WorkspaceViewModel next = Open(session);
+        next.AdoptTimeline(first.CarryTimeline());
+        next.RequestTimelineDetail(next.Snapshot.Extent, 128);
+        Assert.NotEqual(next.Snapshot.Extent, next.TimelineDetail!.Interval);
+        Assert.StartsWith("Whole session in 128 intervals · ", next.IntervalTableScope, StringComparison.Ordinal);
+        await next.TimelineDetailReady;
+        Assert.Equal(next.Snapshot.Extent, next.TimelineDetail!.Interval);
+        Assert.StartsWith("Whole session in 128 intervals · ", next.IntervalTableScope, StringComparison.Ordinal);
+
+        // Zoomed, the stand-in or its own count is a zoomed view.
+        var zoomed = new TimeRange(10, 250);
+        next.RequestTimelineDetail(zoomed, 24);
+        await next.TimelineDetailReady;
+        Assert.StartsWith("Zoomed view", next.IntervalTableScope, StringComparison.Ordinal);
+    });
+
+    private static WorkspaceViewModel Open(TemporarySession session)
+    {
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+    }
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }

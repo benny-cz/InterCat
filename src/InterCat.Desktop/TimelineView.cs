@@ -855,7 +855,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             else if (detail is not null && detail.Generation != viewModel.DisplayedGeneration)
             {
                 string note = generationNote.Get(detail.Generation, static generation =>
-                    string.Create(CultureInfo.CurrentCulture, $"zoomed detail from generation {generation:N0}"));
+                    string.Create(CultureInfo.CurrentCulture, $"counted from generation {generation:N0}"));
                 DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
             }
         }
@@ -885,9 +885,9 @@ public sealed class TimelineView : Control, IHoverCardSource
 
             if (detail.Generation != viewModel.DisplayedGeneration)
             {
-                // A paused or held view keeps its generation; a zoomed count reads the newest one and says so.
+                // A paused or held view keeps its generation; the view's own count reads the newest one and says so.
                 string note = generationNote.Get(detail.Generation, static generation =>
-                    string.Create(CultureInfo.CurrentCulture, $"zoomed detail from generation {generation:N0}"));
+                    string.Create(CultureInfo.CurrentCulture, $"counted from generation {generation:N0}"));
                 DrawText(context, note, new(right - (5.6 * note.Length), top - 18));
             }
         }

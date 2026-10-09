@@ -38,7 +38,9 @@ public sealed class SelectionHighlightTests
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
-        TimelineBucket bucket = workspace.Snapshot.Timeline.First(candidate => candidate.ObservationCount > 0);
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        IReadOnlyList<TimelineBucket> drawn = DrawnTimeline.Machine(workspace);
+        TimelineBucket bucket = drawn.First(candidate => candidate.ObservationCount > 0);
         Point column = timeline.TranslatePoint(timeline.PointOf(bucket)!.Value, window)!.Value;
         WriteableBitmap before = Settle(window);
 
@@ -51,8 +53,8 @@ public sealed class SelectionHighlightTests
         // The client's own records, each bucket's share never more than the bar it marks, on the bars' own columns.
         IReadOnlyList<TimelineBucket> highlighted = Assert.IsAssignableFrom<IReadOnlyList<TimelineBucket>>(workspace.TimelineHighlightBuckets);
         Assert.Equal(100, highlighted.Sum(item => item.ObservationCount));
-        Assert.Equal(workspace.Snapshot.Timeline.Select(item => item.Interval), highlighted.Select(item => item.Interval));
-        Assert.All(highlighted.Zip(workspace.Snapshot.Timeline),
+        Assert.Equal(drawn.Select(item => item.Interval), highlighted.Select(item => item.Interval));
+        Assert.All(highlighted.Zip(drawn),
             pair => Assert.InRange(pair.First.ObservationCount, 0, pair.Second.ObservationCount));
         Assert.Contains($"selection highlighted: {client.NameWithPid}", workspace.TimelineCaption, StringComparison.Ordinal);
 
@@ -201,6 +203,8 @@ public sealed class SelectionHighlightTests
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         Assert.True(workspace.ShowsMechanismLanes);
         ProcessNode client = workspace.Snapshot.Processes.Single(process => process.ProcessId == 100);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
         workspace.SelectedProcess = client;
         await workspace.HighlightReady;
         Dispatch();
@@ -211,9 +215,7 @@ public sealed class SelectionHighlightTests
         Assert.Equal(40, lanes.Single(lane => lane.Mechanism == Mechanism.Udp).Buckets.Sum(bucket => bucket.ObservationCount));
 
         // A UDP lane's card gives the datagrams' share, not the bucket's total across mechanisms.
-        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
-        TimelineBucket datagrams = workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Udp)
-            .Buckets.First(bucket => bucket.ObservationCount > 0);
+        TimelineBucket datagrams = DrawnTimeline.Lane(workspace, Mechanism.Udp).First(bucket => bucket.ObservationCount > 0);
         window.MouseMove(timeline.TranslatePoint(timeline.PointOf(datagrams)!.Value, window)!.Value);
         Dispatch();
         Assert.Same(datagrams, timeline.HoveredBucket);

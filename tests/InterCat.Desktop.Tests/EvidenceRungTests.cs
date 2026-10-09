@@ -120,14 +120,18 @@ public sealed class EvidenceRungTests
         Channel channel = workspace.Snapshot.Channels.Single();
         TimeRange extent = workspace.Snapshot.Extent;
 
-        // The view asks for the whole extent. The machine rung has no focus, and the overview's buckets need no count.
+        // The view asks for the whole extent in more columns than the overview's. The machine rung has no focus, and the
+        // whole session is counted in the view's own columns.
         workspace.RequestTimelineDetail(extent, 80);
         await workspace.TimelineDetailReady;
         Assert.False(workspace.TimelineShowsFocus);
         Assert.Null(workspace.TimelineFocusBuckets);
+        SessionTimelineDetail whole = Assert.IsType<SessionTimelineDetail>(workspace.TimelineDetail);
+        Assert.Equal(extent, whole.Interval);
+        Assert.Equal(80, whole.Buckets.Count);
         Assert.StartsWith("Observed records", workspace.TimelineCaption, StringComparison.Ordinal);
 
-        // A group counts the records its members own, on the overview's own columns, beside the whole timeline.
+        // A group counts the records its members own, on the view's own columns, beside the whole timeline counted in them.
         DescendTo(workspace, client.GroupKey);
         Assert.True(workspace.TimelineShowsFocus);
         Assert.StartsWith("Counting records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
@@ -136,10 +140,22 @@ public sealed class EvidenceRungTests
             .Where(node => node.GroupKey == client.GroupKey).Select(node => node.Id)];
         Assert.Equal(SessionEvidenceQuery.ReadScope(session.Store, 10_000, ownerProcesses: members).Records.Count,
             FocusTotal(workspace));
+        Assert.Equal(extent, workspace.TimelineDetail!.Interval);
+        Assert.Equal(workspace.TimelineDetail.Buckets.Select(bucket => bucket.Interval),
+            workspace.TimelineFocusBuckets!.Select(bucket => bucket.Interval));
+        Assert.StartsWith("Records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // Drawn no finer than the overview, as before the view is laid out, the whole session is the overview's own
+        // columns, and the focus is counted on them.
+        workspace.RequestTimelineDetail(extent, workspace.Snapshot.Timeline.Count);
+        await workspace.TimelineDetailReady;
+        Assert.Null(workspace.TimelineDetail);
         Assert.Equal(workspace.Snapshot.Timeline.Select(bucket => bucket.Interval),
             workspace.TimelineFocusBuckets!.Select(bucket => bucket.Interval));
-        Assert.Null(workspace.TimelineDetail);
-        Assert.StartsWith("Records owned by", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(SessionEvidenceQuery.ReadScope(session.Store, 10_000, ownerProcesses: members).Records.Count,
+            FocusTotal(workspace));
+        workspace.RequestTimelineDetail(extent, 80);
+        await workspace.TimelineDetailReady;
         Assert.True(workspace.ShowsProcessLanes);
         Assert.Equal(members.Length, workspace.ProcessLaneDisplay.Count);
         Assert.Contains("process lanes · machine context above", workspace.TimelineCaption, StringComparison.Ordinal);
@@ -258,7 +274,8 @@ public sealed class EvidenceRungTests
         DescendTo(workspace, client.Id.ToString());
         await workspace.TimelineDetailReady;
 
-        TimelineBucket bucket = workspace.Snapshot.Timeline.OrderByDescending(candidate => candidate.ObservationCount).First();
+        // The whole session is drawn in the view's own columns, as the view asked for more than the overview's.
+        TimelineBucket bucket = workspace.TimelineDetail!.Buckets.OrderByDescending(candidate => candidate.ObservationCount).First();
         TimelineBucket focused = workspace.TimelineFocusBuckets!.Single(candidate => candidate.Interval == bucket.Interval);
         HoverCard card = workspace.DescribeTimelineHover(bucket, 1_000);
         Assert.Equal(WorkspaceTime.FormatHalfOpenRange(bucket.Interval, System.Globalization.CultureInfo.CurrentCulture), card.Title);
@@ -274,7 +291,7 @@ public sealed class EvidenceRungTests
         Assert.Equal("Unmeasured: none in this bucket; a record without a usable session time is placed in no bucket", card.Lines[4]);
         Assert.Equal("Bytes: not summed by the timeline · the interval table (T) reads those of what it lists", card.Lines[5]);
         Assert.StartsWith("Coverage: ", card.Lines[6], StringComparison.Ordinal);
-        Assert.Equal($"Resolution: the overview's {workspace.Snapshot.Timeline.Count:N0} buckets over the whole session", card.Lines[7]);
+        Assert.Equal("Resolution: this view's own count, 80 buckets", card.Lines[7]);
 
         // A bucket that is the analysis interval says so instead of offering the click that would make it one.
         workspace.SelectInterval(bucket.Interval);

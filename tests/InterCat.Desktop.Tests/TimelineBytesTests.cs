@@ -112,6 +112,41 @@ public sealed class TimelineBytesTests
         Assert.StartsWith("Observed records by mechanism · 2 lanes · ", workspace.TimelineCaption, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.2: under a byte ranking the whole session's lanes plot their bytes in the view's own columns once it is drawn finer than the overview")]
+    public void TheWholeSessionsLaneBytesFollowItsOwnColumns() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+
+        // The traffic spread over ten times the ticks, so the overview's 64 columns are coarser than a view's 128.
+        Publish(session.Store, [.. Traffic().Select(row => row with
+        {
+            NativeTicks = row.NativeTicks * 10, SessionRelativeTicks = row.SessionRelativeTicks * 10,
+        })]);
+        using WorkspaceViewModel workspace = Open(session);
+        Assert.Equal(64, workspace.WholeSnapshot.Timeline.Count);
+        workspace.RankBy = RankingMetric.BytesSent;
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 128);
+        await workspace.TimelineDetailReady;
+        await workspace.TimelineBytesReady;
+        await workspace.RankingReady;
+        TimelineByteLayer plotted = Assert.IsType<TimelineByteLayer>(workspace.TimelineBytes);
+        SessionMechanismByteMeasures whole = Assert.IsType<SessionMechanismByteMeasures>(plotted.Zoomed);
+        Assert.Equal(workspace.WholeSnapshot.Extent, whole.Interval);
+        Assert.All(whole.Lanes, lane => Assert.Equal(128, lane.Columns.Count));
+
+        // Each drawn cell takes its own column's bytes, and its card says the view's own bytes plot it.
+        TimelineBucket sent = workspace.TimelineDetail!.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets
+            .First(bucket => bucket.ObservationCount > 0);
+        Assert.Equal(((long?)500, 1L, 0L), plotted.Of(Mechanism.Tcp, sent.Interval)!.ValueOf(RankingMetric.BytesSent));
+        Assert.Contains("Resolution: this view's own bytes, 128 buckets",
+            workspace.DescribeTimelineHover(sent, 2_000, lane: Mechanism.Tcp).Lines);
+
+        // Drawn no finer than the overview, its columns answer the whole session again.
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
+        Assert.Null(workspace.TimelineBytes!.Zoomed);
+        await workspace.RankingReady;
+    });
+
     [Fact(DisplayName = "§6.2: under a byte ranking a group's process lanes, and the machine row above them, plot the bytes it measures")]
     public void AGroupsProcessLanesPlotItsBytes() => SingleThreadedContext.Run(async () =>
     {

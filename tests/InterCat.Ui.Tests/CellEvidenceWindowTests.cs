@@ -34,10 +34,10 @@ public sealed class CellEvidenceWindowTests
         Dispatch();
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         Assert.True(workspace.ShowsMechanismLanes);
+        await DrawnTimeline.Counted(window, workspace, timeline);
 
         // A UDP cell, clicked: the card beneath the time scope names the records E will list.
-        TimelineBucket cell = workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Udp).Buckets
-            .First(bucket => bucket.ObservationCount > 0);
+        TimelineBucket cell = DrawnTimeline.Lane(workspace, Mechanism.Udp).First(bucket => bucket.ObservationCount > 0);
         Point at = timeline.TranslatePoint(timeline.PointOf(cell)!.Value, window)!.Value;
         window.MouseDown(at, MouseButton.Left);
         window.MouseUp(at, MouseButton.Left);

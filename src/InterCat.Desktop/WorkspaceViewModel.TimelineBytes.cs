@@ -10,8 +10,8 @@ namespace InterCat.Desktop;
 /// <param name="Metric">What each column's bar plots: the bytes the ranking measures - sent, received, or both.</param>
 /// <param name="Overview">Each lane's bytes in the overview's columns, across the whole session.</param>
 /// <param name="Zoomed">
-/// Each lane's bytes in the zoomed view's own columns, which replace the overview's where they lie; null at the whole
-/// extent and until they are read.
+/// Each lane's bytes in the view's own columns, which replace the overview's where they lie; null where the overview's
+/// columns answer the view, and until they are read.
 /// </param>
 public sealed record TimelineByteLayer(
     RankingMetric Metric, SessionMechanismByteMeasures Overview, SessionMechanismByteMeasures? Zoomed)
@@ -246,15 +246,12 @@ public sealed partial class WorkspaceViewModel
     private IReadOnlyList<Mechanism> LaneMechanisms =>
         laneMechanisms ??= Array.AsReadOnly([.. wholeSnapshot.MechanismLanes.Select(lane => lane.Mechanism)]);
 
-    /// <summary>Whether a drawn view shows the whole session, which the overview's own columns answer.</summary>
-    private bool ShowsWholeExtent(TimeRange viewport) =>
-        viewport.StartTicks <= wholeSnapshot.Extent.StartTicks && viewport.EndTicks >= wholeSnapshot.Extent.EndTicks;
-
     /// <summary>
     /// Reads the bytes the timeline's lanes are asked to plot and does not have, and cancels a read no longer asked for:
-    /// the machine rung's mechanism lanes over the overview's columns and a zoomed view's own, and a group's process lanes
-    /// or a process's direction rows over the columns they were counted in. Called when the ranking, the rung, the drawn
-    /// view or the lanes change. Leaving the byte ranking forgets a failed read, so choosing it again tries once more.
+    /// the machine rung's mechanism lanes over the overview's columns and a view's own where it is counted in them, and
+    /// a group's process lanes or a process's direction rows over the columns they were counted in. Called when the
+    /// ranking, the rung, the drawn view or the lanes change. Leaving the byte ranking forgets a failed read, so choosing
+    /// it again tries once more.
     /// </summary>
     private void FollowTimelineBytes()
     {
@@ -271,8 +268,8 @@ public sealed partial class WorkspaceViewModel
         OverviewLaneBytes.Follow(plots
             ? new LaneBytesRequest(new TimeRange(overview[0].Interval.StartTicks, overview[^1].Interval.EndTicks), overview.Count)
             : null);
-        ZoomedLaneBytes.Follow(plots && drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport)
-            ? new LaneBytesRequest(drawn.Viewport, drawn.Columns)
+        ZoomedLaneBytes.Follow(plots && drawnTimeline is { } drawn && !OverviewAnswers(drawn.Viewport, drawn.Columns)
+            ? new LaneBytesRequest(Whole(drawn.Viewport) ? wholeSnapshot.Extent : drawn.Viewport, drawn.Columns)
             : null);
         OwnerLaneBytes.Follow(ProcessLaneByteMetric is not null ? OwnerRequest() : null);
         DirectionLaneBytesRead.Follow(DirectionLaneByteMetric is not null ? DirectionRequest() : null);
@@ -358,7 +355,8 @@ public sealed partial class WorkspaceViewModel
     private void UpdateTimelineBytes()
     {
         TimelineByteLayer? lanes = LaneByteMetric is { } metric && OverviewLaneBytes.Measures is { } overview
-            ? new(metric, overview, drawnTimeline is { } drawn && !ShowsWholeExtent(drawn.Viewport) ? ZoomedLaneBytes.Measures : null)
+            ? new(metric, overview,
+                drawnTimeline is { } drawn && !OverviewAnswers(drawn.Viewport, drawn.Columns) ? ZoomedLaneBytes.Measures : null)
             : null;
         if (lanes is null ? timelineBytes is not null
             : timelineBytes is null || lanes.Metric != timelineBytes.Metric

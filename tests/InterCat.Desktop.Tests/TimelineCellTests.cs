@@ -197,8 +197,10 @@ public sealed class TimelineCellTests
         DescendTo(workspace, client.GroupKey);
         DescendTo(workspace, client.Id.ToString());
         await workspace.TimelineDetailReady;
+
+        // The view asks for the whole session in more columns than the overview holds, so it is counted in its own.
         string view = Placement + string.Create(CultureInfo.CurrentCulture,
-            $"one of the overview's {workspace.Snapshot.Timeline.Count:N0} over the whole session") + Unplaced + Unknown;
+            $"one of this view's own {workspace.TimelineDetail!.Buckets.Count:N0}") + Unplaced + Unknown;
 
         // The client's sends are its outbound row's, bound to it by the binding rule, and say what outbound means.
         TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
@@ -252,9 +254,9 @@ public sealed class TimelineCellTests
         Assert.Contains($" made at {ServerEnd}, ", workspace.CellExplanation, StringComparison.Ordinal);
         workspace.SelectChannelEnd(null);
 
-        // The machine row above them is the machine's own count, beside the rung's focus.
-        Assert.Null(workspace.TimelineDetail);
-        TimelineBucket machine = workspace.Snapshot.Timeline.Single(bucket => bucket.Interval == made.Interval);
+        // The machine row above them is the machine's own count of the whole session, beside the rung's focus.
+        Assert.Equal(workspace.Snapshot.Extent, workspace.TimelineDetail!.Interval);
+        TimelineBucket machine = workspace.TimelineDetail.Buckets.Single(bucket => bucket.Interval == made.Interval);
         workspace.ChooseTimelineCell(machine);
         Assert.StartsWith(Counted(machine.ObservationCount, "record") + " of any mechanism "
             + $"{Have(machine.ObservationCount)} a session time in this interval: the machine's own count, which no binding "
@@ -270,6 +272,7 @@ public sealed class TimelineCellTests
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
         Channel channel = workspace.Snapshot.Channels.Single();
         workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        await workspace.TimelineDetailReady;
 
         // A TCP cell: the card names its records, and E lists exactly them, behind a filter naming the mechanism.
         TimelineBucket tcp = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 1);
@@ -381,8 +384,9 @@ public sealed class TimelineCellTests
 
     private static string Its(int count) => count == 1 ? "its" : "their";
 
+    /// <summary>A mechanism's lane as the machine rung draws it: the view's own count where it has arrived, else the overview's.</summary>
     private static IReadOnlyList<TimelineBucket> Lane(WorkspaceViewModel workspace, Mechanism mechanism) =>
-        workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == mechanism).Buckets;
+        (workspace.TimelineDetail?.MechanismLanes ?? workspace.Snapshot.MechanismLanes).Single(lane => lane.Mechanism == mechanism).Buckets;
 
     private static WorkspaceViewModel Open(TemporarySession session)
     {
