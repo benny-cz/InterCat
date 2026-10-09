@@ -37,9 +37,11 @@ internal static class EvidenceRecordings
     /// <summary>
     /// Records bursts of records as evidence only, publishing every 100 ms, and finalizes it. Each burst after the first
     /// starts at a record <paramref name="bursts"/> names - by default the third - and waits for the bursts before it to be
-    /// published, so the recording has a chunk of its own for every burst but the last, which ends with its finality: a
-    /// fixed pause did not guarantee that, because under load one publication could take every record and the finality.
-    /// Records are <paramref name="qpcStep"/> counter ticks apart, so a test can spread them over session time.
+    /// published, so no chunk holds records of two bursts, and the last burst ends with the recording's finality: a fixed
+    /// pause did not guarantee that, because under load one publication could take every record and the finality. A
+    /// publication can still land within a burst and split it between two chunks, so a test that needs a record in a
+    /// chunk of its own starts a burst there. Records are <paramref name="qpcStep"/> counter ticks apart, so a test can
+    /// spread them over session time.
     /// </summary>
     public static async Task<LiveRecordingResult> RecordEvidence(
         string directory,

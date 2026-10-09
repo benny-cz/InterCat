@@ -2251,9 +2251,11 @@ public sealed class CommandLineTests : IDisposable
         using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
         using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
 
-        // Four chunks of two records a second apart in session time; the session is first followed to the third chunk.
+        // A record a second in session time, published in chunks: the first record alone, then the second, then two by two;
+        // the session is first followed to the sixth. Published on a timer, the first chunk otherwise held the first record
+        // alone or the first two, as the timer fell, and the rolling follow below released it only when alone.
         _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
-            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+            bursts: [1, 2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
         string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
         string recorded = File.ReadAllText(pointer);
         _ = InterCat.Capture.Journal.Tests.EvidenceRecordings.RewindToUnfinalized(evidence.Path);
@@ -2286,18 +2288,19 @@ public sealed class CommandLineTests : IDisposable
                 + $"now, {ByteSizeText.Of(held)}. For a session a follow is still writing, pin with --allow-mib to let it grow.");
         }
 
-        // Following on, keeping the last two seconds: the pin keeps the session from half a second, which the follow says as
-        // the pin begins to hold it. The capture's end coalesces the session's segments, so it stays within what the pin
-        // allows.
+        // Following on, keeping the last two seconds: the follow gives up the first chunk, read wholly before half a second,
+        // and the pin keeps the session from there, which the follow says as the pin begins to hold it. The capture's end
+        // coalesces the session's segments, so it stays within what the pin allows.
         (code, output, said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2");
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Contains("A pin keeps every record read from 0.500 s (the first burst), so the session keeps more than the last 2 "
             + $"seconds from here on, up to the {ByteSizeText.Of(held)} the pin allows.", said, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Rolling +keeps the last 2 seconds of session time; nothing released yet\r?$", output);
+        Assert.Matches(@"(?m)^  Rolling +keeps the last 2 seconds of session time; 1 release so far, every record kept from \S+ s\r?$", output);
         Assert.Matches(@"(?m)^  Pinned +a pin keeps every record from 0\.500 s, so the session keeps more than the last 2 seconds\r?$", output);
         Assert.DoesNotContain("allows this session", said, StringComparison.Ordinal);
         SessionManifestV1 session = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!;
-        Assert.Null(session.LatestRelease(RetentionExtentKind.Interval));
+        long released = session.LatestRelease(RetentionExtentKind.Interval)!.Record.Interval!.BoundaryNanoseconds;
+        Assert.True(released <= 500_000_000L, $"The release reached {released} ns, past the pin's moment.");
 
         // A release asked for past the pin stops at it, and says so; none by record number is made while it stands.
         (code, output, said) = await Run("retain", followed.Path, "--release-before", "5 s", "--json");
@@ -2358,8 +2361,10 @@ public sealed class CommandLineTests : IDisposable
     {
         using var evidence = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
         using var followed = new InterCat.Capture.Journal.Tests.TemporaryDirectory();
+        // A record a second, the first published alone: a chunk read wholly before half a second. Published on a timer, the
+        // first chunk otherwise held the first record alone or the first two, as the timer fell.
         _ = await InterCat.Capture.Journal.Tests.EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6, 7, 8],
-            bursts: [2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
+            bursts: [1, 2, 4, 6], qpcStep: System.Diagnostics.Stopwatch.Frequency);
         string pointer = Path.Combine(evidence.Path, SessionPointerV1.FileName);
         string recorded = File.ReadAllText(pointer);
 
@@ -2381,9 +2386,9 @@ public sealed class CommandLineTests : IDisposable
             Pins = [pin],
         }, SessionManifestV1.Json));
 
-        // Its first pass mirrors the three chunks the capture published, and the policy, due to release what was read before
-        // 3 s, is held at half a second: the session holds more than the pin allows, so the follow stops rather than wait for
-        // the capture, and says why and how to go on.
+        // Its first pass mirrors the chunks the capture published, and the policy, due to release what was read before 3 s, is
+        // held at half a second: it gives up the first chunk, read before then, and nothing the pin keeps. The session still
+        // holds more than the pin allows, so the follow stops rather than wait for the capture, and says why and how to go on.
         (InterCatExitCode code, string output, string said) = await Run("follow", evidence.Path, followed.Path, "--keep-last", "2", "--json")
             .WaitAsync(TimeSpan.FromSeconds(60));
         Assert.True(code == InterCatExitCode.PartialResultSuccess, said);
@@ -2394,12 +2399,15 @@ public sealed class CommandLineTests : IDisposable
         {
             JsonElement rolling = answer.RootElement.GetProperty("rolling");
             Assert.False(answer.RootElement.GetProperty("finished").GetBoolean());
-            Assert.Equal((0, 500_000_000L), (rolling.GetProperty("releases").GetInt32(), rolling.GetProperty("pinnedFromNanoseconds").GetInt64()));
+            Assert.Equal((1, 500_000_000L), (rolling.GetProperty("releases").GetInt32(), rolling.GetProperty("pinnedFromNanoseconds").GetInt64()));
             Assert.Equal(stopped, rolling.GetProperty("stopped").GetString());
         }
 
         Assert.Contains("The follow stopped. " + stopped + $" To go on, remove the pin (icat pin {followed.Path} --remove <pin>) or "
             + "pin from the same moment allowing more, then follow again.", said, StringComparison.Ordinal);
+        long boundary = SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!
+            .LatestRelease(RetentionExtentKind.Interval)!.Record.Interval!.BoundaryNanoseconds;
+        Assert.True(boundary <= pin.FromNanoseconds, $"The release reached {boundary} ns, past the pin's moment.");
 
         // Unpinned, the follow goes on to the capture's end, releasing what lies before its window.
         File.WriteAllText(pointer, recorded);

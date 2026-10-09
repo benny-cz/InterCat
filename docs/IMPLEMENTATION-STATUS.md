@@ -102,11 +102,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
   - A rung with no rows and no evidence step, as E over an empty moment, gives the keyboard to the card saying why,
     named by that reason, which F6 reaches as the rail.
   - Debug and Release each ran 2,027 tests, with revision 473's 93 failures and 4 skips; Debug once failed a CLI
-    follow test besides (a release before a pin stopped the follow), which passed six times alone and is looked into
-    next. The tests caught each of 13 mutations: the restatement unguarded, the kept row not chosen or not described,
-    a row no longer listed let go silently or kept chosen, an interval's Enter descending or leaving the keyboard, E
-    from either table or a cell's records leaving it, an empty rung leaving it on nothing, the reason not the rail's,
-    and F6 passing an empty rung's reason by.
+    follow test besides (a release before a pin stopped the follow). Its recording fixture publishes on a timer,
+    which could put the first record in a chunk of its own, wholly before the pin, and the follow then rightly
+    released it; the two pin tests now publish it alone on purpose and expect that release, never one past the pin.
+    The tests caught each of 13 mutations: the restatement unguarded, the kept row not chosen or not described, a
+    row no longer listed let go silently or kept chosen, an interval's Enter descending or leaving the keyboard, E
+    from either table or a cell's records leaving it, an empty rung leaving it on nothing, the reason not the
+    rail's, and F6 passing an empty rung's reason by.
 
 - **Revision 473 — the tables mark what a chosen cell highlights in the graph (§6.4, R15):**
   - The relationship table marks the rows of the relationships the graph highlights for a chosen cell, and the
