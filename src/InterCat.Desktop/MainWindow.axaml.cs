@@ -374,6 +374,14 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
+        // F1 types nothing, so it lists the window's keys from wherever the keyboard is, a search box included (§6.7).
+        if (e.Key == Key.F1 && e.KeyModifiers == KeyModifiers.None)
+        {
+            e.Handled = true;
+            _ = ShowKeysAsync();
+            return;
+        }
+
         if (e.Key == Key.F && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             SearchBox.Focus();
@@ -577,6 +585,34 @@ public sealed partial class MainWindow : Window, IDisposable
                 break;
         }
 
+    }
+
+    /// <summary>The keys sheet while it is open; a test reads it.</summary>
+    internal KeysWindow? KeysSheet { get; private set; }
+
+    private void ShowKeys(object? sender, RoutedEventArgs eventArgs) => _ = ShowKeysAsync();
+
+    /// <summary>
+    /// Lists every key the window takes, by where it acts (§6.7, R15), as F1 and the strip's Keys button do. The sheet is
+    /// the window's own dialog, so once it closes the window takes the keyboard back to where it was, a row it was on not
+    /// chosen by coming back to it.
+    /// </summary>
+    internal async Task ShowKeysAsync()
+    {
+        if (KeysSheet is not null || closed)
+        {
+            return;
+        }
+
+        KeysSheet = new KeysWindow();
+        try
+        {
+            await KeysSheet.ShowDialog(this);
+        }
+        finally
+        {
+            KeysSheet = null;
+        }
     }
 
     /// <summary>

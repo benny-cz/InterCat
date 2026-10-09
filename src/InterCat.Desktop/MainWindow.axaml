@@ -1055,7 +1055,7 @@
             BorderBrush="{DynamicResource Line.Divider}" BorderThickness="0,1,0,0">
       <!-- Health strip: capture state and whether the view follows it, the generation shown, coverage, the loss the
            capture has stated, and how recent its last publication is (§3.1 step 3, §20.6). -->
-      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto" VerticalAlignment="Center">
+      <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto,Auto,Auto" VerticalAlignment="Center">
         <TextBlock x:Name="HealthDot" Text="●" Classes="muted" />
         <TextBlock x:Name="HealthStateText" Grid.Column="1" Margin="6,0,16,0" Text="Ready" FontSize="11"
                    Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Capture and view state" />
@@ -1070,6 +1070,10 @@
                    Foreground="{DynamicResource Ink.Body}" AutomationProperties.Name="Loss the capture has stated" />
         <TextBlock x:Name="HealthFreshnessText" Grid.Column="5" Margin="16,0,0,0" Classes="muted" FontSize="11"
                    AutomationProperties.Name="How recent the last publication is" />
+        <!-- Every key the window takes, by where it acts (§6.7); F1 opens the same sheet from anywhere. It stands at the
+             strip's end, where the coverage line gives way to it, as the header has no room left at the minimum width. -->
+        <Button x:Name="KeysButton" Grid.Column="6" Margin="16,0,0,0" Padding="8,2" FontSize="11" Content="Keys (F1)"
+                Click="ShowKeys" AutomationProperties.HelpText="List every key this window takes, by where it acts" />
       </Grid>
     </Border>
 
