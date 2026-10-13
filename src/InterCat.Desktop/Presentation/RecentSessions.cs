@@ -14,6 +14,9 @@ public sealed record RecentSessionRow(
     string Detail,
     DateTimeOffset SavedUtc) : IAccessibleRow
 {
+    /// <summary>The session the row describes, which opening it asks its folder for: never another one written there since.</summary>
+    public Guid SessionId { get; init; }
+
     public string AccessibleName => $"{Title}, {Detail}. Press Enter to open it.";
 }
 
@@ -94,7 +97,7 @@ internal static class RecentSessions
             string detail = $"saved {Moments.When(manifest.CommittedUtc, nowUtc, zone, culture)} · "
                 + $"{records.ToString("N0", culture)} {(records == 1 ? "record" : "records")} · {Size(bytes, culture)}"
                 + unfinished;
-            return new(directory, title, detail, manifest.CommittedUtc);
+            return new(directory, title, detail, manifest.CommittedUtc) { SessionId = manifest.SessionId };
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or JsonException
             or InvalidDataException or ArgumentException)

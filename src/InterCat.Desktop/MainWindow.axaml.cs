@@ -1891,13 +1891,20 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>
     /// Opens a published session directory as the workspace. A redacted package says so where the status is read, so
     /// nobody mistakes its pseudonyms for the source machine's names and IDs. False when the directory could not open;
-    /// the current workspace is then unchanged. With <paramref name="expected"/> - an investigation's member - a directory
-    /// that now holds another session, or none, is refused rather than opened as it.
+    /// the current workspace is then unchanged. With <paramref name="expected"/> - an investigation's member, a saved
+    /// session the rail listed - a directory that now holds another session, or none, is refused rather than opened as it.
     /// </summary>
     internal async Task<bool> OpenSessionAsync(string path, (string Headline, string Detail)? status = null,
-        Guid? expected = null)
+        Guid? expected = null) => await OpenSessionOrSayWhyNotAsync(path, status, expected) is null;
+
+    /// <summary>
+    /// Opens a session as <see cref="OpenSessionAsync"/> does: null once it is open, else why it is not, as said where the
+    /// status is read, or empty when an open or a capture under way left it untried.
+    /// </summary>
+    private async Task<string?> OpenSessionOrSayWhyNotAsync(string path, (string Headline, string Detail)? status,
+        Guid? expected)
     {
-        if (openingSession || captureTask is { IsCompleted: false }) return false;
+        if (openingSession || captureTask is { IsCompleted: false }) return string.Empty;
         openingSession = true;
         StartExploringButton.IsEnabled = false;
         OpenSavedSessionButton.IsEnabled = false;
@@ -1926,7 +1933,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     return (opened, SessionOverviewProjector.Project(opened, policy));
                 }
             });
-            if (closed) return false;
+            if (closed) return string.Empty;
             evidencePolicy = overview.Policy;
             int run = ++captureRunId;
             heldUpdate = null;
@@ -1952,14 +1959,14 @@ public sealed partial class MainWindow : Window, IDisposable
 
             // The session opened is where the keyboard goes, not back to the control that opened it.
             lastKeyboard = null;
-            return true;
+            return null;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException)
         {
             CaptureStatus.Text = "Could not open this session";
             CaptureDetail.Text = exception.Message + " The current workspace is unchanged.";
-            return false;
+            return exception.Message;
         }
         finally
         {
@@ -2179,14 +2186,42 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Opens the recent session the keyboard is on, or else the one selected: Tab reaches a row without selecting it.
-    /// False when there is none, or it could not open.
+    /// Opens the recent session the keyboard is on, or else the one selected: Tab reaches a row without selecting it. The
+    /// row opens the session it describes, never another written into its folder since: a session gone from its folder
+    /// since the rail was read is said gone, and the list read again.
     /// </summary>
-    internal async Task<bool> OpenSelectedRecentSessionAsync()
+    internal async Task OpenSelectedRecentSessionAsync()
     {
-        RecentSessionRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as RecentSessionRow
-            ?? RecentSessionsList.SelectedItem as RecentSessionRow;
-        return row is not null && await OpenSessionAsync(row.Path);
+        RecentSessionRow? keyboardRow = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as RecentSessionRow;
+        RecentSessionRow? row = keyboardRow ?? RecentSessionsList.SelectedItem as RecentSessionRow;
+        if (row is null)
+        {
+            return;
+        }
+
+        // The rail listed what each folder held when it was read: a session moved, emptied, deleted or written over since
+        // is said gone as its row named it, and the list is read again, so it lists what the folders hold now. Any other
+        // reason it did not open stands as the open said it, beside the row it named.
+        string? refused = await OpenSessionOrSayWhyNotAsync(row.Path, null, row.SessionId);
+        if (closed || refused is not (SessionStore.SessionGone or SessionStore.AnotherSession))
+        {
+            return;
+        }
+
+        CaptureDetail.Text = $"{row.Title}, {row.Detail}, is no longer in its folder: its files were moved or deleted"
+            + (refused is SessionStore.AnotherSession ? "; another session is there now." : ".")
+            + " The current workspace is unchanged.";
+        await RefreshRecentSessionsAsync();
+
+        // The keyboard that chose the row stays with the saved sessions, on the newest still listed, or goes where the
+        // window gives it once none is.
+        if (keyboardRow is not null)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+            {
+                if (!closed && !FocusRow(RecentSessionsList)) KeepKeyboard();
+            }, Avalonia.Threading.DispatcherPriority.Loaded);
+        }
     }
 
     /// <summary>How the window looks for an unfinished capture in the session folder; a test holds one look back with it.</summary>
