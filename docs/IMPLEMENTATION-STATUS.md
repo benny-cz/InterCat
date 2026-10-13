@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 493 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 494 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -60,8 +60,8 @@ other process. Double-clicking a relationship's edge, or Enter on its row in the
 or an RPC relationship's linked calls. The timeline draws in colour the records E would
 list for the rung, over every record in grey. A timeline cell explains itself on hover, as graph marks do, and once
 chosen in the inspector, which lists its first records; since revision 471 the graph highlights what they belong to.
-Since revision 493 the graph's nodes travel to new places and a new selection's ring settles onto its node, unless
-the platform reduces motion.
+Since revision 493 the graph's nodes travel to new places and a new selection's ring settles onto its node, and since
+revision 494 a timeline coming back to the newest generation is carried there, unless the platform reduces motion.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -92,6 +92,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 494 — the follow-latest advance (§6.8, R13):**
+  - Animating each publication a followed view advances by would keep the timeline moving, and the viewer's own
+    load, through a whole capture. §6.8 now says a publication followed live is drawn at once.
+  - A view coming back to the newest generation from one it held - following resumed, the newest asked for,
+    records no longer read, a paused capture saved - is carried there from the time it showed in 200 ms; its
+    scope is the newest at once, and the pointer answers for what is drawn under it on the way.
+  - A press, the wheel, a pinch or a key ends an advance; under reduced motion the newest is drawn at once.
+  - Debug and Release each ran 2,104 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 10
+    mutations: no advance, an advance under reduced motion, a linear advance, a hit test or a drawing at the newest
+    range while the view advances, a press that leaves it under way, no frame asked for, a frame that leaves the hover
+    unnudged, an advance at every publication followed live, and none when a held generation is shown.
 
 - **Revision 493 — the graph's motion (§6.8, R11, R13, P22):**
   - Motion was specified but unbuilt: the graph jumped to every new layout, and nothing read the platform's
@@ -2145,8 +2157,10 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
    - §6.8's motion: since revision 493 the graph's nodes travel to new places - a level change's, a layout settling,
      a re-layout's, a pin's - in the 200 ms level-change token, and a node newly selected is ringed from wider, the
      ring settling in the 120 ms selection token (theme 1.5.0). Under the platform's reduced motion, on Windows
-     Animation effects, every change is drawn where it ends at once. The follow-latest advance and the timeline's
-     lanes on a level change are still drawn at once.
+     Animation effects, every change is drawn where it ends at once. Since revision 494 a view coming back to the
+     newest generation - following resumed, the newest asked for, records no longer read, a paused capture saved -
+     is carried there from the time it showed. A publication followed live, and the timeline's rows on a level
+     change, are drawn at once, as §6.8 now says.
    - §19.5's self-observation: since revision 414 a live capture names the process collecting it - its broker, or
      `icat record` - by PID and creation time (`collector-identities-v1`, dependency kind 11), carried, mirrored and
      never released, which `icat session` states; since revision 415 a broker names the client that asked it to record

@@ -3454,6 +3454,11 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
             ? workspace.CaptureNavigation() : null;
+
+        // A view held from the newest generation - paused, or kept while records were read - that comes back to it advances
+        // there (§6.8): a fit timeline is carried from the range it was drawn at. A publication followed live is drawn at once.
+        bool advances = savedNavigation is not null && heldUpdate is not null && !regrouping;
+        TimeRange shownRange = TimelineSurface.DrawnViewport;
         if (regrouping && savedNavigation is not null)
         {
             // A regrouped view is the generation already shown, so a newer one held while the view is paused still waits.
@@ -3582,6 +3587,10 @@ public sealed partial class MainWindow : Window, IDisposable
         TimelineSurface.RefreshLaneLayout();
         TimelineSurface.InvalidateVisual();
         MinimapSurface.InvalidateVisual();
+        if (advances)
+        {
+            TimelineSurface.AdvanceFrom(shownRange);
+        }
     }
 
     /// <summary>How soon the first view arrived after recording began and how often it refreshes, once both are known.</summary>

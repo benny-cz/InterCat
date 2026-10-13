@@ -3,11 +3,15 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using InterCat.Analysis.Tests;
 using InterCat.Application;
+using InterCat.CaptureBroker;
 using InterCat.Desktop;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Ui.Tests;
 
@@ -18,6 +22,122 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class MotionWindowTests
 {
+    private const string ClientEnd = "127.0.0.1:50000";
+    private const string ServerEnd = "127.0.0.1:8080";
+
+    [AvaloniaFact(DisplayName = "§6.8: a view coming back to the newest generation carries the timeline there from the time it showed, its scope the newest at once; a publication followed live is drawn at once")]
+    public async Task AViewComingBackToTheNewestIsCarriedThere()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Update(session));
+            Settle(window);
+            TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+            var clock = new HandClock();
+            timeline.Clock = clock;
+            ReducedMotion.Pinned = false;
+
+            // Followed live, a publication's newer extent is drawn at once: it comes several times a second, and moving
+            // with each would keep the timeline in motion through the whole capture.
+            Publish(session.Store, Exchange(10, 5));
+            window.ApplyCaptureUpdate(Update(session));
+            Settle(window);
+            TimeRange followed = timeline.Viewport;
+            Assert.True(timeline.IsFit);
+            Assert.Equal(followed, timeline.DrawnViewport);
+
+            // Paused while recording goes on, and followed again: the view's scope is the newest extent at once, and the
+            // timeline is drawn from the time it showed.
+            Pause(window, session, Exchange(15, 45));
+            Assert.Equal(followed, timeline.Viewport);
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+            Settle(window);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            TimeRange newest = timeline.Viewport;
+            Assert.Equal(workspace.Snapshot.Extent, newest);
+            Assert.True(newest.EndTicks > followed.EndTicks + (2 * followed.SpanTicks), "The paused stretch was too short to see.");
+            Assert.Equal(followed, timeline.DrawnViewport);
+
+            // Early on its way, a record is drawn well right of where the newest range puts it, and the pointer resting
+            // where it is drawn answers for the cell holding it, not for the later time the newest range puts there (R13).
+            clock.Advance(ThemePalette.Motion.LevelChange / 10);
+            Settle(window);
+            TimelineBucket busy = workspace.Snapshot.Timeline.First(bucket => bucket.ObservationCount > 0
+                && bucket.Interval.StartTicks > followed.StartTicks + (followed.SpanTicks / 3)
+                && bucket.Interval.EndTicks < followed.EndTicks);
+            long record = (busy.Interval.StartTicks + busy.Interval.EndTicks) / 2;
+            double drawn = ViewportMath.PixelAtTick(timeline.DrawnViewport, record, timeline.PlotSpan);
+            double settled = ViewportMath.PixelAtTick(newest, record, timeline.PlotSpan);
+            Assert.True(drawn - settled > 20, $"The record is drawn {drawn - settled:0.0} px from where the newest range puts it.");
+            window.MouseMove(timeline.TranslatePoint(new(timeline.PlotStart + drawn, timeline.Bounds.Height / 2), window)!.Value);
+            Dispatch();
+            TimelineBucket hovered = Assert.IsType<TimelineBucket>(timeline.HoveredBucket);
+            Assert.True(hovered.Interval.StartTicks <= record && record < hovered.Interval.EndTicks,
+                $"The pointer on the record drawn at {record} answered for {hovered.Interval}.");
+            Assert.False(hovered.Interval.StartTicks <= ViewportMath.TickAtPixel(newest, drawn, timeline.PlotSpan)
+                && ViewportMath.TickAtPixel(newest, drawn, timeline.PlotSpan) < hovered.Interval.EndTicks);
+
+            // Each frame on the way tells the hover layer the drawing moved under the resting pointer.
+            int nudges = 0;
+            timeline.HoverChanged += (_, _) => nudges++;
+            clock.Advance(ThemePalette.Motion.LevelChange / 10);
+            Settle(window);
+            Assert.True(nudges > 0, "The advance asked for no frame, so the drawing under the pointer moved unsaid.");
+
+            // Halfway through the level change's duration an eased advance has covered seven eighths of its way, and at the
+            // duration it is drawn exactly at the newest range.
+            clock.Advance((ThemePalette.Motion.LevelChange / 2) - (ThemePalette.Motion.LevelChange / 5));
+            Assert.Equal(Between(followed, newest, 0.875), timeline.DrawnViewport);
+            clock.Advance(ThemePalette.Motion.LevelChange / 2);
+            Assert.Equal(newest, timeline.DrawnViewport);
+            Settle(window);
+            Assert.Equal(newest, timeline.DrawnViewport);
+
+            // What the timeline draws travels too: drawn at the start, on its way and at rest, with every count arrived, it
+            // differs between the first two and not between the last two.
+            window.MouseMove(new Point(1, 1));
+            Pause(window, session, Exchange(60, 30));
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+            await Assert.IsType<WorkspaceViewModel>(window.DataContext).TimelineDetailReady;
+            Settle(window);
+            byte[] first = Drawn(timeline);
+            clock.Advance(ThemePalette.Motion.LevelChange);
+            byte[] last = Drawn(timeline);
+            Assert.NotEqual(first, last);
+            clock.Advance(TimeSpan.FromSeconds(5));
+            Assert.Equal(last, Drawn(timeline));
+
+            // A press while the timeline is on its way ends the advance, so the gesture starts from where the view ends.
+            Pause(window, session, Exchange(90, 30));
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+            Settle(window);
+            clock.Advance(ThemePalette.Motion.LevelChange / 4);
+            Assert.NotEqual(timeline.Viewport, timeline.DrawnViewport);
+            Point press = timeline.TranslatePoint(new(timeline.PlotStart + (timeline.PlotSpan / 2), timeline.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(press, MouseButton.Left);
+            Assert.Equal(timeline.Viewport, timeline.DrawnViewport);
+            window.MouseUp(press, MouseButton.Left);
+            Dispatch();
+
+            // Under reduced motion a view coming back to the newest is drawn there at once.
+            ReducedMotion.Pinned = true;
+            Pause(window, session, Exchange(120, 30));
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+            Settle(window);
+            Assert.Equal(Assert.IsType<WorkspaceViewModel>(window.DataContext).Snapshot.Extent, timeline.Viewport);
+            Assert.Equal(timeline.Viewport, timeline.DrawnViewport);
+        }
+        finally
+        {
+            ReducedMotion.Pinned = true;
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.8: opening a group carries its members from where it was drawn to their laid-out places, drawn and hit where they are on the way")]
     public async Task OpeningAGroupCarriesItsMembersToTheirPlaces()
     {
@@ -308,6 +428,53 @@ public sealed class MotionWindowTests
             Rule = RelationRule.TransportEndpoint,
             Evidence = [],
         };
+
+    /// <summary>What a control draws of its own now, as an image's bytes.</summary>
+    private static byte[] Drawn(Control control)
+    {
+        var target = new Avalonia.Media.Imaging.RenderTargetBitmap(new PixelSize(
+            Math.Max(1, (int)Math.Ceiling(control.Bounds.Width)), Math.Max(1, (int)Math.Ceiling(control.Bounds.Height))));
+        using (Avalonia.Media.DrawingContext context = target.CreateDrawingContext())
+        {
+            control.Render(context);
+        }
+
+        using var stream = new MemoryStream();
+        target.Save(stream);
+        return stream.ToArray();
+    }
+
+    /// <summary>Pauses the view, then publishes <paramref name="records"/> while it is paused, so the newer generation is held.</summary>
+    private static void Pause(MainWindow window, TemporarySession session, ObservationRowV1[] records)
+    {
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Publish(session.Store, records);
+        window.ApplyCaptureUpdate(Update(session));
+        Settle(window);
+        Assert.True(window.GetControl<Border>("HeldBanner").IsVisible, "The newer generation was not held.");
+    }
+
+    /// <summary>The range a fit view is drawn at <paramref name="eased"/> of the way from one range to another.</summary>
+    private static TimeRange Between(TimeRange from, TimeRange to, double eased) => new(
+        from.StartTicks + (long)Math.Round((to.StartTicks - from.StartTicks) * eased),
+        from.EndTicks + (long)Math.Round((to.EndTicks - from.EndTicks) * eased));
+
+    private static CaptureUiUpdate Update(TemporarySession session) => new(
+        CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
+        Overview: SessionOverviewProjector.Project(session.Store));
+
+    /// <summary>A client sending and a server receiving, <paramref name="count"/> times from <paramref name="first"/>.</summary>
+    private static ObservationRowV1[] Exchange(int first, int count) =>
+    [
+        .. Enumerable.Range(first, count).SelectMany(index => new[]
+        {
+            Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(100 + (2 * index)))
+                .Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = (10 + (2 * index)) * 100L },
+            Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
+                (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd) with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
+        }),
+    ];
 
     /// <summary>A point that far from <paramref name="from"/> toward the middle of the pane, so a drag stays inside it.</summary>
     private static Point Inward(GraphView graph, Point from, double across, double down) => new(

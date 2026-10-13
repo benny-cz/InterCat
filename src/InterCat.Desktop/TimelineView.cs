@@ -282,6 +282,13 @@ public sealed class TimelineView : Control, IHoverCardSource
 
     public TimelineView()
     {
+        nextAdvanceFrame = _ =>
+        {
+            advanceFrameRequested = false;
+            InvalidateVisual();
+            DrawingMovedUnderPointer();
+        };
+        drawingMoved = DrawingMovedUnderPointer;
         AutomationProperties.SetName(this, SpokenName);
         detailTimer = new DispatcherTimer { Interval = DetailSettle };
         detailTimer.Tick += (_, _) => RequestDetailNow();
@@ -312,6 +319,97 @@ public sealed class TimelineView : Control, IHoverCardSource
     // The viewport a pinch began from: every scale of one gesture is applied to it, so a long pinch accumulates no drift.
     private TimeRange? pinchStart;
 
+    // §6.8's follow-latest advance: the range a fit view was drawn at when the newest generation came back into it, and
+    // when, on a clock a test can set. Null while nothing advances.
+    private TimeRange? advanceFrom;
+    private TimeSpan advanceStart;
+    private bool advanceFrameRequested;
+    private bool wasAdvancing;
+    private readonly Action<TimeSpan> nextAdvanceFrame;
+    private readonly Action drawingMoved;
+    private TimeProvider clock = TimeProvider.System;
+    private long origin = TimeProvider.System.GetTimestamp();
+
+    /// <summary>
+    /// The clock the advance is read by, which a test sets to read it at moments it chooses. An advance under way by the
+    /// clock it replaces is drawn where it ends.
+    /// </summary>
+    internal TimeProvider Clock
+    {
+        get => clock;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            clock = value;
+            origin = value.GetTimestamp();
+            advanceFrom = null;
+        }
+    }
+
+    private TimeSpan Now => clock.GetElapsedTime(origin);
+
+    /// <summary>
+    /// The range drawn now: the viewport, or while a fit view advances to the newest generation (§6.8), a range on its way
+    /// there from the one it was drawn at. Drawing and every hit test read it, so a point answers for what is drawn under
+    /// it (R13); the viewport, which scopes the ranking and the evidence, is the newest extent at once.
+    /// </summary>
+    internal TimeRange DrawnViewport
+    {
+        get
+        {
+            TimeRange to = Viewport;
+            TimeSpan length = ThemePalette.Motion.LevelChange;
+            TimeSpan elapsed = Now - advanceStart;
+            if (advanceFrom is not { } from || !IsFit || elapsed >= length)
+            {
+                return to;
+            }
+
+            double eased = GraphMotion.EaseOut(elapsed / length);
+            long start = from.StartTicks + (long)Math.Round((to.StartTicks - from.StartTicks) * eased);
+            long end = from.EndTicks + (long)Math.Round((to.EndTicks - from.EndTicks) * eased);
+            return new TimeRange(start, Math.Max(end, start + 1));
+        }
+    }
+
+    /// <summary>
+    /// §6.8's follow-latest advance. A fit view that comes back to the newest generation - following resumed, the newest
+    /// asked for, records no longer read, or a paused capture saved - is carried from <paramref name="shown"/>, the range
+    /// it was drawn at, to the newest extent over the level change's duration. Under reduced motion, or for a view zoomed
+    /// in, it is drawn there at once. A publication followed live advances at once: it comes several times a second, and
+    /// moving with each would keep the timeline, and the viewer's own load, in motion through a whole capture.
+    /// </summary>
+    internal void AdvanceFrom(TimeRange shown)
+    {
+        advanceFrom = !ReducedMotion.IsOn && IsFit && shown != Viewport ? shown : null;
+        advanceStart = Now;
+        InvalidateVisual();
+    }
+
+    /// <summary>A press, the wheel, a pinch or a key ends an advance under way, so a gesture starts from where the view ends.</summary>
+    private void FinishAdvance() => advanceFrom = null;
+
+    /// <summary>
+    /// While a view advances, asks for the next frame and tells the hover layer the drawing moved under a resting pointer;
+    /// once it has arrived, tells it a last time.
+    /// </summary>
+    private void KeepAdvancing()
+    {
+        bool advancing = advanceFrom is not null && IsFit && Now - advanceStart < ThemePalette.Motion.LevelChange;
+        if (advancing && !advanceFrameRequested && TopLevel.GetTopLevel(this) is { } window)
+        {
+            advanceFrameRequested = true;
+            window.RequestAnimationFrame(nextAdvanceFrame);
+        }
+        else if (!advancing && wasAdvancing)
+        {
+            advanceFrom = null;
+            Dispatcher.UIThread.Post(drawingMoved);
+        }
+
+        wasAdvancing = advancing;
+    }
+
     /// <summary>
     /// §6.7: a pinch zooms against the viewport it began from, around its current focal point, by the gesture's scale.
     /// </summary>
@@ -323,6 +421,7 @@ public sealed class TimelineView : Control, IHoverCardSource
         }
 
         // The recognizer states the gesture's centre in this control's own coordinates.
+        FinishAdvance();
         pinchStart ??= Viewport;
         double focus = Math.Clamp(e.ScaleOrigin.X - PlotLeft, 0, PlotWidth);
         SetViewport(ViewportMath.ZoomAtPixel(pinchStart.Value, focus, PlotWidth, (decimal)Math.Clamp(e.Scale, 0.01, 100),
@@ -528,6 +627,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     public void SetViewport(TimeRange? range)
     {
+        FinishAdvance();
         TimeRange extent = Extent;
         TimeRange? next = range?.ClampInside(extent);
         if (next == extent)
@@ -568,7 +668,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     internal int DeviceColumns => (int)Math.Clamp(Math.Round(PlotWidth * Scaling), 16, SessionTimelineQuery.MaximumColumns);
 
     /// <summary>The view rows are laid out over now: the time in view across the published plot (§6.2).</summary>
-    private CellView CurrentCells => new(Viewport, PlotLeft, PlotWidth, Scaling);
+    private CellView CurrentCells => new(DrawnViewport, PlotLeft, PlotWidth, Scaling);
 
     /// <summary>Asks at once for the detail the resting viewport needs, without waiting for it to settle.</summary>
     internal void RequestDetailNow()
@@ -725,7 +825,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         // take clicks that land between the lane's bars or over a genuinely empty column.
         context.DrawRectangle(Brushes.Transparent, null, new Rect(Bounds.Size));
 
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
+        KeepAdvancing();
         double left = PlotLeft;
         double plotWidth = PlotWidth;
         double right = left + plotWidth;
@@ -1304,7 +1405,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     internal Point? PointOf(TimelineBucket bucket)
     {
         ArgumentNullException.ThrowIfNull(bucket);
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
         if (!Intersects(bucket.Interval, visible) || DataContext is not WorkspaceViewModel viewModel) return null;
         int index = -1;
         IReadOnlyList<TimelineBucket>? row = null;
@@ -1344,7 +1445,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private double CentreOf(IReadOnlyList<TimelineBucket>? row, TimelineBucket bucket)
     {
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
         int index = -1;
         for (int candidate = 0; row is not null && candidate < row.Count && index < 0; candidate++)
         {
@@ -1399,7 +1500,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             return null;
         }
 
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
         if (!Intersects(bucket.Interval, visible)) return null;
         return new(CentreOf(rows.Rows[index], bucket),
             LaneRow(index + 1, rows.Rows.Count + 1, PlotTop,
@@ -1702,7 +1803,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     /// </summary>
     private List<(object Span, Rect Rect)> CallLayout(WorkspaceViewModel viewModel)
     {
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
         object? source = viewModel.ShowsHttpExchangeLane ? viewModel.HttpExchangeSpans : viewModel.RpcCallSpans;
         var key = (Spans: source, visible, Bounds.Size, PlotLeft, PlotWidth);
         if (callLayoutKey is { } known && ReferenceEquals(known.Spans, key.Spans) && known.Visible == visible
@@ -1826,7 +1927,7 @@ public sealed class TimelineView : Control, IHoverCardSource
             return null;
         }
 
-        TimeRange visible = Viewport;
+        TimeRange visible = DrawnViewport;
         TimeRange interval = RpcCallDensity.ColumnIntervalOf(density.Interval, density.Columns, column);
         if (!Intersects(interval, visible))
         {
@@ -2950,6 +3051,8 @@ public sealed class TimelineView : Control, IHoverCardSource
             return;
         }
 
+        FinishAdvance();
+
         if (ShowingLanes && e.GetPosition(this).X < PlotLeft)
         {
             // The surrounding ScrollViewer owns vertical lane scrolling over the lane-name gutter (§6.2).
@@ -3015,6 +3118,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             return;
         }
+
+        FinishAdvance();
 
         PointerPoint point = e.GetCurrentPoint(this);
         if (ShowingLanes && point.Properties.IsLeftButtonPressed && point.Position.X < PlotLeft
@@ -3315,7 +3420,7 @@ public sealed class TimelineView : Control, IHoverCardSource
     }
 
     private long TickAt(double x) =>
-        ViewportMath.TickAtPixel(Viewport, Math.Clamp(x - PlotLeft, 0, PlotWidth), PlotWidth);
+        ViewportMath.TickAtPixel(DrawnViewport, Math.Clamp(x - PlotLeft, 0, PlotWidth), PlotWidth);
 
     protected override void OnKeyDown(KeyEventArgs e)
     {
@@ -3335,6 +3440,8 @@ public sealed class TimelineView : Control, IHoverCardSource
         {
             return false;
         }
+
+        FinishAdvance();
 
         TimeRange current = Viewport;
         TimeRange extent = viewModel.Snapshot.Extent;
