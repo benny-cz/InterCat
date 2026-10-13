@@ -460,6 +460,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
+        // Nor do the other keys the sheet says act anywhere - Ctrl+R, Ctrl+E, Ctrl+O, F5, Alt+Left and Alt+Right - so
+        // they act from wherever the keyboard is too, a search box included (§6.7).
+        if (AnywhereKey(viewModel, e) is { } taken)
+        {
+            e.Handled = taken;
+            return;
+        }
+
         if (SearchBox.IsKeyboardFocusWithin)
         {
             if (e.Key == Key.Escape)
@@ -513,26 +521,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         switch (e.Key)
         {
-            case Key.R when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                if (StartExploringButton.IsEnabled)
-                {
-                    StartChosenCapture();
-                }
-                e.Handled = true;
-                break;
-            case Key.E when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                ExportView();
-                e.Handled = true;
-                break;
-            case Key.O when e.KeyModifiers.HasFlag(KeyModifiers.Control):
-                // As Open saved session does, while it is offered: a capture under way hides it until the capture ends.
-                if (OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
-                {
-                    OpenSavedSession(OpenSavedSessionButton, new RoutedEventArgs());
-                }
-
-                e.Handled = true;
-                break;
             case Key.T:
                 viewModel.ShowTables = !viewModel.ShowTables;
                 e.Handled = true;
@@ -612,9 +600,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 _ = viewModel.LoadMoreAsync();
                 e.Handled = true;
                 break;
-            case Key.F5:
-                e.Handled = ApplyHeldUpdate();
-                break;
             case Key.F when e.KeyModifiers == KeyModifiers.None:
                 e.Handled = ToggleFollowLatest();
                 break;
@@ -635,12 +620,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 }
 
                 e.Handled = true;
-                break;
-            case Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
-                e.Handled = viewModel.Ascend();
-                break;
-            case Key.Right when e.KeyModifiers.HasFlag(KeyModifiers.Alt):
-                e.Handled = viewModel.GoForward();
                 break;
             case Key.Delete:
                 e.Handled = viewModel.RemoveSelectedFilter();
@@ -3155,6 +3134,44 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (closed) return;
         Say(CaptureStatus, "Nothing could be chosen", aloud: true);
         Say(CaptureDetail, why + " Nothing was opened or saved, and the current workspace is unchanged.", aloud: true);
+    }
+
+    /// <summary>
+    /// Acts on a key that acts anywhere and types nothing - Ctrl+R, Ctrl+E, Ctrl+O, F5, Alt+Left, Alt+Right - as its
+    /// action does: whether the key was taken, or null for any other key.
+    /// </summary>
+    private bool? AnywhereKey(WorkspaceViewModel viewModel, KeyEventArgs e)
+    {
+        if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+        {
+            switch (e.Key)
+            {
+                case Key.R:
+                    if (StartExploringButton.IsEnabled) StartChosenCapture();
+                    return true;
+                case Key.E:
+                    ExportView();
+                    return true;
+                case Key.O:
+                    // As Open saved session does, while it is offered: a capture under way hides it until it ends.
+                    if (OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
+                    {
+                        OpenSavedSession(OpenSavedSessionButton, new RoutedEventArgs());
+                    }
+
+                    return true;
+                default:
+                    break;
+            }
+        }
+
+        return e.Key switch
+        {
+            Key.F5 => ApplyHeldUpdate(),
+            Key.Left when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => viewModel.Ascend(),
+            Key.Right when e.KeyModifiers.HasFlag(KeyModifiers.Alt) => viewModel.GoForward(),
+            _ => null,
+        };
     }
 
     /// <summary>What the window is called while it shows no session, nor records one.</summary>
