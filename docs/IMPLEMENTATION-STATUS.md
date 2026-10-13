@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 494 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 495 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 495 — the size line reads its instants on the time base (§6.2, R5):**
+  - A tour of the window's later states - paused, a rolling capture holding a pin, a saved session with pins, the
+    content capture's review - at the smallest and default size in three modes found no text cut off, and one
+    instant said two ways: a pin confirmed from "+3580.000000 s" was stated a line below from "3580.000 s", and on
+    the wall clock still in session seconds.
+  - The size line now states what a release keeps, the pins and a pin's stop on the view's time base, and again when
+    it is toggled; the generation carries a release as facts, and `icat` keeps its words.
+  - Debug and Release each ran 2,105 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 8
+    mutations: the pins, what a release keeps or a pin's stop said in the command line's seconds, either sentence
+    ignoring the time base it is given, pins that cannot be read left unsaid, the toggle not followed, and a release's
+    instant a nanosecond off.
 
 - **Revision 494 — the follow-latest advance (§6.8, R13):**
   - Animating each publication a followed view advances by would keep the timeline moving, and the viewer's own
@@ -2137,7 +2149,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      into the search - a time of day from the machine's logs, or session time - is gone to, the cell holding it made
      the analysis interval as a step would, and one the session cannot place said with why. Since revision 424 `icat
      evidence --from` lists the rows from a moment the same reader places (R18). Since revision 431 the axis ticks round
-     instants of the ladder between its ends, on the wall clock the times of day it read. The host's own zone waits on
+     instants of the ladder between its ends, on the wall clock the times of day it read. Since revision 495 the size
+     line's instants - what a release keeps, the pins, a pin's stop - are read on it too. The host's own zone waits on
      a capture that records it.
    - §6.2's normalization scope: done in revision 342. The legend keys the lanes' heights and offers each lane its own
      scale, which a newer publication keeps, and since revision 343 an investigation too (§26.3, `workspace-v14`). The

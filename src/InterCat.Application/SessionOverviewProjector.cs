@@ -65,6 +65,12 @@ public sealed record SessionOverviewBundle(
     public string? Retained { get; init; }
 
     /// <summary>
+    /// What the session retains after its newest interval release, as facts (<see cref="SessionGrowth.RetainedSince"/>), so
+    /// a reader can state its instant on its own time base; null when it released no interval.
+    /// </summary>
+    public RetainedInterval? RetainedSince { get; init; }
+
+    /// <summary>
     /// The session time from which the session keeps every record (<see cref="SessionRecording.RetainedFromNanoseconds"/>):
     /// its timeline begins at the first tick wholly at or after it; null when it released no interval.
     /// </summary>
@@ -383,6 +389,7 @@ public static class SessionOverviewProjector
             ManifestDigest = manifest.Digest,
             Size = SessionGrowth.Measure(manifest, rows),
             Retained = SessionGrowth.Retained(manifest),
+            RetainedSince = SessionGrowth.RetainedSince(manifest),
             RetainedFromNanoseconds = SessionRecording.RetainedFromNanoseconds(manifest),
             Pinned = pinned,
             Pins = pins,

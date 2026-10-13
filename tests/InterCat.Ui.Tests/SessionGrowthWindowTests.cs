@@ -114,10 +114,13 @@ public sealed class SessionGrowthWindowTests
             // says at once when the follow stops the capture for it.
             RetentionPin pin = Assert.IsType<RetentionPin>(await window.PlacePinAsync(3_580_000_000_000, 90L << 20, "the failover"));
             Dispatch();
+            // Its instant is read on the view's time base, as every instant the window states (§6.2).
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Func<long, string> moment = at => workspace.TimeBase.Moment(at, CultureInfo.CurrentCulture);
             Assert.StartsWith(SessionGrowth.Describe(measured) + ".\nStops in about 10 min at the rate so far, when the session "
-                + "outgrows the 90 MiB the pin from " + SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)
+                + "outgrows the 90 MiB the pin from " + moment(pin.FromNanoseconds)
                 + " allows; its journal would reach 1 GiB in about 2 h 50 min, ", growth.Text, StringComparison.Ordinal);
-            Assert.EndsWith("\n" + RetentionPinText.SizeLine([pin]), growth.Text, StringComparison.Ordinal);
+            Assert.EndsWith("\n" + RetentionPinText.SizeLine([pin], moment), growth.Text, StringComparison.Ordinal);
 
             // The next generation states the pins it was projected with, and removed, the window bounds the session again.
             Assert.Equal([pin], SessionOverviewProjector.Project(session.Store).Pins);
@@ -159,13 +162,21 @@ public sealed class SessionGrowthWindowTests
 
             // Its size first, then what it keeps: the line a person reads to know the interval before it is not quiet.
             TextBlock growth = window.GetControl<TextBlock>("SessionGrowthText");
-            Assert.Equal(SessionGrowth.Statement(overview.Size!, null) + "\n" + overview.Retained, growth.Text);
-            Assert.StartsWith("Kept from ", overview.Retained, StringComparison.Ordinal);
+            // The instant is read on the view's time base, as every instant the window states (§6.2); the command line's
+            // words name it in session seconds.
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            string kept = "Kept from " + workspace.TimeBase.Moment(boundary, CultureInfo.CurrentCulture) + " on: ";
+            Assert.Equal(SessionGrowth.Statement(overview.Size!, null) + "\n"
+                + SessionGrowth.Retained(overview.RetainedSince!, at => workspace.TimeBase.Moment(at, CultureInfo.CurrentCulture)),
+                growth.Text);
+            Assert.Contains("\n" + kept, growth.Text, StringComparison.Ordinal);
+            Assert.Equal(overview.Retained, SessionGrowth.Retained(overview.RetainedSince!));
+            Assert.StartsWith("Kept from " + SessionTimeText.Seconds(boundary, CultureInfo.CurrentCulture) + " on: ", overview.Retained,
+                StringComparison.Ordinal);
             Assert.Equal(boundary, overview.Size!.RetainedFromNanoseconds);
 
             // The timeline, and the interval table beside it, begin at the first tick wholly after the boundary: no interval
             // reaches into what was released, so none is a gap for it, and each states its coverage whole.
-            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
             Assert.Equal((boundary + 99) / 100, workspace.Snapshot.Extent.StartTicks);
             workspace.ShowTables = true;
             Render(window);

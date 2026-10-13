@@ -198,7 +198,7 @@ public partial class MainWindow
     {
         if (growth is ({ } size, var began, var retained, _, _))
         {
-            growth = (size, began, retained, RetentionPinText.SizeLine(pins), pins);
+            growth = (size, began, retained, null, pins);
             UpdateSessionGrowth();
         }
     }

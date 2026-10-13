@@ -82,7 +82,10 @@ public sealed class RetentionPinWindowTests
             Assert.Equal("Pinned from " + SessionTimeText.Seconds(2_000, System.Globalization.CultureInfo.CurrentCulture)
                 + " (the second send): every record from then on is kept through every release, and the session may hold 64 MiB.",
                 pinned);
-            Assert.EndsWith("\n" + pinned, growth.Text, StringComparison.Ordinal);
+
+            // The window's size line says it from the instant the confirmation names, read on the view's time base (§6.2).
+            Assert.EndsWith("\nPinned from " + offer.Moment + " (the second send): every record from then on is kept through every "
+                + "release, and the session may hold 64 MiB.", growth.Text, StringComparison.Ordinal);
 
             // The next projection states the pins as the size line does, and the dialog lists them in icat pin's words.
             Assert.Equal(pinned, SessionOverviewProjector.Project(session.Store).Pinned);
@@ -158,7 +161,12 @@ public sealed class RetentionPinWindowTests
                 + " (the first) and by 1 more pin: every record from then on is kept through every release, and the session may "
                 + "hold 32 MiB.";
             Assert.Equal(pinned, RetentionPinText.SizeLine(session.Store.Pins()));
-            Assert.EndsWith("\n" + pinned, window.GetControl<TextBlock>("SessionGrowthText").Text, StringComparison.Ordinal);
+
+            // The window says both from the boundary as it names it everywhere else, on the view's time base (§6.2).
+            string growth = window.GetControl<TextBlock>("SessionGrowthText").Text!;
+            Assert.EndsWith("\nPinned from " + boundary + " (the first) and by 1 more pin: every record from then on is kept through "
+                + "every release, and the session may hold 32 MiB.", growth, StringComparison.Ordinal);
+            Assert.Contains("\nKept from " + boundary + " on: ", growth, StringComparison.Ordinal);
             Assert.Equal(2, Assert.IsType<MainWindow.PinOffer>(await window.PinOfferAsync()).Pins.Count);
             Assert.Equal(first, (await window.PinOfferAsync())!.Pins[0].Pin);
 
@@ -171,6 +179,15 @@ public sealed class RetentionPinWindowTests
             Assert.Null(await window.PinOfferAsync());
             Assert.Equal(("This session's pins could not be read", unreadable), (window.GetControl<TextBlock>("CaptureStatus").Text,
                 window.GetControl<TextBlock>("CaptureDetail").Text));
+
+            // Its size line says it as the generation says it, in place of any pin.
+            SessionOverviewBundle unread = SessionOverviewProjector.Project(session.Store);
+            session.Store.ReleaseSegmentReaders();
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: unread), forceOverview: true);
+            Dispatch();
+            Assert.EndsWith("\n" + unread.Pinned, window.GetControl<TextBlock>("SessionGrowthText").Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("Pinned from", window.GetControl<TextBlock>("SessionGrowthText").Text, StringComparison.Ordinal);
         }
         finally
         {

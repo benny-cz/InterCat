@@ -26,9 +26,10 @@ public static class RetentionPinText
 
     /// <summary>
     /// The size line's sentence about the pins standing on a session (§12.1 S5): from when the earliest keeps every record,
-    /// and the least any lets the session hold. Null when none stands.
+    /// and the least any lets the session hold. <paramref name="moment"/> states that instant as its reader reads instants -
+    /// the window on its time base; the command line in session seconds, when none is given. Null when none stands.
     /// </summary>
-    public static string? SizeLine(IReadOnlyList<RetentionPin> pins)
+    public static string? SizeLine(IReadOnlyList<RetentionPin> pins, Func<long, string>? moment = null)
     {
         ArgumentNullException.ThrowIfNull(pins);
         if (pins.Count == 0)
@@ -37,7 +38,9 @@ public static class RetentionPinText
         }
 
         RetentionPin earliest = pins.MinBy(pin => pin.FromNanoseconds)!;
-        return $"Pinned from {SessionTimeText.Seconds(earliest.FromNanoseconds, CultureInfo.CurrentCulture)} ({earliest.Reason})"
+        string from = moment?.Invoke(earliest.FromNanoseconds)
+            ?? SessionTimeText.Seconds(earliest.FromNanoseconds, CultureInfo.CurrentCulture);
+        return $"Pinned from {from} ({earliest.Reason})"
             + (pins.Count > 1 ? " and by " + CountText.Of(pins.Count - 1, "more pin") : string.Empty)
             + ": every record from then on is kept through every release, and the session may hold "
             + ByteSizeText.Of(pins.Min(pin => pin.AllowanceBytes)) + ".";

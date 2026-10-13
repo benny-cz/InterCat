@@ -142,6 +142,14 @@ public enum CaptureStopCause
 public sealed record CaptureHeadroom(TimeSpan Remaining, CaptureStopCause Cause, bool Measured, string Statement);
 
 /// <summary>
+/// What a session retains after its newest interval release (§12.1 S5, ADR-043): the session time from which every record
+/// is kept, when the records before it were released, how many, how many of their rows were kept as the evidence of what
+/// came after, and why.
+/// </summary>
+public sealed record RetainedInterval(long FromNanoseconds, DateTimeOffset ReleasedUtc, long ReleasedRecords, long KeptRows,
+    string Reason);
+
+/// <summary>
 /// §12.1 S5: growth is disclosed before it hurts. A session's size, its bytes per record and the tier it is in, and while
 /// it records, how long until its capture's limits stop it, from measured sizes - in one set of words for the window and
 /// the command line (R18).
@@ -213,22 +221,34 @@ public static class SessionGrowth
     /// and what went before it - when, how many records, how many of their rows were kept as the evidence of what came
     /// after, and why. Null when the generation states no interval release.
     /// </summary>
-    public static string? Retained(SessionManifestV1 manifest)
+    public static string? Retained(SessionManifestV1 manifest) => RetainedSince(manifest) is { } retained ? Retained(retained) : null;
+
+    /// <summary>What a session retains after its newest interval release, as the generation states it; null when it states none.</summary>
+    public static RetainedInterval? RetainedSince(SessionManifestV1 manifest)
     {
         ArgumentNullException.ThrowIfNull(manifest);
-        if (manifest.LatestRelease(RetentionExtentKind.Interval) is not { Record: { Interval: { } interval } record })
-        {
-            return null;
-        }
+        return manifest.LatestRelease(RetentionExtentKind.Interval) is { Record: { Interval: { } interval } record }
+            ? new(interval.BoundaryNanoseconds, record.ReleasedUtc, record.ReleasedRecords, interval.KeptRows, record.Reason)
+            : null;
+    }
 
-        CultureInfo culture = CultureInfo.CurrentCulture;
-        return string.Create(culture, $"Kept from {SessionTimeText.Seconds(interval.BoundaryNanoseconds, culture)} on: the records read before it were released ")
-            + string.Create(CultureInfo.InvariantCulture, $"on {record.ReleasedUtc.UtcDateTime:yyyy-MM-dd HH:mm} UTC")
-            + " - " + CountText.Of(record.ReleasedRecords, "record")
-            + (interval.KeptRows > 0
-                ? ", keeping " + CountText.Of(interval.KeptRows, "row") + " of them as the evidence of what came after"
+    /// <summary>
+    /// What a session retains after an interval release, as a sentence. <paramref name="moment"/> states the instant every
+    /// record from which on is kept as its reader reads instants - the window on its time base; the command line in session
+    /// seconds, when none is given.
+    /// </summary>
+    public static string Retained(RetainedInterval retained, Func<long, string>? moment = null)
+    {
+        ArgumentNullException.ThrowIfNull(retained);
+        string from = moment?.Invoke(retained.FromNanoseconds)
+            ?? SessionTimeText.Seconds(retained.FromNanoseconds, CultureInfo.CurrentCulture);
+        return $"Kept from {from} on: the records read before it were released "
+            + string.Create(CultureInfo.InvariantCulture, $"on {retained.ReleasedUtc.UtcDateTime:yyyy-MM-dd HH:mm} UTC")
+            + " - " + CountText.Of(retained.ReleasedRecords, "record")
+            + (retained.KeptRows > 0
+                ? ", keeping " + CountText.Of(retained.KeptRows, "row") + " of them as the evidence of what came after"
                 : string.Empty)
-            + " (" + record.Reason + ").";
+            + " (" + retained.Reason + ").";
     }
 
     /// <summary>
@@ -247,9 +267,11 @@ public static class SessionGrowth
     /// outgrows them. A pin among <paramref name="pins"/> keeps that session past its window once the window passes the
     /// pin's moment, so it grows from there until it holds more than a pin allows, which stops it too (ADR-046). Before
     /// the session has grown measurably only its length is stated as a time, and an unread volume is said to be unread.
+    /// <paramref name="moment"/> states a pin's instant as its reader reads instants - the window on its time base; the
+    /// command line in session seconds, when none is given.
     /// </summary>
     public static CaptureHeadroom Headroom(SessionSize size, DateTimeOffset began, DateTimeOffset now, CaptureLimits limits,
-        RecordingVolume? volume, IReadOnlyList<RetentionPin>? pins = null)
+        RecordingVolume? volume, IReadOnlyList<RetentionPin>? pins = null, Func<long, string>? moment = null)
     {
         ArgumentNullException.ThrowIfNull(size);
         ArgumentNullException.ThrowIfNull(limits);
@@ -365,7 +387,7 @@ public static class SessionGrowth
         (CaptureStopCause cause, TimeSpan remaining) = stops.OrderBy(entry => entry.When).ThenBy(entry => entry.Cause).First();
         string allows = outgrown is { Pin: var pin }
             ? $"the {ByteSizeText.Of(pin.AllowanceBytes)} the pin from "
-                + $"{SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)} allows"
+                + $"{moment?.Invoke(pin.FromNanoseconds) ?? SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)} allows"
             : string.Empty;
         string head = cause switch
         {

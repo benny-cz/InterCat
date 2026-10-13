@@ -232,6 +232,43 @@ public sealed class TimeBaseWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.2: the size line names a pin's instant on the time base the view reads, as the pin's own words do, and follows the toggle")]
+    public async Task TheSizeLineReadsItsInstantsOnTheTimeBase()
+    {
+        using var calibrated = new TemporarySession();
+        Publish(calibrated.Store, Records(), clock: Clock, calibration: Calibration());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            Show(window, calibrated);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            TextBlock growth = window.GetControl<TextBlock>("SessionGrowthText");
+            MainWindow.PinOffer offer = Assert.IsType<MainWindow.PinOffer>(await window.PinOfferAsync());
+            RetentionPin pin = Assert.IsType<RetentionPin>(await window.PlacePinAsync(offer.FromNanoseconds, 64L << 20, "the lookups"));
+            Render(window);
+
+            // In session time it names the pin's instant as the confirmation does, and in no other form.
+            string session = workspace.TimeBase.Moment(pin.FromNanoseconds, CultureInfo.CurrentCulture);
+            Assert.Contains("Pinned from " + session + " (the lookups)", growth.Text, StringComparison.Ordinal);
+            Assert.Contains(session, window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.DoesNotContain(SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture), growth.Text,
+                StringComparison.Ordinal);
+
+            // Read on the wall clock, it names the instant the wall clock read, at once.
+            window.GetControl<ToggleButton>("WallClockToggle").IsChecked = true;
+            Render(window);
+            string wall = workspace.TimeBase.Moment(pin.FromNanoseconds, CultureInfo.CurrentCulture);
+            Assert.NotEqual(session, wall);
+            Assert.Contains("Pinned from " + wall + " (the lookups)", growth.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain(session, growth.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static void Show(MainWindow window, TemporarySession session)
     {
         window.ApplyCaptureUpdate(new CaptureUiUpdate(CaptureUiPhase.Complete, "Saved session open", "Saved.",
