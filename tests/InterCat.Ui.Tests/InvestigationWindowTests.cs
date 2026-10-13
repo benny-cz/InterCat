@@ -68,7 +68,8 @@ public sealed class InvestigationWindowTests
             ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Assert.Equal(view.Members[1].AccessibleName, AutomationProperties.GetName(list.ContainerFromIndex(1)!));
-            Assert.EndsWith("Relink it to open it.", view.Members[1].AccessibleName, StringComparison.Ordinal);
+            Assert.EndsWith("moved or removed. " + InvestigationWorkspace.RelinkWhereItIs, view.Members[1].AccessibleName,
+                StringComparison.Ordinal);
             Save(window, "investigation-window.png");
 
             // A moved session is relinked where it is now; a folder that holds no session is refused, and says why.
@@ -1266,6 +1267,82 @@ public sealed class InvestigationWindowTests
         {
             main.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: a member whose folder changed since its window read it is never opened as another session, and the window says why and what to do")]
+    public async Task AMemberThatChangedIsNotOpenedAsAnother()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        string alphaPath = Datagrams(root.Path, "alpha", 4);
+        string betaPath = Datagrams(root.Path, "beta", 6);
+        string gamma = Session(root.Path, "gamma");
+        Guid g = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(gamma)).SessionId;
+        Guid a = InvestigationWorkspace.Add(workspace, alphaPath, Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, betaPath, Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            int column = window.Timeline!.Lanes[0].Buckets.ToList().FindIndex(bucket => bucket.ObservationCount > 0);
+
+            // Another session is written into alpha's folder after the investigation read it, and InterCat's window opens
+            // that folder, as a person told it now holds another session would: it shows the other session.
+            foreach (string file in Directory.EnumerateFiles(alphaPath)) File.Delete(file);
+            foreach (string file in Directory.EnumerateFiles(gamma)) File.Copy(file, Path.Combine(alphaPath, Path.GetFileName(file)));
+            Assert.True(await main.OpenSessionAsync(alphaPath));
+            Assert.True(ShowsGamma(main));
+
+            // alpha's column in the merged time, drawn before, opens nothing - the window keeps what it shows, which is not
+            // alpha, rather than zoom it as alpha - and the investigation says why, as alpha's row now does, and what to do.
+            Assert.False(await window.OpenColumnAsync(new TimelineColumn(0, column)));
+            TextBlock status = Named<TextBlock>(window, "Investigation status");
+            Assert.StartsWith($"Session {Short(a)} could not be opened: Session {g:N} of capture ", status.Text, StringComparison.Ordinal);
+            Assert.EndsWith(" is at this path, not this member. " + InvestigationWorkspace.RelinkWhereItIs, status.Text,
+                StringComparison.Ordinal);
+            Assert.True(ShowsGamma(main));
+            Assert.Null(((WorkspaceViewModel)main.DataContext!).SelectedInterval);
+            Assert.Equal(("Could not open this session", SessionStore.AnotherSession + " The current workspace is unchanged."),
+                (main.GetControl<TextBlock>("CaptureStatus").Text, main.GetControl<TextBlock>("CaptureDetail").Text));
+            InvestigationMemberRow alpha = window.View!.Members[0];
+            Assert.Equal((WorkspaceMemberState.Different, false), (alpha.State, alpha.HoldsItsCapture));
+
+            // Its row says the step once, where it said it twice.
+            Assert.EndsWith(" is at this path, not this member. " + InvestigationWorkspace.RelinkWhereItIs, alpha.AccessibleName,
+                StringComparison.Ordinal);
+
+            // beta opens from its row; its folder emptied after the row was read, opening it again opens nothing, and says that
+            // its session left it, never that none was published there.
+            window.ShowTab(0);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 1;
+            Named<Button>(window, "Open in InterCat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == betaPath);
+            foreach (string file in Directory.EnumerateFiles(betaPath)) File.Delete(file);
+            Named<Button>(window, "Open in InterCat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => status.Text?.StartsWith($"Session {Short(b)} could not be opened: ", StringComparison.Ordinal) == true);
+            Assert.Equal($"Session {Short(b)} could not be opened: The folder at this path holds no session now: the session was "
+                + "moved or removed. " + InvestigationWorkspace.RelinkWhereItIs, status.Text);
+            Assert.Equal(SessionStore.SessionGone + " The current workspace is unchanged.",
+                main.GetControl<TextBlock>("CaptureDetail").Text);
+            Assert.Equal((WorkspaceMemberState.Unreadable, false), (window.View!.Members[1].State, window.View.Members[1].HoldsItsCapture));
+            Assert.False(Named<Button>(window, "Open in InterCat").IsEnabled);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+
+        // gamma's one process is 400; the members' is 100.
+        static bool ShowsGamma(MainWindow shown) =>
+            ((WorkspaceViewModel)shown.DataContext!).Snapshot.Processes.Select(process => process.ProcessId).SequenceEqual([400]);
     }
 
     [AvaloniaFact(DisplayName = "§8.4: a session opened from its investigation is shown in front, its ranked table with the keyboard, the investigation a peer of InterCat's window rather than one held in front of it")]

@@ -134,6 +134,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string workspace = NewWorkspace();
         SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
         SessionStore beta = NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), CaptureId.New());
+        CaptureId betaCapture = SessionSegments.Source(beta.Root, beta.Current!)!.Value.Capture;
         WorkspaceMember member = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now);
 
         // Moved: an unresolved reference, kept, until a relink finds the member itself.
@@ -159,17 +160,22 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(2, InvestigationWorkspace.Relink(workspace, member.SessionId, moved, Now).Generation);
         Assert.Equal(WorkspaceMemberState.Present, Single(workspace).State);
 
-        // Different: another session at its path. Unreadable: a directory holding no session, or a file.
+        // Different: another session at its path. Unreadable: a directory holding no session, or a file. A member was a
+        // session where it was added, so a folder holding none says its session left, never that none was published there;
+        // each says what to do once.
         Directory.Move(moved, Path.Combine(root, "aside"));
         Directory.Move(beta.Root.Path, moved);
         WorkspaceMemberResolution different = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Different, different.State);
-        Assert.Contains("not this member", different.Reason, StringComparison.Ordinal);
+        Assert.Equal($"Session {beta.SessionId:N} of capture {betaCapture.Value:N} is at this path, not this member. Relink the "
+            + "member where it is now.", different.Reason);
         Directory.Move(moved, beta.Root.Path);
         Directory.CreateDirectory(moved);
         WorkspaceMemberResolution empty = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Unreadable, empty.State);
-        Assert.Equal(SessionStore.NoGeneration, empty.Reason);
+        Assert.Equal("The folder at this path holds no session now: the session was moved or removed. Relink the member where "
+            + "it is now.", empty.Reason);
+        Assert.EndsWith(InvestigationWorkspace.RelinkWhereItIs, missing.Reason, StringComparison.Ordinal);
         Directory.Delete(moved);
         File.WriteAllText(moved, "not a session");
         Assert.Equal(WorkspaceMemberState.Unreadable, Single(workspace).State);

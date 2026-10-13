@@ -84,6 +84,10 @@ its manifest's digest, every dependency's presence and length, and its journal's
 | `Different` | Another session, or another capture, is at the path | no |
 | `Unreadable` | What is at the path cannot be opened as a session; the reason is stated | no |
 
+A member was a published session where it was added, so a folder at its path that holds no session now is
+`Unreadable` with the reason that its session was moved or removed, never that none was published there. That reason,
+a `Missing` member's and a `Different` member's end by saying to relink the member where it is now.
+
 A session keeps no older generation to read, so an `Advanced` or `Replaced` member is said to be one, and its generation
 is selected only by a relink. `relink` points a member at a path only when the session there has the member's
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is

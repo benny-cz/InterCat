@@ -1532,8 +1532,9 @@ public sealed partial class MainWindow : Window, IDisposable
             }
         }
 
-        var window = new InvestigationWindow(full, session => FromInvestigationAsync(full, () => OpenSessionAsync(session)), made,
-            (session, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval)),
+        var window = new InvestigationWindow(full,
+            (session, member) => FromInvestigationAsync(full, () => OpenSessionAsync(session, expected: member)), made,
+            (session, member, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval, member)),
             other => ShowInvestigation(other));
         investigations.Add(window);
         window.Closed += (_, _) => investigations.Remove(window);
@@ -1854,14 +1855,16 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>
     /// Opens a session - or keeps it, when it is the one shown - with its timeline zoomed to <paramref name="interval"/> of
     /// its own time, with a column of it either side, and that interval selected, so its records are what this window shows.
+    /// With <paramref name="expected"/>, only that session is opened or kept, as <see cref="OpenSessionAsync"/> says.
     /// </summary>
-    internal async Task<bool> OpenSessionAtAsync(string path, TimeRange interval)
+    internal async Task<bool> OpenSessionAtAsync(string path, TimeRange interval, Guid? expected = null)
     {
         string full = Path.GetFullPath(path);
         bool shown = currentSessionPath is { } current
             && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(current)), Path.TrimEndingDirectorySeparator(full),
-                StringComparison.OrdinalIgnoreCase);
-        if (!shown && !await OpenSessionAsync(full) || closed)
+                StringComparison.OrdinalIgnoreCase)
+            && (expected is null || displayedSessionId == expected);
+        if (!shown && !await OpenSessionAsync(full, expected: expected) || closed)
         {
             return false;
         }
@@ -1884,9 +1887,11 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>
     /// Opens a published session directory as the workspace. A redacted package says so where the status is read, so
     /// nobody mistakes its pseudonyms for the source machine's names and IDs. False when the directory could not open;
-    /// the current workspace is then unchanged.
+    /// the current workspace is then unchanged. With <paramref name="expected"/> - an investigation's member - a directory
+    /// that now holds another session, or none, is refused rather than opened as it.
     /// </summary>
-    internal async Task<bool> OpenSessionAsync(string path, (string Headline, string Detail)? status = null)
+    internal async Task<bool> OpenSessionAsync(string path, (string Headline, string Detail)? status = null,
+        Guid? expected = null)
     {
         if (openingSession || captureTask is { IsCompleted: false }) return false;
         openingSession = true;
@@ -1898,7 +1903,7 @@ public sealed partial class MainWindow : Window, IDisposable
             string? investigation = openingFromInvestigation;
             (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
             {
-                SessionStore opened = SharedSessionStores.Open(path);
+                SessionStore opened = SharedSessionStores.Open(path, expected);
 
                 // A session opened is a workspace of its own, which counts correlated evidence until its person chooses,
                 // or as its investigation kept it when it is opened from one (§26.3).

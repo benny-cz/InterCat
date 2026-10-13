@@ -439,24 +439,33 @@ public static partial class InvestigationWorkspace
         if (!Directory.Exists(full))
         {
             return new(member, full, WorkspaceMemberState.Missing, null,
-                "Nothing is at this path: the session was moved or removed. Relink the member where it is now.");
+                "Nothing is at this path: the session was moved or removed. " + RelinkWhereItIs);
         }
 
-        Found found;
+        Found? found;
         try
         {
-            found = Open(full);
+            found = TryOpen(full);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
         {
             return new(member, full, WorkspaceMemberState.Unreadable, null, exception.Message);
         }
 
+        // A member was a published session when it was added, so a folder holding none now is one its session left, never
+        // one in which no session was published.
+        if (found is null)
+        {
+            return new(member, full, WorkspaceMemberState.Unreadable, null,
+                "The folder at this path holds no session now: the session was moved or removed. " + RelinkWhereItIs);
+        }
+
         SessionManifestV1 manifest = found.Manifest;
         if (manifest.SessionId != member.SessionId || found.Capture.Value != member.CaptureId)
         {
             return new(member, full, WorkspaceMemberState.Different, manifest.Generation,
-                $"Session {manifest.SessionId:N} of capture {found.Capture.Value:N} is at this path, not this member.");
+                $"Session {manifest.SessionId:N} of capture {found.Capture.Value:N} is at this path, not this member. "
+                + RelinkWhereItIs);
         }
 
         string? rolledBack = found.RollbackReason is null
@@ -517,15 +526,26 @@ public static partial class InvestigationWorkspace
         };
     }
 
+    /// <summary>What a member that is not its session at its path says to do, at the end of why.</summary>
+    public const string RelinkWhereItIs = "Relink the member where it is now.";
+
     /// <summary>
     /// Opens a session to learn what it is, as a viewer does: the pointer, the manifest's digest and every dependency's
     /// presence and length are checked, and the journal's header is read. Nothing is written.
     /// </summary>
-    private static Found Open(string directory)
+    private static Found Open(string directory) =>
+        TryOpen(directory) ?? throw new InvalidDataException(SessionStore.NoGeneration);
+
+    /// <inheritdoc cref="Open"/>
+    /// <returns>Null when the folder holds no published session.</returns>
+    private static Found? TryOpen(string directory)
     {
         SessionStore store = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(directory));
-        SessionManifestV1 manifest = store.Current
-            ?? throw new InvalidDataException(SessionStore.NoGeneration);
+        if (store.Current is not { } manifest)
+        {
+            return null;
+        }
+
         (CaptureId capture, SourceClockDescriptor clock) = SessionSegments.Source(store.Root, manifest)
             ?? throw new InvalidDataException(
                 $"Generation {manifest.Generation} names no journal, so the session has no capture, host or clock to place.");

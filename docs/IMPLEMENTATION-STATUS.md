@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 501 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 502 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 502 — an investigation's member changed under its window (§8.4, ADR-038, R22):**
+  - Another session written into a member's folder, or the folder emptied, after the investigation read it: Open and
+    a column of the merged time opened the folder as it stood - InterCat's window showed the other session - and the
+    investigation said it had opened its member.
+  - A member is now opened by its identity: InterCat's window refuses another session or none, in revision 501's
+    words, and keeps what it showed; the investigation reads its sessions again and says why, as the row says it.
+  - Another session at a member's path, and a folder holding no session, now end with relinking the member where it
+    is now; the latter no longer says that no session was published there. A screen reader says the step once.
+  - Debug and Release each ran 2,134 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 11
+    mutations: an emptied member's folder said as never published, another session's or a moved member's reason without
+    its step, the step said twice or never; a member opened, or its column, as whatever its folder holds, or kept as the
+    session shown by its path alone, or its store opened by path; and a member that did not open said without reading
+    its folder again, or without why.
 
 - **Revision 501 — a session's folder written again or emptied under the window (§20.1, R21):**
   - Every read said the session identity had changed after its store was opened; an emptied folder, that no

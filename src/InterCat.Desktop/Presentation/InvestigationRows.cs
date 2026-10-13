@@ -29,8 +29,15 @@ public sealed record InvestigationMemberRow(
     /// <summary>Whether it has a place in the investigation's time: it is its clock, or aligned to a session that has one.</summary>
     public bool IsPlaced => IsTimeReference || IsAligned;
 
+    /// <summary>
+    /// The row read as one sentence: where it stands and why, and what to do with it - said once, so a reason that already
+    /// says to relink it is not followed by the same step again.
+    /// </summary>
     public string AccessibleName => $"{Title}. {Detail}. {Time}." + (Kept is null ? string.Empty : $" {Kept}")
-        + (Reason is null ? string.Empty : $" {Reason}") + (HoldsItsCapture ? " Press Enter to open it." : " Relink it to open it.");
+        + (Reason is null ? string.Empty : $" {Reason}")
+        + (HoldsItsCapture ? " Press Enter to open it."
+            : Reason?.EndsWith(InvestigationWorkspace.RelinkWhereItIs, StringComparison.Ordinal) == true ? string.Empty
+            : " Relink it to open it.");
 }
 
 /// <summary>An investigation as its window shows it: the file, a summary, its members and what it cannot say.</summary>
