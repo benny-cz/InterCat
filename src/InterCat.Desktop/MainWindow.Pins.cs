@@ -150,6 +150,7 @@ public partial class MainWindow
         {
             pinning = false;
             UpdateEvidenceAction();
+            KeepKeyboard();
         }
     }
 
@@ -190,6 +191,7 @@ public partial class MainWindow
         {
             pinning = false;
             UpdateEvidenceAction();
+            KeepKeyboard();
         }
     }
 

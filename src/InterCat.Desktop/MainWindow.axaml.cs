@@ -797,6 +797,10 @@ public sealed partial class MainWindow : Window, IDisposable
     private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
         if (closed || !IsActive || FocusManager?.GetFocusedElement() is { } focused && !ReferenceEquals(focused, this)) return;
+
+        // Keep records waits disabled while the pin its dialog chose is written, and gets the keyboard back as that ends: the
+        // window, active again as the dialog closed, handed it to the ranked table meanwhile.
+        if (pinning && ReferenceEquals(lastKeyboard, KeepRecordsButton)) return;
         if (railOwnsKeyboard && !workspace.IsEmptyWorkspace)
         {
             KeepRailKeyboard();

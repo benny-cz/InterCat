@@ -1372,6 +1372,7 @@
         "R15: F1 lists the investigation window's keys by where they act, and Esc gives the keyboard back to the session",
         "R15: F1 lists the window's keys by where they act, each row named for a screen reader, and Esc gives the keyboard back",
         "R15: Forward and Restore defaults, which go once pressed, give the ranked table the keyboard",
+        "R15: Keep records places a pin through its dialog and removes it through the same, the button having the keyboard back each time",
         "R15: Next, which waits disabled while it reads, gives the keyboard to the next page's first channel",
         "R15: Reveal, which waits disabled while it reads, gives the record's text the keyboard back with the bytes in it",
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
