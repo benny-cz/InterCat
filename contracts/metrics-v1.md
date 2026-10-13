@@ -480,13 +480,13 @@ not exist yet and are answered as unavailable today.
 
 ## 12. Not defined at this version
 
-- Grouping by service, session, host, endpoint, package or channel, each of which needs an entity derivation this
-  version does not have.
+- Grouping by service, host, endpoint, package or channel, each of which needs an entity derivation this version does
+  not have. Grouping by terminal session is §6's since plan revision 404.
 - The canonical-owner choice itself (§5.3 rules 1–3). A relation proves which process is at a record's other end,
   not which of that process's records is the same transfer; the owner needs that per-transfer association.
 - Durations of any interval but an RPC client call and a server execution, and a latency distribution beyond the
   median, the 95th percentile and the maximum.
-- Operations of any mechanism but RPC, and an operation's other end, which the filters and groupings §8a leaves
-  unavailable need.
+- Operations of any mechanism but RPC, which the filters and groupings §8a leaves unavailable need. An RPC call's other
+  end is §8a's since plan revision 228.
 - Covered-time rates, which need a source-specific valid exposure duration and a different label.
 - Aggregate cells over a boundary set (§10.3). A result here is one total, or one total per group, over one scope.

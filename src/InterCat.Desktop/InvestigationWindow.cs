@@ -30,6 +30,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     internal string WorkspacePath => path;
     private readonly Func<string, Task<bool>>? openSession;
     private readonly Func<string, TimeRange, Task<bool>>? openSessionAt;
+    private readonly Action<string>? showInvestigation;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextTrimming = TextTrimming.PathSegmentEllipsis };
     private readonly TextBlock summary = new() { TextWrapping = TextWrapping.Wrap };
@@ -139,12 +140,14 @@ internal sealed class InvestigationWindow : Window, IDisposable
         string path,
         Func<string, Task<bool>>? openSession,
         string? opening = null,
-        Func<string, TimeRange, Task<bool>>? openSessionAt = null)
+        Func<string, TimeRange, Task<bool>>? openSessionAt = null,
+        Action<string>? showInvestigation = null)
     {
         this.path = Path.GetFullPath(path);
         Choices = new PathChoices(this);
         this.openSession = openSession;
         this.openSessionAt = openSessionAt;
+        this.showInvestigation = showInvestigation;
         Title = $"InterCat · Investigation · {Path.GetFileName(this.path)}";
         Width = 940;
         Height = 660;
@@ -1040,9 +1043,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
         string destination = MainWindow.NewPackageDirectory(
             parent, DateTimeOffset.Now, Path.GetFileNameWithoutExtension(path) + "-package");
         InvestigationPackageResult? result = await WritePackageAsync(destination, chosen);
-        if (result is not null && !closed && await ShowPackageResultAsync(result) && Owner is MainWindow main)
+        if (result is not null && !closed && await ShowPackageResultAsync(result))
         {
-            _ = main.ShowInvestigation(result.WorkspacePath);
+            showInvestigation?.Invoke(result.WorkspacePath);
         }
     }
 
@@ -1111,7 +1114,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
     }
 
     private async Task<bool> ShowPackageResultAsync(InvestigationPackageResult result) =>
-        await PackageResultPrompt(result, offersOpen: Owner is MainWindow).ShowDialog<bool>(this);
+        await PackageResultPrompt(result, offersOpen: showInvestigation is not null).ShowDialog<bool>(this);
 
     /// <summary>
     /// Says where the package is and what verified it; true when the person wants to open it here, which it offers only

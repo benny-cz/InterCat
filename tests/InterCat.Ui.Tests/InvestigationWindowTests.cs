@@ -1268,6 +1268,324 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§8.4: a session opened from its investigation is shown in front, its ranked table with the keyboard, the investigation a peer of InterCat's window rather than one held in front of it")]
+    public void ASessionOpenedFromTheInvestigationIsShownInFront()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        string alpha = Datagrams(root.Path, "alpha", 4);
+        _ = InvestigationWorkspace.Add(workspace, alpha, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            // It opens centred over InterCat's window, as a window it owned would, but Windows holds an owned window in front
+            // of its owner: a session opened from it, shown in InterCat's window, was drawn behind it.
+            main.Position = new PixelPoint(120, 60);
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            Assert.Null(window.Owner);
+            Assert.DoesNotContain(window, main.OwnedWindows);
+            Assert.Same(window, Assert.Single(main.Investigations));
+            Assert.Equal(new PixelPoint(120 + ((1080 - 940) / 2), 60 + ((700 - 660) / 2)), window.Position);
+            WaitFor(() => window.View is not null);
+
+            // Enter on a session opens it in InterCat's window, which comes in front with the keyboard on its ranked table,
+            // where it was on Start exploring, whose Enter would start a capture.
+            int activated = 0;
+            main.Activated += (_, _) => activated++;
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(list.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == alpha);
+            WaitFor(() =>
+            {
+                Render(main);
+                return main.FocusManager?.GetFocusedElement() is Visual focused && main.GetControl<ListBox>("RungList").IsVisualAncestorOf(focused);
+            });
+            Assert.Equal(1, activated);
+            Assert.True(window.IsVisible);
+            window.Close();
+            Assert.Empty(main.Investigations);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.4: an investigation already shown comes in front, restored, rather than in a second window, and closes with InterCat's window")]
+    public void AnInvestigationShownAgainComesInFront()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        InvestigationWindow window = main.ShowInvestigation(workspace);
+        WaitFor(() => window.View is not null);
+
+        // Opened again - from the menu, the command line or a package saved - its window comes back in front, restored, since
+        // two windows of one investigation would each write its file.
+        int activated = 0;
+        window.Activated += (_, _) => activated++;
+        window.WindowState = WindowState.Minimized;
+        Assert.Same(window, main.ShowInvestigation(Path.Combine(root.Path, ".", "case" + InvestigationWorkspace.Extension)));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Same(window, Assert.Single(main.Investigations));
+        Assert.Equal((WindowState.Normal, 1), (window.WindowState, activated));
+
+        // Another investigation has a window of its own; each opens its sessions in InterCat's window, so none outlives it.
+        InvestigationWindow other = main.ShowInvestigation(Path.Combine(root.Path, "other" + InvestigationWorkspace.Extension), create: true);
+        Assert.NotSame(window, other);
+        Assert.Equal(2, main.Investigations.Count);
+        int closed = 0;
+        window.Closed += (_, _) => closed++;
+        other.Closed += (_, _) => closed++;
+        main.Close();
+        Assert.Equal(2, closed);
+        Assert.Empty(main.Investigations);
+    }
+
+    [AvaloniaFact(DisplayName = "R13: the merged time chooses the column under a click, zooms around the pointer under the wheel, and opens a column double-clicked in InterCat's window, in front")]
+    public void TheMergedTimeAnswersThePointer()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        string alphaPath = Datagrams(root.Path, "alpha", 4);
+        string betaPath = Datagrams(root.Path, "beta", 6);
+        Guid a = InvestigationWorkspace.Add(workspace, alphaPath, Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, betaPath, Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            Render(window);
+            InvestigationTimelineControl chart = window.GetVisualDescendants().OfType<InvestigationTimelineControl>().Single();
+            TimeRange whole = window.Timeline!.Interval!.Value;
+            int columns = window.Timeline.Lanes[1].Buckets.Count;
+            int busy = window.Timeline.Lanes[1].Buckets.ToList().FindIndex(bucket => bucket.ObservationCount > 0);
+            double plot = chart.Bounds.Width - InvestigationTimelineControl.LabelWidth - 12;
+            Point Where(int lane, double column) => chart.TranslatePoint(new Point(
+                InvestigationTimelineControl.LabelWidth + (column * plot / columns),
+                InvestigationTimelineControl.AxisHeight + ((lane + 0.5) * InvestigationTimelineControl.LaneHeight)), window)!.Value;
+
+            // A click chooses the column under the pointer, and the merged time takes the keyboard; on the axis it chooses none.
+            Point at = Where(1, busy + 0.5);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Assert.StartsWith($"Session {Short(b)}, column {busy + 1} of {columns}: ", window.ColumnReadout, StringComparison.Ordinal);
+            Assert.True(chart.IsFocused);
+            Point axis = chart.TranslatePoint(new Point(InvestigationTimelineControl.LabelWidth + 20, 4), window)!.Value;
+            window.MouseDown(axis, MouseButton.Left);
+            window.MouseUp(axis, MouseButton.Left);
+            Assert.StartsWith($"Session {Short(b)}, column {busy + 1} of {columns}: ", window.ColumnReadout, StringComparison.Ordinal);
+
+            // The wheel zooms in around the instant under the pointer, which stays under it, and out again to the whole.
+            long under = whole.StartTicks + (long)((whole.EndTicks - whole.StartTicks) * ((busy + 0.5) / columns));
+            window.MouseWheel(at, new Vector(0, 1));
+            WaitFor(() => window.Zoom is not null && window.Timeline!.Interval != whole);
+            TimeRange zoomed = window.Timeline!.Interval!.Value;
+            long half = (whole.EndTicks - whole.StartTicks) / 2;
+            Assert.InRange(zoomed.EndTicks - zoomed.StartTicks, half - 1, half + 1);
+            double before = (under - whole.StartTicks) / (double)(whole.EndTicks - whole.StartTicks);
+            double after = (under - zoomed.StartTicks) / (double)(zoomed.EndTicks - zoomed.StartTicks);
+            Assert.InRange(after - before, -2.0 / columns, 2.0 / columns);
+            window.MouseWheel(at, new Vector(0, -1));
+            WaitFor(() => window.Zoom is null && window.Timeline!.Interval == whole);
+
+            // A double click opens the column under the pointer in InterCat's window, which comes in front with the keyboard on
+            // its ranked table.
+            int activated = 0;
+            main.Activated += (_, _) => activated++;
+            Render(window);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == betaPath);
+            WaitFor(() =>
+            {
+                Render(main);
+                return main.FocusManager?.GetFocusedElement() is Visual focused && main.GetControl<ListBox>("RungList").IsVisualAncestorOf(focused);
+            });
+            Assert.Equal(1, activated);
+            Assert.StartsWith($"Opened Session {Short(b)} in the InterCat window, zoomed to ", Named<TextBlock>(window, "Investigation status").Text,
+                StringComparison.Ordinal);
+
+            // Come back to, the investigation has the keyboard where it was, on the merged time.
+            window.Activate();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(chart.IsFocused);
+
+            // A third click in time is no second double click: it counted on past two, and opened the column again.
+            window.MouseDown(axis, MouseButton.Left);
+            window.MouseUp(axis, MouseButton.Left);
+            for (int click = 0; click < 3; click++)
+            {
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+            }
+
+            WaitFor(() => activated >= 2);
+            for (int settle = 0; settle < 20; settle++)
+            {
+                Render(main);
+                Thread.Sleep(5);
+            }
+
+            Assert.Equal(2, activated);
+
+            // The keys the cursor answers to beside those that walk it: Left, Home and Up move it, + and - zoom around its column
+            // as Zoom in and Zoom out do, 0 shows the whole, and Enter opens the column, alpha's first, so.
+            window.Activate();
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(chart.IsFocused);
+            window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.None);
+            Assert.StartsWith($"Session {Short(b)}, column {busy} of {columns}: ", window.ColumnReadout, StringComparison.Ordinal);
+            window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+            Assert.StartsWith($"Session {Short(b)}, column 1 of {columns}: ", window.ColumnReadout, StringComparison.Ordinal);
+            window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+            Assert.StartsWith($"Session {Short(a)}, column 1 of {columns}: ", window.ColumnReadout, StringComparison.Ordinal);
+            window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+            WaitFor(() => window.Zoom is not null);
+            window.KeyPressQwerty(PhysicalKey.Minus, RawInputModifiers.None);
+            WaitFor(() => window.Zoom is null && window.Timeline!.Interval == whole);
+            window.KeyPressQwerty(PhysicalKey.NumPadAdd, RawInputModifiers.None);
+            WaitFor(() => window.Zoom is not null);
+            window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+            WaitFor(() => window.Zoom is null && window.Timeline!.Interval == whole);
+            Render(window);
+            chart.Focus();
+            window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == alphaPath);
+            WaitFor(() => activated == 3);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: each investigation dialog opened from its button records what it is for, says so, and gives the keyboard back to that button")]
+    public async Task EachDialogOpenedFromItsButtonDoesWhatItIsFor()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        _ = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed);
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 1;
+            TextBlock status = Named<TextBlock>(window, "Investigation status");
+
+            // Align: Enter in its fields aligns the session, which stays selected, the status says so, and Align has the keyboard.
+            Button align = Named<Button>(window, "Align the selected session to the investigation's time");
+            InvestigationAlignWindow aligning = Open<InvestigationAlignWindow>(window, align);
+            Field(aligning, "Its instant (").Text = "2";
+            Field(aligning, "is the reference's instant, in seconds").Text = "5";
+            Assert.True(Field(aligning, "Its instant (").Focus());
+            aligning.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => status.Text == $"Session {Short(b)} aligned to the investigation's time.");
+            Assert.Contains(InvestigationWorkspace.Read(workspace).Alignments, alignment => alignment.SessionId == b);
+            Assert.Equal(1, list.SelectedIndex);
+            Assert.Same(align, window.FocusManager?.GetFocusedElement());
+
+            // One host, cancelled, records nothing.
+            Button oneHost = Named<Button>(window, "One host…");
+            Escape(window, Open<InvestigationHostWindow>(window, oneHost));
+            Assert.Same(oneHost, window.FocusManager?.GetFocusedElement());
+            Assert.Empty(InvestigationWorkspace.Read(workspace).HostEquivalences);
+
+            // A translation stated finds the candidate joins again as its dialog closes, since they mirror through it.
+            window.ShowTab(1);
+            Assert.Null(window.Candidates);
+            Button translations = Named<Button>(window, "Known translations…");
+            InvestigationTranslationsWindow translating = Open<InvestigationTranslationsWindow>(window, translations);
+            translating.Enter("203.0.113.7:8443", "10.0.0.2:443", "the router forwards 8443");
+            Assert.True(await translating.StateAsync());
+            Escape(window, translating);
+            WaitFor(() => window.Candidates is not null);
+            Assert.Same(translations, window.FocusManager?.GetFocusedElement());
+
+            // A view chosen in Views shows it.
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            TimeRange whole = window.Timeline!.Interval!.Value;
+            TimeRange part = new(whole.StartTicks, whole.StartTicks + ((whole.EndTicks - whole.StartTicks) / 4));
+            await window.ZoomToAsync(part);
+            Button views = Named<Button>(window, "Views…");
+            InvestigationViewsWindow saving = Open<InvestigationViewsWindow>(window, views);
+            saving.NameIt("the first quarter");
+            Assert.True(await saving.SaveAsync());
+            Escape(window, saving);
+            await window.ZoomToAsync(null);
+            InvestigationViewsWindow choosing = Open<InvestigationViewsWindow>(window, views);
+            WaitFor(() => choosing.Listed.Count == 1);
+            choosing.Select(0);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            choosing.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            WaitFor(() => window.OwnedWindows.Count == 0 && window.Zoom == part);
+
+            // Compare instants opens on its sessions, and Escape gives the keyboard back.
+            Button compare = Named<Button>(window, "Compare instants…");
+            Escape(window, Open<InvestigationCompareWindow>(window, compare));
+            Assert.Same(compare, window.FocusManager?.GetFocusedElement());
+
+            // A note's words, saved with Ctrl+Enter, are listed, and the status says so.
+            window.ShowTab(3);
+            Button addNote = Named<Button>(window, "Add a note, pinned at the timeline's chosen column when there is one");
+            InvestigationNoteWindow writing = Open<InvestigationNoteWindow>(window, addNote);
+            writing.Enter("The retry storm begins here.");
+            writing.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.Control);
+            WaitFor(() => status.Text == "The note is added.");
+            Assert.Equal("The retry storm begins here.", Assert.Single(InvestigationWorkspace.Read(workspace).Notes).Text);
+            Assert.Same(addNote, window.FocusManager?.GetFocusedElement());
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>Opens a dialog as a person does, from its button with the keyboard on it, and the dialog it opened.</summary>
+    private static T Open<T>(Window window, Button button)
+        where T : Window
+    {
+        Assert.True(button.Focus());
+        button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => window.OwnedWindows.OfType<T>().Any());
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window.OwnedWindows.OfType<T>().Single();
+    }
+
+    /// <summary>Closes a dialog with Escape, as a person cancels one, and waits until it is gone.</summary>
+    private static void Escape(Window window, Window dialog)
+    {
+        dialog.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        WaitFor(() => window.OwnedWindows.Count == 0);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+    }
+
     [AvaloniaFact(DisplayName = "R22: the investigation window states a known address translation, and a candidate joins through it")]
     public async Task TheWindowStatesAKnownTranslation()
     {
@@ -2037,15 +2355,15 @@ public sealed class InvestigationWindowTests
         Assert.True(condition());
     }
 
-    /// <summary>
-    /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
-    /// label it shows.
-    /// </summary>
     /// <summary>The field shown, as a screen reader names it by the words beside it, whose caption begins so.</summary>
     private static TextBox Field(Window window, string caption) =>
         window.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsEffectivelyVisible
             && ControlAutomationPeer.CreatePeerForElement(box).GetName().StartsWith(caption, StringComparison.Ordinal));
 
+    /// <summary>
+    /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
+    /// label it shows.
+    /// </summary>
     private static T Named<T>(Window window, string name)
         where T : Control =>
         window.GetVisualDescendants().OfType<T>()

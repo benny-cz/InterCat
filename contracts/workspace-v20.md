@@ -427,12 +427,8 @@ member could not be copied.
 
 ## 9. Not defined at this version
 
-- Alignment from shared markers (§8.2's third mode).
-- Graph pins: a note pinned at an instant is the investigation's pin, and each session's graph keeps its own.
-- Column widths (§6.1's persistence): the window offers no control for them yet, so nothing of them is kept. Lane
-  grouping, which once shared this line, is kept since version 17.
-- Comparing two instants in the Desktop, whose investigation window lists, relinks, adds and opens sessions (revision
-  257), aligns and withdraws them and lists candidate joins (revision 259), decides them (revision 260) and draws each
-  session as a lane on the investigation's time (revision 261); zooming that timeline and opening a column's records.
+- Alignment from shared markers (§8.2's third mode), which needs a marker both captures record; none records one yet.
+- Pins of the investigation's own: a note pinned at an instant is its pin, and each session's graph keeps its pins in
+  that session's layout (§7).
 - Deduplicating two captures' records of one event: an overlap is flagged, and nothing is merged.
 - A redacted package of a whole investigation: a redacted package's pseudonyms hold only within it (ADR-042).

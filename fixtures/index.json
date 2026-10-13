@@ -1350,7 +1350,8 @@
         "R13: a timeline hit resolves by time to the bucket holding the instant under the pointer, not to the bar drawn nearest",
         "R13: evidence pages over overlapping segments list a scope's records once each, in canonical order",
         "R13: groups and processes rank by their own records, so a process with no paired peer is ranked, not zero",
-        "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do"
+        "R13: the machine rung counts each process's own records and says what none holds; lanes sit where their rows do",
+        "R13: the merged time chooses the column under a click, zooms around the pointer under the wheel, and opens a column double-clicked in InterCat's window, in front"
       ],
       "R14": [
         "R14: a high-contrast mode holds every ink to 7 to 1, every fill to 4.5 to 1 and its divider to 3 to 1 on every surface",
@@ -1412,6 +1413,7 @@
         "R15: before a session opens F1 lists the keys too, and gives the keyboard back to Start exploring",
         "R15: below the machine rung the relationship table lists what the rung's graph draws and counts the rest",
         "R15: candidate joins found again keep the keyboard on the button for the chosen one, and a decision gives it to the candidate's row",
+        "R15: each investigation dialog opened from its button records what it is for, says so, and gives the keyboard back to that button",
         "R15: every dialog and prompt opens with the keyboard on one of its own controls, and Esc closes it",
         "R15: every focusable element and list item is named for the ear at every rung, never by a record's fields",
         "R15: every prompt the windows build names every element a screen reader lands on",

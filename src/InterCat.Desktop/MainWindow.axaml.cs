@@ -56,6 +56,14 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>Where the demo is kept and made (§14 M5); InterCat's own folder beside its sessions unless a test says.</summary>
     internal string? DemoRoot { get; set; }
 
+    private readonly List<InvestigationWindow> investigations = [];
+
+    /// <summary>
+    /// The investigations shown beside this window, one window each. They are its peers, not windows it owns, so either
+    /// can be in front: a session opened from one is shown here, and this window comes in front to show it.
+    /// </summary>
+    internal IReadOnlyList<InvestigationWindow> Investigations => investigations;
+
     // The investigation a session is being opened from, while it is; then the one that keeps the shown session's pins
     // (§26.3), with the pins it last kept and the writes of them in order. A session opened on its own keeps none there.
     private string? openingFromInvestigation;
@@ -336,6 +344,13 @@ public sealed partial class MainWindow : Window, IDisposable
         Closed += (_, _) =>
         {
             closed = true;
+
+            // An investigation opens its sessions here, so none outlives the window that shows them.
+            foreach (InvestigationWindow shown in investigations.ToArray())
+            {
+                shown.Close();
+            }
+
             Dispose();
         };
     }
@@ -1455,11 +1470,19 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Shows an investigation in a window of its own, beside the session this window shows, making it first when asked
-    /// and none is there; a file that already exists is opened, never written over. Opening a member opens it here.
+    /// and none is there; a file that already exists is opened, never written over. Opening a member opens it here. An
+    /// investigation already shown is brought in front rather than shown twice, so two windows never write one file.
     /// </summary>
     internal InvestigationWindow ShowInvestigation(string path, bool create = false)
     {
         string full = Path.GetFullPath(path);
+        if (investigations.FirstOrDefault(shown => string.Equals(shown.WorkspacePath, full,
+            OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) is { } open)
+        {
+            Forward(open);
+            return open;
+        }
+
         string? made = null;
         if (create && !File.Exists(full))
         {
@@ -1475,23 +1498,57 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         var window = new InvestigationWindow(full, session => FromInvestigationAsync(full, () => OpenSessionAsync(session)), made,
-            (session, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval)));
-        window.Show(this);
+            (session, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval)),
+            other => ShowInvestigation(other));
+        investigations.Add(window);
+        window.Closed += (_, _) => investigations.Remove(window);
+
+        // A peer, not a window this one owns, which Windows would keep in front of it: a session opened from the investigation
+        // is shown here, and this window must be able to come in front to show it. It opens centred over this window, as an
+        // owned one would, on this window's screen.
+        window.WindowStartupLocation = WindowStartupLocation.Manual;
+        double scale = RenderScaling;
+        PixelRect here = new(Position, PixelSize.FromSize(ClientSize, scale));
+        PixelSize size = PixelSize.FromSize(new Size(window.Width, window.Height), scale);
+        window.Position = here.Center - new PixelPoint(size.Width / 2, size.Height / 2);
+        window.Show();
         return window;
+    }
+
+    /// <summary>Brings a window in front, restored when minimized, so what it now shows is seen and has the keyboard.</summary>
+    private static void Forward(Window window)
+    {
+        if (window.WindowState == WindowState.Minimized)
+        {
+            window.WindowState = WindowState.Normal;
+        }
+
+        window.Activate();
     }
 
     /// <summary>Opens a member from its investigation, which then keeps its pins and view settings (§26.3).</summary>
     private async Task<bool> FromInvestigationAsync(string investigation, Func<Task<bool>> open)
     {
         openingFromInvestigation = investigation;
+        bool opened;
         try
         {
-            return await open();
+            opened = await open();
         }
         finally
         {
             openingFromInvestigation = null;
         }
+
+        // The session is shown here, so this window comes in front of the investigation's to show it, the keyboard on its
+        // ranked table, as a session opened here has it, rather than on whatever control of this window last had it.
+        if (opened && !closed)
+        {
+            Forward(this);
+            FocusRail();
+        }
+
+        return opened;
     }
 
     /// <summary>
@@ -1639,7 +1696,7 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        foreach (InvestigationWindow shown in OwnedWindows.OfType<InvestigationWindow>())
+        foreach (InvestigationWindow shown in investigations)
         {
             shown.PanesKept(investigation, panes);
         }
@@ -1747,7 +1804,7 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        foreach (InvestigationWindow shown in OwnedWindows.OfType<InvestigationWindow>())
+        foreach (InvestigationWindow shown in investigations)
         {
             shown.LayoutKept(home.Workspace, home.Session, layout);
         }

@@ -174,26 +174,27 @@ public sealed class ChosenPathFlowTests : IDisposable
         Assert.Equal("Open an InterCat investigation", choices.Opens[0].Title);
         Dispatcher.UIThread.RunJobs();
         Assert.Empty(window.OwnedWindows);
+        Assert.Empty(window.Investigations);
 
         choices.Answer(demo.WorkspacePath);
         Choose(window, "OpenInvestigationItem");
-        await Until(() => window.OwnedWindows.OfType<InvestigationWindow>().Any());
-        InvestigationWindow opened = window.OwnedWindows.OfType<InvestigationWindow>().Single();
+        await Until(() => window.Investigations.Count > 0);
+        InvestigationWindow opened = window.Investigations.Single();
         opened.Close();
 
         // A new investigation is made at the name chosen, suggested with its extension, and never written over one there.
         string made = Path.Combine(folder, "case" + InvestigationWorkspace.Extension);
         choices.Answer(made);
         Choose(window, "NewInvestigationItem");
-        await Until(() => window.OwnedWindows.OfType<InvestigationWindow>().Any());
+        await Until(() => window.Investigations.Count > 0);
         Assert.Equal("investigation" + InvestigationWorkspace.Extension, choices.Saves[0].SuggestedFileName);
         Assert.True(File.Exists(made));
         Assert.Empty(InvestigationWorkspace.Read(made).Members);
-        window.OwnedWindows.OfType<InvestigationWindow>().Single().Close();
+        window.Investigations.Single().Close();
         string existing = File.ReadAllText(demo.WorkspacePath);
         choices.Answer(demo.WorkspacePath);
         Choose(window, "NewInvestigationItem");
-        await Until(() => window.OwnedWindows.OfType<InvestigationWindow>().Any());
+        await Until(() => window.Investigations.Count > 0);
         Assert.Equal(existing, File.ReadAllText(demo.WorkspacePath));
         window.Close();
     }
@@ -303,8 +304,11 @@ public sealed class ChosenPathFlowTests : IDisposable
         string package = Assert.Single(Directory.EnumerateDirectories(target));
         Assert.StartsWith("case-package-", Path.GetFileName(package), StringComparison.Ordinal);
         Assert.StartsWith("Saved the investigation with 2 sessions to " + package + ".", StatusOf(window), StringComparison.Ordinal);
-        Press(window.OwnedWindows[0], "Done");
-        await Until(() => window.OwnedWindows.Count == 0);
+
+        // Opened here, the package's investigation has a window of its own beside this one's, as InterCat's other investigations do.
+        Press(window.OwnedWindows[0], "Open it here");
+        await Until(() => main.Investigations.Count == 2);
+        Assert.Equal(Path.Combine(package, "case" + InvestigationWorkspace.Extension), main.Investigations[1].WorkspacePath);
         main.Close();
     }
 

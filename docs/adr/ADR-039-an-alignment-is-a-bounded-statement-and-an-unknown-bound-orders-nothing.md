@@ -65,7 +65,9 @@ fall on, and for what happens when the rate is not known.
 - §8.2's pair formula is restated in the plan with each side's random and bound parts.
 - Alignment from recorded wall clocks needed captures to record paired monotonic and wall-clock samples; revision 255
   records them (ADR-040), and revision 256 aligns by them and by one boot's counter (`workspace-v3`, decision 7).
-  Alignment from shared markers needs cross-host correlation, and follows; revision 264 measures a rate from two
+  Alignment from shared markers needs a marker both captures record - an application's (M7) or an exchange between
+  the hosts (M11) - which none records yet; a connection joined across captures does not stand in for one (plan
+  §8.2, revision 496). Revision 264 measures a rate from two
   separated anchors (decision 8), placing a member's lane on the merged time through it, and revision 265 aligns a member
   through another (decision 9), `ClockChain` carrying each instant through its alignments. Revision
   261 draws the merged time in the Desktop: each session a lane on the investigation's axis where its alignment places

@@ -198,7 +198,6 @@ derivation they rest on, and the generation; a change to what links, how, or whe
   `contracts/metrics-v1.md` §8a since revision 186.
 - Linking a client call to its server call other than through §5c's ALPC chain: by thread nesting, by time, or across
   machines.
-- Counting peers from §5c's links: `contracts/metrics-v1.md` still answers a peer as unavailable.
 - Extending calls or their other ends from one live generation to the next: a derivation reads its generation whole,
   holding every call record while it pairs and the keys with a call open while it walks them (revision 184). A finished
   generation keeps both in its operation index since revision 440 (`contracts/operation-index-v1.md`), so a reopen

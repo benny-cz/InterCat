@@ -220,7 +220,9 @@ internal sealed class InvestigationTimelineControl : Control
         Focus();
         if (ColumnAt(e.GetPosition(this)) is not { } at) return;
         MoveTo(at);
-        if (e.ClickCount >= 2)
+
+        // The double click opens the column, once: a third click in time counts on, and opened it again.
+        if (e.ClickCount == 2)
         {
             ColumnChosen?.Invoke(this, at);
         }
@@ -338,10 +340,15 @@ internal sealed class InvestigationTimelineControl : Control
         }
     }
 
-    /// <summary>An interval <paramref name="factor"/> times as long as <paramref name="interval"/>, centred where it was asked.</summary>
+    /// <summary>
+    /// An interval <paramref name="factor"/> times as long as <paramref name="interval"/>, the instant
+    /// <paramref name="around"/> keeping its place in it, so what is under the pointer stays under it.
+    /// </summary>
     internal static TimeRange Zoomed(TimeRange interval, long around, decimal factor)
     {
-        long span = Math.Max((long)((interval.EndTicks - interval.StartTicks) * factor), 100);
+        // Rounded up, so a zoom out undoes the zoom in before it: halving an odd span and doubling it back fell a tick short
+        // of the whole, which then stayed zoomed, its Whole investigation still offered.
+        long span = Math.Max((long)Math.Ceiling((interval.EndTicks - interval.StartTicks) * factor), 100);
         long start = around - (long)((around - interval.StartTicks) * factor);
         return new TimeRange(start, checked(start + span));
     }
