@@ -89,6 +89,15 @@ public sealed record InvestigationOverlaps(IReadOnlyList<WorkspaceOverlap> Overl
 /// <summary>An investigation's merged time (§8.2): each session a lane on one axis, the investigation's own.</summary>
 public sealed record InvestigationTimelineView(TimeRange? Interval, int Columns, IReadOnlyList<InvestigationLane> Lanes)
 {
+    /// <summary>
+    /// The whole investigation's time, from the first placed session's first record to the last one's last, whatever
+    /// interval was read; null when no session is placed.
+    /// </summary>
+    public TimeRange? Whole { get; init; }
+
+    /// <summary>The session whose clock the investigation's time is, as read; null when none is aligned yet (§8.2).</summary>
+    public Guid? TimeReference { get; init; }
+
     /// <summary>Two captures of one host that ran, or may have run, at once, or whose overlap is unknown (§8.4).</summary>
     public IReadOnlyList<WorkspaceOverlap> Overlaps { get; init; } = [];
 
@@ -140,13 +149,14 @@ public static class InvestigationTimeline
         TimeRange? interval,
         CancellationToken cancellationToken)
     {
-        List<Placement> placements = Placements(workspacePath, cancellationToken);
+        List<Placement> placements = Placements(workspacePath, cancellationToken, out Guid? timeReference);
         var snapshot = new List<SnapshotEntry>(placements.Count);
         bool straddled = false;
         Placement[] placed = [.. placements.Where(placement => placement.Extent is not null)];
-        TimeRange? whole = interval ?? (placed.Length == 0
+        TimeRange? merged = placed.Length == 0
             ? null
-            : new TimeRange(placed.Min(lane => lane.Extent!.Value.StartTicks), placed.Max(lane => lane.Extent!.Value.EndTicks)));
+            : new TimeRange(placed.Min(lane => lane.Extent!.Value.StartTicks), placed.Max(lane => lane.Extent!.Value.EndTicks));
+        TimeRange? whole = interval ?? merged;
         var lanes = new List<InvestigationLane>(placements.Count);
         foreach (Placement placement in placements)
         {
@@ -190,6 +200,8 @@ public static class InvestigationTimeline
 
         return (new(whole, columns, lanes)
         {
+            Whole = merged,
+            TimeReference = timeReference,
             Overlaps = Overlaps(placements),
             Notes = Notes(workspacePath, placements),
             Snapshot = [.. snapshot.OrderBy(entry => entry.CaptureId.ToString(), StringComparer.Ordinal)],
@@ -290,12 +302,18 @@ public static class InvestigationTimeline
     /// Where each member falls in the investigation's time: its session's record extent placed by its alignment, with the
     /// widest uncertainty over it and the boot its capture recorded; or why it has no place.
     /// </summary>
+    private static List<Placement> Placements(string workspacePath, CancellationToken cancellationToken) =>
+        Placements(workspacePath, cancellationToken, out _);
+
+    /// <summary>Each member placed on the investigation's time, with the session whose clock that time is, from one read.</summary>
     private static List<Placement> Placements(
         string workspacePath,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        out Guid? timeReference)
     {
         string full = Path.GetFullPath(workspacePath);
         InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(full);
+        timeReference = workspace.TimeReference;
         IReadOnlyDictionary<Guid, ClockChain> chains = InvestigationWorkspace.Chains(workspace);
         var placements = new List<Placement>(workspace.Members.Count);
         foreach (WorkspaceMemberResolution resolution in InvestigationWorkspace.Resolve(full, workspace, cancellationToken))

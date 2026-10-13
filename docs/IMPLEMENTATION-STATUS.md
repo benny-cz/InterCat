@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 504 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 505 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 505 — an investigation's merged time zoomed while its alignments change (§8.2):**
+  - The window kept its zoom whatever changed: with every alignment withdrawn no session was placed and the zoom
+    buttons still acted; with another session's clock made the investigation's time, the range was read on that
+    clock, an unrelated stretch that held nothing; and the whole a zoom is kept within was read only while
+    unzoomed, so Zoom out stopped at the investigation as it had been.
+  - Each read of the merged time states the whole investigation's time and whose clock it is. A zoom is let go
+    once that clock is another's or none, or no placed session meets it, and the window says why after what the
+    change did; one still meeting a session stays, and zooms within the investigation as it is now.
+  - Debug and Release each ran 2,145 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 9
+    mutations: a zoom kept across a change of clock, or where no placed session meets it; the whole kept only while
+    unzoomed, or read as the interval shown; a change of clock said as no session meeting the zoom, a lost clock
+    said at all, the reason unsaid, or said in place of what the change did; and the time reference left unread.
 
 - **Revision 504 — a rolling capture's publications under a person's navigation (§6.7, ADR-045, R21):**
   - The timeline kept its zoom across every view it was given: a release that gave up the time in view left it

@@ -1269,6 +1269,121 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§8.2: a zoom of the merged time is let go, and said, once another session's clock is the investigation's time or no session is aligned")]
+    public async Task AZoomIsLetGoWhenTheClockChanges()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            Assert.Equal(a, window.Timeline!.TimeReference);
+            await window.ZoomToAsync(BetasColumns(window));
+
+            // Elsewhere - icat, or another window - beta's alignment is withdrawn and alpha aligned to beta, so beta's clock
+            // is the investigation's time: the range zoomed is a range of another clock, and the whole is shown again.
+            InvestigationWorkspace.Withdraw(workspace, b, Committed);
+            InvestigationWorkspace.Align(workspace, a, 0, b, 5_000_000_000, 1_000, 0, null, Committed);
+            await window.RefreshAsync();
+            await window.ShowTimelineAsync();
+            Assert.Null(window.Zoom);
+            Assert.Equal((b, window.Timeline!.Whole), (window.Timeline.TimeReference!.Value, window.Timeline.Interval));
+            Assert.EndsWith($"The timeline shows the whole investigation again: its time is now Session {Short(b)}'s clock.",
+                Named<TextBlock>(window, "Investigation status").Text, StringComparison.Ordinal);
+
+            // With no session aligned there is no time to zoom: the zoom goes, and Zoom in, Zoom out and Whole wait.
+            await window.ZoomToAsync(BetasColumns(window, lane: 1));
+            Assert.NotNull(window.Zoom);
+            window.ShowTab(0);
+            WaitFor(() => true);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 0;
+            await window.WithdrawSelectedAsync();
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline!.Interval is null);
+            Assert.Null(window.Zoom);
+            Assert.Equal($"Session {Short(a)} is not aligned any more; its earlier alignment is kept in the file.",
+                Named<TextBlock>(window, "Investigation status").Text);
+            Assert.False(Named<Button>(window, "Zoom in").IsEnabled);
+            Assert.False(Named<Button>(window, "Zoom out").IsEnabled);
+            Assert.False(Named<Button>(window, "Whole investigation").IsEnabled);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.2: a zoom no placed session meets any more is let go and said, and one that still does zooms out within the new whole")]
+    public async Task AZoomFollowsTheWholeItIsIn()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "gamma", 5), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        InvestigationWorkspace.Align(workspace, c, 0, a, 100_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+
+            // Zoomed to gamma's records, a hundred seconds in, and gamma's alignment withdrawn: no session placed meets the
+            // range, so the whole is shown again, and the window says why after what the withdrawal did.
+            await window.ZoomToAsync(BetasColumns(window, lane: 2));
+            window.ShowTab(0);
+            WaitFor(() => true);
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 2;
+            await window.WithdrawSelectedAsync();
+            window.ShowTab(2);
+            WaitFor(() => window.Zoom is null);
+            Assert.Equal(new TimeRange(1_000, 10_001_051), window.Timeline!.Interval);
+            Assert.Equal($"Session {Short(c)} is not aligned any more; its earlier alignment is kept in the file. The timeline "
+                + "shows the whole investigation again: no session is placed in the time it showed.",
+                Named<TextBlock>(window, "Investigation status").Text);
+
+            // Zoomed to the second half, and gamma aligned again, a hundred seconds on: the range still meets a session and
+            // stays, and Zoom out widens it within the investigation as it is now, not the second it spanned before.
+            await window.ZoomToAsync(new TimeRange(5_000_000, 10_001_051));
+            InvestigationWorkspace.Align(workspace, c, 0, a, 100_000_000_000, 1_000, 0, null, Committed);
+            await window.RefreshAsync();
+            await window.ShowTimelineAsync();
+            Assert.Equal(new TimeRange(5_000_000, 10_001_051), window.Zoom);
+            Named<Button>(window, "Zoom out").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => window.Zoom is { } wider && wider.EndTicks > 10_001_051);
+            Assert.Equal(10_002_102, window.Zoom!.Value.SpanTicks);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    /// <summary>A range of the merged time about the records of the session in <paramref name="lane"/>, wider than they are.</summary>
+    private static TimeRange BetasColumns(InvestigationWindow window, int lane = 1)
+    {
+        IReadOnlyList<TimelineBucket> buckets = window.Timeline!.Lanes[lane].Buckets;
+        TimeRange first = buckets.First(bucket => bucket.ObservationCount > 0).Interval;
+        TimeRange last = buckets.Last(bucket => bucket.ObservationCount > 0).Interval;
+        return new TimeRange(first.StartTicks - 5_000, last.EndTicks + 5_000);
+    }
+
     [AvaloniaFact(DisplayName = "R22: a member whose folder changed since its window read it is never opened as another session, and the window says why and what to do")]
     public async Task AMemberThatChangedIsNotOpenedAsAnother()
     {

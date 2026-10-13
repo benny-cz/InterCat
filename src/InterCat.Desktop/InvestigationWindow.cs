@@ -517,12 +517,31 @@ internal sealed class InvestigationWindow : Window, IDisposable
             (InvestigationTimelineView view, IReadOnlyList<string> labels, IReadOnlyList<string> sentences) =
                 await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, zoom, token), token);
             if (closed) return;
+
+            // A zoom is a range of the investigation's time, which is one session's clock (§8.2): once another session's
+            // clock is that time, or none is, the range is another time, and once no session placed meets it, it holds
+            // nothing of the investigation. The whole is shown again then, and why where a clock is there to show.
+            if (zoom is { } kept && (Timeline is { } before && before.TimeReference != view.TimeReference
+                || view.Whole is not { } all || kept.EndTicks <= all.StartTicks || kept.StartTicks >= all.EndTicks))
+            {
+                string? why = view.TimeReference is not { } reference ? null
+                    : Timeline is { } previous && previous.TimeReference != reference
+                        ? $"its time is now {SessionName(reference)}'s clock"
+                        : "no session is placed in the time it showed";
+                zoom = null;
+                (view, labels, sentences) = await Task.Run(
+                    () => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, null, token), token);
+                if (closed) return;
+                if (why is not null)
+                {
+                    status.Text = (string.IsNullOrEmpty(status.Text) ? string.Empty : status.Text + " ")
+                        + "The timeline shows the whole investigation again: " + why + ".";
+                }
+            }
+
             Timeline = view;
             TimelineSentences = sentences;
-            if (zoom is null)
-            {
-                whole = view.Interval;
-            }
+            whole = view.Whole;
 
             timelineChart.Show(view, labels);
             zoomIn.IsEnabled = view.Interval is { } shown && shown.EndTicks - shown.StartTicks > 200;
@@ -546,6 +565,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
     /// <summary>The interval of the investigation's time the timeline shows; null when it shows the whole.</summary>
     internal TimeRange? Zoom => zoom;
+
+    /// <summary>A member as its row's title names it: "Session 0a1b2c3d".</summary>
+    private static string SessionName(Guid sessionId) => "Session " + sessionId.ToString("N")[..8];
 
     /// <summary>
     /// Shows <paramref name="range"/> of the investigation's time, within the whole of it, or the whole when it is null or
