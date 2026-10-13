@@ -116,6 +116,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private bool timelineLoaded;
     private Task? timelineLoad;
     private bool loading;
+
+    // The reading under way, which a refresh asked for meanwhile waits out before it reads again.
+    private Task reading = Task.CompletedTask;
     private bool finding;
     private bool closed;
 
@@ -334,6 +337,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         // previous page, from wherever the keyboard is, as Windows' tabbed windows do; taken before Tab moves the keyboard,
         // which reads Ctrl+Tab as Tab.
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
+
+        // Sessions' folders dragged onto the window join the investigation, as the folders Add sessions chooses do, and
+        // an investigation file opens in a window of its own, as one dropped on InterCat's main window does (§8.4).
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragEnterEvent, OfferDrop);
+        AddHandler(DragDrop.DragOverEvent, OfferDrop);
+        AddHandler(DragDrop.DropEvent, AddDropped);
 
         var sessionActions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (Button button in new[] { open, relink, alignButton, withdraw, oneHost, add, refresh })
@@ -687,8 +697,17 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     /// <summary>Reads the investigation again, resolving each session where it was last found, off the window's thread.</summary>
     internal async Task RefreshAsync(string? message = null)
     {
-        if (loading || closed) return;
+        // A refresh asked for while the investigation is read - after an addition, a relink, a note - waits for that
+        // reading, which may have looked before it wrote, and reads again: its rows and its words are never lost.
+        while (loading && !closed)
+        {
+            await reading;
+        }
+
+        if (closed) return;
         loading = true;
+        var thisReading = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        reading = thisReading.Task;
         status.Text = message ?? "Looking for each session where it was last found…";
         Guid? selected = (members.SelectedItem as InvestigationMemberRow)?.SessionId;
         keptWhileReading.Clear();
@@ -763,6 +782,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         finally
         {
             loading = false;
+            thisReading.SetResult();
         }
     }
 
@@ -930,10 +950,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         withdrawJoin.IsEnabled = row?.Decision is not null;
     }
 
-    /// <summary>Adds sessions by their folders, then shows the investigation again with what each addition did.</summary>
-    internal async Task AddAsync(IReadOnlyList<string> directories)
+    /// <summary>
+    /// Adds sessions by their folders, then shows the investigation again with what each addition did, after what
+    /// <paramref name="notAdded"/> says was not added before any was tried.
+    /// </summary>
+    internal async Task AddAsync(IReadOnlyList<string> directories, IReadOnlyList<string>? notAdded = null)
     {
-        List<string> refused = [];
+        List<string> refused = [.. notAdded ?? []];
         int added = 0;
         foreach (string directory in directories)
         {
@@ -1465,6 +1488,47 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             AllowMultiple = false,
         });
         if (folder is not null && !closed) await RelinkAsync(row.SessionId, folder);
+    }
+
+    /// <summary>Takes the files and folders a drag over the window carries, never its text.</summary>
+    private void OfferDrop(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = !closed && e.DataTransfer.TryGetFiles() is { Length: > 0 }
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Adds the sessions whose folders were dropped on the window, as Add sessions adds the ones chosen, and opens an
+    /// investigation file dropped in a window of its own. Anything else is not added, which the status says beside what
+    /// each addition did.
+    /// </summary>
+    private async void AddDropped(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (closed || e.DataTransfer.TryGetFiles() is not { Length: > 0 } items) return;
+        List<string> folders = [];
+        List<string> notAdded = [];
+        foreach (IStorageItem item in items)
+        {
+            string? dropped = item.TryGetLocalPath();
+            if (dropped is not null && Directory.Exists(dropped))
+            {
+                folders.Add(dropped);
+            }
+            else if (dropped is not null && showInvestigation is not null && File.Exists(dropped)
+                && dropped.EndsWith(InvestigationWorkspace.Extension, StringComparison.OrdinalIgnoreCase))
+            {
+                showInvestigation(dropped);
+            }
+            else
+            {
+                notAdded.Add($"{item.Name} was not added: a session joins an investigation by its folder.");
+            }
+        }
+
+        if (folders.Count > 0 || notAdded.Count > 0) await AddAsync(folders, notAdded);
     }
 
     private async Task PickAddAsync()
