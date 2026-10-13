@@ -335,6 +335,153 @@ public sealed class MainWindowPathTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: Ctrl+click and Ctrl+Space on a row that joins no selection choose it as the list does, where they were taken and did nothing")]
+    public async Task CtrlOnARowThatJoinsNoSelectionChoosesIt()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        WorkspaceViewModel workspace = await Open(window, session);
+        await CallsOfTheCaller(workspace);
+        Settle(window);
+        ListBox rung = window.GetControl<ListBox>("RungList");
+        Assert.Null(workspace.SelectedRung);
+
+        // A call joins no selection: Ctrl+click chooses it, as a click does, rather than nothing.
+        Click(window, rung, 1, RawInputModifiers.Control);
+        Assert.Equal(workspace.RungRows[1].Key, workspace.SelectedRung?.Key);
+        Assert.False(workspace.HasMultiSelection);
+
+        // Ctrl+Space chooses the row with the keyboard, and lets it go again, as the list's own does.
+        Assert.True(rung.ContainerFromIndex(0)!.Focus());
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Settle(window);
+        Assert.Equal(workspace.RungRows[0].Key, workspace.SelectedRung?.Key);
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Settle(window);
+        Assert.Null(workspace.SelectedRung);
+        Assert.False(workspace.HasMultiSelection);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R21: a read that fails says so and why - a process's calls never read as none, and a selection that could not be counted is not still being counted")]
+    public async Task AReadThatFailsSaysSo()
+    {
+        using var session = new TemporarySession();
+        // Two instances of the caller, so the group's count and one instance's highlight are counted apart.
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, [.. rows, Timed(Lifecycle(3, ObservationKind.Create, 402, 3) with { ResourceName = @"C:\Tools\caller.exe" })],
+            fields: fields);
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        WorkspaceViewModel workspace = await Open(window, session);
+
+        // The session's segments are damaged while the window shows its overview, as a disk or another program might.
+        foreach (string file in Directory.EnumerateFiles(session.Path)
+            .Where(path => Path.GetFileName(path).StartsWith("seg-", StringComparison.Ordinal)
+                || Path.GetFileName(path).StartsWith("dict-", StringComparison.Ordinal)))
+        {
+            File.WriteAllBytes(file, [1, 2, 3]);
+        }
+
+        // The caller's group, chosen, is counted for its highlight, which cannot be read: the caption says so and why,
+        // where it said it was still counting.
+        ProcessNode caller = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == caller.GroupKey);
+        await workspace.HighlightReady;
+        Settle(window);
+        Assert.Contains(" · the selection, caller.exe, could not be counted: This session cannot be read",
+            workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.DoesNotContain("counting the selection", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // At the group, whose own count fails for the same reason, the caller chosen is said not to be counted without the
+        // reason again.
+        Assert.True(workspace.Descend());
+        Settle(window);
+        window.GetControl<TimelineView>("TimelineSurface").RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == caller.Id.ToString());
+        await workspace.HighlightReady;
+        Settle(window);
+        Assert.EndsWith(" · the selection, caller.exe · PID 400, could not be counted", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(2, workspace.TimelineCaption.Split("This session cannot be read").Length);
+
+        // The caller's own rung could not read its calls: it says so and why, and not that it has no channel to list.
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        await workspace.HttpReady;
+        Settle(window);
+        Assert.True(workspace.ShowsEmptyReason);
+        Assert.StartsWith("This process's RPC calls could not be read: This session cannot be read", workspace.EmptyReason,
+            StringComparison.Ordinal);
+        Assert.EndsWith(". No admitted paired TCP channel belongs to this process in this generation.", workspace.EmptyReason,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("one step away", workspace.EmptyReason, StringComparison.Ordinal);
+        Assert.EndsWith(" · RPC calls could not be read", workspace.LevelSummaryShort, StringComparison.Ordinal);
+        Assert.Contains(" · This process's RPC calls could not be read: This session cannot be read", workspace.LevelSummary,
+            StringComparison.Ordinal);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R21: a process whose calls and HTTP exchanges could not be read for one reason says so once, naming both")]
+    public async Task ReadsThatFailForOneReasonAreSaidOnce()
+    {
+        using var session = new TemporarySession();
+        Guid scm = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        ObservationRowV1[] exchanges = HttpExchangeLaneTests.FiveExchanges(out SourceFieldRowV1[] fields);
+        Publish(session.Store,
+        [
+            .. exchanges,
+            Timed(RpcCall(150, ObservationKind.RequestStart, Direction.Outbound, 4_242, 900, Activity(31), scm)),
+            Timed(RpcCall(160, ObservationKind.RequestEnd, Direction.Outbound, 4_242, 901, Activity(31), status: 0)),
+            Timed(Transfer(170, ObservationKind.Send, AccountingSide.SendSide, 32, 4_242, 950).Between("127.0.0.1:51000", "10.0.0.7:443")),
+        ], fields: fields);
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        WorkspaceViewModel workspace = await Open(window, session);
+        foreach (string file in Directory.EnumerateFiles(session.Path)
+            .Where(path => Path.GetFileName(path).StartsWith("seg-", StringComparison.Ordinal)
+                || Path.GetFileName(path).StartsWith("dict-", StringComparison.Ordinal)))
+        {
+            File.WriteAllBytes(file, [1, 2, 3]);
+        }
+
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 4_242);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        await workspace.HttpReady;
+        Settle(window);
+        Assert.StartsWith("This process's RPC calls, HTTP exchanges and connections could not be read: This session cannot be read",
+            workspace.EmptyReason, StringComparison.Ordinal);
+        Assert.Equal(2, workspace.EmptyReason.Split("could not be read").Length);
+        Assert.EndsWith(" · RPC calls, HTTP exchanges and connections could not be read", workspace.LevelSummaryShort,
+            StringComparison.Ordinal);
+        window.Close();
+    }
+
+    /// <summary>The caller's calls to the service control manager, at their channel's rung.</summary>
+    private static async Task CallsOfTheCaller(WorkspaceViewModel workspace)
+    {
+        ProcessNode caller = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { caller.GroupKey, caller.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("svcctl", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+    }
+
     /// <summary>The middle of a group's process lane, in the timeline's own coordinates.</summary>
     private static double LaneY(TimelineView timeline, ProcessTimelineLane lane) =>
         timeline.PointOf(lane.ProcessId, lane.Buckets.First(bucket => bucket.ObservationCount > 0))!.Value.Y;

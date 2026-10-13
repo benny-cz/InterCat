@@ -1055,12 +1055,17 @@ public sealed partial class MainWindow : Window, IDisposable
         }
     }
 
-    /// <summary>§6.7's Ctrl+click on a ranked row: adds it to the multi-selection or removes it, never selecting it alone.</summary>
+    /// <summary>
+    /// §6.7's Ctrl+click on a ranked row: adds it to the multi-selection or removes it, never selecting it alone. A row that
+    /// joins no selection - a channel, a call, a record - is left to the list, whose Ctrl+click chooses it, where the click
+    /// was taken and did nothing.
+    /// </summary>
     private void OnRungListPointerPressed(object? sender, PointerPressedEventArgs eventArgs)
     {
         if (!eventArgs.KeyModifiers.HasFlag(KeyModifiers.Control)
             || !eventArgs.GetCurrentPoint(RungList).Properties.IsLeftButtonPressed
-            || (eventArgs.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext is not RungRow row)
+            || (eventArgs.Source as Visual)?.FindAncestorOfType<ListBoxItem>(includeSelf: true)?.DataContext
+                is not RungRow { JoinsSelection: true } row)
         {
             return;
         }
@@ -1081,7 +1086,13 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         ListBoxItem? focused = TopLevel.GetTopLevel(this)?.FocusManager?.GetFocusedElement() as ListBoxItem;
-        viewModel.ToggleRungInSelection(focused?.DataContext as RungRow ?? viewModel.SelectedRung);
+        if ((focused?.DataContext as RungRow ?? viewModel.SelectedRung) is not { JoinsSelection: true } row)
+        {
+            // A row that joins no selection is left to the list, as its Ctrl+click is.
+            return false;
+        }
+
+        viewModel.ToggleRungInSelection(row);
         return true;
     }
 

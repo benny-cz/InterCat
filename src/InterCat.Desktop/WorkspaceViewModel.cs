@@ -253,6 +253,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private CancellationTokenSource? highlightQuery;
     private (TimeRange Viewport, int Columns, string Focus)? requestedHighlight;
     private IReadOnlyList<TimelineBucket>? highlightBuckets;
+
+    // Why the selection's records could not be counted for its highlight; null while it is counted or was.
+    private string? highlightProblem;
     private IReadOnlyList<MechanismTimelineLane>? highlightLanes;
     private IReadOnlyList<IntervalRow> intervals;
 
@@ -882,6 +885,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         requestedHighlight = request;
         CancelHighlight();
+        highlightProblem = null;
         var query = new CancellationTokenSource();
         highlightQuery = query;
         HighlightReady = LoadHighlightAsync(evidenceSource, viewport, columns, highlight, query);
@@ -909,7 +913,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (!disposed && ReferenceEquals(highlightQuery, query))
             {
+                // Nothing is highlighted rather than a guess, and the caption says so: it said it was still counting.
+                highlightProblem = exception.Message;
                 SetHighlight(null, null);
+                OnPropertyChanged(nameof(TimelineCaption));
             }
         }
     }
@@ -1298,11 +1305,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public string TimelineCaption => RungCaption + LaneRecordsNote + HighlightCaption;
 
     /// <summary>
-    /// What the selection's highlight adds to the caption: what it marks, or that it is still being counted. Its share is
-    /// a count of records, so lanes plotting bytes do not draw it on their scale.
+    /// What the selection's highlight adds to the caption: what it marks, that it is still being counted, or that it could
+    /// not be, and why where the caption has not said it already. Its share is a count of records, so lanes plotting bytes
+    /// do not draw it on their scale.
     /// </summary>
     private string HighlightCaption => highlight is null ? string.Empty
         : timelineBytes is not null ? $" · {highlightName} selected, highlighted while the lanes plot records"
+        : highlightProblem is { } problem
+            ? $" · the selection, {highlightName}, could not be counted"
+                + (problem == timelineFocusProblem ? string.Empty : $": {problem.TrimEnd('.')}")
         : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
         : $" · selection highlighted: {highlightName}";
 
@@ -3054,6 +3065,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     : " · each process's own records";
         }
 
+        return ListedNote(brief) + ReadFailureNote(brief);
+    }
+
+    /// <summary>What a process's rung lists, said after its total: admitted paired TCP, and what else it read.</summary>
+    private string ListedNote(bool brief)
+    {
         if (ladder.Current.Level == DetailLevel.ProcessInstance && (httpChannelRows.Count > 0 || ConnectionCount > 0))
         {
             // It names what the rung lists, and only what it lists.
@@ -3073,6 +3090,47 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         return brief ? " · paired TCP only" : " · admitted paired TCP only; not all session observations";
     }
+
+    /// <summary>
+    /// The reads of a process's rows that failed - its RPC calls, its HTTP exchanges, its connections - each with why, so
+    /// a rung that could not list them never reads as one that has none (R21). Empty elsewhere, and when all were read.
+    /// </summary>
+    private IReadOnlyList<(string What, string Why)> ProcessReadFailures =>
+        !realOverview || ladder.Current.Level != DetailLevel.ProcessInstance
+            ? []
+            : [.. new (string What, string? Why)[]
+                {
+                    ("RPC calls", rpcChannels?.Problem),
+                    ("HTTP exchanges", httpChannels?.Problem),
+                    ("connections", connections?.Problem),
+                }
+                .Where(read => read.Why is not null)
+                .Select(read => (read.What, read.Why!))];
+
+    /// <summary>The failed reads in a sentence for each reason: "This process's RPC calls could not be read: …".</summary>
+    private string? ProcessReadProblem
+    {
+        get
+        {
+            IReadOnlyList<(string What, string Why)> failed = ProcessReadFailures;
+            return failed.Count == 0 ? null : string.Join(" ", failed
+                .GroupBy(read => read.Why, StringComparer.Ordinal)
+                .Select(reason => $"This process's {AndList([.. reason.Select(read => read.What)])} could not be read: "
+                    + $"{reason.Key.TrimEnd('.')}."));
+        }
+    }
+
+    /// <summary>The failed reads beside what the rung lists: named in the rail, said with why in the inspector.</summary>
+    private string ReadFailureNote(bool brief)
+    {
+        IReadOnlyList<(string What, string Why)> failed = ProcessReadFailures;
+        return failed.Count == 0 ? string.Empty
+            : brief ? $" · {AndList([.. failed.Select(read => read.What)])} could not be read"
+            : " · " + ProcessReadProblem;
+    }
+
+    private static string AndList(IReadOnlyList<string> names) =>
+        names.Count == 1 ? names[0] : string.Join(", ", names.Take(names.Count - 1)) + " and " + names[^1];
 
     /// <summary>
     /// The channel a published session's channel rung is focused on. Its rung lists no operations, so its own record
@@ -3155,6 +3213,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 if (WithheldRungProcess is { } withheld)
                 {
                     return WorkspaceRowBuilder.ExplainWithheldRung(withheld);
+                }
+
+                // What could not be read is not absent: the reason says so before what the overview lists (R21), and
+                // promises no records one step away, which the same failure may keep from being read.
+                if (ProcessReadProblem is { } failed)
+                {
+                    return failed + " No admitted paired TCP channel belongs to this process in this generation.";
                 }
 
                 return Snapshot.ChannelProjectionProblem is { } problem
@@ -5703,7 +5768,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(rpcChannels, load)) return;
-            load.Problem = "This process's RPC calls could not be read: " + exception.Message;
+            load.Problem = exception.Message;
         }
         finally
         {

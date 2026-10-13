@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 499 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 500 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 500 — a read that fails says so, never that there is nothing (R21, §6.7):**
+  - With a shown session's files damaged, a process's rung said it had no channel where its RPC calls, HTTP
+    exchanges or connections could not be read. It now says which could not be read and why, once for each reason,
+    in the reason it is empty and both summaries, and promises nothing one step away.
+  - A selection whose highlight could not be counted left the caption saying it was still counting; it now says it
+    could not be, with why unless the caption already says it.
+  - Ctrl+click and Ctrl+Space on a channel's, a call's or a record's row, which join no selection, are left to the
+    list, which chooses the row; they were taken and did nothing.
+  - Debug and Release each ran 2,126 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 12
+    mutations: a failed read said as nothing to list; the RPC calls', HTTP exchanges' or connections' failure left
+    unsaid; each failure said apart where one reason failed them all; the failure unsaid in the rail or the inspector;
+    the highlight still counting, its reason repeated or dropped; and Ctrl+click or Ctrl+Space taken on a row that joins
+    no selection.
 
 - **Revision 499 — the lane names, the row menu and the content chooser, run as a person runs them (§6.7, §11.1,
   R15):**

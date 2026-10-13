@@ -156,7 +156,7 @@ public sealed partial class WorkspaceViewModel
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(httpChannels, load)) return;
-            load.Problem = "This process's HTTP exchanges could not be read: " + exception.Message;
+            load.Problem = exception.Message;
         }
         finally
         {
