@@ -116,6 +116,9 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private bool loading;
     private bool finding;
     private bool closed;
+
+    /// <summary>Where the window asks for a folder: the platform's pickers, or a test's answers.</summary>
+    internal PathChoices Choices { get; set; }
     private bool disposed;
 
     /// <summary>Whether the investigation has been read once, which gives its selected session the keyboard.</summary>
@@ -139,6 +142,7 @@ internal sealed class InvestigationWindow : Window, IDisposable
         Func<string, TimeRange, Task<bool>>? openSessionAt = null)
     {
         this.path = Path.GetFullPath(path);
+        Choices = new PathChoices(this);
         this.openSession = openSession;
         this.openSessionAt = openSessionAt;
         Title = $"InterCat · Investigation · {Path.GetFileName(this.path)}";
@@ -1022,19 +1026,19 @@ internal sealed class InvestigationWindow : Window, IDisposable
         }
 
         IReadOnlyList<Guid> chosen = prompt.Chosen;
-        IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        string? parent = await Choices.OpenFolderAsync(new()
         {
             Title = "Choose where to save the investigation package",
             AllowMultiple = false,
         });
-        if (folders.Count == 0 || closed)
+        if (parent is null || closed)
         {
             if (!closed) status.Text = "Nothing was packaged.";
             return;
         }
 
         string destination = MainWindow.NewPackageDirectory(
-            folders[0].Path.LocalPath, DateTimeOffset.Now, Path.GetFileNameWithoutExtension(path) + "-package");
+            parent, DateTimeOffset.Now, Path.GetFileNameWithoutExtension(path) + "-package");
         InvestigationPackageResult? result = await WritePackageAsync(destination, chosen);
         if (result is not null && !closed && await ShowPackageResultAsync(result) && Owner is MainWindow main)
         {
@@ -1410,22 +1414,22 @@ internal sealed class InvestigationWindow : Window, IDisposable
     private async Task PickRelinkAsync()
     {
         if (members.SelectedItem is not InvestigationMemberRow row) return;
-        IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        string? folder = await Choices.OpenFolderAsync(new()
         {
             Title = $"Where is {row.Title.Split(',')[0]} now?",
             AllowMultiple = false,
         });
-        if (folders.Count > 0 && !closed) await RelinkAsync(row.SessionId, folders[0].Path.LocalPath);
+        if (folder is not null && !closed) await RelinkAsync(row.SessionId, folder);
     }
 
     private async Task PickAddAsync()
     {
-        IReadOnlyList<IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        IReadOnlyList<string> folders = await Choices.OpenFoldersAsync(new()
         {
             Title = "Add sessions to this investigation",
             AllowMultiple = true,
         });
-        if (folders.Count > 0 && !closed) await AddAsync([.. folders.Select(folder => folder.Path.LocalPath)]);
+        if (folders.Count > 0 && !closed) await AddAsync(folders);
     }
 
     /// <summary>

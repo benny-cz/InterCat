@@ -101,6 +101,56 @@ public sealed class ContentWindowTests
         Assert.True(closed);
     }
 
+    [AvaloniaFact(DisplayName = "§3.7: Save bytes writes exactly the chosen bytes to the file chosen, nothing when none is, and says why it could not")]
+    public async Task SavingWritesTheChosenBytes()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows = Rows();
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 16),
+        [
+            Content(rows[0], Encoding.UTF8.GetBytes("GET /x"), 16),
+            Content(rows[1], Encoding.UTF8.GetBytes("0123456789ABCDEF"), 16),
+        ]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        string folder = Directory.CreateDirectory(Path.Combine(session.Path, "..", "saved-" + Guid.NewGuid().ToString("N"))).FullName;
+        using var window = new SessionContentWindow(session.Path, page.SessionId, page.Records[1]);
+        var choices = new AnsweredChoices(window);
+        window.Choices = choices;
+        window.Show();
+        WaitFor(() => Texts(window).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
+        Named<Button>(window, "Show the kept bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => Named<Button>(window, "Save bytes…").IsEnabled);
+        Named<TextBox>(window, "First byte of the range").Text = "2";
+        Named<TextBox>(window, "Last byte of the range").Text = "5";
+        Named<Button>(window, "Show this range of bytes").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+        // None chosen writes nothing and says nothing; the file suggested names the record and the bytes.
+        List<string> before = Texts(window);
+        choices.Answer(null);
+        Named<Button>(window, "Save bytes…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => choices.Asked == 1);
+        Assert.Equal("Save the chosen bytes", choices.Saves[0].Title);
+        Assert.EndsWith("-bytes-2-5.bin", choices.Saves[0].SuggestedFileName, StringComparison.Ordinal);
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        Assert.Equal(before, Texts(window));
+
+        // Chosen, exactly the chosen bytes are written, and the window says which went where.
+        string file = Path.Combine(folder, "bytes.bin");
+        choices.Answer(file);
+        Named<Button>(window, "Save bytes…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => Texts(window).Any(text => text.EndsWith($" to {file}.", StringComparison.Ordinal)));
+        Assert.Equal("2345"u8.ToArray(), await File.ReadAllBytesAsync(file));
+        Assert.Contains(Texts(window), text => text.StartsWith("Saved bytes 2 to 5 (4 bytes) of content-0000000001.icatc to ",
+            StringComparison.Ordinal));
+
+        // A file it cannot write is said.
+        choices.Answer(folder);
+        Named<Button>(window, "Save bytes…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => Texts(window).Any(text => text.StartsWith("Could not save the bytes: ", StringComparison.Ordinal)));
+        Directory.Delete(folder, recursive: true);
+    }
+
     [AvaloniaFact(DisplayName = "§3.7: at its smallest the content viewer shows the chosen bytes ten lines at a time, its facts scrolling above them")]
     public void TheSmallestViewerKeepsRoomForTheBytes()
     {

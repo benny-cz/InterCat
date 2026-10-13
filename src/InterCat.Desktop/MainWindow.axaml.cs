@@ -47,6 +47,9 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>A support bundle is being saved, so a second click does not start another.</summary>
     private bool savingSupport;
 
+    /// <summary>Where the window asks for a file or a folder: the platform's pickers, or a test's answers.</summary>
+    internal PathChoices Choices { get; set; }
+
     /// <summary>The demo is being made or opened, so a second click does not start another.</summary>
     private bool exploringDemo;
 
@@ -213,6 +216,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
+        Choices = new PathChoices(this);
 
         // The graph's and the timeline's hover cards are drawn by one layer above every pane (section 6.2).
         HoverLayer.Track(GraphSurface);
@@ -1081,7 +1085,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             if (redacted && !await ConfirmRedactedShareAsync()) return;
             ExportContext context = workspace.DescribeExport(DateTimeOffset.UtcNow);
-            Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+            string? path = await Choices.SaveFileAsync(new()
             {
                 Title = redacted ? "Save redacted sharing report" : "Export this view",
                 SuggestedFileName = redacted
@@ -1094,8 +1098,7 @@ public sealed partial class MainWindow : Window, IDisposable
                     new("CSV, one row per line") { Patterns = ["*.csv"] },
                 ],
             });
-            if (file is null || closed) return;
-            string path = file.Path.LocalPath;
+            if (path is null || closed) return;
             ExportFormat format = path.EndsWith(".csv", StringComparison.OrdinalIgnoreCase) ? ExportFormat.Csv : ExportFormat.Json;
             SessionExportResult written = await WriteExportAsync(path, format, redacted);
             if (!closed)
@@ -1191,19 +1194,18 @@ public sealed partial class MainWindow : Window, IDisposable
                 return;
             }
 
-            Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+            string? path = await Choices.SaveFileAsync(new()
             {
                 Title = "Save support bundle",
                 SuggestedFileName = SupportBundle.SuggestedName,
                 DefaultExtension = "json",
                 FileTypeChoices = [new("JSON support bundle") { Patterns = ["*.json"] }],
             });
-            if (file is null || closed)
+            if (path is null || closed)
             {
                 return;
             }
 
-            string path = file.Path.LocalPath;
             await WriteSupportBundleAsync(path, sessions);
             if (!closed)
             {
@@ -1400,7 +1402,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (openingSession || choosingSession || packaging is not null || finishingCapture is not null
             || captureTask is { IsCompleted: false }) return;
-        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders;
+        string? folder;
         choosingSession = true;
         try
         {
@@ -1408,7 +1410,7 @@ public sealed partial class MainWindow : Window, IDisposable
             Avalonia.Platform.Storage.IStorageFolder? saved = sessionRoot is { } root && Directory.Exists(root)
                 ? await StorageProvider.TryGetFolderFromPathAsync(new Uri(root))
                 : null;
-            folders = await StorageProvider.OpenFolderPickerAsync(new()
+            folder = await Choices.OpenFolderAsync(new()
             {
                 Title = "Open an InterCat session directory", AllowMultiple = false, SuggestedStartLocation = saved,
             });
@@ -1418,23 +1420,23 @@ public sealed partial class MainWindow : Window, IDisposable
             choosingSession = false;
         }
 
-        if (folders.Count > 0 && !closed) _ = await OpenSessionAsync(folders[0].Path.LocalPath);
+        if (folder is not null && !closed) _ = await OpenSessionAsync(folder);
     }
 
     private async void OpenInvestigation(object? sender, RoutedEventArgs eventArgs)
     {
-        IReadOnlyList<Avalonia.Platform.Storage.IStorageFile> files = await StorageProvider.OpenFilePickerAsync(new()
+        string? file = await Choices.OpenFileAsync(new()
         {
             Title = "Open an InterCat investigation",
             AllowMultiple = false,
             FileTypeFilter = [InvestigationFiles],
         });
-        if (files.Count > 0 && !closed) _ = ShowInvestigation(files[0].Path.LocalPath);
+        if (file is not null && !closed) _ = ShowInvestigation(file);
     }
 
     private async void NewInvestigation(object? sender, RoutedEventArgs eventArgs)
     {
-        Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+        string? file = await Choices.SaveFileAsync(new()
         {
             Title = "Start an InterCat investigation",
             SuggestedFileName = "investigation" + InvestigationWorkspace.Extension,
@@ -1443,7 +1445,7 @@ public sealed partial class MainWindow : Window, IDisposable
             ShowOverwritePrompt = false,
         });
         if (file is null || closed) return;
-        _ = ShowInvestigation(file.Path.LocalPath, create: true);
+        _ = ShowInvestigation(file, create: true);
     }
 
     private static readonly Avalonia.Platform.Storage.FilePickerFileType InvestigationFiles = new("InterCat investigation")
@@ -2294,13 +2296,13 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         if (await ConfirmRedactedPackageAsync(overview, workspace.ScopeInterval) is not { } chosen) return;
-        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        string? parent = await Choices.OpenFolderAsync(new()
         {
             Title = "Choose where to save the redacted session package",
             AllowMultiple = false,
         });
-        if (folders.Count == 0 || closed) return;
-        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now);
+        if (parent is null || closed) return;
+        string destination = NewPackageDirectory(parent, DateTimeOffset.Now);
         RedactedSessionPackageResult? result = await WriteRedactedPackageAsync(source, destination, chosen.Interval);
         if (result is not null && !closed && await ShowPackageResultAsync(result))
         {
@@ -2339,15 +2341,15 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         if (closed || !await ConfirmOriginalPackageAsync(preview)) return;
-        IReadOnlyList<Avalonia.Platform.Storage.IStorageFolder> folders = await StorageProvider.OpenFolderPickerAsync(new()
+        string? parent = await Choices.OpenFolderAsync(new()
         {
             Title = preview.Redacted
                 ? "Choose where to save a copy of this redacted package"
                 : "Choose where to save the original, unredacted session",
             AllowMultiple = false,
         });
-        if (folders.Count == 0 || closed) return;
-        string destination = NewPackageDirectory(folders[0].Path.LocalPath, DateTimeOffset.Now,
+        if (parent is null || closed) return;
+        string destination = NewPackageDirectory(parent, DateTimeOffset.Now,
             preview.Redacted ? "intercat-redacted-session" : "intercat-original-session");
         OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, destination, preview.Redacted);
         if (result is not null && !closed && await ShowOriginalResultAsync(result))

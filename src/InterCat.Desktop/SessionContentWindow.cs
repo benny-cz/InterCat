@@ -71,6 +71,9 @@ internal sealed class SessionContentWindow : Window, IDisposable
     private ContentRange? range;
     private bool loading;
     private bool saving;
+
+    /// <summary>Where the window asks for a file: the platform's picker, or a test's answer.</summary>
+    internal PathChoices Choices { get; set; }
     private bool decoding;
     private bool closed;
     private bool disposed;
@@ -80,6 +83,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         this.path = path;
         this.expectedSessionId = expectedSessionId;
         this.selected = selected;
+        Choices = new PathChoices(this);
         Title = "InterCat · Content of one record";
         Width = 900;
         Height = 700;
@@ -747,7 +751,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
         try
         {
             RawRecordId record = selected.ObservationId.RawRecordId;
-            Avalonia.Platform.Storage.IStorageFile? file = await StorageProvider.SaveFilePickerAsync(new()
+            string? destination = await Choices.SaveFileAsync(new()
             {
                 Title = "Save the chosen bytes",
                 SuggestedFileName = string.Create(CultureInfo.InvariantCulture,
@@ -755,8 +759,7 @@ internal sealed class SessionContentWindow : Window, IDisposable
                 DefaultExtension = "bin",
                 FileTypeChoices = [new("The bytes as they are") { Patterns = ["*.bin"] }],
             });
-            if (file is null || closed) return;
-            string destination = file.Path.LocalPath;
+            if (destination is null || closed) return;
             await ExportFileWriter.WriteAsync(destination, ContentBytesView.Slice(bytes, all, chosen), overwrite: true);
             if (!closed)
             {

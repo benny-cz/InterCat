@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 491 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 492 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -90,6 +90,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 492 — every flow behind a file or folder choice runs whole in a test (§6.4, §8.4, §11.3, §20.6):**
+  - The windows asked the platform's pickers directly, so exporting, the sharing report, the support bundle,
+    opening and starting, both session packages, the investigation's add, relink and package, and saving a
+    record's bytes were untested past the choice.
+  - Each window asks through one seam (`PathChoices`) that the platform answers and a test can. A test runs each
+    flow with a choice made, none made, and one the flow cannot use; each did what it says.
+  - Debug and Release each ran 2,090 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 14
+    mutations: CSV never chosen by the file's name, an export's failure unsaid, a new investigation not made, an
+    investigation or a session chosen and not opened, each package saved outside the folder chosen, the support bundle's
+    save unsaid, only the first of several sessions added, a relink ignored, a declined package unsaid, a record's whole
+    bytes saved for the chosen ones, and a folder choice read as its second folder.
 
 - **Revision 491 — what icat prints for a person is current and in words (R5, R18):**
   - The coverage run showed several commands' text never run by a test, only their JSON. Run by hand, `icat
