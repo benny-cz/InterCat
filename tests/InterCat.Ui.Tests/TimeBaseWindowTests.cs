@@ -1,5 +1,6 @@
 using System.Globalization;
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
@@ -156,6 +157,11 @@ public sealed class TimeBaseWindowTests
         Assert.False(toggle.IsChecked);
         Assert.StartsWith("session time since ", timeline.TimeBaseText, StringComparison.Ordinal);
         Assert.Equal(workspace.WallClockTip, ToolTip.GetTip(toggle));
+
+        // A screen reader hears the toggle's name in the words it shows, and what it does after it, as its help.
+        Assert.Equal(("Wall clock", workspace.WallClockTip),
+            (AutomationProperties.GetName(toggle), AutomationProperties.GetHelpText(toggle)));
+        Assert.Empty(AccessibilityAuditTests.Wordy(window));
 
         // Toggled, the axis names the wall clock's day and offset between instants read on it, as a screen reader hears.
         toggle.IsChecked = true;

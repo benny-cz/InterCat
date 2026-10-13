@@ -92,7 +92,7 @@
                           FontSize="11" Padding="6,0" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
                           IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
                           ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
-                          AutomationProperties.Name="Per second: state each row's value per second over the interval the rows count" />
+                          AutomationProperties.Name="Per second" />
           </Grid>
           <!-- §6.3's grouping: by executable, or by the terminal session each process's lifecycle records name. It stands at
                the machine rung, whose rows are the groups, once a session is named, its box beneath the ranking's; a choice
@@ -166,7 +166,8 @@
           <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names, PIDs or a time (Ctrl+F)"
                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
                    ToolTip.Tip="Search names, PIDs or a time (Ctrl+F)"
-                   AutomationProperties.Name="Search this session by name, process ID or channel endpoint, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
+                   AutomationProperties.Name="Search names, PIDs or a time"
+                   AutomationProperties.HelpText="Find a group, a process instance or a channel by name, process ID or endpoint, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
                    AutomationProperties.AcceleratorKey="Ctrl+F" />
           <!-- What a search found, or why a time typed places nothing, is said as it changes, without taking the keyboard. -->
           <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"
@@ -447,7 +448,8 @@
     <GridSplitter x:Name="RailSplitter" Grid.RowSpan="4" Width="5" HorizontalAlignment="Right"
                   ResizeDirection="Columns" Background="Transparent"
                   ToolTip.Tip="Drag to widen the ranked table"
-                  AutomationProperties.Name="Ranked table width; left and right arrows resize it" />
+                  AutomationProperties.Name="Ranked table width"
+                  AutomationProperties.HelpText="Left and right arrows resize it, as dragging it does" />
 
     <!-- Header -->
     <Border Grid.Column="1" Grid.ColumnSpan="2" Padding="20,11"
@@ -504,7 +506,8 @@
         </Button>
         <!-- The application's settings (section 26.3): the theme, and where the settings are kept. -->
         <Button x:Name="ThemeButton" Grid.Column="5" Margin="8,0,0,0" Content="Theme"
-                AutomationProperties.Name="Theme: choose light, dark or high contrast, or follow the system">
+                AutomationProperties.Name="Theme"
+                AutomationProperties.HelpText="Choose light, dark or high contrast, or follow the system">
           <Button.Flyout>
             <MenuFlyout Placement="BottomEdgeAlignedRight" />
           </Button.Flyout>
@@ -564,7 +567,7 @@
           <ToggleButton x:Name="LaneScaleToggle" IsChecked="{Binding ScalesEachLane, Mode=TwoWay}" FontSize="11"
                         Padding="6,0" MinHeight="22" VerticalAlignment="Center" VerticalContentAlignment="Center"
                         ToolTip.Tip="Per lane: read each lane's bars against its own busiest bar, so a quiet lane's shape shows beside a busy one. Its heights then compare with no other lane's: compare lanes by the numbers in their cards. Off, every lane shares one scale."
-                        AutomationProperties.Name="Per lane: read each lane's bars against its own busiest bar rather than one scale for every lane">
+                        AutomationProperties.Name="Per lane">
             <TextBlock Text="Per lane" />
           </ToggleButton>
         </StackPanel>
@@ -618,7 +621,7 @@
                             FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
                             VerticalContentAlignment="Center" IsCheckedChanged="GraphExpandChanged"
                             ToolTip.Tip="Expand: let the graph fill the column, the timeline one click away (F11 with the graph focused). Click again, or press F11, to give both their places back."
-                            AutomationProperties.Name="Expand the graph to fill the column; again to restore the timeline beneath it">
+                            AutomationProperties.Name="Expand the graph">
                 <TextBlock Text="Expand" />
               </ToggleButton>
             </Grid>
@@ -659,7 +662,7 @@
                             VerticalContentAlignment="Center" IsVisible="{Binding OffersWallClock}"
                             IsChecked="{Binding ReadsWallClock, Mode=TwoWay}"
                             ToolTip.Tip="{Binding WallClockTip}"
-                            AutomationProperties.Name="Wall clock: read times on the clock the capture's machine kept, rather than in session time"
+                            AutomationProperties.Name="Wall clock"
                             AutomationProperties.HelpText="{Binding WallClockTip}">
                 <TextBlock Text="Wall clock" />
               </ToggleButton>
@@ -667,7 +670,7 @@
                             FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"
                             VerticalContentAlignment="Center" IsCheckedChanged="TimelineExpandChanged"
                             ToolTip.Tip="Expand: let the timeline fill the column, the graph one click away (F11 with the timeline focused). Click again, or press F11, to give both their places back."
-                            AutomationProperties.Name="Expand the timeline to fill the column; again to restore the graph above it">
+                            AutomationProperties.Name="Expand the timeline">
                 <TextBlock Text="Expand" />
               </ToggleButton>
             </Grid>
@@ -925,7 +928,8 @@
     <GridSplitter x:Name="InspectorSplitter" Grid.Column="2" Grid.Row="2" Width="5" HorizontalAlignment="Left"
                   ResizeDirection="Columns" Background="Transparent"
                   ToolTip.Tip="Drag to widen the inspector"
-                  AutomationProperties.Name="Inspector width; left and right arrows resize it" />
+                  AutomationProperties.Name="Inspector width"
+                  AutomationProperties.HelpText="Left and right arrows resize it, as dragging it does" />
 
     <!-- Accessible table equivalents: the same result set the canvas shows, reachable by keyboard (R15). -->
     <Border Grid.Column="1" Grid.ColumnSpan="2" Grid.Row="2" Margin="16,16,16,16" CornerRadius="10"
@@ -1001,7 +1005,8 @@
                     ItemsSource="{Binding TimelineLaneOptions}"
                     SelectedItem="{Binding SelectedTimelineLane, Mode=TwoWay}"
                     IsVisible="{Binding ShowsMechanismLanes}"
-                    AutomationProperties.Name="Mechanism lane for the interval table and bracket-key stepping">
+                    AutomationProperties.Name="Mechanism the interval table lists"
+                    AutomationProperties.HelpText="The lane whose moments the interval table lists, and the bracket keys step through">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:TimelineLaneOption">
                 <TextBlock Text="{Binding Label}" />
@@ -1012,7 +1017,8 @@
                     ItemsSource="{Binding DirectionLaneOptions}"
                     SelectedItem="{Binding SelectedDirectionLane, Mode=TwoWay}"
                     IsVisible="{Binding ShowsDirectionLanes}"
-                    AutomationProperties.Name="Source direction lane for the interval table and bracket-key stepping">
+                    AutomationProperties.Name="Direction the interval table lists"
+                    AutomationProperties.HelpText="The source direction whose moments the interval table lists, and the bracket keys step through">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:DirectionLaneOption">
                 <TextBlock Text="{Binding Label}" />
@@ -1023,7 +1029,8 @@
                     ItemsSource="{Binding ChannelEndOptions}"
                     SelectedItem="{Binding SelectedChannelEndOption, Mode=TwoWay}"
                     IsVisible="{Binding ShowsChannelEndLanes}"
-                    AutomationProperties.Name="Channel end for the interval table and bracket-key stepping">
+                    AutomationProperties.Name="Channel end the interval table lists"
+                    AutomationProperties.HelpText="The channel end whose moments the interval table lists, and the bracket keys step through">
             <ComboBox.ItemTemplate>
               <DataTemplate x:DataType="local:ChannelEndOption">
                 <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Label}" />

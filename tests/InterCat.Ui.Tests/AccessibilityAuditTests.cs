@@ -97,6 +97,8 @@ public sealed partial class AccessibilityAuditTests
         List<string> problems = Unheard(window, out int listItems);
         Assert.True(problems.Count == 0, $"At {workspace.LevelBadge}:\n" + string.Join("\n", problems));
         Assert.True(listItems > 0, $"At {workspace.LevelBadge} no list item was reachable.");
+        List<string> wordy = Wordy(window);
+        Assert.True(wordy.Count == 0, $"At {workspace.LevelBadge}:\n" + string.Join("\n", wordy));
 
         // Each list's items speak exactly their rows' sentences, in the order the rows are listed.
         foreach (string name in new[] { "RungList", "CrumbList", "RelationshipList", "IntervalList" })
@@ -194,6 +196,39 @@ public sealed partial class AccessibilityAuditTests
             }
         }
     }
+
+    /// <summary>
+    /// The controls a person presses, chooses with, types in or drags, other than a list's rows, whose names explain them
+    /// rather than say what they are. A screen reader says a name each time the keyboard lands on its control, so a name
+    /// is a few words - at most <see cref="FewWords"/> characters - and what the control does is its help text, said
+    /// after it: the search box's name was its whole explanation, 143 characters at every Ctrl+F, and the toggles' names
+    /// repeated their tooltips.
+    /// </summary>
+    internal static List<string> Wordy(Control root)
+    {
+        var wordy = new List<string>();
+        Walk(ControlAutomationPeer.CreatePeerForElement(root));
+        return wordy;
+
+        void Walk(AutomationPeer peer)
+        {
+            AutomationControlType type = peer.GetAutomationControlType();
+            if (peer.IsKeyboardFocusable() && type is AutomationControlType.Button or AutomationControlType.ComboBox
+                    or AutomationControlType.Edit or AutomationControlType.Thumb
+                && peer.GetName() is { Length: > FewWords } name)
+            {
+                wordy.Add($"{type} {peer.GetClassName()} is named in {name.Length} characters: {name}");
+            }
+
+            foreach (AutomationPeer child in peer.GetChildren())
+            {
+                Walk(child);
+            }
+        }
+    }
+
+    /// <summary>How long a control's name is at most, in characters.</summary>
+    private const int FewWords = 40;
 
     /// <summary>
     /// The words a button, toggle, menu item or tab shows as its label, as a person would say them; empty for one that shows
