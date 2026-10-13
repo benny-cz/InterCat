@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 502 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 503 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 503 — a next page that cannot be read (§3.2, R21):**
+  - E's records, an RPC channel's calls and an HTTP channel's exchanges, a first page listed and the next
+    unreadable: the rail and the inspector said all of them were unavailable while the first page stayed listed,
+    why was said nowhere, and Load more was gone.
+  - A next page that cannot be read now leaves the rows listed; the rail says it could not be read and the
+    inspector why, and M asks for it again. A scope's first page that cannot be read no longer leaves the previous
+    scope's rows on screen.
+  - Ctrl+E with nothing to export says why, as the button's tip does, telling records that could not be read from
+    records still being read and from a scope holding none.
+  - Debug and Release each ran 2,138 tests, with revision 473's 93 failures and 4 skips. The tests caught 18 of 19
+    mutations: for E's records, a channel's calls and its exchanges, a next page that failed said as all unavailable,
+    not asked for again, left unsaid, still said once read, or said with the first page's sentence before its reason;
+    the inspector without why; Ctrl+E without why; and the tip saying records not read, or none in scope, are still to
+    come. The previous scope's calls left on screen when a new scope's first page failed survived: no test can have a
+    scope counted while its calls cannot be read.
 
 - **Revision 502 — an investigation's member changed under its window (§8.4, ADR-038, R22):**
   - Another session written into a member's folder, or the folder emptied, after the investigation read it: Open and

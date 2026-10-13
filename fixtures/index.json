@@ -1364,6 +1364,7 @@
         "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"
       ],
       "R15": [
+        "R15: Ctrl+E where there is nothing to export says why, as the button's tip does",
         "R15: Ctrl+Enter saves a note, whose words take Enter as a new line",
         "R15: Ctrl+click and Ctrl+Space build a multi-selection the timeline highlights, and Enter lists exactly its records",
         "R15: Ctrl+click on graph nodes composes a set with the node selected before it, and a plain click replaces it",

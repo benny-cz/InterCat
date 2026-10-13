@@ -1752,6 +1752,60 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: Ctrl+E where there is nothing to export says why, as the button's tip does")]
+    public async Task CtrlEWithNothingToExportSaysWhy()
+    {
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        Dispatch();
+        Button export = window.GetControl<Button>("ExportButton");
+        TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+        string? Pressed()
+        {
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.Control);
+            Dispatch();
+            Assert.Equal(ToolTip.GetTip(export), detail.Text);
+            return detail.Text;
+        }
+
+        Assert.Equal("Open or record a session first: there is nothing to export yet.", Pressed());
+
+        // E over a brushed range that holds no record lists none.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Exchange(0, 2), .. Exchange(10, 2)]);
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        workspace.SelectInterval(new TimeRange(15, 25));
+        await workspace.IntervalReady;
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        Assert.Empty(workspace.RungRows);
+        Assert.Equal("No source record is in this scope, so there is nothing to export.", Pressed());
+
+        // Records that could not be read are not said to be none.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        workspace.ClearSelection();
+        await workspace.IntervalReady;
+        session.Store.ReleaseSegmentReaders();
+        foreach (string file in Directory.EnumerateFiles(session.Path))
+        {
+            File.WriteAllBytes(file, [1, 2, 3]);
+        }
+
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        Assert.Equal("The source records here could not be read, so there is nothing to export.", Pressed());
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "6.4: the window writes the applied view to the file the user chose, in either format")]
     public async Task TheWindowWritesTheAppliedViewToTheChosenFile()
     {

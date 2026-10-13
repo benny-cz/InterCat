@@ -2995,7 +2995,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         $"L{(int)ladder.Current.Level} · {NavigationState.Name(ladder.Current.Level).ToUpperInvariant()}");
 
     public string LevelSummary => IsEvidenceRung
-        ? (evidence?.Scope.Description ?? string.Empty) + " · " + EvidenceStatus
+        ? (evidence?.Scope.Description ?? string.Empty) + " · " + EvidenceStatusText(brief: false)
         : IsRpcChannelRung
             ? RpcCallSummary(brief: false)
         : IsHttpChannelRung
@@ -5067,21 +5067,31 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public string EvidenceScopeText => IsEvidenceRung ? evidence?.Scope.Description ?? string.Empty : string.Empty;
 
     /// <summary>How much of the scope is loaded, and whether a page continued in a newer generation.</summary>
-    public string EvidenceStatus
+    public string EvidenceStatus => EvidenceStatusText(brief: true);
+
+    /// <summary>
+    /// <see cref="EvidenceStatus"/>, and in full why a next page could not be read, where the brief status says only that.
+    /// </summary>
+    private string EvidenceStatusText(bool brief)
     {
-        get
-        {
-            if (evidence is not { } list) return string.Empty;
-            if (list.Problem is not null) return "Source records unavailable";
-            string loaded = string.Create(CultureInfo.CurrentCulture, $"{list.Records.Count:N0} source records");
-            string state = list.Loading
-                ? list.Records.Count == 0 ? "Reading source records…" : loaded + " · reading more…"
-                : list.NextCursor is null ? loaded + " · end of scope" : loaded + " · more available (M)";
-            return list.ContinuedIn is { } generation
-                ? state + string.Create(CultureInfo.CurrentCulture, $" · later pages read generation {generation:N0}")
-                : state;
-        }
+        if (evidence is not { } list) return string.Empty;
+        if (list.Problem is not null) return "Source records unavailable";
+        string loaded = string.Create(CultureInfo.CurrentCulture, $"{list.Records.Count:N0} source records");
+        string state = list.Loading
+            ? list.Records.Count == 0 ? "Reading source records…" : loaded + " · reading more…"
+            : list.PageProblem is { } failed ? loaded + NextPageFailed(failed, brief)
+            : list.NextCursor is null ? loaded + " · end of scope" : loaded + " · more available (M)";
+        return list.ContinuedIn is { } generation
+            ? state + string.Create(CultureInfo.CurrentCulture, $" · later pages read generation {generation:N0}")
+            : state;
     }
+
+    /// <summary>
+    /// What a list says of a next page it could not read, the rows of the pages before it still listed: that it could not
+    /// be read, and in full why. Load more asks for it again where it can be.
+    /// </summary>
+    private static string NextPageFailed(string problem, bool brief) =>
+        " · the next page could not be read" + (brief ? string.Empty : ": " + problem.TrimEnd('.'));
 
     /// <summary>
     /// The record action's label. A redacted package holds synthetic records only, and its action never promises the
@@ -5281,13 +5291,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             if (page.RestartRequired)
             {
-                list.Problem = page.RestartReason;
+                // The records listed stay; only what was not listed yet cannot be.
+                if (cursor is null) list.Problem = page.RestartReason;
+                else list.PageProblem = page.RestartReason;
                 list.NextCursor = null;
                 return;
             }
 
             list.Records.AddRange(page.Records);
             list.NextCursor = page.NextCursor;
+            list.PageProblem = null;
             list.Latest = page;
             if (page.Generation != source.Generation)
             {
@@ -5303,8 +5316,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (ReferenceEquals(evidence, list))
             {
-                list.Problem = exception.Message;
-                list.NextCursor = null;
+                // A next page that could not be read leaves the records listed, and is asked for again as it was.
+                if (cursor is null)
+                {
+                    list.Problem = exception.Message;
+                    list.NextCursor = null;
+                }
+                else
+                {
+                    list.PageProblem = exception.Message;
+                }
             }
         }
         finally
@@ -5653,21 +5674,42 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// What an RPC channel rung states: its calls, how they ended and how long they took, and that its records are one
-    /// step away.
+    /// What an RPC channel rung states: its calls, how they ended and how long they took, a next page that could not be
+    /// read, and that its records are one step away.
     /// </summary>
     private string RpcCallSummary(bool brief)
     {
         if (rpcCalls is not { } load) return string.Empty;
         if (load.Problem is not null) return "Calls unavailable";
         if (load.Channel is not { } channel) return "Reading calls…";
-        string loaded = load.Calls.Count < channel.Counts.Calls
-            ? string.Create(CultureInfo.CurrentCulture, $" · {load.Calls.Count:N0} listed")
-            : string.Empty;
+        string loaded = (load.Calls.Count < channel.Counts.Calls
+                ? string.Create(CultureInfo.CurrentCulture, $" · {load.Calls.Count:N0} listed")
+                : string.Empty)
+            + (load is { PageProblem: { } failed, Loading: false } ? NextPageFailed(failed, brief) : string.Empty);
         return brief
             ? channel.Outcome(CultureInfo.CurrentCulture) + loaded
             : channel.Outcome(CultureInfo.CurrentCulture) + loaded
                 + " · paired start to stop by activity id; E shows the records";
+    }
+
+    /// <summary>
+    /// A page of calls that could not be read. The first leaves the rung with none - the previous scope's are not passed
+    /// off as this one's - and says <paramref name="first"/>; a later one leaves the calls listed, says
+    /// <paramref name="later"/> of the next page, and Load more asks for it again when <paramref name="again"/>.
+    /// </summary>
+    private static void Failed(RpcCallsLoad load, string first, string later, int offset, bool again)
+    {
+        if (offset > 0)
+        {
+            load.PageProblem = later;
+            load.More &= again;
+            return;
+        }
+
+        load.Calls.Clear();
+        load.ReplaceOnFirstPage = false;
+        load.Problem = first;
+        load.More = false;
     }
 
     /// <summary>The key when it names a call on <paramref name="channelKey"/>; null for any other key.</summary>
@@ -5808,8 +5850,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (disposed || !ReferenceEquals(rpcCalls, load)) return;
             if (page.Problem is not null)
             {
-                load.Problem = page.Problem;
-                load.More = false;
+                // A channel the generation no longer holds has no next page either; the calls listed stay.
+                Failed(load, page.Problem, page.Problem, offset, again: false);
             }
             else
             {
@@ -5822,6 +5864,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
                 load.Calls.AddRange(page.Calls);
                 load.More = page.More;
+                load.PageProblem = null;
             }
         }
         catch (OperationCanceledException) when (load.Cancellation.IsCancellationRequested)
@@ -5832,8 +5875,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(rpcCalls, load)) return;
-            load.Problem = "This channel's calls could not be read: " + exception.Message;
-            load.More = false;
+            Failed(load, "This channel's calls could not be read: " + exception.Message, exception.Message, offset, again: true);
         }
         finally
         {
@@ -6044,6 +6086,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         public string? Problem { get; set; }
 
+        /// <summary>Why the next page could not be read, the calls of the pages before it still listed; null otherwise.</summary>
+        public string? PageProblem { get; set; }
+
         public CancellationTokenSource Cancellation { get; } = new();
     }
 
@@ -6060,6 +6105,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         public bool Loading { get; set; }
 
         public string? Problem { get; set; }
+
+        /// <summary>Why the next page could not be read, the records of the pages before it still listed; null otherwise.</summary>
+        public string? PageProblem { get; set; }
 
         /// <summary>The newer generation a page was read from, when the list continued past the workspace's own.</summary>
         public long? ContinuedIn { get; set; }
@@ -6306,9 +6354,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ? "Share a pseudonymized metadata report of this rung, without original sources or raw record locators."
         : NothingToExport;
 
-    /// <summary>Why the rung's rows cannot be exported or shared: no session yet, or a rung that lists nothing.</summary>
+    /// <summary>
+    /// Why the rung's rows cannot be exported or shared: no session yet, records that could not be read, are still being
+    /// read or are none, or a rung that lists nothing.
+    /// </summary>
     private string NothingToExport => emptyWorkspace ? "Open or record a session first: there is nothing to export yet."
-        : IsEvidenceRung ? "No source record is listed here yet, so there is nothing to export."
+        : IsEvidenceRung ? evidence switch
+        {
+            { Problem: not null } => "The source records here could not be read, so there is nothing to export.",
+            { Loading: false } => "No source record is in this scope, so there is nothing to export.",
+            _ => "No source record is listed here yet, so there is nothing to export.",
+        }
         : "This rung lists no row, so there is nothing to export.";
 
     /// <summary>Whether the graph draws a node to lay out afresh; a graph of none has nothing to place.</summary>

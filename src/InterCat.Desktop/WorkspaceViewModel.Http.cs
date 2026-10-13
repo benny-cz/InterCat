@@ -45,19 +45,43 @@ public sealed partial class WorkspaceViewModel
         return HttpReady;
     }
 
-    /// <summary>What an HTTP channel rung states: its exchanges, how many were recorded whole, and how long one took.</summary>
+    /// <summary>
+    /// What an HTTP channel rung states: its exchanges, how many were recorded whole, how long one took, and a next page
+    /// that could not be read.
+    /// </summary>
     private string HttpExchangeSummary(bool brief)
     {
         if (httpExchanges is not { } load) return string.Empty;
         if (load.Problem is not null) return "Exchanges unavailable";
         if (load.Channel is not { } channel) return "Reading exchanges…";
-        string loaded = load.Exchanges.Count < channel.Exchanges
-            ? string.Create(CultureInfo.CurrentCulture, $" · {load.Exchanges.Count:N0} listed")
-            : string.Empty;
+        string loaded = (load.Exchanges.Count < channel.Exchanges
+                ? string.Create(CultureInfo.CurrentCulture, $" · {load.Exchanges.Count:N0} listed")
+                : string.Empty)
+            + (load is { PageProblem: { } failed, Loading: false } ? NextPageFailed(failed, brief) : string.Empty);
         return brief
             ? channel.Outcome(CultureInfo.CurrentCulture) + loaded
             : channel.Outcome(CultureInfo.CurrentCulture) + loaded
                 + " · grouped by WinINet's exchange numbers; E shows the buffers, and C a buffer's content";
+    }
+
+    /// <summary>
+    /// A page of exchanges that could not be read. The first leaves the rung with none - the previous scope's are not
+    /// passed off as this one's - and says <paramref name="first"/>; a later one leaves the exchanges listed, says
+    /// <paramref name="later"/> of the next page, and Load more asks for it again when <paramref name="again"/>.
+    /// </summary>
+    private static void Failed(HttpExchangesLoad load, string first, string later, int offset, bool again)
+    {
+        if (offset > 0)
+        {
+            load.PageProblem = later;
+            load.More &= again;
+            return;
+        }
+
+        load.Exchanges.Clear();
+        load.ReplaceOnFirstPage = false;
+        load.Problem = first;
+        load.More = false;
     }
 
     /// <summary>A row for a process's HTTP exchanges, counted in buffer records.</summary>
@@ -178,8 +202,8 @@ public sealed partial class WorkspaceViewModel
             if (disposed || !ReferenceEquals(httpExchanges, load)) return;
             if (page.Problem is not null)
             {
-                load.Problem = page.Problem;
-                load.More = false;
+                // A channel the generation no longer holds has no next page either; the exchanges listed stay.
+                Failed(load, page.Problem, page.Problem, offset, again: false);
             }
             else
             {
@@ -192,6 +216,7 @@ public sealed partial class WorkspaceViewModel
 
                 load.Exchanges.AddRange(page.Exchanges);
                 load.More = page.More;
+                load.PageProblem = null;
             }
         }
         catch (OperationCanceledException) when (load.Cancellation.IsCancellationRequested)
@@ -202,8 +227,8 @@ public sealed partial class WorkspaceViewModel
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(httpExchanges, load)) return;
-            load.Problem = "This process's HTTP exchanges could not be read: " + exception.Message;
-            load.More = false;
+            Failed(load, "This process's HTTP exchanges could not be read: " + exception.Message, exception.Message, offset,
+                again: true);
         }
         finally
         {
@@ -526,6 +551,9 @@ public sealed partial class WorkspaceViewModel
         public bool Loading { get; set; }
 
         public string? Problem { get; set; }
+
+        /// <summary>Why the next page could not be read, the exchanges of the pages before it still listed; null otherwise.</summary>
+        public string? PageProblem { get; set; }
 
         public CancellationTokenSource Cancellation { get; } = new();
     }

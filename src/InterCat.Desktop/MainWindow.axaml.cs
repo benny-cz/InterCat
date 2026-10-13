@@ -1126,7 +1126,8 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         if (exporting || !workspace.CanExport)
         {
-            if (!closed && !workspace.CanExport) CaptureDetail.Text = "Nothing to export at this rung yet.";
+            // Ctrl+E asks whatever the rung shows, so it is told why there is nothing, as the button's tip says.
+            if (!closed && !workspace.CanExport) CaptureDetail.Text = workspace.ExportTip;
             return;
         }
 
