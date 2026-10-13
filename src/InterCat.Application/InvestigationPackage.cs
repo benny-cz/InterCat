@@ -322,15 +322,44 @@ public static class InvestigationPackage
         paragraphs.Add((hosts.Count == 1 ? "Hosts: one, identified as " : string.Create(culture, $"Hosts: {hosts.Count:N0}, identified as "))
             + Listed(hosts) + ".");
 
+        // The file goes whole (contracts/workspace-v20.md §8), so everything in it is said: each kind a person writes, and
+        // what of it is in their own words - names, notes and the endpoints a translation states - which no copy
+        // pseudonymizes, a redacted one's included. A note is counted once however often it was reworded.
         InvestigationWorkspaceFile workspace = preview.Workspace;
-        int notes = workspace.Alignments.Count(alignment => alignment.Note is not null) + workspace.Joins.Count(join => join.Note is not null);
+        int notes = workspace.Notes.Select(note => note.NoteId).Distinct().Count()
+            + workspace.Alignments.Count(alignment => alignment.Note is not null)
+            + workspace.Joins.Count(join => join.Note is not null)
+            + workspace.HostEquivalences.Count(revision => revision.Note is not null)
+            + workspace.AddressTranslations.Count(revision => revision.Note is not null);
         var carried = new List<string> { "each session's capture, host and clock identities" };
         if (workspace.HostAliases.Count > 0) carried.Add(Counted(workspace.HostAliases.Count, "name given to a host", "names given to hosts", culture));
+        if (workspace.HostEquivalences.Count > 0)
+        {
+            carried.Add(Counted(workspace.HostEquivalences.Count, "host confirmation revision", "host confirmation revisions", culture));
+        }
+
+        if (workspace.AddressTranslations.Count > 0)
+        {
+            carried.Add(Counted(
+                workspace.AddressTranslations.Count, "address translation revision", "address translation revisions", culture));
+        }
+
         if (workspace.Alignments.Count > 0) carried.Add(Counted(workspace.Alignments.Count, "alignment revision", "alignment revisions", culture));
         if (workspace.Joins.Count > 0) carried.Add(Counted(workspace.Joins.Count, "join decision revision", "join decision revisions", culture));
-        if (notes > 0) carried.Add(Counted(notes, "note written on them", "notes written on them", culture));
+        if (workspace.Views.Count > 0) carried.Add(Counted(workspace.Views.Count, "saved view revision", "saved view revisions", culture));
+        if (workspace.Layouts.Count > 0) carried.Add(Counted(workspace.Layouts.Count, "session's layout", "sessions' layouts", culture));
+        if (workspace.Panes is not null) carried.Add("the window's panes");
+        if (notes > 0) carried.Add(Counted(notes, "note", "notes", culture));
+        List<string> written = [];
+        if (workspace.HostAliases.Count + workspace.Views.Count > 0) written.Add("names");
+        if (notes > 0) written.Add("notes");
+        if (workspace.AddressTranslations.Count > 0) written.Add("translated endpoints");
         paragraphs.Add("The investigation's file goes with them, holding " + Listed(carried) + "."
-            + (workspace.HostAliases.Count + notes > 0 ? " Names and notes are copied as they were written, never pseudonymized." : string.Empty));
+            + (written.Count == 0 ? string.Empty
+                : $" {char.ToUpperInvariant(written[0][0])}{Listed(written)[1..]} are copied as they were written, never pseudonymized.")
+            + (workspace.Notes.Count > InvestigationWorkspace.NotesInForce(workspace).Count
+                ? " A reworded or removed note goes with every wording it had."
+                : string.Empty));
 
         InvestigationPackageMemberPreview[] references = [.. preview.Members.Where(member => member.Copy is null)];
         if (references.Length > 0)

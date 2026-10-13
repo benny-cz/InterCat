@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 489 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 490 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -90,6 +90,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 490 — an investigation package says everything its file carries (§8.4, §11.3):**
+  - Measuring which lines the suites reach found `icat workspace package`, and most of the commands M4's two-host
+    check runs, never run by a test. Running them found the package's confirmation counting what the file held at
+    revision 263 - host names, alignments, join decisions and their notes - while every package also carried host
+    confirmations, address translations, the investigation's notes, saved views, layouts and the panes.
+  - It now counts each kind, a note once however often reworded, and says that names, notes and translated
+    endpoints go as written, never pseudonymized - in a package of redacted packages too - and that a reworded or
+    removed note goes with every wording it had, as the file keeps them.
+  - A test runs the two-host steps through `icat` on the demo's two hosts: alignment by boot refused across two
+    boots, alignment by wall clocks, an order and an ambiguous one, correlation, a join and its withdrawal, and the
+    alignment withdrawn; host names, one-host confirmations and translations as revisions; relinks; and the
+    package measured, written and verified, refused into a folder that exists, chosen with `--only`, and partial,
+    exiting 1, when a session is missing.
+  - Debug and Release each ran 2,077 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 19
+    mutations: each kind the file holds left unsaid in turn, notes counted by revision or without the investigation's,
+    the host confirmations' or the translations' own, translated endpoints or view names not said to go as written, the
+    reworded note's sentence always said; and on the command line a package never partial, a join accepted as rejected,
+    withdrawals of a host confirmation, a translation or an alignment ignored, a host name dropped, and a relink to any
+    folder.
 
 - **Revision 489 — the Align dialog's fields are named by the words beside them (R15, WCAG 2.5.3):**
   - Its eight boxes were named by sentences of their own that left out the captions a person sees - "How sure the
@@ -2163,7 +2183,9 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      workspace new` and `add` them, align them by their wall clocks (`align <b> <a> --wall-clock --sync <duration>
      --drift-ppm <rate>`), and `correlate`: the exchange must be the one candidate, its lifetimes overlapping and its
      bytes the same on both sides. Correlation is tested only synthetically until then, since one host cannot split
-     an exchange (TCP is not process-scoped at capture).
+     an exchange (TCP is not process-scoped at capture). Since revision 490 a test runs these commands through
+     `icat` on the demo's two generated hosts ("two hosts' sessions are added, aligned by their wall clocks,
+     correlated, decided and compared on the command line"), so what the check adds is the two machines.
 
 ## Verification and cautions
 

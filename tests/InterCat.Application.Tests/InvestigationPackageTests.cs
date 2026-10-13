@@ -59,8 +59,8 @@ public sealed class InvestigationPackageTests : IDisposable
         Assert.Contains(said, paragraph => paragraph.StartsWith("The copies hold ", StringComparison.Ordinal) && paragraph.Contains(
             $" files ({ByteSizeText.Of(preview.Bytes, CultureInfo.InvariantCulture)}): ", StringComparison.Ordinal));
         Assert.Contains(said, paragraph => paragraph.Contains(
-            "identities, one name given to a host, one alignment revision and one note written on them. Names and notes are "
-            + "copied as they were written, never pseudonymized.", StringComparison.Ordinal));
+            "identities, one name given to a host, one alignment revision and one note. Names and notes are copied as they "
+            + "were written, never pseudonymized.", StringComparison.Ordinal));
         Assert.Contains(said, paragraph => paragraph.StartsWith($"Not copied: {Short(c)} (gamma), missing. The package keeps it",
             StringComparison.Ordinal));
         Assert.Equal(InvestigationPackage.Warning, said[^1]);
@@ -201,6 +201,54 @@ public sealed class InvestigationPackageTests : IDisposable
         Assert.False(Directory.Exists(Path.Combine(root, "nothing")));
     }
 
+    [Fact(DisplayName = "§8.4: a package says before it is saved everything its investigation's file carries, a person's words as written")]
+    public void APackageSaysEverythingItsFileCarries()
+    {
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1");
+        SessionStore beta = NewSession(Path.Combine(root, "beta"), "lab-2");
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+        WorkspaceMember b = InvestigationWorkspace.Add(workspace, beta.Root.Path, Now);
+        string File() => InvestigationPackage.Disclosure(InvestigationPackage.Preview(workspace), CultureInfo.InvariantCulture)
+            .Single(paragraph => paragraph.StartsWith("The investigation's file goes with them", StringComparison.Ordinal));
+
+        // An investigation no person has written in carries its sessions' identities, and nothing in anyone's words.
+        Assert.Equal("The investigation's file goes with them, holding each session's capture, host and clock identities.", File());
+
+        // Each kind a person writes is counted by its revisions; a note once, said with what a person wrote on it.
+        InvestigationWorkspace.ConfirmOneHost(workspace, HostOf(alpha), b.HostId, "one lab box", Now);
+        InvestigationWorkspace.WithdrawOneHost(workspace, HostOf(alpha), b.HostId, Now);
+        InvestigationWorkspace.StateTranslation(workspace, "10.0.0.20:443", "192.168.1.20:443", "the office NAT", Now);
+        InvestigationWorkspace.Align(workspace, b.SessionId, 0, a, 0, 1_000_000, null, null, Now);
+        InvestigationWorkspace.SaveView(workspace, "the burst", new TimeRange(0, 10_000), Now);
+        InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = "group:a", X = 0.5, Y = 0.5 }], Now);
+        InvestigationWorkspace.SetPanes(workspace, 0.7, null, Now);
+        WorkspaceNote note = InvestigationWorkspace.AddNote(workspace, "the retry storm starts at the second login", null, Now);
+        Assert.Equal("The investigation's file goes with them, holding each session's capture, host and clock identities, 2 host "
+            + "confirmation revisions, one address translation revision, one alignment revision, one saved view revision, one "
+            + "session's layout, the window's panes and 3 notes. Names, notes and translated endpoints are copied as they were "
+            + "written, never pseudonymized.", File());
+
+        // A note reworded goes with its earlier words, and one removed with all of them: the file keeps every revision.
+        InvestigationWorkspace.EditNote(workspace, note.NoteId, "the retry storm", Now);
+        Assert.EndsWith("and 3 notes. Names, notes and translated endpoints are copied as they were written, never "
+            + "pseudonymized. A reworded or removed note goes with every wording it had.", File(), StringComparison.Ordinal);
+        InvestigationWorkspace.RemoveNote(workspace, note.NoteId, Now);
+        Assert.EndsWith("and 3 notes. Names, notes and translated endpoints are copied as they were written, never "
+            + "pseudonymized. A reworded or removed note goes with every wording it had.", File(), StringComparison.Ordinal);
+
+        // What it says is what goes: the package's file holds each of them as the investigation's does.
+        InvestigationWorkspaceFile source = InvestigationWorkspace.Read(workspace);
+        InvestigationWorkspaceFile packaged = InvestigationWorkspace.Read(
+            InvestigationPackage.Create(workspace, Path.Combine(root, "out", "package")).WorkspacePath);
+        Assert.Equal(source.HostEquivalences, packaged.HostEquivalences);
+        Assert.Equal(source.AddressTranslations, packaged.AddressTranslations);
+        Assert.Equal(source.Views, packaged.Views);
+        Assert.Equivalent(source.Layouts, packaged.Layouts, strict: true);
+        Assert.Equal(source.Panes, packaged.Panes);
+        Assert.Equal(["the retry storm starts at the second login", "the retry storm", null], packaged.Notes.Select(kept => kept.Text));
+    }
+
     [Fact(DisplayName = "§11.3: a package of redacted packages only is stated as pseudonymized, never unredacted")]
     public void APackageOfRedactedPackagesIsNeverCalledUnredacted()
     {
@@ -210,10 +258,14 @@ public sealed class InvestigationPackageTests : IDisposable
         _ = RedactedSessionPackage.Create(alpha, redacted, DateTimeOffset.UnixEpoch);
         InvestigationWorkspace.Add(workspace, redacted, Now);
 
+        // A person's words on it are their own, which no redaction of its sessions reaches, and it says so.
+        InvestigationWorkspace.AddNote(workspace, "10.1.2.3 is the finance laptop", null, Now);
         InvestigationPackagePreview preview = InvestigationPackage.Preview(workspace);
         Assert.False(preview.Unredacted);
         IReadOnlyList<string> said = InvestigationPackage.Disclosure(preview, CultureInfo.InvariantCulture);
         Assert.Contains(OriginalEvidencePackage.RedactedContents, said);
+        Assert.Contains("The investigation's file goes with them, holding each session's capture, host and clock identities and "
+            + "one note. Notes are copied as they were written, never pseudonymized.", said);
         Assert.Equal(RedactedSessionPackage.Warning, said[^1]);
         Assert.DoesNotContain(said, paragraph => paragraph.Contains("Unredacted", StringComparison.OrdinalIgnoreCase));
 
