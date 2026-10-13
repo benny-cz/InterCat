@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Avalonia.Controls;
+using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Interactivity;
 using Avalonia.LogicalTree;
@@ -154,6 +155,39 @@ public sealed class ChosenPathFlowTests : IDisposable
         choices.Answer(demo.ServerSession);
         Click(window, "OpenSavedSessionButton");
         await Until(() => status.Text == "Saved session open");
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Ctrl+O opens a saved session as Open saved session does, and waits with it while a capture runs")]
+    public async Task CtrlOOpensASavedSession()
+    {
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
+        var window = new MainWindow { Width = 1_280, Height = 800 };
+        var choices = new AnsweredChoices(window);
+        window.Choices = choices;
+        window.Show();
+        Dispatcher.UIThread.RunJobs();
+        TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
+        Button open = window.GetControl<Button>("OpenSavedSessionButton");
+        Assert.Equal(("Open saved session", "Open an existing InterCat session (Ctrl+O)", "Ctrl+O"),
+            (open.Content, ToolTip.GetTip(open), Avalonia.Automation.AutomationProperties.GetAcceleratorKey(open)));
+        Assert.Contains(WindowKeys.All, key => (key.Where, key.Keys, key.Does)
+            == ("Anywhere", "Ctrl+O", "open a saved session, as Open saved session does"));
+
+        // While a capture runs, Open saved session waits hidden, and so does its key.
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording."));
+        Dispatcher.UIThread.RunJobs();
+        window.KeyPressQwerty(Avalonia.Input.PhysicalKey.O, Avalonia.Input.RawInputModifiers.Control);
+        Dispatcher.UIThread.RunJobs();
+        Assert.Equal(0, choices.Asked);
+
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Explore did not start", "Declined."));
+        Dispatcher.UIThread.RunJobs();
+        choices.Answer(demo.ServerSession);
+        window.KeyPressQwerty(Avalonia.Input.PhysicalKey.O, Avalonia.Input.RawInputModifiers.Control);
+        await Until(() => status.Text == "Saved session open");
+        Assert.Equal(1, choices.Asked);
+        Assert.Equal("Open an InterCat session directory", choices.Folders[0].Title);
         window.Close();
     }
 

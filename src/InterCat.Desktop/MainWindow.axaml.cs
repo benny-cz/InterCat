@@ -524,6 +524,15 @@ public sealed partial class MainWindow : Window, IDisposable
                 ExportView();
                 e.Handled = true;
                 break;
+            case Key.O when e.KeyModifiers.HasFlag(KeyModifiers.Control):
+                // As Open saved session does, while it is offered: a capture under way hides it until the capture ends.
+                if (OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
+                {
+                    OpenSavedSession(OpenSavedSessionButton, new RoutedEventArgs());
+                }
+
+                e.Handled = true;
+                break;
             case Key.T:
                 viewModel.ShowTables = !viewModel.ShowTables;
                 e.Handled = true;

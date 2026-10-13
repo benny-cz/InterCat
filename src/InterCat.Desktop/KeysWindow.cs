@@ -61,6 +61,7 @@ internal static class WindowKeys
         new("Anywhere", "Delete", "remove the chosen filter"),
         new("Anywhere", "Ctrl+E", "export the view shown"),
         new("Anywhere", "Ctrl+R", "start the capture chosen, as Start exploring does"),
+        new("Anywhere", "Ctrl+O", "open a saved session, as Open saved session does"),
         new("Anywhere", "F", "pause the live view, or follow it again"),
         new("Anywhere", "F5", "show the newest view the capture published, which a paused view or records being read "
             + "hold back"),
