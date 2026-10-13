@@ -110,4 +110,78 @@ public sealed class ApplicationSettingsTests : IDisposable
             StringComparison.Ordinal);
         Assert.Equal(Newer, File.ReadAllText(SettingsPath));
     }
+
+    [Fact(DisplayName = "§26.3: where the window closed is kept beside the theme and every other key, and read back")]
+    public void WhereTheWindowClosedIsKept()
+    {
+        var store = new ApplicationSettingsStore(SettingsPath);
+        Assert.Null(store.Load().Placement);
+        var placement = new WindowPlacement(-1_200, 40, 1_366.5, 768, Maximized: true);
+
+        Assert.True(store.SavePlacement(placement));
+        JsonObject written = Assert.IsType<JsonObject>(JsonNode.Parse(File.ReadAllText(SettingsPath)));
+        Assert.Equal("app-settings-v1", (string?)written["contract"]);
+        Assert.Equal(-1_200, (int?)written["window"]!["x"]);
+        Assert.Equal(1_366.5, (double?)written["window"]!["width"]);
+        Assert.Equal(true, (bool?)written["window"]!["maximized"]);
+        ApplicationSettings loaded = new ApplicationSettingsStore(SettingsPath).Load();
+        Assert.Equal(placement, loaded.Placement);
+        Assert.Empty(loaded.Notices);
+
+        // A theme chosen keeps the window's place, and a place kept keeps the theme and a key this build does not know.
+        Assert.Equal(placement, store.SaveTheme(ThemeMode.Light).Placement);
+        written = Assert.IsType<JsonObject>(JsonNode.Parse(File.ReadAllText(SettingsPath)));
+        written["units"] = "binary";
+        File.WriteAllText(SettingsPath, written.ToJsonString());
+        Assert.True(store.SavePlacement(placement with { X = 80, Maximized = false }));
+        loaded = store.Load();
+        Assert.Equal((ThemeMode.Light, placement with { X = 80, Maximized = false }), (loaded.Theme, loaded.Placement));
+        Assert.Equal("binary", (string?)JsonNode.Parse(File.ReadAllText(SettingsPath))!["units"]);
+        Assert.Empty(Directory.GetFiles(directory, "*.tmp"));
+    }
+
+    [Theory(DisplayName = "§26.3: a window's place the file states in a way this build does not read is reported, and the window opens where the system places it")]
+    [InlineData("\"left\"")]
+    [InlineData("{ \"x\": 10, \"y\": 20, \"width\": 800, \"height\": 600 }")]
+    [InlineData("{ \"x\": 10.5, \"y\": 20, \"width\": 800, \"height\": 600, \"maximized\": false }")]
+    [InlineData("{ \"x\": 10, \"y\": \"20\", \"width\": 800, \"height\": 600, \"maximized\": false }")]
+    [InlineData("{ \"x\": 10, \"y\": 20, \"width\": 0, \"height\": 600, \"maximized\": false }")]
+    [InlineData("{ \"x\": 10, \"y\": 20, \"width\": 800, \"height\": -1, \"maximized\": false }")]
+    [InlineData("{ \"x\": 10, \"y\": 20, \"width\": 800, \"height\": 600, \"maximized\": \"no\" }")]
+    [InlineData("{ \"x\": 10, \"y\": 20, \"width\": 800, \"height\": 600, \"maximized\": false, \"monitor\": 2 }")]
+    public void AWindowPlaceNotReadIsReported(string window)
+    {
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(SettingsPath,
+            $$"""{ "contract": "app-settings-v1", "themeMode": "dark", "window": {{window}} }""");
+        var store = new ApplicationSettingsStore(SettingsPath);
+
+        ApplicationSettings loaded = store.Load();
+        Assert.Null(loaded.Placement);
+        Assert.Equal(ThemeMode.Dark, loaded.Theme);
+        Assert.StartsWith("The window's place ", Assert.Single(loaded.Notices), StringComparison.Ordinal);
+
+        // Written again as the window closes, the theme beside it kept.
+        var closedAt = new WindowPlacement(10, 20, 800, 600, Maximized: false);
+        Assert.True(store.SavePlacement(closedAt));
+        ApplicationSettings rewritten = store.Load();
+        Assert.Equal((ThemeMode.Dark, closedAt), (rewritten.Theme, rewritten.Placement));
+        Assert.Empty(rewritten.Notices);
+    }
+
+    [Fact(DisplayName = "§26.3: where the window closed is never written over a settings file that cannot be read, nor one another version wrote")]
+    public void WhereTheWindowClosedLeavesOthersFilesAlone()
+    {
+        Directory.CreateDirectory(directory);
+        var store = new ApplicationSettingsStore(SettingsPath);
+        var placement = new WindowPlacement(10, 20, 1_200, 800, Maximized: false);
+        string[] files = ["{ \"themeMode\": \"dark\", ", """{ "contract": "app-settings-v2", "layout": "wide" }"""];
+        foreach (string file in files)
+        {
+            File.WriteAllText(SettingsPath, file);
+            Assert.False(store.SavePlacement(placement));
+            Assert.Equal(file, File.ReadAllText(SettingsPath));
+            Assert.Single(Directory.GetFiles(directory));
+        }
+    }
 }

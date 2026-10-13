@@ -14,7 +14,18 @@ namespace InterCat.Desktop.Settings;
 public sealed record ApplicationSettings(ThemeMode? Theme, IReadOnlyList<string> Notices)
 {
     public static ApplicationSettings Default { get; } = new(null, []);
+
+    /// <summary>Where InterCat's window stood when it last closed; null where the file says nothing it reads.</summary>
+    public WindowPlacement? Placement { get; init; }
 }
+
+/// <summary>Where InterCat's window stood when it closed: its bounds while neither maximized nor minimized.</summary>
+/// <param name="X">Its left edge, in the screen's pixels.</param>
+/// <param name="Y">Its top edge, in the screen's pixels.</param>
+/// <param name="Width">Its width, in device-independent pixels, as its layout reads it.</param>
+/// <param name="Height">Its height, in device-independent pixels.</param>
+/// <param name="Maximized">Whether it filled its screen; it returns to the bounds when it no longer does.</param>
+public sealed record WindowPlacement(int X, int Y, double Width, double Height, bool Maximized);
 
 /// <summary>
 /// Reads and writes the application settings file. It is documented, versioned and hand-editable: a key this build does
@@ -29,6 +40,7 @@ public sealed class ApplicationSettingsStore
     private const long MaximumBytes = 1024 * 1024;
     private const string ContractKey = "contract";
     private const string ThemeKey = "themeMode";
+    private const string WindowKey = "window";
     private static readonly JsonSerializerOptions Written = new() { WriteIndented = true };
 
     public ApplicationSettingsStore(string path)
@@ -79,15 +91,26 @@ public sealed class ApplicationSettingsStore
             }
         }
 
+        WindowPlacement? placement = null;
+        if (settings[WindowKey] is { } window)
+        {
+            placement = PlacementFrom(window);
+            if (placement is null)
+            {
+                notices.Add($"The window's place {window.ToJsonString()} is not one this InterCat reads, so the window "
+                    + "opens where the system places it; it is written again as the window closes.");
+            }
+        }
+
         foreach ((string key, JsonNode? _) in settings)
         {
-            if (key is not (ContractKey or ThemeKey))
+            if (key is not (ContractKey or ThemeKey or WindowKey))
             {
                 notices.Add($"The setting \"{key}\" is not one this InterCat knows; it is kept as written.");
             }
         }
 
-        return new(theme, notices);
+        return new(theme, notices) { Placement = placement };
     }
 
     /// <summary>
@@ -113,12 +136,58 @@ public sealed class ApplicationSettingsStore
         settings ??= [];
         settings[ContractKey] = ContractName;
         settings[ThemeKey] = NameOf(theme);
+        Write(settings);
+        return Load();
+    }
+
+    /// <summary>
+    /// Records where InterCat's window closed, keeping every other key the file holds. Unlike a choice made in the
+    /// settings menu, it is never written over a file that could not be read, nor one another version wrote: those stay
+    /// as the user left them, and the window opens where the system places it. False when nothing was written.
+    /// </summary>
+    public bool SavePlacement(WindowPlacement placement)
+    {
+        ArgumentNullException.ThrowIfNull(placement);
+        (JsonObject? settings, string? problem) = Read();
+        bool otherVersion = settings is not null && Contract(settings) is { } contract && contract != ContractName;
+        if (problem is not null || otherVersion)
+        {
+            return false;
+        }
+
+        settings ??= [];
+        settings[ContractKey] = ContractName;
+        settings[WindowKey] = new JsonObject
+        {
+            ["x"] = placement.X,
+            ["y"] = placement.Y,
+            ["width"] = placement.Width,
+            ["height"] = placement.Height,
+            ["maximized"] = placement.Maximized,
+        };
+        Write(settings);
+        return true;
+    }
+
+    /// <summary>Writes the settings through a staged copy and a replacing move: no reader sees half of them.</summary>
+    private void Write(JsonObject settings)
+    {
         _ = Directory.CreateDirectory(System.IO.Path.GetDirectoryName(FilePath)!);
         string staged = FilePath + ".tmp";
         File.WriteAllText(staged, settings.ToJsonString(Written));
         File.Move(staged, FilePath, overwrite: true);
-        return Load();
     }
+
+    /// <summary>A window's place as the file states it: whole pixels for its edges, a positive size, a flag.</summary>
+    private static WindowPlacement? PlacementFrom(JsonNode node) =>
+        node is JsonObject { Count: 5 } window
+        && window["x"] is JsonValue x && x.TryGetValue(out int left)
+        && window["y"] is JsonValue y && y.TryGetValue(out int top)
+        && window["width"] is JsonValue w && w.TryGetValue(out double width) && double.IsFinite(width) && width > 0
+        && window["height"] is JsonValue h && h.TryGetValue(out double height) && double.IsFinite(height) && height > 0
+        && window["maximized"] is JsonValue m && m.TryGetValue(out bool maximized)
+            ? new WindowPlacement(left, top, width, height, maximized)
+            : null;
 
     /// <summary>Every theme the file can name, "system" first.</summary>
     public static IReadOnlyList<string> ThemeNames { get; } =

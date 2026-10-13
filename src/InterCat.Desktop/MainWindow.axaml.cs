@@ -211,6 +211,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     // The application's settings (§26.3): where they are kept, when a file is in use, and what reading it found.
     private ApplicationSettingsStore? settingsStore;
+
+    // Where the window stood when it last closed, as the settings file holds it, and where it stands while neither
+    // maximized nor minimized, which it keeps as it closes (§26.3).
+    private WindowPlacement? keptPlacement;
+    private PixelPoint normalPosition;
+    private Size normalSize;
     private ApplicationSettings settings = ApplicationSettings.Default;
     private string? settingsProblem;
     private string? appliedDetail;
@@ -347,7 +353,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             FollowRailWidth(change.NewSize.Width);
             KeepMainPanesWidth(change.NewSize.Width);
+            KeepNormalBounds();
         };
+        PositionChanged += (_, _) => KeepNormalBounds();
         RailGrid.SizeChanged += (_, _) => FitRailActions();
         RankedTableHeader.SizeChanged += (_, _) => FitRailActions();
         UpdateThemeMenu();
@@ -362,6 +370,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Closed += (_, _) =>
         {
             closed = true;
+            KeepPlacement();
 
             // An investigation opens its sessions here, so none outlives the window that shows them.
             foreach (InvestigationWindow shown in investigations.ToArray())
@@ -2102,7 +2111,55 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         settingsStore = store;
         settings = loaded;
         settingsProblem = null;
+        keptPlacement = loaded.Placement;
+        if (loaded.Placement is { } placement) Place(placement);
         UpdateThemeMenu();
+    }
+
+    /// <summary>
+    /// Opens the window where it last closed and as large, maximized if it was, when a screen still shows its title
+    /// bar (§26.3); else where the system opens a window, maximized if it was.
+    /// </summary>
+    private void Place(WindowPlacement kept)
+    {
+        IEnumerable<(PixelRect, double)> screens = Screens.All.Select(screen => (screen.WorkingArea, screen.Scaling));
+        if (WindowPlacing.Restore(kept, screens, new Size(MinWidth, MinHeight)) is ({ } position, { } size))
+        {
+            WindowStartupLocation = WindowStartupLocation.Manual;
+            Position = normalPosition = position;
+            (Width, Height) = (size.Width, size.Height);
+            normalSize = size;
+        }
+
+        if (kept.Maximized) WindowState = WindowState.Maximized;
+    }
+
+    /// <summary>Notes where the window stands while neither maximized nor minimized, to keep as it closes.</summary>
+    private void KeepNormalBounds()
+    {
+        if (WindowState != WindowState.Normal) return;
+        normalPosition = Position;
+        normalSize = ClientSize;
+    }
+
+    /// <summary>
+    /// Keeps where the window closed in the settings file, so it opens there next time (§26.3), unless that is where
+    /// the file already places it. A file that cannot be written leaves it to open where the system places it.
+    /// </summary>
+    private void KeepPlacement()
+    {
+        if (settingsStore is not { } store || normalSize.Width <= 0 || normalSize.Height <= 0) return;
+        var placement = new WindowPlacement(normalPosition.X, normalPosition.Y, normalSize.Width, normalSize.Height,
+            WindowState == WindowState.Maximized);
+        if (placement == keptPlacement) return;
+        try
+        {
+            if (store.SavePlacement(placement)) keptPlacement = placement;
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+        {
+            // Where the window stood is a convenience: without it, the window opens where the system places it.
+        }
     }
 
     /// <summary>
