@@ -30,16 +30,16 @@ public sealed class KeysSheetTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
         Dispatch();
 
-        // F6 gives the ranked table the keyboard on its first row, which nothing has chosen yet; F1 opens the sheet, whose
-        // list has the keyboard on its first row.
+        // The session shown gives the ranked table the keyboard on its first row, which nothing has chosen yet; F1 opens the
+        // sheet, whose list has the keyboard on its first row.
         ListBox rail = window.GetControl<ListBox>("RungList");
-        Press(window, PhysicalKey.F6);
         Control row = Assert.IsAssignableFrom<Control>(window.FocusManager?.GetFocusedElement());
         Assert.True(rail.IsVisualAncestorOf(row), Focused(window));
         Assert.Null(workspace.SelectedRung);
@@ -138,7 +138,8 @@ public sealed class KeysSheetTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
+            Overview: SessionOverviewProjector.Project(session.Store)));
         Dispatch();
         Button button = window.GetControl<Button>("KeysButton");
         Assert.True(button.IsEffectivelyVisible);
@@ -186,10 +187,6 @@ public sealed class KeysSheetTests
             Control control => $"{control.GetType().Name} {control.Name} ({control.DataContext?.GetType().Name})",
             var other => other.ToString(),
         });
-
-    private static CaptureUiUpdate Update(TemporarySession session) => new(
-        CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
-        Overview: SessionOverviewProjector.Project(session.Store));
 
     /// <summary>client.exe sending server.exe a message a tick, over one paired connection.</summary>
     private static ObservationRowV1[] Rows() =>

@@ -32,7 +32,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -42,8 +43,8 @@ public sealed class KeyboardWorkflowTests
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         Border inspector = window.GetControl<Border>("Inspector");
 
-        // F6 gives the ranked table the keyboard, on its first row: Enter opens client.exe's group, and Enter its process.
-        Press(window, PhysicalKey.F6);
+        // The session shown gives the ranked table the keyboard, on its first row: Enter opens client.exe's group, and Enter
+        // its process.
         Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
         Press(window, PhysicalKey.Enter);
         Assert.Equal("L1 · GROUP", workspace.LevelBadge);
@@ -120,7 +121,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -136,7 +138,9 @@ public sealed class KeyboardWorkflowTests
                 ControlAutomationPeer.CreatePeerForElement(surface).GetHelpText(), StringComparison.Ordinal);
         }
 
-        // Shift+F6 from nowhere goes to the last pane, the inspector; F6 from it goes round to the ranked table.
+        // Shift+F6 from the ranked table, which has the keyboard once the session is shown, goes round to the last pane, the
+        // inspector; F6 from it goes round to the ranked table.
+        Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin, Focused(window));
         Press(window, PhysicalKey.F6, RawInputModifiers.Shift);
         Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
         Press(window, PhysicalKey.F6);
@@ -186,7 +190,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -197,7 +202,6 @@ public sealed class KeyboardWorkflowTests
         RungRow group = workspace.RungRows[0];
         workspace.SelectedRung = group;
         Press(window, PhysicalKey.T);
-        Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.F6);
         ListBox intervals = window.GetControl<ListBox>("IntervalList");
@@ -271,7 +275,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -280,7 +285,6 @@ public sealed class KeyboardWorkflowTests
 
         // client.exe's process is opened, ] chooses its first moment with records, and F6 reaches the records the inspector
         // lists for that cell: E there lists them, and E's table has the keyboard rather than nothing.
-        Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.Enter);
         Press(window, PhysicalKey.Enter);
         Assert.Equal("L2 · PROCESS", workspace.LevelBadge);
@@ -328,7 +332,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -336,7 +341,6 @@ public sealed class KeyboardWorkflowTests
         ListBox rail = window.GetControl<ListBox>("RungList");
 
         // E lists the session's records, its table holding the keyboard, and Down chooses the second.
-        Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.E);
         Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
         await workspace.EvidenceReady;
@@ -380,7 +384,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -393,8 +398,7 @@ public sealed class KeyboardWorkflowTests
             if (changed.Property == AutomationElementIdentifiers.NameProperty) said.Add(changed.NewValue as string);
         };
 
-        // F6 twice gives the graph the keyboard; with nothing chosen it says its own name.
-        Press(window, PhysicalKey.F6);
+        // F6 from the ranked table gives the graph the keyboard; with nothing chosen it says its own name.
         Press(window, PhysicalKey.F6);
         Assert.True(graph.IsKeyboardFocusWithin, Focused(window));
         Assert.Equal("Communication graph", peer.GetName());
@@ -427,7 +431,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -440,8 +445,8 @@ public sealed class KeyboardWorkflowTests
             if (changed.Property == AutomationElementIdentifiers.NameProperty) said.Add(changed.NewValue as string);
         };
 
-        // client.exe's process is opened, and F6 twice gives the timeline the keyboard, which says its own name.
-        Press(window, PhysicalKey.F6);
+        // client.exe's process is opened from the ranked table, and F6 twice gives the timeline the keyboard, which says its
+        // own name.
         Press(window, PhysicalKey.Enter);
         Press(window, PhysicalKey.Enter);
         await workspace.TimelineDetailReady;
@@ -493,7 +498,8 @@ public sealed class KeyboardWorkflowTests
         Publish(session.Store, Rows());
         var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
-        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
         Dispatch();
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         await workspace.LayoutReady;
@@ -504,7 +510,6 @@ public sealed class KeyboardWorkflowTests
         workspace.SelectInterval(new TimeRange(3, 5));
         await workspace.IntervalReady;
         Dispatch();
-        Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.F6);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
@@ -541,10 +546,6 @@ public sealed class KeyboardWorkflowTests
             Control control => $"{control.GetType().Name} {control.Name} ({control.DataContext?.GetType().Name})",
             var other => other.ToString(),
         });
-
-    private static CaptureUiUpdate Update(TemporarySession session) => new(
-        CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
-        Overview: SessionOverviewProjector.Project(session.Store));
 
     /// <summary>
     /// client.exe, sending three datagrams to a resolver as it starts and three more a moment later, then to server.exe over

@@ -127,6 +127,9 @@ public sealed partial class MainWindow : Window, IDisposable
 
     // The control that last had the keyboard in each pane F6 visits, which it gives the keyboard back to (FocusPane).
     private readonly Dictionary<Control, InputElement> paneKeyboard = [];
+
+    // The control of the window that last had the keyboard, which gets it back once it can take it again (KeepKeyboard).
+    private InputElement? lastKeyboard;
     private bool closingPrompt;
     private bool closeAfterCapture;
 
@@ -287,6 +290,9 @@ public sealed partial class MainWindow : Window, IDisposable
         AddHandler(GotFocusEvent, FollowKeyboardOwner, RoutingStrategies.Bubble, handledEventsToo: true);
 
         Opened += (_, _) => StartExploringButton.Focus();
+        // Back from a window or a dialog that took the keyboard from a control since hidden or disabled, it is not left on
+        // nothing here.
+        Activated += (_, _) => KeepKeyboard();
         SizeChanged += (_, change) =>
         {
             FollowRailWidth(change.NewSize.Width);
@@ -738,6 +744,41 @@ public sealed partial class MainWindow : Window, IDisposable
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
     /// <summary>
+    /// Gives the keyboard, when nothing has it, to what the window offers now: back to the ranked table when it had it
+    /// last; else Stop while a capture records; else the ranked table once a session is shown; else the control that last
+    /// had it, where it can take it again; else Start exploring. Start exploring hides once a capture starts, Stop waits
+    /// disabled once pressed and hides once the session is saved, and the buttons that open a session wait disabled while
+    /// it opens, so each left the keyboard on nothing, and Enter and the arrows did nothing until Tab or F6 found a
+    /// control. Never while another window or a dialog is the one in use, and never from a control that has the keyboard.
+    /// Posted, once what changed is laid out.
+    /// </summary>
+    private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (closed || !IsActive || FocusManager?.GetFocusedElement() is { } focused && !ReferenceEquals(focused, this)) return;
+        if (railOwnsKeyboard && !workspace.IsEmptyWorkspace)
+        {
+            KeepRailKeyboard();
+        }
+        else if (StopCaptureButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
+        {
+            StopCaptureButton.Focus(NavigationMethod.Tab);
+        }
+        else if (!workspace.IsEmptyWorkspace)
+        {
+            FocusRail();
+        }
+        else if (lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
+            && this.IsVisualAncestorOf(last) && last.Focus(NavigationMethod.Tab))
+        {
+            // A session that did not open, or the demo's investigation closed, gives back the control that asked for it.
+        }
+        else if (StartExploringButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
+        {
+            StartExploringButton.Focus(NavigationMethod.Tab);
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
     /// Follows who owns the keyboard as far as the user is concerned: the ranked table does once focus moves into it, and
     /// stops only when focus moves to another control. A row rebuilt away under the focus, which leaves focus nowhere or on
     /// the window itself, does not take the keyboard from the table.
@@ -745,6 +786,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void FollowKeyboardOwner(object? sender, GotFocusEventArgs focus)
     {
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
+        lastKeyboard = target as InputElement;
         railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
             || ReferenceEquals(target, EmptyEvidenceButton) || ReferenceEquals(target, EmptyReasonCard);
 
@@ -1311,6 +1353,7 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         StopCaptureButton.IsEnabled = false;
         captureStop?.Cancel();
+        KeepKeyboard();
     }
 
     private async void OpenSavedSession(object? sender, RoutedEventArgs eventArgs)
@@ -1780,6 +1823,7 @@ public sealed partial class MainWindow : Window, IDisposable
                 StartExploringButton.IsEnabled = true;
                 OpenSavedSessionButton.IsEnabled = true;
                 UpdateEvidenceAction();
+                KeepKeyboard();
             }
         }
     }
@@ -2890,6 +2934,7 @@ public sealed partial class MainWindow : Window, IDisposable
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
             && captureStop?.IsCancellationRequested != true;
+        KeepKeyboard();
         FollowButton.IsVisible = IsLive;
         liveHealth = IsLive ? update.LiveHealth : null;
         livePreview = update.Phase == CaptureUiPhase.Recording ? update.LivePreview : null;
