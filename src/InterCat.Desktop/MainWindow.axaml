@@ -383,7 +383,8 @@
             </Grid>
             <TextBlock x:Name="CaptureKeepNote" Classes="muted" FontSize="11" TextWrapping="Wrap" IsVisible="False"
                        AutomationProperties.Name="What the chosen capture keeps" />
-            <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px whole. -->
+            <!-- The card's buttons are a size smaller, so "Retry exploring (Ctrl+R)" fits the rail's 250 px on one line;
+                 at its narrowest the words wrap. -->
             <Button x:Name="StartExploringButton" Content="Start exploring (Ctrl+R)" FontSize="13" Classes="primary"
                     Click="StartExploring" AutomationProperties.HelpText="Start the default Explore capture" />
             <!-- An unavailable capture must be explained beside the action that failed, not after the other controls. -->

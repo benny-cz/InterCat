@@ -82,6 +82,73 @@ public sealed class LegibleTextTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: at either rail width no capture phase cuts off its card's words, the primary action's wrapping at the narrowest, however long a process's name")]
+    public async Task NoCapturePhaseCutsOffText()
+    {
+        const string client = @"C:\Program Files\Contoso Enterprise Telemetry Platform\Long Running Services\Diagnostics\bin\x64\"
+            + "contoso-enterprise-telemetry-collector-service-host-with-a-very-long-name.exe";
+        const string server = @"C:\Program Files (x86)\Fabrikam Industrial Automation Suite\Plant Floor Gateway\Runtime\"
+            + "fabrikam-plant-floor-gateway-runtime-message-broker-service.exe";
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Inventory, 100, 1) with { ResourceName = client, SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Inventory, 200, 2) with { ResourceName = server, SessionRelativeTicks = 200 },
+            .. Enumerable.Range(0, 40).SelectMany(index => new[]
+            {
+                Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(100 + (2 * index)))
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = (10 + (2 * index)) * 100L },
+                Transfer(11 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, (ulong)(101 + (2 * index)))
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = (11 + (2 * index)) * 100L },
+            }),
+        ]);
+
+        var cut = new List<string>();
+        foreach (bool narrowRail in new[] { false, true })
+        {
+            var window = new MainWindow { Width = 1080, Height = 700 };
+            window.Show();
+            if (narrowRail)
+            {
+                ColumnDefinition column = window.GetControl<Grid>("WindowGrid").ColumnDefinitions[0];
+                column.Width = new GridLength(column.MinWidth);
+            }
+
+            // Before a capture, once one could not start, while one starts, records and stops, and with its session saved.
+            string rail = narrowRail ? "narrowest rail" : "rail as it opens";
+            cut.AddRange(CutOff(window, $"{rail}, before a capture"));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Explore could not start", "The broker is not installed."));
+            cut.AddRange(CutOff(window, $"{rail}, unavailable"));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Starting, "Starting Explore", "Asking the broker to record."));
+            cut.AddRange(CutOff(window, $"{rail}, starting"));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            cut.AddRange(CutOff(window, $"{rail}, recording"));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Finishing, "Stopping", "Saving what was recorded."));
+            cut.AddRange(CutOff(window, $"{rail}, stopping"));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved", "The session is saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)));
+            cut.AddRange(CutOff(window, $"{rail}, saved"));
+
+            // The long names are said whole, or end in an ellipsis their tooltips complete, chosen and down every rung.
+            ProcessNode chosen = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+            workspace.SelectedProcess = chosen;
+            cut.AddRange(CutOff(window, $"{rail}, saved, a long name chosen"));
+            foreach (string key in new[] { chosen.GroupKey, chosen.Id.ToString(), workspace.Snapshot.Channels.Single().Key })
+            {
+                workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+                Assert.True(workspace.Descend());
+                cut.AddRange(CutOff(window, $"{rail}, saved, {workspace.LevelBadge}"));
+            }
+
+            window.Close();
+        }
+
+        Assert.True(cut.Count == 0, string.Join(Environment.NewLine, cut));
+    }
+
     [AvaloniaFact(DisplayName = "§6.8: the content, record and channel windows cut off no text at their minimum size, however long a name")]
     public async Task NoSecondaryWindowCutsOffText()
     {
