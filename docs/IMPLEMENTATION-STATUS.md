@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 488 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 489 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -90,6 +90,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 489 — the Align dialog's fields are named by the words beside them (R15, WCAG 2.5.3):**
+  - Its eight boxes were named by sentences of their own that left out the captions a person sees - "How sure the
+    instant is, as a duration with its unit" beside "within". Each is labelled by its caption, which a screen
+    reader says as its name, and its hint is its help text; the session choice is "Session to align to".
+  - Tests find the boxes as a screen reader names them, by their captions.
+  - Debug and Release each ran 2,073 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 3
+    mutations: a box not labelled by its caption, its hint not its help, and a box named by a sentence of its own again.
 
 - **Revision 488 — a view's disclosure, and an export's first caveat, say what the evidence holds (R18):**
   - The disclosure beneath the inspector, which every export repeats as its first caveat, ended with the window's

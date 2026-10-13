@@ -190,7 +190,7 @@ public sealed class DialogKeyboardTests
 
             // Tab goes on to the first instant it asks for; Enter there with the instants unwritten says what is missing,
             // and aligns nothing.
-            TextBox at = Named<TextBox>(dialog, "The instant in this session, in seconds");
+            TextBox at = Field(dialog, "Its instant (");
             Press(dialog, PhysicalKey.Tab);
             Assert.True(at.IsFocused);
             Press(dialog, PhysicalKey.Enter);
@@ -200,7 +200,7 @@ public sealed class DialogKeyboardTests
 
             // Written, Enter in a field aligns, and the dialog closes as Align closes it.
             at.Text = "2";
-            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "5";
+            Field(dialog, "is the reference's instant, in seconds").Text = "5";
             Press(dialog, PhysicalKey.Enter);
             WaitFor(() => aligned.IsCompleted);
             Assert.True(await aligned);
@@ -394,6 +394,11 @@ public sealed class DialogKeyboardTests
         store.ReleaseSegmentReaders();
         return directory;
     }
+
+    /// <summary>The field shown, as a screen reader names it by the words beside it, whose caption begins so.</summary>
+    private static TextBox Field(Window window, string caption) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsEffectivelyVisible
+            && ControlAutomationPeer.CreatePeerForElement(box).GetName().StartsWith(caption, StringComparison.Ordinal));
 
     private static T Named<T>(Window window, string name)
         where T : Control =>

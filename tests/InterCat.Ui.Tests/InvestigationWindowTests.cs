@@ -859,9 +859,9 @@ public sealed class InvestigationWindowTests
             Assert.Contains("records no clock calibration", Named<TextBlock>(dialog, "Alignment status").Text, StringComparison.Ordinal);
 
             dialog.Choose(WorkspaceAlignmentMode.Manual);
-            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "2";
-            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "5,5";
-            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = "20";
+            Field(dialog, "Its instant (").Text = "2";
+            Field(dialog, "is the reference's instant, in seconds").Text = "5,5";
+            Field(dialog, "The clocks drift at most (ppm)").Text = "20";
             Save(dialog, "investigation-align.png");
             Assert.True(await dialog.AlignAsync());
             InvestigationWorkspaceFile aligned = InvestigationWorkspace.Read(workspace);
@@ -906,16 +906,16 @@ public sealed class InvestigationWindowTests
             dialog.Show(window);
             dialog.Choose(WorkspaceAlignmentMode.Manual);
             CultureInfo culture = CultureInfo.CurrentCulture;
-            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "1";
-            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "3";
-            Named<TextBox>(dialog, "A second instant in this session, in seconds, to measure the clocks' rate; optional").Text = "11";
+            Field(dialog, "Its instant (").Text = "1";
+            Field(dialog, "is the reference's instant, in seconds").Text = "3";
+            Field(dialog, "A second instant of it, in seconds").Text = "11";
 
             // Half of a second instant is refused, in words; both measure the clocks' rate, and the drift bounds its wander.
             Assert.False(await dialog.AlignAsync());
             Assert.Equal("Write both second instants in seconds of their own session's time, or leave both empty.",
                 Named<TextBlock>(dialog, "Alignment status").Text);
-            Named<TextBox>(dialog, "The same second instant in the reference session, in seconds").Text = 13.0001m.ToString(culture);
-            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = 0.5m.ToString(culture);
+            Field(dialog, "is the reference's second, in seconds").Text = 13.0001m.ToString(culture);
+            Field(dialog, "The clocks drift at most (ppm)").Text = 0.5m.ToString(culture);
             Save(dialog, "investigation-align-two.png");
             Assert.True(await dialog.AlignAsync());
             WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
@@ -942,18 +942,21 @@ public sealed class InvestigationWindowTests
             Assert.Equal($"Now: {time}. Aligning it again replaces this; withdrawing it is in the investigation's window.", now.Text);
             string[] boxes =
             [
-                "The instant in this session, in seconds", "The same instant in the reference session, in seconds",
-                "A second instant in this session, in seconds, to measure the clocks' rate; optional",
-                "The same second instant in the reference session, in seconds", "How sure the instant is, as a duration with its unit",
-                "How fast the two clocks drift apart at most, in parts per million, if known",
+                "Its instant (", "is the reference's instant, in seconds", "A second instant of it, in seconds",
+                "is the reference's second, in seconds", "within", "The clocks drift at most (ppm)",
             ];
             Assert.Equal(["1", "3", "11", 13.0001m.ToString(culture), "1 ms", 0.5.ToString("R", culture)],
-                boxes.Select(name => Named<TextBox>(again, name).Text));
+                boxes.Select(caption => Field(again, caption).Text));
+
+            // A screen reader names each box by the words shown beside it, and says its hint after them.
+            TextBox within = Field(again, "within");
+            Assert.Equal(("within", "How sure you are that each pair is one instant."),
+                (ControlAutomationPeer.CreatePeerForElement(within).GetName(), AutomationProperties.GetHelpText(within)));
 
             // Each box keeps its own height beside a hint of several lines, the drift's beside the longest.
             Save(again, "investigation-align-again.png");
-            Assert.True(Named<TextBox>(again, boxes[^1]).IsEffectivelyVisible);
-            Assert.All(boxes, name => Assert.Equal(Named<TextBox>(again, boxes[0]).Bounds.Height, Named<TextBox>(again, name).Bounds.Height, 1));
+            Assert.True(Field(again, boxes[^1]).IsEffectivelyVisible);
+            Assert.All(boxes, caption => Assert.Equal(Field(again, boxes[0]).Bounds.Height, Field(again, caption).Bounds.Height, 1));
             Assert.True(await again.AlignAsync());
             WorkspaceAlignment restated = InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), b)!;
             Assert.Equal(made with { Revision = restated.Revision, RecordedUtc = restated.RecordedUtc }, restated);
@@ -989,11 +992,10 @@ public sealed class InvestigationWindowTests
                 Named<RadioButton>(dialog, "By one or two instants I read in both").IsChecked == true,
                 Named<RadioButton>(dialog, "By their boot: exact, when both captures recorded one boot").IsChecked == true));
             Assert.Equal(InvestigationInput.WriteDuration(aligned.SynchronizationNanoseconds!.Value, culture),
-                Named<TextBox>(dialog, "How closely the two wall clocks agreed, with its unit").Text);
+                Field(dialog, "The wall clocks agreed within").Text);
             Assert.Equal(InvestigationInput.WritePartsPerMillion(aligned.DriftPartsPerMillion!.Value, culture),
-                Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million").Text);
-            Assert.Equal(aligned.ReferenceSessionId, Assert.IsType<AlignmentReference>(Named<ComboBox>(dialog,
-                "The session to align to: the investigation's clock, or a session placed in it").SelectedItem).SessionId);
+                Field(dialog, "The clocks drift at most (ppm)").Text);
+            Assert.Equal(aligned.ReferenceSessionId, Assert.IsType<AlignmentReference>(Named<ComboBox>(dialog, "Session to align to").SelectedItem).SessionId);
             Assert.StartsWith("Now: Aligned by the wall clocks", Named<TextBlock>(dialog, "The alignment in force").Text, StringComparison.Ordinal);
             Save(dialog, "investigation-align-wall-clock.png");
 
@@ -1045,14 +1047,14 @@ public sealed class InvestigationWindowTests
             list.SelectedIndex = 2;
             InvestigationAlignWindow dialog = window.AlignDialogForSelected()!;
             dialog.Show(window);
-            ComboBox to = Named<ComboBox>(dialog, "The session to align to: the investigation's clock, or a session placed in it");
+            ComboBox to = Named<ComboBox>(dialog, "Session to align to");
             Assert.True(to.IsEnabled);
             Assert.Equal([a, b], ((IEnumerable<AlignmentReference>)to.ItemsSource!).Select(choice => choice.SessionId));
             to.SelectedIndex = 1;
             dialog.Choose(WorkspaceAlignmentMode.Manual);
-            Named<TextBox>(dialog, "The instant in this session, in seconds").Text = "0";
-            Named<TextBox>(dialog, "The same instant in the reference session, in seconds").Text = "1";
-            Named<TextBox>(dialog, "How fast the two clocks drift apart at most, in parts per million, if known").Text = "1";
+            Field(dialog, "Its instant (").Text = "0";
+            Field(dialog, "is the reference's instant, in seconds").Text = "1";
+            Field(dialog, "The clocks drift at most (ppm)").Text = "1";
             Assert.True(await dialog.AlignAsync());
             Assert.Equal(b, InvestigationWorkspace.ActiveAlignment(InvestigationWorkspace.Read(workspace), c)!.ReferenceSessionId);
 
@@ -1068,16 +1070,14 @@ public sealed class InvestigationWindowTests
             list.SelectedIndex = 2;
             InvestigationAlignWindow gammas = window.AlignDialogForSelected()!;
             gammas.Show(window);
-            Assert.Equal(b, Assert.IsType<AlignmentReference>(Named<ComboBox>(gammas,
-                "The session to align to: the investigation's clock, or a session placed in it").SelectedItem).SessionId);
+            Assert.Equal(b, Assert.IsType<AlignmentReference>(Named<ComboBox>(gammas, "Session to align to").SelectedItem).SessionId);
             gammas.Close();
 
             // Beta, which gamma is aligned through, may be aligned only to the investigation's clock now: never through gamma.
             list.SelectedIndex = 1;
             InvestigationAlignWindow betas = window.AlignDialogForSelected()!;
             betas.Show(window);
-            Assert.Equal([a], ((IEnumerable<AlignmentReference>)Named<ComboBox>(betas,
-                "The session to align to: the investigation's clock, or a session placed in it").ItemsSource!).Select(choice => choice.SessionId));
+            Assert.Equal([a], ((IEnumerable<AlignmentReference>)Named<ComboBox>(betas, "Session to align to").ItemsSource!).Select(choice => choice.SessionId));
             betas.Close();
             window.Close();
         }
@@ -2041,6 +2041,11 @@ public sealed class InvestigationWindowTests
     /// The one control of its kind named <paramref name="name"/>: given that name, or heard by it, as a button is by the
     /// label it shows.
     /// </summary>
+    /// <summary>The field shown, as a screen reader names it by the words beside it, whose caption begins so.</summary>
+    private static TextBox Field(Window window, string caption) =>
+        window.GetVisualDescendants().OfType<TextBox>().Single(box => box.IsEffectivelyVisible
+            && ControlAutomationPeer.CreatePeerForElement(box).GetName().StartsWith(caption, StringComparison.Ordinal));
+
     private static T Named<T>(Window window, string name)
         where T : Control =>
         window.GetVisualDescendants().OfType<T>()

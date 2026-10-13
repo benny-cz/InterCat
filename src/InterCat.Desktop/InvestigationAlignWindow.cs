@@ -66,19 +66,12 @@ internal sealed class InvestigationAlignWindow : Window
         reference.IsEnabled = references.Count > 1;
         byInstant.IsChecked = true;
         StartFrom(member, references);
-        AutomationProperties.SetName(reference, "The session to align to: the investigation's clock, or a session placed in it");
+        AutomationProperties.SetName(reference, "Session to align to");
+        AutomationProperties.SetHelpText(reference, "The investigation's clock, or a session placed in it");
         TrimmedChoices.Apply(reference);
         AutomationProperties.SetHelpText(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetHelpText(byWallClock, "Align by the two captures' wall clocks");
         AutomationProperties.SetHelpText(byInstant, "Align by one or two instants read in both sessions");
-        AutomationProperties.SetName(agreement, "How closely the two wall clocks agreed, with its unit");
-        AutomationProperties.SetName(wallDrift, "How fast the two clocks drift apart at most, in parts per million");
-        AutomationProperties.SetName(memberAt, "The instant in this session, in seconds");
-        AutomationProperties.SetName(referenceAt, "The same instant in the reference session, in seconds");
-        AutomationProperties.SetName(within, "How sure the instant is, as a duration with its unit");
-        AutomationProperties.SetName(instantDrift, "How fast the two clocks drift apart at most, in parts per million, if known");
-        AutomationProperties.SetName(secondMemberAt, "A second instant in this session, in seconds, to measure the clocks' rate; optional");
-        AutomationProperties.SetName(secondReferenceAt, "The same second instant in the reference session, in seconds");
         AutomationProperties.SetName(note, "A note about this alignment");
         AutomationProperties.SetName(status, "Alignment status");
         AutomationProperties.SetName(now, "The alignment in force");
@@ -328,6 +321,11 @@ internal sealed class InvestigationAlignWindow : Window
                 Classes = { "muted" },
             };
             box.Width = double.NaN;
+
+            // A screen reader says the box by the words beside it, and its hint after them, so a person who says what they
+            // see reaches it (WCAG 2.5.3): named by sentences of their own, the boxes left out their captions.
+            AutomationProperties.SetLabeledBy(box, caption);
+            AutomationProperties.SetHelpText(box, hint);
 
             // A box keeps its own height beside a hint of several lines, as every other box does.
             box.VerticalAlignment = VerticalAlignment.Center;
