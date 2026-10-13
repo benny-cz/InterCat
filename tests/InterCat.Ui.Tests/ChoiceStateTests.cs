@@ -93,6 +93,11 @@ public sealed class ChoiceStateTests
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         ListBox list = window.GetControl<ListBox>("RungList");
         Assert.Equal(3, workspace.RungRows.Count);
+
+        // These rows are chosen as a pointer chooses them. The view shown gives its ranked table the keyboard, whose row
+        // would draw its focus over the ring, so the keyboard is in the search box meanwhile.
+        Assert.True(window.GetControl<TextBox>("SearchBox").Focus());
+        Dispatch();
         int client = Row(workspace, "client");
         int server = Row(workspace, "server");
         int third = Row(workspace, "third");

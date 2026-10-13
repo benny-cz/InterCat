@@ -79,6 +79,8 @@ public sealed class CaptureKeyboardTests
         window.Show();
         try
         {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording."));
+            Dispatch();
             window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
             Dispatch();
@@ -104,6 +106,115 @@ public sealed class CaptureKeyboardTests
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
             Dispatch();
             Assert.True(search.IsFocused, Focused(window));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: a recording's new view rebuilding the inspector under the keyboard keeps it in the inspector, never on Stop")]
+    public async Task ARebuiltInspectorKeepsTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(0));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Dispatch();
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording."));
+            Dispatch();
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+
+            // From the ranked table the client's process is opened, a moment stepped to on the timeline, and its records
+            // read in the inspector.
+            ListBox rail = window.GetControl<ListBox>("RungList");
+            Assert.True(Assert.IsAssignableFrom<Control>(rail.ContainerFromIndex(0)).Focus(NavigationMethod.Tab));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            await workspace.TimelineDetailReady;
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+            await workspace.IntervalReady;
+            await workspace.CellRecordsReady;
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.F6, RawInputModifiers.None);
+            Dispatch();
+            Control inspector = window.GetControl<Control>("Inspector");
+            Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
+
+            // A newer generation rebuilds what the inspector lists: the keyboard stays in the inspector, and never on Stop,
+            // where the next Enter would stop the capture.
+            Publish(session.Store, Rows(100));
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
+            for (int wait = 0; wait < 10; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Assert.False(window.GetControl<Button>("StopCaptureButton").IsFocused, Focused(window));
+            Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Forward and Restore defaults, which go once pressed, give the ranked table the keyboard")]
+    public async Task ButtonsThatGoGiveTheRankedTableTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(0));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Dispatch();
+            Assert.True(await window.OpenSessionAsync(session.Path));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox rail = window.GetControl<ListBox>("RungList");
+
+            // Down a rung and back up: Forward goes once it has gone forward, and the rung's table has the keyboard.
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("L1 · GROUP", workspace.LevelBadge);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
+            Button forward = window.GetControl<Button>("ForwardButton");
+            Assert.True(forward.Focus(NavigationMethod.Tab));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("L1 · GROUP", workspace.LevelBadge);
+            Assert.False(forward.IsEffectivelyVisible);
+            Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+            // A setting changed offers Restore defaults, which goes once it has restored them.
+            workspace.PerSecond = true;
+            Dispatch();
+            Button restore = window.GetControl<Button>("RestoreDefaultsButton");
+            Assert.True(restore.Focus(NavigationMethod.Tab));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            for (int wait = 0; wait < 10 && restore.IsEffectivelyVisible; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Dispatch();
+            Assert.False(restore.IsEffectivelyVisible);
+            Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
         }
         finally
         {

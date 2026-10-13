@@ -244,6 +244,37 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: the card restated after its button waited disabled, as while a finish stops, gives that button the keyboard back")]
+    public async Task TheCardRestatedGivesItsButtonTheKeyboardBack()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await CrashedFollow(root.Path, unfinalized: false);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Dispatch();
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.True(finish.Focus(Avalonia.Input.NavigationMethod.Tab));
+
+            // The button waits disabled, as it does while a finish it started stops, and the keyboard goes with it; the card
+            // restated once the finish has stopped enables it again, with the keyboard.
+            finish.IsEnabled = false;
+            Dispatch();
+            Assert.False(finish.IsFocused);
+            await window.RefreshInterruptedOfferAsync();
+            Dispatch();
+            Assert.True(finish.IsEnabled);
+            Assert.True(finish.IsFocused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§3.1: a recheck that looked before the user forgot a capture does not bring its card back")]
     public async Task AStaleRecheckDoesNotBringAForgottenCardBack()
     {
