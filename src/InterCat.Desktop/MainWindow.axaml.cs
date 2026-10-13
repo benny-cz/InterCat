@@ -745,12 +745,13 @@ public sealed partial class MainWindow : Window, IDisposable
 
     /// <summary>
     /// Gives the keyboard, when nothing has it, to what the window offers now: back to the ranked table when it had it
-    /// last; else Stop while a capture records; else the ranked table once a session is shown; else the control that last
-    /// had it, where it can take it again; else Start exploring. Start exploring hides once a capture starts, Stop waits
-    /// disabled once pressed and hides once the session is saved, and the buttons that open a session wait disabled while
-    /// it opens, so each left the keyboard on nothing, and Enter and the arrows did nothing until Tab or F6 found a
-    /// control. Never while another window or a dialog is the one in use, and never from a control that has the keyboard.
-    /// Posted, once what changed is laid out.
+    /// last; else Stop while a capture records; else the control that last had it, where it can take it again; else the
+    /// ranked table once a session is shown; else Start exploring. Start exploring hides once a capture starts, Stop waits
+    /// disabled once pressed and hides once the session is saved, the buttons that open a session wait disabled while it
+    /// opens, and an unfinished capture's card waits disabled while its finish stops and goes once it is forgotten, so
+    /// each left the keyboard on nothing, and Enter and the arrows did nothing until Tab or F6 found a control. Never while
+    /// another window or a dialog is the one in use, and never from a control that has the keyboard. Posted, once what
+    /// changed is laid out.
     /// </summary>
     private void KeepKeyboard() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
@@ -763,14 +764,15 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             StopCaptureButton.Focus(NavigationMethod.Tab);
         }
-        else if (!workspace.IsEmptyWorkspace)
-        {
-            FocusRail();
-        }
         else if (lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
             && this.IsVisualAncestorOf(last) && last.Focus(NavigationMethod.Tab))
         {
-            // A session that did not open, or the demo's investigation closed, gives back the control that asked for it.
+            // A session that did not open, the demo's investigation closed, or a finish stopped gives back the control that
+            // asked for it.
+        }
+        else if (!workspace.IsEmptyWorkspace)
+        {
+            FocusRail();
         }
         else if (StartExploringButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
         {
@@ -1806,6 +1808,9 @@ public sealed partial class MainWindow : Window, IDisposable
             ApplyCaptureUpdate(new(CaptureUiPhase.Complete, headline, detail, SessionPath: path, Overview: overview),
                 forceOverview: true);
             SessionFilesChecked = VerifySessionFilesAsync(path, store, run);
+
+            // The session opened is where the keyboard goes, not back to the control that opened it.
+            lastKeyboard = null;
             return true;
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException
@@ -2087,6 +2092,7 @@ public sealed partial class MainWindow : Window, IDisposable
             : InterruptedCaptureOffer.For(follow, DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture);
         UnfinishedCaptureCard.IsVisible = offer is not null
             && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
+        KeepKeyboard();
         if (offer is null)
         {
             offerRecheck.Stop();
@@ -3532,8 +3538,13 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateHeldBanner()
     {
         bool held = heldUpdate?.Overview is not null;
+        bool hadKeyboard = HeldBanner.IsKeyboardFocusWithin;
         HeldBanner.IsVisible = held;
         HeldFollowButton.IsVisible = held && !followLatest;
+
+        // Update to newest and Follow live go with the newer view they show, the banner with them: the ranked table, that
+        // view's, has the keyboard rather than nothing.
+        if (hadKeyboard && !HeldBanner.IsKeyboardFocusWithin) FocusRail();
         HeldBannerText.Text = !held ? string.Empty
             : (followLatest
                 ? $"Showing generation {displayedGeneration:N0} while you read records. "

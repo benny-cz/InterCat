@@ -212,6 +212,38 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: an unfinished capture forgotten by keyboard gives Start exploring the keyboard as its card goes")]
+    public async Task ACaptureForgottenGivesStartTheKeyboard()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await CrashedFollow(root.Path, unfinalized: true);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Dispatch();
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Border card = window.GetControl<Border>("UnfinishedCaptureCard");
+            Button forget = window.GetControl<Button>("ForgetCaptureButton");
+            Assert.True(forget.Focus(Avalonia.Input.NavigationMethod.Tab));
+            window.KeyPressQwerty(Avalonia.Input.PhysicalKey.Enter, Avalonia.Input.RawInputModifiers.None);
+            for (int wait = 0; wait < 250 && card.IsVisible; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Dispatch();
+            Assert.False(card.IsVisible);
+            Assert.True(window.GetControl<Button>("StartExploringButton").IsFocused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§3.1: a recheck that looked before the user forgot a capture does not bring its card back")]
     public async Task AStaleRecheckDoesNotBringAForgottenCardBack()
     {

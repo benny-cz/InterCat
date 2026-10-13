@@ -163,6 +163,70 @@ public sealed class CaptureKeyboardTests
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
             Dispatch();
             Assert.Same(window.GetControl<ListBox>("RungList").ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+
+            // With a session shown, one that does not open still gives Open saved session its keyboard back, rather than
+            // move it to the ranked table.
+            Assert.True(open.Focus(NavigationMethod.Tab));
+            Assert.False(await window.OpenSessionAsync(empty.Path));
+            Dispatch();
+            Assert.True(open.IsFocused, Focused(window));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Update to newest and Follow live give the ranked table the keyboard as the banner they sit in goes")]
+    public async Task TheHeldBannersButtonsGiveTheRankedTableTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows(0));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            Dispatch();
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
+            Dispatch();
+            ListBox rail = window.GetControl<ListBox>("RungList");
+            Border banner = window.GetControl<Border>("HeldBanner");
+
+            // F pauses the view; the next generation waits in the banner, and Enter on Update to newest shows it: the banner
+            // goes, and the ranked table of the view it showed has the keyboard.
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+            Publish(session.Store, Rows(100));
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            Dispatch();
+            Assert.True(banner.IsVisible);
+            Button update = banner.GetVisualDescendants().OfType<Button>()
+                .Single(button => Equals(button.Content, "Update to newest (F5)"));
+            Assert.True(update.Focus(NavigationMethod.Tab));
+
+            // A newer generation arriving meanwhile is said in the banner, which keeps the keyboard on its button.
+            Publish(session.Store, Rows(150));
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            Dispatch();
+            Assert.True(update.IsFocused, Focused(window));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
+            Dispatch();
+            Assert.False(banner.IsVisible);
+            Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+            // Still paused, the next generation waits again; Enter on Follow live follows it, and the same holds.
+            Publish(session.Store, Rows(200));
+            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
+            Dispatch();
+            Button follow = window.GetControl<Button>("HeldFollowButton");
+            Assert.True(follow.IsEffectivelyVisible);
+            Assert.True(follow.Focus(NavigationMethod.Tab));
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
+            Dispatch();
+            Assert.False(banner.IsVisible);
+            Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
         }
         finally
         {
