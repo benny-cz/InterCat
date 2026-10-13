@@ -145,6 +145,13 @@ public sealed class DensityRegimeWindowTests
             timeline.RequestDetailNow();
             await workspace.TimelineDetailReady;
             Settle(window);
+
+            // Laid out, the group's lanes take the gutter their names need, and the timeline counts the view again at the
+            // width left, as it does once its size rests: the cells pointed at are those, a column per device pixel.
+            timeline.RequestDetailNow();
+            await workspace.TimelineDetailReady;
+            Settle(window);
+            Assert.Equal(timeline.DeviceColumns, workspace.TimelineDetail!.Buckets.Count);
             Assert.True(workspace.ShowsProcessLanes, workspace.TimelineCaption);
             ProcessTimelineLane lane = workspace.ProcessLaneDisplay.Single(candidate =>
                 workspace.Snapshot.Processes.Single(process => process.Id == candidate.ProcessId).ProcessId == 100);

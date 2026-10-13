@@ -102,11 +102,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
     read. Bringing the card into view in the rail's actions as it speaks is not built: at the smallest window its
     headline and detail stayed in view in every state tried, beside an unfinished capture's card too.
   - Debug and Release each ran 2,072 tests, with revision 473's 93 failures and 4 skips. Debug also failed a group
-    lane's hover in a density test, which fails about 1 run in 10 at revision 485 too, and is found and fixed next. The
-    tests caught each of 9 mutations: the detail not a live region, a newer generation said aloud or nothing a capture
-    update brings said aloud, a line written in silence staying silent, a detail said aloud keeping its lines scrolled
-    or one restated in silence losing its place, an exact or a redacted package's percent said aloud, and a newer
-    generation's notice said aloud.
+    lane's hover in a density test, which fails about 1 run in 10 at revision 485 too. The timeline counts its view
+    again 150 ms after its size rests, at the width a group's lanes leave once laid out, and that count replaced the
+    cells the test had read before it pointed; the test now asks for it first. A pause before the hover failed 5 runs of
+    5 before, and none after; 20 Debug and 8 Release runs passed. The tests caught each of 9 mutations: the detail not a
+    live region, a newer generation said aloud or nothing a capture update brings said aloud, a line written in silence
+    staying silent, a detail said aloud keeping its lines scrolled or one restated in silence losing its place, an exact
+    or a redacted package's percent said aloud, and a newer generation's notice said aloud.
 
 - **Revision 485 — a paused view shows the session as saved once its capture ends (§6.4); a restated list gives the keyboard back to its chosen row (§6.7, R15):**
   - A tour of the capture's states at the smallest window found a view paused while recording went on holding
