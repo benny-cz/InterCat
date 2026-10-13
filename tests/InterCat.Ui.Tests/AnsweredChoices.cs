@@ -4,10 +4,14 @@ using InterCat.Desktop;
 
 namespace InterCat.Ui.Tests;
 
-/// <summary>Answers the window's choices in turn, as a person would, and keeps what each asked.</summary>
+/// <summary>
+/// Answers the window's choices in turn, as a person would, and keeps what each asked; or, as a system that could not
+/// show its dialog, fails to.
+/// </summary>
 internal sealed class AnsweredChoices(TopLevel window) : PathChoices(window)
 {
-    private readonly Queue<string[]> answers = new();
+    private readonly Queue<string[]?> answers = new();
+    private readonly Queue<Exception> failures = new();
 
     public List<FilePickerSaveOptions> Saves { get; } = [];
     public List<FilePickerOpenOptions> Opens { get; } = [];
@@ -20,21 +24,36 @@ internal sealed class AnsweredChoices(TopLevel window) : PathChoices(window)
     /// <summary>The next choice of several folders at once.</summary>
     public void AnswerFolders(params string[] chosen) => answers.Enqueue(chosen);
 
-    public override Task<string?> SaveFileAsync(FilePickerSaveOptions options)
+    /// <summary>The next dialog the system could not show, failing as <paramref name="failure"/>.</summary>
+    public void Fail(Exception failure)
+    {
+        answers.Enqueue(null);
+        failures.Enqueue(failure);
+    }
+
+    protected override Task<string?> AskSaveFileAsync(FilePickerSaveOptions options)
     {
         Saves.Add(options);
-        return Task.FromResult(answers.Dequeue().FirstOrDefault());
+        return Task.FromResult(Next().FirstOrDefault());
     }
 
-    public override Task<string?> OpenFileAsync(FilePickerOpenOptions options)
+    protected override Task<string?> AskOpenFileAsync(FilePickerOpenOptions options)
     {
         Opens.Add(options);
-        return Task.FromResult(answers.Dequeue().FirstOrDefault());
+        return Task.FromResult(Next().FirstOrDefault());
     }
 
-    public override Task<IReadOnlyList<string>> OpenFoldersAsync(FolderPickerOpenOptions options)
+    protected override Task<IReadOnlyList<string>> AskOpenFoldersAsync(FolderPickerOpenOptions options)
     {
         Folders.Add(options);
-        return Task.FromResult<IReadOnlyList<string>>(answers.Dequeue());
+        return Task.FromResult<IReadOnlyList<string>>(Next());
     }
+
+    /// <summary>How the system fails to find the folder a picker would start in; null while it finds it.</summary>
+    public Exception? StartFailure { get; set; }
+
+    protected override Task<IStorageFolder?> AskFolderAtAsync(string path) =>
+        StartFailure is { } failure ? throw failure : base.AskFolderAtAsync(path);
+
+    private string[] Next() => answers.Dequeue() ?? throw failures.Dequeue();
 }

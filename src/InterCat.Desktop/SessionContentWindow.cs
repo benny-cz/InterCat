@@ -25,7 +25,7 @@ namespace InterCat.Desktop;
 /// each gap a line of its own, chosen by buffer and never saved as one (M8). Where a decoder reads the record, Decode
 /// lists the fields it reads, each with the bytes it came from, and what it did not decode - only when asked (§11.2).
 /// </summary>
-internal sealed class SessionContentWindow : Window, IDisposable
+internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindow
 {
     private static readonly FontFamily Monospace = new("Cascadia Mono, Consolas, Courier New");
 
@@ -74,6 +74,12 @@ internal sealed class SessionContentWindow : Window, IDisposable
 
     /// <summary>Where the window asks for a file: the platform's picker, or a test's answer.</summary>
     internal PathChoices Choices { get; set; }
+
+    /// <summary>A picker the system could not show chose nothing: said where the window says what was saved.</summary>
+    void IChoosingWindow.PickerFailed(string why)
+    {
+        if (!closed) status.Text = why + " Nothing was saved.";
+    }
     private bool decoding;
     private bool closed;
     private bool disposed;

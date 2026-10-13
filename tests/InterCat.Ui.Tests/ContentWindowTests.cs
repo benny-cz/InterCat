@@ -135,6 +135,13 @@ public sealed class ContentWindowTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(before, Texts(window));
 
+        // A dialog the system could not show writes nothing either, and the window says why.
+        choices.Fail(new InvalidOperationException("No dialog service is available"));
+        Named<Button>(window, "Save bytes…").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => Texts(window).Contains("The system could not show its dialog to choose a file: No dialog service is "
+            + "available. Nothing was saved."));
+        Assert.Empty(Directory.EnumerateFileSystemEntries(folder));
+
         // Chosen, exactly the chosen bytes are written, and the window says which went where.
         string file = Path.Combine(folder, "bytes.bin");
         choices.Answer(file);

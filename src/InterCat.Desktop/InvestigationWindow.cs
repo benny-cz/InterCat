@@ -22,7 +22,7 @@ namespace InterCat.Desktop;
 /// investigation's time - the candidate joins between its captures (ADR-041), and a package of it with its sessions to share
 /// (§8.4). Showing it opens each session as a viewer does and writes to none; only the investigation's own file is written.
 /// </summary>
-internal sealed class InvestigationWindow : Window, IDisposable
+internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 {
     private readonly string path;
 
@@ -121,6 +121,12 @@ internal sealed class InvestigationWindow : Window, IDisposable
 
     /// <summary>Where the window asks for a folder: the platform's pickers, or a test's answers.</summary>
     internal PathChoices Choices { get; set; }
+
+    /// <summary>A picker the system could not show chose nothing: said where the window says what an action did.</summary>
+    void IChoosingWindow.PickerFailed(string why)
+    {
+        if (!closed) status.Text = why + " Nothing was added, relinked or written.";
+    }
     private bool disposed;
 
     /// <summary>Whether the investigation has been read once, which gives its selected session the keyboard.</summary>

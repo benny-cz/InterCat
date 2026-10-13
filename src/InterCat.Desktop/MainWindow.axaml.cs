@@ -21,7 +21,7 @@ using InterCat.Storage;
 
 namespace InterCat.Desktop;
 
-public sealed partial class MainWindow : Window, IDisposable
+public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 {
     private WorkspaceViewModel workspace;
     private CancellationTokenSource? captureStop;
@@ -1480,7 +1480,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             // The picker starts where InterCat saves sessions, so the user's own captures are the first thing shown.
             Avalonia.Platform.Storage.IStorageFolder? saved = sessionRoot is { } root && Directory.Exists(root)
-                ? await StorageProvider.TryGetFolderFromPathAsync(new Uri(root))
+                ? await Choices.FolderAtAsync(root)
                 : null;
             folder = await Choices.OpenFolderAsync(new()
             {
@@ -3147,6 +3147,14 @@ public sealed partial class MainWindow : Window, IDisposable
         CaptureSessionPath.Text = string.Empty;
         NameWindow();
         UpdateSessionGrowth();
+    }
+
+    /// <summary>A picker the system could not show chose nothing: said where the card says what an action did.</summary>
+    void IChoosingWindow.PickerFailed(string why)
+    {
+        if (closed) return;
+        Say(CaptureStatus, "Nothing could be chosen", aloud: true);
+        Say(CaptureDetail, why + " Nothing was opened or saved, and the current workspace is unchanged.", aloud: true);
     }
 
     /// <summary>What the window is called while it shows no session, nor records one.</summary>

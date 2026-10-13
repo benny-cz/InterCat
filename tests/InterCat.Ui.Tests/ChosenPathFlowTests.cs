@@ -145,6 +145,14 @@ public sealed class ChosenPathFlowTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         Assert.Equal(idle, status.Text);
 
+        // A dialog the system could not show chooses nothing, and says why where the card says what an action did; the
+        // window goes on as it was.
+        choices.Fail(new InvalidOperationException("No dialog service is available"));
+        Click(window, "OpenSavedSessionButton");
+        await Until(() => status.Text == "Nothing could be chosen");
+        Assert.Equal("The system could not show its dialog to choose a folder: No dialog service is available. Nothing "
+            + "was opened or saved, and the current workspace is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text);
+
         // A folder that holds no session is said to be none, and the window keeps what it showed.
         string empty = Directory.CreateDirectory(Path.Combine(folder, "nothing-here")).FullName;
         choices.Answer(empty);
@@ -152,9 +160,13 @@ public sealed class ChosenPathFlowTests : IDisposable
         await Until(() => status.Text == "Could not open this session");
         Assert.EndsWith(" The current workspace is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
 
+        // Where the picker would start is a convenience: a system that cannot find it still shows the picker.
+        await window.UseSessionRootAsync(folder);
+        choices.StartFailure = new InvalidOperationException("No shell folder for this path");
         choices.Answer(demo.ServerSession);
         Click(window, "OpenSavedSessionButton");
         await Until(() => status.Text == "Saved session open");
+        Assert.Null(choices.Folders[^1].SuggestedStartLocation);
         window.Close();
     }
 
@@ -208,6 +220,15 @@ public sealed class ChosenPathFlowTests : IDisposable
         Assert.Equal("Open an InterCat investigation", choices.Opens[0].Title);
         Dispatcher.UIThread.RunJobs();
         Assert.Empty(window.OwnedWindows);
+        Assert.Empty(window.Investigations);
+
+        // Nor does a dialog the system could not show, which says why.
+        choices.Fail(new IOException("The shell refused the dialog."));
+        Choose(window, "OpenInvestigationItem");
+        TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
+        await Until(() => status.Text == "Nothing could be chosen");
+        Assert.StartsWith("The system could not show its dialog to choose a file: The shell refused the dialog. ",
+            window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
         Assert.Empty(window.Investigations);
 
         choices.Answer(demo.WorkspacePath);
@@ -304,11 +325,17 @@ public sealed class ChosenPathFlowTests : IDisposable
         window.Choices = choices;
         await Until(() => window.View is not null);
 
-        // Several sessions are added from one choice; none chosen adds none.
+        // Several sessions are added from one choice; none chosen adds none, nor does a dialog the system could not
+        // show, which the window says.
         choices.AnswerFolders();
         Press(window, "Add sessions…");
         await Until(() => choices.Asked == 1);
         Assert.True(choices.Folders[0].AllowMultiple);
+        choices.Fail(new InvalidOperationException("No dialog service is available"));
+        Press(window, "Add sessions…");
+        await Until(() => Texts(window).Contains("The system could not show its dialog to choose a folder: No dialog "
+            + "service is available. Nothing was added, relinked or written."));
+        Assert.Empty(window.View!.Members);
         choices.AnswerFolders(demo.ClientSession, demo.ServerSession);
         Press(window, "Add sessions…");
         await Until(() => window.View is { Members.Count: 2 });
@@ -322,7 +349,7 @@ public sealed class ChosenPathFlowTests : IDisposable
         choices.Answer(moved);
         Press(window, "Relink…");
         await Until(() => InvestigationWorkspace.Read(workspace).Members[1].Path.EndsWith("moved-server", StringComparison.Ordinal));
-        Assert.Matches("^Where is Session [0-9a-f]{8} now\\?$", choices.Folders[2].Title);
+        Assert.Matches("^Where is Session [0-9a-f]{8} now\\?$", choices.Folders[3].Title);
         await Until(() => window.View is { } view && view.Members.All(member => member.State == WorkspaceMemberState.Present));
 
         // Packaged under the folder chosen, after the confirmation; none chosen packages nothing and says so.
@@ -384,6 +411,9 @@ public sealed class ChosenPathFlowTests : IDisposable
         button.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Dispatcher.UIThread.RunJobs();
     }
+
+    private static List<string> Texts(Window window) =>
+        [.. window.GetVisualDescendants().OfType<TextBlock>().Select(text => text.Text).OfType<string>()];
 
     private static async Task Until(Func<bool> condition)
     {
