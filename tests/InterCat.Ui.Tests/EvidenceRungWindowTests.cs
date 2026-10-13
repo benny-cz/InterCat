@@ -1119,6 +1119,44 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§12/§19.3: at a group's lanes a live preview is drawn and explained on the machine row alone, no process being named for it yet")]
+    public async Task ALivePreviewAtAGroupsLanesStaysOnTheMachineRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 100));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        CaptureUiUpdate published = Update(session) with { OverviewChunks = 2 };
+        window.ApplyCaptureUpdate(published);
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        Dispatch();
+        Assert.Equal(2, workspace.ProcessLaneDisplay.Count);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        var preview = new BrokerCapturePreview(20, 3, 1, 11, 11, 0,
+            [new(2, 10, Mechanism.Tcp, 5), new(3, 11, Mechanism.Tcp, 4), new(3, 12, Mechanism.Tcp, 2)]);
+        window.ApplyCaptureUpdate(published with { Overview = null, OverviewChunks = null, LivePreview = preview });
+        Dispatch();
+        LiveEdge edge = Assert.IsType<LiveEdge>(workspace.LiveEdge);
+
+        // The machine row counts what no process is named for yet, and explains the preview; a process's lane beside it
+        // has nothing drawn there, and nothing to explain.
+        window.MouseMove(timeline.TranslatePoint(timeline.PointOfLive(edge.Bins[0])!.Value, window)!.Value);
+        Dispatch();
+        Assert.Equal(edge.Bins[0], timeline.HoveredLiveBin);
+        HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
+        Assert.Equal("4 records journaled here and not yet published", card.Lines[0]);
+        Assert.Contains(card.Lines, line => line.StartsWith("Not yet attributed to processes or channels", StringComparison.Ordinal));
+        Save(window.CaptureRenderedFrame()!, "live-edge-group-1080x700.png");
+        window.MouseMove(timeline.TranslatePoint(timeline.PointOfLive(edge.Bins[0], row: 1)!.Value, window)!.Value);
+        Dispatch();
+        Assert.Null(timeline.HoveredLiveBin);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§12/§19.3: a live preview continues the published timeline, labelled, inert and retired by publication")]
     public void ALivePreviewContinuesThePublishedTimeline()
     {

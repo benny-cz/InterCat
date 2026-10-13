@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 498 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 499 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 499 — the lane names, the row menu and the content chooser, run as a person runs them (§6.7, §11.1,
+  R15):**
+  - A lane's name at each rung, a linked call's other end from its row's menu, the content capture's chooser from
+    the card's start and by Ctrl+R, closed with Esc, and a live preview at a group's lanes each do what the plan
+    says, and each now has a test.
+  - Every ranked row's menu offered to add the row to the multi-selection - a call's, a channel's and a record's
+    too, where it added nothing - and a record's menu held nothing else. The menu now offers the selection only on
+    a row that stands for processes, and a row with nothing to offer opens none, by the pointer or the key.
+  - Debug and Release each ran 2,123 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 12
+    mutations: the selection's item shown on every row, every row joining the selection or only groups; an empty menu
+    opened by the pointer or by the key, or a linked call's other end not offered; a mechanism's, a process's or the
+    machine row's name choosing nothing, or the fold's choosing something; Choose processes… starting Explore without
+    asking; and the live preview explained on a process's lane.
 
 - **Revision 498 — the timeline's and the graph's untested keys, pressed (§6.7, R10, R15):**
   - The timeline's `-` around the analysis interval, `+` and `-` with the interval out of view, `]` past a zoomed

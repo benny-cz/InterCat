@@ -231,6 +231,218 @@ public sealed class MainWindowPathTests
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
 
+    [AvaloniaFact(DisplayName = "R15: a ranked row's menu offers what acts on its row - a linked call's other end, never a selection a call or a record cannot join - and a row with nothing to offer opens none")]
+    public async Task ARowsMenuOffersWhatActsOnIt()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        WorkspaceViewModel workspace = await Open(window, session);
+        ProcessNode caller = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        ListBox rung = window.GetControl<ListBox>("RungList");
+
+        // A process joins the selection, so its row's menu offers it, and nothing else.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == caller.GroupKey);
+        Assert.True(workspace.Descend());
+        Settle(window);
+        Assert.True(OpenMenu(window, rung, 0, byKey: true));
+        Assert.Equal(["Add to or remove from the selection (Ctrl+Space)"],
+            MenuOf(rung, 0).Items.OfType<MenuItem>().Where(item => item.IsVisible).Select(item => item.Header));
+        MenuOf(rung, 0).Close();
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == caller.Id.ToString());
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("svcctl", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        Settle(window);
+        Assert.Equal([true, false, true], workspace.RungRows.Select(row => row.HasOtherEnd));
+        Assert.All(workspace.RungRows, row => Assert.False(row.JoinsSelection));
+
+        // A call joins no selection, so its menu does not offer to add it, where it once offered and added nothing; a
+        // linked call's offers its other end.
+        ContextMenu menu = MenuOf(rung, 0);
+        Assert.True(OpenMenu(window, rung, 0, byKey: true));
+        Assert.Equal(["Open the call services.exe · 1960 served (O)"],
+            menu.Items.OfType<MenuItem>().Where(item => item.IsVisible).Select(item => item.Header));
+
+        // A call whose other end is unknown has nothing to offer: neither the key nor a right-click opens its menu.
+        menu.Close();
+        Settle(window);
+        Assert.False(OpenMenu(window, rung, 1, byKey: true));
+        Assert.False(OpenMenu(window, rung, 1, byKey: false));
+
+        // The other end opens from the menu as O opens it: the call that served it, its records the keyboard's.
+        Assert.True(OpenMenu(window, rung, 0, byKey: true));
+        menu.Items.OfType<MenuItem>().Single(item => item.IsVisible).RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+        menu.Close();
+        await workspace.EvidenceReady;
+        Settle(window);
+        Assert.True(workspace.IsEvidenceRung);
+        Assert.Contains("RPC calls served on svcctl", workspace.Crumbs[^2].Label, StringComparison.Ordinal);
+        Assert.True(RecordHasKeyboard(window, rung, 0));
+
+        // A record has nothing to offer either.
+        Assert.False(OpenMenu(window, rung, 0, byKey: true));
+        Assert.False(OpenMenu(window, rung, 0, byKey: false));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: a lane's name makes it the step focus - a mechanism's at the machine, a process's among a group's - the machine row's gives the group back, and the fold's chooses none")]
+    public async Task ALanesNameChoosesIt()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Pool(230));
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        WorkspaceViewModel workspace = await Open(window, session);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        ComboBox lanes = window.GetControl<ComboBox>("TimelineLaneSelector");
+
+        // At the machine, a mechanism lane's name chooses it, as its selector does, and the timeline has the keyboard.
+        MechanismTimelineLane tcp = workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp);
+        ClickName(window, timeline, timeline.PointOf(tcp.Buckets.First(bucket => bucket.ObservationCount > 0))!.Value.Y);
+        Assert.Equal(Mechanism.Tcp, workspace.SelectedTimelineMechanism);
+        Assert.Equal(Mechanism.Tcp, Assert.IsType<TimelineLaneOption>(lanes.SelectedItem).Mechanism);
+        Assert.True(timeline.IsFocused);
+
+        // Among the group's lanes, a process's name chooses its row in the ranked table.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("pool.exe", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        Settle(window);
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Settle(window);
+        FoldedProcessLane folded = Assert.IsType<FoldedProcessLane>(workspace.FoldedLane);
+        ScrollViewer scroller = timeline.GetVisualAncestors().OfType<ScrollViewer>().First();
+        double first = LaneY(timeline, workspace.ProcessLaneDisplay[0]);
+        double second = LaneY(timeline, workspace.ProcessLaneDisplay[1]);
+        ProcessInstanceId third = workspace.ProcessLaneDisplay[2].ProcessId;
+        ClickName(window, timeline, LaneY(timeline, workspace.ProcessLaneDisplay[2]), scroller);
+        Assert.Equal(third.ToString(), workspace.SelectedRung?.Key);
+        Assert.Equal(third, workspace.SelectedProcess?.Id);
+
+        // The fold's name stands for many processes, so it chooses none, and the process chosen stays.
+        ClickName(window, timeline, timeline.PointOfFolded(folded.Buckets.First(bucket => bucket.ObservationCount > 0))!.Value.Y, scroller);
+        Assert.Equal(third, workspace.SelectedProcess?.Id);
+
+        // The machine row's name, above the first lane, gives the group's whole focus back.
+        ClickName(window, timeline, first - (second - first), scroller);
+        Assert.Null(workspace.SelectedProcess);
+        Assert.Null(workspace.SelectedRung);
+        window.Close();
+    }
+
+    /// <summary>The middle of a group's process lane, in the timeline's own coordinates.</summary>
+    private static double LaneY(TimelineView timeline, ProcessTimelineLane lane) =>
+        timeline.PointOf(lane.ProcessId, lane.Buckets.First(bucket => bucket.ObservationCount > 0))!.Value.Y;
+
+    /// <summary>A click on the name of the lane at <paramref name="y"/>, in the gutter left of the plot, scrolled into view.</summary>
+    private static void ClickName(Window window, TimelineView timeline, double y, ScrollViewer? scroller = null)
+    {
+        if (scroller is not null)
+        {
+            scroller.Offset = new Vector(scroller.Offset.X, Math.Clamp(y - (scroller.Bounds.Height / 2), 0,
+                Math.Max(0, scroller.Extent.Height - scroller.Viewport.Height)));
+            Settle(window);
+        }
+
+        Point at = timeline.TranslatePoint(new Point(8, y), window)!.Value;
+        window.MouseDown(at, MouseButton.Left);
+        window.MouseUp(at, MouseButton.Left);
+        Settle(window);
+    }
+
+    /// <summary>The menu a ranked row carries.</summary>
+    private static ContextMenu MenuOf(ListBox rung, int index) =>
+        rung.ContainerFromIndex(index)!.GetVisualDescendants().OfType<Control>().Select(control => control.ContextMenu)
+            .OfType<ContextMenu>().First();
+
+    /// <summary>Asks for a ranked row's menu by Shift+F10 on the row, or by a right-click on it; whether it opened.</summary>
+    private static bool OpenMenu(Window window, ListBox rung, int index, bool byKey)
+    {
+        Control row = rung.ContainerFromIndex(index)!;
+        if (byKey)
+        {
+            Assert.True(row.Focus());
+            window.KeyPressQwerty(PhysicalKey.F10, RawInputModifiers.Shift);
+            window.KeyReleaseQwerty(PhysicalKey.F10, RawInputModifiers.Shift);
+        }
+        else
+        {
+            Point at = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+            window.MouseDown(at, MouseButton.Right);
+            window.MouseUp(at, MouseButton.Right);
+        }
+
+        Settle(window);
+        return MenuOf(rung, index).IsOpen;
+    }
+
+    /// <summary>
+    /// A caller's three calls to the service control manager and the service host serving them, ALPC linking the first
+    /// and third to the calls that served them (ADR-034); the second's other end is unknown.
+    /// </summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields) LinkedCalls()
+    {
+        Guid scm = Guid.Parse("367abb81-9844-35f1-ad32-98f038001003");
+        ObservationRowV1[] rows =
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\caller.exe" }),
+            Timed(Lifecycle(2, ObservationKind.Inventory, 1_960, 2) with { ResourceName = @"C:\Windows\System32\services.exe" }),
+            Timed(RpcCall(100, ObservationKind.RequestStart, Direction.Outbound, 400, 10, Activity(1), scm)),
+            Timed(RpcCall(120, ObservationKind.RequestEnd, Direction.Outbound, 400, 11, Activity(1), status: 0)),
+            Timed(RpcCall(200, ObservationKind.RequestStart, Direction.Outbound, 400, 20, Activity(2), scm)),
+            Timed(RpcCall(210, ObservationKind.RequestEnd, Direction.Outbound, 400, 21, Activity(2), status: 0)),
+            Timed(RpcCall(300, ObservationKind.RequestStart, Direction.Outbound, 400, 30, Activity(3), scm)),
+            Timed(RpcCall(340, ObservationKind.RequestEnd, Direction.Outbound, 400, 31, Activity(3), status: 5)),
+            Timed(RpcCall(105, ObservationKind.RequestStart, Direction.Inbound, 1_960, 50, Activity(11), scm)),
+            Timed(RpcCall(110, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 51, Activity(11), status: 0)),
+            Timed(RpcCall(205, ObservationKind.RequestStart, Direction.Inbound, 1_960, 52, Activity(12), scm)),
+            Timed(RpcCall(207, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 53, Activity(12), status: 0)),
+            Timed(RpcCall(305, ObservationKind.RequestStart, Direction.Inbound, 1_960, 54, Activity(13), scm)),
+            Timed(RpcCall(330, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 55, Activity(13), status: 5)),
+        ];
+        ObservationRowV1[] messages =
+        [
+            Timed(Alpc(102, ObservationKind.Send, 400, 401, 60)),
+            Timed(Alpc(103, ObservationKind.Receive, 1_960, 1_961, 61)),
+            Timed(Alpc(302, ObservationKind.Send, 400, 401, 62)),
+            Timed(Alpc(303, ObservationKind.Receive, 1_960, 1_961, 63)),
+        ];
+        ObservationRowV1[] all = [.. rows, .. messages];
+        return (
+            all,
+            [
+                .. all.Where(row => row is { Mechanism: Mechanism.Rpc, Kind: ObservationKind.RequestStart })
+                    .Select(start => Field(start, SourceField.RpcProcedureNumber, 7)),
+                Field(messages[0], SourceField.AlpcMessageId, 21),
+                Field(messages[1], SourceField.AlpcMessageId, 21),
+                Field(messages[2], SourceField.AlpcMessageId, 22),
+                Field(messages[3], SourceField.AlpcMessageId, 22),
+            ]);
+    }
+
+    private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+
+    private static Guid Activity(int number) => new(number, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+
+    /// <summary>A group of <paramref name="count"/> pool.exe instances, more than the lanes a view draws, each busier by its index.</summary>
+    private static ObservationRowV1[] Pool(int count) =>
+    [
+        .. Enumerable.Range(0, count).SelectMany(index => new[]
+        {
+            Lifecycle(index + 1, ObservationKind.Create, 2_000 + index, (ulong)(index * 20)) with
+            {
+                ResourceName = @"C:\Tools\pool.exe", SessionRelativeTicks = (index + 1) * 100L,
+            },
+        }.Concat(Enumerable.Range(0, index % 7).Select(step =>
+            Transfer(1_000 + (step * 1_000) + index, ObservationKind.Send, AccountingSide.SendSide, 8, 2_000 + index,
+                (ulong)((index * 20) + step + 1)) with { SessionRelativeTicks = (1_000 + (step * 1_000) + index) * 100L }))),
+    ];
+
     /// <summary>A saved session shown in the window, as a capture's last update shows it, laid out.</summary>
     private static async Task<WorkspaceViewModel> Open(MainWindow window, TemporarySession session)
     {

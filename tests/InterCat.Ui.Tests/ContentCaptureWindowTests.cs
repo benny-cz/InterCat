@@ -3,6 +3,7 @@ using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.VisualTree;
 using InterCat.Application;
@@ -218,6 +219,57 @@ public sealed class ContentCaptureWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§11.1: Choose processes… and Ctrl+R open the chooser over the window's own processes, whose Esc starts nothing and gives the keyboard back")]
+    public async Task TheChooserOpensFromTheCardAndEscStartsNothing()
+    {
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        try
+        {
+            window.GetControl<ComboBox>("CaptureKeepSelector").SelectedItem = CaptureKeepChoice.All[^1];
+            Button start = window.GetControl<Button>("StartExploringButton");
+            Assert.True(start.Focus());
+            Dispatch();
+
+            // Enter on Choose processes… asks which processes - the window lists them off its own thread first - with the
+            // keyboard on the chooser; Esc closes it, nothing starts, and the keyboard is back on the button.
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            ContentCaptureWindow chooser = await Chooser(window);
+            Assert.True(chooser.IsKeyboardFocusWithin);
+            chooser.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.False(chooser.IsVisible);
+            Assert.Null(window.CaptureRun);
+            Assert.Null(window.StartedWith);
+            Assert.True(start.IsFocused);
+
+            // Ctrl+R, the start's key, asks the same.
+            window.KeyPressQwerty(PhysicalKey.R, RawInputModifiers.Control);
+            chooser = await Chooser(window);
+            chooser.Close();
+            Dispatch();
+            Assert.Null(window.CaptureRun);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The chooser once open: the processes are listed off the window's thread before it shows.</summary>
+    private static async Task<ContentCaptureWindow> Chooser(Window window)
+    {
+        for (int attempt = 0; attempt < 200 && !window.OwnedWindows.OfType<ContentCaptureWindow>().Any(); attempt++)
+        {
+            await Task.Delay(25);
+            Dispatch();
+        }
+
+        ContentCaptureWindow chooser = window.OwnedWindows.OfType<ContentCaptureWindow>().Single();
+        Dispatch();
+        return chooser;
     }
 
     /// <summary>A process as the list names it, without its start, which the time zone writes.</summary>

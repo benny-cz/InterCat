@@ -1389,6 +1389,7 @@
         "R15: a package's progress, redacted or exact, is shown by the percent, and said aloud only as it starts and as it ends",
         "R15: a plain drag pans the timeline, and Home, End and 0 move it by keyboard",
         "R15: a published session's channel and evidence rungs render at every supported size",
+        "R15: a ranked row's menu offers what acts on its row - a linked call's other end, never a selection a call or a record cannot join - and a row with nothing to offer opens none",
         "R15: a record the window cannot verify leaves the keyboard on Close, with no record to read",
         "R15: a record's window leaves the keyboard where the person moved it while the window read",
         "R15: a recording's new view leaves the keyboard where the person put it - the ranked table, the search - never moving it to Stop",

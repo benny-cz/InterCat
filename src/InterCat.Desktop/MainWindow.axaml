@@ -260,10 +260,12 @@
                 <!-- The name has the rail's width less the count; its detail and coverage share the line beneath. -->
                 <Grid ColumnDefinitions="22,*,Auto" RowDefinitions="Auto,Auto" Margin="2,5" MinHeight="44"
                       VerticalAlignment="Center">
-                  <!-- §6.7's Ctrl+click and Ctrl+Space, as a menu a pointer or a context-menu key reaches. -->
+                  <!-- §6.7's Ctrl+click and Ctrl+Space, as a menu a pointer or a context-menu key reaches, on a row that
+                       stands for processes; a linked call's other end; nothing on any other row. -->
                   <Grid.ContextMenu>
-                    <ContextMenu>
-                      <MenuItem Header="Add to or remove from the selection (Ctrl+Space)" Click="ToggleRowInSelection" />
+                    <ContextMenu Opening="KeepEmptyRowMenuClosed">
+                      <MenuItem Header="Add to or remove from the selection (Ctrl+Space)" IsVisible="{Binding JoinsSelection}"
+                                Click="ToggleRowInSelection" />
                       <MenuItem Header="{Binding OtherEndMenu}" IsVisible="{Binding HasOtherEnd}" Click="OpenOtherEndOfRow" />
                     </ContextMenu>
                   </Grid.ContextMenu>

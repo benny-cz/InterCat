@@ -57,6 +57,12 @@ public sealed record RungRow(
     /// <summary>Whether the row can open the call at its other end.</summary>
     public bool HasOtherEnd => OtherEndKey is not null;
 
+    /// <summary>
+    /// Whether the row stands for processes §6.7's multi-selection holds - a process, or a group of them - so that
+    /// Ctrl+click, Ctrl+Space and its menu add them. A channel, a call or a record stands for none.
+    /// </summary>
+    public bool JoinsSelection => Source.DescendsTo is DetailLevel.Group or DetailLevel.ProcessInstance;
+
     /// <summary>The label's tooltip: the label, and the row's own name where the rail shows it by another.</summary>
     public string Tip => string.Equals(Source.Label, Label, StringComparison.Ordinal) ? Label : $"{Label}\n{Source.Label}";
 

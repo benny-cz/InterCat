@@ -1000,7 +1000,7 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void OpenRowMenu(object? sender, ContextRequestedEventArgs request)
     {
-        if (request.Handled || request.Source is not ListBoxItem row) return;
+        if (request.Handled || request.Source is not ListBoxItem row || row.DataContext is RungRow rung && !OffersMenu(rung)) return;
         if (row.GetVisualDescendants().OfType<Control>().FirstOrDefault(control => control.ContextMenu is not null) is
             { ContextMenu: { } menu } owner)
         {
@@ -1021,6 +1021,26 @@ public sealed partial class MainWindow : Window, IDisposable
         focused.RaiseEvent(request);
         key.Handled = request.Handled;
     }
+
+    /// <summary>
+    /// Keeps a ranked row's menu closed where it has nothing to offer. A record stands for no process a selection holds and
+    /// links no call, so its menu opened empty, and a call's or a channel's offered to add it to the selection, which added
+    /// nothing; the selection's item is now shown only on a row that stands for processes.
+    /// </summary>
+    private void KeepEmptyRowMenuClosed(object? sender, System.ComponentModel.CancelEventArgs eventArgs)
+    {
+        // The menu is told its row only once it is open, so the row is found by the menu it carries.
+        if (RungList.GetRealizedContainers()
+                .SelectMany(container => container.GetVisualDescendants().OfType<Control>())
+                .FirstOrDefault(control => ReferenceEquals(control.ContextMenu, sender))?.DataContext is RungRow row
+            && !OffersMenu(row))
+        {
+            eventArgs.Cancel = true;
+        }
+    }
+
+    /// <summary>Whether a ranked row's menu has something to offer: the selection, or the call at its other end.</summary>
+    private static bool OffersMenu(RungRow row) => row.JoinsSelection || row.HasOtherEnd;
 
     /// <summary>The menu equivalent of Ctrl+click on a ranked row (§6.7, R15).</summary>
     private void ToggleRowInSelection(object? sender, RoutedEventArgs eventArgs) =>
