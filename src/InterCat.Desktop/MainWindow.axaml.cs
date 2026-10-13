@@ -301,6 +301,18 @@ public sealed partial class MainWindow : Window, IDisposable
                 KeepKeyboard();
             }
         }, RoutingStrategies.Bubble, handledEventsToo: true);
+
+        // A detail said aloud is shown from its first line, where a person reading a long one had scrolled its lines; a
+        // recording's newer generation, restated in silence, leaves them where they are read (R15).
+        CaptureDetail.PropertyChanged += (_, change) =>
+        {
+            if (change.Property == TextBlock.TextProperty
+                && AutomationProperties.GetLiveSetting(CaptureDetail) != AutomationLiveSetting.Off)
+            {
+                CaptureDetailScroller.Offset = default;
+            }
+        };
+
         SizeChanged += (_, change) =>
         {
             FollowRailWidth(change.NewSize.Width);
@@ -2365,7 +2377,9 @@ public sealed partial class MainWindow : Window, IDisposable
             string stage = update.Stage == OriginalPackageStage.Copying
                 ? "Copying and checking the session's files"
                 : "Reopening and verifying the package";
-            CaptureDetail.Text = update.Total > 0 ? $"{stage}… {update.Done * 100 / update.Total}%" : stage + "…";
+            // The percent is shown, and said aloud by no screen reader, which would say every one of them (R15).
+            Say(CaptureDetail, update.Total > 0 ? $"{stage}… {update.Done * 100 / update.Total}%" : stage + "…",
+                aloud: false);
         });
         try
         {
@@ -2575,9 +2589,9 @@ public sealed partial class MainWindow : Window, IDisposable
                 RedactedPackageStage.Writing => "Writing pseudonymized rows",
                 _ => "Reopening and verifying the package",
             };
-            CaptureDetail.Text = update.Total > 0
-                ? $"{stage}… {update.Done * 100 / update.Total}%"
-                : stage + "…";
+            // The percent is shown, and said aloud by no screen reader, which would say every one of them (R15).
+            Say(CaptureDetail, update.Total > 0 ? $"{stage}… {update.Done * 100 / update.Total}%" : stage + "…",
+                aloud: false);
         });
         try
         {
@@ -2925,6 +2939,25 @@ public sealed partial class MainWindow : Window, IDisposable
         });
 
     /// <summary>
+    /// Whether the capture card says aloud what <paramref name="update"/> brings: what changes the capture's state, and
+    /// what a person's action did, but never a recording's newer generation. That restates the card's count and chunks
+    /// every second or two, with any notice its view appends - a rolling capture's release clipping a view that reached
+    /// into what it gave up - which a screen reader said aloud each time, burying what else there was to hear (R15).
+    /// </summary>
+    private bool SaysAloud(CaptureUiUpdate update) => update.Overview is null || !IsLive;
+
+    /// <summary>
+    /// Writes a line of the capture card, which a screen reader announces as it changes, in silence unless
+    /// <paramref name="aloud"/>.
+    /// </summary>
+    private static void Say(TextBlock line, string? text, bool aloud)
+    {
+        if (!aloud) AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Off);
+        line.Text = text;
+        AutomationProperties.SetLiveSetting(line, AutomationLiveSetting.Polite);
+    }
+
+    /// <summary>
     /// Shows one capture or open-session update. A newer generation of the displayed session replaces the workspace,
     /// except while the user reads evidence, when it is held and offered instead.
     /// </summary>
@@ -2935,7 +2968,9 @@ public sealed partial class MainWindow : Window, IDisposable
         // A view paused while a capture recorded follows it again once the capture has ended: nothing more is published
         // to hold the view from, so the saved session is shown, unless the person is reading records of the view shown.
         if (!IsLive) followLatest = true;
-        CaptureStatus.Text = update.Headline;
+
+        bool aloud = SaysAloud(update);
+        Say(CaptureStatus, update.Headline, aloud);
         bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
 
         // Retrying is offered for the capture that could not run, and why it could not is on hover.
@@ -2948,7 +2983,7 @@ public sealed partial class MainWindow : Window, IDisposable
         if (!string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
         {
             appliedDetail = update.Detail;
-            CaptureDetail.Text = update.Detail;
+            Say(CaptureDetail, update.Detail, aloud);
         }
 
         CaptureLatency.Text = Freshness(update.Milestones);
@@ -3519,7 +3554,7 @@ public sealed partial class MainWindow : Window, IDisposable
         if (savedNavigation is not null
             && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
         {
-            CaptureDetail.Text += " " + navigationNotice;
+            Say(CaptureDetail, CaptureDetail.Text + " " + navigationNotice, SaysAloud(update));
         }
 
         if (savedNavigation is not null)

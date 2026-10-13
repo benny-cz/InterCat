@@ -387,10 +387,13 @@
             <TextBlock x:Name="CaptureStatus" Text="Ready to explore" FontWeight="SemiBold"
                        AutomationProperties.LiveSetting="Polite"
                        TextWrapping="Wrap" AutomationProperties.Name="Capture status" />
-            <ScrollViewer MaxHeight="84" VerticalScrollBarVisibility="Auto"
+            <!-- What a person's action did - an export, a package, a pin - or why the capture is as it is, said as it
+                 changes and shown from its first line; a recording's newer generation restates it in silence (R15). -->
+            <ScrollViewer x:Name="CaptureDetailScroller" MaxHeight="84" VerticalScrollBarVisibility="Auto"
                           AutomationProperties.Name="Capture status detail; scroll for the full reason">
               <TextBlock x:Name="CaptureDetail" Text="No configuration or destination is required."
-                         Classes="muted" FontSize="11" TextWrapping="Wrap" />
+                         Classes="muted" FontSize="11" TextWrapping="Wrap"
+                         AutomationProperties.LiveSetting="Polite" />
             </ScrollViewer>
             <Button x:Name="StopCaptureButton" Content="Stop and save" IsVisible="False" Classes="primary"
                     Click="StopCapture" AutomationProperties.HelpText="Stop recording and save published evidence" />
