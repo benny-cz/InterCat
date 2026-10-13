@@ -268,6 +268,19 @@ public sealed class ThemeContractTests
         Assert.Equal(expected, Math.Round(measured, 2), 1);
     }
 
+    [Fact(DisplayName = "§6.8: the motion tokens are 120 ms for a selection and 200 ms for a level change, as the committed theme states")]
+    public void TheMotionTokensAreTheCommittedOnes()
+    {
+        Assert.Equal(TimeSpan.FromMilliseconds(120), ThemePalette.Motion.Selection);
+        Assert.Equal(TimeSpan.FromMilliseconds(200), ThemePalette.Motion.LevelChange);
+
+        using JsonDocument committed = JsonDocument.Parse(File.ReadAllText(Path.Combine(RepositoryRoot(), "theme", "tokens.json")));
+        Assert.Equal(ThemePalette.ThemeVersion, committed.RootElement.GetProperty("themeVersion").GetString());
+        JsonElement motion = committed.RootElement.GetProperty("motion");
+        Assert.Equal(ThemePalette.Motion.Selection.TotalMilliseconds, motion.GetProperty("selectionMilliseconds").GetDouble());
+        Assert.Equal(ThemePalette.Motion.LevelChange.TotalMilliseconds, motion.GetProperty("levelChangeMilliseconds").GetDouble());
+    }
+
     [Fact(DisplayName = "R20: greyscale simulation keeps luminance and drops chroma")]
     public void GreyscaleSimulationKeepsLuminance()
     {

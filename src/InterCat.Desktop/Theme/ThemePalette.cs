@@ -73,6 +73,13 @@ public sealed record StatusTokens(Srgb Caution, Srgb ActionFill, Srgb ActionFill
 }
 
 /// <summary>
+/// §6.8's motion tokens: how long the animations that help the eye follow a change run. A selection's ring settles onto
+/// its node in <see cref="Selection"/>; a level change, or a layout settling, carries each node to its new place in
+/// <see cref="LevelChange"/>. Every mode shares them, and the platform's reduced-motion setting skips both.
+/// </summary>
+public sealed record MotionTokens(TimeSpan Selection, TimeSpan LevelChange);
+
+/// <summary>
 /// The InterCat theme. Values are the contract: the thresholds below are enforced by tests, and the
 /// measured results are written beside the definition so a palette change that breaks one fails a build
 /// rather than a review (§6.6, §21.2 item 9).
@@ -80,7 +87,10 @@ public sealed record StatusTokens(Srgb Caution, Srgb ActionFill, Srgb ActionFill
 public static class ThemePalette
 {
     /// <summary>Bumps when tokens, thresholds or measured results change (§24 themeVersion).</summary>
-    public const string ThemeVersion = "1.4.0";
+    public const string ThemeVersion = "1.5.0";
+
+    /// <summary>§6.8's durations, TUNABLE (§26.2): 120 ms for a selection and 200 ms for a level change.</summary>
+    public static MotionTokens Motion { get; } = new(TimeSpan.FromMilliseconds(120), TimeSpan.FromMilliseconds(200));
 
     /// <summary>Ink must clear this against every surface token it can land on.</summary>
     public const double MinimumInkContrast = 4.5;

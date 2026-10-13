@@ -9,6 +9,7 @@ using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.TextFormatting;
 using Avalonia.Rendering;
+using Avalonia.Threading;
 using InterCat.Application;
 using InterCat.Desktop.Theme;
 using InterCat.Domain;
@@ -110,6 +111,24 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private string? problemText;
     private int keyboardIndex;
     private WorkspaceViewModel? observed;
+
+    /// <summary>How much wider than its place a selection's ring is drawn as it starts to settle onto a node (§6.8).</summary>
+    internal const double RingTravel = 12;
+
+    // §6.8's motion: where each node is drawn while it moves to its place, the drawing whose places it last took, and when
+    // each selected node was ringed. Each is read at one moment per frame, from a clock a test can set.
+    private readonly GraphMotion motion = new();
+    private WorkspaceViewModel? motionOf;
+    private readonly Dictionary<string, TimeSpan> ringedSince = new(StringComparer.Ordinal);
+    private readonly List<string> unringed = [];
+    private IReadOnlySet<string>? ringsFor;
+    private TimeSpan ringsSettled = TimeSpan.MinValue;
+    private bool wasMoving;
+    private bool frameRequested;
+    private readonly Action<TimeSpan> nextFrame;
+    private readonly Action refreshHover;
+    private TimeProvider clock = TimeProvider.System;
+    private long origin = TimeProvider.System.GetTimestamp();
 
     /// <summary>The graph's brushes and pens in one theme mode, from its verified tokens (§6.6).</summary>
     private sealed class Ink
@@ -479,12 +498,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         long nodeScale = GraphEncoding.NodeScale(display);
         long edgeScale = GraphEncoding.EdgeScale(display);
 
+        TimeSpan now = Now;
+        FollowPlaces(viewModel, now);
         Dictionary<string, Point> points = drawnPoints;
         points.Clear();
         for (int index = 0; index < display.Nodes.Count; index++)
         {
             string key = display.Nodes[index].Key;
-            if (Position(key, viewModel) is { } point) points[key] = point;
+            if (Position(key, now) is { } point) points[key] = point;
         }
 
         if (dragging && dragKey is { } moving && points.ContainsKey(moving))
@@ -566,6 +587,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         IReadOnlySet<string> selected = viewModel.SelectedGraphNodeKeys;
         IReadOnlySet<string> partlySelected = viewModel.PartlySelectedGraphNodeKeys;
+        FollowSelection(selected, now);
         IReadOnlyList<GraphDisplayNode> order = TraversalOf(display);
         string? focused = IsFocused && order.Count > 0 ? order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key : null;
         Dictionary<string, double> radii = drawnRadii;
@@ -578,7 +600,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             radii[node.Key] = radius;
             if (selected.Contains(node.Key))
             {
-                context.DrawEllipse(Brushes.Transparent, SelectionPen, point, radius + SelectionHalo, radius + SelectionHalo);
+                // A node that joins the selection is ringed from wider, and the ring settles onto it, so the eye finds the
+                // node chosen anywhere - in a table, by a key or a search - wherever it is drawn (§6.8).
+                double ring = radius + SelectionHalo + RingTravelAt(node.Key, now);
+                context.DrawEllipse(Brushes.Transparent, SelectionPen, point, ring, ring);
             }
             else if (partlySelected.Contains(node.Key))
             {
@@ -676,6 +701,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             Text(problemText!, 10, strong: false, Math.Max(1, Bounds.Width - 24)).Draw(context, new(12, Math.Max(0, Bounds.Height - 22)));
         }
 
+        KeepMoving(now);
     }
 
     /// <summary>The node or edge under the pointer, if any; hover never changes selection (§6.4).</summary>
@@ -689,8 +715,159 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <inheritdoc />
     public event EventHandler? HoverChanged;
 
-    /// <summary>Where a drawn node is, in this control's coordinates; null when it is not drawn.</summary>
-    internal Point? PointOf(string nodeKey) => DataContext is WorkspaceViewModel viewModel ? Position(nodeKey, viewModel) : null;
+    /// <summary>Where a node is drawn now, in this control's coordinates - on its way to its place while it moves; null when not drawn.</summary>
+    internal Point? PointOf(string nodeKey)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel)
+        {
+            return null;
+        }
+
+        TimeSpan now = Now;
+        FollowPlaces(viewModel, now);
+        return Position(nodeKey, now);
+    }
+
+    /// <summary>How wide a selected node's ring is drawn now; null when the node is not drawn selected.</summary>
+    internal double? RingOf(string nodeKey)
+    {
+        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.SelectedGraphNodeKeys.Contains(nodeKey)
+            || !drawnRadii.TryGetValue(nodeKey, out double radius))
+        {
+            return null;
+        }
+
+        TimeSpan now = Now;
+        FollowSelection(viewModel.SelectedGraphNodeKeys, now);
+        return radius + SelectionHalo + RingTravelAt(nodeKey, now);
+    }
+
+    /// <summary>
+    /// The clock motion is read by, which a test sets to read a motion at moments it chooses. Whatever was moving by the
+    /// clock it replaces is drawn where it ends: no time has passed for it on the new one.
+    /// </summary>
+    internal TimeProvider Clock
+    {
+        get => clock;
+        set
+        {
+            ArgumentNullException.ThrowIfNull(value);
+            clock = value;
+            origin = value.GetTimestamp();
+            motion.Finish();
+            unringed.Clear();
+            unringed.AddRange(ringedSince.Keys);
+            foreach (string key in unringed)
+            {
+                ringedSince[key] = -ThemePalette.Motion.Selection;
+            }
+
+            ringsSettled = TimeSpan.MinValue;
+        }
+    }
+
+    private TimeSpan Now => clock.GetElapsedTime(origin);
+
+    /// <summary>
+    /// Takes the view model's places once they change. Within one drawing every node moves from where it is drawn now to
+    /// its new place; a later publication's or another session's drawing is adopted, a node going on moving only toward
+    /// the place it still has (§6.8).
+    /// </summary>
+    private void FollowPlaces(WorkspaceViewModel viewModel, TimeSpan now)
+    {
+        IReadOnlyDictionary<string, GraphPoint> places = viewModel.DisplayPositions;
+        if (ReferenceEquals(motion.Places, places))
+        {
+            return;
+        }
+
+        if (ReferenceEquals(motionOf, viewModel))
+        {
+            motion.MoveTo(places, now, ThemePalette.Motion.LevelChange, ReducedMotion.IsOn);
+        }
+        else
+        {
+            motionOf = viewModel;
+            motion.Adopt(places, now);
+        }
+    }
+
+    /// <summary>
+    /// Notes when each selected node joined the selection, so its ring settles onto it over the selection's duration. A
+    /// node that leaves the selection loses its ring at once, one still selected in a later drawing keeps it as it is, and
+    /// under reduced motion a ring is drawn in its place at once.
+    /// </summary>
+    private void FollowSelection(IReadOnlySet<string> selected, TimeSpan now)
+    {
+        if (ReferenceEquals(selected, ringsFor))
+        {
+            return;
+        }
+
+        ringsFor = selected;
+        unringed.Clear();
+        foreach (string key in ringedSince.Keys)
+        {
+            if (!selected.Contains(key))
+            {
+                unringed.Add(key);
+            }
+        }
+
+        foreach (string key in unringed)
+        {
+            _ = ringedSince.Remove(key);
+        }
+
+        TimeSpan length = ThemePalette.Motion.Selection;
+        bool reduced = ReducedMotion.IsOn;
+        foreach (string key in selected)
+        {
+            if (!ringedSince.ContainsKey(key))
+            {
+                TimeSpan since = reduced ? now - length : now;
+                ringedSince[key] = since;
+                if (since + length > ringsSettled)
+                {
+                    ringsSettled = since + length;
+                }
+            }
+        }
+    }
+
+    /// <summary>How much wider than its place a selected node's ring is drawn at <paramref name="now"/>: none once settled.</summary>
+    private double RingTravelAt(string key, TimeSpan now) => ringedSince.TryGetValue(key, out TimeSpan since)
+        ? RingTravel * (1 - GraphMotion.EaseOut((now - since) / ThemePalette.Motion.Selection))
+        : 0;
+
+    /// <summary>
+    /// While a node moves or a ring settles, asks for the next frame and answers the hover again under a resting pointer as
+    /// the drawing moves beneath it (P22); once everything is still, answers it a last time where all came to rest.
+    /// </summary>
+    private void KeepMoving(TimeSpan now)
+    {
+        bool moving = motion.IsMoving(now) || now < ringsSettled;
+        if (moving && !frameRequested && TopLevel.GetTopLevel(this) is { } window)
+        {
+            frameRequested = true;
+            window.RequestAnimationFrame(nextFrame);
+        }
+        else if (!moving && wasMoving)
+        {
+            Dispatcher.UIThread.Post(refreshHover);
+        }
+
+        wasMoving = moving;
+    }
+
+    /// <summary>A drag that ends in no drop carries its node back to its place from where the pointer left it (§6.8).</summary>
+    private void ReturnDragged()
+    {
+        if (dragging && dragKey is { } key)
+        {
+            motion.Return(key, GraphPointAt(dragAt), Now, ThemePalette.Motion.LevelChange, ReducedMotion.IsOn);
+        }
+    }
 
     /// <summary>How large a node was drawn in the last frame; null when it was not drawn.</summary>
     internal double? RadiusOf(string nodeKey) => drawnRadii.TryGetValue(nodeKey, out double radius) ? radius : null;
@@ -855,16 +1032,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
     private string? EdgeHitTest(WorkspaceViewModel viewModel, Point pointer)
     {
-        // Run on every pointer move, so it scans by index and allocates nothing (R11).
+        // Run on every pointer move, so it scans by index and allocates nothing (R11). It answers for the edges as drawn
+        // now, moving ones included (R13).
         GraphDisplay display = viewModel.GraphDisplay;
         long scale = GraphEncoding.EdgeScale(display);
+        TimeSpan now = Now;
+        FollowPlaces(viewModel, now);
 
         string? best = null;
         double bestDistance = double.MaxValue;
         for (int index = 0; index < display.Edges.Count; index++)
         {
             GraphDisplayEdge edge = display.Edges[index];
-            if (Position(edge.SourceKey, viewModel) is not { } source || Position(edge.TargetKey, viewModel) is not { } target)
+            if (Position(edge.SourceKey, now) is not { } source || Position(edge.TargetKey, now) is not { } target)
             {
                 continue;
             }
@@ -1233,7 +1413,15 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         e.Pointer.Capture(null);
         if (dropped && DataContext is WorkspaceViewModel viewModel)
         {
-            viewModel.PinGraphNode(key, GraphPointAt(at));
+            // The node is drawn where it was dropped from now on; it never travels back to where it was carried from.
+            GraphPoint place = GraphPointAt(at);
+            if (viewModel.PinGraphNode(key, place))
+            {
+                TimeSpan now = Now;
+                FollowPlaces(viewModel, now);
+                motion.Place(key, place, now);
+            }
+
             e.Handled = true;
         }
 
@@ -1242,13 +1430,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     protected override void OnPointerCaptureLost(PointerCaptureLostEventArgs e)
     {
-        // A drag cancelled by the system leaves the node where it was: nothing is pinned by a gesture that did not end. A
-        // release lets its capture go only once it has recorded its end.
+        // A drag cancelled by the system takes the node back to where it was: nothing is pinned by a gesture that did not
+        // end. A release lets its capture go only once it has recorded its end.
         base.OnPointerCaptureLost(e);
         if (dragKey is not null)
         {
             pressCancelled = true;
             clickedLast = false;
+            ReturnDragged();
         }
 
         dragKey = null;
@@ -1258,8 +1447,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// Cancels a node's press or drag in progress, as Esc does (§6.7): the node stays where it was and nothing is pinned;
-    /// the press's selection stands. False when none is in progress.
+    /// Cancels a node's press or drag in progress, as Esc does (§6.7): the node goes back to where it was and nothing is
+    /// pinned; the press's selection stands. False when none is in progress.
     /// </summary>
     internal bool CancelDrag()
     {
@@ -1270,6 +1459,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         pressCancelled = true;
         clickedLast = false;
+        ReturnDragged();
         dragKey = null;
         dragging = false;
         IPointer? pointer = dragPointer;
@@ -1279,7 +1469,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return true;
     }
 
-    /// <summary>The graph coordinates of a point in this control: the inverse of <see cref="Position"/>, kept in [0,1].</summary>
+    /// <summary>The graph coordinates of a point in this control: the inverse of <see cref="PlaceOf"/>, kept in [0,1].</summary>
     private GraphPoint GraphPointAt(Point point) => new(
         Math.Clamp((point.X - LabelInset) / Math.Max(1, Bounds.Width - (LabelInset * 2)), 0, 1),
         Math.Clamp((point.Y - 28) / Math.Max(1, Bounds.Height - 72), 0, 1));
@@ -1296,6 +1486,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     public GraphView()
     {
+        nextFrame = _ =>
+        {
+            frameRequested = false;
+            InvalidateVisual();
+            RefreshHover();
+        };
+        refreshHover = RefreshHover;
         AutomationProperties.SetName(this, SpokenName);
         DoubleTapped += OpenGroup;
 
@@ -1384,17 +1581,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
     }
 
-    /// <summary>The drawn node under a point, nearest first; null when the point is on no node.</summary>
+    /// <summary>The node drawn under a point now - a moving one where it is drawn (R13) - nearest first; null when none.</summary>
     private string? HitTest(WorkspaceViewModel viewModel, Point pointer)
     {
         GraphDisplay display = viewModel.GraphDisplay;
         long scale = GraphEncoding.NodeScale(display);
+        TimeSpan now = Now;
+        FollowPlaces(viewModel, now);
         string? best = null;
         double bestDistance = double.MaxValue;
         for (int index = 0; index < display.Nodes.Count; index++)
         {
             GraphDisplayNode node = display.Nodes[index];
-            if (Position(node.Key, viewModel) is not { } point) continue;
+            if (Position(node.Key, now) is not { } point) continue;
             double distance = Math.Sqrt(Math.Pow(point.X - pointer.X, 2) + Math.Pow(point.Y - pointer.Y, 2));
             if (distance <= RadiusOf(node, scale) + HitSlop && distance < bestDistance)
             {
@@ -1408,16 +1607,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>
     /// Places a node so that its label fits inside the pane. The inset is the label half-width, so a node near an edge
-    /// keeps its name readable instead of having it clipped (§6.8 legibility).
+    /// keeps its name readable instead of having it clipped (§6.8 legibility). A node is placed where it is drawn at
+    /// <paramref name="now"/>, which is its place unless it is moving there.
     /// </summary>
-    private Point? Position(string key, WorkspaceViewModel viewModel)
-    {
-        if (!viewModel.DisplayPositions.TryGetValue(key, out GraphPoint graph)) return null;
-        return new Point(
-            LabelInset + (graph.X * Math.Max(0, Bounds.Width - (LabelInset * 2))),
-            // Reserve room for the largest node above and the label below, keeping bands legible at the minimum size.
-            28 + (graph.Y * Math.Max(0, Bounds.Height - 72)));
-    }
+    private Point? Position(string key, TimeSpan now) => motion.At(key, now) is { } graph ? PlaceOf(graph) : null;
+
+    /// <summary>Where a place in the graph's fractions of the pane is in this control: the inverse of <see cref="GraphPointAt"/>.</summary>
+    internal Point PlaceOf(GraphPoint graph) => new(
+        LabelInset + (graph.X * Math.Max(0, Bounds.Width - (LabelInset * 2))),
+        // Reserve room for the largest node above and the label below, keeping bands legible at the minimum size.
+        28 + (graph.Y * Math.Max(0, Bounds.Height - 72)));
 
     /// <summary>One line of label text, trimmed with an ellipsis at <paramref name="width"/>; cached, as layout is costly.</summary>
     private TextLayout Text(string text, double size, bool strong, double width) =>

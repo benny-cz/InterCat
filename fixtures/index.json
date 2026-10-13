@@ -1232,6 +1232,7 @@
         "P21: a count superseded while it runs never applies, and every pane answers the one scope on screen"
       ],
       "P22": [
+        "P22: a node moving away from a resting pointer takes its card with it as it goes, not once it has arrived",
         "P22: a pin or a resize that moves graph nodes under a resting pointer re-answers its hover for the mark there now",
         "P22: a zoom, a resize or a newer generation under a resting pointer re-answers the timeline's hover for what is there now"
       ],
@@ -1333,6 +1334,7 @@
         "R11: a repaint of a call or exchange lane allocates nothing of its own, as bars or as density, a mark under the pointer or not",
         "R11: a repaint of a zoomed timeline drawn as density allocates nothing of its own, on every rung, a cell beside the pointer or not, on records and on bytes",
         "R11: a repaint of the timeline, graph, minimap and hover layer allocates nothing of its own, on every rung",
+        "R11: a repaint while the graph's nodes move and a ring settles allocates nothing of its own",
         "R11: a row's layout is kept while its cells and the view stay, and laid out again when either changes",
         "R11: a warm projection, timeline count, focused count and interval count allocate nothing per row"
       ],

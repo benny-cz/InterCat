@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 492 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 493 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -60,6 +60,8 @@ other process. Double-clicking a relationship's edge, or Enter on its row in the
 or an RPC relationship's linked calls. The timeline draws in colour the records E would
 list for the rung, over every record in grey. A timeline cell explains itself on hover, as graph marks do, and once
 chosen in the inspector, which lists its first records; since revision 471 the graph highlights what they belong to.
+Since revision 493 the graph's nodes travel to new places and a new selection's ring settles onto its node, unless
+the platform reduces motion.
 
 The ordinary user's path is `icat capture` or Desktop Explore through the broker; `icat import` builds a session from
 ETL. `icat session`, `processes`, `metric`, `overview`, `timeline`, `evidence`, `raw`, `retain`, and `export` inspect or
@@ -90,6 +92,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 493 — the graph's motion (§6.8, R11, R13, P22):**
+  - Motion was specified but unbuilt: the graph jumped to every new layout, and nothing read the platform's
+    reduced-motion setting.
+  - The durations are theme tokens (theme 1.5.0). Nodes travel from where they are drawn to new places in 200 ms,
+    an opened group's members spreading from where it was; a new selection's ring settles onto its node in 120 ms.
+  - A dropped node stays where it was dropped, a cancelled drag's node is carried back, and a later publication's
+    node goes on only toward a place it keeps. Clicks and hover cards answer for where a node is drawn.
+  - With Windows' Animation effects turned off, every change is drawn where it ends at once.
+  - Debug and Release each ran 2,103 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 19
+    mutations: a linear move, reduced motion ignored by the motion or by the graph, a later drawing's move kept toward a
+    place it no longer has or ending a rounding away from its new one, a move ended a step late, a drop that slides, a
+    cancelled drag's node left where the pointer was or carried back under reduced motion, a finished move left under
+    way, a selection token of 150 ms, a graph that never moves, no ring, a ring under reduced motion, a ring not given
+    again to a node chosen again, no frame asked for, a frame that leaves a moved node's card, and a click answered
+    where a node is going rather than where it is drawn.
 
 - **Revision 492 — every flow behind a file or folder choice runs whole in a test (§6.4, §8.4, §11.3, §20.6):**
   - The windows asked the platform's pickers directly, so exporting, the sharing report, the support bundle,
@@ -2124,6 +2142,11 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      whether InterCat's own processes are set aside - differ from their first-run defaults, beside a Restore defaults command that puts them all back as their controls would; the line's
      tooltip names each in the words `icat workspace show` and an investigation's notice use. The theme and the panes
      are the window's, not the view's, and stay as chosen.
+   - §6.8's motion: since revision 493 the graph's nodes travel to new places - a level change's, a layout settling,
+     a re-layout's, a pin's - in the 200 ms level-change token, and a node newly selected is ringed from wider, the
+     ring settling in the 120 ms selection token (theme 1.5.0). Under the platform's reduced motion, on Windows
+     Animation effects, every change is drawn where it ends at once. The follow-latest advance and the timeline's
+     lanes on a level change are still drawn at once.
    - §19.5's self-observation: since revision 414 a live capture names the process collecting it - its broker, or
      `icat record` - by PID and creation time (`collector-identities-v1`, dependency kind 11), carried, mirrored and
      never released, which `icat session` states; since revision 415 a broker names the client that asked it to record

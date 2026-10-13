@@ -1,6 +1,6 @@
 # Theme verification
 
-Theme version 1.4.0, generated 2026-09-28.
+Theme version 1.5.0, generated 2026-10-13.
 
 - Ink against every surface token: at least 4.5 to 1
 - Fill against its plot ground: at least 3.0 to 1
@@ -13,6 +13,7 @@ Theme version 1.4.0, generated 2026-09-28.
 - In a high-contrast mode every ink, the action ink included, clears 7.0 to 1, every fill 4.5 to 1, and the divider 3.0 to 1 against every surface
 - Hatches and warning patterns are reserved for coverage and quality; no family may use one.
 - The unknown grey is never reused for a supported mechanism.
+- Motion: a selection's ring settles in 120 ms and a level change or a layout settling moves nodes in 200 ms; nothing animates per message, and reduced motion draws every change where it ends at once.
 
 ## Dark
 

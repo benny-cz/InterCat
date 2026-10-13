@@ -29,8 +29,10 @@ public static class TestApplication
     public static AppBuilder BuildAvaloniaApp()
     {
         // Every rendering in these tests is of the dark theme, whatever the headless platform reports; a test that needs
-        // the light one applies it and restores dark.
+        // the light one applies it and restores dark. And motion is reduced, so a drawing is read where it ends whenever
+        // it is read; a test that measures motion turns it on and restores this.
         App.PinnedMode = InterCat.Desktop.Theme.ThemeMode.Dark;
+        InterCat.Desktop.Theme.ReducedMotion.Pinned = true;
         return AppBuilder.Configure<App>()
             .UseSkia()
             .UseHeadless(new AvaloniaHeadlessPlatformOptions { UseHeadlessDrawing = false });

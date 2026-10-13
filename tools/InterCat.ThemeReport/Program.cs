@@ -15,6 +15,11 @@ options.Converters.Add(new JsonStringEnumConverter());
 var tokens = new
 {
     themeVersion = ThemePalette.ThemeVersion,
+    motion = new
+    {
+        selectionMilliseconds = ThemePalette.Motion.Selection.TotalMilliseconds,
+        levelChangeMilliseconds = ThemePalette.Motion.LevelChange.TotalMilliseconds,
+    },
     order = ThemePalette.Order,
     modes = ThemePalette.Modes.Select(mode => new
     {
@@ -67,6 +72,9 @@ foreach (string threshold in report.Thresholds)
 {
     summary.AppendLine(CultureInfo.InvariantCulture, $"- {threshold}");
 }
+
+summary.AppendLine(CultureInfo.InvariantCulture,
+    $"- Motion: a selection's ring settles in {ThemePalette.Motion.Selection.TotalMilliseconds:0} ms and a level change or a layout settling moves nodes in {ThemePalette.Motion.LevelChange.TotalMilliseconds:0} ms; nothing animates per message, and reduced motion draws every change where it ends at once.");
 
 foreach (ThemeModeReport mode in report.Modes)
 {

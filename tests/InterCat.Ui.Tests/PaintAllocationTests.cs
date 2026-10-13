@@ -26,7 +26,7 @@ public sealed class PaintAllocationTests
     /// Averaged over the measured frames, so one lazily grown cache in the drawing stack is not a failure, while the least
     /// object allocated on every other frame is: the smallest an object can be is 24 bytes.
     /// </summary>
-    private const long ToleratedBytesPerFrame = 8;
+    internal const long ToleratedBytesPerFrame = 8;
 
     private static readonly string[] Panes = ["TimelineSurface", "GraphSurface", "MinimapSurface", "HoverLayer"];
 
@@ -281,7 +281,7 @@ public sealed class PaintAllocationTests
     /// what a counted frame allocates is the pane's own. Drawn into a fresh context per frame, the stacks' growth had to be
     /// taken off as one estimate for every pane, and a lane's note formatted on every frame once hid inside it.
     /// </summary>
-    private static long OwnAllocationPerFrame(Control control)
+    internal static long OwnAllocationPerFrame(Control control)
     {
         // The first frames build what later ones reuse (laid-out text, dash geometry, the runtime's own warm-up), so a
         // generous warm-up comes before the frames that are counted.
