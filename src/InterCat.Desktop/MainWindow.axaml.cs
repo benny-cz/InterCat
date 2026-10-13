@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Layout;
 using Avalonia.LogicalTree;
+using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using Avalonia.VisualTree;
 using System.Globalization;
@@ -238,6 +239,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         // consume a letter key for type-ahead and the keyboard path would silently stop working (R15).
         AddHandler(KeyDownEvent, OnShortcutKey, RoutingStrategies.Tunnel);
         AddHandler(KeyUpEvent, RequestContextMenuOnShiftF10, RoutingStrategies.Bubble);
+
+        // A saved session's folder or an investigation file dragged onto the window opens where it is let go, as Open
+        // saved session and the Investigation menu open them (§3.1).
+        DragDrop.SetAllowDrop(this, true);
+        AddHandler(DragDrop.DragEnterEvent, OfferDrop);
+        AddHandler(DragDrop.DragOverEvent, OfferDrop);
+        AddHandler(DragDrop.DropEvent, OpenDropped);
 
         // §6.7: Ctrl+click on a ranked row adds it to the multi-selection or removes it, before the list would select it alone.
         RungList.AddHandler(PointerPressedEvent, OnRungListPointerPressed, RoutingStrategies.Tunnel);
@@ -1449,10 +1457,19 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         KeepKeyboard();
     }
 
+    /// <summary>
+    /// Whether a saved session can be opened now, as Open saved session opens one: while the button is offered - a
+    /// capture under way hides it, and an open or the finishing of an unfinished capture disables it - and while no
+    /// folder is being chosen and no package written.
+    /// </summary>
+    private bool OpensSavedSessionNow =>
+        OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true }
+        && !openingSession && !choosingSession && packaging is null && finishingCapture is null
+        && captureTask is not { IsCompleted: false };
+
     private async void OpenSavedSession(object? sender, RoutedEventArgs eventArgs)
     {
-        if (openingSession || choosingSession || packaging is not null || finishingCapture is not null
-            || captureTask is { IsCompleted: false }) return;
+        if (!OpensSavedSessionNow) return;
         string? folder;
         choosingSession = true;
         try
@@ -1473,6 +1490,52 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         if (folder is not null && !closed) _ = await OpenSessionAsync(folder);
     }
+
+    /// <summary>
+    /// Takes what a drag over the window carries - files or folders, never text - while a saved session could be
+    /// opened, and nothing while a capture, an open or a package is under way, as Open saved session waits for them;
+    /// the pointer says which before anything is let go.
+    /// </summary>
+    private void OfferDrop(object? sender, DragEventArgs e)
+    {
+        e.DragEffects = OpensSavedSessionNow && e.DataTransfer.TryGetFiles() is { Length: > 0 }
+            ? DragDropEffects.Copy
+            : DragDropEffects.None;
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Opens what was dropped on the window: a saved session's folder, as Open saved session opens the one chosen, or
+    /// an investigation file, as the Investigation menu does. Anything else, or several at once, opens nothing, and the
+    /// card says why.
+    /// </summary>
+    private async void OpenDropped(object? sender, DragEventArgs e)
+    {
+        e.Handled = true;
+        if (closed || !OpensSavedSessionNow || e.DataTransfer.TryGetFiles() is not { Length: > 0 } items) return;
+        string? path = items is [var item] ? item.TryGetLocalPath() : null;
+        if (path is not null && Directory.Exists(path))
+        {
+            _ = await OpenSessionAsync(path);
+        }
+        else if (path is not null && File.Exists(path)
+            && path.EndsWith(InvestigationWorkspace.Extension, StringComparison.OrdinalIgnoreCase))
+        {
+            _ = ShowInvestigation(path);
+        }
+        else
+        {
+            Say(CaptureStatus, "Nothing was opened", aloud: true);
+            Say(CaptureDetail, NotOpened(items) + " The current workspace is unchanged.", aloud: true);
+        }
+    }
+
+    /// <summary>Why a drop opened nothing: several things at once, or one that InterCat does not open.</summary>
+    private static string NotOpened(IStorageItem[] items) => items is [var one]
+        ? $"{one.Name} cannot be opened: InterCat opens a saved session's folder, or an investigation file "
+            + $"({InvestigationWorkspace.Extension}), on this computer."
+        : $"{items.Length} items were dropped at once; InterCat opens one saved session's folder or investigation file "
+            + "at a time.";
 
     private async void OpenInvestigation(object? sender, RoutedEventArgs eventArgs)
     {
@@ -3154,11 +3217,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     return true;
                 case Key.O:
                     // As Open saved session does, while it is offered: a capture under way hides it until it ends.
-                    if (OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true })
-                    {
-                        OpenSavedSession(OpenSavedSessionButton, new RoutedEventArgs());
-                    }
-
+                    OpenSavedSession(OpenSavedSessionButton, new RoutedEventArgs());
                     return true;
                 default:
                     break;

@@ -181,7 +181,8 @@ public sealed class ChosenPathFlowTests : IDisposable
         Dispatcher.UIThread.RunJobs();
         TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
         Button open = window.GetControl<Button>("OpenSavedSessionButton");
-        Assert.Equal(("Open saved session", "Open an existing InterCat session (Ctrl+O)", "Ctrl+O"),
+        const string Tip = "Open an existing InterCat session (Ctrl+O), or drop its folder on this window";
+        Assert.Equal(("Open saved session", Tip, "Ctrl+O"),
             (open.Content, ToolTip.GetTip(open), Avalonia.Automation.AutomationProperties.GetAcceleratorKey(open)));
         Assert.Contains(WindowKeys.All, key => (key.Where, key.Keys, key.Does)
             == ("Anywhere", "Ctrl+O", "open a saved session, as Open saved session does"));

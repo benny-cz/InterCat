@@ -405,10 +405,11 @@
             <Button x:Name="FollowButton" Content="Pause view (F)" IsVisible="False" FontSize="13"
                     Click="ToggleFollow" AutomationProperties.HelpText="Pause or resume following the live capture" />
             <!-- Its key is said on hover and to a screen reader, as the search box's is: in its words it would wrap at the
-                 rail's narrowest, and take the ranked list's room. -->
+                 rail's narrowest, and take the ranked list's room. Its hover also says a session's folder can be dropped. -->
             <Button x:Name="OpenSavedSessionButton" Content="Open saved session" FontSize="13"
                     Click="OpenSavedSession" AutomationProperties.HelpText="Open an existing InterCat session"
-                    ToolTip.Tip="Open an existing InterCat session (Ctrl+O)" AutomationProperties.AcceleratorKey="Ctrl+O" />
+                    ToolTip.Tip="Open an existing InterCat session (Ctrl+O), or drop its folder on this window"
+                    AutomationProperties.AcceleratorKey="Ctrl+O" />
             <!-- An investigation spans sessions captured apart, on this machine or others (ADR-038). -->
             <Button x:Name="InvestigationButton" Content="Investigation" FontSize="13"
                     AutomationProperties.HelpText="Open or start an investigation over several sessions">

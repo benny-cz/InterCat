@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 513 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 514 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 514 — a session or an investigation dropped on the window (§3.1):**
+  - A session folder named on the command line or dropped on the program opened, but the open window took
+    nothing dragged onto it.
+  - It now takes files and folders, never text, while a saved session could be opened: a folder opens as Open
+    saved session opens the one chosen, an investigation file in a window of its own. Anything else, or several
+    things at once, opens nothing and the card says why. Open saved session's tooltip says a folder can be dropped.
+  - Debug and Release each ran 2,161 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 12
+    mutations: the window taking no drop; a drop taken during a capture, or text taken; a drop opened during a
+    capture; several things opening the first, or said as one; a folder or an investigation not opened, or any file
+    opened as an investigation; the card's refusal or headline unsaid; the drop and Ctrl+O not waiting while Open
+    saved session is hidden.
 
 - **Revision 513 — the keys that act anywhere, from the search box (§6.7, R15):**
   - The keys sheet says Ctrl+R, Ctrl+E, Ctrl+O, F5, and Alt+Left or Alt+Right act anywhere, but the window gave
