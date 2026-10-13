@@ -135,12 +135,17 @@ public static class CaptureProfileCatalog
                 + "WinINet's HTTP exchanges (ADR-037) - and records through icat record, or through the broker from your own "
                 + "processes alone (ADR-049).",
             requestPreviewAvailable: true),
+        // A flight recorder is a way of keeping a capture, not a profile of its own: a rolling capture keeps the newest
+        // stretch of session time (ADR-045), states from when it holds every record, and keeps what a pin covers.
         Unavailable(
             CaptureProfileKind.FlightRecorder,
             "flight-recorder",
             "Flight recorder",
             AdmissionMode.MetadataOnly,
-            "Rolling retention, visible oldest-time, pin reservation and export-freeze guarantees are not implemented yet."),
+            "A rolling capture is the flight recorder: it keeps the newest stretch of session time, says from when it holds "
+                + "every record, and keeps what a pin covers through every release. Run icat capture --keep-last <seconds>, "
+                + "or choose The last 10 minutes or The last hour in the window's Keep.",
+            statement: "Starts no capture of its own: a rolling capture is the flight recorder."),
     ];
 
     /// <summary>
@@ -197,7 +202,8 @@ public static class CaptureProfileCatalog
         string displayName,
         AdmissionMode admission,
         string reason,
-        bool requestPreviewAvailable = false) => new()
+        bool requestPreviewAvailable = false,
+        string? statement = null) => new()
         {
             Kind = kind,
             Id = id,
@@ -210,9 +216,10 @@ public static class CaptureProfileCatalog
             Sources = [],
             PreserveExtendedData = false,
             RequestCallStacks = false,
-            CollectionStatement = requestPreviewAvailable
-                ? "Compiles bounded requested content rules for review, but starts no capture and retains no content because no source can enforce them yet."
-                : "Starts no capture because this profile cannot yet enforce its stated guarantees.",
+            CollectionStatement = statement ?? (requestPreviewAvailable
+                ? "Compiles bounded requested content rules for review and starts no capture. Content is kept only from a "
+                    + "source admitted for it - WinINet's HTTP exchanges - through icat record or icat capture."
+                : "Starts no capture because this profile cannot yet enforce its stated guarantees."),
         };
 }
 
@@ -577,7 +584,7 @@ public static class CaptureProfileCompiler
 
         if (!FocusableTransports.Contains(request.FocusedMechanism.Value))
         {
-            return $"{request.FocusedMechanism} is not available in Focused transport. TCP and UDP are the only mechanisms with measured source semantics and capture impact.";
+            return $"{MechanismText.Name(request.FocusedMechanism.Value)} is not available in Focused transport. TCP and UDP are the only mechanisms with measured source semantics and capture impact.";
         }
 
         return request.AllowBroaderCapture && processIds.Count == 0
@@ -671,7 +678,7 @@ public static class CaptureProfileCompiler
                         false,
                         "No process restriction was requested.")),
                 ],
-                Disclosure = $"The capture is focused on {request.FocusedMechanism} but includes all processes.",
+                Disclosure = $"The capture is focused on {FocusedName(request.FocusedMechanism)} but includes all processes.",
             };
         }
 
@@ -711,8 +718,8 @@ public static class CaptureProfileCompiler
 
         bool broader = sourceScopes.Any(source => source.CapturesOutsideRequestedProcesses);
         string disclosure = request.AllowBroaderCapture
-            ? $"Broader capture accepted: {request.FocusedMechanism} metadata may be collected outside PID(s) {string.Join(", ", requestedProcessIds)}; the initial view remains focused on those processes."
-            : $"Broader capture needs consent: {request.FocusedMechanism} cannot be retained only for PID(s) {string.Join(", ", requestedProcessIds)} while preserving required context. Review the source decisions, then explicitly allow broader capture if acceptable.";
+            ? $"Broader capture accepted: {FocusedName(request.FocusedMechanism)} metadata may be collected outside PID(s) {string.Join(", ", requestedProcessIds)}; the initial view remains focused on those processes."
+            : $"Broader capture needs consent: {FocusedName(request.FocusedMechanism)} cannot be retained only for PID(s) {string.Join(", ", requestedProcessIds)} while preserving required context. Review the source decisions, then explicitly allow broader capture if acceptable.";
         return new()
         {
             RequestedMechanism = request.FocusedMechanism,
@@ -726,6 +733,10 @@ public static class CaptureProfileCompiler
             Disclosure = disclosure,
         };
     }
+
+    /// <summary>The focused mechanism as a person names it, "TCP"; a request that names none says so.</summary>
+    private static string FocusedName(Mechanism? mechanism) =>
+        mechanism is { } focused ? MechanismText.Name(focused) : "no mechanism";
 
     private static ProfileSourceDecision Decision(
         ProfileSourceRequirement requirement,

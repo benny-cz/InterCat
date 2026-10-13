@@ -3,9 +3,9 @@ using System.Globalization;
 namespace InterCat.Domain;
 
 /// <summary>
-/// A capability's state, a mechanism's tier and a source's overhead as InterCat names them to a person (R5): "permission
-/// denied", "traffic visualization", "moderate", as §14.2 names the tiers, where the enumerations run their words
-/// together. A value this version does not know is named by its number, never guessed.
+/// A capability's state, a mechanism's tier, a source's overhead and a profile's admission as InterCat names them to a
+/// person (R5): "permission denied", "traffic visualization", "moderate", "metadata only", as §14.2 names the tiers, where
+/// the enumerations run their words together. A value this version does not know is named by its number, never guessed.
 /// </summary>
 public static class CapabilityText
 {
@@ -40,5 +40,14 @@ public static class CapabilityText
         OverheadClass.Moderate => "moderate",
         OverheadClass.High => "high",
         _ => string.Create(CultureInfo.InvariantCulture, $"overhead {(int)overhead}"),
+    };
+
+    /// <summary>What a capture profile admits: "metadata only", "scoped content", "original evidence".</summary>
+    public static string Admission(AdmissionMode admission) => admission switch
+    {
+        AdmissionMode.MetadataOnly => "metadata only",
+        AdmissionMode.ScopedContent => "scoped content",
+        AdmissionMode.OriginalEvidence => "original evidence",
+        _ => string.Create(CultureInfo.InvariantCulture, $"admission {(int)admission}"),
     };
 }

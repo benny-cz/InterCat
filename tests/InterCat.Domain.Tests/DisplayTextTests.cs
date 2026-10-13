@@ -45,7 +45,7 @@ public sealed class DisplayTextTests
             Enum.GetValues<CoverageState>().Select(CoverageStateText.Label));
     }
 
-    [Fact(DisplayName = "R5: a record's kind and layer, a missing field's reason and a capability's state, tier and overhead each read as words")]
+    [Fact(DisplayName = "R5: a record's kind and layer, a missing field's reason, a capability's state, tier and overhead and a profile's admission each read as words")]
     public void RecordAndCapabilityDimensionsReadAsWords()
     {
         // A kind is a word or two, a layer one; neither is an enumeration's identifier run together.
@@ -67,13 +67,16 @@ public sealed class DisplayTextTests
         Assert.Equal(["traffic visualization", "topology only", "experimental evidence", "unsupported"],
             Enum.GetValues<CapabilityTier>().Select(CapabilityText.Tier));
         Assert.Equal(["unmeasured", "low", "moderate", "high"], Enum.GetValues<OverheadClass>().Select(CapabilityText.Overhead));
+        Assert.Equal(["metadata only", "scoped content", "original evidence"],
+            Enum.GetValues<AdmissionMode>().Select(CapabilityText.Admission));
 
         // A value this version does not know is named by its number, never guessed.
-        Assert.Equal(["kind 42", "layer 9", "availability 0", "state 0", "tier 9", "overhead 0"],
+        Assert.Equal(["kind 42", "layer 9", "availability 0", "state 0", "tier 9", "overhead 0", "admission 0"],
         [
             ObservationText.Kind((ObservationKind)42), ObservationText.Layer((ObservationLayer)9),
             ObservationText.Absence((FieldAvailability)0), CapabilityText.State((CapabilityState)0),
             CapabilityText.Tier((CapabilityTier)9), CapabilityText.Overhead((OverheadClass)0),
+            CapabilityText.Admission((AdmissionMode)0),
         ]);
     }
 

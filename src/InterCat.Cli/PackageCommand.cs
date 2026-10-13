@@ -240,7 +240,8 @@ internal static class PackageCommand
         }
         else
         {
-            notes.Add("Review the package before sharing it. Deleting the source afterwards is not a secure erase on an SSD.");
+            // The warning has asked for a review; what it cannot say is that deleting the source does not erase it.
+            notes.Add("Deleting the source afterwards is not a secure erase on an SSD.");
         }
 
         if (source.Interval is { } interval)
@@ -463,9 +464,9 @@ internal static class PackageCommand
             {
                 FilesVerified = result.FilesVerified,
                 BytesVerified = result.BytesVerified,
-                Description = string.Create(CultureInfo.InvariantCulture,
-                    $"Each file checked against its generation's digest as it was copied, then {result.FilesVerified:N0} "
-                    + $"files reopened and hashed as a recipient would."),
+                // In the window's words: the count verified, which takes in the manifest, is the document's.
+                Description = "Each file checked against the digest its generation recorded as it was copied, then the "
+                    + "package reopened and hashed as a recipient would open it.",
             },
             Warning = OriginalEvidencePackage.WarningFor(source),
             Notes = notes,

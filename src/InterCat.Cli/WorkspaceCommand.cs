@@ -1432,7 +1432,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("icat workspace view <workspace> <name> (<from-seconds> <to-seconds> | --remove) [--json]");
         ConsoleUi.Line("icat workspace package <workspace> --output <new-folder> [--only <session>]... [--check] [--json]");
         ConsoleUi.Line();
-        ConsoleUi.Line("An investigation over separately captured sessions (workspace-v4, ADR-038): one file that names each");
+        ConsoleUi.Line($"An investigation over separately captured sessions ({InvestigationWorkspace.Contract}, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
         ConsoleUi.Line("  new      makes an empty workspace; a name without an extension gets .icat-workspace.");
         ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one member: a copy of a");
@@ -1466,8 +1466,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  timeline draws the merged time as the Desktop's investigation window does: each member's records");
         ConsoleUi.Line("           over --columns (160 unless given) of the investigation's time, or of --interval in its");
         ConsoleUi.Line("           100-nanosecond ticks or times with their unit (1.5s:2.5s), where its alignment places them,");
-        ConsoleUi.Line("           with what its capture covered");
-        ConsoleUi.Line("           there, in the window's words; a member with no place says why.");
+        ConsoleUi.Line("           with what its capture covered there, in the window's words; a member with no place says why.");
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
         ConsoleUi.Line("           alignments changed is flagged for review.");
@@ -1487,7 +1486,8 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  package  copies the investigation with its sessions into a new folder, which opens anywhere as");
         ConsoleUi.Line("           the same investigation: each session that is where it was last found, or each named by");
         ConsoleUi.Line("           --only, as an exact original package, beside the investigation's file. Any other stays a");
-        ConsoleUi.Line("           reference to relink. It is unredacted. --check measures it and writes nothing. Exits 1");
-        ConsoleUi.Line("           when a session could not be copied.");
+        ConsoleUi.Line("           reference to relink. A session as recorded goes unredacted and a redacted package as it is,");
+        ConsoleUi.Line("           and the file's names, notes and translated endpoints as they were written. --check measures");
+        ConsoleUi.Line("           it and writes nothing. Exits 1 when a session could not be copied.");
     }
 }

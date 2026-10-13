@@ -301,7 +301,7 @@ internal static class ProfilesCommand
             rows.Add(
             [
                 profile.Id,
-                profile.Admission.ToString(),
+                CapabilityText.Admission(profile.Admission),
                 profile.CompilationAvailable
                     ? "capture preview"
                     : profile.RequestPreviewAvailable ? "request preview only" : "not available",
@@ -322,8 +322,8 @@ internal static class ProfilesCommand
         ConsoleUi.Heading("Requested and effective profile");
         ConsoleUi.Field("Requested profile", plan.RequestedProfileId);
         ConsoleUi.Field("Effective profile", plan.EffectiveProfileId ?? "none — request is blocked");
-        ConsoleUi.Field("Requested admission", plan.RequestedAdmission.ToString());
-        ConsoleUi.Field("Effective admission", plan.EffectiveAdmission?.ToString() ?? "none");
+        ConsoleUi.Field("Requested admission", CapabilityText.Admission(plan.RequestedAdmission));
+        ConsoleUi.Field("Effective admission", plan.EffectiveAdmission is { } admitted ? CapabilityText.Admission(admitted) : "none");
         ConsoleUi.Field("Can start exactly", plan.CanStart ? "yes" : "no");
         ConsoleUi.Field("Build", plan.Environment.BuildId);
         ConsoleUi.Field("Adapter", plan.AdapterVersion);
@@ -331,7 +331,7 @@ internal static class ProfilesCommand
         ConsoleUi.Field("Extended metadata", plan.PreserveExtendedData ? "bounded approved types" : "not retained");
         if (MeasuredCost(plan) is { } measured)
         {
-            ConsoleUi.Field("Measured cost", $"{measured.Overhead}: {measured.Statement}");
+            ConsoleUi.Field("Measured cost", $"{CapabilityText.Overhead(measured.Overhead)}: {measured.Statement}");
             ConsoleUi.Field("Cost evidence", measured.Evidence);
         }
 
@@ -345,10 +345,11 @@ internal static class ProfilesCommand
         if (plan.Content is null)
         {
             ConsoleUi.Heading("Capture scope");
-            string mechanism = plan.Scope.EffectiveMechanism?.ToString()
-                ?? (plan.Scope.RequestedMechanism is null
-                    ? "profile-defined"
-                    : $"{plan.Scope.RequestedMechanism} requested — not available");
+            string mechanism = plan.Scope.EffectiveMechanism is { } effective
+                ? MechanismText.Name(effective)
+                : plan.Scope.RequestedMechanism is { } requested
+                    ? $"{MechanismText.Name(requested)} requested — not available"
+                    : "profile-defined";
             ConsoleUi.Field("Mechanism", mechanism);
             ConsoleUi.Field(
                 "Process focus",
@@ -366,7 +367,11 @@ internal static class ProfilesCommand
                     : !plan.Scope.BroaderCaptureNeedsConsent
                         ? "not needed"
                         : plan.Scope.BroaderCaptureAccepted ? "accepted" : "required before start");
-            ConsoleUi.Note(plan.Scope.Disclosure);
+            // An unavailable profile's scope says why it is, which its diagnostics say again below: said once.
+            if (!plan.Diagnostics.Contains(plan.Scope.Disclosure, StringComparer.Ordinal))
+            {
+                ConsoleUi.Note(plan.Scope.Disclosure);
+            }
             if (plan.Scope.Sources.Count > 0)
             {
                 var scopeRows = new List<IReadOnlyList<string>>(plan.Scope.Sources.Count);
@@ -375,7 +380,7 @@ internal static class ProfilesCommand
                     scopeRows.Add(
                     [
                         source.SourceId,
-                        source.ProcessScope.ToString(),
+                        ScopeText(source.ProcessScope),
                         source.AppliedProcessIds.Count == 0 ? "none" : string.Join(",", source.AppliedProcessIds),
                         source.CapturesOutsideRequestedProcesses ? "yes" : "no",
                         source.Reason,
@@ -432,8 +437,8 @@ internal static class ProfilesCommand
                 [
                     decision.SourceId,
                     decision.Required ? "required" : "optional",
-                    decision.State.ToString(),
-                    decision.Overhead.ToString(),
+                    DecisionText(decision.State),
+                    CapabilityText.Overhead(decision.Overhead),
                     decision.Reason,
                 ]);
             }
@@ -483,6 +488,25 @@ internal static class ProfilesCommand
     }
 
     /// <summary>The profile's own measured cost, when it has one; otherwise only its sources' costs are known.</summary>
+    /// <summary>How far a source's collection reaches, in words, as a source decision's row states it.</summary>
+    internal static string ScopeText(ProviderProcessScope scope) => scope switch
+    {
+        ProviderProcessScope.WholeMachineRequested => "the whole machine, as the profile asks",
+        ProviderProcessScope.ProcessFiltered => "the processes asked for",
+        ProviderProcessScope.WholeMachineRequiredContext => "the whole machine, for context the processes need",
+        ProviderProcessScope.WholeMachineFilterUnavailable => "the whole machine: the provider cannot filter by process",
+        _ => string.Create(CultureInfo.InvariantCulture, $"scope {(int)scope}"),
+    };
+
+    /// <summary>What the compiled request does with a source, in words.</summary>
+    internal static string DecisionText(ProfileSourceDecisionState state) => state switch
+    {
+        ProfileSourceDecisionState.Included => "included",
+        ProfileSourceDecisionState.Omitted => "omitted",
+        ProfileSourceDecisionState.Blocking => "blocks the start",
+        _ => string.Create(CultureInfo.InvariantCulture, $"decision {(int)state}"),
+    };
+
     private static ProfileCostPreview? MeasuredCost(EffectiveCapturePlan plan) =>
         CaptureProfileCatalog.Find(plan.EffectiveProfileId ?? plan.RequestedProfileId) is
         {
