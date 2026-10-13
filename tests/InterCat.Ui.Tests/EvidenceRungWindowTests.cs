@@ -1288,6 +1288,80 @@ public sealed class EvidenceRungWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: ] pages a zoomed view on past its last moment, + and - find an interval out of view, and 0 fits one a zoom in keeps")]
+    public async Task TheKeysFindTheAnalysisIntervalOutOfView()
+    {
+        using var session = new TemporarySession();
+        // Exchanges 50 ms apart, so the session spans seconds and there is room to zoom and pan.
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        timeline.Focus();
+        TimeRange extent = workspace.Snapshot.Extent;
+        double plot = timeline.PlotSpan;
+
+        // Zoomed in at the session's start with the view's own count, ] steps from moment to moment within the view.
+        for (int step = 0; step < 8; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        TimeRange view = timeline.Viewport;
+        Assert.Equal(extent.StartTicks, view.StartTicks);
+        TimeRange[] held = [.. DrawnTimeline.Machine(workspace).Where(bucket => bucket.ObservationCount > 0).Select(bucket => bucket.Interval)];
+        Assert.True(held.Length >= 10, $"{held.Length} moments in view");
+        foreach (TimeRange expected in held)
+        {
+            window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+            Assert.Equal(expected, workspace.SelectedInterval);
+            Assert.Equal(view, timeline.Viewport);
+        }
+
+        // Past the view's last, ] pages the view on, its own count still to come, and the moment chosen stays; once counted,
+        // the next ] chooses the first moment the new view holds.
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        Assert.Equal(held[^1], workspace.SelectedInterval);
+        Assert.Equal(new TimeRange(view.EndTicks, view.EndTicks + view.SpanTicks), timeline.Viewport);
+        await DrawnTimeline.Counted(window, workspace, timeline);
+        window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+        TimeRange chosen = Assert.IsType<TimeRange>(workspace.SelectedInterval);
+        Assert.Equal(DrawnTimeline.Machine(workspace).First(bucket => bucket.ObservationCount > 0).Interval, chosen);
+        Assert.True(chosen.StartTicks >= timeline.Viewport.StartTicks && chosen.EndTicks <= timeline.Viewport.EndTicks);
+
+        // With the analysis interval out of view, + brings it to the view's centre and zooms around it, and so does -.
+        long middle = chosen.StartTicks + (chosen.SpanTicks / 2);
+        window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        TimeRange away = timeline.Viewport;
+        Assert.False(away.Contains(middle));
+        TimeRange centred = ViewportMath.CenterOnTick(away, middle, extent);
+        window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Assert.Equal(ViewportMath.ZoomAtPixel(centred, ViewportMath.PixelAtTick(centred, middle, plot), plot, 1.25m, extent, 100_000),
+            timeline.Viewport);
+        window.KeyPressQwerty(PhysicalKey.End, RawInputModifiers.None);
+        away = timeline.Viewport;
+        Assert.False(away.Contains(middle));
+        centred = ViewportMath.CenterOnTick(away, middle, extent);
+        window.KeyPressQwerty(PhysicalKey.Minus, RawInputModifiers.None);
+        Assert.Equal(ViewportMath.ZoomAtPixel(centred, ViewportMath.PixelAtTick(centred, middle, plot), plot, 0.8m, extent, 100_000),
+            timeline.Viewport);
+
+        // 0 fits the moment, narrower than any zoom reaches. + keeps it, where it widened the view to the narrowest a zoom
+        // reaches, many times wider, and - widens it by its factor.
+        window.KeyPressQwerty(PhysicalKey.Digit0, RawInputModifiers.None);
+        Assert.Equal(chosen, timeline.Viewport);
+        Assert.True(chosen.SpanTicks < 100_000, $"the moment spans {chosen.SpanTicks} ticks");
+        window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        Assert.Equal(chosen, timeline.Viewport);
+        window.KeyPressQwerty(PhysicalKey.Minus, RawInputModifiers.None);
+        Assert.Equal(ViewportMath.ZoomAtPixel(chosen, ViewportMath.PixelAtTick(chosen, middle, plot), plot, 0.8m, extent, 100_000),
+            timeline.Viewport);
+        Assert.True(timeline.Viewport.SpanTicks < 100_000);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§6.7: at the evidence rung ] and [ step record by record, and the timeline marks the one selected")]
     public async Task BracketsStepThroughTheRecords()
     {
@@ -1316,6 +1390,48 @@ public sealed class EvidenceRungWindowTests
         // Before the first record there is nothing to step to; the selection stays.
         Assert.False(workspace.StepEvidence(-1));
         Assert.Equal(workspace.RungRows[0].Key, workspace.SelectedRung?.Key);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: at the evidence rung ] steps on to a record past a zoomed view, and the view is centred on it")]
+    public async Task BracketsBringARecordPastTheViewIntoIt()
+    {
+        using var session = new TemporarySession();
+        // Exchanges 50 ms apart, so the session spans seconds and there is room to zoom.
+        Publish(session.Store, [.. Exchange(0, 100).Select(row => row with { NativeTicks = row.NativeTicks * 500_000L, SessionRelativeTicks = row.NativeTicks * 50_000_000L })]);
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        timeline.Focus();
+        for (int step = 0; step < 8; step++) window.KeyPressQwerty(PhysicalKey.Equal, RawInputModifiers.None);
+        window.KeyPressQwerty(PhysicalKey.Home, RawInputModifiers.None);
+        TimeRange view = timeline.Viewport;
+        Assert.True(view.SpanTicks < workspace.Snapshot.Extent.SpanTicks / 4);
+
+        // ] steps record by record through the view; the first record past its end brings the view to it, centred.
+        int stepped = 0;
+        while (timeline.Viewport == view)
+        {
+            Assert.True(++stepped <= workspace.RungRows.Count, "no record left the view");
+            window.KeyPressQwerty(PhysicalKey.BracketRight, RawInputModifiers.None);
+            long tick = Assert.IsType<long>(workspace.SelectedEvidenceTick);
+            Assert.True(timeline.Viewport.Contains(tick), $"record {stepped} at {tick} lies outside {timeline.Viewport}");
+            if (timeline.Viewport != view)
+            {
+                Assert.False(view.Contains(tick));
+                Assert.Equal(ViewportMath.CenterOnTick(view, tick, workspace.Snapshot.Extent), timeline.Viewport);
+            }
+        }
+
+        Assert.True(stepped > 10, $"the view held {stepped - 1} records");
         window.Close();
     }
 

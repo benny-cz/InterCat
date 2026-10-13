@@ -48,7 +48,7 @@ internal static class WindowKeys
             + "the timeline and the inspector, or the tables while they are shown"),
         new("Anywhere", "Tab or Shift+Tab", "move through the window's controls in reading order"),
         new("Anywhere", "Ctrl+F", "search for a group, process, channel or lane, or type a time to go to it"),
-        new("Anywhere", "Enter", "open the chosen row's level"),
+        new("Anywhere", "Enter", "open the chosen row's level, or with several processes chosen, list their records"),
         new("Anywhere", "E", "list the records behind what is chosen, within the analysis interval"),
         new("Anywhere", "Esc", "go back a level to where you were, and at the top clear the selection; during a drag, "
             + "cancel it"),
@@ -65,9 +65,11 @@ internal static class WindowKeys
         new("Anywhere", "F5", "show the newest view the capture published, which a paused view or records being read "
             + "hold back"),
         new("Ranked table", "Up or Down", "choose the previous or next row"),
+        new("Ranked table", "Ctrl+Up or Ctrl+Down", "move to the previous or next row without choosing it"),
         new("Ranked table", "Ctrl+Space", "add the row's processes to the multi-selection, or take them out"),
         new("Ranked table", "O", "on an RPC call linked to another, open the call at its other end"),
         new("Graph", "Arrow keys", "move to the next or previous node"),
+        new("Graph", "Ctrl+arrow keys", "move to the next or previous node without choosing it"),
         new("Graph", "Enter", "open the node's group or process"),
         new("Graph", "Ctrl+Space", "add the node's processes to the multi-selection, or take them out"),
         new("Graph", "P", "pin the chosen node where it is drawn, or release it"),

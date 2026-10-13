@@ -3653,7 +3653,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? IntervalSubtitle ?? "Choose a node, a ranked row or a timeline cell."
             : selectedProcess.Caption;
 
-    /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
     /// <summary>What a multi-selection holds, by name, and the two gestures that change or apply it (§6.7).</summary>
     private string DescribeChosen()
     {
@@ -3667,6 +3666,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return $"{names} · Ctrl+click or Ctrl+Space adds or removes · Enter lists their records";
     }
 
+    /// <summary>What an aggregate node holds, and where each of its processes can be read one by one.</summary>
     private string DescribeCluster(GraphDisplayNode cluster)
     {
         string members = Counted(cluster.Members.Count, "process", "processes");

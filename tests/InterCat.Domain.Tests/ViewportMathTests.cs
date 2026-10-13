@@ -46,6 +46,25 @@ public sealed class ViewportMathTests
         Assert.Equal(extent, zoomed);
     }
 
+    [Fact(DisplayName = "R10: a zoom in never widens a view narrower than the minimum span, and a zoom out widens it by its factor")]
+    public void ANarrowerViewIsNeverWidenedByAZoomIn()
+    {
+        var extent = new TimeRange(0, 20_000_000);
+        var fitted = new TimeRange(2_098_677, 2_104_157);
+
+        // Fitted to an analysis interval narrower than the minimum, the view stays as it is at a zoom in, which set it to
+        // the minimum span, eighteen times wider, and a zoom out widens it by its factor about the same instant.
+        Assert.Equal(fitted, ViewportMath.ZoomAtPixel(fitted, 500, 1_000, 1.25m, extent, minimumSpanTicks: 100_000));
+        Assert.Equal(fitted, ViewportMath.ZoomAtPixel(fitted, 500, 1_000, 2.0m, extent, minimumSpanTicks: 100_000));
+        TimeRange wider = ViewportMath.ZoomAtPixel(fitted, 500, 1_000, 0.8m, extent, minimumSpanTicks: 100_000);
+        Assert.Equal(6_850, wider.SpanTicks);
+        Assert.InRange(Math.Abs(ViewportMath.TickAtPixel(wider, 500, 1_000) - ViewportMath.TickAtPixel(fitted, 500, 1_000)), 0, 1);
+
+        // A view at or above the minimum still zooms in no further than it.
+        var view = new TimeRange(1_000_000, 1_110_000);
+        Assert.Equal(100_000, ViewportMath.ZoomAtPixel(view, 500, 1_000, 2.0m, extent, minimumSpanTicks: 100_000).SpanTicks);
+    }
+
     [Fact(DisplayName = "R10: panning cannot escape the retained extent")]
     public void PanClampsToRetainedExtent()
     {

@@ -195,7 +195,10 @@ public sealed class TimelineView : Control, IHoverCardSource
     private const double PlotBottomMargin = 30;
     private const double MinimumLaneHeight = 30;
 
-    /// <summary>The narrowest viewport a zoom may reach: 10 ms of presentation ticks, or the extent when shorter.</summary>
+    /// <summary>
+    /// The narrowest viewport a zoom may reach: 10 ms of presentation ticks, or the extent when shorter. 0 may fit an
+    /// analysis interval narrower still, which a zoom in then keeps rather than widening to this.
+    /// </summary>
     private const long MinimumSpanTicks = 100_000;
 
     /// <summary>§6.7 and §26.2: a double click zooms in by this factor around the pointer.</summary>

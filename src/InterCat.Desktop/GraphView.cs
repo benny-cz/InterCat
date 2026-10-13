@@ -109,7 +109,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private IReadOnlyList<GraphDisplayNode> traversal = [];
     private string? problemFor;
     private string? problemText;
-    private int keyboardIndex;
+
+    // The node the keyboard is on, and the selected node it last followed. A node newly selected anywhere - by a click, an
+    // arrow, a ranked row or a search - takes the keyboard, as a list's focus follows its selected row; Ctrl+arrows move it
+    // on without choosing, so Ctrl+Space can add a node other than the selected one to the multi-selection (§6.7).
+    private string? keyboardKey;
+    private string? keyboardFollowed;
     private WorkspaceViewModel? observed;
 
     /// <summary>How much wider than its place a selection's ring is drawn as it starts to settle onto a node (§6.8).</summary>
@@ -589,7 +594,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlySet<string> partlySelected = viewModel.PartlySelectedGraphNodeKeys;
         FollowSelection(selected, now);
         IReadOnlyList<GraphDisplayNode> order = TraversalOf(display);
-        string? focused = IsFocused && order.Count > 0 ? order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key : null;
+        string? focused = IsFocused && order.Count > 0 ? order[KeyboardIndex(order, viewModel)].Key : null;
         Dictionary<string, double> radii = drawnRadii;
         radii.Clear();
         for (int nodeIndex = 0; nodeIndex < display.Nodes.Count; nodeIndex++)
@@ -994,6 +999,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             observed.PropertyChanged += OnViewModelChanged;
         }
 
+        // A publication replaces the view model with its selection restated: the keyboard stays on the node it was on.
+        keyboardFollowed = observed?.SelectedGraphNodeKey;
         RefreshHover();
         SayNode();
     }
@@ -1014,20 +1021,72 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         if (e.PropertyName is nameof(WorkspaceViewModel.SelectedGraphNodeKey) or nameof(WorkspaceViewModel.GraphDisplay))
         {
+            FollowSelectedNode();
             SayNode();
         }
     }
 
     /// <summary>
-    /// Names the graph by the node its keyboard is on - the one selected - while it has the keyboard, in the words its card
-    /// titles and describes the node with, as a screen reader names a list's focused row (R15). The arrows move the
-    /// selection from node to node, and the canvas has no item for each node to take the focus, so the arrows said
-    /// nothing. Elsewhere the graph keeps its own name, and describes no node it is not on.
+    /// Puts the keyboard on a node newly selected. A selection restated as it was - by a new drawing, a publication -
+    /// leaves the keyboard where Ctrl+arrows moved it.
     /// </summary>
-    private void SayNode() => CanvasAutomationPeer.Rename(this, IsKeyboardFocusWithin && DataContext is WorkspaceViewModel viewModel
-        && viewModel.SelectedGraphNodeKey is { } key && viewModel.DescribeGraphHover(key) is { Lines.Count: > 0 } card
-            ? $"{SpokenName}: {card.Title}, {card.Lines[0]}"
-            : SpokenName);
+    private void FollowSelectedNode()
+    {
+        string? selected = observed?.SelectedGraphNodeKey;
+        if (selected is not null && !string.Equals(selected, keyboardFollowed, StringComparison.Ordinal))
+        {
+            keyboardKey = selected;
+        }
+
+        keyboardFollowed = selected;
+    }
+
+    /// <summary>
+    /// Where the keyboard is in a drawing's order: on its node while that is drawn, else on the selected node, else on the
+    /// first.
+    /// </summary>
+    private int KeyboardIndex(IReadOnlyList<GraphDisplayNode> order, WorkspaceViewModel viewModel)
+    {
+        int index = IndexOf(order, keyboardKey);
+        return index >= 0 ? index : Math.Max(IndexOf(order, viewModel.SelectedGraphNodeKey), 0);
+    }
+
+    private static int IndexOf(IReadOnlyList<GraphDisplayNode> order, string? key)
+    {
+        for (int index = 0; key is not null && index < order.Count; index++)
+        {
+            if (string.Equals(order[index].Key, key, StringComparison.Ordinal)) return index;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// Names the graph by the node its keyboard is on while it has the keyboard, in the words its card titles and describes
+    /// the node with, as a screen reader names a list's focused row (R15), and says a node in the multi-selection is in it,
+    /// as its ranked row does. The arrows move the selection from node to node, Ctrl+arrows the keyboard alone, and the
+    /// canvas has no item for each node to take the focus, so neither said anything. Elsewhere the graph keeps its own
+    /// name, and describes no node it is not on.
+    /// </summary>
+    private void SayNode()
+    {
+        string name = SpokenName;
+        if (IsKeyboardFocusWithin && DataContext is WorkspaceViewModel { GraphDisplay.Nodes.Count: > 0 } viewModel)
+        {
+            IReadOnlyList<GraphDisplayNode> order = TraversalOf(viewModel.GraphDisplay);
+            string key = order[KeyboardIndex(order, viewModel)].Key;
+            if (viewModel.DescribeGraphHover(key) is { Lines.Count: > 0 } card)
+            {
+                string share = !viewModel.HasMultiSelection ? string.Empty
+                    : viewModel.SelectedGraphNodeKeys.Contains(key) ? ", in the selection"
+                    : viewModel.PartlySelectedGraphNodeKeys.Contains(key) ? ", partly in the selection"
+                    : string.Empty;
+                name = $"{SpokenName}: {card.Title}, {card.Lines[0]}{share}";
+            }
+        }
+
+        CanvasAutomationPeer.Rename(this, name);
+    }
 
     /// <summary>The drawn edge under a point, within half its thickness plus the hit padding; nearest first.</summary>
     private string? EdgeHitTest(WorkspaceViewModel viewModel, Point pointer)
@@ -1369,8 +1428,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             return;
         }
 
-        IReadOnlyList<GraphDisplayNode> order = Traversal(viewModel.GraphDisplay);
-        keyboardIndex = Math.Max(0, order.ToList().FindIndex(node => node.Key == key));
+        keyboardKey = key;
         if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             // §6.7's Ctrl+click adds the node's processes to the multi-selection or removes them; it never starts a drag.
@@ -1502,8 +1560,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>The graph as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "graph",
-        "Arrow keys move between drawn nodes; Enter opens a group or process; P pins or unpins the selected node; L lays "
-        + "the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here. "
+        "Arrow keys move between drawn nodes, choosing each; with Ctrl they move without choosing, and Ctrl+Space adds the "
+        + "node to the selection or takes it out. Enter opens a group or process; P pins or unpins the selected node; L "
+        + "lays the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here. "
         + "F6 moves to the next pane, Shift+F6 to the one before.",
         () => (DataContext as WorkspaceViewModel)?.GraphSummary);
 
@@ -1547,20 +1606,22 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             Key.Left or Key.Up => -1,
             _ => 0,
         };
-        IReadOnlyList<GraphDisplayNode> order = Traversal(viewModel.GraphDisplay);
-        if (viewModel.SelectedGraphNodeKey is { } selected)
-        {
-            int selectedIndex = order.ToList().FindIndex(node => node.Key == selected);
-            if (selectedIndex >= 0)
-            {
-                keyboardIndex = selectedIndex;
-            }
-        }
-
+        IReadOnlyList<GraphDisplayNode> order = TraversalOf(viewModel.GraphDisplay);
+        int index = KeyboardIndex(order, viewModel);
         if (delta != 0)
         {
-            keyboardIndex = (keyboardIndex + delta + order.Count) % order.Count;
-            viewModel.SelectGraphNode(order[keyboardIndex].Key);
+            keyboardKey = order[(index + delta + order.Count) % order.Count].Key;
+            if (e.KeyModifiers.HasFlag(KeyModifiers.Control))
+            {
+                // Ctrl+arrows move the keyboard on without choosing the node, as they move a list's focus (§6.7), so
+                // Ctrl+Space can add it to the multi-selection; the graph says the node it is now on.
+                SayNode();
+            }
+            else
+            {
+                viewModel.SelectGraphNode(keyboardKey);
+            }
+
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -1569,7 +1630,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         if (e.Key == Key.Space && e.KeyModifiers.HasFlag(KeyModifiers.Control))
         {
             // The keyboard equivalent of Ctrl+click: the node the keyboard is on joins or leaves the multi-selection.
-            viewModel.ToggleGraphNodeInSelection(order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key);
+            viewModel.ToggleGraphNodeInSelection(order[index].Key);
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -1577,7 +1638,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         if (e.Key == Key.Enter)
         {
-            e.Handled = viewModel.OpenGraphNode(order[Math.Clamp(keyboardIndex, 0, order.Count - 1)].Key);
+            e.Handled = viewModel.OpenGraphNode(order[index].Key);
         }
     }
 

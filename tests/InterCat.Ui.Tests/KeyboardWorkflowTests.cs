@@ -440,14 +440,17 @@ public sealed class KeyboardWorkflowTests
             if (changed.Property == AutomationElementIdentifiers.NameProperty) said.Add(changed.NewValue as string);
         };
 
-        // F6 from the ranked table gives the graph the keyboard; with nothing chosen it says its own name.
+        // F6 from the ranked table gives the graph the keyboard on its first node, which it says though nothing is chosen:
+        // Enter would open that node, and Ctrl+Space add it to the selection.
         Press(window, PhysicalKey.F6);
         Assert.True(graph.IsKeyboardFocusWithin, Focused(window));
-        Assert.Equal("Communication graph", peer.GetName());
+        Assert.Null(workspace.SelectedGraphNodeKey);
+        Assert.Equal(Spoken(workspace, GraphView.Traversal(workspace.GraphDisplay)[0].Key), peer.GetName());
 
         // An arrow moves to a node: the graph is named by it, in its card's words, and a screen reader is told.
         Press(window, PhysicalKey.ArrowRight);
         string first = Assert.IsType<string>(workspace.SelectedGraphNodeKey);
+        Assert.Equal(GraphView.Traversal(workspace.GraphDisplay)[1].Key, first);
         Assert.Equal(Spoken(workspace, first), peer.GetName());
         Assert.Equal(peer.GetName(), said[^1]);
 

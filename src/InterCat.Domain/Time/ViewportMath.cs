@@ -49,10 +49,12 @@ public static class ViewportMath
         decimal desiredSpan = decimal.CreateChecked(viewport.SpanTicks) / zoomFactor;
 
         // A retained extent shorter than the minimum span is itself the narrowest view: zooming it changes nothing rather
-        // than failing on an inverted clamp.
+        // than failing on an inverted clamp. A view already narrower than the minimum - an analysis interval fitted
+        // whole - is never widened by a zoom in, which once set it to the minimum span, many times wider; a zoom out
+        // widens it by its factor.
         long newSpan = Math.Clamp(
             decimal.ToInt64(decimal.Round(desiredSpan, 0, MidpointRounding.AwayFromZero)),
-            Math.Min(minimumSpanTicks, retainedExtent.SpanTicks),
+            Math.Min(Math.Min(minimumSpanTicks, retainedExtent.SpanTicks), viewport.SpanTicks),
             retainedExtent.SpanTicks);
 
         long leftTicks = decimal.ToInt64(decimal.Round(newSpan * focusRatio, 0, MidpointRounding.AwayFromZero));

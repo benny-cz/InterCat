@@ -147,6 +147,35 @@ public sealed class SelectionHighlightTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: a double click on an edge in the window opens the channel its relationship rests on")]
+    public async Task ADoubleClickOnAnEdgeOpensItsChannel()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(100));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        _ = Settle(window);
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        GraphDisplayEdge drawn = Assert.Single(workspace.GraphDisplay.Edges);
+        Point source = graph.PointOf(drawn.SourceKey)!.Value;
+        Point target = graph.PointOf(drawn.TargetKey)!.Value;
+        Point middle = graph.TranslatePoint(new((source.X + target.X) / 2, (source.Y + target.Y) / 2), window)!.Value;
+
+        window.MouseDown(middle, MouseButton.Left);
+        window.MouseUp(middle, MouseButton.Left);
+        window.MouseDown(middle, MouseButton.Left);
+        window.MouseUp(middle, MouseButton.Left);
+        Dispatch();
+        Assert.Equal("L3 · CHANNEL", workspace.LevelBadge);
+        Assert.StartsWith("Channel", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+        Assert.Equal(Assert.Single(drawn.Relationships), workspace.HighlightedEdgeKey);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: a selected group highlights its members' records; the rung's own focus is not highlighted again")]
     public async Task AGroupIsHighlightedAndAFocusIsNot()
     {

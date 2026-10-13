@@ -1321,6 +1321,7 @@
       ],
       "R10": [
         "R10: a retained extent shorter than the minimum span zooms to itself rather than failing",
+        "R10: a zoom in never widens a view narrower than the minimum span, and a zoom out widens it by its factor",
         "R10: centering a viewport on a tick keeps its span and clamps both edges",
         "R10: inverse zoom restores the viewport within rounding tolerance",
         "R10: no sequence of pans escapes the retained extent",
@@ -1421,6 +1422,7 @@
         "R15: export, a redacted report and a re-layout are offered only where they have something to act on, and say why not",
         "R15: graph pin and re-layout commands have keyboard paths and a button equivalent",
         "R15: in mechanism lanes each lane marks the selection's own records of its mechanism",
+        "R15: in the graph Ctrl+arrows move the keyboard without choosing, Ctrl+Space adds the node it is on, said aloud, and Enter lists the set's records",
         "R15: the Align dialog opens on the way chosen to align, and Enter aligns, as Align does",
         "R15: the breadcrumb returns to a named rung and drops the rungs below it",
         "R15: the capture card says aloud what changes the capture's state, and a newer generation's count in silence",
@@ -1429,6 +1431,7 @@
         "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection",
         "R15: the demo's investigation closed gives Explore the demo, which waited disabled while it opened, the keyboard back",
         "R15: the graph says the node its arrows move to, as a list says its row, and only its own name once the keyboard leaves",
+        "R15: the graph's keyboard says a node holding part of the selection holds part of it, as its ranked row says",
         "R15: the interval table's selected row is the analysis interval's however it was chosen, and none where no row is exactly it",
         "R15: the interval table, its rows restated under the keyboard, keeps it on the chosen moment's row",
         "R15: the investigation window opens with the keyboard on its session, keeps it there as the list is read again, and Ctrl+Tab shows its pages",

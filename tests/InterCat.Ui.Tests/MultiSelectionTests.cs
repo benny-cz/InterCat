@@ -1,5 +1,6 @@
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -148,6 +149,137 @@ public sealed class MultiSelectionTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: in the graph Ctrl+arrows move the keyboard without choosing, Ctrl+Space adds the node it is on, said aloud, and Enter lists the set's records")]
+    public async Task TheGraphsKeyboardBuildsASet()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. Third(20)]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(graph);
+        IReadOnlyList<GraphDisplayNode> order = GraphView.Traversal(workspace.GraphDisplay);
+        Assert.Equal(3, order.Count);
+
+        // A click chooses the first node in the keyboard's order and gives the graph the keyboard on it.
+        Click(window, graph, order[0].Key, RawInputModifiers.None);
+        Assert.True(graph.IsKeyboardFocusWithin);
+        Assert.Equal(order[0].Key, workspace.SelectedGraphNodeKey);
+
+        // Ctrl+Right moves the keyboard to the next node without choosing it: the choice stays, and the graph says the node
+        // the keyboard is on. The arrows chose every node they moved to, so Ctrl+Space could only take that node out again.
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Control);
+        Dispatch();
+        Assert.Equal(order[0].Key, workspace.SelectedGraphNodeKey);
+        Assert.False(workspace.HasMultiSelection);
+        Assert.Equal(Spoken(workspace, order[1].Key), peer.GetName());
+
+        // A publication restates the choice in a view of its own, and the keyboard stays on the node it was moved to.
+        Publish(session.Store, [.. Enumerable.Range(0, 5).Select(index =>
+            Transfer(60 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 32, 300, (ulong)(6_000 + index))
+                .Between("127.0.0.1:51000", "10.0.0.7:443") with { SessionRelativeTicks = (60 + (2 * index)) * 100L })]);
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.Contains("generation 2", workspace.Snapshot.Title, StringComparison.Ordinal);
+        Assert.Equal(order[0].Key, workspace.SelectedGraphNodeKey);
+        Assert.Equal(Spoken(workspace, order[1].Key), peer.GetName());
+
+        // Ctrl+Space adds that node to the one chosen before it, and the graph says it is in the selection.
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Dispatch();
+        Assert.True(Holds(workspace, order[0], order[1]));
+        Assert.Equal(Spoken(workspace, order[1].Key) + ", in the selection", peer.GetName());
+
+        // Ctrl+Left goes back over the first, in the selection too, and wraps round to the last, which is not; Ctrl+Space adds
+        // it, and takes it out again.
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.Control);
+        Dispatch();
+        Assert.Equal(Spoken(workspace, order[0].Key) + ", in the selection", peer.GetName());
+        window.KeyPressQwerty(PhysicalKey.ArrowLeft, RawInputModifiers.Control);
+        Dispatch();
+        Assert.Equal(Spoken(workspace, order[2].Key), peer.GetName());
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Dispatch();
+        Assert.True(Holds(workspace, order[0], order[1], order[2]));
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Dispatch();
+        Assert.True(Holds(workspace, order[0], order[1]));
+        Assert.Equal(Spoken(workspace, order[2].Key), peer.GetName());
+
+        // Enter lists exactly the set's records, as it does from the ranked table.
+        int records = workspace.ChosenProcesses.Sum(process => process.ProcessId == 300 ? 26 : 31);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(workspace.IsEvidenceRung);
+        Assert.Contains(workspace.Filters, filter => filter.Label == "2 selected processes");
+        Assert.Equal(records, workspace.RungRows.Count);
+
+        // Back at the machine, a node chosen elsewhere - by its ranked row - takes the graph's keyboard from where it was left.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Dispatch();
+        Assert.False(workspace.IsEvidenceRung);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == order[1].GroupKey);
+        Assert.True(graph.Focus());
+        Dispatch();
+        Assert.Equal(order[1].Key, workspace.SelectedGraphNodeKey);
+        Assert.Equal(Spoken(workspace, order[1].Key), peer.GetName());
+
+        // A moment chosen restates the choice as it was, and leaves the keyboard where Ctrl with an arrow moved it.
+        window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Control);
+        Dispatch();
+        workspace.SelectInterval(new TimeRange(10, 40));
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.Equal(order[1].Key, workspace.SelectedGraphNodeKey);
+        Assert.Equal(Spoken(workspace, order[2].Key), peer.GetName());
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: the graph's keyboard says a node holding part of the selection holds part of it, as its ranked row says")]
+    public void TheGraphSaysANodePartlyInTheSelection()
+    {
+        // third.exe and fourth.exe have no relationship, so the graph counts them in one node.
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Named(), .. Exchange(30), .. Third(20),
+            Lifecycle(4, ObservationKind.Inventory, 400, 4) with { ResourceName = @"C:\Tools\fourth.exe", SessionRelativeTicks = 400 }]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        GraphView graph = window.GetControl<GraphView>("GraphSurface");
+        AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(graph);
+        GraphDisplayNode quiet = Assert.Single(workspace.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Quiet);
+        Assert.Equal(2, quiet.Members.Count);
+
+        // third.exe's row chosen with Ctrl+click: the node counting it with fourth.exe holds part of the selection.
+        CtrlClick(window, window.GetControl<ListBox>("RungList"), Row(workspace, "third"));
+        Assert.Equal([300], workspace.ChosenProcesses.Select(process => process.ProcessId));
+        Assert.Equal([quiet.Key], workspace.PartlySelectedGraphNodeKeys);
+
+        // The graph's keyboard, moved onto that node with Ctrl and an arrow, says so; Ctrl+Space adds the rest of it, which
+        // it then says is in the selection.
+        Assert.True(graph.Focus());
+        int at = GraphView.Traversal(workspace.GraphDisplay).ToList().FindIndex(node => node.Key == quiet.Key);
+        for (int step = 0; step < at; step++)
+        {
+            window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Control);
+        }
+
+        Dispatch();
+        Assert.Equal(Spoken(workspace, quiet.Key) + ", partly in the selection", peer.GetName());
+        window.KeyPressQwerty(PhysicalKey.Space, RawInputModifiers.Control);
+        Dispatch();
+        Assert.Equal([300, 400], workspace.ChosenProcesses.Select(process => process.ProcessId));
+        Assert.Equal(Spoken(workspace, quiet.Key) + ", in the selection", peer.GetName());
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: the context-menu key and Shift+F10 open the focused ranked row's menu, whose item adds it to the selection")]
     public void TheRowMenuOpensFromTheKeyboard()
     {
@@ -230,6 +362,17 @@ public sealed class MultiSelectionTests
     {
         ProcessInstanceId id = workspace.Snapshot.Processes.Single(process => process.ProcessId == processId).Id;
         return workspace.GraphDisplay.NodeOf(id)!;
+    }
+
+    /// <summary>Whether the multi-selection holds exactly the processes of <paramref name="nodes"/>.</summary>
+    private static bool Holds(WorkspaceViewModel workspace, params GraphDisplayNode[] nodes) =>
+        workspace.ChosenProcesses.Select(process => process.Id).ToHashSet().SetEquals(nodes.SelectMany(node => node.Members));
+
+    /// <summary>The graph's name with the keyboard on <paramref name="node"/>, in its card's words.</summary>
+    private static string Spoken(WorkspaceViewModel workspace, string node)
+    {
+        HoverCard card = Assert.IsType<HoverCard>(workspace.DescribeGraphHover(node));
+        return $"{GraphView.SpokenName}: {card.Title}, {card.Lines[0]}";
     }
 
     private static int Row(WorkspaceViewModel workspace, string name) =>

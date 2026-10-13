@@ -66,6 +66,15 @@ public sealed class KeysSheetTests
         Assert.Equal("Left or right bracket: step to the previous or next moment holding records.", Name(keys, step));
         Assert.Equal(["Anywhere", "Ranked table", "Graph", "Timeline", "Minimap", "Relationship table", "Interval table",
             "Search box", "Inspector", "A level's records"], listed.Where(key => key.Heads).Select(key => key.Where));
+
+        // The ranked table's and the graph's Ctrl with an arrow, which move the keyboard without choosing, are listed before
+        // the Ctrl+Space that adds what it is on.
+        foreach ((string where, string moves) in new[] { ("Ranked table", "Ctrl+Up or Ctrl+Down"), ("Graph", "Ctrl+arrow keys") })
+        {
+            int move = listed.ToList().FindIndex(key => key.Where == where && key.Keys == moves);
+            int add = listed.ToList().FindIndex(key => key.Where == where && key.Keys == "Ctrl+Space");
+            Assert.InRange(move, 0, add - 1);
+        }
         Assert.Equal(["TIMELINE", "Left or Right", "Pan by a tenth of the view; with Shift, by one cell"],
             Texts(keys.ContainerFromIndex(timeline) ?? Reveal(keys, timeline)!));
         Assert.Equal(["+ or -", "Zoom in or out around the analysis interval"],
