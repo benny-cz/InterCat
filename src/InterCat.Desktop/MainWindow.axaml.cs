@@ -198,6 +198,7 @@ public sealed partial class MainWindow : Window, IDisposable
     // offered, what its card says, and the finish running for it, whose cancellation is the finish button's second meaning.
     private string? sessionRoot;
     private IReadOnlyList<RecentSessionRow> recentSessions = [];
+    private bool activatedBefore;
     private InterruptedFollow? offeredFollow;
     private InterruptedCaptureOffer? offer;
     private CancellationTokenSource? finishingCapture;
@@ -307,8 +308,14 @@ public sealed partial class MainWindow : Window, IDisposable
         Opened += (_, _) => StartExploringButton.Focus();
         // Back from a window or a dialog that took the keyboard from a control since hidden or disabled, it is not left on
         // nothing here; nor when a control goes from under it, hidden or rebuilt away. One that only waits disabled while
-        // it works gets it back as its work ends.
-        Activated += (_, _) => KeepKeyboard();
+        // it works gets it back as its work ends. The session folder is read again then, for what changed in it since:
+        // the first activation is the window's opening, whose folder is read as it takes its session root.
+        Activated += (_, _) =>
+        {
+            KeepKeyboard();
+            if (activatedBefore) FolderRead = ReadFolderAgainAsync();
+            activatedBefore = true;
+        };
         AddHandler(LostFocusEvent, (_, lost) =>
         {
             if (lost.Source is Visual source && (!source.IsEffectivelyVisible || !this.IsVisualAncestorOf(source)))
@@ -725,18 +732,20 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Gives a list's selected row the keyboard, or its first when none is selected: a list takes no focus of its own, so
-    /// a row must (see <see cref="FocusRail"/>). False for a list with no rows, or one out of sight.
+    /// Gives a list's <paramref name="row"/> the keyboard, or else its selected row, or its first when none is
+    /// selected: a list takes no focus of its own, so a row must (see <see cref="FocusRail"/>). False for a list with
+    /// no rows, or one out of sight.
     /// </summary>
-    private static bool FocusRow(ListBox list)
+    private static bool FocusRow(ListBox list, object? row = null)
     {
-        if (list.ItemCount == 0 || !list.IsEffectivelyVisible || (list.SelectedItem ?? list.Items[0]) is not { } row)
+        if (list.ItemCount == 0 || !list.IsEffectivelyVisible
+            || (row ?? list.SelectedItem ?? list.Items[0]) is not { } chosen)
         {
             return false;
         }
 
-        list.ScrollIntoView(row);
-        return list.ContainerFromItem(row) is Control container && container.Focus(NavigationMethod.Tab);
+        list.ScrollIntoView(chosen);
+        return list.ContainerFromItem(chosen) is Control container && container.Focus(NavigationMethod.Tab);
     }
 
     /// <summary>
@@ -2111,15 +2120,52 @@ public sealed partial class MainWindow : Window, IDisposable
         await RefreshInterruptedOfferAsync();
     }
 
+    /// <summary>
+    /// Reads the saved sessions again. A list that has not changed is left as it is, scrolled where it was; one that
+    /// has keeps the keyboard on the row it was on while that is still listed, else on the newest, and gives it where
+    /// the window does once none is.
+    /// </summary>
     private async Task RefreshRecentSessionsAsync()
     {
         if (closed || sessionRoot is not { } root) return;
         IReadOnlyList<RecentSessionRow> rows = await Task.Run(() => RecentSessions.Find(
             root, DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture));
         if (closed) return;
-        recentSessions = rows;
-        RecentSessionsList.ItemsSource = rows;
+        if (!rows.SequenceEqual(recentSessions))
+        {
+            string? keyboardOn = FocusManager?.GetFocusedElement() is ListBoxItem { DataContext: RecentSessionRow row }
+                ? row.Path
+                : null;
+            recentSessions = rows;
+            RecentSessionsList.ItemsSource = rows;
+
+            // Once none is listed, the row's going gives the keyboard where the window gives what a control leaves.
+            if (keyboardOn is not null)
+            {
+                RecentSessionRow? still = rows.FirstOrDefault(listed => listed.Path == keyboardOn);
+                Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                {
+                    if (!closed) _ = FocusRow(RecentSessionsList, still);
+                }, Avalonia.Threading.DispatcherPriority.Loaded);
+            }
+        }
+
         UpdateBeforeSessionVisibility();
+    }
+
+    /// <summary>Completes once the session folder, read again as the window last came back into use, is read.</summary>
+    internal Task FolderRead { get; private set; } = Task.CompletedTask;
+
+    /// <summary>
+    /// Reads the session folder again as the window comes back into use, so the saved sessions, while it lists them,
+    /// and an unfinished capture's card say what the folder holds now: a session moved, deleted, saved or finished
+    /// elsewhere meanwhile is found so here.
+    /// </summary>
+    private async Task ReadFolderAgainAsync()
+    {
+        if (closed || sessionRoot is null) return;
+        if (BeforeSession) await RefreshRecentSessionsAsync();
+        await RefreshInterruptedOfferAsync();
     }
 
     /// <summary>The least room the rail's list keeps beside its actions: a row or two of ranked rows or saved sessions.</summary>
@@ -2150,13 +2196,16 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     private void UpdateBeforeSessionVisibility()
     {
-        bool idle = phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
-        bool first = workspace.IsEmptyWorkspace && idle;
+        bool first = BeforeSession;
         RecentSessionsPanel.IsVisible = recentSessions.Count > 0 && first;
         CaptureEyebrow.IsVisible = first;
         CaptureIntro.IsVisible = first;
         ExploreDemoButton.IsVisible = first;
     }
+
+    /// <summary>Whether no session is shown and no capture runs, when the rail offers the saved sessions.</summary>
+    private bool BeforeSession => workspace.IsEmptyWorkspace
+        && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
 
     private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
 
@@ -2192,8 +2241,8 @@ public sealed partial class MainWindow : Window, IDisposable
     /// </summary>
     internal async Task OpenSelectedRecentSessionAsync()
     {
-        RecentSessionRow? keyboardRow = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as RecentSessionRow;
-        RecentSessionRow? row = keyboardRow ?? RecentSessionsList.SelectedItem as RecentSessionRow;
+        RecentSessionRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as RecentSessionRow
+            ?? RecentSessionsList.SelectedItem as RecentSessionRow;
         if (row is null)
         {
             return;
@@ -2211,17 +2260,10 @@ public sealed partial class MainWindow : Window, IDisposable
         CaptureDetail.Text = $"{row.Title}, {row.Detail}, is no longer in its folder: its files were moved or deleted"
             + (refused is SessionStore.AnotherSession ? "; another session is there now." : ".")
             + " The current workspace is unchanged.";
-        await RefreshRecentSessionsAsync();
 
         // The keyboard that chose the row stays with the saved sessions, on the newest still listed, or goes where the
         // window gives it once none is.
-        if (keyboardRow is not null)
-        {
-            Avalonia.Threading.Dispatcher.UIThread.Post(() =>
-            {
-                if (!closed && !FocusRow(RecentSessionsList)) KeepKeyboard();
-            }, Avalonia.Threading.DispatcherPriority.Loaded);
-        }
+        await RefreshRecentSessionsAsync();
     }
 
     /// <summary>How the window looks for an unfinished capture in the session folder; a test holds one look back with it.</summary>

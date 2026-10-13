@@ -427,6 +427,47 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.1: an unfinished capture's card is read again as the window comes back into use, so one finished or forgotten elsewhere meanwhile goes")]
+    public async Task TheCardIsReadAgainAsTheWindowComesBack()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, string session, _) = await CrashedFollow(root.Path, unfinalized: false);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        int looks = 0;
+        Func<string, InterruptedFollow?> find = window.InterruptedCaptureFinder;
+        window.InterruptedCaptureFinder = folder =>
+        {
+            _ = Interlocked.Increment(ref looks);
+            return find(folder);
+        };
+
+        // The folder is taken before the window is shown, as InterCat takes it: its opening is no coming back.
+        await window.UseSessionRootAsync(sessions);
+        window.Show();
+        try
+        {
+            Dispatch();
+            await window.FolderRead;
+            Dispatch();
+            Border card = window.GetControl<Border>("UnfinishedCaptureCard");
+            Assert.True(card.IsVisible);
+            Assert.Equal(1, looks);
+            Assert.True(LiveFollowTicket.Remove(session));
+
+            // Back in use, as from another window.
+            window.Activate();
+            Dispatch();
+            await window.FolderRead;
+            Dispatch();
+            Assert.False(card.IsVisible);
+            Assert.Equal(2, looks);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§3.1: a finish that did not go, its card offering the capture as it did, says why on the card and offers it again")]
     public async Task AFinishThatDidNotGoSaysWhyOnItsCard()
     {

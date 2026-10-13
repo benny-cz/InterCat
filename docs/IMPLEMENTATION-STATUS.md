@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 508 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 509 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 509 — the session folder read again as the window comes back into use (§3.1):**
+  - The saved sessions and an unfinished capture's card were read when the window took its folder and after a
+    capture: a session saved or deleted elsewhere, or a capture finished or forgotten in another window, stayed as
+    first read until a row or the card was pressed.
+  - Each time the window comes back into use it reads the folder again: the saved sessions while it shows them,
+    and the card. An unchanged list is left as it is; a changed one keeps the keyboard on its row while that is
+    still listed, else on the newest, and gives it where the window does once none is.
+  - Debug and Release each ran 2,155 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 9
+    mutations: the folder not read again on coming back, or read on the window's opening; the list read while a
+    session is shown, or the card not read; an unchanged list replaced; and the keyboard not kept, kept on the
+    newest rather than its own row, or not placed on its row at all. Holding the window's keyboard rule while the
+    list is read again, and placing the keyboard once none is listed, survived: the rebuilt list keeps the
+    keyboard's row container, and a row gone gives the keyboard where the window gives what a control leaves, so
+    neither is written.
 
 - **Revision 508 — an unfinished capture changed since its card offered it (§3.1 step 6):**
   - A capture whose evidence went since was offered Finish again and again, each refused as a "session

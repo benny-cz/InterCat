@@ -176,6 +176,92 @@ public sealed class RecentSessionsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.1: the saved sessions are read again as the window comes back into use, the keyboard on the row it was on, and left as they are when nothing changed")]
+    public async Task TheSavedSessionsAreReadAgainAsTheWindowComesBack()
+    {
+        using var root = new TemporaryDirectory();
+        string a = Session(root.Path, "explore-20260926T080000Z-a", records: 1, Committed.AddHours(-3));
+        string b = Session(root.Path, "explore-20260926T090000Z-b", records: 2, Committed.AddHours(-2));
+        string c = Session(root.Path, "explore-20260926T100000Z-c", records: 3, Committed.AddHours(-1));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            ListBox list = window.GetControl<ListBox>("RecentSessionsList");
+            await window.UseSessionRootAsync(root.Path);
+            Dispatch();
+            Assert.Equal([c, b, a], Paths(list));
+
+            // The keyboard is on a row as the person goes to another window, where a session is saved and one deleted.
+            _ = window.CaptureRenderedFrame();
+            Assert.True(list.ContainerFromIndex(1)!.Focus());
+            string d = Session(root.Path, "explore-20260926T110000Z-d", records: 4, Committed);
+            Directory.Delete(a, recursive: true);
+
+            // Back in use, the list says what the folder holds, and the keyboard is on the row it was on, never passing
+            // to another control meanwhile, which a screen reader would say.
+            Button start = window.GetControl<Button>("StartExploringButton");
+            int elsewhereFocused = 0;
+            start.GotFocus += (_, _) => elsewhereFocused++;
+            await ComeBack(window);
+            Assert.Equal([d, c, b], Paths(list));
+            Assert.Equal(b, FocusedRow(window).Path);
+            Assert.Equal(0, elsewhereFocused);
+
+            // With nothing changed meanwhile the rows are left as they are.
+            object? rows = list.ItemsSource;
+            await ComeBack(window);
+            Assert.Same(rows, list.ItemsSource);
+            Assert.Equal(b, FocusedRow(window).Path);
+
+            // Its own row deleted meanwhile, the keyboard is on the newest still listed.
+            Directory.Delete(b, recursive: true);
+            await ComeBack(window);
+            Assert.Equal([d, c], Paths(list));
+            Assert.Equal(d, FocusedRow(window).Path);
+            Assert.Equal(0, elsewhereFocused);
+
+            // Every session deleted meanwhile, the list goes, and the keyboard with it to where the window gives it.
+            Directory.Delete(c, recursive: true);
+            Directory.Delete(d, recursive: true);
+            await ComeBack(window);
+            Assert.Empty(Paths(list));
+            Assert.False(window.GetControl<Control>("RecentSessionsPanel").IsVisible);
+            Assert.True(start.IsFocused);
+
+            // While a session is shown the list is not read: it is read again when it is shown.
+            string e = Session(root.Path, "explore-20260926T120000Z-e", records: 5, Committed.AddHours(1));
+            await ComeBack(window);
+            Assert.Equal([e], Paths(list));
+            Assert.True(await window.OpenSessionAsync(e));
+            Dispatch();
+            rows = list.ItemsSource;
+            _ = Session(root.Path, "explore-20260926T130000Z-f", records: 6, Committed.AddHours(2));
+            await ComeBack(window);
+            Assert.Same(rows, list.ItemsSource);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Brings the window back into use, as from another window, and lets it read its folder again.</summary>
+    private static async Task ComeBack(MainWindow window)
+    {
+        window.Activate();
+        Dispatch();
+        await window.FolderRead;
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+    }
+
+    private static string[] Paths(ListBox list) => [.. list.Items.Cast<RecentSessionRow>().Select(row => row.Path)];
+
+    private static RecentSessionRow FocusedRow(MainWindow window) => Assert.IsType<RecentSessionRow>(
+        Assert.IsType<ListBoxItem>(window.FocusManager!.GetFocusedElement()).DataContext);
+
     /// <summary>Presses Enter on a row of the saved sessions, as the keyboard reaches it, and lets the open finish.</summary>
     private static async Task Enter(MainWindow window, ListBox list, int index)
     {
