@@ -268,6 +268,48 @@ public sealed class KeyboardWorkflowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: the interval table, its rows restated under the keyboard, keeps it on the chosen moment's row")]
+    public async Task TheIntervalTableKeepsTheKeyboardOnItsChosenRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        Dispatch();
+        Assert.True(await window.OpenSessionAsync(session.Path));
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        Dispatch();
+
+        // The moment of the first burst is chosen, and with the tables shown F6 twice reaches the interval table, on its
+        // row, the table's first.
+        workspace.SelectInterval(new TimeRange(1, 2));
+        await workspace.IntervalReady;
+        Dispatch();
+        Press(window, PhysicalKey.T);
+        Press(window, PhysicalKey.F6);
+        Press(window, PhysicalKey.F6);
+        ListBox intervals = window.GetControl<ListBox>("IntervalList");
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        TimeRange moment = Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval;
+        Assert.Equal(new TimeRange(1, 2), moment);
+        Assert.Equal(0, intervals.SelectedIndex);
+        int listed = intervals.ItemCount;
+        Assert.Same(intervals.SelectedItem, (window.FocusManager?.GetFocusedElement() as Control)?.DataContext);
+
+        // The timeline's UDP lane chosen, the rows are counted for it and restated, their runs of empty moments joined
+        // otherwise. The table lays out the row that had the keyboard again for a row further down, and the keyboard
+        // stays on the chosen moment's row rather than going with it.
+        workspace.SelectTimelineLane(Mechanism.Udp);
+        await workspace.IntervalReady;
+        Dispatch();
+        Assert.NotEqual(listed, intervals.ItemCount);
+        Assert.Equal(moment, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Assert.Same(intervals.SelectedItem, (window.FocusManager?.GetFocusedElement() as Control)?.DataContext);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "R15: E pressed in a list E rebuilds - a cell's records, the relationship table - gives E's table the keyboard")]
     public async Task EFromAListItRebuildsGivesItsTableTheKeyboard()
     {

@@ -754,7 +754,7 @@ public sealed partial class MainWindow : Window, IDisposable
     /// <summary>
     /// Gives the keyboard, when nothing has it, to what the window offers now: back to the ranked table when it had it
     /// last; else Stop while a capture records with no view yet; else the control that last had it, where it can take it
-    /// again, as a row rebuilt in its place can; else the ranked table once a session is shown; else Start exploring.
+    /// again, a row by its list's chosen row; else the ranked table once a session is shown; else Start exploring.
     /// Start exploring hides once a capture starts, Stop waits disabled once pressed and hides once the session is saved,
     /// the buttons that open a session wait disabled while it opens, an unfinished capture's card waits disabled while its
     /// finish stops and goes once it is forgotten, and Forward, Restore defaults and the newer generation's banner go once
@@ -774,8 +774,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             StopCaptureButton.Focus(NavigationMethod.Tab);
         }
-        else if (lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
-            && this.IsVisualAncestorOf(last) && last.Focus(NavigationMethod.Tab))
+        else if (GiveBackLastKeyboard())
         {
             // A session that did not open, the demo's investigation closed, or a finish stopped gives back the control that
             // asked for it.
@@ -789,6 +788,23 @@ public sealed partial class MainWindow : Window, IDisposable
             StartExploringButton.Focus(NavigationMethod.Tab);
         }
     }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Gives the control that last had the keyboard it back, where it can take it again. A row of a list gives it to its
+    /// list's chosen row, or its first, rather than to its own container: a list whose rows are restated - the interval
+    /// table counting a lane chosen, the inspector's records as a newer generation arrives - hides each row's container and
+    /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one.
+    /// </summary>
+    private bool GiveBackLastKeyboard()
+    {
+        if (lastKeyboard is ListBoxItem row && row.FindAncestorOfType<ListBox>() is { } list)
+        {
+            return this.IsVisualAncestorOf(list) && FocusRow(list);
+        }
+
+        return lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
+            && this.IsVisualAncestorOf(last) && last.Focus(NavigationMethod.Tab);
+    }
 
     /// <summary>
     /// Follows who owns the keyboard as far as the user is concerned: the ranked table does once focus moves into it, and
@@ -2915,6 +2931,10 @@ public sealed partial class MainWindow : Window, IDisposable
     internal void ApplyCaptureUpdate(CaptureUiUpdate update, bool forceOverview = false)
     {
         phase = update.Phase;
+
+        // A view paused while a capture recorded follows it again once the capture has ended: nothing more is published
+        // to hold the view from, so the saved session is shown, unless the person is reading records of the view shown.
+        if (!IsLive) followLatest = true;
         CaptureStatus.Text = update.Headline;
         bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
 
@@ -3549,12 +3569,13 @@ public sealed partial class MainWindow : Window, IDisposable
     {
         bool held = heldUpdate?.Overview is not null;
         HeldBanner.IsVisible = held;
-        HeldFollowButton.IsVisible = held && !followLatest;
         HeldBannerText.Text = !held ? string.Empty
             : (followLatest
                 ? $"Showing generation {displayedGeneration:N0} while you read records. "
                 : $"View paused at generation {displayedGeneration:N0}. ")
-                + $"Generation {heldUpdate!.Overview!.Generation:N0} is published; recording continues.";
+                + (IsLive
+                    ? $"Generation {heldUpdate!.Overview!.Generation:N0} is published; recording continues."
+                    : $"Generation {heldUpdate!.Overview!.Generation:N0} is the session as saved.");
         FollowButton.Content = followLatest ? "Pause view (F)" : "Follow live (F)";
     }
 

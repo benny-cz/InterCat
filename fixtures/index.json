@@ -1372,7 +1372,7 @@
         "R15: Next, which waits disabled while it reads, gives the keyboard to the next page's first channel",
         "R15: Reveal, which waits disabled while it reads, gives the record's text the keyboard back with the bytes in it",
         "R15: Shift and a drag across the timeline brushes a range and the ranking counts only that range",
-        "R15: Update to newest and Follow live give the ranked table the keyboard as the banner they sit in goes",
+        "R15: Update to newest gives the ranked table the keyboard as the banner it sits in goes",
         "R15: a button that disables itself by what it did gives the keyboard to its page; Remove and Find keep it while they can",
         "R15: a capture gives Stop the keyboard once it records, and the ranked table once Stop is pressed and the session saved",
         "R15: a capture stopped before it published anything gives Start exploring the keyboard back",
@@ -1421,6 +1421,7 @@
         "R15: the demo's investigation closed gives Explore the demo, which waited disabled while it opened, the keyboard back",
         "R15: the graph says the node its arrows move to, as a list says its row, and only its own name once the keyboard leaves",
         "R15: the interval table's selected row is the analysis interval's however it was chosen, and none where no row is exactly it",
+        "R15: the interval table, its rows restated under the keyboard, keeps it on the chosen moment's row",
         "R15: the investigation window opens with the keyboard on its session, keeps it there as the list is read again, and Ctrl+Tab shows its pages",
         "R15: the investigation window's pages and its dialogs name every element a screen reader lands on",
         "R15: the investigation's timeline says the column its keys move to, and only its own name once the keyboard leaves",
@@ -1891,11 +1892,13 @@
         "R7: a live recording's first chunk publishes soon after it holds records, and later chunks keep the interval",
         "R7: a selected aggregate is still selected after a later publication of the session",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
+        "R7: a view paused while recording shows the saved session once the capture ends, and never says recording continues",
         "R7: a worker result naming another graph identity is refused",
         "R7: caller cancellation propagates instead of looking like a superseded query",
         "R7: one leased generation yields a stable graph and exact graph-eligible counts",
         "R7: pausing the live view holds its generation while recording continues, and F resumes it",
-        "R7: records hold the view still; a newer generation is offered, and applied on leaving"
+        "R7: records hold the view still; a newer generation is offered, and applied on leaving",
+        "R7: records read as the capture ends keep their view, which says the session as saved waits for them, and shows it once they are left"
       ],
       "R8": [
         "R8: ETL replay sink records its own bounded-budget drops",

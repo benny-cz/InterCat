@@ -179,10 +179,9 @@
             <StackPanel Spacing="6">
               <TextBlock x:Name="HeldBannerText" FontSize="11" TextWrapping="Wrap"
                          AutomationProperties.Name="Newer evidence is published" />
+              <!-- Following the capture again is the card's Follow live (F), which is shown whenever this is. -->
               <Button Content="Update to newest (F5)" Click="UpdateHeldGeneration"
                       AutomationProperties.HelpText="Show the newest published generation" />
-              <Button x:Name="HeldFollowButton" Content="Follow live (F)" Click="ToggleFollow" IsVisible="False"
-                      AutomationProperties.HelpText="Resume following each new publication" />
             </StackPanel>
           </Border>
         </StackPanel>

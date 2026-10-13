@@ -288,7 +288,7 @@ public sealed class CaptureKeyboardTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R15: Update to newest and Follow live give the ranked table the keyboard as the banner they sit in goes")]
+    [AvaloniaFact(DisplayName = "R15: Update to newest gives the ranked table the keyboard as the banner it sits in goes")]
     public async Task TheHeldBannersButtonsGiveTheRankedTableTheKeyboard()
     {
         using var session = new TemporarySession();
@@ -320,19 +320,6 @@ public sealed class CaptureKeyboardTests
             window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
             Dispatch();
             Assert.True(update.IsFocused, Focused(window));
-            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
-            await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
-            Dispatch();
-            Assert.False(banner.IsVisible);
-            Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
-
-            // Still paused, the next generation waits again; Enter on Follow live follows it, and the same holds.
-            Publish(session.Store, Rows(200));
-            window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
-            Dispatch();
-            Button follow = window.GetControl<Button>("HeldFollowButton");
-            Assert.True(follow.IsEffectivelyVisible);
-            Assert.True(follow.Focus(NavigationMethod.Tab));
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
             Dispatch();

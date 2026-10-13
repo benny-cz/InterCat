@@ -62,7 +62,8 @@ internal static class WindowKeys
         new("Anywhere", "Ctrl+E", "export the view shown"),
         new("Anywhere", "Ctrl+R", "start the capture chosen, as Start exploring does"),
         new("Anywhere", "F", "pause the live view, or follow it again"),
-        new("Anywhere", "F5", "show the newer view a live capture holds back while records are read"),
+        new("Anywhere", "F5", "show the newest view the capture published, which a paused view or records being read "
+            + "hold back"),
         new("Ranked table", "Up or Down", "choose the previous or next row"),
         new("Ranked table", "Ctrl+Space", "add the row's processes to the multi-selection, or take them out"),
         new("Ranked table", "O", "on an RPC call linked to another, open the call at its other end"),

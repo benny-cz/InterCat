@@ -1398,9 +1398,14 @@ public sealed class EvidenceRungWindowTests
         window.ApplyCaptureUpdate(Update(session));
         Dispatch();
         Assert.Same(first, window.DataContext);
-        Assert.StartsWith("View paused at generation 1", window.GetControl<TextBlock>("HeldBannerText").Text,
-            StringComparison.Ordinal);
-        Assert.True(window.GetControl<Button>("HeldFollowButton").IsVisible);
+        Assert.Equal("View paused at generation 1. Generation 2 is published; recording continues.",
+            window.GetControl<TextBlock>("HeldBannerText").Text);
+
+        // The banner offers the newer generation; following again is the card's Follow live (F), shown beside it, rather
+        // than a second button of the same name.
+        Assert.Equal(["Update to newest (F5)"],
+            window.GetControl<Border>("HeldBanner").GetVisualDescendants().OfType<Button>().Select(button => button.Content));
+        Assert.True(window.GetControl<Button>("FollowButton").IsEffectivelyVisible);
         WriteableBitmapCheck(window, "paused-live-view.png");
 
         window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
@@ -1418,6 +1423,79 @@ public sealed class EvidenceRungWindowTests
         Assert.Equal("Saved session", window.GetControl<TextBlock>("HealthStateText").Text);
         Assert.Equal("No coverage ledger · loss unknown", window.GetControl<TextBlock>("HealthLossText").Text);
         Assert.Equal(string.Empty, window.GetControl<TextBlock>("HealthFreshnessText").Text);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R7: a view paused while recording shows the saved session once the capture ends, and never says recording continues")]
+    public async Task APausedViewShowsTheSavedSession()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var first = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.None);
+        Publish(session.Store, Exchange(10, 5));
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        Assert.Same(first, window.DataContext);
+
+        // Stopped while paused: the paused view holds the last live generation while the capture finishes, and shows the
+        // session as saved once it has, the banner gone with nothing more to hold it from.
+        window.ApplyCaptureUpdate(Update(session) with { Phase = CaptureUiPhase.Finishing, Overview = null });
+        Dispatch();
+        Assert.Same(first, window.DataContext);
+        Publish(session.Store, Exchange(15, 5));
+        window.ApplyCaptureUpdate(Update(session) with { Phase = CaptureUiPhase.Complete, Headline = "Session saved" });
+        var saved = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await saved.LayoutReady;
+        Dispatch();
+        Assert.NotSame(first, saved);
+        Assert.Contains("generation 3", saved.Snapshot.Title, StringComparison.Ordinal);
+        Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
+        Assert.Equal("Saved session", window.GetControl<TextBlock>("HealthStateText").Text);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R7: records read as the capture ends keep their view, which says the session as saved waits for them, and shows it once they are left")]
+    public async Task RecordsReadAtTheEndKeepTheirViewAndSaySoTruly()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Exchange(0, 10));
+        var window = new MainWindow();
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var first = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        window.GetControl<ListBox>("RungList").Focus();
+        window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+        await first.EvidenceReady;
+        Dispatch();
+        Assert.True(first.HoldsGeneration);
+
+        // The capture ends while its records are read: their view is kept, and the banner says the newer generation is the
+        // session as saved, not that recording continues.
+        Publish(session.Store, Exchange(10, 5));
+        window.ApplyCaptureUpdate(Update(session) with { Phase = CaptureUiPhase.Complete, Headline = "Session saved" });
+        Dispatch();
+        Assert.Same(first, window.DataContext);
+        Assert.Equal("Showing generation 1 while you read records. Generation 2 is the session as saved.",
+            window.GetControl<TextBlock>("HeldBannerText").Text);
+
+        // Leaving the records shows it.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        for (int wait = 0; wait < 50 && ReferenceEquals(window.DataContext, first); wait++)
+        {
+            Dispatch();
+            await Task.Delay(10);
+        }
+
+        var saved = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        Assert.NotSame(first, saved);
+        Assert.Contains("generation 2", saved.Snapshot.Title, StringComparison.Ordinal);
+        Assert.False(window.GetControl<Border>("HeldBanner").IsVisible);
         window.Close();
     }
 
