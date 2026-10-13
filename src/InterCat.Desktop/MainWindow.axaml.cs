@@ -3136,7 +3136,31 @@ public sealed partial class MainWindow : Window, IDisposable
         UpdateEvidenceAction();
         CaptureSummary.Text = string.Empty;
         CaptureSessionPath.Text = string.Empty;
+        NameWindow();
         UpdateSessionGrowth();
+    }
+
+    /// <summary>What the window is called while it shows no session, nor records one.</summary>
+    internal const string ProductTitle = "InterCat · IPC Explorer";
+
+    /// <summary>
+    /// Names the window by what it shows, as switching between windows lists it and a screen reader says it when the
+    /// window comes to the front: the session's folder, and whether a capture is starting, recording or saving it, as
+    /// an investigation's window is named by its file.
+    /// </summary>
+    private void NameWindow()
+    {
+        string? session = string.IsNullOrEmpty(CaptureSessionPath.Text) ? null
+            : Path.GetFileName(Path.TrimEndingDirectorySeparator(CaptureSessionPath.Text));
+        Title = (phase, session) switch
+        {
+            (CaptureUiPhase.Starting, _) => "InterCat · Starting a capture",
+            (CaptureUiPhase.Recording, { } name) => $"InterCat · Recording {name}",
+            (CaptureUiPhase.Recording, null) => "InterCat · Recording",
+            (CaptureUiPhase.Finishing, { } name) => $"InterCat · Saving {name}",
+            (_, { } name) => $"InterCat · {name}",
+            _ => ProductTitle,
+        };
     }
 
     private void ReceiveCaptureUpdate(int run, CaptureUiUpdate update) =>
@@ -3206,6 +3230,7 @@ public sealed partial class MainWindow : Window, IDisposable
         publishedEvery = update.Milestones?.PublicationInterval;
         if (update.Summary is not null) CaptureSummary.Text = update.Summary;
         if (update.SessionPath is not null) CaptureSessionPath.Text = update.SessionPath;
+        NameWindow();
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
         StartExploringButton.IsEnabled = !busy;
         OpenSavedSessionButton.IsEnabled = !busy;

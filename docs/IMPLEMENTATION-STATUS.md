@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 509 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 510 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 510 — the main window named by what it shows (R15):**
+  - The window was "InterCat · IPC Explorer" whatever it showed, so switching between windows listed InterCat
+    windows a person could not tell apart, and a screen reader said no more as one came to the front.
+  - It is now named by the session's folder, and while a capture runs by what it does - starting, recording or
+    saving, with the folder once it has one - as the investigation's window is named by its file.
+  - Debug and Release each ran 2,156 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 7
+    mutations: the window left unnamed by an update, or still named by a session forgotten; a capture starting,
+    recording with or without its folder, or saving named only as a session; and a folder given with a separator at
+    its end named by nothing.
 
 - **Revision 509 — the session folder read again as the window comes back into use (§3.1):**
   - The saved sessions and an unfinished capture's card were read when the window took its folder and after a
