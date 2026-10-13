@@ -98,7 +98,7 @@ public sealed class NavigationContinuityTests
         using var refreshed = new WorkspaceViewModel(next, "session:one:generation:2");
         string? notice = refreshed.RestoreNavigation(saved);
 
-        Assert.Contains("nearest available rung", notice, StringComparison.Ordinal);
+        Assert.Equal($"{saved.Breadcrumb[^1].Crumb} is no longer in the session, so the view went back to the machine.", notice);
         Assert.Equal("L0 · MACHINE", refreshed.LevelBadge);
         Assert.False(refreshed.CanAscend);
         Assert.Null(refreshed.SelectedRung);
@@ -119,7 +119,7 @@ public sealed class NavigationContinuityTests
         using var refreshed = new WorkspaceViewModel(next, "session:one:generation:2");
         string? notice = refreshed.RestoreNavigation(old.CaptureNavigation());
 
-        Assert.Contains("outside retained evidence", notice, StringComparison.Ordinal);
+        Assert.Equal("The analysis interval lay in time the session released, so it is cleared.", notice);
         Assert.Null(refreshed.SelectedInterval);
         Assert.Equal(next.Extent, refreshed.CaptureNavigation().Breadcrumb[0].Viewport);
     }

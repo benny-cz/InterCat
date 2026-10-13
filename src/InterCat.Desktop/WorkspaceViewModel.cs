@@ -1129,10 +1129,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Shows the broker's live preview for the chunks after <paramref name="shownChunks"/>, or none. It never changes a
-    /// published count, a selection or a table: a preview is drawn and explained, nothing more.
+    /// published count, a selection or a table: a preview is drawn and explained, nothing more. <paramref name="publishedEvery"/>
+    /// is how often the capture publishes, which its card states; null when the capture has not said.
     /// </summary>
-    public void ShowLivePreview(BrokerCapturePreview? preview, int shownChunks)
+    public void ShowLivePreview(BrokerCapturePreview? preview, int shownChunks, TimeSpan? publishedEvery = null)
     {
+        livePublishedEvery = publishedEvery;
         LiveEdge? edge = preview is not null && wholeSnapshot.Clock is { } clock
             ? LiveEdge.From(preview, shownChunks, clock)
             : null;
@@ -1144,6 +1146,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         liveEdge = edge;
         OnPropertyChanged(nameof(LiveEdge));
     }
+
+    /// <summary>How often the capture shown publishes, as its card says; null when it has not said (a rolling capture's window sets it).</summary>
+    private TimeSpan? livePublishedEvery;
 
     /// <summary>A live edge bin's card: what it counts, where the counts come from, and what they are not yet (§19.3).</summary>
     public HoverCard DescribeLiveEdgeHover(LiveEdgeBin bin, Mechanism? lane = null)
@@ -1157,8 +1162,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             "By mechanism: " + string.Join(" · ", bin.Counts.Select(entry => string.Create(CultureInfo.CurrentCulture,
                 $"{EvidenceRowText.MechanismName(entry.Mechanism)} {entry.Count:N0}"))),
             "Basis: live preview · unit: records · counted by the broker as each record was journaled, before derivation",
-            "Exact records replace this preview when the chunk holding them is published and derived here, "
-                + "about every 2 s while recording",
+            "Exact records replace this preview when the chunk holding them is published and derived here"
+                + (livePublishedEvery is { } every
+                    ? string.Create(CultureInfo.CurrentCulture, $", about every {every.TotalSeconds:0.#} s while recording")
+                    : string.Empty),
             "Not yet attributed to processes or channels, and not in tables, rankings, selections or exports",
         };
         if (liveEdge is { UncoveredChunks: > 0 } behind)
@@ -1525,8 +1532,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
-    /// nearest surviving ancestor and says so. A whole-extent viewport follows the new extent; a deliberate brush
-    /// keeps its exact half-open range where retained, or reports clipping (R7, I3).
+    /// nearest surviving ancestor and says so, naming what went and where the view is. A whole-extent viewport follows
+    /// the new extent; a deliberate brush keeps its exact half-open range where retained, or says what a release took
+    /// of it (R7, I3). Each change is said once, in the words the window uses: what a rung was entered over is the
+    /// analysis interval it was entered with, which stays in force below the machine rung, so the interval says it.
     /// </summary>
     public string? RestoreNavigation(WorkspaceNavigationMemento saved)
     {
@@ -1546,22 +1555,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             throw new ArgumentException("Navigation must begin at the machine rung.", nameof(saved));
         }
         TimeRange previousExtent = old[0].Viewport;
-        var notices = new HashSet<string>(StringComparer.Ordinal);
+        var notices = new List<string>();
+        string? goneFocus = null;
         for (int index = 1; index < old.Length; index++)
         {
             NavigationState previous = old[index - 1];
             NavigationState target = old[index];
-            TimeRange viewport = Rebase(target.Viewport, previousExtent, Snapshot.Extent,
-                out bool clipped, out bool lost);
-            if (lost)
-            {
-                notices.Add("The previous time viewport is no longer retained; showing the current extent.");
-            }
-            else if (clipped)
-            {
-                notices.Add("The previous time viewport was clipped to retained evidence.");
-            }
-
+            TimeRange viewport = Rebase(target.Viewport, previousExtent, Snapshot.Extent, out _);
             LadderDescent? descent = null;
             if (target.Level == DetailLevel.Evidence && target.Focus is { } evidenceFocus
                 && target.Filters.LastOrDefault(filter => filter.Field == "scope") is { Level: { } scopeLevel } scopeFilter)
@@ -1596,8 +1596,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ladder.RecordInterval(Rebase(previous.IntervalWhenLeft, previousExtent));
             if (descent is null || !ladder.TryDescend(descent, out _))
             {
-                notices.Add($"The previous {NavigationState.Name(target.Level).ToLowerInvariant()} focus is not in this "
-                    + "generation; returned to the nearest available rung.");
+                // Named as the breadcrumb named it, with the rung the view is on now.
+                goneFocus = target.Focus?.Key;
+                notices.Add($"{target.Crumb} is no longer in the session, so the view went back to "
+                    + (ladder.Current.Focus is null ? "the machine." : ladder.Current.Crumb + "."));
                 break;
             }
 
@@ -1628,7 +1630,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
             else
             {
-                notices.Add("The selected mechanism lane is not observed in this generation; showing all mechanisms.");
+                notices.Add($"The session no longer holds any {MechanismText.InSentence(savedMechanism)} record, so the "
+                    + "timeline shows all mechanisms.");
             }
         }
         if (saved.SelectedTimelineDirection is { } savedDirection)
@@ -1647,9 +1650,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         reachedWith = ladder.Depth == old.Length - 1 ? saved.ReachedWith : null;
         ProcessNode? process = Snapshot.Processes.FirstOrDefault(node => node.Id == saved.SelectedProcess);
         SelectedProcess = process;
-        if (saved.SelectedProcess is not null && process is null)
+        // A process the view was on is said gone once, as the rung it was.
+        if (saved.SelectedProcess is { } selected && process is null
+            && !string.Equals(goneFocus, selected.ToString(), StringComparison.Ordinal))
         {
-            notices.Add("The selected process is not in this generation; the selection was cleared.");
+            notices.Add("The selected process is no longer in the session, so nothing is selected.");
         }
 
         // An aggregate's key names its role (no relationships, other processes, an opened group's other members), so it
@@ -1666,13 +1671,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             long end = Math.Min(interval.EndTicks, Snapshot.Extent.EndTicks);
             if (end <= start)
             {
-                notices.Add("The selected time interval is outside retained evidence; its selection was cleared.");
+                notices.Add("The analysis interval lay in time the session released, so it is cleared.");
             }
             else
             {
                 if (start != interval.StartTicks || end != interval.EndTicks)
                 {
-                    notices.Add("The selected time interval was clipped to retained evidence.");
+                    notices.Add("Part of the analysis interval lay in time the session released, so it now covers the rest.");
                 }
 
                 SelectInterval(new(start, end));
@@ -1704,7 +1709,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return null;
         }
 
-        TimeRange rebased = Rebase(old, previousExtent, Snapshot.Extent, out _, out bool lost);
+        TimeRange rebased = Rebase(old, previousExtent, Snapshot.Extent, out bool lost);
         return lost ? null : rebased;
     }
 
@@ -1719,7 +1724,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         NavigationState above = ladder.Current;
         foreach (NavigationState rung in saved)
         {
-            TimeRange viewport = Rebase(rung.Viewport, previousExtent, Snapshot.Extent, out _, out bool lost);
+            TimeRange viewport = Rebase(rung.Viewport, previousExtent, Snapshot.Extent, out bool lost);
             if (lost || !Reachable(rung, above, wholeSnapshot))
             {
                 break;
@@ -1748,19 +1753,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         || rung.Focus is { } focus && LadderProjection.Project(snapshot, above).Rows.Any(
             row => string.Equals(row.Key, focus.Key, StringComparison.Ordinal) && row.DescendsTo == rung.Level);
 
-    private static TimeRange Rebase(
-        TimeRange old, TimeRange previousExtent, TimeRange currentExtent, out bool clipped, out bool lost)
+    private static TimeRange Rebase(TimeRange old, TimeRange previousExtent, TimeRange currentExtent, out bool lost)
     {
         if (old == previousExtent)
         {
-            clipped = false;
             lost = false;
             return currentExtent;
         }
 
         long start = Math.Max(old.StartTicks, currentExtent.StartTicks);
         long end = Math.Min(old.EndTicks, currentExtent.EndTicks);
-        clipped = start != old.StartTicks || end != old.EndTicks;
         lost = end <= start;
         return !lost ? new(start, end) : currentExtent;
     }

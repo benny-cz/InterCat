@@ -62,7 +62,7 @@ public sealed class CollectorSetAsideWindowTests
         Assert.Equal("1 setting changed", window.GetControl<TextBlock>("ChangedSettingsLine").Text);
         Assert.False(window.ChooseCollectorsAside(true));
         // The broker was set aside, not lost, so nothing says it is missing from the generation.
-        Assert.DoesNotContain("not in this generation", window.GetControl<TextBlock>("CaptureDetail").Text,
+        Assert.DoesNotContain("no longer in the session", window.GetControl<TextBlock>("CaptureDetail").Text,
             StringComparison.Ordinal);
 
         // Its reads leave it out of what a ranking totals over the rows shown: only the client has a peer among them.

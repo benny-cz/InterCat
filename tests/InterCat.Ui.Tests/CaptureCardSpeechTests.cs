@@ -218,8 +218,8 @@ public sealed class CaptureCardSpeechTests
             List<string?> heard = Heard(window.GetControl<TextBlock>("CaptureStatus"), said);
             window.ApplyCaptureUpdate(Generation(session, CaptureUiPhase.Recording, 2));
             Dispatch();
-            Assert.Equal("Generation 2 · 2 published chunks. The selected time interval was clipped to retained evidence.",
-                said.Text);
+            Assert.Equal("Generation 2 · 2 published chunks. Part of the analysis interval lay in time the session released, "
+                + "so it now covers the rest.", said.Text);
             Assert.Empty(heard);
         }
         finally

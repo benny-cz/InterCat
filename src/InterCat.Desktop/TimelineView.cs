@@ -652,6 +652,16 @@ public sealed class TimelineView : Control, IHoverCardSource
         detailTimer.Start();
     }
 
+    /// <summary>
+    /// Lets the zoom go before a session is shown afresh - another session, a capture's first view, or one opened again -
+    /// so it opens at its whole extent, never at a range of the time the session shown before it had.
+    /// </summary>
+    internal void ForgetViewport()
+    {
+        FinishAdvance();
+        viewport = null;
+    }
+
     /// <summary>Shows the view a moment gone to is centred in (§6.7), and asks for its count at once rather than once it settles.</summary>
     private void OnViewportRequested(object? sender, TimeRange range)
     {
@@ -704,7 +714,15 @@ public sealed class TimelineView : Control, IHoverCardSource
 
         cardKey = null;
 
-        // A newer generation replaces the view model: the zoomed range stays, and its detail is asked for again.
+        // A newer generation replaces the view model: the zoomed range stays while the session keeps its time, and its
+        // detail is asked for again. A release that gave up time in view moves the range inside what the session keeps,
+        // as a gesture's range is kept there (§6.7's bounded overscroll), rather than drawing time it no longer holds.
+        if (viewport is { } zoomed)
+        {
+            TimeRange kept = zoomed.ClampInside(Extent);
+            viewport = kept == Extent ? null : kept;
+        }
+
         RefreshLaneLayout();
         RequestDetailNow();
         InvalidateVisual();

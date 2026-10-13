@@ -189,6 +189,9 @@ public sealed partial class MainWindow : Window, IDisposable
     // The broker's latest live preview, and how many published chunks the displayed generation was derived from: the
     // preview draws the chunks after those (§12, §19.3).
     private BrokerCapturePreview? livePreview;
+
+    /// <summary>How often the capture shown publishes, as its milestones say; null before they say or outside a capture.</summary>
+    private TimeSpan? publishedEvery;
     private int displayedChunks;
 
     // A capture an earlier viewer left unfinished, offered in the rail (§3.1 step 6): where to look for one, the one
@@ -3091,6 +3094,7 @@ public sealed partial class MainWindow : Window, IDisposable
         }
 
         CaptureLatency.Text = Freshness(update.Milestones);
+        publishedEvery = update.Milestones?.PublicationInterval;
         if (update.Summary is not null) CaptureSummary.Text = update.Summary;
         if (update.SessionPath is not null) CaptureSessionPath.Text = update.SessionPath;
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
@@ -3163,7 +3167,7 @@ public sealed partial class MainWindow : Window, IDisposable
     private void UpdateLivePreview() => workspace.ShowLivePreview(
         phase == CaptureUiPhase.Recording && followLatest && heldUpdate is null && !workspace.HoldsGeneration
             ? livePreview : null,
-        displayedChunks);
+        displayedChunks, publishedEvery);
 
     /// <summary>
     /// A capture that records but has published nothing yet has no view of its own: the session shown before it started
@@ -3678,10 +3682,31 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             CaptureDetail.Text += " " + pinsNotice;
         }
-        if (savedNavigation is not null
-            && replacement.RestoreNavigation(savedNavigation) is { } navigationNotice)
+        if (savedNavigation is not null)
         {
-            Say(CaptureDetail, CaptureDetail.Text + " " + navigationNotice, SaysAloud(update));
+            // What the newer generation changed of the view is said once, beside its chunks: what the navigation lost, and
+            // a zoom the timeline moves inside what the session keeps once a release gave up time it showed.
+            string? navigationNotice = replacement.RestoreNavigation(savedNavigation);
+            TimeRange shown = TimelineSurface.Viewport;
+            TimeRange kept = shown.ClampInside(replacement.Snapshot.Extent);
+            if (!TimelineSurface.IsFit && kept != shown)
+            {
+                navigationNotice = (navigationNotice is null ? string.Empty : navigationNotice + " ")
+                    + "The view showed time the session released, so it "
+                    + (kept == replacement.Snapshot.Extent
+                        ? "shows all the time the session keeps."
+                        : "moved to the earliest time the session keeps.");
+            }
+
+            if (navigationNotice is not null)
+            {
+                Say(CaptureDetail, CaptureDetail.Text + " " + navigationNotice, SaysAloud(update));
+            }
+        }
+        else
+        {
+            // A session shown afresh opens whole, never at a zoom into the time of the one shown before it.
+            TimelineSurface.ForgetViewport();
         }
 
         if (savedNavigation is not null)

@@ -126,8 +126,8 @@ public sealed class MechanismLaneWindowTests
         Assert.Equal(Mechanism.Rpc, resumed.SelectedTimelineMechanism);
         Assert.Equal("0", resumed.Intervals[0].Observations);
         using var changed = new WorkspaceViewModel(WithLanes([Mechanism.Tcp]), "synthetic-lanes-gone");
-        Assert.Contains("selected mechanism lane is not observed", changed.RestoreNavigation(saved),
-            StringComparison.Ordinal);
+        Assert.Equal("The session no longer holds any RPC record, so the timeline shows all mechanisms.",
+            changed.RestoreNavigation(saved));
         Assert.Null(changed.SelectedTimelineMechanism);
 
         // The canvas's label gutter is a second path to the same focus, without selecting a time bucket.

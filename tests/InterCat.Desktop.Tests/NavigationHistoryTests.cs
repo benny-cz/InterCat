@@ -177,7 +177,7 @@ public sealed class NavigationHistoryTests
             Edges = [.. source.Edges.Where(edge => edge.SourceId.ToString() != process && edge.TargetId.ToString() != process)],
         };
         using var thinner = new WorkspaceViewModel(without, "session:one:generation:3");
-        Assert.Equal("The selected process is not in this generation; the selection was cleared.",
+        Assert.Equal("The selected process is no longer in the session, so nothing is selected.",
             thinner.RestoreNavigation(saved));
         Assert.Equal($"Forward to {deepest[1]} (Alt+Right)", thinner.ForwardLabel);
         Assert.True(thinner.GoForward());

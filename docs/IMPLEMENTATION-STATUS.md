@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 503 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 504 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,29 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 504 — a rolling capture's publications under a person's navigation (§6.7, ADR-045, R21):**
+  - The timeline kept its zoom across every view it was given: a release that gave up the time in view left it
+    drawing time the session no longer held while the ranking counted the whole session, and a session shown
+    afresh opened at the previous one's zoom, often a range wholly outside its own time.
+  - A zoom carried to a newer generation stays inside the time the session keeps - moved, at its span, to the
+    earliest time kept, or the whole session where wider - and is said; another session, a capture's first view
+    and a session opened again open whole.
+  - What a release took was said twice and in the store's words. Each change is now said once: the rung gone by its
+    breadcrumb and where the view went, the chosen lane's mechanism, the selected process, and the analysis
+    interval cut or cleared.
+  - The live preview's card said exact records come about every 2 s; it says the capture's own interval - 5 s for
+    one keeping its last hour - and none it was not told.
+  - Debug and Release each ran 2,143 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 21
+    mutations: a zoom left in time a release gave up, or never whole again; a session shown afresh, another or the
+    same, kept at the zoom before; the view's move unsaid, said of a whole view or with no release, or said as the
+    wrong move; the selected process said twice, or only beside a rung gone; the rung gone unsaid, in the window and
+    the view model, or said gone back to the wrong rung; a lane's mechanism, or the analysis interval cut or
+    cleared, unsaid; the rung's own time said beside the interval again; and the live preview's card stating 2 s, or
+    no rate where the capture said 5 s, its interval lost in any of three places. Three survived at first, where the
+    test's second session was too short to hold the first's zoom, so keeping a zoom inside a session fitted it
+    anyway; a longer one caught them, and showed that the capture's waiting view needed no reset of its own, which
+    is gone.
 
 - **Revision 503 — a next page that cannot be read (§3.2, R21):**
   - E's records, an RPC channel's calls and an HTTP channel's exchanges, a first page listed and the next
