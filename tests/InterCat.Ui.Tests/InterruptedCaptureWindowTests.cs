@@ -6,8 +6,10 @@ using Avalonia.VisualTree;
 using InterCat.Capture.Journal;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
+using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Ui.Tests;
 
@@ -327,13 +329,232 @@ public sealed class InterruptedCaptureWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.1: finishing a capture whose evidence went since its card offered it restates the card as one that can no longer be finished, and what was saved opens")]
+    public async Task FinishingACaptureWhoseEvidenceWentRestatesItsCard()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, string session, string evidence) =
+            await CrashedFollow(root.Path, unfinalized: false, settled: true);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Border card = window.GetControl<Border>("UnfinishedCaptureCard");
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.Equal("Finish saving", finish.Content);
+            Assert.True(finish.Focus(Avalonia.Input.NavigationMethod.Tab));
+
+            // The card says what is there now, never a folder that is not, and offers what can still be done, with the
+            // keyboard on it.
+            Directory.Delete(evidence, recursive: true);
+            await window.ActOnInterruptedCaptureAsync();
+            Dispatch();
+            Assert.True(card.IsVisible);
+            Assert.EndsWith("can no longer be finished", window.GetControl<TextBlock>("UnfinishedCaptureHeadline").Text,
+                StringComparison.Ordinal);
+            Assert.Equal("Its evidence can no longer be read. Your session keeps the 1 published chunk followed before "
+                + "InterCat closed.", window.GetControl<TextBlock>("UnfinishedCaptureDetail").Text);
+            Assert.Equal("Open what was saved", finish.Content);
+            Assert.True(finish.IsFocused);
+            Assert.Equal("Ready to explore", window.GetControl<TextBlock>("CaptureStatus").Text);
+
+            await window.ActOnInterruptedCaptureAsync();
+            Dispatch();
+            Assert.False(card.IsVisible);
+            Assert.Equal("Partial session open", window.GetControl<TextBlock>("CaptureStatus").Text);
+            Assert.Equal(session, window.GetControl<TextBlock>("CaptureSessionPath").Text);
+            Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: finishing a capture finished or forgotten elsewhere since its card offered it says so where the status is read, never on another capture's card, and its card goes")]
+    public async Task FinishingACaptureTakenElsewhereSaysSo()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, string older, _) =
+            await CrashedFollow(root.Path, unfinalized: false, startedAgo: TimeSpan.FromMinutes(30));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Border card = window.GetControl<Border>("UnfinishedCaptureCard");
+            TextBlock headline = window.GetControl<TextBlock>("UnfinishedCaptureHeadline");
+            TextBlock cardDetail = window.GetControl<TextBlock>("UnfinishedCaptureDetail");
+            TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
+            TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+            (string olderHeadline, string olderDetail) = (headline.Text!, cardDetail.Text!);
+
+            // A newer capture is offered first. Forgotten in another window, nothing is left here to finish it, never
+            // another window finishing it, and the card offers the older capture in its own words alone.
+            (_, string newer, _) = await CrashedFollow(root.Path, unfinalized: false, capture: 2);
+            await window.RefreshInterruptedOfferAsync();
+            Dispatch();
+            Assert.NotEqual(olderHeadline, headline.Text);
+            Assert.True(LiveFollowTicket.Remove(newer));
+            await window.ActOnInterruptedCaptureAsync();
+            Dispatch();
+            Assert.Equal("Could not finish this capture", status.Text);
+            Assert.Equal(InterruptedFollow.NoLongerWaiting, detail.Text);
+            Assert.True(card.IsVisible);
+            Assert.Equal((olderHeadline, olderDetail), (headline.Text, cardDetail.Text));
+
+            // The last one offered goes too, and the keyboard that pressed Finish goes where the window gives it.
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.True(finish.Focus(Avalonia.Input.NavigationMethod.Tab));
+            Assert.True(LiveFollowTicket.Remove(older));
+            await window.ActOnInterruptedCaptureAsync();
+            for (int wait = 0; wait < 20; wait++)
+            {
+                Dispatch();
+                await Task.Delay(10);
+            }
+
+            Assert.False(card.IsVisible);
+            Assert.Equal(InterruptedFollow.NoLongerWaiting, detail.Text);
+            Assert.True(window.GetControl<Button>("StartExploringButton").IsFocused);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a finish that did not go, its card offering the capture as it did, says why on the card and offers it again")]
+    public async Task AFinishThatDidNotGoSaysWhyOnItsCard()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await CrashedFollow(root.Path, unfinalized: false);
+
+        // Its ticket names another capture's evidence, which cannot be spliced into this session.
+        string other = Path.Combine(root.Path, "broker", "capture-other");
+        Directory.CreateDirectory(other);
+        _ = await EvidenceRecordings.RecordEvidence(other, ordinals: [1, 2, 3, 4]);
+        LiveFollowTicket ticket = Assert.Single(LiveFollowTicket.FindInterrupted(sessions));
+        (ticket with { EvidenceDirectory = other }).Hold().Dispose();
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.Equal("Finish saving", finish.Content);
+            string headline = window.GetControl<TextBlock>("UnfinishedCaptureHeadline").Text!;
+
+            await window.ActOnInterruptedCaptureAsync();
+            Dispatch();
+            TextBlock cardDetail = window.GetControl<TextBlock>("UnfinishedCaptureDetail");
+            Assert.True(window.GetControl<Border>("UnfinishedCaptureCard").IsVisible);
+            Assert.Equal(headline, window.GetControl<TextBlock>("UnfinishedCaptureHeadline").Text);
+            Assert.StartsWith("This directory holds session ", cardDetail.Text, StringComparison.Ordinal);
+            Assert.EndsWith(" Your session keeps what was derived before this.", cardDetail.Text,
+                StringComparison.Ordinal);
+            Assert.Equal("Finish saving", finish.Content);
+            Assert.Equal("Ready to explore", window.GetControl<TextBlock>("CaptureStatus").Text);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: opening what a capture saved, deleted, emptied, written over or torn since its card offered it, says why in the card's words or the open's, and the card goes")]
+    public async Task OpeningWhatWasSavedOnceChangedSaysWhy()
+    {
+        foreach (string change in new[] { "deleted", "emptied", "written over", "torn" })
+        {
+            using var root = new TemporaryDirectory();
+            (string sessions, string session, string evidence) =
+                await CrashedFollow(root.Path, unfinalized: false, settled: true);
+            Directory.Delete(evidence, recursive: true);
+            var window = new MainWindow { Width = 1080, Height = 700 };
+            window.Show();
+            try
+            {
+                await window.UseSessionRootAsync(sessions);
+                Dispatch();
+                Assert.Equal("Open what was saved", window.GetControl<Button>("FinishCaptureButton").Content);
+                string from = window.GetControl<TextBlock>("UnfinishedCaptureHeadline").Text!
+                    .Replace("The capture from ", string.Empty, StringComparison.Ordinal)
+                    .Replace(" can no longer be finished", string.Empty, StringComparison.Ordinal);
+                if (change == "deleted")
+                {
+                    Directory.Delete(session, recursive: true);
+                }
+                else if (change == "torn")
+                {
+                    File.WriteAllText(Path.Combine(session, SessionPointerV1.FileName), "{");
+                }
+                else
+                {
+                    foreach (string file in Directory.EnumerateFiles(session))
+                    {
+                        File.Delete(file);
+                    }
+
+                    if (change == "written over")
+                    {
+                        SessionStore another =
+                            SessionStore.Open(LocalOwnedDirectory.Open(session), Guid.NewGuid(), "ui-tests");
+                        _ = Publish(another, [
+                            Lifecycle(100, ObservationKind.Create, 400, 1) with { SessionRelativeTicks = 100 }]);
+                    }
+                }
+
+                // Refused as the session the card described: never as a folder that does not exist, one no session was
+                // ever published in, or another session; a session that cannot be read says why as any open does.
+                await window.ActOnInterruptedCaptureAsync();
+                Dispatch();
+                TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+                Assert.Equal("Could not open this session", window.GetControl<TextBlock>("CaptureStatus").Text);
+                string gone = $"The session of the capture from {from} is no longer in its folder: its files were "
+                    + "moved or deleted";
+                if (change == "torn")
+                {
+                    Assert.StartsWith(
+                        "This session cannot be read, because no generation of it verifies: ", detail.Text,
+                        StringComparison.Ordinal);
+                }
+                else
+                {
+                    Assert.Equal(gone + (change == "written over" ? "; another session is there now." : ".")
+                        + " The current workspace is unchanged.", detail.Text);
+                }
+
+                Assert.True(Assert.IsType<WorkspaceViewModel>(window.DataContext).IsEmptyWorkspace);
+
+                // Read again, nothing of the capture is left to offer: its card goes, and its ticket with it. A folder
+                // written over holds a session the card cannot tell from the capture's own.
+                if (change != "written over")
+                {
+                    Assert.False(window.GetControl<Border>("UnfinishedCaptureCard").IsVisible);
+                    Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
+                }
+            }
+            finally
+            {
+                window.Close();
+            }
+        }
+    }
+
     /// <summary>
     /// A capture's evidence, and a session whose viewer followed its first chunk and crashed, leaving its ticket. An
-    /// unfinalized capture is the evidence as its first publication left it, and its owner lease has not settled yet.
+    /// unfinalized capture is the evidence as its first publication left it. Its owner lease has not settled yet, or
+    /// lapsed long enough ago that the broker can no longer be recording it.
     /// </summary>
-    private static async Task<(string Sessions, string Session, string Evidence)> CrashedFollow(string root, bool unfinalized)
+    private static async Task<(string Sessions, string Session, string Evidence)> CrashedFollow(
+        string root, bool unfinalized, bool settled = false, int capture = 1, TimeSpan? startedAgo = null)
     {
-        string evidencePath = Path.Combine(root, "broker", "capture-1");
+        string evidencePath = Path.Combine(root, "broker", $"capture-{capture}");
         Directory.CreateDirectory(evidencePath);
         _ = await EvidenceRecordings.RecordEvidence(evidencePath, ordinals: [1, 2, 3, 4]);
         if (unfinalized)
@@ -343,7 +564,7 @@ public sealed class InterruptedCaptureWindowTests
 
         SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidencePath));
         string sessions = Path.Combine(root, "Sessions");
-        string session = Path.Combine(sessions, "explore-20260926T153534Z-1");
+        string session = Path.Combine(sessions, $"explore-20260926T153534Z-{capture}");
         Directory.CreateDirectory(session);
         SessionStore followed = SessionStore.Open(
             LocalOwnedDirectory.Open(session), evidence.Current!.SessionId, evidence.Current.SourceIdentity);
@@ -353,7 +574,9 @@ public sealed class InterruptedCaptureWindowTests
         }
 
         DateTimeOffset now = DateTimeOffset.UtcNow;
-        LiveFollowTicket.For(evidence.Current.SessionId, evidencePath, session, now.AddMinutes(-1), now.AddSeconds(20))
+        LiveFollowTicket.For(evidence.Current.SessionId, evidencePath, session,
+                now - (startedAgo ?? TimeSpan.FromMinutes(settled ? 10 : 1)),
+                settled ? now.AddMinutes(-5) : now.AddSeconds(20))
             .Hold().Dispose();
         return (sessions, session, evidencePath);
     }

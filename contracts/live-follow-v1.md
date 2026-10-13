@@ -75,6 +75,10 @@ counts the capture's chunks whole, the released ones among them. It removes the 
 finalization marker, or when the capture has settled and the session holds every chunk it published. Otherwise the
 ticket stays for the next launch. A cancelled or failed finish keeps what it derived.
 
+A finish whose ticket is gone - finished, or forgotten, elsewhere - is refused as no longer waiting to be finished,
+and one whose evidence directory is not there is refused naming it as the capture's evidence, which has published
+nothing there yet or was moved or deleted. Neither writes anything, the user's session directory included.
+
 ## 5. Who writes a ticket, and who finishes from one
 
 Both followers of a live capture write a ticket: the Desktop's capture runner, and `icat capture` from revision 153.

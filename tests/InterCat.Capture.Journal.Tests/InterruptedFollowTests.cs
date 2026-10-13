@@ -100,6 +100,7 @@ public sealed class InterruptedFollowTests
         InterruptedFollow found = InterruptedFollow.Assess(ticket, Now);
         Assert.Equal(InterruptedFollowState.Finishable, found.State);
         Assert.Equal((1, published, published - 1, true), (found.SessionChunks, found.EvidenceChunks, found.MissingChunks, found.HasSession));
+        Assert.Equal(source.SessionId, found.SessionId);
 
         var steps = new List<FollowStep>();
         InterruptedFollowResult finished = InterruptedFollow.Finish(ticket, new Progress(steps), Now);
@@ -112,6 +113,36 @@ public sealed class InterruptedFollowTests
         Assert.False(File.Exists(LiveFollowTicket.PathFor(session)));
         Assert.Empty(LiveFollowTicket.FindInterrupted(root.Path));
         Assert.Equal(InterruptedFollowState.Complete, InterruptedFollow.Assess(ticket, Now).State);
+    }
+
+    [Fact(DisplayName = "§3.1: a finish says its evidence is not there as the capture's, and a ticket gone as finished or forgotten elsewhere, writing nothing")]
+    public async Task AFinishSaysWhatWentSinceItWasOffered()
+    {
+        using var root = new TemporaryDirectory();
+        string evidencePath = Path.Combine(root.Path, "capture");
+        Directory.CreateDirectory(evidencePath);
+        _ = await RecordEvidence(evidencePath, ordinals: [1, 2]);
+        string session = Path.Combine(root.Path, "explore-1");
+        LiveFollowTicket ticket = LiveFollowTicket.For(Guid.NewGuid(), evidencePath, session, Now, Now.AddSeconds(30));
+        ticket.Hold().Dispose();
+        Assert.Null(InterruptedFollow.Assess(ticket, Now).SessionId);
+
+        // The evidence moved: it is named as the capture's, never as a session, and the ticket stays for a later one.
+        string moved = evidencePath + "-moved";
+        Directory.Move(evidencePath, moved);
+        Assert.Equal(
+            $"The capture's evidence is not in '{ticket.EvidenceDirectory}': the capture has published nothing there "
+                + "yet, or it was moved or deleted.",
+            Assert.Throws<DirectoryNotFoundException>(() => InterruptedFollow.Finish(ticket, nowUtc: Now)).Message);
+        Assert.True(File.Exists(LiveFollowTicket.PathFor(session)));
+
+        // The ticket forgotten elsewhere: nothing is left here to finish, rather than another window finishing it.
+        Directory.Move(moved, evidencePath);
+        Assert.True(LiveFollowTicket.Remove(session));
+        Assert.Equal(
+            InterruptedFollow.NoLongerWaiting,
+            Assert.Throws<InvalidOperationException>(() => InterruptedFollow.Finish(ticket, nowUtc: Now)).Message);
+        Assert.False(Directory.Exists(session));
     }
 
     [Fact(DisplayName = "§3.1: a finish waits for a follow that still holds its ticket, and refuses evidence it did not follow")]

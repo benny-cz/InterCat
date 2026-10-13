@@ -42,6 +42,10 @@ public sealed record InterruptedFollow(
     int? EvidenceChunks,
     string? Problem)
 {
+    /// <summary>What a finish says once the capture's ticket is gone: nothing here waits to be finished.</summary>
+    public const string NoLongerWaiting =
+        "This capture is no longer waiting to be finished: it was finished or forgotten elsewhere.";
+
     /// <summary>
     /// How long after its owner lease lapses a broker has to stop and finalize a capture. The broker stops a capture
     /// within seconds of the lapse and finalizes it within a few more; a capture unfinalized after this never will be.
@@ -53,6 +57,12 @@ public sealed record InterruptedFollow(
 
     /// <summary>Whether the user's session exists and holds a generation to open.</summary>
     public bool HasSession => SessionChunks > 0;
+
+    /// <summary>
+    /// The session the user's folder held when this was assessed, which opening what was saved asks the folder for, so
+    /// a folder emptied or written over since is refused rather than opened as it; null when it held none.
+    /// </summary>
+    public Guid? SessionId { get; init; }
 
     /// <summary>Chunks the evidence holds and the session does not.</summary>
     public int MissingChunks => EvidenceChunks is { } evidence ? Math.Max(0, evidence - SessionChunks) : 0;
@@ -94,7 +104,7 @@ public sealed record InterruptedFollow(
         InterruptedFollowState state = Decide(
             sessionFinished, sessionChunks, evidenceChunks, evidenceFinished, readable: problem is null,
             now >= ticket.OwnerLeaseExpiresUtc + FinalizationAllowance);
-        return new(ticket, state, sessionChunks, evidenceChunks, problem);
+        return new(ticket, state, sessionChunks, evidenceChunks, problem) { SessionId = session?.SessionId };
     }
 
     /// <summary>
@@ -149,9 +159,20 @@ public sealed record InterruptedFollow(
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(ticket);
+
+        // A ticket another process holds is a follow or a finish under way there; one gone was finished or forgotten.
         using LiveFollowHold hold = LiveFollowTicket.TryTake(ticket)
-            ?? throw new InvalidOperationException(
-                "Another InterCat window is following or finishing this capture. Finish it from there.");
+            ?? throw new InvalidOperationException(File.Exists(LiveFollowTicket.PathFor(ticket.SessionDirectory))
+                ? "Another InterCat window is following or finishing this capture. Finish it from there."
+                : NoLongerWaiting);
+
+        // The evidence is the broker's session, never the user's, so it is named as the capture's evidence.
+        if (!Directory.Exists(ticket.EvidenceDirectory))
+        {
+            throw new DirectoryNotFoundException($"The capture's evidence is not in '{ticket.EvidenceDirectory}': the "
+                + "capture has published nothing there yet, or it was moved or deleted.");
+        }
+
         SessionStore evidence = SessionStore.OpenExisting(LocalOwnedDirectory.Open(ticket.EvidenceDirectory));
         SessionManifestV1 source = evidence.Current
             ?? throw new InvalidOperationException("The capture published nothing, so there is nothing to finish.");

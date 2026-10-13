@@ -2312,13 +2312,24 @@ public sealed partial class MainWindow : Window, IDisposable
 
         if (shown.Action == InterruptedCaptureAction.Open)
         {
-            if (await OpenSessionAsync(follow.Ticket.SessionDirectory, ("Partial session open", shown.Detail)))
+            // What was saved opens as the session the card described, never one written into its folder since.
+            string? refused = await OpenSessionOrSayWhyNotAsync(
+                follow.Ticket.SessionDirectory, ("Partial session open", shown.Detail), follow.SessionId);
+            if (closed) return;
+            if (refused is null)
             {
                 // Nothing further can be derived for it: once seen, it is not offered again.
                 _ = LiveFollowTicket.Remove(follow.Ticket.SessionDirectory);
-                await RefreshInterruptedOfferAsync();
+            }
+            else if (refused is SessionStore.SessionGone or SessionStore.AnotherSession)
+            {
+                CaptureDetail.Text = InterruptedCaptureOffer.SessionGone(follow, refused is SessionStore.AnotherSession,
+                        DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
+                    + " The current workspace is unchanged.";
             }
 
+            // The card is read again either way, so it offers what is left of the capture now, or goes.
+            await RefreshInterruptedOfferAsync();
             return;
         }
 
@@ -2370,8 +2381,29 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             EndFinishing();
             if (closed) return;
-            ShowInterruptedOffer(follow);
-            UnfinishedCaptureDetail.Text = exception.Message + " Your session keeps what was derived before this.";
+            await SayWhyFinishingDidNotGoAsync(follow, exception.Message);
+        }
+    }
+
+    /// <summary>
+    /// Reads the unfinished capture's card again once finishing it did not go, so it offers what can be done now, and
+    /// says why: on the card while it offers the capture as it did, and where the status is read once it no longer
+    /// offers it, as when another window finished or forgot it. A card that offers the capture otherwise now - one
+    /// whose evidence went, which can no longer be finished - says what changed itself.
+    /// </summary>
+    private async Task SayWhyFinishingDidNotGoAsync(InterruptedFollow follow, string reason)
+    {
+        await RefreshInterruptedOfferAsync();
+        if (closed) return;
+        if (offeredFollow is not { } now || !string.Equals(
+                now.Ticket.SessionDirectory, follow.Ticket.SessionDirectory, StringComparison.OrdinalIgnoreCase))
+        {
+            CaptureStatus.Text = "Could not finish this capture";
+            CaptureDetail.Text = reason;
+        }
+        else if (now.State == follow.State)
+        {
+            UnfinishedCaptureDetail.Text = reason + " Your session keeps what was derived before this.";
         }
     }
 

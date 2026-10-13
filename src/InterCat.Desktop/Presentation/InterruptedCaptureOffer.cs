@@ -103,6 +103,23 @@ internal sealed record InterruptedCaptureOffer(
                 + $"{Records(step.DerivedRecords, culture)}.");
     }
 
+    /// <summary>
+    /// What the status says once what a capture saved went from its folder before it could open: moved or deleted, or
+    /// written over by another session.
+    /// </summary>
+    public static string SessionGone(
+        InterruptedFollow follow,
+        bool replaced,
+        DateTimeOffset nowUtc,
+        TimeZoneInfo zone,
+        CultureInfo culture)
+    {
+        ArgumentNullException.ThrowIfNull(follow);
+        return $"The session of the capture from {Moments.When(follow.Ticket.StartedUtc, nowUtc, zone, culture)} is no "
+            + "longer in its folder: its files were moved or deleted"
+            + (replaced ? "; another session is there now." : ".");
+    }
+
     /// <summary>"2 of its 3 published chunks are not in your session yet", or "its 1 published chunk is not…".</summary>
     private static string Missing(int missing, int published, CultureInfo culture) =>
         (missing >= published

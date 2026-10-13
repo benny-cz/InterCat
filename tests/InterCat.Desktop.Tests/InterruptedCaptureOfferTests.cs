@@ -68,6 +68,19 @@ public sealed class InterruptedCaptureOfferTests
         Assert.Null(OfferFor(InterruptedFollowState.Complete, sessionChunks: 3, evidenceChunks: 3));
     }
 
+    [Fact(DisplayName = "§3.1: what a capture saved, gone from its folder before it could open, is said gone as the card named the capture")]
+    public void WhatACaptureSavedGoneIsSaidGone()
+    {
+        InterruptedFollow follow = Follow(InterruptedFollowState.EvidenceGone, sessionChunks: 1, evidenceChunks: null);
+
+        const string Gone = "The session of the capture from today at 17:35 is no longer in its folder: its files were "
+            + "moved or deleted";
+        Assert.Equal(Gone + ".", InterruptedCaptureOffer.SessionGone(follow, replaced: false, Now, Zone, Culture));
+        Assert.Equal(
+            Gone + "; another session is there now.",
+            InterruptedCaptureOffer.SessionGone(follow, replaced: true, Now, Zone, Culture));
+    }
+
     [Fact(DisplayName = "§3.1: a finish states its progress, and the session it saved states whether it is whole")]
     public void AFinishStatesItsProgressAndResult()
     {
