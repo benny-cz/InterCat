@@ -8,12 +8,15 @@ namespace InterCat.Application;
 /// </summary>
 public static class OverviewWorkspace
 {
-    /// <summary>What every view of a real session's overview must say about what it does and does not show.</summary>
+    /// <summary>
+    /// What every view and every export of a real session's overview must say about what it does and does not show:
+    /// what its evidence holds, never how the window reaches it, which an export's caveats repeated in a file that has
+    /// no keys.
+    /// </summary>
     public const string SessionDisclosure =
         "The graph shows admitted paired TCP; a process's rung also lists its RPC calls by interface, call by call. "
         + "The timeline includes every observed row. TCP and UDP records are completed transfers with no operation "
-        + "rung. Source records are one step (E) from every rung, and Enter on a record opens its original journal "
-        + "entry. Byte previews stay hidden until requested.";
+        + "rung.";
 
     /// <summary>
     /// What a view of a session whose capture collected ALPC says instead of <see cref="SessionDisclosure"/>: its graph
@@ -23,9 +26,7 @@ public static class OverviewWorkspace
     public const string LinkedCallsDisclosure =
         "The graph shows admitted paired TCP and RPC calls linked through ALPC to the processes that served them; a "
         + "process's rung lists its RPC calls by interface, call by call, with who served each. The timeline includes "
-        + "every observed row. TCP and UDP records are completed transfers with no operation rung. Source records are one "
-        + "step (E) from every rung, and Enter on a record opens its original journal entry. Byte previews stay hidden "
-        + "until requested.";
+        + "every observed row. TCP and UDP records are completed transfers with no operation rung.";
 
     /// <summary>The disclosure a view of <paramref name="snapshot"/> states: which relationships its graph draws.</summary>
     public static string DisclosureFor(WorkspaceSnapshot snapshot)

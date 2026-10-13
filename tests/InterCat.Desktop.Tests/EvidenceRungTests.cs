@@ -1459,6 +1459,17 @@ public sealed class EvidenceRungTests
         Assert.Equal(DetailLevel.Evidence, whole.Context.Rung);
         Assert.Equal(rows.Length, whole.Rows);
         Assert.Contains("Every record of this scope is included.", whole.Context.Caveats);
+
+        // Its caveats say what its records hold and leave out, the session's disclosure first, and never the window's
+        // keys, which mean nothing in a file.
+        foreach (ExportContext context in new[] { ranked, whole.Context })
+        {
+            Assert.Equal(OverviewWorkspace.DisclosureFor(workspace.Snapshot), context.Caveats[0]);
+            Assert.DoesNotContain(context.Caveats, caveat => caveat.Contains("(E)", StringComparison.Ordinal)
+                || caveat.Contains("Enter", StringComparison.Ordinal)
+                || caveat.Contains("until requested", StringComparison.Ordinal));
+        }
+
         string[] csv = whole.Content.Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
         Assert.Equal(rows.Length + 1, csv.Length);
     });
