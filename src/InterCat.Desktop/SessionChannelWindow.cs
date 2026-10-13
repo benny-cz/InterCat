@@ -157,14 +157,15 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         try
         {
             CancellationToken token = lifetime.Token;
+            // A folder that now holds another session is refused as every read of the workspace's is.
             SessionChannelPage page = await Task.Run(() => SessionChannelQuery.Read(
-                SharedSessionStores.Open(path), processScope,
+                SharedSessionStores.Open(path, expectedSessionId), processScope,
                 pageSize: SessionChannelQuery.DefaultPageSize, cursor: cursor,
                 cancellationToken: token), token);
             if (closed) return;
-            if (page.SessionId != expectedSessionId || page.Generation < expectedGeneration)
+            if (page.Generation < expectedGeneration)
             {
-                status.Text = "This directory no longer holds the generation the workspace shows. Close this "
+                status.Text = "This folder no longer holds the generation the workspace shows. Close this "
                     + "browser and reopen it from the current workspace; no page was shifted.";
                 return;
             }

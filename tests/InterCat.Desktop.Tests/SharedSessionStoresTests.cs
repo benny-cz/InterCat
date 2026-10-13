@@ -24,12 +24,10 @@ public sealed class SharedSessionStoresTests
         Assert.Same(first, SharedSessionStores.Open(session.Path, first.SessionId));
         Assert.Same(first, SharedSessionStores.Open(session.Path.ToUpperInvariant()));
 
-        // A reader that expects another session is not handed this one's store; it opens what the directory now holds,
-        // and its own session check then refuses to read it as the session it wanted.
-        SessionStore other = SharedSessionStores.Open(session.Path, Guid.NewGuid());
-        Assert.NotSame(first, other);
-        Assert.Equal(first.SessionId, other.SessionId);
-        Assert.Same(other, SharedSessionStores.Open(session.Path));
+        // A reader that expects another session is refused rather than handed this one's store, in the words every read
+        // of a folder written again says, and the folder's store stays the one kept for it.
+        Assert.Equal(SessionStore.AnotherSession, Refusal(() => SharedSessionStores.Open(session.Path, Guid.NewGuid())));
+        Assert.Same(first, SharedSessionStores.Open(session.Path));
     }
 
     [Fact(DisplayName = "§20.1: only the session opened last keeps its cached segment readers, and returning hashes nothing again")]
@@ -102,6 +100,43 @@ public sealed class SharedSessionStoresTests
         Directory.CreateDirectory(session.Path);
         Assert.NotSame(opened, registry.Open(session.Path));
     }
+
+    [Fact(DisplayName = "§20.1: a session asked for by its identity is never handed out as another: a folder written again, emptied or gone is refused in one sentence")]
+    public void ASessionAskedForIsNeverAnother()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [Lifecycle(1, ObservationKind.Create, 100, 1) with { SessionRelativeTicks = 100 }]);
+        var registry = new SessionStoreRegistry(capacity: 2);
+        SessionStore kept = registry.Open(session.Path, session.Store.SessionId);
+        Assert.Same(kept, registry.Open(session.Path, kept.SessionId));
+
+        // Written again with another session, the folder is refused to what reads the session it held - by the store kept
+        // for it, by one opened afresh, and by one kept for what it now holds - while what opens it anew reads that.
+        kept.ReleaseSegmentReaders();
+        session.Store.ReleaseSegmentReaders();
+        Directory.Delete(session.Path, recursive: true);
+        Directory.CreateDirectory(session.Path);
+        Guid another = Guid.NewGuid();
+        SessionStore written = SessionStore.Open(LocalOwnedDirectory.Open(session.Path), another, "replacing-tests");
+        Publish(written, [Lifecycle(2, ObservationKind.Create, 200, 2) with { SessionRelativeTicks = 200 }]);
+        written.ReleaseSegmentReaders();
+        Assert.Equal(SessionStore.AnotherSession, Refusal(() => kept.AcquireLease()));
+        Assert.Equal(SessionStore.AnotherSession, Refusal(() => registry.Open(session.Path, kept.SessionId)));
+        SessionStore opened = registry.Open(session.Path);
+        Assert.Equal(another, opened.SessionId);
+        Assert.Equal(SessionStore.AnotherSession, Refusal(() => registry.Open(session.Path, kept.SessionId)));
+        Assert.Same(opened, registry.Open(session.Path, another));
+
+        // Emptied, or gone, it holds no session, and what reads the one it held is told that, never that none was made.
+        opened.ReleaseSegmentReaders();
+        Directory.Delete(session.Path, recursive: true);
+        Directory.CreateDirectory(session.Path);
+        Assert.Equal(SessionStore.SessionGone, Refusal(() => registry.Open(session.Path, another)));
+        Directory.Delete(session.Path);
+        Assert.Equal(SessionStore.SessionGone, Refusal(() => registry.Open(session.Path, another)));
+    }
+
+    private static string Refusal(Func<object> read) => Assert.Throws<InvalidDataException>(read).Message;
 
     private static void ReadEverySegment(SessionStore store)
     {

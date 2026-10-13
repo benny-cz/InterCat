@@ -258,6 +258,52 @@ public sealed partial class EvidenceRetentionTests
         Assert.True(File.Exists(Path.Combine(older.Path, SessionStore.EvidenceLeaseLockFileName)));
     }
 
+    [Fact(DisplayName = "I18: a lease on a folder that now holds another session, or none, is refused in a person's words")]
+    public void ALeaseOnAFolderWrittenAgainIsRefused()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, 2);
+        SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        using (viewer.AcquireLease(nowUtc: Committed))
+        {
+        }
+
+        // Another session is written into the folder, as a package made again at the same name is: the viewer reads
+        // nothing of it as the session it opened, and says what happened and what to do.
+        foreach (string file in Directory.EnumerateFiles(session.Path))
+        {
+            File.Delete(file);
+        }
+
+        _ = Publish(SessionStore.Open(LocalOwnedDirectory.Open(session.Path), Guid.NewGuid(), "replacing-tests"), 3);
+        Assert.Equal(SessionStore.AnotherSession,
+            Assert.Throws<InvalidDataException>(() => viewer.AcquireLease(nowUtc: Committed)).Message);
+
+        // Emptied of all but its lease guard, emptied whole, or gone, the folder no longer holds the session the viewer
+        // read; it was published there, so it is never said that none was.
+        string[] remaining = [.. Directory.EnumerateFiles(session.Path)
+            .Where(file => Path.GetFileName(file) != SessionStore.EvidenceLeaseLockFileName)];
+        foreach (string file in remaining)
+        {
+            File.Delete(file);
+        }
+
+        Assert.Equal(SessionStore.SessionGone,
+            Assert.Throws<InvalidDataException>(() => viewer.AcquireLease(nowUtc: Committed)).Message);
+        File.Delete(Path.Combine(session.Path, SessionStore.EvidenceLeaseLockFileName));
+        Assert.Equal(SessionStore.SessionGone,
+            Assert.Throws<InvalidDataException>(() => viewer.AcquireLease(nowUtc: Committed)).Message);
+        Assert.Empty(Directory.EnumerateFileSystemEntries(session.Path));
+        Directory.Delete(session.Path);
+        Assert.Equal(SessionStore.SessionGone,
+            Assert.Throws<InvalidDataException>(() => viewer.AcquireLease(nowUtc: Committed)).Message);
+
+        // A store that never read a session from the emptied folder says none was published there, as before.
+        Directory.CreateDirectory(session.Path);
+        Assert.Equal(SessionStore.NoGeneration, Assert.Throws<NoSessionException>(() =>
+            SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path)).AcquireLease(nowUtc: Committed)).Message);
+    }
+
     [Fact(DisplayName = "I15: a retention generation publishes what it released and why")]
     public void ARetentionGenerationPublishesWhatItReleased()
     {

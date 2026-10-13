@@ -108,24 +108,20 @@ public sealed partial class WorkspaceViewModel
     }
 
     private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures> OverviewLaneBytes => overviewLaneBytes ??= new(this,
-        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation),
-        measured => measured.SessionId);
+        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation));
 
     private ByteRead<LaneBytesRequest, SessionMechanismByteMeasures> ZoomedLaneBytes => zoomedLaneBytes ??= new(this,
-        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation),
-        measured => measured.SessionId);
+        (source, request, cancellation) => source.LaneBytesAsync(request.Interval, request.Columns, LaneMechanisms, cancellation));
 
     private ByteRead<OwnerBytesRequest, SessionOwnerByteMeasures> OwnerLaneBytes => ownerLaneBytes ??= new(this,
         (source, request, cancellation) => source.OwnerBytesAsync(
-            request.Interval, request.Columns, request.LaneColumns, request.Owners, cancellation),
-        measured => measured.SessionId);
+            request.Interval, request.Columns, request.LaneColumns, request.Owners, cancellation));
 
     /// <summary>The columns of one read of a process's direction rows, which share the machine row's, and the process.</summary>
     private sealed record DirectionBytesRequest(TimeRange Interval, int Columns, ProcessInstanceId Owner);
 
     private ByteRead<DirectionBytesRequest, SessionDirectionByteMeasures> DirectionLaneBytesRead => directionLaneBytes ??= new(this,
-        (source, request, cancellation) => source.DirectionBytesAsync(request.Interval, request.Columns, request.Owner, cancellation),
-        measured => measured.SessionId);
+        (source, request, cancellation) => source.DirectionBytesAsync(request.Interval, request.Columns, request.Owner, cancellation));
 
     /// <summary>
     /// One set of columns the timeline reads bytes for: what it shows, the columns this generation read them for, the read
@@ -134,8 +130,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private sealed class ByteRead<TRequest, TMeasures>(
         WorkspaceViewModel owner,
-        Func<SessionEvidenceSource, TRequest, CancellationToken, Task<TMeasures>> read,
-        Func<TMeasures, Guid> sessionOf)
+        Func<SessionEvidenceSource, TRequest, CancellationToken, Task<TMeasures>> read)
         where TRequest : class
         where TMeasures : class
     {
@@ -196,16 +191,9 @@ public sealed partial class WorkspaceViewModel
 
                 Running = null;
                 cancellation.Dispose();
-                if (sessionOf(measured) == source.SessionId)
-                {
-                    Measures = measured;
-                    Answered = request;
-                    Failed = null;
-                }
-                else
-                {
-                    Failed = (request, "the session on disk is another one");
-                }
+                Measures = measured;
+                Answered = request;
+                Failed = null;
             }
             catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
             {

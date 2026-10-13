@@ -1004,6 +1004,7 @@
       "I18": [
         "I18: a lease acquires the generation and every dependency it names as one thing",
         "I18: a lease holds the manifest it acquired, and a later commit does not move it",
+        "I18: a lease on a folder that now holds another session, or none, is refused in a person's words",
         "I18: a lease on a session with no generation is refused rather than empty, and writes nothing",
         "I18: a pin declares what it lets the session hold, and is refused when that is less than the session holds",
         "I18: a pin holds rolling retention at its moment, and once the session outgrows what the pin allows the follow is told to stop",

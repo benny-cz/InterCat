@@ -92,8 +92,8 @@ public sealed partial class WorkspaceViewModel
 
             intervalBytesRead = null;
             cancellation.Dispose();
-            intervalBytes = measured.SessionId == source.SessionId ? measured : null;
-            intervalBytesFailure = measured.SessionId == source.SessionId ? null : (request, "the session on disk is another one");
+            intervalBytes = measured;
+            intervalBytesFailure = null;
         }
         catch (OperationCanceledException) when (cancellation.IsCancellationRequested)
         {

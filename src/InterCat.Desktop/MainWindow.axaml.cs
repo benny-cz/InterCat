@@ -2415,15 +2415,17 @@ public sealed partial class MainWindow : Window, IDisposable
             return;
         }
 
-        if (currentSessionPath is not { } source || displayedOverview is null || IsLive || exporting)
+        if (currentSessionPath is not { } source || displayedOverview is not { } shown || IsLive || exporting)
         {
             return;
         }
 
+        // The shown session is what is packaged: a folder that now holds another is refused, never packaged as it.
+        Guid sessionId = shown.SessionId;
         OriginalEvidencePackagePreview preview;
         try
         {
-            preview = await Task.Run(() => OriginalEvidencePackage.Preview(SharedSessionStores.Open(source)));
+            preview = await Task.Run(() => OriginalEvidencePackage.Preview(SharedSessionStores.Open(source, sessionId)));
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
@@ -2443,7 +2445,8 @@ public sealed partial class MainWindow : Window, IDisposable
         if (parent is null || closed) return;
         string destination = NewPackageDirectory(parent, DateTimeOffset.Now,
             preview.Redacted ? "intercat-redacted-session" : "intercat-original-session");
-        OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, destination, preview.Redacted);
+        OriginalEvidencePackageResult? result = await WriteOriginalPackageAsync(source, sessionId, destination,
+            preview.Redacted);
         if (result is not null && !closed && await ShowOriginalResultAsync(result))
         {
             _ = await OpenSessionAsync(result.Directory);
@@ -2451,11 +2454,12 @@ public sealed partial class MainWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// Makes the original package off the UI thread, stating its progress on the capture card, and returns null when it
-    /// was cancelled or refused - the card then says which, and the source session is unchanged either way.
+    /// Makes the original package of session <paramref name="sessionId"/> off the UI thread, stating its progress on the
+    /// capture card, and returns null when it was cancelled or refused - the card then says which, and the source session
+    /// is unchanged either way. A folder that now holds another session is refused rather than packaged.
     /// </summary>
-    internal async Task<OriginalEvidencePackageResult?> WriteOriginalPackageAsync(string source, string destination,
-        bool redacted = false)
+    internal async Task<OriginalEvidencePackageResult?> WriteOriginalPackageAsync(string source, Guid sessionId,
+        string destination, bool redacted = false)
     {
         if (packaging is not null) return null;
         using var cancellation = new CancellationTokenSource();
@@ -2479,7 +2483,7 @@ public sealed partial class MainWindow : Window, IDisposable
         {
             // Each file is hashed as it is copied, so the session's shared store, which listed its files, is enough.
             OriginalEvidencePackageResult result = await Task.Run(() => OriginalEvidencePackage.Create(
-                SharedSessionStores.Open(source), destination, progress, cancellation.Token), cancellation.Token);
+                SharedSessionStores.Open(source, sessionId), destination, progress, cancellation.Token), cancellation.Token);
             if (!closed)
             {
                 CaptureStatus.Text = result.Source.Redacted ? "Package copy saved" : "Original session saved";
@@ -3434,7 +3438,8 @@ public sealed partial class MainWindow : Window, IDisposable
     /// Counts the shown session's records under another evidence policy (§6.8): its generation is projected again under
     /// it, and the workspace keeps its rung, selection, pins and interval, as a newer publication of it does. A live
     /// capture projects every later publication under it too, and one whose view is held or paused shows it from the next
-    /// publication it shows. False when nothing is shown, or it is already counted so.
+    /// publication it shows. False when nothing is shown, it is already counted so, or it cannot be counted again, which
+    /// the capture card then says.
     /// </summary>
     internal async Task<bool> ChooseEvidencePolicyAsync(EvidencePolicy policy)
     {
@@ -3450,8 +3455,25 @@ public sealed partial class MainWindow : Window, IDisposable
             return true;
         }
 
-        SessionOverviewBundle overview = await Task.Run(
-            () => SessionOverviewProjector.Project(SharedSessionStores.Open(path, shown.SessionId), policy));
+        SessionOverviewBundle overview;
+        try
+        {
+            overview = await Task.Run(
+                () => SessionOverviewProjector.Project(SharedSessionStores.Open(path, shown.SessionId), policy));
+        }
+        catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
+            or UnauthorizedAccessException)
+        {
+            // What is shown stays counted as it was, and the button that asked is answered rather than left looking as
+            // if it did nothing, unless a later choice has superseded it.
+            if (!closed && evidencePolicy == policy)
+            {
+                CaptureStatus.Text = "The records could not be counted again";
+                CaptureDetail.Text = exception.Message;
+            }
+
+            return false;
+        }
 
         // A newer publication, another session or another choice may have come meanwhile; only this one's answer is shown.
         if (closed || evidencePolicy != policy || displayedSessionId != overview.SessionId

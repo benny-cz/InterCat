@@ -219,6 +219,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private double drawnScaling = 1;
     private SessionTimelineDetail? timelineDetail;
 
+    /// <summary>Why the view's own count could not be read, so the overview's columns stand in for it; null otherwise.</summary>
+    private string? timelineDetailProblem;
+
     // The rung's timeline focus: what E would read from it, counted beside the whole timeline (§3.2).
     private TimelineFocus? timelineFocus;
     private string? timelineFocusDescription;
@@ -536,6 +539,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         timelineQuery?.Cancel();
         timelineQuery?.Dispose();
         timelineQuery = null;
+        SetTimelineDetailProblem(null);
         if (evidenceSource is null || (overview && timelineFocus is null))
         {
             SetTimelineDetail(null, null);
@@ -586,7 +590,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     .AnsweredLater();
                 if (!disposed && ReferenceEquals(timelineQuery, query))
                 {
-                    SetTimelineDetail(detail.SessionId == source.SessionId ? detail : null, null);
+                    SetTimelineDetail(detail, null);
                 }
 
                 return;
@@ -596,14 +600,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 .AnsweredLater();
             if (!disposed && ReferenceEquals(timelineQuery, query))
             {
-                bool sameSession = counted.Whole.SessionId == source.SessionId;
-
                 // Where the overview's buckets answer the view, the focus was counted on their columns.
-                SetTimelineDetail(sameSession && !overview ? counted.Whole : null, sameSession ? counted.Focus : null,
-                    sameSession ? counted.ProcessLanes : null, sameSession ? counted.ProcessLaneProblem : null,
-                    sameSession ? counted.DirectionLanes : null, sameSession ? counted.ChannelEndLanes : null,
-                    sameSession ? counted.FoldedLane : null);
-                SetTimelineFocusState(loading: false, sameSession ? null : "the session on disk is another one");
+                SetTimelineDetail(!overview ? counted.Whole : null, counted.Focus, counted.ProcessLanes,
+                    counted.ProcessLaneProblem, counted.DirectionLanes, counted.ChannelEndLanes, counted.FoldedLane);
+                SetTimelineFocusState(loading: false, null);
             }
         }
         catch (OperationCanceledException) when (query.IsCancellationRequested)
@@ -619,6 +619,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 if (focus is not null)
                 {
                     SetTimelineFocusState(loading: false, exception.Message);
+                }
+                else
+                {
+                    // The overview's columns are drawn instead, and the caption says why rather than passing them off
+                    // as this view's own count.
+                    SetTimelineDetailProblem(exception.Message);
                 }
             }
         }
@@ -750,6 +756,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // The analysis interval stays selected, its row the new rows' one that is exactly it: a focus count arriving at
         // the same resolution keeps it, and a new resolution with no such row drops it.
         SyncSelectedIntervalRow();
+    }
+
+    private void SetTimelineDetailProblem(string? problem)
+    {
+        if (timelineDetailProblem != problem)
+        {
+            timelineDetailProblem = problem;
+            OnPropertyChanged(nameof(TimelineCaption));
+        }
     }
 
     private void SetTimelineFocusState(bool loading, string? problem)
@@ -900,8 +915,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 .AnsweredLater();
             if (!disposed && ReferenceEquals(highlightQuery, query))
             {
-                bool sameSession = counted.Whole.SessionId == source.SessionId;
-                SetHighlight(sameSession ? counted.Focus : null, sameSession ? counted.FocusLanes : null);
+                SetHighlight(counted.Focus, counted.FocusLanes);
             }
         }
         catch (OperationCanceledException) when (query.IsCancellationRequested)
@@ -1313,9 +1327,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : timelineBytes is not null ? $" · {highlightName} selected, highlighted while the lanes plot records"
         : highlightProblem is { } problem
             ? $" · the selection, {highlightName}, could not be counted"
-                + (problem == timelineFocusProblem ? string.Empty : $": {problem.TrimEnd('.')}")
+                + (problem == timelineFocusProblem || problem == timelineDetailProblem ? string.Empty : $": {problem.TrimEnd('.')}")
         : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
         : $" · selection highlighted: {highlightName}";
+
+    /// <summary>What the caption says of a view whose own count could not be read: what is drawn instead, and why.</summary>
+    private string DetailProblemNote => timelineDetailProblem is { } problem
+        ? $" · this view's own count could not be read, so the overview's columns are drawn: {problem.TrimEnd('.')}"
+        : string.Empty;
 
     private string RungCaption => ShowsRpcCallLane
         ? RpcCallDensity is { } density
@@ -1338,12 +1357,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     ? $"{Capitalized(Phrase(plotted.Metric))} per second by mechanism · "
                     : "Observed records by mechanism · " + (LaneBytesNote is { } reading ? reading + " · " : string.Empty))
                 + Counted(wholeSnapshot.MechanismLanes.Count, "lane", "lanes")
+                + DetailProblemNote
                 + (timelineDrawsUnmeasured ? " · cross-hatched where no size was recorded" : string.Empty)
                 + (SelectedTimelineMechanism is { } mechanism
                     ? $" · {EvidenceRowText.MechanismName(mechanism)} table/step focus"
                     : " · click a lane name or choose one in tables (T)")
                 + " · Shift+drag brushes"
-            : "Observed records · Shift+drag brushes a range · unknown stays unknown"
+            : "Observed records" + DetailProblemNote + " · Shift+drag brushes a range · unknown stays unknown"
         : timelineFocusProblem is { } problem
             ? $"{focus} could not be counted: {problem.TrimEnd('.')}. Every observed record is shown."
             : ladder.Current.Level == DetailLevel.Group && processLaneProblem is { } laneProblem
@@ -5259,13 +5279,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return;
             }
 
-            if (page.SessionId != source.SessionId)
-            {
-                list.Problem = "This directory now holds another session. Open it again to read its records.";
-                list.NextCursor = null;
-                return;
-            }
-
             if (page.RestartRequired)
             {
                 list.Problem = page.RestartReason;
@@ -6107,13 +6120,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             intervalLoading = false;
-            if (counts.SessionId != source.SessionId)
-            {
-                intervalProblem = "this directory now holds another session";
-                ApplyScope(null);
-                return;
-            }
-
             KeepBesideCounts(family, measured);
 
             ApplyScope(counts, interval, standIn: false);

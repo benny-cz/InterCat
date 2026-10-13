@@ -19,7 +19,9 @@ internal static class SharedSessionStores
 
     /// <summary>
     /// The shared store of a session directory. When <paramref name="sessionId"/> is given and the directory now holds
-    /// another session, a store for that one is opened instead: a store never reads one session as another.
+    /// another session, or none, it is refused as <see cref="SessionStore.AnotherSession"/> or
+    /// <see cref="SessionStore.SessionGone"/> say, as every read of the session's own store then is: nothing reads or
+    /// writes one session as another.
     /// </summary>
     public static SessionStore Open(string sessionPath, Guid? sessionId = null) => Registry.Open(sessionPath, sessionId);
 }
@@ -56,8 +58,13 @@ internal sealed class SessionStoreRegistry
         // A kept store is handed out only while its directory still holds its session: a folder emptied and written
         // again - a package made anew at the same name, a session copied over another - is opened afresh, where reading
         // it through the old store failed every read until the viewer restarted.
-        if (kept is not null && (sessionId is null || kept.SessionId == sessionId) && StillHolds(kept))
+        if (kept is not null && StillHolds(kept))
         {
+            if (sessionId is not null && kept.SessionId != sessionId)
+            {
+                throw new InvalidDataException(SessionStore.AnotherSession);
+            }
+
             lock (gate)
             {
                 Keep(key, kept);
@@ -68,13 +75,26 @@ internal sealed class SessionStoreRegistry
 
         // Opening reads the pointer, the manifest and a listing, so it happens outside the lock; two first readers may
         // both open, and the later one is simply the one kept.
-        SessionStore opened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(key));
+        SessionStore opened;
+        try
+        {
+            opened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(key));
+        }
+        catch (DirectoryNotFoundException) when (sessionId is not null)
+        {
+            throw new InvalidDataException(SessionStore.SessionGone);
+        }
+
         lock (gate)
         {
             Keep(key, opened);
         }
 
-        return opened;
+        // A folder written again is kept as what it now holds, so opening it again reads that; a reader of the session
+        // it held is refused.
+        return sessionId is null || opened.SessionId == sessionId ? opened
+            : throw new InvalidDataException(
+                opened.SessionId == Guid.Empty ? SessionStore.SessionGone : SessionStore.AnotherSession);
     }
 
     /// <summary>

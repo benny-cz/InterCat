@@ -209,7 +209,12 @@ published file. The preview returns a digest of eligible names and a copyable co
 whose marker can still be held; a changed candidate set is refused and newly abandoned entries are not
 silently added. Ordinary open, orphan removal and pointer recovery never delete staging.
 
-A session is never opened as another session: a manifest naming a different session ID is refused.
+A session is never opened as another session: a manifest naming a different session ID is refused. A store that
+has read a session refuses every later lease once its folder holds another session, saying that the folder now
+holds another session and to open it again (`SessionStore.AnotherSession`), or once it holds none - its files
+moved or deleted, or the folder itself gone - saying that the folder no longer holds the session opened from it
+(`SessionStore.SessionGone`). Only a store that never read a session says that none was published there
+(`SessionStore.NoGeneration`).
 
 `icat recover <directory>` previews a rollback without writing: the verified manifest digest, the files no
 verified generation names, and a copyable confirmation command (`confirmCommand` in `--json`). Only

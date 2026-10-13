@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 500 · Branch: `main`
+Updated: 2026-10-13 · Plan revision: 501 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 501 — a session's folder written again or emptied under the window (§20.1, R21):**
+  - Every read said the session identity had changed after its store was opened; an emptied folder, that no
+    session was ever published there. A lease now says the folder holds another session, and to open it again,
+    or that its session's files were moved or deleted.
+  - The registry handed a reader of one session the store of whatever the folder held: Keep records offered the
+    other session's pins and placed its pin there, Share original session would have packaged it, and counting
+    candidates did nothing without a word. It now refuses, in the same words, and every read of the shown session
+    asks for it by its identity; the window's own checks, in three wordings no read reached, are gone.
+  - A choice of evidence policy that cannot be counted says why on the capture card; a zoom whose own count cannot
+    be read says the overview's columns stand in, and why.
+  - Debug and Release each ran 2,132 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 20
+    mutations: a lease saying the old words, or that no session was published where one was read - by its manifest, its
+    guard or its folder gone - or a store that never read one saying it is gone; the registry handing out a store of
+    another session, kept or opened afresh, saying another session for none, or a removed folder raw; the evidence
+    source asking for no session; a zoom's failure unsaid, kept after a count, or dropped from either caption; the
+    highlight repeating the zoom's reason; the package's preview or copy, or the channel browser, reading any session; a
+    policy choice's failure unsaid; and an original record's refusal in other words.
 
 - **Revision 500 — a read that fails says so, never that there is nothing (R21, §6.7):**
   - With a shown session's files damaged, a process's rung said it had no channel where its RPC calls, HTTP

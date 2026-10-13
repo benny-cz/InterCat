@@ -658,13 +658,6 @@ public sealed partial class WorkspaceViewModel
                 return;
             }
 
-            if (measured.SessionId != source.SessionId)
-            {
-                reads.Problem = "this directory now holds another session";
-                RaiseRankingChanged();
-                return;
-            }
-
             if (scope is null || CountedScope == scope)
             {
                 reads.Keep(measured);
@@ -728,8 +721,8 @@ public sealed partial class WorkspaceViewModel
         try
         {
             T measured = await read.AnsweredLater();
-            reads.Problem = measured.SessionId == source.SessionId ? null : "this directory now holds another session";
-            return reads.Problem is null ? measured : null;
+            reads.Problem = null;
+            return measured;
         }
         catch (OperationCanceledException)
         {

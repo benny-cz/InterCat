@@ -226,7 +226,8 @@ public sealed class SessionEvidenceSource(
     /// The session's store, shared by every read and by every workspace of this session (<see cref="SharedSessionStores"/>).
     /// Opening verifies the pointer, the manifest and every file it names, which for a large session costs far more than a
     /// timeline or page read itself; each read still leases whichever generation is current. A failed open is not kept,
-    /// so the next read tries again.
+    /// so the next read tries again. Every read is of <see cref="SessionId"/>: a folder that holds another session, or
+    /// none, is refused as the registry and a lease refuse it, in one sentence, so no answer is another session's.
     /// </summary>
     private SessionStore Store()
     {

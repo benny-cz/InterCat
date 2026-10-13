@@ -83,7 +83,7 @@ public sealed class OriginalPackageWindowTests
                 prompt.Close();
             }
 
-            OriginalEvidencePackageResult? result = await window.WriteOriginalPackageAsync(session.Path, destination);
+            OriginalEvidencePackageResult? result = await window.WriteOriginalPackageAsync(session.Path, session.Store.SessionId, destination);
             Dispatch();
             Assert.NotNull(result);
             Assert.True(Directory.Exists(destination));

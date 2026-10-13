@@ -295,8 +295,8 @@ public sealed class TimelineBytesTests
         Assert.NotSame(shown, next.TimelineBytes!.Overview);
         Assert.True(shown.Of(Mechanism.Tcp)!.Columns.SequenceEqual(next.TimelineBytes.Overview.Of(Mechanism.Tcp)!.Columns));
 
-        // Another session's bytes never stand in, and a view whose session on disk turns out to be another one says why
-        // its lanes still plot records.
+        // Another session's bytes never stand in, and a view whose folder turns out to hold another session says so, in
+        // the sentence every read of it says, where its lanes still plot records.
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         using var elsewhere = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, Guid.NewGuid(), overview.Generation));
@@ -306,7 +306,8 @@ public sealed class TimelineBytesTests
         await elsewhere.TimelineBytesReady;
         await elsewhere.RankingReady;
         Assert.Null(elsewhere.TimelineBytes);
-        Assert.StartsWith("Observed records by mechanism · bytes sent could not be read: the session on disk is another one · 2 lanes",
+        string another = SessionStore.AnotherSession.TrimEnd('.');
+        Assert.StartsWith($"Observed records by mechanism · bytes sent could not be read: {another} · 2 lanes",
             elsewhere.TimelineCaption, StringComparison.Ordinal);
 
         // Its group's lanes cannot be counted either, so the timeline says it counts records there, not bytes.
@@ -315,7 +316,7 @@ public sealed class TimelineBytesTests
         Assert.True(elsewhere.Descend());
         await elsewhere.TimelineDetailReady;
         Assert.False(elsewhere.ShowsProcessLanes);
-        Assert.EndsWith(" could not be counted: the session on disk is another one. Every observed record is shown. · the "
+        Assert.EndsWith($" could not be counted: {another}. Every observed record is shown. · the "
             + "timeline counts records here, not bytes", elsewhere.TimelineCaption, StringComparison.Ordinal);
         await elsewhere.RankingReady;
     });

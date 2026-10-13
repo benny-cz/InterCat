@@ -139,7 +139,8 @@ public sealed class ContentViewTests
         Assert.Equal(revealed.Bytes, located.Bytes);
         Assert.Throws<InvalidOperationException>(() => SessionContentQuery.ReadAt(session.Store, page.SessionId,
             page.Generation + 1, cut.SegmentName, cut.SegmentRow, revealBytes: true));
-        Assert.Throws<InvalidOperationException>(() => SessionContentQuery.Read(session.Store, Guid.NewGuid(), cut, revealBytes: false));
+        Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
+            SessionContentQuery.Read(session.Store, Guid.NewGuid(), cut, revealBytes: false)).Message);
 
         // Released with its journal chunk, the content is gone and the record says so.
         _ = JournalRetention.Release(session.Store, early.Length, "keep the last chunk", DateTimeOffset.UnixEpoch);

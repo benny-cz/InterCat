@@ -274,6 +274,8 @@ public sealed class ContentPartTests
             [.. buffers.Select((bytes, index) => Content(rows[index], bytes, 32_768, ContentEncodingV1.Binary))]));
         SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
         SessionContentPartDetail body = SessionContentPartQuery.Read(session.Store, page.SessionId, page.Records[0].Observation, revealBytes: true);
+        Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
+            SessionContentPartQuery.Read(session.Store, Guid.NewGuid(), page.Records[0].Observation, revealBytes: true)).Message);
 
         ContentPartLines lines = ContentBytesView.PartLines(body, new(0, 3), Invariant);
         Assert.Equal((60_000L, (long?)3), (lines.Bytes, lines.StoppedBefore));

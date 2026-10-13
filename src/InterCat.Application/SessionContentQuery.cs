@@ -55,8 +55,7 @@ public static class SessionContentQuery
         SessionManifestV1 manifest = lease.Manifest;
         if (manifest.SessionId != expectedSessionId)
         {
-            throw new InvalidOperationException("This directory now holds another session. Reopen it from the "
-                + "workspace before inspecting a record's content.");
+            throw new InvalidOperationException(SessionStore.AnotherSession);
         }
 
         return Resolve(store, manifest, selected.ObservationId.RawRecordId, selected.Observation, revealBytes,

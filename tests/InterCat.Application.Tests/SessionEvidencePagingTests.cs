@@ -239,8 +239,8 @@ public sealed class SessionEvidencePagingTests
         };
         Assert.Throws<InvalidDataException>(() => SessionRawRecordQuery.ReadRetained(session.Store,
             page.SessionId, forged));
-        Assert.Throws<InvalidOperationException>(() => SessionRawRecordQuery.ReadRetained(session.Store,
-            Guid.NewGuid(), middle));
+        Assert.Equal(SessionStore.AnotherSession, Assert.Throws<InvalidOperationException>(() =>
+            SessionRawRecordQuery.ReadRetained(session.Store, Guid.NewGuid(), middle)).Message);
 
         SessionEvidenceRecord absent = middle with
         {

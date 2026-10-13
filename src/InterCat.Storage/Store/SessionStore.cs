@@ -284,6 +284,19 @@ public sealed partial class SessionStore
     public const string NoGeneration = "No InterCat session has been published in this folder. It is not a session's "
         + "folder, or its capture has not published a generation yet; nothing was written to it.";
 
+    /// <summary>
+    /// What a reader says once the folder it read a session from holds another one - a package made again at the same
+    /// name, a session copied over it. Nothing of the other session is read as the one opened.
+    /// </summary>
+    public const string AnotherSession = "This folder now holds another session. Open it again to read its records.";
+
+    /// <summary>
+    /// What a reader says once the folder it read a session from holds none: the session's files were moved or deleted
+    /// after it was opened. A folder in which no session was ever published says <see cref="NoGeneration"/> instead.
+    /// </summary>
+    public const string SessionGone = "This folder no longer holds the session opened from it: its files were moved or "
+        + "deleted.";
+
     public const string StagingPrefix = "stg-";
 
     public const string StagingSuffix = ".tmp";
@@ -841,10 +854,10 @@ public sealed partial class SessionStore
             {
                 (SessionManifestV1? disk, bool rolledBack, string? reason) = Acquire(directory, measurements, current);
                 rollbackReason = rolledBack ? reason : null;
-                SessionManifestV1 manifest = disk ?? throw new NoSessionException();
+                SessionManifestV1 manifest = disk ?? throw NoSessionHere();
                 if (manifest.SessionId != SessionId)
                 {
-                    throw new InvalidDataException("The session identity changed after this store was opened.");
+                    throw new InvalidDataException(AnotherSession);
                 }
 
                 if (current?.Generation == manifest.Generation
@@ -2641,6 +2654,13 @@ public sealed partial class SessionStore
         }
     }
 
+    /// <summary>
+    /// What a lease says of a folder holding no session: that none was published there, or, to a store that has read one
+    /// from it, that the session is gone. It never says of a session a person was reading that nothing was written.
+    /// </summary>
+    private Exception NoSessionHere() =>
+        current is null ? new NoSessionException() : new InvalidDataException(SessionGone);
+
     private FileStream AcquireEvidenceReadHold()
     {
         // A writer holds the guard exclusively only while it removes files no reader can reach, which takes
@@ -2663,7 +2683,7 @@ public sealed partial class SessionStore
                 // looks, at a folder someone chose by mistake, writes nothing there.
                 if (!Exists(directory, SessionPointerV1.FileName) && !Exists(directory, SessionPointerV1.PreviousFileName))
                 {
-                    throw new NoSessionException();
+                    throw NoSessionHere();
                 }
 
                 // Older sessions predate the guard. A writable local reader can establish it;
@@ -2685,6 +2705,11 @@ public sealed partial class SessionStore
                         + "concurrently with retention.",
                         exception);
                 }
+            }
+            catch (DirectoryNotFoundException) when (current is not null && !Directory.Exists(directory.Path))
+            {
+                // The folder itself is gone, and the session with it.
+                throw NoSessionHere();
             }
             catch (IOException exception) when (exception is not DirectoryNotFoundException
                 && Stopwatch.GetElapsedTime(waitStarted) < EvidenceGuardWait)

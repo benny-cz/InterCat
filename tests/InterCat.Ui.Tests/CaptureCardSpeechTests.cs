@@ -169,7 +169,7 @@ public sealed class CaptureCardSpeechTests
             // So is an exact copy's.
             shown.Clear();
             heard.Clear();
-            Assert.NotNull(await window.WriteOriginalPackageAsync(session.Path, original));
+            Assert.NotNull(await window.WriteOriginalPackageAsync(session.Path, session.Store.SessionId, original));
             Dispatch();
             Assert.Contains(shown, line => line?.EndsWith('%') == true);
             Assert.Equal(["Saving the original session", "Copying and checking the session's files…", "Original session saved",
