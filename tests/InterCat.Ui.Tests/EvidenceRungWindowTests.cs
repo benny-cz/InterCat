@@ -953,8 +953,12 @@ public sealed class EvidenceRungWindowTests
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Source.Mechanism == Mechanism.Rpc);
         Assert.True(workspace.Descend());
         await workspace.RpcReady;
+
+        // The lane is laid out once the view's own count has come with its calls: until then the rung has no rows and the
+        // plot keeps the machine row's gutter, so a column pointed at would move under the pointer as the count arrived.
         timeline.RequestDetailNow();
         await workspace.RpcSpansReady;
+        await workspace.TimelineDetailReady;
         Dispatch();
 
         // No call is dropped: every one counts into a column, and the lane and the caption say it is density.
@@ -976,10 +980,18 @@ public sealed class EvidenceRungWindowTests
         Save(window.CaptureRenderedFrame()!, "l3-rpc-call-density-1080x700.png");
 
         // A resting pointer describes the column under it, failures included; a click selects its interval, not a call.
-        int failing = Enumerable.Range(0, density.Columns).First(column => density.Failed[column] > 0);
-        Point onColumn = timeline.TranslatePoint(timeline.PointOfDensityColumn(failing)!.Value, window)!.Value;
-        window.MouseMove(onColumn);
-        Dispatch();
+        // A lane counted again as the window settles - at another width, so in other columns - is pointed at again.
+        int failing;
+        Point onColumn;
+        do
+        {
+            density = Assert.IsType<RpcCallDensity>(workspace.RpcCallDensity);
+            failing = Enumerable.Range(0, density.Columns).First(column => density.Failed[column] > 0);
+            onColumn = timeline.TranslatePoint(timeline.PointOfDensityColumn(failing)!.Value, window)!.Value;
+            window.MouseMove(onColumn);
+            Dispatch();
+        }
+        while (!ReferenceEquals(density, workspace.RpcCallDensity));
         Assert.Equal(failing, timeline.HoveredRpcDensityColumn);
         HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
         Assert.EndsWith("running", card.Title, StringComparison.Ordinal);
@@ -997,6 +1009,7 @@ public sealed class EvidenceRungWindowTests
         timeline.SetViewport(new TimeRange(column.StartTicks, column.StartTicks + 3_000));
         timeline.RequestDetailNow();
         await workspace.RpcSpansReady;
+        await workspace.TimelineDetailReady;
         Dispatch();
         Assert.Null(workspace.RpcCallDensity);
         Assert.NotEmpty(workspace.RpcCallSpans!);

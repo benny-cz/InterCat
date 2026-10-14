@@ -122,11 +122,20 @@ public sealed class HttpExchangeLaneTests
             Assert.True(Near(faint, Color.FromRgb((byte)((hue.R + plot.R) / 2), (byte)((hue.G + plot.G) / 2), (byte)((hue.B + plot.B) / 2))),
                 $"A column not recorded whole drew {faint}, not the HTTP hue {hue} faint over the plot {plot}.");
 
-            // A column among those not recorded whole describes itself, and a click selects its interval.
-            int column = cut;
-            Point point = timeline.TranslatePoint(timeline.PointOfDensityColumn(column)!.Value, window)!.Value;
-            window.MouseMove(point);
-            Dispatch();
+            // A column among those not recorded whole describes itself, and a click selects its interval. A lane counted
+            // again as the window settles - at another width, so in other columns - is pointed at again.
+            int column;
+            Point point;
+            do
+            {
+                density = Assert.IsType<HttpExchangeDensity>(workspace.HttpExchangeDensity);
+                column = Enumerable.Range(0, density.Columns).First(index => density.Running[index] > 0
+                    && density.Incomplete[index] == density.Running[index]);
+                point = timeline.TranslatePoint(timeline.PointOfDensityColumn(column)!.Value, window)!.Value;
+                window.MouseMove(point);
+                Dispatch();
+            }
+            while (!ReferenceEquals(density, workspace.HttpExchangeDensity));
             Assert.Equal(column, timeline.HoveredHttpDensityColumn);
             HoverCard card = Assert.IsType<HoverCard>(timeline.HoverCard);
             Assert.EndsWith(" running", card.Title, StringComparison.Ordinal);
@@ -167,11 +176,13 @@ public sealed class HttpExchangeLaneTests
         Assert.True(workspace.IsHttpChannelRung);
         await workspace.HttpReady;
 
-        // Laid out at the rung first, so the view asks for the columns it draws.
+        // Laid out at the rung first, so the view asks for the columns it draws, and laid out again once its own count has
+        // come with the exchanges: until then the rung has no rows and the plot keeps the machine row's gutter.
         _ = window.CaptureRenderedFrame();
         Dispatch();
         timeline.RequestDetailNow();
         await workspace.HttpSpansReady;
+        await workspace.TimelineDetailReady;
         Dispatch();
         return (window, workspace, timeline);
     }

@@ -1430,22 +1430,26 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private void UpdateHeldGeneration(object? sender, RoutedEventArgs eventArgs) => ApplyHeldUpdate();
 
     /// <summary>
-    /// Opens the selected record's original journal envelope. It is found by its stable raw identity, so it stays
-    /// reachable while a live capture publishes newer generations.
+    /// Opens the selected record's original journal envelope - or, in a redacted package, its synthetic entry, which the
+    /// window calls one from its first word. It is found by its stable raw identity, so it stays reachable while a live
+    /// capture publishes newer generations.
     /// </summary>
     private async void OpenOriginalRecord()
     {
         if (openingRecord || workspace.SelectedEvidence is not { } record || currentSessionPath is null
             || displayedSessionId is not { } sessionId) return;
         openingRecord = true;
+        bool synthetic = workspace.RecordsAreSynthetic;
         try
         {
-            using var window = new SessionRawRecordWindow(currentSessionPath, sessionId, record);
+            using var window = new SessionRawRecordWindow(currentSessionPath, sessionId, record, synthetic);
             await window.ShowDialog(this);
         }
         catch (InvalidOperationException exception)
         {
-            if (!closed) CaptureDetail.Text = "Could not open the original record: " + exception.Message;
+            if (!closed)
+                CaptureDetail.Text = $"Could not open the {(synthetic ? "synthetic" : "original")} record: "
+                    + exception.Message;
         }
         finally
         {

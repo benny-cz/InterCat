@@ -802,7 +802,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             package.IsEnabled = packaging is not null || view.Members.Count > 0;
             compareInstants.IsEnabled = view.Members.Count > 0;
             int unresolved = view.Members.Count(row => !row.HoldsItsCapture);
-            status.Text = message ?? (unresolved == 0
+            status.Text = message ?? (view.Members.Count == 0
+                ? "This investigation holds no session yet: add the sessions it covers."
+                : unresolved == 0
                 ? "Every session is where it was last found."
                 : string.Create(CultureInfo.CurrentCulture,
                     $"{unresolved:N0} {(unresolved == 1 ? "session is" : "sessions are")} not where {(unresolved == 1 ? "it was" : "they were")} last found: relink {(unresolved == 1 ? "it" : "them")} to open {(unresolved == 1 ? "it" : "them")}."));
@@ -1150,8 +1152,11 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         if (closed) return;
         if (preview.Copied.Count == 0)
         {
-            status.Text = "No session of this investigation is where it was last found, so there is nothing to package. Relink "
-                + "its sessions first.";
+            // The file is measured as it is now, which may name no session at all since the window read it.
+            status.Text = preview.Members.Count == 0
+                ? "This investigation holds no session yet, so there is nothing to package."
+                : "No session of this investigation is where it was last found, so there is nothing to package. Relink "
+                    + "its sessions first.";
             return;
         }
 

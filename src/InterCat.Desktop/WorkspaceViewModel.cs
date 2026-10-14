@@ -5096,15 +5096,29 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         " · the next page could not be read" + (brief ? string.Empty : ": " + problem.TrimEnd('.'));
 
     /// <summary>
+    /// Whether a record opened from this session is a redacted package's synthetic entry: a package holds no original
+    /// record, and nothing that opens one presents it as an original.
+    /// </summary>
+    public bool RecordsAreSynthetic => wholeSnapshot.Redaction is not null;
+
+    /// <summary>
     /// The record action's label. A redacted package holds synthetic records only, and its action never promises the
     /// original that was left out.
     /// </summary>
-    public string OriginalRecordLabel => wholeSnapshot.Redaction is null
-        ? "Open original record (Enter)"
-        : "Open synthetic record (Enter)";
+    public string OriginalRecordLabel => RecordsAreSynthetic
+        ? "Open synthetic record (Enter)"
+        : "Open original record (Enter)";
+
+    /// <summary>
+    /// What the record action opens, as its help text: its label is its name, so a screen reader says the words shown, and
+    /// a package's entry is never called the original journal's.
+    /// </summary>
+    public string OriginalRecordHelp => RecordsAreSynthetic
+        ? "Open the selected record's synthetic entry; a redacted package holds no original record"
+        : "Open the selected record's original journal entry";
 
     /// <summary>What Enter opens at the evidence rung, in words the rail, its hint and a screen reader share.</summary>
-    private string RecordNoun => wholeSnapshot.Redaction is null ? "original record" : "synthetic record";
+    private string RecordNoun => RecordsAreSynthetic ? "synthetic record" : "original record";
 
     public string SelectedEvidenceTitle => SelectedEvidence is { } record
         ? EvidenceRowText.Title(record.Observation)

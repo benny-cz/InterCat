@@ -1646,6 +1646,7 @@
         "R21: a read that fails says so and why - a process's calls never read as none, and a selection that could not be counted is not still being counted",
         "R21: a real session's interval table reads each interval's bytes over exactly the records it lists",
         "R21: a real session's interval table states each interval's bytes once the table is shown",
+        "R21: a record kept across a release whose journal it gave up says its original is unavailable, and why",
         "R21: a record of the other pointer width is admitted only where no pointer moves its admitted fields",
         "R21: a record the full queue dropped is callback-queue loss, not a delivery of its descriptor",
         "R21: a record whose extended items were unreachable replays as unavailable",

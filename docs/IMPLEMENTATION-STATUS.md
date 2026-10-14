@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 523 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 524 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 524 — a redacted package's record is synthetic from the window's first word (§11.3, R15, R21):**
+  - The record window is told what a package's rows open: its title, heading, status, accessible names and
+    failures say synthetic before a byte is read, and Reveal is not offered; a row the package holds no entry for
+    says the package is not as it was saved.
+  - The inspector's record button is named by its label, its explanation its help text, synthetic for a package.
+  - An investigation with no session says so, never that every session is where it was last found; Package says
+    when the file names none, or could not be measured.
+  - Tests run a record whose journal a release gave up, a package's journal gone while it is open, and the
+    investigation's package states.
+  - Debug and Release each ran 2,211 tests with revision 473's 93 failures and 4 skips; Release also failed once the
+    call lane's density test, which hovered a column the lane could count again as the window settled. That test and
+    its HTTP twin now wait for the view's own count and point again at a lane counted again, and the UI tests then
+    passed whole in both configurations. The tests caught each of 20 mutations: the record window's synthetic title,
+    heading, disclosure, status, accessible names, unavailable and failure wording and Reveal, the main window's
+    flag and the record button's name and help text, and the investigation's empty status and nothing-to-package
+    words.
 
 - **Revision 523 — an investigation is called one wherever it is read (§8.4, R5):**
   - Its refusals and file problems, and icat's help and output, said workspace where the window and the rest of

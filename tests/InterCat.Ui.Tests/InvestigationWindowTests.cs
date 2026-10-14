@@ -814,10 +814,13 @@ public sealed class InvestigationWindowTests
             string written = File.ReadAllText(workspace);
             window.Close();
 
-            // Asked to make one that exists, the window opens it as it is.
+            // Asked to make one that exists, the window opens it as it is, saying it holds no session yet - never that
+            // every session is where it was last found.
             InvestigationWindow again = main.ShowInvestigation(workspace, create: true);
             WaitFor(() => again.View is not null);
             Assert.Equal(written, File.ReadAllText(workspace));
+            Assert.Equal("This investigation holds no session yet: add the sessions it covers.",
+                Named<TextBlock>(again, "Investigation status").Text);
             again.Close();
         }
         finally
@@ -2377,6 +2380,56 @@ public sealed class InvestigationWindowTests
             Assert.Null(await window.WritePackageAsync(destination, null));
             Assert.StartsWith("The investigation could not be packaged: ", status.Text, StringComparison.Ordinal);
             Assert.Contains("exists", status.Text, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.4: Package asks nothing when no session is there to copy, nor when the investigation no longer reads, and says why")]
+    public void PackageSaysWhyThereIsNothingToPackage()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        string alpha = Datagrams(root.Path, "alpha", 4);
+        _ = InvestigationWorkspace.Add(workspace, alpha, Committed);
+        Directory.Delete(alpha, recursive: true);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is { Members.Count: 1 });
+            Button package = Named<Button>(window, "Package this investigation with its sessions, to share it");
+            TextBlock status = Named<TextBlock>(window, "Investigation status");
+
+            // Its one session is not where it was last found, so there is nothing to copy: no confirmation is asked.
+            Assert.True(package.IsEnabled);
+            package.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => status.Text?.StartsWith("No session", StringComparison.Ordinal) == true);
+            Assert.Equal("No session of this investigation is where it was last found, so there is nothing to package. Relink "
+                + "its sessions first.", status.Text);
+            Assert.Empty(window.OwnedWindows);
+
+            // The file is measured as it is now: one written anew since, naming no session, has none to package either.
+            File.Delete(workspace);
+            InvestigationWorkspace.Create(workspace, Committed);
+            package.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => status.Text?.StartsWith("This investigation", StringComparison.Ordinal) == true);
+            Assert.Equal("This investigation holds no session yet, so there is nothing to package.", status.Text);
+            Assert.Empty(window.OwnedWindows);
+
+            // An investigation that no longer reads is not measured: the window says so, then why, and asks nothing.
+            File.WriteAllText(workspace, "{");
+            string unreadable = Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message;
+            package.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => status.Text?.StartsWith("The investigation could not", StringComparison.Ordinal) == true);
+            Assert.Equal("The investigation could not be measured to package it: " + unreadable, status.Text);
+            Assert.Empty(window.OwnedWindows);
+            Assert.Equal(("Package…", true), (package.Content, package.IsEnabled));
             window.Close();
         }
         finally

@@ -1,6 +1,7 @@
 using System.Text;
 using Avalonia;
 using Avalonia.Automation;
+using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -83,11 +84,70 @@ public sealed class MainWindowPathTests
             Escape(window, Opened<SessionContentWindow>(window, inspect));
             Button original = window.GetVisualDescendants().OfType<Button>().Single(button => button.IsEffectivelyVisible
                 && Equals(button.Content, workspace.OriginalRecordLabel));
+            Assert.Equal("Open original record (Enter)", ControlAutomationPeer.CreatePeerForElement(original).GetName());
+            Assert.Equal("Open the selected record's original journal entry", AutomationProperties.GetHelpText(original));
             Escape(window, Opened<SessionRawRecordWindow>(window, original));
         }
         finally
         {
             window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§11.3: a redacted package's record opens from its row as a synthetic record, and one it cannot verify is still called one")]
+    public async Task APackagesRecordOpensAsASyntheticRecord()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 2_000 },
+        ]);
+        string destination = Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Packages", Guid.NewGuid().ToString("N"));
+        RedactedSessionPackage.Create(session.Store, destination, Committed);
+        var window = new MainWindow { Width = 1_456, Height = 939 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(destination));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            workspace.SelectedRung = workspace.RungRows[0];
+            Settle(window);
+            Button open = window.GetVisualDescendants().OfType<Button>().Single(button => button.IsEffectivelyVisible
+                && Equals(button.Content, "Open synthetic record (Enter)"));
+
+            // A screen reader says the words shown, and hears what they open: never the original journal's entry.
+            Assert.Equal("Open synthetic record (Enter)", ControlAutomationPeer.CreatePeerForElement(open).GetName());
+            Assert.Equal("Open the selected record's synthetic entry; a redacted package holds no original record",
+                AutomationProperties.GetHelpText(open));
+            SessionRawRecordWindow raw = Opened<SessionRawRecordWindow>(window, open);
+            WaitFor(() => raw.FocusManager?.GetFocusedElement() is TextBox { Text.Length: > 0 });
+            Assert.Equal("InterCat · Synthetic record of a redacted package", raw.Title);
+            Escape(window, raw);
+
+            // With its journal gone from under the open package, the record cannot be read, and the window - told by the
+            // row it was opened from - still calls it what the package holds.
+            SessionStore package = SessionStore.OpenExisting(LocalOwnedDirectory.Open(destination));
+            string[] journals = [.. package.Current!.Dependencies
+                .Where(dependency => dependency.Kind == StoreDependencyKind.Journal)
+                .Select(dependency => Path.Combine(destination, dependency.Name))];
+            package.ReleaseSegmentReaders();
+            Assert.NotEmpty(journals);
+            foreach (string journal in journals) File.Delete(journal);
+            raw = Opened<SessionRawRecordWindow>(window, open);
+            TextBlock status = raw.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => AutomationProperties.GetName(text) == "Synthetic record status");
+            WaitFor(() => status.Text?.StartsWith("Could not verify the synthetic record: ", StringComparison.Ordinal) == true);
+            Assert.Equal("InterCat · Synthetic record of a redacted package", raw.Title);
+            Escape(window, raw);
+        }
+        finally
+        {
+            window.Close();
+            if (Directory.Exists(destination)) Directory.Delete(destination, recursive: true);
         }
     }
 

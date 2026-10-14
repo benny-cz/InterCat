@@ -14,7 +14,8 @@ namespace InterCat.Desktop;
 
 /// <summary>
 /// An exact original-envelope view. Body bytes remain hidden until the user requests a bounded preview. The record is
-/// found by its stable raw identity, so it stays reachable while a live capture publishes newer generations.
+/// found by its stable raw identity, so it stays reachable while a live capture publishes newer generations. A redacted
+/// package's record is its synthetic entry, and the window says so wherever it names the record.
 /// </summary>
 internal sealed class SessionRawRecordWindow : Window, IDisposable
 {
@@ -44,8 +45,14 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
     private bool revealed;
+    private bool synthetic;
 
-    public SessionRawRecordWindow(string path, Guid expectedSessionId, SessionEvidenceRecord selected)
+    /// <param name="synthetic">
+    /// Whether the record is a redacted package's synthetic entry, so the window never calls it an original - not while
+    /// it is read, nor when it could not be. A record read as one is presented as one whatever the caller said.
+    /// </param>
+    public SessionRawRecordWindow(string path, Guid expectedSessionId, SessionEvidenceRecord selected,
+        bool synthetic = false)
     {
         this.path = path;
         this.expectedSessionId = expectedSessionId;
@@ -57,7 +64,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         MinHeight = 430;
         WindowStartupLocation = WindowStartupLocation.CenterOwner;
 
-        status.Text = "Locating the retained original record…";
+        status.Text = synthetic ? "Locating the synthetic record…" : "Locating the retained original record…";
 
         // The record a screen reader lands on is named for it; the buttons are named by what they say. What the window
         // finds is announced as its status line changes, rather than waiting to be read.
@@ -94,6 +101,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         grid.Children.Add(detail);
         grid.Children.Add(footer);
         Content = grid;
+        if (synthetic) PresentAsSynthetic();
 
         Opened += (_, _) => _ = LoadAsync(revealBytes: false);
         Closed += (_, _) => Dispose();
@@ -114,7 +122,8 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         loading = true;
         reveal.IsEnabled = false;
         detail.Text = string.Empty;
-        status.Text = revealBytes ? "Reading a bounded byte preview…" : "Verifying the original journal record…";
+        status.Text = revealBytes ? "Reading a bounded byte preview…"
+            : synthetic ? "Verifying the synthetic record…" : "Verifying the original journal record…";
         try
         {
             CancellationToken token = lifetime.Token;
@@ -126,21 +135,20 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             if (closed) return;
             if (!result.Available)
             {
-                status.Text = "Original record unavailable in retained evidence";
-                detail.Text = result.UnavailableReason;
+                // Every row of a package has its synthetic entry, checked as the package was saved, so one not found says
+                // the package changed since - never that an original was released.
+                status.Text = synthetic ? "Synthetic record unavailable in this package"
+                    : "Original record unavailable in retained evidence";
+                detail.Text = synthetic
+                    ? "The package's journal holds no entry for this row, though every row of a redacted package has one: "
+                        + "the package is not as it was saved."
+                    : result.UnavailableReason;
                 return;
             }
 
             revealed = revealBytes;
             status.Text = $"Verified generation {result.Generation:N0} · {result.JournalName}";
-            if (result.AdmissionPolicyId == RedactedSessionPackage.Policy)
-            {
-                // A redacted package holds no original record; its entry must never be presented as one.
-                Title = "InterCat · Synthetic record of a redacted package";
-                heading.Text = "Synthetic record of a redacted session package";
-                disclosure.Text = "This package holds no original record. This entry carries the row's pseudonymous "
-                    + "descriptor, header and reading, and never a body or extended data.";
-            }
+            if (result.AdmissionPolicyId == RedactedSessionPackage.Policy) PresentAsSynthetic();
 
             detail.Text = Describe(result);
             reveal.IsEnabled = !revealed && result.RetainedBodyLength > 0;
@@ -152,13 +160,32 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
-            if (!closed) status.Text = "Could not verify the original record: " + exception.Message;
+            if (!closed)
+                status.Text = (synthetic ? "Could not verify the synthetic record: "
+                    : "Could not verify the original record: ") + exception.Message;
         }
         finally
         {
             loading = false;
             if (!closed) KeepKeyboard();
         }
+    }
+
+    /// <summary>
+    /// Names the record a redacted package's synthetic entry wherever the window names it - its title, heading, text and
+    /// status - and drops Reveal: a package holds no original record and its entry carries no body, so neither is ever
+    /// offered or presented as there.
+    /// </summary>
+    private void PresentAsSynthetic()
+    {
+        synthetic = true;
+        Title = "InterCat · Synthetic record of a redacted package";
+        heading.Text = "Synthetic record of a redacted session package";
+        disclosure.Text = "This package holds no original record. This entry carries the row's pseudonymous "
+            + "descriptor, header and reading, and never a body or extended data.";
+        AutomationProperties.SetName(detail, "The synthetic record, field by field");
+        AutomationProperties.SetName(status, "Synthetic record status");
+        reveal.IsVisible = false;
     }
 
     /// <summary>

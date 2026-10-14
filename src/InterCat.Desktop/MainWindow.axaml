@@ -756,7 +756,7 @@
               </ListBox>
               <Button Content="{Binding OriginalRecordLabel}" Click="OpenOriginalRecord"
                       IsEnabled="{Binding HasSelectedEvidence}"
-                      AutomationProperties.Name="Open the selected record's original journal entry" />
+                      AutomationProperties.HelpText="{Binding OriginalRecordHelp}" />
               <!-- §3.7: kept content opens apart from the original record, since it is kept beside the journal (ADR-036). -->
               <Button Content="Inspect its content (C)" Click="OpenContent" IsVisible="{Binding HasSelectedContent}"
                       AutomationProperties.HelpText="Inspect the selected record's kept content" />
