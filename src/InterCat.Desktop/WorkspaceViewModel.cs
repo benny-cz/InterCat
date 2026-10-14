@@ -2344,6 +2344,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(PinActionLabel));
         OnPropertyChanged(nameof(CanTogglePin));
+        OnPropertyChanged(nameof(PinTip));
         RaiseLineageChanged();
         UpdateHighlight();
         FollowDescribedBytes();
@@ -2522,6 +2523,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(CanRelayoutGraph));
+        OnPropertyChanged(nameof(RelayoutTip));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
         RaiseGraphSelectionChanged();
@@ -2565,6 +2567,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public string PinActionLabel => SelectedGraphNodeKey is { } key && IsGraphNodePinned(key) ? "Unpin node (P)" : "Pin node (P)";
 
     public bool CanTogglePin => SelectedGraphNodeKey is { } key && graphDisplay.Node(key) is not null;
+
+    /// <summary>What pinning does, or why there is nothing to pin, said on the action whether or not it is offered.</summary>
+    public string PinTip => CanTogglePin ? "Pin the selected graph node where it is drawn, or release its pin"
+        : "Select a node of the graph first.";
 
     /// <summary>
     /// Pins a drawn node where the user put it. The drawing shows it there at once; the layout keeps it there and settles
@@ -5110,11 +5116,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : "Open original record (Enter)";
 
     /// <summary>
-    /// What the record action opens, as its help text: its label is its name, so a screen reader says the words shown, and
-    /// a package's entry is never called the original journal's.
+    /// What the record action opens, as its help text and tooltip, or why it is not offered: its label is its name, so a
+    /// screen reader says the words shown, and a package's entry is never called the original journal's.
     /// </summary>
-    public string OriginalRecordHelp => RecordsAreSynthetic
-        ? "Open the selected record's synthetic entry; a redacted package holds no original record"
+    public string OriginalRecordHelp => !HasSelectedEvidence ? "Choose a record first."
+        : RecordsAreSynthetic ? "Open the selected record's synthetic entry; a redacted package holds no original record"
         : "Open the selected record's original journal entry";
 
     /// <summary>What Enter opens at the evidence rung, in words the rail, its hint and a screen reader share.</summary>
@@ -5369,6 +5375,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : evidence.Records.FirstOrDefault(record => EvidenceKey(record) == key);
         OnPropertyChanged(nameof(SelectedEvidence));
         OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(OriginalRecordHelp));
         OnPropertyChanged(nameof(HasSelectedContent));
         OnPropertyChanged(nameof(SelectedEvidenceTitle));
         OnPropertyChanged(nameof(SelectedEvidenceFields));
@@ -5464,6 +5471,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(HighlightedEdgeKey));
         OnPropertyChanged(nameof(SelectedEvidence));
         OnPropertyChanged(nameof(HasSelectedEvidence));
+        OnPropertyChanged(nameof(OriginalRecordHelp));
         OnPropertyChanged(nameof(HasSelectedContent));
         OnPropertyChanged(nameof(SelectedEvidenceTitle));
         OnPropertyChanged(nameof(SelectedEvidenceFields));
@@ -6245,6 +6253,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         view = ProjectLadder();
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(CanRelayoutGraph));
+        OnPropertyChanged(nameof(RelayoutTip));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
@@ -6385,6 +6394,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>Whether the graph draws a node to lay out afresh; a graph of none has nothing to place.</summary>
     public bool CanRelayoutGraph => wholeDisplay.Nodes.Count > 0;
+
+    /// <summary>What laying the graph out does, or why there is nothing to lay out.</summary>
+    public string RelayoutTip => CanRelayoutGraph ? "Lay the graph out afresh, keeping pinned nodes where they are"
+        : emptyWorkspace ? "Open or record a session first: there is no graph to lay out."
+        : "The graph draws no node to lay out.";
 
     private void OnSelectionChanged(object? sender, WorkspaceSelection changed)
     {

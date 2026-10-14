@@ -755,7 +755,7 @@
                 </ListBox.ItemTemplate>
               </ListBox>
               <Button Content="{Binding OriginalRecordLabel}" Click="OpenOriginalRecord"
-                      IsEnabled="{Binding HasSelectedEvidence}"
+                      IsEnabled="{Binding HasSelectedEvidence}" ToolTip.Tip="{Binding OriginalRecordHelp}" ToolTip.ShowOnDisabled="True"
                       AutomationProperties.HelpText="{Binding OriginalRecordHelp}" />
               <!-- §3.7: kept content opens apart from the original record, since it is kept beside the journal (ADR-036). -->
               <Button Content="Inspect its content (C)" Click="OpenContent" IsVisible="{Binding HasSelectedContent}"
@@ -861,29 +861,27 @@
                  height the actions were below the fold, under a scroll bar a hairline wide. -->
             <StackPanel Margin="0,18,0,0" Spacing="8">
               <Button x:Name="ShowRecordsButton" Content="Show source records (E)" IsEnabled="False"
-                      Click="ShowSourceRecords"
-                      AutomationProperties.HelpText="Show this rung's source records in the ladder" />
+                      Click="ShowSourceRecords" ToolTip.ShowOnDisabled="True" />
               <!-- The lineage the card states, one action away: the parent as the selection, the children as a set. -->
               <WrapPanel IsVisible="{Binding ShowsLineage}">
                 <Button x:Name="SelectParentButton" Content="Go to parent" Click="SelectParent" Margin="0,0,8,0"
-                        IsEnabled="{Binding CanSelectParent}"
-                        AutomationProperties.HelpText="Select the process that started this one" />
+                        IsEnabled="{Binding CanSelectParent}" ToolTip.Tip="{Binding ParentTip}" ToolTip.ShowOnDisabled="True"
+                        AutomationProperties.HelpText="{Binding ParentTip}" />
                 <Button x:Name="SelectChildrenButton" Content="{Binding SelectChildrenLabel}" Click="SelectChildren"
-                        IsEnabled="{Binding CanSelectChildren}"
-                        AutomationProperties.HelpText="Select the processes this one started" />
+                        IsEnabled="{Binding CanSelectChildren}" ToolTip.Tip="{Binding ChildrenTip}" ToolTip.ShowOnDisabled="True"
+                        AutomationProperties.HelpText="{Binding ChildrenTip}" />
               </WrapPanel>
               <!-- Graph placement (§6.3, §19.4): the button equivalents of dragging a node and of L, so neither is gesture-only. -->
               <WrapPanel>
                 <Button x:Name="PinNodeButton" Content="{Binding PinActionLabel}" IsEnabled="{Binding CanTogglePin}"
-                        Click="TogglePinNode" Margin="0,0,8,0"
-                        AutomationProperties.HelpText="Pin the selected graph node where it is drawn, or release its pin" />
+                        Click="TogglePinNode" Margin="0,0,8,0" ToolTip.Tip="{Binding PinTip}" ToolTip.ShowOnDisabled="True"
+                        AutomationProperties.HelpText="{Binding PinTip}" />
                 <Button x:Name="RelayoutButton" Content="Re-layout graph (L)" Click="RelayoutGraph"
-                        IsEnabled="{Binding CanRelayoutGraph}"
-                        AutomationProperties.HelpText="Lay the graph out afresh, keeping pinned nodes where they are" />
+                        IsEnabled="{Binding CanRelayoutGraph}" ToolTip.Tip="{Binding RelayoutTip}" ToolTip.ShowOnDisabled="True"
+                        AutomationProperties.HelpText="{Binding RelayoutTip}" />
               </WrapPanel>
               <Button x:Name="BrowseChannelsButton" Content="Browse paired channels" IsEnabled="False"
-                      Click="BrowseChannels"
-                      AutomationProperties.HelpText="Browse all admitted paired TCP channels" />
+                      Click="BrowseChannels" ToolTip.ShowOnDisabled="True" />
               <!-- Offered while the rung lists something to export, and saying why not while it lists nothing. -->
               <Button x:Name="ExportButton" Content="Export this view (Ctrl+E)" Click="ExportView"
                       IsEnabled="{Binding CanExport}" ToolTip.Tip="{Binding ExportTip}" ToolTip.ShowOnDisabled="True"
@@ -893,15 +891,14 @@
                       AutomationProperties.HelpText="{Binding ShareReportTip}" />
               <!-- A reopenable package of the whole session: pseudonymized, synthetic records, no original journal (§11.3). -->
               <Button x:Name="SharePackageButton" Content="Share redacted session…" Click="SharePackage" IsEnabled="False"
-                      AutomationProperties.HelpText="Save a reopenable, pseudonymized copy of this session to share" />
+                      ToolTip.ShowOnDisabled="True" />
               <!-- An exact, unredacted copy of the session's evidence that reopens as the same session (§11.3). -->
               <Button x:Name="ShareOriginalButton" Content="Share original session…" Click="ShareOriginal" IsEnabled="False"
-                      AutomationProperties.HelpText="Save an exact, unredacted copy of this session's evidence to share" />
+                      ToolTip.ShowOnDisabled="True" />
               <!-- A pin keeps the session's records from the time scope's start through every release, within the size it
                    allows (ADR-046); the same dialog lists the pins standing and removes one. -->
               <Button x:Name="KeepRecordsButton" Content="Keep records…" Click="KeepRecords" IsEnabled="False"
-                      ToolTip.Tip="Open or record a session first." ToolTip.ShowOnDisabled="True"
-                      AutomationProperties.HelpText="Keep this session's records from the time scope's start through every release, or remove a pin" />
+                      ToolTip.ShowOnDisabled="True" />
               <!-- §20.6: what support needs to see why a capture or a view went wrong, and nothing a record holds (P16). -->
               <Button x:Name="SupportBundleButton" Content="Save support bundle…" Click="SaveSupportBundle"
                       AutomationProperties.HelpText="Save InterCat's version and this session's files, counts and coverage for support, with no names, addresses or content" />

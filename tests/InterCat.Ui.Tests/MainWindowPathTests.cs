@@ -151,6 +151,77 @@ public sealed class MainWindowPathTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: a main-window action not offered says why on itself - its tooltip, shown disabled, and its help text - and what it does once offered")]
+    public async Task AnActionNotOfferedSaysWhy()
+    {
+        var window = new MainWindow { Width = 1_456, Height = 939 };
+
+        // Before any session, none of its actions is offered, and each says why on itself from the first frame - before the
+        // window has shown or read anything.
+        foreach (string name in new[] { "ShowRecordsButton", "BrowseChannelsButton", "SharePackageButton", "ShareOriginalButton", "KeepRecordsButton" })
+        {
+            Assert.Equal("Open or record a session first.", WhyNot(window.GetControl<Button>(name)));
+        }
+
+        window.Show();
+        try
+        {
+            Settle(window);
+
+            Assert.Equal("Open or record a session first: there is no graph to lay out.", WhyNot(window.GetControl<Button>("RelayoutButton")));
+            Assert.Equal("Select a node of the graph first.", WhyNot(window.GetControl<Button>("PinNodeButton")));
+
+            // A session shown, each says what it does.
+            using var session = new TemporarySession();
+            Publish(session.Store,
+            [
+                Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+                Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 2_000 },
+            ]);
+            WorkspaceViewModel workspace = await Open(window, session);
+            Assert.Equal("Show this rung's source records in the ladder", Offered(window.GetControl<Button>("ShowRecordsButton")));
+            Assert.Equal("Save a reopenable, pseudonymized copy of this session to share", Offered(window.GetControl<Button>("SharePackageButton")));
+            Assert.Equal("Save an exact, unredacted copy of this session's evidence to share", Offered(window.GetControl<Button>("ShareOriginalButton")));
+            Assert.Equal("Keep this session's records from the time scope's start through every release, or remove a pin",
+                Offered(window.GetControl<Button>("KeepRecordsButton")));
+            Assert.Equal("Lay the graph out afresh, keeping pinned nodes where they are", Offered(window.GetControl<Button>("RelayoutButton")));
+
+            // At the source records, Show source records says where the view is, and the record action waits for a record.
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            Settle(window);
+            Assert.Equal("You are at the source records. Esc returns to where you were.", WhyNot(window.GetControl<Button>("ShowRecordsButton")));
+            workspace.SelectedRung = null;
+            Settle(window);
+            Button record = window.GetVisualDescendants().OfType<Button>().Single(button => button.IsEffectivelyVisible
+                && Equals(button.Content, workspace.OriginalRecordLabel));
+            Assert.Equal("Choose a record first.", WhyNot(record));
+            workspace.SelectedRung = workspace.RungRows[0];
+            Settle(window);
+            Assert.Equal("Open the selected record's original journal entry", Offered(record));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Why an action is not offered: its tooltip, shown on the disabled button, and its help text, which say the same.</summary>
+    private static string? WhyNot(Button button)
+    {
+        Assert.False(button.IsEnabled);
+        Assert.True(ToolTip.GetShowOnDisabled(button));
+        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
+        return AutomationProperties.GetHelpText(button);
+    }
+
+    /// <summary>What an offered action says it does.</summary>
+    private static string? Offered(Button button)
+    {
+        Assert.True(button.IsEnabled);
+        return AutomationProperties.GetHelpText(button);
+    }
+
     [AvaloniaFact(DisplayName = "R15: Keep records places a pin through its dialog and removes it through the same, the button having the keyboard back each time")]
     public async Task KeepRecordsThroughItsDialog()
     {

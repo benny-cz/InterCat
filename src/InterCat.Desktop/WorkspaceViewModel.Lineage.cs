@@ -100,6 +100,14 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the children can be selected: the capture holds at least one.</summary>
     public bool CanSelectChildren => ShowsLineage && ChildrenOfSelected.Count > 0;
 
+    /// <summary>What Go to parent does, or why the capture leaves no parent to go to.</summary>
+    public string ParentTip => CanSelectParent ? "Select the process that started this one"
+        : "This capture holds no process that started this one.";
+
+    /// <summary>What the children action does, or why there are none to select.</summary>
+    public string ChildrenTip => CanSelectChildren ? "Select the processes this one started"
+        : "This capture holds no process this one started.";
+
     /// <summary>What the children action does, by how many there are.</summary>
     public string SelectChildrenLabel => ChildrenOfSelected.Count == 1 ? "Go to its child" : "Select its children";
 
@@ -147,6 +155,8 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ChildrenText));
         OnPropertyChanged(nameof(CanSelectParent));
         OnPropertyChanged(nameof(CanSelectChildren));
+        OnPropertyChanged(nameof(ParentTip));
+        OnPropertyChanged(nameof(ChildrenTip));
         OnPropertyChanged(nameof(SelectChildrenLabel));
         RaiseExplanationChanged();
     }

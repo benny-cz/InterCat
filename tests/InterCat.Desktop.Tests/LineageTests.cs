@@ -51,10 +51,16 @@ public sealed class LineageTests
         Assert.True(workspace.CanSelectChildren);
         Assert.Equal("Select its children", workspace.SelectChildrenLabel);
 
+        // Each action says what it does, or why the capture leaves nothing to do, on itself (R15).
+        Assert.Equal("This capture holds no process that started this one.", workspace.ParentTip);
+        Assert.Equal("Select the processes this one started", workspace.ChildrenTip);
+
         // A worker's parent is linked by its start key, or by its PID and the child's start time, and is selected in one step.
         workspace.SelectProcess(Pid(401).Id);
         Assert.Equal("launcher.exe · PID 400 · linked by its start key", workspace.ParentText);
         Assert.Equal("None seen in this capture", workspace.ChildrenText);
+        Assert.Equal("Select the process that started this one", workspace.ParentTip);
+        Assert.Equal("This capture holds no process this one started.", workspace.ChildrenTip);
         workspace.SelectProcess(Pid(402).Id);
         Assert.Equal("launcher.exe · PID 400 · linked by its PID and this process's start time", workspace.ParentText);
         Assert.True(workspace.SelectParent());

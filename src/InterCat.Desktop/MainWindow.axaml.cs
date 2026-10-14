@@ -378,6 +378,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         RankedTableHeader.SizeChanged += (_, _) => FitRailActions();
         UpdateThemeMenu();
 
+        // The session's actions say from the first frame what they do, or why not: none is offered before a session is.
+        UpdateEvidenceAction();
+
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
         // legend's hues are redrawn from the new mode's tokens here.
         ThemeResources.ModeChanged += OnThemeModeChanged;
@@ -4567,16 +4570,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         bool session = currentSessionPath is not null && displayedGeneration > 0;
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;
         BrowseChannelsButton.IsEnabled = session && !workspace.IsEvidenceRung;
-        ToolTip.SetTip(ShowRecordsButton, ShowRecordsButton.IsEnabled
+        Explain(ShowRecordsButton, ShowRecordsButton.IsEnabled
             ? "Open this rung's admitted source records in the ladder. Esc comes back here."
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
-            : "Open or record a session first.");
-        ToolTip.SetTip(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
+            : "Open or record a session first.", "Show this rung's source records in the ladder");
+        Explain(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
             ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
                 : "Browse admitted paired TCP channels involving this process instance.")
                 + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; paired channels can be browsed from any other level."
-            : "Open or record a session first.");
+            : "Open or record a session first.", "Browse all admitted paired TCP channels");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.
@@ -4589,7 +4592,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         bool redactedPackage = displayedOverview?.Redaction is not null;
         SharePackageButton.Content = packagingRedacted ? "Cancel packaging" : "Share redacted session…";
         SharePackageButton.IsEnabled = packagingRedacted || (canPackage && !redactedPackage);
-        ToolTip.SetTip(SharePackageButton, packagingRedacted
+        Explain(SharePackageButton, packagingRedacted
             ? "Stop making the package. Nothing is saved, and the session is unchanged."
             : redactedPackage
                 ? "This session is already a redacted package, and a package is not built from a package. Share it as it "
@@ -4597,15 +4600,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             : canPackage
                 ? "Save a new session folder with pseudonymous names, IDs and addresses and no original journal, "
                     + "that opens in InterCat. What it keeps and leaves out is shown first."
-                : PackageUnavailable(session));
+                : PackageUnavailable(session), "Save a reopenable, pseudonymized copy of this session to share");
         ShareOriginalButton.Content = packagingCopy ? "Cancel packaging"
             : redactedPackage ? "Share this package…" : "Share original session…";
-        AutomationProperties.SetHelpText(ShareOriginalButton, redactedPackage
-            ? "Save an exact copy of this redacted package to share"
-            : "Save an exact, unredacted copy of this session's evidence to share");
         ShareOriginalButton.IsEnabled = packagingCopy || canPackage;
         UpdatePinAction(session);
-        ToolTip.SetTip(ShareOriginalButton, packagingCopy
+        Explain(ShareOriginalButton, packagingCopy
             ? "Stop copying. Nothing is saved, and the session is unchanged."
             : canPackage
                 ? redactedPackage
@@ -4613,7 +4613,19 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                         + "its pseudonyms, never the original values. What it holds is shown first."
                     : "Save an exact, unredacted copy of this session's evidence that opens in InterCat as the same "
                         + "session. What it holds is shown first."
-                : PackageUnavailable(session));
+                : PackageUnavailable(session), redactedPackage
+            ? "Save an exact copy of this redacted package to share"
+            : "Save an exact, unredacted copy of this session's evidence to share");
+    }
+
+    /// <summary>
+    /// Says on an action what it does, or why it is not offered: its tooltip, shown on the disabled button too, and its help
+    /// text, which is <paramref name="does"/> while it is offered and the tooltip's reason while it is not (R15).
+    /// </summary>
+    private static void Explain(Button button, string tip, string does)
+    {
+        ToolTip.SetTip(button, tip);
+        AutomationProperties.SetHelpText(button, button.IsEnabled ? does : tip);
     }
 
     private string PackageUnavailable(bool session) =>

@@ -597,6 +597,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(LevelSummaryShort));
         OnPropertyChanged(nameof(GraphDisplay));
         OnPropertyChanged(nameof(CanRelayoutGraph));
+        OnPropertyChanged(nameof(RelayoutTip));
     }
 
     private void RaiseRankingChanged()

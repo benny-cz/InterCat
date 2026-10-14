@@ -209,12 +209,13 @@ public partial class MainWindow
     private void UpdatePinAction(bool session)
     {
         KeepRecordsButton.IsEnabled = session && !openingSession && !pinning;
-        ToolTip.SetTip(KeepRecordsButton, KeepRecordsButton.IsEnabled
+        Explain(KeepRecordsButton, KeepRecordsButton.IsEnabled
             ? "Keep every record from the time scope's start - or the session's first, without one - through every release, "
                 + "within the size you allow; or remove a pin."
             : pinning ? "A pin is being placed or removed."
             : session ? "Wait for the session to finish opening."
-            : "Open or record a session first.");
+            : "Open or record a session first.",
+            "Keep this session's records from the time scope's start through every release, or remove a pin");
     }
 
     /// <summary>
