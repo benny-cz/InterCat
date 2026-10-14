@@ -1169,7 +1169,7 @@ internal static class MetricCommand
                 document.Contributions.MeasurementAvailability is { } availability
                     ? string.Create(
                         CultureInfo.CurrentCulture,
-                        $"{availability:P1} of {document.Contributions.Known + document.Contributions.Unknown:N0} declared contributions")
+                        $"{availability:P1} of {CountText.Of(document.Contributions.Known + document.Contributions.Unknown, "declared contribution")}")
                     : "no declared contribution");
         }
         else if (result.Distribution is { } distribution)
@@ -1431,7 +1431,9 @@ internal static class MetricCommand
                         : !Enum.TryParse(item.ByteAvailability, out FieldAvailability availability) ? $"unknown ({item.ByteAvailability})"
                         : availability == FieldAvailability.NotApplicable ? "n/a"
                         : $"unknown ({ObservationText.Absence(availability)})",
-                    item.AccountingSide ?? "n/a",
+                    Enum.TryParse(item.AccountingSide, out AccountingSide accounting)
+                        ? MetricCompatibility.Label(accounting)
+                        : item.AccountingSide ?? "n/a",
                     item.JournalRecordIndex?.ToString("N0", CultureInfo.CurrentCulture) ?? "none",
                 }),
             ]);

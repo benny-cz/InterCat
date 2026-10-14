@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 536 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 537 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 537 — a coverage pass over the command line's untested paths, each run whole (R5, R18, R21):**
+  - icat operations lists a process's calls with each call's other end named as its group's is, and says of each
+    side it lists how many calls found their other end, never "0 of the 0 client calls".
+  - icat session states a segment's byte totals in icat metric's words, not TransportObserved and SendSide; icat
+    metric names a record's accounting in words and counts one declared contribution in the singular.
+  - Tests now run the call listing and its refusals, a session's kept content, and icat metric's process focus,
+    matrix and canonical request.
+  - Debug and Release each ran 2,264 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 13 mutations: a call's other end named "PID · 1960", or by its executable without its PID;
+    the server calls listed never counted, or a side with no call listed counted; none said as 0, or a lone call
+    agreeing in the plural; the two sides joined otherwise; a metric's declared contributions counted in the plural,
+    or a record's accounting named by its identifier; and a segment's byte domain or accounting named by its
+    identifier, its bytes written as Bytes, or its contributions uncounted.
 
 - **Revision 536 — icat recover and icat staging run whole, as a person runs them (§20.1, R18):**
   - A publication or release refused on a session whose newest generation does not verify says so in plain words

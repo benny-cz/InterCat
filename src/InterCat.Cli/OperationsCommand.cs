@@ -398,8 +398,6 @@ internal static class OperationsCommand
         ConsoleUi.Field("Session", document.Path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(document.Generation));
         ConsoleUi.Field("Rules", $"{document.OperationRule} over {document.BindingRule}, evidence policy {document.EvidencePolicy}");
-        long clientCalls = document.Groups.Where(group => group.Side == "Client").Sum(group => group.Counts.Calls);
-        long served = document.Groups.Where(group => group.Side == "Client").Sum(group => group.OtherEnds.Linked);
         MechanismCoverage rpc = document.Coverage[0];
         MechanismCoverage alpc = document.Coverage[1];
         ConsoleUi.Field(
@@ -409,7 +407,7 @@ internal static class OperationsCommand
                     ? "the capture did not collect ALPC (icat record --profile rpc-peers does)"
                     : $"the generation holds no ALPC record (ALPC coverage: {CoverageStateText.Value(alpc.State)})")
                 : string.Create(CultureInfo.CurrentCulture,
-                    $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {served:N0} of the {clientCalls:N0} client calls listed were served"));
+                    $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {Linked(document.Groups)}"));
         ConsoleUi.Field(
             "Call records",
             document.OtherRpcRecords == 0
@@ -482,6 +480,31 @@ internal static class OperationsCommand
     }
 
     /// <summary>
+    /// How many of the calls listed on each side found their other end: the client calls served, and the server calls a
+    /// client call reached. A side none of the listed groups is on is not mentioned, so a server's listing never counts the
+    /// client calls it lists none of.
+    /// </summary>
+    private static string Linked(IReadOnlyList<OperationsGroupDocument> groups)
+    {
+        List<string> sides = [];
+        foreach ((string side, string found) in new[] { ("Client", "served"), ("Server", "reached by a client call") })
+        {
+            long calls = groups.Where(group => group.Side == side).Sum(group => group.Counts.Calls);
+            long linked = groups.Where(group => group.Side == side).Sum(group => group.OtherEnds.Linked);
+            if (calls > 0)
+            {
+                // "None of the 1 server call listed was reached", where "0 of ... were" would disagree with its own total.
+                sides.Add(string.Create(CultureInfo.CurrentCulture,
+                    $"{(linked == 0 ? "none" : linked.ToString("N0", CultureInfo.CurrentCulture))} of the "
+                    + $"{CountText.Of(calls, side.ToLowerInvariant() + " call")} listed "
+                    + $"{CountText.Agree(linked == 0 ? calls : linked, "was", "were")} {found}"));
+            }
+        }
+
+        return sides.Count == 0 ? "no call is listed" : string.Join(", and ", sides);
+    }
+
+    /// <summary>
     /// A group's other end in a cell: for a client group, its most frequent server and how many of its calls were served;
     /// for a server group, how many client processes it served.
     /// </summary>
@@ -508,10 +531,15 @@ internal static class OperationsCommand
         return string.Create(CultureInfo.CurrentCulture, $"{name}{more}: {ends.Linked:N0}/{group.Counts.Calls:N0}");
     }
 
-    /// <summary>One call's other end in a cell: the process that served or called it, or why none is known.</summary>
+    /// <summary>
+    /// One call's other end in a cell: the process that served or called it, named as a group's other end is - its executable
+    /// and PID, or its PID alone where no executable was witnessed - or why none is known.
+    /// </summary>
     private static string OtherEnd(OperationsCallDocument call) => call switch
     {
-        { OtherEndProcessId: { } other } => string.Create(CultureInfo.CurrentCulture, $"{call.OtherEndImage ?? "PID"} · {other}"),
+        { OtherEndProcessId: { } other } => call.OtherEndImage is { } image
+            ? string.Create(CultureInfo.CurrentCulture, $"{image} · {other}")
+            : string.Create(CultureInfo.CurrentCulture, $"PID {other}"),
         { OtherEndState: { } state } => OperationText.PeerState(Enum.Parse<RpcPeerState>(state)),
         _ => "-",
     };

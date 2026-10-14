@@ -848,17 +848,25 @@ internal static class SessionCommand
             if (segment.Measurements.Count > 0)
             {
                 ConsoleUi.Line();
+                // Each total in the words icat metric answers in: the bytes' domain, the accounting that took them, and how
+                // many of the declared contributions measured a size (R5).
                 ConsoleUi.Line("  Byte metrics, one domain and one side each - never summed together:");
                 ConsoleUi.Table(
-                    ["Domain", "Side", "Total", "Measured on"],
+                    ["Bytes", "Accounting", "Total", "Measured on"],
                     [
                         .. segment.Measurements.Select(measurement => new[]
                         {
-                            measurement.ByteDomain,
-                            measurement.AccountingSide,
-                            $"{measurement.TotalBytes:N0} {measurement.Unit ?? "unknown unit"}",
+                            Enum.TryParse(measurement.ByteDomain, out ByteDomain domain)
+                                ? MeasurementText.Domain(domain)
+                                : measurement.ByteDomain,
+                            Enum.TryParse(measurement.AccountingSide, out AccountingSide side)
+                                ? MetricCompatibility.Label(side)
+                                : measurement.AccountingSide,
+                            measurement.Unit == nameof(MeasurementUnit.Bytes)
+                                ? ConsoleUi.Bytes(measurement.TotalBytes)
+                                : $"{measurement.TotalBytes:N0} {measurement.Unit ?? "unknown unit"}",
                             measurement.MeasurementAvailability is { } availability
-                                ? $"{availability:P1} of {measurement.KnownContributions + measurement.UnknownContributions:N0}"
+                                ? $"{availability:P1} of {CountText.Of(measurement.KnownContributions + measurement.UnknownContributions, "declared contribution")}"
                                 : "no declared slot",
                         }),
                     ]);
