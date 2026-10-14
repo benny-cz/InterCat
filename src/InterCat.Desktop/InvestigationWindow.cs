@@ -113,6 +113,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private readonly Button package = new() { Content = "Package…", IsEnabled = false };
     private readonly Button keysButton = new() { Content = "Keys (F1)" };
     private CancellationTokenSource? packaging;
+
+    /// <summary>
+    /// The package's work off the window's thread while one is made, and what the question asked before a close says of
+    /// it: a close that stops the package waits the work out, so its unsaved folder is removed before the window goes.
+    /// </summary>
+    private (Task Work, CloseStop Stop)? packageWork;
+    private bool closingPrompt;
     private bool timelineLoaded;
     private Task? timelineLoad;
     private bool loading;
@@ -490,6 +497,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         // before it was first active.
         AddHandler(LostFocusEvent, (_, _) => KeepKeyboard(), RoutingStrategies.Bubble, handledEventsToo: true);
         Activated += (_, _) => KeepKeyboard(opening: true);
+        Closing += OnClosing;
         Closed += (_, _) => Dispose();
     }
 
@@ -684,6 +692,50 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>Shows the sessions or the candidate joins, as choosing a tab does.</summary>
     internal void ShowTab(int index) => tabs.SelectedIndex = index;
+
+    /// <summary>What closing stops while the investigation's package is made, as the question asked says it.</summary>
+    internal CloseStop? PackagingStop => packageWork is { Work.IsCompleted: false } package ? package.Stop : null;
+
+    /// <summary>Stops the package being made, if any, and waits until it ends, its unsaved folder removed.</summary>
+    internal async Task StopPackagingAsync()
+    {
+        if (packaging is not { } running || packageWork is not { } package) return;
+        running.Cancel();
+        try
+        {
+            await package.Work;
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            // The status line says how it ended.
+        }
+    }
+
+    /// <summary>
+    /// Asks before the window closes while its package is being made: kept going, the window stays open; stopped, it
+    /// closes once the package has ended and its unsaved folder is removed.
+    /// </summary>
+    private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
+    {
+        if (PackagingStop is not { } stop) return;
+        eventArgs.Cancel = true;
+        if (closingPrompt) return;
+        closingPrompt = true;
+        try
+        {
+            if (await CloseQuestion.For([stop]).ShowDialog<bool>(this) && !closed)
+            {
+                // Once the package has stopped, nothing is under way, so the close goes without asking again.
+                status.Text = "Stopping the package before the window closes…";
+                await StopPackagingAsync();
+                Close();
+            }
+        }
+        finally
+        {
+            closingPrompt = false;
+        }
+    }
 
     public void Dispose()
     {
@@ -1101,6 +1153,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>How the window packages its investigation, off its thread; a test holds one partway.</summary>
+    internal Func<string, string, IReadOnlyCollection<Guid>?, IProgress<InvestigationPackageProgress>,
+        CancellationToken, InvestigationPackageResult> Packager { get; set; } = InvestigationPackage.Create;
+
     /// <summary>
     /// Makes the package off the window's thread, its progress in the status line, and returns null when it was cancelled
     /// or refused - the status line then says which, and nothing is saved.
@@ -1123,8 +1179,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         });
         try
         {
-            InvestigationPackageResult result = await Task.Run(
-                () => InvestigationPackage.Create(path, destination, chosen, progress, cancellation.Token), cancellation.Token);
+            Task<InvestigationPackageResult> work = Task.Run(
+                () => Packager(path, destination, chosen, progress, cancellation.Token), cancellation.Token);
+            packageWork = (work, CloseStop.InvestigationPackage(Path.GetFileName(path), destination));
+            InvestigationPackageResult result = await work;
             if (!closed) status.Text = Saved(result);
             return result;
         }
@@ -1142,6 +1200,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         finally
         {
             packaging = null;
+            packageWork = null;
             if (!closed)
             {
                 package.Content = "Package…";

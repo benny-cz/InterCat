@@ -23,6 +23,10 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class DialogKeyboardTests
 {
+    /// <summary>Where a package is saved, as long a path as a person's own folders make.</summary>
+    private const string PackagePath =
+        @"C:\Users\analyst\Documents\InterCat packages\intercat-redacted-session-20261014-101500";
+
     private static readonly DateTimeOffset Started = new(2026, 10, 8, 9, 0, 0, TimeSpan.Zero);
 
     [AvaloniaFact(DisplayName = "R15: every dialog and prompt opens with the keyboard on one of its own controls, and Esc closes it")]
@@ -65,7 +69,11 @@ public sealed class DialogKeyboardTests
             ("original package saved", MainWindow.OriginalResultPrompt(original)),
             ("redacted package", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store))),
             ("redacted package saved", MainWindow.RedactedPackageResultPrompt(redacted)),
-            ("stop Explore", MainWindow.StopExplorePrompt()),
+            ("stop Explore", CloseQuestion.For([CloseStop.Recording])),
+            ("stop packaging", CloseQuestion.For([CloseStop.Package(PackagePath, copy: false)])),
+            ("stop finishing", CloseQuestion.For([CloseStop.Finish(PackagePath)])),
+            ("stop all", CloseQuestion.For([CloseStop.Recording, CloseStop.Package(PackagePath, copy: true),
+                CloseStop.Finish(PackagePath), CloseStop.InvestigationPackage("case.icat-workspace", PackagePath)])),
             ("support bundle", MainWindow.SupportBundlePrompt(1)),
             ("pin", MainWindow.PinPrompt(offer)),
             ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),

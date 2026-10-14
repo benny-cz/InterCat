@@ -15,7 +15,13 @@ public sealed class PromptKeyboardTests
 {
     [AvaloniaFact(DisplayName = "§6.8: the question asked on closing while Explore records keeps recording on Escape, as its focused first answer does")]
     public async Task TheClosingQuestionKeepsRecordingOnEscape() =>
-        await AssertEscapeGivesTheSafeAnswer(MainWindow.StopExplorePrompt(), "Keep recording");
+        await AssertEscapeGivesTheSafeAnswer(CloseQuestion.For([CloseStop.Recording]), "Keep recording");
+
+    [AvaloniaFact(DisplayName = "§6.8: the question asked on closing while several things are under way keeps InterCat open on Escape, as its focused first answer does")]
+    public async Task TheClosingQuestionKeepsEverythingGoingOnEscape() =>
+        await AssertEscapeGivesTheSafeAnswer(CloseQuestion.For(
+            [CloseStop.Finish(@"C:\Sessions\explore"), CloseStop.Package(@"C:\Packages\shared", copy: false)]),
+            "Keep InterCat open");
 
     [AvaloniaFact(DisplayName = "§6.8: the redacted report's question chooses no file on Escape, as its focused Cancel does")]
     public async Task TheRedactedReportsQuestionCancelsOnEscape() =>

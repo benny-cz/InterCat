@@ -592,7 +592,7 @@ public sealed class InterruptedCaptureWindowTests
     /// unfinalized capture is the evidence as its first publication left it. Its owner lease has not settled yet, or
     /// lapsed long enough ago that the broker can no longer be recording it.
     /// </summary>
-    private static async Task<(string Sessions, string Session, string Evidence)> CrashedFollow(
+    internal static async Task<(string Sessions, string Session, string Evidence)> CrashedFollow(
         string root, bool unfinalized, bool settled = false, int capture = 1, TimeSpan? startedAgo = null)
     {
         string evidencePath = Path.Combine(root, "broker", $"capture-{capture}");

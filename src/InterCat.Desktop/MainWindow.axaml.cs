@@ -41,6 +41,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>Whether the package being made is the original, unredacted copy rather than a redacted session.</summary>
     private bool packagingOriginal;
 
+    /// <summary>
+    /// The package's work off the window's thread while one is made, and what the question asked before a close says of
+    /// it: a close that stops the package waits the work out, so its unsaved folder is removed before the window goes.
+    /// </summary>
+    private (Task Work, CloseStop Stop)? packageWork;
+
     /// <summary>A session folder picker is open, so a second one is not started behind it.</summary>
     private bool choosingSession;
     private bool closed;
@@ -143,7 +149,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     // The control of the window that last had the keyboard, which gets it back once it can take it again (KeepKeyboard).
     private InputElement? lastKeyboard;
     private bool closingPrompt;
-    private bool closeAfterCapture;
 
     /// <summary>
     /// The newest published generation of the displayed session, kept aside while the user inspects evidence so rows
@@ -203,6 +208,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private InterruptedFollow? offeredFollow;
     private InterruptedCaptureOffer? offer;
     private CancellationTokenSource? finishingCapture;
+
+    /// <summary>The finish's work off the window's thread while one runs, which a close that stops it waits.</summary>
+    private (Task Work, CloseStop Stop)? finishWork;
     private readonly DispatcherTimer offerRecheck = new() { Interval = TimeSpan.FromSeconds(5) };
 
     // Which look at the session folder is the latest. The recheck's timer and the user's own actions each start one, and
@@ -2416,6 +2424,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>How the window looks for an unfinished capture in the session folder; a test holds one look back with it.</summary>
     internal Func<string, InterruptedFollow?> InterruptedCaptureFinder { get; set; } = FindInterruptedCapture;
 
+    /// <summary>
+    /// How the window finishes an unfinished capture's session from its evidence, off its thread; a test holds one
+    /// partway, as a long capture's is.
+    /// </summary>
+    internal Func<LiveFollowTicket, IProgress<FollowStep>, CancellationToken, InterruptedFollowResult> CaptureFinisher
+    {
+        get;
+        set;
+    } = (ticket, progress, cancellation) => InterruptedFollow.Finish(ticket, progress, cancellationToken: cancellation);
+
     /// <summary>Looks again for an unfinished capture, as the recheck's timer does, and shows what the latest look found.</summary>
     internal async Task RefreshInterruptedOfferAsync()
     {
@@ -2533,9 +2551,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         });
         try
         {
-            InterruptedFollowResult result = await Task.Run(() =>
+            Task<InterruptedFollowResult> work = Task.Run(() =>
             {
-                InterruptedFollowResult finished = InterruptedFollow.Finish(follow.Ticket, progress, cancellationToken: finishing.Token);
+                InterruptedFollowResult finished = CaptureFinisher(follow.Ticket, progress, finishing.Token);
 
                 // A finished session is complete, so its derivation checkpoint lets it reopen without reading every
                 // record; one that is not published only costs that reopen time (derivation-checkpoint-v1).
@@ -2546,6 +2564,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
                 return finished;
             });
+            finishWork = (work, CloseStop.Finish(follow.Ticket.SessionDirectory));
+            InterruptedFollowResult result = await work;
 
             // The finish's store becomes the session's shared store, so opening the session hashes nothing again.
             SharedSessionStores.Registry.Adopt(follow.Ticket.SessionDirectory, result.Session);
@@ -2627,6 +2647,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private void EndFinishing()
     {
         finishingCapture = null;
+        finishWork = null;
         if (closed) return;
         StartExploringButton.IsEnabled = true;
         OpenSavedSessionButton.IsEnabled = true;
@@ -2718,6 +2739,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>How the window makes an exact copy of a session, off its thread; a test holds one partway.</summary>
+    internal Func<SessionStore, string, IProgress<OriginalPackageProgress>, CancellationToken,
+        OriginalEvidencePackageResult> OriginalPackager { get; set; } = OriginalEvidencePackage.Create;
+
+    /// <summary>How the window makes a redacted package, off its thread; a test holds one partway.</summary>
+    internal Func<SessionStore, string, DateTimeOffset, TimeRange?, IProgress<RedactedPackageProgress>,
+        CancellationToken, RedactedSessionPackageResult> RedactedPackager { get; set; } = RedactedSessionPackage.Create;
+
+    /// <summary>
+    /// Runs a package's work off the window's thread, kept with what the question asked before a close says of it: a
+    /// close that stops the package waits until the work has ended and its unsaved folder is removed.
+    /// </summary>
+    private Task<T> PackageWork<T>(Func<T> make, CloseStop stop, CancellationToken cancellation)
+    {
+        Task<T> work = Task.Run(make, cancellation);
+        packageWork = (work, stop);
+        return work;
+    }
+
     /// <summary>
     /// Makes the original package of session <paramref name="sessionId"/> off the UI thread, stating its progress on the
     /// capture card, and returns null when it was cancelled or refused - the card then says which, and the source session
@@ -2747,8 +2787,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         try
         {
             // Each file is hashed as it is copied, so the session's shared store, which listed its files, is enough.
-            OriginalEvidencePackageResult result = await Task.Run(() => OriginalEvidencePackage.Create(
-                SharedSessionStores.Open(source, sessionId), destination, progress, cancellation.Token), cancellation.Token);
+            OriginalEvidencePackageResult result = await PackageWork(() => OriginalPackager(
+                    SharedSessionStores.Open(source, sessionId), destination, progress, cancellation.Token),
+                CloseStop.Package(destination, copy: true), cancellation.Token);
             if (!closed)
             {
                 CaptureStatus.Text = result.Source.Redacted ? "Package copy saved" : "Original session saved";
@@ -2786,6 +2827,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         finally
         {
             packaging = null;
+            packageWork = null;
             packagingOriginal = false;
             if (!closed) UpdateEvidenceAction();
         }
@@ -2958,9 +3000,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         });
         try
         {
-            RedactedSessionPackageResult result = await Task.Run(() => RedactedSessionPackage.Create(
-                SessionStore.OpenExisting(LocalOwnedDirectory.Open(source)), destination, DateTimeOffset.UtcNow,
-                interval, progress, cancellation.Token), cancellation.Token);
+            RedactedSessionPackageResult result = await PackageWork(() => RedactedPackager(
+                    SessionStore.OpenExisting(LocalOwnedDirectory.Open(source)), destination, DateTimeOffset.UtcNow,
+                    interval, progress, cancellation.Token),
+                CloseStop.Package(destination, copy: false), cancellation.Token);
             if (!closed)
             {
                 CaptureStatus.Text = "Redacted session package saved";
@@ -2994,6 +3037,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         finally
         {
             packaging = null;
+            packageWork = null;
             if (!closed) UpdateEvidenceAction();
         }
     }
@@ -3179,6 +3223,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Dispatcher.UIThread.InvokeAsync(async () =>
             !closed && await new ContentCaptureReviewWindow(summary, chosen.Request.Mechanism, chosen.Seen).ShowDialog<bool>(this));
 
+    /// <summary>
+    /// How the window runs a capture off its thread, saying each phase it reaches; a test runs one that records until it
+    /// is stopped, and saves when the test lets it.
+    /// </summary>
+    internal Func<Action<CaptureUiUpdate>, CancellationToken, CaptureRunOptions, Task> CaptureRunner { get; set; } =
+        DesktopCaptureRunner.RunAsync;
+
     private async void BeginCapture(ContentCaptureChoice? content = null)
     {
         if (openingSession || finishingCapture is not null || captureTask is { IsCompleted: false })
@@ -3210,8 +3261,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     Review = summary => ReviewContent(summary, content),
                 };
             StartedWith = options;
-            captureTask = Task.Run(() => DesktopCaptureRunner.RunAsync(
-                update => ReceiveCaptureUpdate(run, update), captureStop.Token, options));
+            captureTask = Task.Run(() => CaptureRunner(update => ReceiveCaptureUpdate(run, update), captureStop.Token,
+                options));
             await captureTask;
         }
         catch (Exception exception)
@@ -4517,32 +4568,24 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         return navigation.Breadcrumb[^1].Level is DetailLevel.Machine or DetailLevel.Group ? navigation.SelectedProcess : null;
     }
 
+    /// <summary>
+    /// Asks before the window closes while something it would stop is under way: a recording, a package being saved,
+    /// an unfinished capture being finished, or a package an investigation's window makes. Kept going, the window stays
+    /// open; stopped, it closes once each has ended, so a recording is saved and no package's unsaved folder outlives
+    /// it.
+    /// </summary>
     private async void OnClosing(object? sender, WindowClosingEventArgs eventArgs)
     {
-        if (closeAfterCapture || captureTask is not { IsCompleted: false })
-        {
-            return;
-        }
-
+        if (UnderwayNow() is not { Count: > 0 } stops) return;
         eventArgs.Cancel = true;
         if (closingPrompt) return;
         closingPrompt = true;
         try
         {
-            if (await StopExplorePrompt().ShowDialog<bool>(this))
+            if (await CloseQuestion.For(stops).ShowDialog<bool>(this) && !closed)
             {
-                captureStop?.Cancel();
-                CaptureStatus.Text = "Stopping and saving before close";
-                if (captureTask is { } task)
-                {
-                    try { await task; }
-                    catch (Exception exception)
-                    {
-                        CaptureDetail.Text = exception.Message
-                            + " The broker owner lease still bounds this capture.";
-                    }
-                }
-                closeAfterCapture = true;
+                // Once all has stopped, nothing is under way, so the close goes without asking again.
+                await StopUnderwayAsync();
                 Close();
             }
         }
@@ -4552,44 +4595,75 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
-    /// <summary>
-    /// Asked when the window closes while Explore records; true to stop, save and close. Escape, like the focused first
-    /// button, keeps recording.
-    /// </summary>
-    internal static Window StopExplorePrompt()
+    /// <summary>What closing the window now would stop, each as the question asked first says it.</summary>
+    private List<CloseStop> UnderwayNow()
     {
-        var prompt = new Window
+        List<CloseStop> stops = [];
+        if (captureTask is { IsCompleted: false }) stops.Add(CloseStop.Recording);
+        if (packageWork is { Work.IsCompleted: false } package) stops.Add(package.Stop);
+        if (finishWork is { Work.IsCompleted: false } finish) stops.Add(finish.Stop);
+        stops.AddRange(investigations.Select(shown => shown.PackagingStop).OfType<CloseStop>());
+        return stops;
+    }
+
+    /// <summary>
+    /// Stops all that a close stops, and waits until each has ended: a recording saved, as Stop saves it; a package's
+    /// unsaved folder removed; a finish stopped with what it derived kept; and each package an investigation makes.
+    /// </summary>
+    private async Task StopUnderwayAsync()
+    {
+        bool recording = captureTask is { IsCompleted: false };
+        Say(CaptureStatus, recording ? "Stopping and saving before close" : "Stopping before close", aloud: true);
+
+        // Everything is stopped at once, and then waited for.
+        if (recording) captureStop?.Cancel();
+        List<Task> ending = StopWork();
+        if (recording && captureTask is { } capture)
         {
-            Title = "Stop Explore?", Width = 410,
-            SizeToContent = SizeToContent.Height,
-            WindowStartupLocation = WindowStartupLocation.CenterOwner,
-            CanResize = false,
-        };
-        var stay = new Button { Content = "Keep recording" };
-        var stop = new Button { Content = "Stop, save, and close" };
-        stay.Click += (_, _) => prompt.Close(false);
-        stop.Click += (_, _) => prompt.Close(true);
-        prompt.Opened += (_, _) => stay.Focus();
-        prompt.KeyDown += (_, key) =>
-        {
-            if (key.Key == Key.Escape)
+            try
             {
-                prompt.Close(false);
-                key.Handled = true;
+                await capture;
             }
-        };
-        prompt.Content = new StackPanel
-        {
-            Margin = new Avalonia.Thickness(20), Spacing = 16,
-            Children =
+            catch (Exception exception) when (exception is not OutOfMemoryException)
             {
-                new TextBlock { Text = "The broker will stop and finalize. All published evidence stays saved.",
-                    TextWrapping = Avalonia.Media.TextWrapping.Wrap },
-                new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8,
-                    HorizontalAlignment = HorizontalAlignment.Right, Children = { stay, stop } },
-            },
-        };
-        return prompt;
+                CaptureDetail.Text = exception.Message + " The broker owner lease still bounds this capture.";
+            }
+        }
+
+        // A package asked for while the rest stops, here or in an investigation's window, is stopped too: nothing is
+        // left running once the window goes.
+        for (; ending.Count > 0; ending = StopWork())
+        {
+            try
+            {
+                await Task.WhenAll(ending);
+            }
+            catch (Exception exception) when (exception is not OutOfMemoryException)
+            {
+                // Each one's own handler says how it ended.
+            }
+        }
+    }
+
+    /// <summary>Cancels each package and finish under way, here and in each investigation's window; what each ends with.</summary>
+    private List<Task> StopWork()
+    {
+        List<Task> ending = [];
+        if (packageWork is { Work.IsCompleted: false } package)
+        {
+            packaging?.Cancel();
+            ending.Add(package.Work);
+        }
+
+        if (finishWork is { Work.IsCompleted: false } finish)
+        {
+            finishingCapture?.Cancel();
+            ending.Add(finish.Work);
+        }
+
+        ending.AddRange(investigations.Where(shown => shown.PackagingStop is not null)
+            .Select(shown => shown.StopPackagingAsync()));
+        return ending;
     }
 
     private void OnThemeModeChanged(object? sender, EventArgs eventArgs)

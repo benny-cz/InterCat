@@ -21,6 +21,10 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class SecondaryWindowAuditTests
 {
+    /// <summary>Where a package is saved, as long a path as a person's own folders make.</summary>
+    private const string PackagePath =
+        @"C:\Users\analyst\Documents\InterCat packages\intercat-redacted-session-20261014-101500";
+
     [AvaloniaFact(DisplayName = "R15: the content, raw record and channel windows name every element a screen reader lands on")]
     public async Task TheRecordWindowsAreNamedForTheEar()
     {
@@ -176,7 +180,11 @@ public sealed class SecondaryWindowAuditTests
             ("redacted package over the bound", MainWindow.RedactedPackagePrompt(SessionOverviewProjector.Project(session.Store)
                 with { ObservationRows = RedactedSessionPackage.MaximumRows + 1 })),
             ("redacted package saved", MainWindow.RedactedPackageResultPrompt(redacted)),
-            ("stop Explore", MainWindow.StopExplorePrompt()),
+            ("stop Explore", CloseQuestion.For([CloseStop.Recording])),
+            ("stop packaging", CloseQuestion.For([CloseStop.Package(PackagePath, copy: false)])),
+            ("stop finishing", CloseQuestion.For([CloseStop.Finish(PackagePath)])),
+            ("stop all", CloseQuestion.For([CloseStop.Recording, CloseStop.Package(PackagePath, copy: true),
+                CloseStop.Finish(PackagePath), CloseStop.InvestigationPackage("case.icat-workspace", PackagePath)])),
             ("support bundle", MainWindow.SupportBundlePrompt(1)),
             ("investigation package saved", InvestigationWindow.PackageResultPrompt(investigation, offersOpen: true)),
         })
