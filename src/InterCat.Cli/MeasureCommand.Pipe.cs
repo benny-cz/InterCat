@@ -344,26 +344,7 @@ internal static partial class MeasureCommand
             $"{run.Coverage.ControlRecordsFromFixtureProcesses} records from the fixture's processes");
         ConsoleUi.Note("Requested and completed bytes are different domains and are never summed (P3, I6).");
 
-        var criteriaRows = new List<IReadOnlyList<string>>(run.Coverage.Assessment.Criteria.Count);
-        foreach (TierCriterion criterion in run.Coverage.Assessment.Criteria)
-        {
-            criteriaRows.Add(
-            [
-                criterion.Name,
-                $"{criterion.Numerator}/{criterion.Denominator}",
-                ConsoleUi.Ratio(criterion.Measured),
-                criterion.Satisfied ? "met" : "not met",
-            ]);
-        }
-
-        ConsoleUi.Line();
-        ConsoleUi.Table(["Criterion", "Counted", "Measured", "Result"], criteriaRows);
-        ConsoleUi.Line();
-        ConsoleUi.Field("Computed tier", CapabilityText.Tier(run.Coverage.Assessment.Tier));
-        foreach (string gap in run.Coverage.Assessment.Gaps)
-        {
-            ConsoleUi.Bullet(gap);
-        }
+        CoverageReport.Render(run.Coverage.Assessment);
 
         if (run.Degradations.Count > 0)
         {

@@ -359,26 +359,7 @@ internal static partial class MeasureCommand
         ConsoleUi.Field("Reproduced", run.RepeatRunObservedCalls ? "yes, in a second run" : "no");
         ConsoleUi.Note("This source exposes no size, so no byte value is reported for any call.");
 
-        var criteriaRows = new List<IReadOnlyList<string>>(run.Coverage.Assessment.Criteria.Count);
-        foreach (TierCriterion criterion in run.Coverage.Assessment.Criteria)
-        {
-            criteriaRows.Add(
-            [
-                criterion.Name,
-                $"{criterion.Numerator}/{criterion.Denominator}",
-                ConsoleUi.Ratio(criterion.Measured),
-                criterion.Satisfied ? "met" : "not met",
-            ]);
-        }
-
-        ConsoleUi.Line();
-        ConsoleUi.Table(["Criterion", "Counted", "Measured", "Result"], criteriaRows);
-        ConsoleUi.Line();
-        ConsoleUi.Field("Computed tier", CapabilityText.Tier(run.Coverage.Assessment.Tier));
-        foreach (string gap in run.Coverage.Assessment.Gaps)
-        {
-            ConsoleUi.Bullet(gap);
-        }
+        CoverageReport.Render(run.Coverage.Assessment);
 
         ConsoleUi.Heading("Notes");
         foreach (string note in run.Notes)

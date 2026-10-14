@@ -32,6 +32,21 @@ public static class CapabilityText
         _ => string.Create(CultureInfo.InvariantCulture, $"tier {(int)tier}"),
     };
 
+    /// <summary>
+    /// A §14.2 tier criterion, named by <see cref="TierCriterion.Name"/>, in words: "admitted observations", "false peer
+    /// attribution". A name this version does not know is said as it is.
+    /// </summary>
+    public static string Criterion(string name) => name switch
+    {
+        "AdmittedObservations" => "admitted observations",
+        "ResourceInstanceBinding" => "resource instance binding",
+        "FalsePeerAttribution" => "false peer attribution",
+        "ByteMeasurement" => "byte measurement",
+        "ResourceDiscovery" => "resource discovery",
+        "MembershipResolution" => "membership resolution",
+        _ => name,
+    };
+
     /// <summary>A source's measured overhead class: "unmeasured", "low", "moderate", "high".</summary>
     public static string Overhead(OverheadClass overhead) => overhead switch
     {

@@ -180,7 +180,7 @@ public static class CoverageTierCalculator
                 denominator,
                 null,
                 false,
-                $"{name}: not measured; the truth workload declared no eligible item for this criterion.");
+                $"{Sentence(name)}: not measured; the truth workload declared no eligible item for this criterion.");
         }
 
         decimal measured = (decimal)numerator / denominator;
@@ -194,7 +194,7 @@ public static class CoverageTierCalculator
             satisfied,
             satisfied
                 ? null
-                : $"{name}: measured {measured:P1} of {denominator}, below the required {threshold:P0}.");
+                : $"{Sentence(name)}: measured {measured:P1} of {denominator:N0}, below the required {threshold:P0}.");
     }
 
     private static TierCriterion AtMost(
@@ -215,7 +215,8 @@ public static class CoverageTierCalculator
                 numerator == 0,
                 numerator == 0
                     ? null
-                    : $"{name}: {numerator} false attributions were recorded without any attribution denominator.");
+                    : $"{Sentence(name)}: {CountText.Of(numerator, "false attribution")} "
+                        + $"{CountText.Agree(numerator, "was", "were")} recorded without any attribution denominator.");
         }
 
         decimal measured = (decimal)numerator / denominator;
@@ -229,6 +230,10 @@ public static class CoverageTierCalculator
             satisfied,
             satisfied
                 ? null
-                : $"{name}: measured {measured:P1} of {denominator}, above the permitted {ceiling:P0}.");
+                : $"{Sentence(name)}: measured {measured:P1} of {denominator:N0}, above the permitted {ceiling:P0}.");
     }
+
+    /// <summary>A criterion's words beginning a sentence: "Resource discovery".</summary>
+    private static string Sentence(string name) =>
+        CapabilityText.Criterion(name) is [var first, .. var rest] ? char.ToUpperInvariant(first) + rest : name;
 }

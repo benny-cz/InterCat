@@ -111,6 +111,27 @@ public sealed class CoverageTierCalculatorTests
         TierAssessment assessment = CoverageTierCalculator.Assess(measurement);
 
         Assert.NotEqual(CapabilityTier.TrafficVisualization, assessment.Tier);
-        Assert.Contains(assessment.Gaps, gap => gap.Contains("FalsePeerAttribution", StringComparison.Ordinal));
+        Assert.Contains(assessment.Gaps, gap => gap.StartsWith("False peer attribution: ", StringComparison.Ordinal));
+    }
+
+    [Fact(DisplayName = "R5: a criterion's gap names it in words, and counts a single false attribution in the singular")]
+    public void AGapNamesItsCriterionInWords()
+    {
+        // A false attribution with no attribution to count it against, and no resource to discover.
+        TierAssessment assessment = CoverageTierCalculator.Assess(FullyMeasured() with
+        {
+            PeerAttributions = 0,
+            FalsePeerAttributions = 1,
+            TruthResources = 0,
+        });
+
+        Assert.Contains("False peer attribution: 1 false attribution was recorded without any attribution denominator.",
+            assessment.Gaps);
+        Assert.Contains("Resource discovery: not measured; the truth workload declared no eligible item for this criterion.",
+            assessment.Gaps);
+        Assert.Equal(
+            ["admitted observations", "resource instance binding", "false peer attribution", "byte measurement",
+                "resource discovery", "membership resolution", "Unknown"],
+            [.. assessment.Criteria.Select(criterion => CapabilityText.Criterion(criterion.Name)), CapabilityText.Criterion("Unknown")]);
     }
 }

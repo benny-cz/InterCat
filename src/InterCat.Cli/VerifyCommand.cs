@@ -9,6 +9,9 @@ namespace InterCat.Cli;
 /// <summary>A portable, shareable re-evaluation of one raw local TCP or UDP measurement run (R18, I14).</summary>
 internal sealed record FixtureVerification
 {
+    /// <summary>The contract this document follows, so a reader can refuse a version it does not know (§20.4).</summary>
+    public required string Contract { get; init; }
+
     public required string FixtureId { get; init; }
     public required string SourceRunId { get; init; }
     public required DateTimeOffset VerifiedAtUtc { get; init; }
@@ -34,6 +37,9 @@ internal sealed record CapturedRunHeader
 
 internal static class VerifyCommand
 {
+    /// <summary>The contract a verification's document names.</summary>
+    public const string ContractName = "fixture-verification-v1";
+
     private const long MaximumArtifactBytes = 128L * 1024 * 1024;
     private const int MaximumRecords = 1_000_000;
 
@@ -159,6 +165,7 @@ internal static class VerifyCommand
 
         var verification = new FixtureVerification
         {
+            Contract = ContractName,
             FixtureId = header.FixtureId,
             SourceRunId = header.RunId,
             VerifiedAtUtc = DateTimeOffset.UtcNow,
@@ -195,13 +202,20 @@ internal static class VerifyCommand
         }
         else
         {
-            ConsoleUi.Success(
-                $"Verified {truth.Count} truth records against {observations.Count} observations; "
-                + $"wrote {scoped.Count} scoped observations.");
-            ConsoleUi.Field("Computed tier", CapabilityText.Tier(coverage.Assessment.Tier));
-            ConsoleUi.Field(
-                "Excluded unrelated records",
-                (observations.Count - scoped.Count).ToString(CultureInfo.CurrentCulture));
+            // What was read and written, then the coverage as icat measure states it, every gap included (R18).
+            ConsoleUi.Heading("Fixture run verified");
+            ConsoleUi.Field("Fixture", $"{header.FixtureId}, run {header.RunId}");
+            ConsoleUi.Field("Truth records", ConsoleUi.Count(truth.Count));
+            ConsoleUi.Field("Observations read", ConsoleUi.Count(observations.Count));
+            ConsoleUi.Field("Written", $"{CountText.Of(scoped.Count, "observation")} of the fixture's own loopback flows");
+            ConsoleUi.Field("Excluded", $"{CountText.Of(observations.Count - scoped.Count, "unrelated whole-machine observation")}");
+            CoverageReport.Render(coverage);
+            ConsoleUi.Line();
+            foreach (string note in verification.Notes)
+            {
+                ConsoleUi.Note(note);
+            }
+
             ConsoleUi.Success($"Curated fixture written to {outputDirectory}");
         }
 

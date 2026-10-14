@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 534 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 535 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 535 — icat verify re-evaluates a curated fixture's run and says what it found (I14, R18, R21):**
+  - Runs rebuilt from each of the four curated transport fixtures verify to the coverage they were published with;
+    only the IPv6 fields added since, each zero, differ.
+  - Its report stated only the tier, so every UDP run - whose topology criteria cannot be measured - exited partial
+    unexplained; it now states the coverage as icat measure does, every gap included, from one report both use,
+    with each criterion named in words.
+  - Its JSON names its contract, fixture-verification-v1.
+  - Debug and Release each ran 2,248 tests with revision 473's 93 failures and 4 skips. The tests caught each of 12
+    mutations: a criterion named by its identifier in the domain's words, in a gap's sentence or in the report's
+    table; a single false attribution that were recorded; the report's gaps left out, its tier named by its
+    enumeration, a criterion counted against its own numerator, or its observed operations counted as all of them; a
+    verification naming another contract, leaving its coverage out, naming its fixture without its run, or counting
+    an unrelated observation it did not exclude.
 
 - **Revision 534 — icat counts one in the singular (R5):**
   - Run on the smallest sessions - one record, one segment, chunks of one record, an investigation of one session -

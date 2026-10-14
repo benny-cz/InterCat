@@ -203,7 +203,7 @@ public sealed class RpcCoverageEvaluatorTests
         RpcCoverageResult result = RpcCoverageEvaluator.Evaluate(truth, observations, Settings());
 
         Assert.Equal(CapabilityTier.ExperimentalEvidence, result.Assessment.Tier);
-        Assert.Contains(result.Assessment.Gaps, gap => gap.Contains("ByteMeasurement", StringComparison.Ordinal));
-        Assert.Contains(result.Assessment.Gaps, gap => gap.Contains("ResourceDiscovery", StringComparison.Ordinal));
+        Assert.Contains(result.Assessment.Gaps, gap => gap.StartsWith("Byte measurement: ", StringComparison.Ordinal));
+        Assert.Contains(result.Assessment.Gaps, gap => gap.StartsWith("Resource discovery: ", StringComparison.Ordinal));
     }
 }

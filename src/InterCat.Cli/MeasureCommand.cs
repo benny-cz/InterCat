@@ -424,37 +424,7 @@ internal static partial class MeasureCommand
 
         ConsoleUi.Table(["Role", "PID", "Start observed", "Exit observed", "Sequence number"], processRows);
 
-        ConsoleUi.Heading("Measured coverage against the truth log");
-        MechanismMeasurement measurement = run.Coverage.Measurement;
-        ConsoleUi.Field("Truth operations", ConsoleUi.Count(measurement.TruthOperations));
-        ConsoleUi.Field("With observation", ConsoleUi.Count(measurement.TruthOperationsWithAdmittedObservation));
-        ConsoleUi.Field("Bound to a flow", ConsoleUi.Count(measurement.TruthOperationsBoundToResourceInstance));
-        ConsoleUi.Field("Byte measured", ConsoleUi.Count(measurement.ByteMeasuredOperations));
-        ConsoleUi.Field("Peer attributions", ConsoleUi.Count(measurement.PeerAttributions));
-        ConsoleUi.Field("False attributions", ConsoleUi.Count(measurement.FalsePeerAttributions));
-        ConsoleUi.Field("Truth bytes sent", ConsoleUi.Bytes(run.Coverage.TruthBytesSent));
-        ConsoleUi.Field("Observed transport bytes", ConsoleUi.Bytes(run.Coverage.ObservedBytesSent));
-
-        var criteriaRows = new List<IReadOnlyList<string>>(run.Coverage.Assessment.Criteria.Count);
-        foreach (TierCriterion criterion in run.Coverage.Assessment.Criteria)
-        {
-            criteriaRows.Add(
-            [
-                criterion.Name,
-                $"{criterion.Numerator}/{criterion.Denominator}",
-                ConsoleUi.Ratio(criterion.Measured),
-                criterion.Satisfied ? "met" : "not met",
-            ]);
-        }
-
-        ConsoleUi.Line();
-        ConsoleUi.Table(["Criterion", "Counted", "Measured", "Result"], criteriaRows);
-        ConsoleUi.Line();
-        ConsoleUi.Field("Computed tier", CapabilityText.Tier(run.Coverage.Assessment.Tier));
-        foreach (string gap in run.Coverage.Assessment.Gaps)
-        {
-            ConsoleUi.Bullet(gap);
-        }
+        CoverageReport.Render(run.Coverage);
 
         if (run.Degradations.Count > 0)
         {
