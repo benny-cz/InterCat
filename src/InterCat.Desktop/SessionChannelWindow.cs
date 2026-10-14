@@ -165,8 +165,8 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             if (closed) return;
             if (page.Generation < expectedGeneration)
             {
-                status.Text = "This folder no longer holds the generation the workspace shows. Close this "
-                    + "browser and reopen it from the current workspace; no page was shifted.";
+                status.Text = "This folder no longer holds the generation InterCat's window shows. Close this "
+                    + "browser and open it again from that window; no page was shifted.";
                 return;
             }
 

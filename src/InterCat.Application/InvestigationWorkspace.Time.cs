@@ -117,8 +117,8 @@ public sealed record WorkspaceInstant(
     public string? Why(string session, IFormatProvider? culture = null) => Gap switch
     {
         WorkspaceTimeGap.None => null,
-        WorkspaceTimeGap.NoTimeReference => "no member is aligned, so the workspace has no time across members",
-        WorkspaceTimeGap.NotAligned => $"{session} is not aligned to the workspace's time",
+        WorkspaceTimeGap.NoTimeReference => "no member is aligned, so the investigation has no time across members",
+        WorkspaceTimeGap.NotAligned => $"{session} is not aligned to the investigation's time",
         _ when UnknownThrough is { } through => $"{session} is aligned through session {through.ToString("N")[..8]}, whose drift "
             + "is not stated, so its uncertainty there is unknown",
         _ => $"{session}'s drift from the time reference is not stated, so "
@@ -382,7 +382,7 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         if (ActiveAlignment(workspace, sessionId) is null)
         {
-            throw new InvalidOperationException($"Session {Short(sessionId)} is not aligned to the workspace's time.");
+            throw new InvalidOperationException($"Session {Short(sessionId)} is not aligned to the investigation's time.");
         }
 
         Guid[] dependents = [.. workspace.Members.Select(member => member.SessionId)
@@ -393,10 +393,10 @@ public static partial class InvestigationWorkspace
             string named = Short(sessionId);
             throw new InvalidOperationException(dependents.Length == 1
                 ? $"Session {Short(dependents[0])} is aligned through session {named}, so withdrawing session {named}'s alignment "
-                    + $"would leave it with no place in the workspace's time. Withdraw session {Short(dependents[0])}'s alignment, "
+                    + $"would leave it with no place in the investigation's time. Withdraw session {Short(dependents[0])}'s alignment, "
                     + "or align it to another session, first."
                 : $"Sessions {string.Join(", ", dependents.Select(Short))} are aligned through session {named}, so withdrawing "
-                    + $"session {named}'s alignment would leave them with no place in the workspace's time. Withdraw their "
+                    + $"session {named}'s alignment would leave them with no place in the investigation's time. Withdraw their "
                     + "alignments, or align them to other sessions, first.");
         }
 
@@ -552,7 +552,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         if (workspace.Members.All(member => member.SessionId != sessionId))
         {
-            throw new InvalidOperationException($"No member of this workspace is session {Short(sessionId)}.");
+            throw new InvalidOperationException($"No member of this investigation is session {Short(sessionId)}.");
         }
 
         if (ChainOf(workspace, sessionId) is not { } chain)
@@ -609,7 +609,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.SessionId != named))
             {
-                throw new InvalidOperationException($"No member of this workspace is session {Short(named)}.");
+                throw new InvalidOperationException($"No member of this investigation is session {Short(named)}.");
             }
         }
 
@@ -625,13 +625,13 @@ public static partial class InvestigationWorkspace
 
         if (sessionId == reference)
         {
-            throw new InvalidOperationException($"Session {Short(reference)} is the workspace's time reference: its clock is the "
-                + "workspace's time, so it is not aligned; align the other members to it.");
+            throw new InvalidOperationException($"Session {Short(reference)} is the investigation's time reference: its clock is the "
+                + "investigation's time, so it is not aligned; align the other members to it.");
         }
 
         if (ChainOf(workspace, referenceSessionId) is not { } chain)
         {
-            throw new InvalidOperationException($"Session {Short(referenceSessionId)} has no place in the workspace's time, so nothing "
+            throw new InvalidOperationException($"Session {Short(referenceSessionId)} has no place in the investigation's time, so nothing "
                 + $"aligned to it would have one. Align it first, or align session {Short(sessionId)} to session {Short(reference)}.");
         }
 
@@ -766,7 +766,7 @@ public static partial class InvestigationWorkspace
             {
                 if (workspace.TimeReference is not { } time)
                 {
-                    return $"session {Short(member.SessionId)} is aligned, and the workspace has no time reference";
+                    return $"session {Short(member.SessionId)} is aligned, and the investigation has no time reference";
                 }
 
                 if (member.SessionId == time)
@@ -777,13 +777,13 @@ public static partial class InvestigationWorkspace
                 // Aligning through another member arrived with the sixth version (revision 265).
                 if (VersionOf(workspace) < 6 && active.ReferenceSessionId != time)
                 {
-                    return $"session {Short(member.SessionId)} is aligned to a member that is not the workspace's time reference, "
+                    return $"session {Short(member.SessionId)} is aligned to a member that is not the investigation's time reference, "
                         + $"which a {workspace.Contract} file does not";
                 }
 
                 if (ChainOf(workspace, member.SessionId) is null)
                 {
-                    return $"session {Short(member.SessionId)} is aligned to a member with no place in the workspace's time, or "
+                    return $"session {Short(member.SessionId)} is aligned to a member with no place in the investigation's time, or "
                         + "through itself";
                 }
             }

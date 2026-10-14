@@ -107,8 +107,8 @@ public static class SessionRawRecordQuery
         using EvidenceLease lease = store.AcquireLease();
         SessionManifestV1 manifest = lease.Manifest;
         if (manifest.SessionId != expectedSessionId || manifest.Generation != expectedGeneration)
-            throw new InvalidOperationException("The session has published another generation. Reopen source rows "
-                + "from the current workspace before viewing an original record.");
+            throw new InvalidOperationException("The session published another generation as this record was read. Restart "
+                + "from icat evidence; no row was silently shifted.");
 
         SegmentReaderV1 segment = SessionSegments.Open(store, manifest, selected.SegmentName);
         if (selected.SegmentRow < 0 || selected.SegmentRow >= segment.RowCount)

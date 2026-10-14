@@ -105,7 +105,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.HostId != host))
             {
-                throw new InvalidOperationException($"No member of this workspace was recorded on host {Short(host)}.");
+                throw new InvalidOperationException($"No member of this investigation was recorded on host {Short(host)}.");
             }
         }
 

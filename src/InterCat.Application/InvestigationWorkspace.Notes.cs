@@ -87,7 +87,7 @@ public static partial class InvestigationWorkspace
         if (at is { } anchor && workspace.Members.All(member => member.SessionId != anchor.SessionId))
         {
             throw new InvalidOperationException(
-                $"No member of this workspace is session {Short(anchor.SessionId)}, so no note is pinned there.");
+                $"No member of this investigation is session {Short(anchor.SessionId)}, so no note is pinned there.");
         }
 
         var note = new WorkspaceNote

@@ -78,8 +78,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         {
             File.WriteAllText(workspace, text);
             string message = Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message;
-            Assert.StartsWith(workspace + " is not a readable workspace: ", message, StringComparison.Ordinal);
-            string reason = message[(workspace.Length + " is not a readable workspace: ".Length)..];
+            Assert.StartsWith(workspace + " is not a readable investigation: ", message, StringComparison.Ordinal);
+            string reason = message[(workspace.Length + " is not a readable investigation: ".Length)..];
             Assert.DoesNotContain("InterCat.", reason, StringComparison.Ordinal);
             Assert.DoesNotContain("BytePositionInLine", reason, StringComparison.Ordinal);
             return reason;
@@ -378,7 +378,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal(new TimeComparison(TimeOrder.Unknown, null, null), drifting.Result);
         Assert.Equal(string.Create(CultureInfo.CurrentCulture, $"No order is stated: the second instant's session's drift from the time reference is not stated, so {2.0m:N1} s from the nearest instant it was aligned at, its uncertainty is unknown."),
             drifting.Statement(CultureInfo.CurrentCulture));
-        Assert.Equal("No order is stated: the second instant's session is not aligned to the workspace's time.",
+        Assert.Equal("No order is stated: the second instant's session is not aligned to the investigation's time.",
             InvestigationWorkspace.Compare(read, a, Seconds(1), d, Seconds(1)).Statement(CultureInfo.CurrentCulture));
 
         // Two instants of one member are ordered exactly, on its one clock, aligned or not.
@@ -466,9 +466,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string members = File.ReadAllText(workspace);
         InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000, 10, null, Now);
 
-        Assert.Contains("is the workspace's time reference", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains("is the investigation's time reference", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
-        Assert.Contains("has no place in the workspace's time", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains("has no place in the investigation's time", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, b, 0, c, 0, 1_000, 10, null, Now)).Message, StringComparison.Ordinal);
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, c, 0, 1_000, 10, null, Now));
         Assert.Throws<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, c, 0, a, 0, -1, 10, null, Now));
@@ -1362,13 +1362,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         // A session another is aligned through keeps its alignment, and says whose rests on it, whose alignment each sentence
         // means, and what to do first; so do two.
         Assert.Equal($"Session {Short(c)} is aligned through session {Short(b)}, so withdrawing session {Short(b)}'s alignment "
-            + $"would leave it with no place in the workspace's time. Withdraw session {Short(c)}'s alignment, or align it to "
+            + $"would leave it with no place in the investigation's time. Withdraw session {Short(c)}'s alignment, or align it to "
             + "another session, first.", Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
         InvestigationWorkspace.Align(workspace, d, 0, b, Seconds(1), 2_000, 1, null, Now);
         Assert.Equal($"Sessions {Short(c)}, {Short(d)} are aligned through session {Short(b)}, so withdrawing session {Short(b)}'s "
-            + "alignment would leave them with no place in the workspace's time. Withdraw their alignments, or align them to "
+            + "alignment would leave them with no place in the investigation's time. Withdraw their alignments, or align them to "
             + "other sessions, first.", Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
-        Assert.Equal($"Session {Short(a)} is not aligned to the workspace's time.",
+        Assert.Equal($"Session {Short(a)} is not aligned to the investigation's time.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, a, Now)));
 
         // A folder holding another session relinks nothing, and names both sessions and their captures.
@@ -1381,7 +1381,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal($"No note {Short(note)} is in force.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.RemoveNote(workspace, note, Now)));
         Guid stranger = Guid.NewGuid();
-        Assert.Equal($"No member of this workspace was recorded on host {Short(stranger)}.",
+        Assert.Equal($"No member of this investigation was recorded on host {Short(stranger)}.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Alias(workspace, stranger, "lab", Now)));
         Guid one = HostId.Derive("lab-1").Value;
         Guid two = HostId.Derive("lab-2").Value;
@@ -1396,6 +1396,60 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             StringComparison.Ordinal));
         Assert.Contains($"its time reference {Short(stranger)} is no member",
             Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)), StringComparison.Ordinal);
+    }
+
+    [Fact(DisplayName = "R5: what an investigation says calls it one, as its window and icat's own words do - workspace only in the command's name and the file's extension")]
+    public void WhatAnInvestigationSaysCallsItOne()
+    {
+        // Two sessions whose identities begin alike, so a leading part can name both.
+        string workspace = NewWorkspace();
+        SessionStore alpha = NewSession(Path.Combine(root, "alpha"), "lab-1", Guid.Parse("abcd1111-0000-4000-8000-000000000001"));
+        Guid a = InvestigationWorkspace.Add(workspace, alpha.Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "beta"), "lab-2",
+            Guid.Parse("abcd2222-0000-4000-8000-000000000002"), CaptureId.New()).Root.Path, Now).SessionId;
+        string Said<T>(Action refused)
+            where T : Exception
+        {
+            // The test's folder, the file's extension and the command's name are names; the words around them are not.
+            string message = Assert.Throws<T>(refused).Message;
+            string words = message.Replace(root, string.Empty, StringComparison.Ordinal)
+                .Replace(InvestigationWorkspace.Extension, string.Empty, StringComparison.Ordinal)
+                .Replace("icat workspace", string.Empty, StringComparison.Ordinal);
+            Assert.DoesNotContain("workspace", words, StringComparison.OrdinalIgnoreCase);
+            return message;
+        }
+
+        // Its members, its time and its time reference are the investigation's.
+        Guid stranger = Guid.NewGuid();
+        Assert.Equal($"No member of this investigation is session {Short(stranger)}.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Relink(workspace, stranger, alpha.Root.Path, Now)));
+        Assert.Equal($"Session {Short(b)} is not aligned to the investigation's time.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
+        InvestigationWorkspace.Align(workspace, b, 0, a, Seconds(5), 1_000_000, 10, null, Now);
+        Assert.StartsWith($"Session {Short(a)} is the investigation's time reference: its clock is the investigation's time, so it is "
+            + "not aligned", Said<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 1, null, Now)),
+            StringComparison.Ordinal);
+        Assert.StartsWith("'abcd' begins 2 ", Said<InvalidOperationException>(() =>
+            InvestigationWorkspace.MemberNamed(InvestigationWorkspace.Read(workspace), "abcd")), StringComparison.Ordinal);
+
+        // So is its file: made only where none is and beside its sessions, never in one; read only as one.
+        Assert.Equal($"{workspace} exists; an investigation is made new, never over another file.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Create(workspace, Now)));
+        Assert.Equal($"{alpha.Root.Path} is a session's directory. An investigation's file is kept beside its sessions, never in one: "
+            + "a session keeps only its own files, and would count the investigation's file as an orphan.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Create(Path.Combine(alpha.Root.Path, "case"), Now)));
+        string missing = Path.Combine(root, "missing" + InvestigationWorkspace.Extension);
+        Assert.Equal($"No investigation is at {missing}; icat workspace new makes one.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Read(missing)));
+        string text = File.ReadAllText(workspace);
+        Guid nobody = Guid.NewGuid();
+        File.WriteAllText(workspace, text.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{nobody}\"",
+            StringComparison.Ordinal));
+        Assert.Equal($"{workspace} is not a readable investigation: its time reference {Short(nobody)} is no member.",
+            Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)));
+        File.WriteAllText(workspace, "[1, 2]");
+        Assert.Equal($"{workspace} is not a readable investigation: it holds no object of fields.",
+            Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)));
     }
 
     [Fact(DisplayName = "R21: a member aligned through another is placed through both, and two members of one chain compare as it allows")]
@@ -1434,7 +1488,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.InRange(apart.Result.Uncertainty!.Value.HalfWidthNanoseconds, 2_022_000, 2_022_001);
 
         // Nothing is aligned to a member with no place, nor through itself; a member others are aligned through keeps its own.
-        Assert.Contains("has no place in the workspace's time", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains("has no place in the investigation's time", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, c, 0, e, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
         Assert.Contains($"is aligned through session {Short(b)}, so ", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, b, 0, c, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
@@ -1452,7 +1506,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         // A version 5 file aligned every member to the time reference, and is refused whole when it seems not to.
         string text = File.ReadAllText(workspace);
         File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FifthContract}\"", StringComparison.Ordinal));
-        Assert.Contains("is aligned to a member that is not the workspace's time reference", Assert.Throws<InvalidDataException>(() =>
+        Assert.Contains("is aligned to a member that is not the investigation's time reference", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 

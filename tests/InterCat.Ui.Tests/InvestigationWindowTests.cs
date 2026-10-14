@@ -1423,7 +1423,7 @@ public sealed class InvestigationWindowTests
                 StringComparison.Ordinal);
             Assert.True(ShowsGamma(main));
             Assert.Null(((WorkspaceViewModel)main.DataContext!).SelectedInterval);
-            Assert.Equal(("Could not open this session", SessionStore.AnotherSession + " The current workspace is unchanged."),
+            Assert.Equal(("Could not open this session", SessionStore.AnotherSession + " What the window shows is unchanged."),
                 (main.GetControl<TextBlock>("CaptureStatus").Text, main.GetControl<TextBlock>("CaptureDetail").Text));
             InvestigationMemberRow alpha = window.View!.Members[0];
             Assert.Equal((WorkspaceMemberState.Different, false), (alpha.State, alpha.HoldsItsCapture));
@@ -1444,7 +1444,7 @@ public sealed class InvestigationWindowTests
             WaitFor(() => status.Text?.StartsWith($"Session {Short(b)} could not be opened: ", StringComparison.Ordinal) == true);
             Assert.Equal($"Session {Short(b)} could not be opened: The folder at this path holds no session now: the session was "
                 + "moved or removed. " + InvestigationWorkspace.RelinkWhereItIs, status.Text);
-            Assert.Equal(SessionStore.SessionGone + " The current workspace is unchanged.",
+            Assert.Equal(SessionStore.SessionGone + " What the window shows is unchanged.",
                 main.GetControl<TextBlock>("CaptureDetail").Text);
             Assert.Equal((WorkspaceMemberState.Unreadable, false), (window.View!.Members[1].State, window.View.Members[1].HoldsItsCapture));
             Assert.False(Named<Button>(window, "Open in InterCat").IsEnabled);
@@ -2561,7 +2561,7 @@ public sealed class InvestigationWindowTests
             Assert.True(withdraw.IsEnabled);
             await window.WithdrawSelectedAsync();
             Assert.Equal($"Session {Short(b)}'s alignment was not withdrawn: Session {Short(c)} is aligned through session {Short(b)}, so "
-                + $"withdrawing session {Short(b)}'s alignment would leave it with no place in the workspace's time. Withdraw session "
+                + $"withdrawing session {Short(b)}'s alignment would leave it with no place in the investigation's time. Withdraw session "
                 + $"{Short(c)}'s alignment, or align it to another session, first.", Named<TextBlock>(window, "Investigation status").Text);
             Assert.Equal(kept, File.ReadAllText(workspace));
             Assert.True(window.View!.Members[1].IsAligned);

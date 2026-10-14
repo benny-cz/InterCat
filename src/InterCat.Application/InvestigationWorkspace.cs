@@ -256,8 +256,8 @@ public static partial class InvestigationWorkspace
         int.Parse(workspace.Contract.AsSpan("workspace-v".Length), System.Globalization.NumberStyles.None,
             System.Globalization.CultureInfo.InvariantCulture);
 
-    private const string KeptBeside = "A workspace is kept beside its sessions, never in one: a session keeps only its own files, "
-        + "and would count the workspace as an orphan.";
+    private const string KeptBeside = "An investigation's file is kept beside its sessions, never in one: a session keeps only its "
+        + "own files, and would count the investigation's file as an orphan.";
 
     private static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web)
     {
@@ -279,7 +279,7 @@ public static partial class InvestigationWorkspace
         string full = System.IO.Path.GetFullPath(path);
         if (File.Exists(full) || Directory.Exists(full))
         {
-            throw new InvalidOperationException($"{full} exists; a workspace is made new, never over another file.");
+            throw new InvalidOperationException($"{full} exists; an investigation is made new, never over another file.");
         }
 
         string folder = System.IO.Path.GetDirectoryName(full)!;
@@ -337,7 +337,7 @@ public static partial class InvestigationWorkspace
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         WorkspaceMember member = workspace.Members.FirstOrDefault(known => known.SessionId == sessionId)
-            ?? throw new InvalidOperationException($"No member of this workspace is session {Short(sessionId)}.");
+            ?? throw new InvalidOperationException($"No member of this investigation is session {Short(sessionId)}.");
         WorkspaceMember found = Describe(full, sessionDirectory, now);
         if (found.SessionId != member.SessionId || found.CaptureId != member.CaptureId)
         {
@@ -365,7 +365,7 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         if (workspace.Members.All(member => member.HostId != hostId))
         {
-            throw new InvalidOperationException($"No member of this workspace was recorded on host {Short(hostId)}.");
+            throw new InvalidOperationException($"No member of this investigation was recorded on host {Short(hostId)}.");
         }
 
         string? name = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
@@ -403,7 +403,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(text);
         return Named(workspace.Members, member => member.SessionId, text, "session")
-            ?? throw new InvalidOperationException($"No member of this workspace is session '{text}'.");
+            ?? throw new InvalidOperationException($"No member of this investigation is session '{text}'.");
     }
 
     /// <summary>The host a person named by its name, its identity or a unique leading part of it.</summary>
@@ -414,7 +414,7 @@ public static partial class InvestigationWorkspace
         IReadOnlyList<WorkspaceHost> hosts = Hosts(workspace);
         return hosts.FirstOrDefault(host => string.Equals(host.Alias, text.Trim(), StringComparison.OrdinalIgnoreCase))?.HostId
             ?? Named(hosts, host => host.HostId, text, "host")?.HostId
-            ?? throw new InvalidOperationException($"No member of this workspace was recorded on a host named '{text}'.");
+            ?? throw new InvalidOperationException($"No member of this investigation was recorded on a host named '{text}'.");
     }
 
     /// <summary>Resolves every member against its path (`contracts/workspace-v20.md` §3), in the workspace's order.</summary>
@@ -514,7 +514,7 @@ public static partial class InvestigationWorkspace
         string relative = System.IO.Path.GetRelativePath(System.IO.Path.GetDirectoryName(workspacePath)!, directory);
         if (relative == ".")
         {
-            throw new InvalidOperationException($"The workspace is inside the session at {directory}. {KeptBeside}");
+            throw new InvalidOperationException($"The investigation's file is inside the session at {directory}. {KeptBeside}");
         }
 
         bool under = !System.IO.Path.IsPathRooted(relative) && relative != ".."
@@ -563,7 +563,7 @@ public static partial class InvestigationWorkspace
     {
         if (!File.Exists(full))
         {
-            throw new InvalidOperationException($"No workspace at {full}; icat workspace new makes one.");
+            throw new InvalidOperationException($"No investigation is at {full}; icat workspace new makes one.");
         }
 
         string text = File.ReadAllText(full);
@@ -578,7 +578,7 @@ public static partial class InvestigationWorkspace
         }
         catch (JsonException exception)
         {
-            throw new InvalidDataException($"{full} is not a readable workspace: {JsonProblems.Syntax(exception)}.", exception);
+            throw new InvalidDataException($"{full} is not a readable investigation: {JsonProblems.Syntax(exception)}.", exception);
         }
 
         using (document)
@@ -590,13 +590,13 @@ public static partial class InvestigationWorkspace
             catch (JsonException exception)
             {
                 throw new InvalidDataException(
-                    $"{full} is not a readable workspace: {JsonProblems.Fields<InvestigationWorkspaceFile>(document.RootElement, exception, Json)}.",
+                    $"{full} is not a readable investigation: {JsonProblems.Fields<InvestigationWorkspaceFile>(document.RootElement, exception, Json)}.",
                     exception);
             }
         }
 
-        string? problem = workspace is null ? "it holds no workspace" : Problem(workspace);
-        return problem is null ? (workspace!, text) : throw new InvalidDataException($"{full} is not a readable workspace: {problem}.");
+        string? problem = workspace is null ? "it holds no investigation" : Problem(workspace);
+        return problem is null ? (workspace!, text) : throw new InvalidDataException($"{full} is not a readable investigation: {problem}.");
     }
 
     private static string? Problem(InvestigationWorkspaceFile workspace)
@@ -613,7 +613,7 @@ public static partial class InvestigationWorkspace
 
         if (workspace.WorkspaceId == Guid.Empty)
         {
-            return "it names no workspace identity";
+            return "it names no identity of its own";
         }
 
         if (workspace.Members.Any(member => member is null) || workspace.HostAliases.Any(alias => alias is null))
@@ -698,7 +698,7 @@ public static partial class InvestigationWorkspace
             identity(candidate).ToString("N").StartsWith(prefix, StringComparison.OrdinalIgnoreCase))];
         return matches.Length > 1
             ? throw new InvalidOperationException(
-                $"'{text}' begins {matches.Length} {what} identities of this workspace; give more of it.")
+                $"'{text}' begins {matches.Length} {what} identities of this investigation; give more of it.")
             : matches.FirstOrDefault();
     }
 

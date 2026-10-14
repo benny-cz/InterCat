@@ -54,7 +54,16 @@ public sealed class InvestigationCommandTests : IDisposable
         // An order is stated only beyond the pair's combined uncertainty; within it, it is said to be ambiguous.
         (InterCatExitCode compared, string order, _) = await Run("workspace", "compare", workspace, $"{server}@1.0", $"{client}@1.5");
         Assert.Equal(InterCatExitCode.Success, compared);
-        Assert.Contains($"session {server} at 1.000 s, which is 1.750 s ±5.1 ms of workspace time", order, StringComparison.Ordinal);
+        Assert.Contains($"session {server} at 1.000 s, which is 1.750 s ±5.1 ms of the investigation's time", order, StringComparison.Ordinal);
+        Assert.Contains($"session {client} at 1.500 s, the investigation's time reference", order, StringComparison.Ordinal);
+
+        // Shown, the investigation is headed as one, and says what its time is.
+        string described = (await Run("workspace", "show", workspace)).Output;
+        Assert.StartsWith("INVESTIGATION\n", described.TrimStart().ReplaceLineEndings("\n"), StringComparison.Ordinal);
+        Assert.Contains("Showing an investigation opens each session to learn what it is and writes to none.", described,
+            StringComparison.Ordinal);
+        Assert.Contains("The investigation's time is its reference member's clock.", described, StringComparison.Ordinal);
+        Assert.DoesNotContain("workspace's time", described, StringComparison.Ordinal);
         Assert.Contains("The first is after the second by 250 ms, more than their combined uncertainty of ±5.1 ms.", order,
             StringComparison.Ordinal);
         using (JsonDocument close = JsonDocument.Parse((await Run(
@@ -94,8 +103,10 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, withdrawn);
         Assert.Contains($"Session {server} is not aligned any more (alignment revision 2); its earlier revisions are kept.",
             unaligned, StringComparison.Ordinal);
-        Assert.Contains("No order is stated: no member is aligned, so the workspace has no time across members.",
-            (await Run("workspace", "compare", workspace, $"{server}@1.0", $"{client}@1.5")).Output, StringComparison.Ordinal);
+        string apart = (await Run("workspace", "compare", workspace, $"{server}@1.0", $"{client}@1.5")).Output;
+        Assert.Contains("No order is stated: no member is aligned, so the investigation has no time across members.", apart,
+            StringComparison.Ordinal);
+        Assert.Contains($"session {server} at 1.000 s, which has no place in the investigation's time", apart, StringComparison.Ordinal);
         Assert.Equal(2, InvestigationWorkspace.Read(workspace).Alignments.Count);
     }
 
@@ -220,7 +231,11 @@ public sealed class InvestigationCommandTests : IDisposable
     {
         DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
         string workspace = Path.Combine(folder, "case" + InvestigationWorkspace.Extension);
-        Assert.Equal(InterCatExitCode.Success, (await Run("workspace", "new", workspace)).Code);
+        (InterCatExitCode created, _, string createdSaid) = await Run("workspace", "new", workspace);
+        Assert.Equal(InterCatExitCode.Success, created);
+        Assert.Contains($"Investigation made at {workspace}. Add sessions with icat workspace add.", createdSaid, StringComparison.Ordinal);
+        Assert.Contains("This investigation names no session yet: icat workspace add <workspace> <session-dir> adds one.",
+            (await Run("workspace", "show", workspace)).Output + (await Run("workspace", "show", workspace)).Error, StringComparison.Ordinal);
         (InterCatExitCode added, _, string said) = await Run("workspace", "add", workspace, demo.ClientSession, demo.ServerSession);
         Assert.Equal(InterCatExitCode.Success, added);
         InvestigationWorkspaceFile made = InvestigationWorkspace.Read(workspace);

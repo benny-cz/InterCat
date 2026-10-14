@@ -3225,7 +3225,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             if (realOverview && ladder.Current.Level == DetailLevel.Evidence)
             {
-                return "Source records need the session directory this workspace was opened from.";
+                return "Source records are read from a session's folder, and what the window shows was not opened from one.";
             }
 
             if (realOverview && ladder.Current.Level == DetailLevel.ProcessInstance)

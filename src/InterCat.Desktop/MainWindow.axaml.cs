@@ -1605,7 +1605,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         else
         {
             Say(CaptureStatus, "Nothing was opened", aloud: true);
-            Say(CaptureDetail, NotOpened(items) + " The current workspace is unchanged.", aloud: true);
+            Say(CaptureDetail, NotOpened(items) + " What the window shows is unchanged.", aloud: true);
         }
     }
 
@@ -2168,7 +2168,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             or InvalidOperationException or UnauthorizedAccessException)
         {
             CaptureStatus.Text = "Could not open this session";
-            CaptureDetail.Text = exception.Message + " The current workspace is unchanged.";
+            CaptureDetail.Text = exception.Message + " What the window shows is unchanged.";
             return exception.Message;
         }
         finally
@@ -2503,7 +2503,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         CaptureDetail.Text = $"{row.Title}, {row.Detail}, is no longer in its folder: its files were moved or deleted"
             + (refused is SessionStore.AnotherSession ? "; another session is there now." : ".")
-            + " The current workspace is unchanged.";
+            + " What the window shows is unchanged.";
 
         // The keyboard that chose the row stays with the saved sessions, on the newest still listed, or goes where the
         // window gives it once none is.
@@ -2621,7 +2621,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             {
                 CaptureDetail.Text = InterruptedCaptureOffer.SessionGone(follow, refused is SessionStore.AnotherSession,
                         DateTimeOffset.UtcNow, TimeZoneInfo.Local, CultureInfo.CurrentCulture)
-                    + " The current workspace is unchanged.";
+                    + " What the window shows is unchanged.";
             }
 
             // The card is read again either way, so it offers what is left of the capture now, or goes.
@@ -3459,7 +3459,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     {
         if (closed) return;
         Say(CaptureStatus, "Nothing could be chosen", aloud: true);
-        Say(CaptureDetail, why + " Nothing was opened or saved, and the current workspace is unchanged.", aloud: true);
+        Say(CaptureDetail, why + " Nothing was opened or saved, and what the window shows is unchanged.", aloud: true);
     }
 
     /// <summary>

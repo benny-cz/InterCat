@@ -474,7 +474,7 @@ internal static partial class WorkspaceCommand
     private static InterCatExitCode New(string path)
     {
         InvestigationWorkspace.Create(path, DateTimeOffset.UtcNow);
-        ConsoleUi.Success($"Workspace made at {path}. Add sessions with icat workspace add.");
+        ConsoleUi.Success($"Investigation made at {path}. Add sessions with icat workspace add.");
         return InterCatExitCode.Success;
     }
 
@@ -1090,11 +1090,11 @@ internal static partial class WorkspaceCommand
         string at = $"session {Short(instant.SessionId)} at {Seconds(instant.SessionNanoseconds)}";
         return instant switch
         {
-            _ when instant.SessionId == workspace.TimeReference => at + ", the workspace's time reference",
+            _ when instant.SessionId == workspace.TimeReference => at + ", the investigation's time reference",
             { WorkspaceNanoseconds: { } placed, Uncertainty: { } uncertainty } =>
-                $"{at}, which is {Seconds(placed)} ±{OperationText.DurationAtLeast(uncertainty.HalfWidthNanoseconds, CultureInfo.CurrentCulture)} of workspace time",
-            { WorkspaceNanoseconds: { } placed } => $"{at}, which is {Seconds(placed)} of workspace time, its uncertainty unknown",
-            _ => at + ", which has no workspace time",
+                $"{at}, which is {Seconds(placed)} ±{OperationText.DurationAtLeast(uncertainty.HalfWidthNanoseconds, CultureInfo.CurrentCulture)} of the investigation's time",
+            { WorkspaceNanoseconds: { } placed } => $"{at}, which is {Seconds(placed)} of the investigation's time, its uncertainty unknown",
+            _ => at + ", which has no place in the investigation's time",
         };
     }
 
@@ -1105,14 +1105,14 @@ internal static partial class WorkspaceCommand
         List<string> caveats =
         [
             "A member is named by its session and the capture its journal records, and one capture is one member, so no "
-                + "record is counted twice. Showing a workspace opens each session to learn what it is and writes to none.",
+                + "record is counted twice. Showing an investigation opens each session to learn what it is and writes to none.",
             "Members are grouped by host identity: a live capture's is derived from its installation and its machine's name "
                 + "and build, an import's from its file. Equal identities are evidence of one host, never proof, and no name "
                 + "or address makes two of them one.",
             workspace.TimeReference is null
-                ? "No member is aligned, so the workspace has no time across members and states no order, latency or pairing "
+                ? "No member is aligned, so the investigation has no time across members and states no order, latency or pairing "
                     + "between them: their uncertainty is unknown, not zero."
-                : "The workspace's time is its reference member's clock. An aligned member's instants are placed in it with "
+                : "The investigation's time is its reference member's clock. An aligned member's instants are placed in it with "
                     + "the uncertainty its alignment states, and an order across members is stated only beyond it; an "
                     + "alignment is an annotation and changes no timestamp.",
         ];
@@ -1171,7 +1171,7 @@ internal static partial class WorkspaceCommand
 
     private static void Render(WorkspaceDocument document)
     {
-        ConsoleUi.Heading("Workspace");
+        ConsoleUi.Heading("Investigation");
         ConsoleUi.Field("File", document.Path);
         ConsoleUi.Field("Updated", document.UpdatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture));
         ConsoleUi.Field("Members", document.Members.Count == 0
@@ -1187,7 +1187,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line();
         if (document.Members.Count == 0)
         {
-            ConsoleUi.Note("This workspace names no session yet: icat workspace add <workspace> <session-dir> adds one.");
+            ConsoleUi.Note("This investigation names no session yet: icat workspace add <workspace> <session-dir> adds one.");
             return;
         }
 
@@ -1434,7 +1434,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line();
         ConsoleUi.Line($"An investigation over separately captured sessions ({InvestigationWorkspace.Contract}, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
-        ConsoleUi.Line("  new      makes an empty workspace; a name without an extension gets .icat-workspace.");
+        ConsoleUi.Line("  new      makes an empty investigation; a name without an extension gets .icat-workspace.");
         ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one member: a copy of a");
         ConsoleUi.Line("           member, or another session of its capture, is refused.");
         ConsoleUi.Line("  show     resolves each member where it was last found: present, advanced (a newer generation");
@@ -1445,7 +1445,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("  alias    names a member's host for people; one name never names two host identities.");
         ConsoleUi.Line("           <host> is its identity, a unique leading part, or its current name.");
         ConsoleUi.Line("  align    states that an instant of one member is an instant of another, within a bound: the");
-        ConsoleUi.Line("           first alignment makes the other member's clock the workspace's time. --drift-ppm");
+        ConsoleUi.Line("           first alignment makes the other member's clock the investigation's time. --drift-ppm");
         ConsoleUi.Line("           bounds how fast the clocks drift apart; without it the uncertainty away from the");
         ConsoleUi.Line("           anchor is unknown. Seconds are session time; a duration takes ns, us, ms or s. A second");
         ConsoleUi.Line("           pair of instants, well apart from the first, measures the clocks' rate; --drift-ppm then");
@@ -1457,7 +1457,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line("           --wall-clock anchors on the two captures' recorded wall-clock samples; --sync states how");
         ConsoleUi.Line("           closely their wall clocks agreed, which no sample can measure, and --drift-ppm bounds");
         ConsoleUi.Line("           their counters' drift, over the time between the samples and away from them.");
-        ConsoleUi.Line("  compare  places two instants in the workspace's time and states their order only beyond");
+        ConsoleUi.Line("  compare  places two instants in the investigation's time and states their order only beyond");
         ConsoleUi.Line("           their combined uncertainty; nothing when an instant has no time or its uncertainty");
         ConsoleUi.Line("           is unknown. Two instants of one member are ordered exactly.");
         ConsoleUi.Line("  correlate proposes candidate joins: a connection one session holds one end of, and another");

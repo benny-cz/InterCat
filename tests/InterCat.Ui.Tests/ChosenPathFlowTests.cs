@@ -151,14 +151,14 @@ public sealed class ChosenPathFlowTests : IDisposable
         Click(window, "OpenSavedSessionButton");
         await Until(() => status.Text == "Nothing could be chosen");
         Assert.Equal("The system could not show its dialog to choose a folder: No dialog service is available. Nothing "
-            + "was opened or saved, and the current workspace is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text);
+            + "was opened or saved, and what the window shows is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text);
 
         // A folder that holds no session is said to be none, and the window keeps what it showed.
         string empty = Directory.CreateDirectory(Path.Combine(folder, "nothing-here")).FullName;
         choices.Answer(empty);
         Click(window, "OpenSavedSessionButton");
         await Until(() => status.Text == "Could not open this session");
-        Assert.EndsWith(" The current workspace is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+        Assert.EndsWith(" What the window shows is unchanged.", window.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
 
         // Where the picker would start is a convenience: a system that cannot find it still shows the picker.
         await window.UseSessionRootAsync(folder);

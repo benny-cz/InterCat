@@ -1908,6 +1908,7 @@
         "R5: the profiles a capture can ask for, and how one compiles, read in words, and the flight recorder says where it is",
         "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket",
         "R5: what a workspace says names a session, capture, host or note by its first eight hex digits, as the investigation's window and icat do, never by all 32",
+        "R5: what an investigation says calls it one, as its window and icat's own words do - workspace only in the command's name and the file's extension",
         "R5: why a record binds to no process reads in one set of words, the window's and icat's, an unknown reason by its number"
       ],
       "R6": [

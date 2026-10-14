@@ -49,7 +49,7 @@ public sealed class WorkspaceCorrelationTests : IDisposable
         Assert.Equal(
         [
             $"Endpoints mirror: {Client} and {Server}, TCP, each capture holding one end.",
-            "Their lifetimes cannot be compared: no member is aligned, so the workspace has no time across members.",
+            "Their lifetimes cannot be compared: no member is aligned, so the investigation has no time across members.",
             "The first sent 100 B in 1 measured transfer, and the second received 100 B in 1: the same bytes.",
             "The second sent 200 B in 1 measured transfer, and the first received 200 B in 1: the same bytes.",
         ], candidate.Evidence);

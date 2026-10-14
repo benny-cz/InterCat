@@ -567,7 +567,7 @@ public sealed class InterruptedCaptureWindowTests
                 else
                 {
                     Assert.Equal(gone + (change == "written over" ? "; another session is there now." : ".")
-                        + " The current workspace is unchanged.", detail.Text);
+                        + " What the window shows is unchanged.", detail.Text);
                 }
 
                 Assert.True(Assert.IsType<WorkspaceViewModel>(window.DataContext).IsEmptyWorkspace);

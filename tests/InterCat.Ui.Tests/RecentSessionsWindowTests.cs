@@ -30,7 +30,7 @@ public sealed class RecentSessionsWindowTests
         {
             Assert.False(await window.OpenSessionAsync(folder));
             Assert.Equal("Could not open this session", window.GetControl<TextBlock>("CaptureStatus").Text);
-            Assert.Equal(SessionStore.NoGeneration + " The current workspace is unchanged.",
+            Assert.Equal(SessionStore.NoGeneration + " What the window shows is unchanged.",
                 window.GetControl<TextBlock>("CaptureDetail").Text);
             Assert.Equal(["notes.txt"], Directory.EnumerateFileSystemEntries(folder).Select(Path.GetFileName));
         }
@@ -122,7 +122,7 @@ public sealed class RecentSessionsWindowTests
             await Enter(window, list, 0);
             Assert.Equal("Could not open this session", status.Text);
             Assert.Equal($"{listed[0].Title}, {listed[0].Detail}, is no longer in its folder: its files were moved or deleted. "
-                + "The current workspace is unchanged.", detail.Text);
+                + "What the window shows is unchanged.", detail.Text);
             Assert.Equal([middle, oldest], list.Items.Cast<RecentSessionRow>().Select(row => row.Path));
             Assert.Equal(middle, Assert.IsType<RecentSessionRow>(
                 Assert.IsType<ListBoxItem>(window.FocusManager!.GetFocusedElement()).DataContext).Path);
@@ -137,7 +137,7 @@ public sealed class RecentSessionsWindowTests
             await Enter(window, list, 0);
             Assert.True(Assert.IsType<WorkspaceViewModel>(window.DataContext).IsEmptyWorkspace);
             Assert.Equal($"{listed[1].Title}, {listed[1].Detail}, is no longer in its folder: its files were moved or deleted; "
-                + "another session is there now. The current workspace is unchanged.", detail.Text);
+                + "another session is there now. What the window shows is unchanged.", detail.Text);
             RecentSessionRow replacement = list.Items.Cast<RecentSessionRow>().First();
             Assert.Equal((middle, false), (replacement.Path, replacement.SessionId == listed[1].SessionId));
 
@@ -148,7 +148,7 @@ public sealed class RecentSessionsWindowTests
             Assert.Equal("Could not open this session", status.Text);
             Assert.StartsWith("This session cannot be read, because no generation of it verifies: ", detail.Text,
                 StringComparison.Ordinal);
-            Assert.EndsWith("Its files are left as they are. The current workspace is unchanged.", detail.Text,
+            Assert.EndsWith("Its files are left as they are. What the window shows is unchanged.", detail.Text,
                 StringComparison.Ordinal);
             Assert.Equal([middle, oldest], list.Items.Cast<RecentSessionRow>().Select(row => row.Path));
             Assert.Equal(oldest, Assert.IsType<RecentSessionRow>(
@@ -162,7 +162,7 @@ public sealed class RecentSessionsWindowTests
 
             await Enter(window, list, 1);
             Assert.Equal($"{listed[2].Title}, {listed[2].Detail}, is no longer in its folder: its files were moved or deleted. "
-                + "The current workspace is unchanged.", detail.Text);
+                + "What the window shows is unchanged.", detail.Text);
             Assert.Equal([middle], list.Items.Cast<RecentSessionRow>().Select(row => row.Path));
 
             // The session listed in the other's place opens as itself.
