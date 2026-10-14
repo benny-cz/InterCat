@@ -47,6 +47,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// </summary>
     private (Task Work, CloseStop Stop)? packageWork;
 
+    // A package was asked for and waits for the shown session's files to be checked, so a second ask is the same one.
+    private bool awaitingFilesCheck;
+
     /// <summary>A session folder picker is open, so a second one is not started behind it.</summary>
     private bool choosingSession;
     private bool closed;
@@ -104,6 +107,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// whatever it is.
     /// </summary>
     private (double GraphShare, WorkspacePane? Expanded, double? RailWidth, double? InspectorWidth)? keptPanes;
+
+    // What the card says the shown session's investigation could not keep - its layout and view settings, and the
+    // window's panes - while it says so: said once, however often a change fails to be written, and taken back once one
+    // is written.
+    private string? layoutUnkept;
+    private string? panesUnkept;
 
     /// <summary>
     /// The least height a split leaves each main pane (§6.1's collapse floor): the graph its header and a legible plot, the
@@ -1881,12 +1890,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             if (!closed)
             {
                 keptPanes = null;
-                CaptureDetail.Text += " The window's panes could not be kept in the investigation: " + exception.Message;
+                SayUnkept(ref panesUnkept, " The window's panes could not be kept in the investigation: " + exception.Message);
             }
 
             return;
         }
 
+        if (!closed) SayUnkept(ref panesUnkept, null);
         foreach (InvestigationWindow shown in investigations)
         {
             shown.PanesKept(investigation, panes);
@@ -1989,16 +1999,30 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 keptPins = null;
                 keptLanes = null;
                 keptSettings = null;
-                CaptureDetail.Text += " The pins and view settings could not be kept in the investigation: " + exception.Message;
+                SayUnkept(ref layoutUnkept,
+                    " The pins and view settings could not be kept in the investigation: " + exception.Message);
             }
 
             return;
         }
 
+        if (!closed) SayUnkept(ref layoutUnkept, null);
         foreach (InvestigationWindow shown in investigations)
         {
             shown.LayoutKept(home.Workspace, home.Session, layout);
         }
+    }
+
+    /// <summary>
+    /// Says beside the session's status what its investigation could not keep, in place of what was said of it before,
+    /// so a change that fails again and again is said once; null takes it back, once a change is kept there again.
+    /// </summary>
+    private void SayUnkept(ref string? said, string? note)
+    {
+        string detail = CaptureDetail.Text ?? string.Empty;
+        if (said is not null) detail = detail.Replace(said, string.Empty, StringComparison.Ordinal);
+        said = note;
+        CaptureDetail.Text = detail + note;
     }
 
     /// <summary>
@@ -2173,8 +2197,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        // Another open or a capture that began meanwhile supersedes this session's view; its next lease measures again.
-        if (closed || run != captureRunId || report.Verified || openingSession || captureTask is { IsCompleted: false })
+        // Another open or a capture that began meanwhile supersedes this session's view, and a finish under way ends by
+        // opening its own: whatever holds the session shown keeps it as it is, and its next lease measures again. A package
+        // asked for waits for this check before it begins.
+        if (closed || run != captureRunId || report.Verified || HeldBy(start: false) is not null)
         {
             return;
         }
@@ -2717,7 +2743,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        if (currentSessionPath is not { } source || displayedOverview is not { } overview || IsLive || exporting)
+        if (!await FilesCheckedFirstAsync() || currentSessionPath is not { } source
+            || displayedOverview is not { } overview || IsLive || exporting)
         {
             return;
         }
@@ -2750,7 +2777,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        if (currentSessionPath is not { } source || displayedOverview is not { } shown || IsLive || exporting)
+        if (!await FilesCheckedFirstAsync() || currentSessionPath is not { } source
+            || displayedOverview is not { } shown || IsLive || exporting)
         {
             return;
         }
@@ -2805,6 +2833,31 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Task<T> work = Task.Run(make, cancellation);
         packageWork = (work, stop);
         return work;
+    }
+
+    /// <summary>
+    /// Waits, before a package of the shown session is asked for, until its files are checked against what was published
+    /// (store-v1 §6), saying so meanwhile: a file changed since is found first, and the session opened again from its last
+    /// complete generation, so what is packaged is what the check left shown. A second ask while one waits is the same
+    /// ask. False when it is, or when the window closed meanwhile.
+    /// </summary>
+    private async Task<bool> FilesCheckedFirstAsync()
+    {
+        if (SessionFilesChecked.IsCompleted) return !closed;
+        if (awaitingFilesCheck) return false;
+        awaitingFilesCheck = true;
+        try
+        {
+            Say(CaptureDetail, "The session's files are being checked against what was published; the package is asked "
+                + "for once they are.", aloud: true);
+            await SessionFilesChecked;
+        }
+        finally
+        {
+            awaitingFilesCheck = false;
+        }
+
+        return !closed;
     }
 
     /// <summary>

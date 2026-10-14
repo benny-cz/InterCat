@@ -1,5 +1,7 @@
 using Avalonia.Controls;
 using Avalonia.Headless.XUnit;
+using Avalonia.LogicalTree;
+using InterCat.Application;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
 using InterCat.Domain;
@@ -97,6 +99,137 @@ public sealed class SessionFilesWindowTests
     }
 
     /// <summary>A session with two generations; the second publishes its own segment, whose name is returned.</summary>
+    [AvaloniaFact(DisplayName = "§20.1: a package asked for while a session's files are checked waits for the check, and asks about what the check leaves shown")]
+    public async Task APackageWaitsForTheFilesCheck()
+    {
+        using var root = new TemporaryDirectory();
+        (string session, string newest) = TwoGenerations(root.Path);
+        string file = Path.Combine(session, newest);
+        Damage(file, (int)new FileInfo(file).Length - 1);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        using var first = new ManualResetEventSlim();
+        using var second = new ManualResetEventSlim();
+        ManualResetEventSlim gate = first;
+        try
+        {
+            Func<SessionStore, StoreContentReport> verify = window.SessionFilesVerifier;
+            window.SessionFilesVerifier = store =>
+            {
+                gate.Wait();
+                return verify(store);
+            };
+            Assert.True(await window.OpenSessionAsync(session));
+            Dispatch();
+
+            // Asked for while the files are checked, the package waits and says so; asked again, it is the same ask.
+            Click(window, "SharePackageButton");
+            Click(window, "SharePackageButton");
+            Dispatch();
+            Assert.Equal(Waiting, Detail(window));
+            Assert.Empty(window.OwnedWindows);
+
+            // The check finds the newest generation changed, and the package is asked about the last complete one, which
+            // the window opens again in its place.
+            first.Set();
+            await Until(() => window.OwnedWindows.Count == 1);
+            Assert.Equal(1, Assert.IsType<WorkspaceViewModel>(window.DataContext).DisplayedGeneration);
+            Press(window.OwnedWindows[0], "Cancel");
+            await Until(() => window.OwnedWindows.Count == 0);
+            Assert.Contains("generation 1, the last complete one, is shown", Detail(window), StringComparison.Ordinal);
+
+            // An exact copy waits for the check of the session opened again, as the redacted package did.
+            gate = second;
+            Assert.True(await window.OpenSessionAsync(session));
+            Dispatch();
+            Click(window, "ShareOriginalButton");
+            Dispatch();
+            Assert.Equal(Waiting, Detail(window));
+            Assert.Empty(window.OwnedWindows);
+            second.Set();
+            await Until(() => window.OwnedWindows.Count == 1);
+            Press(window.OwnedWindows[0], "Cancel");
+            await Until(() => window.OwnedWindows.Count == 0);
+        }
+        finally
+        {
+            first.Set();
+            second.Set();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§20.1: a check that finds changed files while a package holds the session shown leaves it as it is, and says nothing untrue of it")]
+    public async Task ACheckWhileAPackageHoldsTheSessionLeavesIt()
+    {
+        using var root = new TemporaryDirectory();
+        (string session, string newest) = TwoGenerations(root.Path);
+        string file = Path.Combine(session, newest);
+        Damage(file, (int)new FileInfo(file).Length - 1);
+        string other = DemoInvestigation.Create(Path.Combine(root.Path, "demo")).ClientSession;
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        using var release = new ManualResetEventSlim();
+        using var hold = new WorkHold();
+        window.RedactedPackager = (store, destination, now, interval, progress, cancellation) =>
+            RedactedSessionPackage.Create(store, destination, now, interval,
+                hold.On(progress, update => update.Stage == RedactedPackageStage.Writing, cancellation), cancellation);
+        window.Show();
+        try
+        {
+            Func<SessionStore, StoreContentReport> verify = window.SessionFilesVerifier;
+            window.SessionFilesVerifier = store =>
+            {
+                release.Wait();
+                return verify(store);
+            };
+            Assert.True(await window.OpenSessionAsync(session));
+            Dispatch();
+
+            // A package made while the files are checked - as Share's wait does not make one - holds the session shown,
+            // which the check then leaves as it is, saying nothing of a generation it could not open.
+            Task<RedactedSessionPackageResult?> saving = window.WriteRedactedPackageAsync(other, Path.Combine(root.Path, "package"));
+            await hold.Reached;
+            release.Set();
+            await window.SessionFilesChecked.WaitAsync(TimeSpan.FromSeconds(30));
+            Dispatch();
+            Assert.Equal(2, Assert.IsType<WorkspaceViewModel>(window.DataContext).DisplayedGeneration);
+            Assert.DoesNotContain("no earlier generation is complete", Detail(window), StringComparison.Ordinal);
+            hold.Release();
+            Assert.NotNull(await saving.WaitAsync(TimeSpan.FromSeconds(30)));
+        }
+        finally
+        {
+            release.Set();
+            hold.Release();
+            window.Close();
+        }
+    }
+
+    private const string Waiting =
+        "The session's files are being checked against what was published; the package is asked for once they are.";
+
+    private static void Click(Window window, string name) =>
+        window.GetControl<Button>(name).RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+
+    private static void Press(Window window, string label)
+    {
+        Button button = window.GetLogicalDescendants().OfType<Button>()
+            .First(candidate => Equals(candidate.Content, label) && candidate.IsEffectivelyVisible);
+        button.RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
+        Dispatch();
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        for (int wait = 0; wait < 500 && !condition(); wait++)
+        {
+            Dispatch();
+            await Task.Delay(10);
+        }
+
+        Assert.True(condition());
+    }
+
     private static (string Session, string Newest) TwoGenerations(string root)
     {
         string directory = Directory.CreateDirectory(Path.Combine(root, "explore-20260926T200000Z-files")).FullName;

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 519 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 520 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 520 — what an investigation could not keep, said once (§8.4, §11.3, §26.3):**
+  - A change a session's investigation could not keep added a sentence beside the session's status each time,
+    so dragging the split grew the card a sentence at a time, and the sentence stayed once a change was kept.
+  - Now it is said once, however often changes fail, and taken back once one is kept. The coverage pass that
+    found it also found a package stopped by its own button, or one that could not be made, run by no test; both
+    are now, and save nothing, leave no unsaved folder, and say which.
+  - It also found revision 519 had made a files check refused by a package's hold say no earlier generation was
+    complete. A package asked for now waits for the check, saying so; a check that finds changed files while
+    something holds the session leaves it as it is.
+  - Debug and Release each ran 2,201 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 21
+    mutations: what the investigation could not keep said again at each change, never taken back once its layout or
+    its panes are kept, left unsaid for either, or the one said in place of the other; Cancel packaging doing
+    nothing for a redacted package, an exact copy or an investigation's package; a cancel or a failure left unsaid,
+    for a package, a copy or an investigation's package; the card's headline not put back after a cancel; the button
+    left offering the cancel; a redacted package or an exact copy asked for before the files check, or its wait
+    unsaid; a second ask waiting beside the first; and a check reopening a session a package holds.
 
 - **Revision 519 — what holds the session shown says so (§3.1, §8.4):**
   - While a package was being saved, Open saved session and Ctrl+O did nothing and said nothing; Start
