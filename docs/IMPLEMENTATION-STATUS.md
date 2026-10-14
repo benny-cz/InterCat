@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-13 · Plan revision: 516 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 517 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 517 — the session's folder from the card, and Enter on a button (§3.1, §6.7, R15):**
+  - The card's line naming the session shown was text a person could neither copy nor open. Open folder beside
+    it opens the session's folder in the file manager, and the line's menu copies the path whole; a folder gone,
+    or one the system would not open, says so.
+  - With a row chosen in the ranked table, Enter on any button descended into the row instead of pressing it. A
+    button the keyboard is on now takes its own Enter, and a list of choices opens on it; the ladder tests'
+    helper now really gives the ranked table the keyboard.
+  - Debug and Release each ran 2,182 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 11
+    mutations: Enter on a button, or on a list of choices, descending into the chosen row; a folder gone since the
+    session was opened opened anyway; the system's refusal, a failure, or the line saying the folder was not opened
+    left unsaid; the path not copied, or its copy unsaid; and the button, or either item of the line's menu, doing
+    nothing. Opening the list of choices on Enter by the window's own hand survived: a list opens on its own Enter
+    once the window lets the key through, so only that is written.
 
 - **Revision 516 — the window opens where it closed (§26.3):**
   - InterCat's window opened at its first size wherever the system put it, each launch, however a person had

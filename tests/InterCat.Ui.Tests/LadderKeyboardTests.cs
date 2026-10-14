@@ -532,13 +532,17 @@ public sealed class LadderKeyboardTests
     }
 
     /// <summary>
-    /// Focus the ranked list first. A focused list is exactly the situation the review found broken, so
-    /// the test would pass for the wrong reason if it left focus on the window.
+    /// Gives the ranked table the keyboard, on its first row, as a Tab or a click does. A focused list is exactly the
+    /// situation the review found broken, so the test would pass for the wrong reason if it left the keyboard
+    /// elsewhere: the list itself takes no keyboard, so asking it to left it on Start exploring, where the window opens
+    /// it, until a button kept its own Enter.
     /// </summary>
     private static void FocusRankedTable(Window window)
     {
         ListBox list = window.GetControl<ListBox>("RungList");
-        list.Focus();
+        Settle(window);
+        Control row = list.ContainerFromIndex(0) ?? throw new InvalidOperationException("The table shows no row.");
+        Assert.True(row.Focus(NavigationMethod.Tab));
     }
 
     /// <summary>The ranked table's row that has the keyboard; fails when the keyboard is anywhere else.</summary>

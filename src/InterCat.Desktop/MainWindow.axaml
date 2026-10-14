@@ -442,10 +442,24 @@
               <TextBlock x:Name="CaptureSummary" Classes="muted" FontSize="10" TextWrapping="Wrap" />
             </ScrollViewer>
             <!-- One line however long the path: its middle segments give way to an ellipsis, the session's own folder stays,
-                 and the whole path is on hover, so the card's height never turns on how a path wraps (§6.1). -->
-            <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextTrimming="PathSegmentEllipsis"
-                       ToolTip.Tip="{Binding $self.Text}"
-                       IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                 and the whole path is on hover, so the card's height never turns on how a path wraps (§6.1). Beside it,
+                 Open folder opens the session's folder in the system's file manager, and its menu, like the line's,
+                 copies the path whole (§3.1). -->
+            <Grid ColumnDefinitions="*,Auto" ColumnSpacing="6" IsVisible="{Binding #CaptureSessionPath.IsVisible}">
+              <Grid.ContextMenu>
+                <ContextMenu>
+                  <MenuItem x:Name="OpenSessionFolderItem" Header="Open the session's folder" Click="OpenSessionFolder" />
+                  <MenuItem x:Name="CopySessionPathItem" Header="Copy the session's path" Click="CopySessionPath" />
+                </ContextMenu>
+              </Grid.ContextMenu>
+              <TextBlock x:Name="CaptureSessionPath" Classes="muted" FontSize="10" TextTrimming="PathSegmentEllipsis"
+                         VerticalAlignment="Center" ToolTip.Tip="{Binding $self.Text}"
+                         IsVisible="{Binding $self.Text, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+              <Button x:Name="SessionFolderButton" Grid.Column="1" Content="Open folder" FontSize="10" Padding="6,1"
+                      MinHeight="0" CornerRadius="4" VerticalAlignment="Center" Click="OpenSessionFolder"
+                      ToolTip.Tip="Open the session's folder; its menu copies the session's path"
+                      AutomationProperties.HelpText="Open the session's folder in the file manager; its menu copies the path" />
+            </Grid>
           </StackPanel>
         </Border>
         </StackPanel>

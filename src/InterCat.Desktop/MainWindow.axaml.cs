@@ -236,6 +236,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         ArgumentNullException.ThrowIfNull(viewModel);
         InitializeComponent();
         Choices = new PathChoices(this);
+        FolderOpener = folder => Launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(folder));
 
         // The graph's and the timeline's hover cards are drawn by one layer above every pane (section 6.2).
         HoverLayer.Track(GraphSurface);
@@ -541,6 +542,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             case Key.T:
                 viewModel.ShowTables = !viewModel.ShowTables;
                 e.Handled = true;
+                break;
+            case Key.Enter when e.Source is Button or ComboBox:
+                // A button or a list of choices the keyboard is on takes its own Enter, pressed or opened, as in every
+                // dialog: a row chosen in the ranked table is not descended into from it (R15).
                 break;
             case Key.Enter:
                 if (CellRecordsList.IsKeyboardFocusWithin)
@@ -1545,6 +1550,40 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             + $"({InvestigationWorkspace.Extension}), on this computer."
         : $"{items.Length} items were dropped at once; InterCat opens one saved session's folder or investigation file "
             + "at a time.";
+
+    /// <summary>Opens a folder in the system's file manager, true once it did; a test opens it in its place.</summary>
+    internal Func<string, Task<bool>> FolderOpener { get; set; }
+
+    /// <summary>
+    /// Opens the folder of the session shown in the system's file manager (§3.1), where a person copies, moves or
+    /// shares it whole. One gone since it was opened says so, as does one the system would not open.
+    /// </summary>
+    private async void OpenSessionFolder(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (CaptureSessionPath.Text is not { Length: > 0 } folder) return;
+        string? why = null;
+        try
+        {
+            if (!Directory.Exists(folder)) why = "it is no longer there, moved or deleted";
+            else if (!await FolderOpener(folder)) why = "the system did not open it";
+        }
+        catch (Exception exception) when (exception is not OutOfMemoryException)
+        {
+            why = exception.Message.TrimEnd('.');
+        }
+
+        if (why is null || closed) return;
+        Say(CaptureStatus, "The session's folder was not opened", aloud: true);
+        Say(CaptureDetail, $"{folder} could not be opened: {why}.", aloud: true);
+    }
+
+    /// <summary>Copies the whole path of the session shown, which its line in the card may shorten (§3.1).</summary>
+    private async void CopySessionPath(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (CaptureSessionPath.Text is not { Length: > 0 } folder || Clipboard is not { } clipboard) return;
+        await clipboard.SetTextAsync(folder);
+        if (!closed) Say(CaptureDetail, "The session's path is copied: " + folder, aloud: true);
+    }
 
     private async void OpenInvestigation(object? sender, RoutedEventArgs eventArgs)
     {
