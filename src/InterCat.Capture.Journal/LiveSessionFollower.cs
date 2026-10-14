@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Security.Cryptography;
 using InterCat.Capture.Recording;
 using InterCat.Capture.Windows;
@@ -574,9 +575,10 @@ public sealed class LiveSessionFollower
             return sourceReleased == 0
                 ? 0
                 : throw new InvalidDataException(
-                    $"The evidence session released the capture's first {sourceReleased} chunk(s) before this session "
-                    + "mirrored any, so this session would begin after records it never held and states no release of. "
-                    + "Nothing was followed.");
+                    "The evidence session released the capture's "
+                    + (sourceReleased == 1 ? "first chunk" : $"first {sourceReleased.ToString("N0", CultureInfo.CurrentCulture)} chunks")
+                    + " before this session mirrored any, so this session would begin after records it never held and states "
+                    + "no release of. Nothing was followed.");
         }
 
         // Identity first: a chunk that is none of the evidence's means other evidence however many chunks either holds, and

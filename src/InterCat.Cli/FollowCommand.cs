@@ -37,6 +37,10 @@ internal static class FollowCommand
     private const int DefaultPollSeconds = 1;
     private const int MaximumPollSeconds = 3_600;
 
+    /// <summary>What a session holds of a capture that ended before it was finalized: never what it recorded after.</summary>
+    private const string Unfinalized =
+        "The capture ended before it was finalized, so records after its last publication were never kept.";
+
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -240,14 +244,28 @@ internal static class FollowCommand
         switch (found.State)
         {
             case InterruptedFollowState.Complete:
+                // Nothing is left to derive: the session holds every chunk, or no chunk of the capture remains and none
+                // was saved, as when it published nothing before it stopped.
                 _ = LiveFollowTicket.Remove(sessionPath);
-                ConsoleUi.Progress($"{sessionPath} already holds everything its capture published; its ticket is removed.");
+                ConsoleUi.Progress(!found.HasSession
+                    ? $"The capture beside {sessionPath} left nothing to finish: no chunk of it remains to derive, and none "
+                        + "was saved to the session. Its ticket is removed."
+                    : $"{sessionPath} already holds everything its capture published; its ticket is removed."
+                        + (found.SessionFinished ? string.Empty : " " + Unfinalized));
                 return InterCatExitCode.Success;
             case InterruptedFollowState.EvidenceGone:
-                ConsoleUi.Failure(
-                    $"The capture's evidence at {ticket.EvidenceDirectory} can no longer be read"
-                    + (found.Problem is { } problem ? $" ({problem})" : string.Empty)
-                    + $". The session keeps the {ConsoleUi.Count(found.SessionChunks)} chunk(s) followed before.");
+                // As the capture's card says it: what the session keeps, then why the evidence cannot finish it.
+                string unreadable = $"The capture beside {sessionPath} can no longer be finished: its evidence at "
+                    + $"{ticket.EvidenceDirectory} can no longer be read";
+                string reason = found.Problem is { } problem ? " Reason: " + problem : string.Empty;
+                if (!found.HasSession)
+                {
+                    ConsoleUi.Failure(unreadable + ", and nothing had been saved to the session." + reason);
+                    return InterCatExitCode.CorruptedInput;
+                }
+
+                ConsoleUi.Warn($"{unreadable}. The session keeps the "
+                    + $"{FollowText.Chunks(found.SessionChunks, CultureInfo.CurrentCulture)} followed before.{reason}");
                 return InterCatExitCode.PartialResultSuccess;
             case InterruptedFollowState.StillRecording:
                 ConsoleUi.Warn(
@@ -293,13 +311,7 @@ internal static class FollowCommand
         }
         else
         {
-            Render(document);
-            if (result.Completed && !result.Step.Finished)
-            {
-                ConsoleUi.Note(
-                    "The capture ended before it was finalized, so records after its last publication were never kept. "
-                    + "The session holds everything it published.");
-            }
+            Render(document, settled: result.Completed);
         }
 
         if (result.Completed)
@@ -317,16 +329,19 @@ internal static class FollowCommand
         {
             if (!json && value.MirroredChunks > 0)
             {
-                ConsoleUi.Progress(
-                    $"{ConsoleUi.Count(value.DerivedChunks)} of {ConsoleUi.Count(value.EvidenceChunks)} chunks derived, "
-                    + $"{ConsoleUi.Count(value.DerivedRecords)} records.");
+                ConsoleUi.Progress(FollowText.Progress(value, CultureInfo.CurrentCulture));
             }
         }
     }
 
-    private static void Render(FollowDocument document)
+    /// <summary>
+    /// A follow's report. <paramref name="settled"/> says the capture will publish nothing more, so a session without its
+    /// finality is partial for good, and running the follow again would derive nothing.
+    /// </summary>
+    private static void Render(FollowDocument document, bool settled = false)
     {
-        ConsoleUi.Heading(document.Finished ? "Recording derived" : "Following stopped");
+        bool partial = settled && !document.Finished;
+        ConsoleUi.Heading(document.Finished ? "Recording derived" : partial ? "Partial recording derived" : "Following stopped");
         ConsoleUi.Field("Evidence", document.EvidencePath);
         ConsoleUi.Field("Session", document.SessionPath);
         ConsoleUi.Field("Chunks", $"{ConsoleUi.Count(document.DerivedChunks)} of {ConsoleUi.Count(document.EvidenceChunks)} mirrored");
@@ -336,7 +351,10 @@ internal static class FollowCommand
             "State",
             document.Finished
                 ? "finished: the capture stopped, and its coverage ledger is mirrored"
-                : "the capture has not finished here; run this again to continue");
+                : partial
+                    ? "ended before it was finalized, so records after its last publication were never kept; the session "
+                        + "holds every chunk it published"
+                    : "the capture has not finished here; run this again to continue");
         if (document.Rolling is { } rolling)
         {
             ConsoleUi.Field("Rolling", $"keeps {rolling.Window} of session time; "

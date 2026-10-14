@@ -64,6 +64,12 @@ public sealed record InterruptedFollow(
     /// </summary>
     public Guid? SessionId { get; init; }
 
+    /// <summary>
+    /// Whether the user's session holds the capture's finality, which comes with its last chunk: a session complete without
+    /// it holds every chunk of a capture that ended before it was finalized, and never the records after them.
+    /// </summary>
+    public bool SessionFinished { get; init; }
+
     /// <summary>Chunks the evidence holds and the session does not.</summary>
     public int MissingChunks => EvidenceChunks is { } evidence ? Math.Max(0, evidence - SessionChunks) : 0;
 
@@ -104,7 +110,11 @@ public sealed record InterruptedFollow(
         InterruptedFollowState state = Decide(
             sessionFinished, sessionChunks, evidenceChunks, evidenceFinished, readable: problem is null,
             now >= ticket.OwnerLeaseExpiresUtc + FinalizationAllowance);
-        return new(ticket, state, sessionChunks, evidenceChunks, problem) { SessionId = session?.SessionId };
+        return new(ticket, state, sessionChunks, evidenceChunks, problem)
+        {
+            SessionId = session?.SessionId,
+            SessionFinished = sessionFinished,
+        };
     }
 
     /// <summary>

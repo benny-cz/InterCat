@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 532 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 533 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 533 — icat follow finishes an unfinished capture in the card's words (§3.1, R5, R18):**
+  - `icat follow <session-dir>` had never run in a test. An unfinalized capture finished whole was reported as
+    "Following stopped … run this again to continue", which was then refused; it is now a partial recording
+    derived, saying what can never be recovered.
+  - Unreadable evidence said "The session keeps the 0 chunk(s)" of a session holding none, with a partial result's
+    exit code; it now says nothing had been saved and exits as corrupted input, and otherwise keeps "the 1
+    published chunk", then gives the reason. A session that did not exist was said to hold everything.
+  - The card and icat share their follow words (`FollowText`): a capture's first publication reads "1 published
+    chunk", not "1 published chunks", and so do the live preview's card and icat capture's progress.
+  - Debug and Release each ran 2,235 tests with revision 473's 93 failures and 4 skips. The tests caught each of 19
+    mutations: a follow's count of none said in the singular and of one in the plural, its chunks not called
+    published, or its progress counting the evidence's chunks as derived or as records; the session's finality read
+    inverted; a finish saying a session that does not exist holds everything, or that a finalized capture ended
+    unfinalized; unreadable evidence said of a session holding nothing as keeping its chunks, exiting as a partial
+    result where nothing was saved, keeping one chunk more than it does, or giving its reason in parentheses; a
+    finish's progress counting only chunks; an unfinalized capture finished whole still said to have stopped and
+    asking to be run again, or one still recording called partial for good; the capture card counting its
+    generations as chunks; a live preview's card saying 1 published chunk are, or 1 previewed record fall; the
+    card's finishing text losing its progress; and a follower refused for a released first chunk saying its first 1
+    chunks.
 
 - **Revision 532 — icat raw says a record as the window does (§3.7, R5, R18):**
   - icat raw printed a record's provider as a bare identity and its codes as enumeration names (Qpc,

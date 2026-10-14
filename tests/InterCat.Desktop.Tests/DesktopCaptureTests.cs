@@ -96,6 +96,13 @@ public sealed class DesktopCaptureTests
             BrokerJournalPublicationPolicy.IntervalMilliseconds(rolling.Publication, 86_400)));
     }
 
+    [Fact(DisplayName = "R5: the capture card counts a recording's published chunks, a capture's first publication in the singular")]
+    public void TheCardCountsPublishedChunks()
+    {
+        Assert.Equal("Generation 1 · 1 published chunk.", DesktopCaptureRunner.Published(1, 1));
+        Assert.Equal("Generation 3 · 2 published chunks.", DesktopCaptureRunner.Published(3, 2));
+    }
+
     [Fact(DisplayName = "P19: the window asks for a content capture of the processes a person chose, every exchange of theirs within the limits chosen")]
     public void AContentCaptureAsksForTheChosenProcesses()
     {

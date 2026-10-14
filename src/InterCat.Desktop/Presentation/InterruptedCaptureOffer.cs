@@ -86,8 +86,7 @@ internal sealed record InterruptedCaptureOffer(
         string headline = "Finishing the capture from " + Moments.When(follow.Ticket.StartedUtc, nowUtc, zone, culture);
         return step is null
             ? (headline, "Reading the evidence the broker kept. Stopping keeps what is derived.")
-            : (headline, $"{step.DerivedChunks.ToString("N0", culture)} of {Chunks(step.EvidenceChunks, culture)} "
-                + $"derived, {Records(step.DerivedRecords, culture)} so far. Stopping keeps what is derived.");
+            : (headline, FollowText.Progress(step, culture) + " Stopping keeps what is derived.");
     }
 
     /// <summary>What the status says once a finished session opens.</summary>
@@ -127,11 +126,9 @@ internal sealed record InterruptedCaptureOffer(
             : $"{missing.ToString("N0", culture)} of its {Chunks(published, culture)} {(missing == 1 ? "is" : "are")}")
         + " not in your session yet";
 
-    private static string Chunks(int count, CultureInfo culture) =>
-        count.ToString("N0", culture) + (count == 1 ? " published chunk" : " published chunks");
+    private static string Chunks(int count, CultureInfo culture) => FollowText.Chunks(count, culture);
 
-    private static string Records(long count, CultureInfo culture) =>
-        count.ToString("N0", culture) + (count == 1 ? " record" : " records");
+    private static string Records(long count, CultureInfo culture) => FollowText.Records(count, culture);
 
     private static string Reason(InterruptedFollow follow) =>
         string.IsNullOrWhiteSpace(follow.Problem) ? string.Empty : " Reason: " + follow.Problem;

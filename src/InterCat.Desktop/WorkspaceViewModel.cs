@@ -1170,14 +1170,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         };
         if (liveEdge is { UncoveredChunks: > 0 } behind)
         {
-            lines.Add(string.Create(CultureInfo.CurrentCulture,
-                $"{behind.UncoveredChunks:N0} published chunks are neither shown nor previewed yet: this view is behind the capture"));
+            lines.Add(CountText.Of(behind.UncoveredChunks, "published chunk")
+                + CountText.Agree(behind.UncoveredChunks, " is", " are")
+                + " neither shown nor previewed yet: this view is behind the capture");
         }
 
         if (liveEdge is { UnbinnedRecords: > 0 } unbinned)
         {
-            lines.Add(string.Create(CultureInfo.CurrentCulture,
-                $"Up to {unbinned.UnbinnedRecords:N0} previewed records fall outside the preview's bins"));
+            lines.Add("Up to " + CountText.Of(unbinned.UnbinnedRecords, "previewed record")
+                + CountText.Agree(unbinned.UnbinnedRecords, " falls", " fall") + " outside the preview's bins");
         }
 
         return new(TimeBase.HalfOpenRange(bin.Interval, CultureInfo.CurrentCulture) + " · live preview", lines);

@@ -383,8 +383,9 @@ internal static class CaptureCommand
                 if (step.MirroredChunks > 0 && !json)
                 {
                     ConsoleUi.Progress(
-                        $"{ConsoleUi.Count(step.DerivedRecords)} records derived from {ConsoleUi.Count(step.DerivedChunks)} "
-                        + $"published chunk(s), generation {ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
+                        $"{FollowText.Records(step.DerivedRecords, CultureInfo.CurrentCulture)} derived from "
+                        + $"{FollowText.Chunks(step.DerivedChunks, CultureInfo.CurrentCulture)}, generation "
+                        + $"{ConsoleUi.Count(step.DerivedGeneration ?? 0)}. "
                         + Growth(derived!, step.DerivedRecords, stopRequested ? null : limits, evidencePath, sessionPath));
                 }
 
@@ -521,7 +522,8 @@ internal static class CaptureCommand
     {
         ConsoleUi.Heading(document.Finished ? "Capture complete" : "Capture kept partially");
         ConsoleUi.Field("Session", document.SessionPath);
-        ConsoleUi.Field("Records", $"{ConsoleUi.Count(document.DerivedRecords)} derived from {ConsoleUi.Count(document.DerivedChunks)} chunk(s)");
+        ConsoleUi.Field("Records", $"{ConsoleUi.Count(document.DerivedRecords)} derived from "
+            + FollowText.Chunks(document.DerivedChunks, CultureInfo.CurrentCulture));
         ConsoleUi.Field("Generation", document.Generation is { } generation ? ConsoleUi.Count(generation) : "none published");
         ConsoleUi.Field("Capture", $"{document.CaptureId} ({document.State})");
         if (document.Rolling is { } rolling)

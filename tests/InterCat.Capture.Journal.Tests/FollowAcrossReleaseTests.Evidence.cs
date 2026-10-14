@@ -115,7 +115,7 @@ public sealed partial class FollowAcrossReleaseTests
         Assert.Contains("released every chunk this session holds", Assert.Throws<InvalidDataException>(
             () => LiveSessionFollower.Open(evidence, Open(laggingDirectory.Path, source))).Message, StringComparison.Ordinal);
         LiveSessionFollower fresh = LiveSessionFollower.Open(evidence, Open(freshDirectory.Path, source));
-        Assert.Contains("released the capture's first 1 chunk(s) before this session mirrored any", Assert.Throws<InvalidDataException>(
+        Assert.Contains("released the capture's first chunk before this session mirrored any", Assert.Throws<InvalidDataException>(
             () => fresh.CatchUp()).Message, StringComparison.Ordinal);
         Assert.Null(SessionStore.OpenExisting(LocalOwnedDirectory.Open(freshDirectory.Path)).Current);
     }

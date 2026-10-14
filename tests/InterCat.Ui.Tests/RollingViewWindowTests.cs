@@ -286,7 +286,7 @@ public sealed class RollingViewWindowTests
 
     /// <summary>A recording's newer generation, which restates its chunks.</summary>
     private static CaptureUiUpdate Generation(TemporarySession session, int generation) => new(CaptureUiPhase.Recording,
-        $"{generation * 10} observed records", $"Generation {generation} · {generation} published chunks.",
+        $"{generation * 10} observed records", DesktopCaptureRunner.Published(generation, generation),
         SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
 
     /// <summary>

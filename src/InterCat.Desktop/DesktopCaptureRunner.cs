@@ -193,6 +193,14 @@ public static class DesktopCaptureRunner
             ? new CaptureWindow(rolling, LeaseRenewal + TimeSpan.FromMilliseconds(summary.PublicationIntervalMilliseconds))
             : null);
 
+    /// <summary>
+    /// What the capture card says of a recording's newest generation: "Generation 3 · 3 published chunks.", and
+    /// "Generation 1 · 1 published chunk." as a capture's first publication arrives.
+    /// </summary>
+    public static string Published(long generation, int chunks) =>
+        string.Create(CultureInfo.CurrentCulture, $"Generation {generation:N0} · ")
+        + FollowText.Chunks(chunks, CultureInfo.CurrentCulture) + ".";
+
     public static string Describe(BrokerEffectiveCaptureSummary summary) =>
         $"{summary.EffectiveProfileId ?? summary.RequestedProfileId} · "
         + $"{string.Join(", ", summary.Sources.Select(source => source.SourceId))} · "
@@ -538,7 +546,7 @@ public static class DesktopCaptureRunner
                     milestones = milestones with { FirstOverview = milestones.FirstOverview ?? elapsed.Elapsed };
                     report(new(stopSent ? CaptureUiPhase.Finishing : CaptureUiPhase.Recording,
                         $"{follow.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
-                        $"Generation {generation:N0} · {follow.DerivedChunks:N0} published chunks. "
+                        Published(generation, follow.DerivedChunks) + " "
                         + (Keeps(derivation.Rolling) is { } kept ? kept + " " : string.Empty)
                         + "Graph edges are paired TCP only; other observations remain in the timeline.",
                         summary, sessionPath, overview,

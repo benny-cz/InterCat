@@ -258,7 +258,7 @@ public sealed class CaptureCardSpeechTests
     /// <summary>A recording's newer generation, which restates its count and chunks.</summary>
     private static CaptureUiUpdate Generation(TemporarySession session, CaptureUiPhase phase, int generation,
         string? more = null) => new(phase, $"{generation * 10} observed records",
-        $"Generation {generation} · {generation} published chunks." + (more is null ? string.Empty : " " + more),
+        DesktopCaptureRunner.Published(generation, generation) + (more is null ? string.Empty : " " + more),
         SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
 
     /// <summary>A client sending and a server receiving, <paramref name="count"/> times from <paramref name="first"/>.</summary>

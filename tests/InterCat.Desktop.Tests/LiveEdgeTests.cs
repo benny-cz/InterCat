@@ -1,6 +1,8 @@
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.CaptureBroker;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using Xunit;
 
@@ -36,4 +38,29 @@ public sealed class LiveEdgeTests
         // Nothing after the shown chunks is nothing to draw.
         Assert.Null(LiveEdge.From(preview, shownChunks: 5, TestSessions.TestClock));
     }
+
+    [Fact(DisplayName = "§19.3: a live edge's card counts what it can neither show nor place, a chunk and a record in the singular")]
+    public void ALiveEdgesCardCountsInTheSingular() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        TestSessions.Publish(session.Store, [TestSessions.Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080")]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
+        await workspace.LayoutReady;
+
+        // Chunk 2 is neither shown nor previewed, and one previewed record fell outside the bins.
+        var preview = new BrokerCapturePreview(1_000, 5, 2, 30, 20, 1, [new(5, 12, Mechanism.Tcp, 4), new(4, 11, Mechanism.Tcp, 3)]);
+        workspace.ShowLivePreview(preview, shownChunks: 1);
+        LiveEdge edge = Assert.IsType<LiveEdge>(workspace.LiveEdge);
+        IReadOnlyList<string> lines = workspace.DescribeLiveEdgeHover(edge.Bins[0]).Lines;
+        Assert.Contains("1 published chunk is neither shown nor previewed yet: this view is behind the capture", lines);
+        Assert.Contains("Up to 1 previewed record falls outside the preview's bins", lines);
+
+        // Two of each are plural, and agree with their verb.
+        workspace.ShowLivePreview(preview with { UnbinnedRecords = 2 }, shownChunks: 0);
+        lines = workspace.DescribeLiveEdgeHover(Assert.IsType<LiveEdge>(workspace.LiveEdge).Bins[0]).Lines;
+        Assert.Contains("2 published chunks are neither shown nor previewed yet: this view is behind the capture", lines);
+        Assert.Contains("Up to 2 previewed records fall outside the preview's bins", lines);
+    });
 }
