@@ -250,7 +250,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         bool selected = index >= 0 && index < currentChannels.Count;
         OfferActions();
         selectedDetail.Text = selected
-            ? $"{currentChannels[index].Name} · {currentChannels[index].ObservationCount:N0} records at its two ends\n"
+            ? $"{currentChannels[index].Name} · {CountText.Of(currentChannels[index].ObservationCount, "record")} at its two ends\n"
                 + "Enter shows its source records. Its channel rung, one step below either process's, states what was "
                 + $"sent across it and each end's records by direction.\nStable channel key: {currentChannels[index].Key}"
             : string.Empty;

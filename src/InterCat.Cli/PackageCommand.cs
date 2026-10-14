@@ -339,13 +339,13 @@ internal static class PackageCommand
         {
             ConsoleUi.Field("Interval", string.Create(CultureInfo.CurrentCulture,
                 $"ticks {interval.StartTicks:N0} to {interval.EndTicks:N0} of the source's "
-                + $"{ConsoleUi.Count(document.SourceRows)} rows, with {ConsoleUi.Count(interval.LifecycleRowsOutside)} "
+                + $"{CountText.Of(document.SourceRows, "row")}, with {ConsoleUi.Count(interval.LifecycleRowsOutside)} "
                 + $"lifecycle {(interval.LifecycleRowsOutside == 1 ? "record" : "records")} from outside it"));
         }
 
         ConsoleUi.Field("Rows", ConsoleUi.Count(document.Rows)
             + (document.SourceFieldRows == 0 ? string.Empty
-                : $" · {ConsoleUi.Count(document.SourceFieldRows)} source fields, {ConsoleUi.Count(document.SourceFieldRowsRedacted)} redacted"));
+                : $" · {CountText.Of(document.SourceFieldRows, "source field")}, {ConsoleUi.Count(document.SourceFieldRowsRedacted)} redacted"));
         ConsoleUi.Field("Coverage ledger", document.CoverageLedger
             ? document.Interval is null
                 ? "rewritten under pseudonymous providers; states and losses unchanged"
@@ -355,12 +355,12 @@ internal static class PackageCommand
         if (document.Pseudonyms is { } counts)
         {
             ConsoleUi.Field("Pseudonyms", string.Join(" · ",
-                $"{ConsoleUi.Count(counts.Names)} names",
-                $"{ConsoleUi.Count(counts.ProcessesAndThreads)} process and thread IDs",
-                $"{ConsoleUi.Count(counts.Addresses)} addresses",
-                $"{ConsoleUi.Count(counts.Ports)} ports",
-                $"{ConsoleUi.Count(counts.Identifiers)} identifiers",
-                $"{ConsoleUi.Count(counts.Providers)} providers"));
+                CountText.Of(counts.Names, "name"),
+                CountText.Of(counts.ProcessesAndThreads, "process or thread ID", "process and thread IDs"),
+                CountText.Of(counts.Addresses, "address", "addresses"),
+                CountText.Of(counts.Ports, "port"),
+                CountText.Of(counts.Identifiers, "identifier"),
+                CountText.Of(counts.Providers, "provider")));
         }
 
         if (document.Verification is { } verification) ConsoleUi.Field("Verified", verification.Description);
@@ -481,10 +481,10 @@ internal static class PackageCommand
         ConsoleUi.Field("Source", $"{document.Source} · generation {ConsoleUi.Count(document.Generation)}");
         if (document.Directory is { } directory) ConsoleUi.Field("Written to", directory);
         ConsoleUi.Field("Rows", ConsoleUi.Count(document.Rows)
-            + (document.SourceFieldRows == 0 ? string.Empty : $" · {ConsoleUi.Count(document.SourceFieldRows)} source fields"));
+            + (document.SourceFieldRows == 0 ? string.Empty : $" · {CountText.Of(document.SourceFieldRows, "source field")}"));
         int journals = document.Files.Count(file => file.Kind == nameof(StoreDependencyKind.Journal));
         ConsoleUi.Field("Files", string.Create(CultureInfo.CurrentCulture,
-            $"{ConsoleUi.Count(document.Files.Count)} files, {ConsoleUi.Bytes(document.Bytes)}; "
+            $"{CountText.Of(document.Files.Count, "file")}, {ConsoleUi.Bytes(document.Bytes)}; "
             + $"{ConsoleUi.Count(journals)} raw journal {(journals == 1 ? "file" : "files")} of admitted records"));
         ConsoleUi.Field("Host", document.Host is { } host ? $"one, identified as {host}" : "not named by a journal");
         ConsoleUi.Field("Holds", document.Contents);

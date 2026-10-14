@@ -190,8 +190,9 @@ public static class BrokerProcess
                 if (store.Recovery.TruncatedTailBytes > 0 || store.Recovery.DiscardedCompactionBytes > 0)
                 {
                     Diagnostic(
-                        $"Ownership log recovered at its last complete record ({store.Recovery.TruncatedTailBytes} torn "
-                        + $"byte(s), {store.Recovery.DiscardedCompactionBytes} interrupted-compaction byte(s) discarded).");
+                        "Ownership log recovered at its last complete record ("
+                        + $"{CountText.Of(store.Recovery.TruncatedTailBytes, "torn byte")}, "
+                        + $"{CountText.Of(store.Recovery.DiscardedCompactionBytes, "interrupted-compaction byte")} discarded).");
                 }
 
                 await using var runtime = new BrokerEvidenceCaptureRuntime(

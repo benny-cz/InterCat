@@ -153,7 +153,8 @@ internal static partial class WorkspaceCommand
         if (document.Directory is { } directory) ConsoleUi.Field("Written to", directory);
         int copied = document.Members.Count(member => member.Copied);
         // Records, files and size are the disclosure's to say, in the one unit the Desktop says them in.
-        ConsoleUi.Field("Copies", string.Create(CultureInfo.CurrentCulture, $"{copied:N0} of {document.Members.Count:N0} sessions"));
+        ConsoleUi.Field("Copies", string.Create(CultureInfo.CurrentCulture, $"{copied:N0} of ")
+            + CountText.Of(document.Members.Count, "session"));
         ConsoleUi.Line();
         ConsoleUi.Table(
             ["Session", "Found in", "Copy", "Generation", document.Performed ? "In the package" : "State", "Records"],

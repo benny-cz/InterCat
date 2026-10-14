@@ -125,7 +125,7 @@ public sealed class BrokerHost
         BrokerRecoveryReport recovery = await maintenance.RecoverAsync(cancellationToken).ConfigureAwait(false);
         Log(BrokerHostEventKind.Recovered, recovery.Items.Count == 0
             ? "Recovery found nothing a previous broker left running."
-            : $"Recovery stopped or retried {recovery.Items.Count} capture(s): "
+            : $"Recovery stopped or retried {CountText.Of(recovery.Items.Count, "capture")}: "
                 + string.Join("; ", recovery.Items.Select(item =>
                     $"{item.CaptureId.Value:N} {item.Action} -> {item.State}")));
 
@@ -343,7 +343,7 @@ public sealed class BrokerHost
 
     private void ReportMaintenance(BrokerMaintenanceReport report)
     {
-        string summary = $"{report.Reconciled.Count} reconciled, {report.ExpiredLeaseStops.Count} expired lease(s) stopped";
+        string summary = $"{report.Reconciled.Count} reconciled, {CountText.Of(report.ExpiredLeaseStops.Count, "expired lease")} stopped";
         Log(BrokerHostEventKind.Maintenance, report.Failure is null
             ? summary + "."
             : $"{summary}; failure #{report.ConsecutiveFailures}: {report.Failure}");

@@ -215,7 +215,7 @@ public sealed class BrokerEvidenceCaptureRuntimeTests
         Assert.True(stopped.Milestones.ProvidersStopped);
         Assert.False(stopped.Milestones.JournalFinalized);
         Assert.StartsWith("Interrupted:", stopped.FailureReason, StringComparison.Ordinal);
-        Assert.Contains("1 journal chunk(s)", stopped.FailureReason, StringComparison.Ordinal);
+        Assert.Contains("1 journal chunk,", stopped.FailureReason, StringComparison.Ordinal);
         string captureDirectory = Path.Combine(temporary.Root.Path, $"capture-{ownership.CaptureId.Value:N}");
         Assert.Empty(Directory.GetFiles(captureDirectory, "stg-*"));
         Assert.NotEmpty(Directory.GetFiles(captureDirectory, "journal-*"));

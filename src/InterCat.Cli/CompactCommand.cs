@@ -201,8 +201,8 @@ internal static class CompactCommand
         {
             ConsoleUi.Field(
                 document.Performed ? "Coalesced" : "Would coalesce",
-                $"{ConsoleUi.Count(document.CoalescedPublications)} publications: {ConsoleUi.Count(document.CoalescedRows)} rows "
-                + $"and {ConsoleUi.Count(document.CoalescedFieldRows)} source fields, in {ConsoleUi.Count(document.ReleasedFiles)} files");
+                $"{CountText.Of(document.CoalescedPublications, "publication")}: {CountText.Of(document.CoalescedRows, "row")} "
+                + $"and {CountText.Of(document.CoalescedFieldRows, "source field")}, in {CountText.Of(document.ReleasedFiles, "file")}");
         }
 
         ConsoleUi.Field(

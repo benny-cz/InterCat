@@ -64,7 +64,7 @@ public sealed class CommandTextTests : IDisposable
         // A focused request names its mechanism as the window does, whether it is taken or refused.
         (_, string focused, _) = await Run("profiles", "focused-transport", "--mechanism", "tcp", "--pid", "4242");
         Assert.Matches(@"Mechanism\s+TCP", focused);
-        Assert.Contains("Broader capture needs consent: TCP cannot be retained only for PID(s) 4242", focused, StringComparison.Ordinal);
+        Assert.Contains("Broader capture needs consent: TCP cannot be retained only for PID 4242", focused, StringComparison.Ordinal);
         (_, string refused, _) = await Run("profiles", "focused-transport", "--mechanism", "http");
         Assert.Contains("HTTP is not available in Focused transport.", refused, StringComparison.Ordinal);
 

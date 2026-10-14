@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 533 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 534 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 534 — icat counts one in the singular (R5):**
+  - Run on the smallest sessions - one record, one segment, chunks of one record, an investigation of one session -
+    icat said "1 records", "First 1 of 1 observations", "1 observations in 1 segment", a re-derivation's "1
+    observations, 1 fields", "1 source fields", a release's "2 to 2 records", "1 of 1 sessions" and "PID(s) 4242".
+  - Each now counts in the window's words (`CountText`), and so do the last "(s)" hedges: icat profiles' compile
+    note, a profile's descriptors and processes, icat record's losses, and the broker's recovery, maintenance and
+    interrupted-capture messages.
+  - Debug and Release each ran 2,241 tests with revision 473's 93 failures and 4 skips, and one more: a profile test
+    that still asserted the hedged PID(s), corrected, after which the command line's 85 tests passed in both. The
+    tests caught each of 14 mutations: a session's extent or newest chunk counting 1 records, or listing its only
+    observation as the first 1 of 1; a metric's read or answer counting 1 observations; a re-derivation counting its
+    source-field segments from its observation segments; a package's rows, redacted or original, counting 1 source
+    fields; a compaction counting 1 source fields; a journal release naming its one boundary as a range, or saying
+    the boundaries run from it when only one is allowed; an investigation's copies counting 1 sessions; a join
+    refused saying there is 0 candidates; and a profile naming one process as PIDs.
 
 - **Revision 533 — icat follow finishes an unfinished capture in the card's words (§3.1, R5, R18):**
   - `icat follow <session-dir>` had never run in a test. An unfinalized capture finished whole was reported as

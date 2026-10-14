@@ -535,7 +535,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         CultureInfo culture = CultureInfo.CurrentCulture;
         rangeSummary.Text = "Chosen: " + chosen.Describe(culture)
             + (showingPart
-                ? string.Create(culture, $", of the {all.Length:N0} bytes of its whole part")
+                ? $", of the {CountText.Of(all.Length, "byte")} of its whole part"
                 : string.Create(culture, $", of the {all.Length:N0} kept"))
             + (shown == chosen
                 ? "."

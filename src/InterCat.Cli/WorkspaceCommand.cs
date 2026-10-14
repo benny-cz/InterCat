@@ -1014,8 +1014,11 @@ internal static partial class WorkspaceCommand
         WorkspaceCorrelationResult result = WorkspaceCorrelation.Candidates(path, cancellationToken: cancellationToken);
         if (number > result.Candidates.Count)
         {
-            throw new InvalidOperationException(string.Create(CultureInfo.InvariantCulture,
-                $"There are {result.Candidates.Count} candidates now, so there is no candidate {number}; icat workspace correlate lists them."));
+            int count = result.Candidates.Count;
+            throw new InvalidOperationException(
+                $"There {CountText.Agree(count, "is", "are")} {CountText.Of(count, "candidate")} now, so there is no candidate "
+                + string.Create(CultureInfo.InvariantCulture, $"{number}; icat workspace correlate lists ")
+                + CountText.Agree(count, "it.", "them."));
         }
 
         ConnectionCandidate chosen = result.Candidates[number - 1];

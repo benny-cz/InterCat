@@ -234,7 +234,8 @@ internal static class RederiveCommand
             ConsoleUi.Field("Replayed records", ConsoleUi.Count(document.ReplayedRecords));
             ConsoleUi.Field("Observations", ConsoleUi.Count(document.ObservationRows));
             ConsoleUi.Field("Source fields", ConsoleUi.Count(document.SourceFieldRows));
-            ConsoleUi.Field("Segments", $"{document.ObservationSegments} observations, {document.SourceFieldSegments} fields");
+            ConsoleUi.Field("Observation segments", ConsoleUi.Count(document.ObservationSegments));
+            ConsoleUi.Field("Source-field segments", ConsoleUi.Count(document.SourceFieldSegments));
             foreach (string note in document.Notes)
             {
                 ConsoleUi.Note(note);

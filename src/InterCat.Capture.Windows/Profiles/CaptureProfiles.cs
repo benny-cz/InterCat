@@ -461,7 +461,7 @@ public static class CaptureProfileCompiler
                     requirement.SourceId,
                     requirement.Required,
                     ProfileSourceDecisionState.Included,
-                    $"Compiled {plan.Events.Count} admitted descriptor(s): {requirement.Purpose}",
+                    $"Compiled {CountText.Of(plan.Events.Count, "admitted descriptor")}: {requirement.Purpose}",
                     definition?.Overhead ?? OverheadClass.Unmeasured,
                     definition?.OverheadEvidence));
                 continue;
@@ -717,9 +717,10 @@ public static class CaptureProfileCompiler
         }
 
         bool broader = sourceScopes.Any(source => source.CapturesOutsideRequestedProcesses);
+        string processes = CountText.Agree(requestedProcessIds.Length, "PID ", "PIDs ") + string.Join(", ", requestedProcessIds);
         string disclosure = request.AllowBroaderCapture
-            ? $"Broader capture accepted: {FocusedName(request.FocusedMechanism)} metadata may be collected outside PID(s) {string.Join(", ", requestedProcessIds)}; the initial view remains focused on those processes."
-            : $"Broader capture needs consent: {FocusedName(request.FocusedMechanism)} cannot be retained only for PID(s) {string.Join(", ", requestedProcessIds)} while preserving required context. Review the source decisions, then explicitly allow broader capture if acceptable.";
+            ? $"Broader capture accepted: {FocusedName(request.FocusedMechanism)} metadata may be collected outside {processes}; the initial view remains focused on {CountText.Agree(requestedProcessIds.Length, "that process", "those processes")}."
+            : $"Broader capture needs consent: {FocusedName(request.FocusedMechanism)} cannot be retained only for {processes} while preserving required context. Review the source decisions, then explicitly allow broader capture if acceptable.";
         return new()
         {
             RequestedMechanism = request.FocusedMechanism,

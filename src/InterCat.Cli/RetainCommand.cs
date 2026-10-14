@@ -388,9 +388,10 @@ internal static class RetainCommand
         {
             notes.Add(
                 preview.HasAnyReleasableBoundary
-                    ? $"No {preview.ReleaseUnit} of this journal ends before that boundary, so nothing would be "
-                        + $"released. The boundaries it allows run from {preview.SmallestReleasingBoundary:N0} to "
-                        + $"{preview.LargestReleasingBoundary:N0} records."
+                    ? $"No {preview.ReleaseUnit} of this journal ends before that boundary, so nothing would be released. "
+                        + (preview.SmallestReleasingBoundary == preview.LargestReleasingBoundary
+                            ? $"The only boundary it allows is {Boundaries(preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary)}."
+                            : $"The boundaries it allows run from {Boundaries(preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary)}.")
                     : chunked
                         ? "No chunk of this recording can be released and still leave admitted records behind."
                         : "This journal was written as a single batch, so it has no releasable boundary at all. A "
@@ -483,7 +484,7 @@ internal static class RetainCommand
             "Boundaries it allows",
             preview.SmallestReleasingBoundary == 0
                 ? chunked ? "none; no chunk's release leaves records behind" : "none; the journal is a single batch"
-                : $"{preview.SmallestReleasingBoundary:N0} to {preview.LargestReleasingBoundary:N0} records");
+                : Boundaries(preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary));
 
         ConsoleUi.Heading("What this boundary gives up");
         int releasedChunks = preview.ReleasedChunks.Count;
@@ -734,7 +735,7 @@ internal static class RetainCommand
         }
 
         ConsoleUi.Field("Journal", (preview.ReleaseUnit == "chunk"
-                ? string.Create(culture, $"{preview.Units:N0} chunks of one recording")
+                ? CountText.Of(preview.Units, "chunk") + " of one recording"
                 : string.Create(culture, $"one journal of {CountText.Of(preview.Units, "batch", "batches")}"))
             + $", {CountText.Of(preview.Records, "record")}, {CountText.Of(preview.Rows, "row")}");
         if (preview.ReleasesAnything && preview.BoundaryNanoseconds is { } boundary)
@@ -779,6 +780,11 @@ internal static class RetainCommand
         PinDocument.Of(pin, Instant(pin.FromNanoseconds, wall, extent));
 
     /// <summary>The units a release gives up, as its report names them: "the oldest chunk of 3", "2 batches of 5".</summary>
+    /// <summary>The boundaries a journal prefix release allows, "2 to 4 records", or the one it allows, "2 records".</summary>
+    private static string Boundaries(long smallest, long largest) => smallest == largest
+        ? CountText.Of(smallest, "record")
+        : string.Create(CultureInfo.CurrentCulture, $"{smallest:N0} to {largest:N0} records");
+
     private static string Units(IntervalReleasePreview preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
 
     private static string Units(IntervalRetentionPreviewDocument preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);

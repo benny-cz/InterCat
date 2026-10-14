@@ -386,9 +386,9 @@ internal static class RecordCommand
                 "Lost",
                 health.IsLossFree
                     ? "nothing reported"
-                    : $"{ConsoleUi.Count(health.ProviderReportedEventLoss)} events by the session, "
-                        + $"{ConsoleUi.Count(health.ConsumerReportedBufferLoss)} buffers by the consumer, "
-                        + $"{ConsoleUi.Count(health.ApplicationDrops)} records by InterCat's full queue");
+                    : $"{CountText.Of(health.ProviderReportedEventLoss, "event")} by the session, "
+                        + $"{CountText.Of(health.ConsumerReportedBufferLoss, "buffer")} by the consumer, "
+                        + $"{CountText.Of(health.ApplicationDrops, "record")} by InterCat's full queue");
         }
 
         if (document.Coverage.Count == 0)
@@ -414,7 +414,7 @@ internal static class RecordCommand
                 ? $"icat follow \"{document.Path}\" <session-dir> derives the session from it in an ordinary shell, and can "
                     + "run while a recording records; icat processes and icat metric then read that session."
                 : $"icat session \"{document.Path}\" shows what it holds; icat processes and icat metric read it.");
-        ConsoleUi.Success($"Recorded {ConsoleUi.Count(document.JournaledRecords)} records.");
+        ConsoleUi.Success($"Recorded {CountText.Of(document.JournaledRecords, "record")}.");
     }
 
     private static void PrintHelp()

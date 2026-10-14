@@ -529,10 +529,10 @@ public sealed class BrokerEvidenceCaptureRuntime
                 .ToArray() ?? [];
             string kept = journals.Length == 0
                 ? "No evidence had been published."
-                : $"The published prefix is kept: {journals.Length} journal chunk(s), "
+                : $"The published prefix is kept: {CountText.Of(journals.Length, "journal chunk")}, "
                     + $"{journals.Sum(journal => journal.LengthBytes).ToString("N0", CultureInfo.InvariantCulture)} bytes, "
                     + $"generation {store.Current!.Generation}; records after the last publication were lost.";
-            summary = $"{Interrupted} {kept} Released {cleanup.RemovedFiles.Count} abandoned staging file(s).";
+            summary = $"{Interrupted} {kept} Released {CountText.Of(cleanup.RemovedFiles.Count, "abandoned staging file")}.";
             return true;
         }
         catch (Exception exception) when (exception is IOException or UnauthorizedAccessException

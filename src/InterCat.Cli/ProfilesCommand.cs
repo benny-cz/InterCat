@@ -465,9 +465,8 @@ internal static class ProfilesCommand
             }
         }
 
-        ConsoleUi.Note(string.Create(
-            CultureInfo.CurrentCulture,
-            $"Compiled {plan.Sources.Count} source plan(s) and {plan.Providers.Count} provider request(s)."));
+        ConsoleUi.Note($"Compiled {CountText.Of(plan.Sources.Count, "source plan")} and "
+            + $"{CountText.Of(plan.Providers.Count, "provider request")}.");
     }
 
     private static async Task WriteAsync(string? fullPath, string payload, CancellationToken cancellationToken)

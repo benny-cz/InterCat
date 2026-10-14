@@ -709,13 +709,13 @@ internal static class SessionCommand
         {
             // The boundary names only the newest chunk; its extent alone would read as the whole recording's (ADR-022).
             ConsoleUi.Field("Journal", $"{chunked.JournalChunks} chunks of one recording, {ConsoleUi.Bytes(chunked.JournalBytes)} in all");
-            ConsoleUi.Field("Newest chunk", $"{chunked.JournalName}: {ConsoleUi.Bytes(chunked.CommittedBytes)}, {ConsoleUi.Count(chunked.CommittedRecords)} records");
+            ConsoleUi.Field("Newest chunk", $"{chunked.JournalName}: {ConsoleUi.Bytes(chunked.CommittedBytes)}, {CountText.Of(chunked.CommittedRecords, "record")}");
             ConsoleUi.Field("Newest digest", chunked.Digest);
         }
         else if (generation.Boundary is { } boundary)
         {
             ConsoleUi.Field("Journal", boundary.JournalName);
-            ConsoleUi.Field("Durable extent", $"{ConsoleUi.Bytes(boundary.CommittedBytes)}, {ConsoleUi.Count(boundary.CommittedRecords)} records");
+            ConsoleUi.Field("Durable extent", $"{ConsoleUi.Bytes(boundary.CommittedBytes)}, {CountText.Of(boundary.CommittedRecords, "record")}");
             ConsoleUi.Field("Prefix digest", boundary.Digest);
         }
         else
@@ -1107,7 +1107,9 @@ internal static class SessionCommand
 
         int shown = Math.Min(rows, reader.RowCount);
         ConsoleUi.Line();
-        ConsoleUi.Line($"  First {shown:N0} of {reader.RowCount:N0} observations, in the segment's own order:");
+        ConsoleUi.Line(shown < reader.RowCount
+            ? $"  First {shown:N0} of {CountText.Of(reader.RowCount, "observation")}, in the segment's own order:"
+            : $"  The segment's {CountText.Of(reader.RowCount, "observation")}, in its own order:");
         ConsoleUi.Table(
             ["Native ticks", "Mechanism", "Kind", "Owner PID", "Bytes", "Endpoint"],
             [

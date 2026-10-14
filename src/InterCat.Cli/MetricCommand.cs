@@ -1205,7 +1205,7 @@ internal static class MetricCommand
             "Read",
             string.Create(
                 CultureInfo.CurrentCulture,
-                $"{document.Read.Rows:N0} observations in {document.Read.Segments:N0} segment{(document.Read.Segments == 1 ? string.Empty : "s")}")
+                $"{CountText.Of(document.Read.Rows, "observation")} in {CountText.Of(document.Read.Segments, "segment")}")
             + (document.Operations is { } read
                 ? string.Create(CultureInfo.CurrentCulture, $", paired into {read.Calls:N0} {(read.Calls == 1 ? "call" : "calls")}")
                 : string.Empty));
@@ -1471,7 +1471,7 @@ internal static class MetricCommand
         long count = document.Value ?? 0;
         return result.Request.Metric switch
         {
-            Metric.Observations => $"{ConsoleUi.Count(count)} observations",
+            Metric.Observations => CountText.Of(count, "observation"),
             Metric.ActivePeers when result.Request.Grouping is not null =>
                 $"{ConsoleUi.Count(count)} {(count == 1 ? "process has" : "processes have")} at least one resolved peer",
             Metric.ActivePeers =>
