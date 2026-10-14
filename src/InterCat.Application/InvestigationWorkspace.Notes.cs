@@ -87,7 +87,7 @@ public static partial class InvestigationWorkspace
         if (at is { } anchor && workspace.Members.All(member => member.SessionId != anchor.SessionId))
         {
             throw new InvalidOperationException(
-                $"No member of this investigation is session {Short(anchor.SessionId)}, so no note is pinned there.");
+                $"Session {Short(anchor.SessionId)} is not in this investigation, so no note is pinned there.");
         }
 
         var note = new WorkspaceNote
@@ -125,7 +125,7 @@ public static partial class InvestigationWorkspace
         return workspace.Notes.FirstOrDefault(note => note.NoteId == Guid.Empty
             || note.Text is { } words && (string.IsNullOrWhiteSpace(words) || words.Length > MostNoteCharacters)
             || note.At is { } anchor && !members.Contains(anchor.SessionId)) is { } wrong
-            ? $"note revision {wrong.Revision} names no note, holds no words or too many, or is pinned to no member"
+            ? $"note revision {wrong.Revision} names no note, holds no words or too many, or is pinned to a session not in it"
             : null;
     }
 }

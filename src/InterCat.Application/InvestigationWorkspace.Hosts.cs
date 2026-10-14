@@ -105,7 +105,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.HostId != host))
             {
-                throw new InvalidOperationException($"No member of this investigation was recorded on host {Short(host)}.");
+                throw new InvalidOperationException($"No session of this investigation was recorded on host {Short(host)}.");
             }
         }
 
@@ -164,7 +164,7 @@ public static partial class InvestigationWorkspace
         HashSet<Guid> hosts = [.. workspace.Members.Select(member => member.HostId)];
         return workspace.HostEquivalences.FirstOrDefault(equivalence => !Enum.IsDefined(equivalence.Decision)
             || !hosts.Contains(equivalence.First) || !hosts.Contains(equivalence.Second) || equivalence.First == equivalence.Second) is { } wrong
-            ? $"host confirmation revision {wrong.Revision} is of no known decision, names a host no member was recorded on, "
+            ? $"host confirmation revision {wrong.Revision} is of no known decision, names a host none of its sessions was recorded on, "
                 + "or joins an identity to itself"
             : null;
     }

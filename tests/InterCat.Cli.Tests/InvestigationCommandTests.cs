@@ -47,7 +47,7 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Contains($"Session {server} at 0.000 s is session {client} at 0.750 s, within ±5.1 ms: the wall clocks' stated "
             + "agreement ±5.0 ms, the samples' acquisition ±1.0 µs, and the drift over the 750 ms between them (alignment revision 1).",
             said, StringComparison.Ordinal);
-        Assert.Contains($"session {client}'s clock; 1 of 1 other member aligned to it", shown, StringComparison.Ordinal);
+        Assert.Contains($"session {client}'s clock; 1 of 1 other session aligned to it", shown, StringComparison.Ordinal);
         WorkspaceAlignment alignment = Assert.Single(InvestigationWorkspace.Read(workspace).Alignments);
         Assert.Equal(1, alignment.Revision);
 
@@ -62,8 +62,14 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.StartsWith("INVESTIGATION\n", described.TrimStart().ReplaceLineEndings("\n"), StringComparison.Ordinal);
         Assert.Contains("Showing an investigation opens each session to learn what it is and writes to none.", described,
             StringComparison.Ordinal);
-        Assert.Contains("The investigation's time is its reference member's clock.", described, StringComparison.Ordinal);
+        Assert.Contains("The investigation's time is its reference session's clock.", described, StringComparison.Ordinal);
         Assert.DoesNotContain("workspace's time", described, StringComparison.Ordinal);
+
+        // Its sessions are sessions, as the window lists them, in its fields, its hosts' table and what it says of them.
+        Assert.Matches(@"Sessions\s+2 present", described);
+        Assert.Matches(@"Host\s+Name\s+Sessions\s+One host with, by a person", described);
+        Assert.Contains("Each session is named by its identity and the capture its journal records", described, StringComparison.Ordinal);
+        Assert.DoesNotContain("member", described, StringComparison.OrdinalIgnoreCase);
         Assert.Contains("The first is after the second by 250 ms, more than their combined uncertainty of ±5.1 ms.", order,
             StringComparison.Ordinal);
         using (JsonDocument close = JsonDocument.Parse((await Run(
@@ -104,7 +110,7 @@ public sealed class InvestigationCommandTests : IDisposable
         Assert.Contains($"Session {server} is not aligned any more (alignment revision 2); its earlier revisions are kept.",
             unaligned, StringComparison.Ordinal);
         string apart = (await Run("workspace", "compare", workspace, $"{server}@1.0", $"{client}@1.5")).Output;
-        Assert.Contains("No order is stated: no member is aligned, so the investigation has no time across members.", apart,
+        Assert.Contains("No order is stated: no session is aligned, so the investigation has no time across its sessions.", apart,
             StringComparison.Ordinal);
         Assert.Contains($"session {server} at 1.000 s, which has no place in the investigation's time", apart, StringComparison.Ordinal);
         Assert.Equal(2, InvestigationWorkspace.Read(workspace).Alignments.Count);
@@ -157,7 +163,7 @@ public sealed class InvestigationCommandTests : IDisposable
         (InterCatExitCode wrong, _, string itself) = await Run("workspace", "relink", workspace, server,
             Path.Combine(folder, "demo", DemoInvestigation.ClientFolder));
         Assert.Equal(InterCatExitCode.InvalidInvocation, wrong);
-        Assert.Contains("A member is relinked only to itself.", itself, StringComparison.Ordinal);
+        Assert.Contains("A session is relinked only to itself.", itself, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§8.4: icat workspace package measures, writes and verifies an investigation with its sessions, saying what its file carries")]

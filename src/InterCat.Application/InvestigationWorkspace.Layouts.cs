@@ -199,7 +199,7 @@ public static partial class InvestigationWorkspace
         if (workspace.Members.All(member => member.SessionId != sessionId))
         {
             throw new InvalidOperationException(
-                $"Session {Short(sessionId)} is not a member of this investigation, so it keeps no layout here.");
+                $"Session {Short(sessionId)} is not in this investigation, so it keeps no layout here.");
         }
 
         if ((PinsProblem(pins) ?? LanesProblem(pinnedLanes)) is { } problem)
@@ -324,7 +324,7 @@ public static partial class InvestigationWorkspace
             || layout.Grouping is not (null or LaneGrouping.UserSession)
             || PinsProblem(layout.Pins) is not null || LanesProblem(layout.PinnedLanes) is not null) is { } wrong
             ? $"the layout of session {Short(wrong.SessionId)} "
-                + (!members.Contains(wrong.SessionId) ? "is of no member"
+                + (!members.Contains(wrong.SessionId) ? "is of a session not in it"
                     : !wrong.KeepsAnything ? "keeps nothing"
                     : (PinsProblem(wrong.Pins) ?? LanesProblem(wrong.PinnedLanes)) is { } problem ? "is refused: " + problem
                     : wrong.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)

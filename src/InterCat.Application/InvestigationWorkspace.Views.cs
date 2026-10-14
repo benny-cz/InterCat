@@ -128,7 +128,7 @@ public static partial class InvestigationWorkspace
             || (view.StartTicks is null) != (view.EndTicks is null) || (view.StartTicks is null) != (view.Reference is null)
             || view.StartTicks is { } start && view.EndTicks is { } end && !TimeRange.TryCreate(start, end, out _)
             || view.Reference is { } reference && !members.Contains(reference)) is { } wrong
-            ? $"view revision {wrong.Revision} is not named, shows no interval, or is in the clock of no member"
+            ? $"view revision {wrong.Revision} is not named, shows no interval, or is in the clock of no session of it"
             : null;
     }
 }

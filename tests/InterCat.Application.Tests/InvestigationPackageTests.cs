@@ -163,7 +163,7 @@ public sealed class InvestigationPackageTests : IDisposable
         Assert.Equal("Not selected, so kept as a reference to where it is on this computer.", chosen.Members[0].LeftOut);
         Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 1 of its 3 sessions",
             InvestigationPackage.Disclosure(chosen, CultureInfo.InvariantCulture)[0], StringComparison.Ordinal);
-        Assert.Contains("No member", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains("is not in this investigation", Assert.Throws<InvalidOperationException>(() =>
             InvestigationPackage.Select(preview, [Guid.NewGuid()])).Message, StringComparison.Ordinal);
         Assert.Contains($"Session {Short(c)} is missing, so it cannot be copied.", Assert.Throws<InvalidOperationException>(() =>
             InvestigationPackage.Select(preview, [b, c])).Message, StringComparison.Ordinal);

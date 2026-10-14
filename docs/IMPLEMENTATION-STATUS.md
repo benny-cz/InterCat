@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 525 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 526 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 526 — a session of an investigation is called a session wherever it is read (§8.4, R5):**
+  - The investigation's refusals, its file problems and the reasons its window's rows give said member, the
+    file's word for a session, where the window lists sessions; they now say session, by its leading digits.
+  - icat workspace show heads its field and its hosts' table Sessions; its caveats, its help and icat's own help
+    say session throughout.
+  - Debug and Release each ran 2,212 tests with revision 473's 93 failures and 4 skips. The tests caught each of 25
+    mutations, two once placing a session not in the investigation and aligning one to its own clock were tested: a
+    member named again in what a session's row says to do, another session's folder, a relink, an addition and a
+    capture added twice, a host none of its sessions was on, placing, aligning and packaging a session not in it,
+    its time across sessions, a time reference not one of them, an alignment to another than the reference, a host
+    confirmation, icat's field, hosts' column, caveats, help and overview.
 
 - **Revision 525 — an investigation action not offered says why (R15):**
   - Eighteen buttons of the investigation window were disabled without a word; each now says why as its tooltip

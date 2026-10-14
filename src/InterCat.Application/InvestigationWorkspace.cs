@@ -318,9 +318,9 @@ public static partial class InvestigationWorkspace
             is { } same)
         {
             throw new InvalidOperationException(same.SessionId == member.SessionId
-                ? $"Session {Short(member.SessionId)} is already a member, found at {same.Path}. A copy of a session is the same "
+                ? $"Session {Short(member.SessionId)} is already in this investigation, found at {same.Path}. A copy of a session is the same "
                     + "capture, and a capture added twice would count its records twice."
-                : $"This session records capture {Short(member.CaptureId)}, which member {Short(same.SessionId)} at {same.Path} already "
+                : $"This session records capture {Short(member.CaptureId)}, which session {Short(same.SessionId)} at {same.Path} already "
                     + "records. A capture added twice would count its records twice.");
         }
 
@@ -337,13 +337,13 @@ public static partial class InvestigationWorkspace
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         WorkspaceMember member = workspace.Members.FirstOrDefault(known => known.SessionId == sessionId)
-            ?? throw new InvalidOperationException($"No member of this investigation is session {Short(sessionId)}.");
+            ?? throw new InvalidOperationException($"Session {Short(sessionId)} is not in this investigation.");
         WorkspaceMember found = Describe(full, sessionDirectory, now);
         if (found.SessionId != member.SessionId || found.CaptureId != member.CaptureId)
         {
             throw new InvalidOperationException($"The session at {System.IO.Path.GetFullPath(sessionDirectory)} is session "
-                + $"{Short(found.SessionId)} of capture {Short(found.CaptureId)}, not member {Short(member.SessionId)} of capture "
-                + $"{Short(member.CaptureId)}. A member is relinked only to itself.");
+                + $"{Short(found.SessionId)} of capture {Short(found.CaptureId)}, not session {Short(member.SessionId)} of capture "
+                + $"{Short(member.CaptureId)}. A session is relinked only to itself.");
         }
 
         WorkspaceMember relinked = found with { AddedUtc = member.AddedUtc };
@@ -365,7 +365,7 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         if (workspace.Members.All(member => member.HostId != hostId))
         {
-            throw new InvalidOperationException($"No member of this investigation was recorded on host {Short(hostId)}.");
+            throw new InvalidOperationException($"No session of this investigation was recorded on host {Short(hostId)}.");
         }
 
         string? name = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
@@ -403,7 +403,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         ArgumentNullException.ThrowIfNull(text);
         return Named(workspace.Members, member => member.SessionId, text, "session")
-            ?? throw new InvalidOperationException($"No member of this investigation is session '{text}'.");
+            ?? throw new InvalidOperationException($"No session of this investigation is '{text}' or begins with it.");
     }
 
     /// <summary>The host a person named by its name, its identity or a unique leading part of it.</summary>
@@ -414,7 +414,7 @@ public static partial class InvestigationWorkspace
         IReadOnlyList<WorkspaceHost> hosts = Hosts(workspace);
         return hosts.FirstOrDefault(host => string.Equals(host.Alias, text.Trim(), StringComparison.OrdinalIgnoreCase))?.HostId
             ?? Named(hosts, host => host.HostId, text, "host")?.HostId
-            ?? throw new InvalidOperationException($"No member of this investigation was recorded on a host named '{text}'.");
+            ?? throw new InvalidOperationException($"No session of this investigation was recorded on a host named '{text}'.");
     }
 
     /// <summary>Resolves every member against its path (`contracts/workspace-v20.md` §3), in the workspace's order.</summary>
@@ -471,7 +471,7 @@ public static partial class InvestigationWorkspace
         if (manifest.SessionId != member.SessionId || found.Capture.Value != member.CaptureId)
         {
             return new(member, full, WorkspaceMemberState.Different, manifest.Generation,
-                $"Session {Short(manifest.SessionId)} of capture {Short(found.Capture.Value)} is at this path, not this member. "
+                $"Session {Short(manifest.SessionId)} of capture {Short(found.Capture.Value)} is at this path, not session {Short(member.SessionId)}. "
                 + RelinkWhereItIs);
         }
 
@@ -487,7 +487,7 @@ public static partial class InvestigationWorkspace
         return (manifest.Generation > member.Generation
             ? new WorkspaceMemberResolution(member, full, WorkspaceMemberState.Advanced, manifest.Generation,
                 $"The session has published generation {manifest.Generation} since generation {member.Generation} was "
-                + "selected. Relink the member to its own path to select it.")
+                + "selected. Relink the session to its own path to select it.")
             : new WorkspaceMemberResolution(member, full, WorkspaceMemberState.Replaced, manifest.Generation, string.Join(' ', new[]
             {
                 // An older generation is a copy put in its place, unless it is the one kept to fall back to, which the
@@ -497,7 +497,7 @@ public static partial class InvestigationWorkspace
                         + $"{member.Generation}{(rolledBack is null ? ": an earlier copy was put in its place." : ".")}"
                     : $"The path holds a generation {manifest.Generation} of this session derived apart from the one selected.",
                 rolledBack,
-                "Relink the member to its own path to select what is there.",
+                "Relink the session to its own path to select what is there.",
             }.OfType<string>()))) with { Demo = demo };
     }
 
@@ -534,7 +534,7 @@ public static partial class InvestigationWorkspace
     }
 
     /// <summary>What a member that is not its session at its path says to do, at the end of why.</summary>
-    public const string RelinkWhereItIs = "Relink the member where it is now.";
+    public const string RelinkWhereItIs = "Relink the session where it is now.";
 
     /// <summary>
     /// Opens a session to learn what it is, as a viewer does: the pointer, the manifest's digest and every dependency's
@@ -618,24 +618,24 @@ public static partial class InvestigationWorkspace
 
         if (workspace.Members.Any(member => member is null) || workspace.HostAliases.Any(alias => alias is null))
         {
-            return "it lists an empty member or name";
+            return "it lists an empty session or name";
         }
 
         if (workspace.Members.FirstOrDefault(member => member.SessionId == Guid.Empty || member.CaptureId == Guid.Empty
             || member.HostId == Guid.Empty || member.ClockId == Guid.Empty || member.Generation < 1
             || string.IsNullOrWhiteSpace(member.Path) || string.IsNullOrWhiteSpace(member.ManifestDigest)) is { } nameless)
         {
-            return $"member {Short(nameless.SessionId)} lacks its session, capture, host, clock, generation, digest or path";
+            return $"session {Short(nameless.SessionId)} lacks its identity, capture, host, clock, generation, digest or path";
         }
 
         if (workspace.Members.GroupBy(member => member.SessionId).FirstOrDefault(group => group.Count() > 1) is { } session)
         {
-            return $"two members are session {Short(session.Key)}";
+            return $"it lists session {Short(session.Key)} twice";
         }
 
         if (workspace.Members.GroupBy(member => member.CaptureId).FirstOrDefault(group => group.Count() > 1) is { } capture)
         {
-            return $"two members record capture {Short(capture.Key)}, which would count its records twice";
+            return $"two of its sessions record capture {Short(capture.Key)}, which would count its records twice";
         }
 
         if (workspace.HostAliases.FirstOrDefault(alias => string.IsNullOrWhiteSpace(alias.Alias)) is { } blank)

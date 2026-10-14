@@ -1422,7 +1422,7 @@ public sealed class InvestigationWindowTests
             Assert.False(await window.OpenColumnAsync(new TimelineColumn(0, column)));
             TextBlock status = Named<TextBlock>(window, "Investigation status");
             Assert.StartsWith($"Session {Short(a)} could not be opened: Session {Short(g)} of capture ", status.Text, StringComparison.Ordinal);
-            Assert.EndsWith(" is at this path, not this member. " + InvestigationWorkspace.RelinkWhereItIs, status.Text,
+            Assert.EndsWith($" is at this path, not session {Short(a)}. " + InvestigationWorkspace.RelinkWhereItIs, status.Text,
                 StringComparison.Ordinal);
             Assert.True(ShowsGamma(main));
             Assert.Null(((WorkspaceViewModel)main.DataContext!).SelectedInterval);
@@ -1432,7 +1432,7 @@ public sealed class InvestigationWindowTests
             Assert.Equal((WorkspaceMemberState.Different, false), (alpha.State, alpha.HoldsItsCapture));
 
             // Its row says the step once, where it said it twice.
-            Assert.EndsWith(" is at this path, not this member. " + InvestigationWorkspace.RelinkWhereItIs, alpha.AccessibleName,
+            Assert.EndsWith($" is at this path, not session {Short(a)}. " + InvestigationWorkspace.RelinkWhereItIs, alpha.AccessibleName,
                 StringComparison.Ordinal);
 
             // beta opens from its row; its folder emptied after the row was read, opening it again opens nothing, and says that

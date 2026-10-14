@@ -111,13 +111,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         CopyDirectory(alpha.Root.Path, Path.Combine(root, "copy-of-alpha"));
         InvalidOperationException copy = Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Add(workspace, Path.Combine(root, "copy-of-alpha"), Now));
-        Assert.Contains("already a member", copy.Message, StringComparison.Ordinal);
+        Assert.Contains("already in this investigation", copy.Message, StringComparison.Ordinal);
 
         // So is another session whose journal records the same capture.
         SessionStore again = NewSession(Path.Combine(root, "again"), "lab-1", Guid.NewGuid(), Capture);
         InvalidOperationException capture = Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Add(workspace, again.Root.Path, Now));
-        Assert.Contains($"records capture {Short(Capture.Value)}, which member ", capture.Message, StringComparison.Ordinal);
+        Assert.Contains($"records capture {Short(Capture.Value)}, which session ", capture.Message, StringComparison.Ordinal);
         Assert.Equal(text, File.ReadAllText(workspace));
 
         // Two captures whose stores name one source - as every broker capture under one plan does - are two members.
@@ -167,13 +167,13 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Directory.Move(beta.Root.Path, moved);
         WorkspaceMemberResolution different = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Different, different.State);
-        Assert.Equal($"Session {Short(beta.SessionId)} of capture {Short(betaCapture.Value)} is at this path, not this member. Relink the "
-            + "member where it is now.", different.Reason);
+        Assert.Equal($"Session {Short(beta.SessionId)} of capture {Short(betaCapture.Value)} is at this path, not session "
+            + $"{Short(member.SessionId)}. Relink the session where it is now.", different.Reason);
         Directory.Move(moved, beta.Root.Path);
         Directory.CreateDirectory(moved);
         WorkspaceMemberResolution empty = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Unreadable, empty.State);
-        Assert.Equal("The folder at this path holds no session now: the session was moved or removed. Relink the member where "
+        Assert.Equal("The folder at this path holds no session now: the session was moved or removed. Relink the session where "
             + "it is now.", empty.Reason);
         Assert.EndsWith(InvestigationWorkspace.RelinkWhereItIs, missing.Reason, StringComparison.Ordinal);
         Directory.Delete(moved);
@@ -229,7 +229,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal((WorkspaceMemberState.Replaced, 1L), (failed.State, failed.CurrentGeneration));
         Assert.Equal(
             "The path holds generation 1 of this session, older than the selected generation 2. Its current generation could "
-            + $"not be read, so its last-known-good was: {newest.LengthMismatch(newest.LengthBytes - 1, 2)}. Relink the member "
+            + $"not be read, so its last-known-good was: {newest.LengthMismatch(newest.LengthBytes - 1, 2)}. Relink the session "
             + "to its own path to select what is there.",
             failed.Reason);
     }
@@ -1333,7 +1333,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
         int member = text.IndexOf(imported.ToString(), StringComparison.Ordinal);
         File.WriteAllText(workspace, string.Concat(text.AsSpan(0, member), Guid.NewGuid().ToString(), text.AsSpan(member + 36)));
-        Assert.Contains("names a host no member was recorded on", Assert.Throws<InvalidDataException>(() =>
+        Assert.Contains("names a host none of its sessions was recorded on", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 
@@ -1372,8 +1372,8 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, a, Now)));
 
         // A folder holding another session relinks nothing, and names both sessions and their captures.
-        Assert.Equal($"The session at {gamma.Root.Path} is session {Short(c)} of capture {Short(gammaCapture.Value)}, not member "
-            + $"{Short(b)} of capture {Short(betaCapture.Value)}. A member is relinked only to itself.",
+        Assert.Equal($"The session at {gamma.Root.Path} is session {Short(c)} of capture {Short(gammaCapture.Value)}, not session "
+            + $"{Short(b)} of capture {Short(betaCapture.Value)}. A session is relinked only to itself.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Relink(workspace, b, gamma.Root.Path, Now)));
 
         // A note, a host and a confirmation that are not there.
@@ -1381,7 +1381,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Assert.Equal($"No note {Short(note)} is in force.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.RemoveNote(workspace, note, Now)));
         Guid stranger = Guid.NewGuid();
-        Assert.Equal($"No member of this investigation was recorded on host {Short(stranger)}.",
+        Assert.Equal($"No session of this investigation was recorded on host {Short(stranger)}.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Alias(workspace, stranger, "lab", Now)));
         Guid one = HostId.Derive("lab-1").Value;
         Guid two = HostId.Derive("lab-2").Value;
@@ -1394,7 +1394,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             StringComparison.Ordinal);
         File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{stranger}\"",
             StringComparison.Ordinal));
-        Assert.Contains($"its time reference {Short(stranger)} is no member",
+        Assert.Contains($"its time reference {Short(stranger)} is not one of its sessions",
             Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)), StringComparison.Ordinal);
     }
 
@@ -1421,10 +1421,14 @@ public sealed class InvestigationWorkspaceTests : IDisposable
 
         // Its members, its time and its time reference are the investigation's.
         Guid stranger = Guid.NewGuid();
-        Assert.Equal($"No member of this investigation is session {Short(stranger)}.",
+        Assert.Equal($"Session {Short(stranger)} is not in this investigation.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Relink(workspace, stranger, alpha.Root.Path, Now)));
         Assert.Equal($"Session {Short(b)} is not aligned to the investigation's time.",
             Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
+        Assert.Equal($"Session {Short(stranger)} is not in this investigation.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Place(InvestigationWorkspace.Read(workspace), stranger, 0)));
+        Assert.Equal("A session is aligned to another session's clock, not to its own.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, b, 0, b, Seconds(1), 1_000_000, 10, null, Now)));
         InvestigationWorkspace.Align(workspace, b, 0, a, Seconds(5), 1_000_000, 10, null, Now);
         Assert.StartsWith($"Session {Short(a)} is the investigation's time reference: its clock is the investigation's time, so it is "
             + "not aligned", Said<InvalidOperationException>(() => InvestigationWorkspace.Align(workspace, a, 0, b, 0, 1_000, 1, null, Now)),
@@ -1445,7 +1449,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Guid nobody = Guid.NewGuid();
         File.WriteAllText(workspace, text.Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{nobody}\"",
             StringComparison.Ordinal));
-        Assert.Equal($"{workspace} is not a readable investigation: its time reference {Short(nobody)} is no member.",
+        Assert.Equal($"{workspace} is not a readable investigation: its time reference {Short(nobody)} is not one of its sessions.",
             Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)));
         File.WriteAllText(workspace, "[1, 2]");
         Assert.Equal($"{workspace} is not a readable investigation: it holds no object of fields.",
@@ -1506,7 +1510,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         // A version 5 file aligned every member to the time reference, and is refused whole when it seems not to.
         string text = File.ReadAllText(workspace);
         File.WriteAllText(workspace, text.Replace($"\"{InvestigationWorkspace.Contract}\"", $"\"{InvestigationWorkspace.FifthContract}\"", StringComparison.Ordinal));
-        Assert.Contains("is aligned to a member that is not the investigation's time reference", Assert.Throws<InvalidDataException>(() =>
+        Assert.Contains("is aligned to a session that is not the investigation's time reference", Assert.Throws<InvalidDataException>(() =>
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 

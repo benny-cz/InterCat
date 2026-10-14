@@ -72,7 +72,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.SessionId != end.SessionId))
             {
-                throw new InvalidOperationException($"No member of this investigation is session {Short(end.SessionId)}.");
+                throw new InvalidOperationException($"Session {Short(end.SessionId)} is not in this investigation.");
             }
 
             if (!TransportConnection.IsKey(end.Key))
@@ -175,7 +175,7 @@ public static partial class InvestigationWorkspace
         foreach (WorkspaceJoin join in workspace.Joins)
         {
             string? problem = !Enum.IsDefined(join.Decision) ? "is of no known decision"
-                : !members.Contains(join.First.SessionId) || !members.Contains(join.Second.SessionId) ? "names no member"
+                : !members.Contains(join.First.SessionId) || !members.Contains(join.Second.SessionId) ? "names a session not in it"
                 : join.First.SessionId == join.Second.SessionId ? "joins one session's connections"
                 : !TransportConnection.IsKey(join.First.Key) || !TransportConnection.IsKey(join.Second.Key) ? "names no connection"
                 : (join.Decision == WorkspaceJoinDecision.Withdrawn) != (join.DecidedUnder.Count == 0)

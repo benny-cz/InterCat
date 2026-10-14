@@ -303,7 +303,7 @@ internal static class Icat
         ConsoleUi.Line("  icat workspace <new|add|show|relink|alias|align|compare|correlate|timeline|join|same-host");
         ConsoleUi.Line("                 |translate|note|view|package> <workspace> ... [--json]");
         ConsoleUi.Line("      An investigation over separately captured sessions: one file naming each by identity, one");
-        ConsoleUi.Line("      member per capture, never writing to a session. show says where each member stands;");
+        ConsoleUi.Line("      session per capture, never writing to one. show says where each session stands;");
         ConsoleUi.Line("      align, compare and correlate place them in one time, which timeline draws; join,");
         ConsoleUi.Line("      same-host and translate keep a person's decisions; note and view annotate it; package");
         ConsoleUi.Line("      copies it with its sessions.");

@@ -117,7 +117,7 @@ public sealed record WorkspaceInstant(
     public string? Why(string session, IFormatProvider? culture = null) => Gap switch
     {
         WorkspaceTimeGap.None => null,
-        WorkspaceTimeGap.NoTimeReference => "no member is aligned, so the investigation has no time across members",
+        WorkspaceTimeGap.NoTimeReference => "no session is aligned, so the investigation has no time across its sessions",
         WorkspaceTimeGap.NotAligned => $"{session} is not aligned to the investigation's time",
         _ when UnknownThrough is { } through => $"{session} is aligned through session {through.ToString("N")[..8]}, whose drift "
             + "is not stated, so its uncertainty there is unknown",
@@ -552,7 +552,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         if (workspace.Members.All(member => member.SessionId != sessionId))
         {
-            throw new InvalidOperationException($"No member of this investigation is session {Short(sessionId)}.");
+            throw new InvalidOperationException($"Session {Short(sessionId)} is not in this investigation.");
         }
 
         if (ChainOf(workspace, sessionId) is not { } chain)
@@ -609,13 +609,13 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.SessionId != named))
             {
-                throw new InvalidOperationException($"No member of this investigation is session {Short(named)}.");
+                throw new InvalidOperationException($"Session {Short(named)} is not in this investigation.");
             }
         }
 
         if (sessionId == referenceSessionId)
         {
-            throw new InvalidOperationException("A member is aligned to another member's clock, not to its own.");
+            throw new InvalidOperationException("A session is aligned to another session's clock, not to its own.");
         }
 
         if (workspace.TimeReference is not { } reference)
@@ -626,7 +626,7 @@ public static partial class InvestigationWorkspace
         if (sessionId == reference)
         {
             throw new InvalidOperationException($"Session {Short(reference)} is the investigation's time reference: its clock is the "
-                + "investigation's time, so it is not aligned; align the other members to it.");
+                + "investigation's time, so it is not aligned; align the other sessions to it.");
         }
 
         if (ChainOf(workspace, referenceSessionId) is not { } chain)
@@ -638,7 +638,7 @@ public static partial class InvestigationWorkspace
         if (chain.Links.Any(link => link.Clock == sessionId))
         {
             throw new InvalidOperationException($"Session {Short(referenceSessionId)} is aligned through session {Short(sessionId)}, so "
-                + "aligning that session to it would make each the other's reference. Align it to another member.");
+                + "aligning that session to it would make each the other's reference. Align it to another session.");
         }
     }
 
@@ -708,7 +708,7 @@ public static partial class InvestigationWorkspace
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.TimeReference is { } reference && !members.Contains(reference))
         {
-            return $"its time reference {Short(reference)} is no member";
+            return $"its time reference {Short(reference)} is not one of its sessions";
         }
 
         if (workspace.Alignments.GroupBy(alignment => alignment.Revision).FirstOrDefault(group => group.Key < 1 || group.Count() > 1)
@@ -722,7 +722,7 @@ public static partial class InvestigationWorkspace
             bool aligning = alignment.Mode is WorkspaceAlignmentMode.Manual or WorkspaceAlignmentMode.SameBoot
                 or WorkspaceAlignmentMode.WallClock;
             bool wallClock = alignment.Mode == WorkspaceAlignmentMode.WallClock;
-            string? problem = !members.Contains(alignment.SessionId) ? "names no member"
+            string? problem = !members.Contains(alignment.SessionId) ? "names a session not in it"
                 : !aligning && alignment.Mode != WorkspaceAlignmentMode.Withdrawn ? "is of no known mode"
                 : !aligning ? (alignment.ReferenceSessionId is not null || alignment.SessionNanoseconds is not null
                     || alignment.ReferenceNanoseconds is not null || alignment.WithinNanoseconds is not null
@@ -731,7 +731,7 @@ public static partial class InvestigationWorkspace
                     || alignment.GapNanoseconds is not null || alignment.SecondSessionNanoseconds is not null
                     || alignment.SecondReferenceNanoseconds is not null ? "withdraws an alignment and states one" : null)
                 : alignment.ReferenceSessionId is not { } other || !members.Contains(other) || other == alignment.SessionId
-                    ? "is aligned to no other member"
+                    ? "is aligned to no other session of it"
                 : alignment.SessionNanoseconds is null || alignment.ReferenceNanoseconds is null || alignment.WithinNanoseconds is not >= 0
                     ? "states no anchor or bound"
                 : alignment.DriftPartsPerMillion is { } drift && (!double.IsFinite(drift) || drift < 0) ? "states a drift that is no rate"
@@ -771,19 +771,19 @@ public static partial class InvestigationWorkspace
 
                 if (member.SessionId == time)
                 {
-                    return $"the time reference {Short(time)} is aligned to another member";
+                    return $"the time reference {Short(time)} is aligned to another session";
                 }
 
                 // Aligning through another member arrived with the sixth version (revision 265).
                 if (VersionOf(workspace) < 6 && active.ReferenceSessionId != time)
                 {
-                    return $"session {Short(member.SessionId)} is aligned to a member that is not the investigation's time reference, "
+                    return $"session {Short(member.SessionId)} is aligned to a session that is not the investigation's time reference, "
                         + $"which a {workspace.Contract} file does not";
                 }
 
                 if (ChainOf(workspace, member.SessionId) is null)
                 {
-                    return $"session {Short(member.SessionId)} is aligned to a member with no place in the investigation's time, or "
+                    return $"session {Short(member.SessionId)} is aligned to a session with no place in the investigation's time, or "
                         + "through itself";
                 }
             }

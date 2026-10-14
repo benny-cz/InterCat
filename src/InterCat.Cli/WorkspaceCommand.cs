@@ -561,9 +561,9 @@ internal static partial class WorkspaceCommand
         if (rate is null)
         {
             ConsoleUi.Warn(second is null
-                ? "No drift bound was stated, so away from the anchor this member's uncertainty is unknown and no order is stated "
+                ? "No drift bound was stated, so away from the anchor this session's uncertainty is unknown and no order is stated "
                     + "there. --drift-ppm bounds how fast the two clocks drift apart."
-                : "No bound on the rate's wander was stated, so away from the two instants this member's uncertainty is unknown "
+                : "No bound on the rate's wander was stated, so away from the two instants this session's uncertainty is unknown "
                     + "and no order is stated there. --drift-ppm bounds how far the rate may wander from the one they measure.");
         }
 
@@ -1104,16 +1104,17 @@ internal static partial class WorkspaceCommand
         IReadOnlyList<WorkspaceHost> hosts = InvestigationWorkspace.Hosts(workspace);
         List<string> caveats =
         [
-            "A member is named by its session and the capture its journal records, and one capture is one member, so no "
+            "Each session is named by its identity and the capture its journal records, and one capture is one session of the "
+                + "investigation, so no "
                 + "record is counted twice. Showing an investigation opens each session to learn what it is and writes to none.",
-            "Members are grouped by host identity: a live capture's is derived from its installation and its machine's name "
+            "Sessions are grouped by host identity: a live capture's is derived from its installation and its machine's name "
                 + "and build, an import's from its file. Equal identities are evidence of one host, never proof, and no name "
                 + "or address makes two of them one.",
             workspace.TimeReference is null
-                ? "No member is aligned, so the investigation has no time across members and states no order, latency or pairing "
+                ? "No session is aligned, so the investigation has no time across its sessions and states no order, latency or pairing "
                     + "between them: their uncertainty is unknown, not zero."
-                : "The investigation's time is its reference member's clock. An aligned member's instants are placed in it with "
-                    + "the uncertainty its alignment states, and an order across members is stated only beyond it; an "
+                : "The investigation's time is its reference session's clock. An aligned session's instants are placed in it with "
+                    + "the uncertainty its alignment states, and an order across sessions is stated only beyond it; an "
                     + "alignment is an annotation and changes no timestamp.",
         ];
         InvestigationOverlaps overlaps = InvestigationTimeline.OverlapsRead(path, cancellationToken);
@@ -1174,16 +1175,16 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Heading("Investigation");
         ConsoleUi.Field("File", document.Path);
         ConsoleUi.Field("Updated", document.UpdatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture));
-        ConsoleUi.Field("Members", document.Members.Count == 0
+        ConsoleUi.Field("Sessions", document.Members.Count == 0
             ? "none yet"
             : string.Join(", ", document.Members.GroupBy(member => member.State).OrderBy(group => group.Key)
                 .Select(group => string.Create(CultureInfo.CurrentCulture, $"{group.Count():N0} {group.Key.ToString().ToLowerInvariant()}"))));
         int others = document.Members.Count - 1;
         ConsoleUi.Field("Time", document.TimeReference is { } reference
             ? $"session {Short(reference)}'s clock; " + string.Create(CultureInfo.CurrentCulture,
-                $"{document.Members.Count(member => member.Alignment is not null):N0} of {others:N0} other {(others == 1 ? "member" : "members")} aligned to it")
+                $"{document.Members.Count(member => member.Alignment is not null):N0} of {others:N0} other {(others == 1 ? "session" : "sessions")} aligned to it")
                 + (document.Members.Any(member => member.Through.Count > 0) ? ", directly or through another" : string.Empty)
-            : "none: no member is aligned, so no order across members is stated");
+            : "none: no session is aligned, so no order across sessions is stated");
         ConsoleUi.Line();
         if (document.Members.Count == 0)
         {
@@ -1351,7 +1352,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line();
         ConsoleUi.Heading("Hosts");
         ConsoleUi.Table(
-            ["Host", "Name", "Members", "One host with, by a person"],
+            ["Host", "Name", "Sessions", "One host with, by a person"],
             [.. document.Hosts.Select(host => (IReadOnlyList<string>)
             [
                 host.HostId.ToString("N"),
@@ -1435,38 +1436,38 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Line($"An investigation over separately captured sessions ({InvestigationWorkspace.Contract}, ADR-038): one file that names each");
         ConsoleUi.Line("session by identity - its session and the capture its journal records - and never writes to one.");
         ConsoleUi.Line("  new      makes an empty investigation; a name without an extension gets .icat-workspace.");
-        ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one member: a copy of a");
-        ConsoleUi.Line("           member, or another session of its capture, is refused.");
-        ConsoleUi.Line("  show     resolves each member where it was last found: present, advanced (a newer generation");
+        ConsoleUi.Line("  add      adds sessions at their current generation. A capture is one session of it: a copy of");
+        ConsoleUi.Line("           a session already in it, or another session of its capture, is refused.");
+        ConsoleUi.Line("  show     resolves each session where it was last found: present, advanced (a newer generation");
         ConsoleUi.Line("           was published), replaced (an older or separately derived one is there), missing,");
-        ConsoleUi.Line("           different or unreadable, and why. Exits 1 when any member is not present.");
-        ConsoleUi.Line("  relink   points a member at a new path, or at its own to select what is there, only when the");
-        ConsoleUi.Line("           session there is that member. <session> is its identity or a unique leading part.");
-        ConsoleUi.Line("  alias    names a member's host for people; one name never names two host identities.");
+        ConsoleUi.Line("           different or unreadable, and why. Exits 1 when any session is not present.");
+        ConsoleUi.Line("  relink   points a session at a new path, or at its own to select what is there, only when the");
+        ConsoleUi.Line("           session there is that one. <session> is its identity or a unique leading part.");
+        ConsoleUi.Line("  alias    names a session's host for people; one name never names two host identities.");
         ConsoleUi.Line("           <host> is its identity, a unique leading part, or its current name.");
-        ConsoleUi.Line("  align    states that an instant of one member is an instant of another, within a bound: the");
-        ConsoleUi.Line("           first alignment makes the other member's clock the investigation's time. --drift-ppm");
+        ConsoleUi.Line("  align    states that an instant of one session is an instant of another, within a bound: the");
+        ConsoleUi.Line("           first alignment makes the other session's clock the investigation's time. --drift-ppm");
         ConsoleUi.Line("           bounds how fast the clocks drift apart; without it the uncertainty away from the");
         ConsoleUi.Line("           anchor is unknown. Seconds are session time; a duration takes ns, us, ms or s. A second");
         ConsoleUi.Line("           pair of instants, well apart from the first, measures the clocks' rate; --drift-ppm then");
         ConsoleUi.Line("           bounds how far that rate may wander, and without it only the two instants are placed.");
         ConsoleUi.Line("           --same-boot aligns two captures that recorded one boot exactly: they read one counter.");
-        ConsoleUi.Line("           <reference> is the time reference, or any member placed in its time: a member aligned");
-        ConsoleUi.Line("           through another is placed through both, and two members aligned through one compare as");
+        ConsoleUi.Line("           <reference> is the time reference, or any session placed in its time: a session aligned");
+        ConsoleUi.Line("           through another is placed through both, and two sessions aligned through one compare as");
         ConsoleUi.Line("           that shared alignment allows.");
         ConsoleUi.Line("           --wall-clock anchors on the two captures' recorded wall-clock samples; --sync states how");
         ConsoleUi.Line("           closely their wall clocks agreed, which no sample can measure, and --drift-ppm bounds");
         ConsoleUi.Line("           their counters' drift, over the time between the samples and away from them.");
         ConsoleUi.Line("  compare  places two instants in the investigation's time and states their order only beyond");
         ConsoleUi.Line("           their combined uncertainty; nothing when an instant has no time or its uncertainty");
-        ConsoleUi.Line("           is unknown. Two instants of one member are ordered exactly.");
+        ConsoleUi.Line("           is unknown. Two instants of one session are ordered exactly.");
         ConsoleUi.Line("  correlate proposes candidate joins: a connection one session holds one end of, and another");
         ConsoleUi.Line("           session its mirrored end, where their lifetimes can overlap in the investigation's");
         ConsoleUi.Line("           time. A candidate is never established; its evidence and alternatives are listed.");
-        ConsoleUi.Line("  timeline draws the merged time as the Desktop's investigation window does: each member's records");
+        ConsoleUi.Line("  timeline draws the merged time as the Desktop's investigation window does: each session's records");
         ConsoleUi.Line("           over --columns (160 unless given) of the investigation's time, or of --interval in its");
         ConsoleUi.Line("           100-nanosecond ticks or times with their unit (1.5s:2.5s), where its alignment places them,");
-        ConsoleUi.Line("           with what its capture covered there, in the window's words; a member with no place says why.");
+        ConsoleUi.Line("           with what its capture covered there, in the window's words; a session with no place says why.");
         ConsoleUi.Line("  join     records your decision about candidate <n> of correlate's list: accepted as one");
         ConsoleUi.Line("           connection, rejected, or withdrawn; each is a kept revision, and one made before the");
         ConsoleUi.Line("           alignments changed is flagged for review.");

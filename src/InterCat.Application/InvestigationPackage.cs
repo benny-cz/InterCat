@@ -118,7 +118,7 @@ public static class InvestigationPackage
                 if (measured.SessionId != resolution.Member.SessionId)
                 {
                     throw new InvalidDataException($"Session {Short(measured.SessionId)} is at {resolution.FullPath} now, not "
-                        + $"member {Short(resolution.Member.SessionId)}. Look at the investigation again before packaging it.");
+                        + $"session {Short(resolution.Member.SessionId)}. Look at the investigation again before packaging it.");
                 }
             }
 
@@ -138,7 +138,7 @@ public static class InvestigationPackage
         foreach (Guid named in only ?? [])
         {
             InvestigationPackageMemberPreview member = preview.Members.FirstOrDefault(known => known.SessionId == named)
-                ?? throw new InvalidOperationException($"No member of this investigation is session {Short(named)}.");
+                ?? throw new InvalidOperationException($"Session {Short(named)} is not in this investigation.");
             if (member.Measured is null)
             {
                 throw new InvalidOperationException($"Session {Short(named)} is "
@@ -433,7 +433,7 @@ public static class InvestigationPackage
         stem = stem.Length == 0 ? "session" : stem[..Math.Min(stem.Length, 48)];
         string name = $"{Short(member.SessionId)}-{stem}";
         return used.Add(name) ? name : used.Add(name = $"{member.SessionId:N}-{stem}") ? name
-            : throw new InvalidOperationException($"Two members would be copied to {name}.");
+            : throw new InvalidOperationException($"Two sessions would be copied to {name}.");
     }
 
     private static SessionStore Open(string directory) => SessionStore.OpenForViewing(LocalOwnedDirectory.Open(directory));

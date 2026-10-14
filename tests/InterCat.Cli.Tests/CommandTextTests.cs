@@ -116,16 +116,24 @@ public sealed class CommandTextTests : IDisposable
             StringComparison.Ordinal);
         Assert.Contains("A session as recorded goes unredacted and a redacted package as it is,", help, StringComparison.Ordinal);
         Assert.Contains("and the file's names, notes and translated endpoints as they were written.", help, StringComparison.Ordinal);
-        Assert.Contains("with what its capture covered there, in the window's words; a member with no place says why.", help,
+        Assert.Contains("with what its capture covered there, in the window's words; a session with no place says why.", help,
             StringComparison.Ordinal);
         Assert.DoesNotContain("It is unredacted.", help, StringComparison.Ordinal);
 
         // What it makes, aligns and compares is the investigation, as the window calls it; the command keeps its name.
         Assert.Contains("new      makes an empty investigation; a name without an extension gets .icat-workspace.", help,
             StringComparison.Ordinal);
-        Assert.Contains("first alignment makes the other member's clock the investigation's time.", help, StringComparison.Ordinal);
+        Assert.Contains("first alignment makes the other session's clock the investigation's time.", help, StringComparison.Ordinal);
         Assert.Contains("compare  places two instants in the investigation's time", help, StringComparison.Ordinal);
         Assert.DoesNotContain("workspace's time", help, StringComparison.Ordinal);
+
+        // Its sessions are sessions, as the window lists them; member is only the file's word for one.
+        Assert.Contains("show     resolves each session where it was last found", help, StringComparison.Ordinal);
+        Assert.DoesNotContain("member", help, StringComparison.OrdinalIgnoreCase);
+        (_, string overview, _) = await Run("--help");
+        Assert.Contains("session per capture, never writing to one. show says where each session stands;", overview,
+            StringComparison.Ordinal);
+        Assert.DoesNotContain("member", overview, StringComparison.OrdinalIgnoreCase);
     }
 
     [Fact(DisplayName = "§20.1: a compaction with nothing to coalesce and a recovery review with nothing to repair each say so in words")]
