@@ -2388,6 +2388,113 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: an investigation action not offered says why on itself, and Enter on a session not where it was last found says so")]
+    public async Task AnActionNotOfferedSaysWhy()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            // With no session yet, each action on one says to add one, and the rest what they wait for.
+            InvestigationWindow empty = main.ShowInvestigation(workspace);
+            WaitFor(() => empty.View is not null);
+            foreach (string action in new[] { "Open in InterCat", "Relink…", "Align…", "Withdraw alignment", "One host…" })
+                Assert.Equal("Add a session first.", WhyNot(empty, action));
+            Assert.Equal("Add a session first: a package holds the investigation with its sessions.", WhyNot(empty, "Package…"));
+            empty.ShowTab(1);
+            Assert.Equal("Find candidate joins first.", WhyNot(empty, "Reject"));
+            empty.ShowTab(2);
+            await empty.ShowTimelineAsync();
+            Assert.Equal("Add a session first.", WhyNot(empty, "Compare instants…"));
+            Assert.Equal("No session has a place in the investigation's time yet: align one to another first.", WhyNot(empty, "Zoom in"));
+            Assert.Equal("Choose a column of the timeline first.", WhyNot(empty, "Open this column"));
+            empty.ShowTab(3);
+            Assert.Equal("Add a note first.", WhyNot(empty, "Reword…"));
+            empty.Close();
+
+            // Two sessions of two hosts, the server's aligned to the client's clock, and a note about the whole investigation.
+            Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed).SessionId;
+            Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed).SessionId;
+            InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000_000, 50, null, Committed);
+            _ = InvestigationWorkspace.AddNote(workspace, "the first look", null, Committed);
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is { Members.Count: 2, Notes.Count: 1 });
+            ListBox sessions = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+
+            // The time reference is aligned to nothing, so neither aligning nor withdrawing is offered for it; the session
+            // aligned to it is offered both, each saying what it does where its name does not.
+            sessions.SelectedIndex = 0;
+            Assert.Equal($"Session {Short(a)} is the investigation's time reference: the other sessions are aligned to its clock.",
+                WhyNot(window, "Align…"));
+            Assert.Equal($"Session {Short(a)} is the investigation's time reference, so it has no alignment to withdraw.",
+                WhyNot(window, "Withdraw alignment"));
+            sessions.SelectedIndex = 1;
+            Assert.Null(Offered(window, "Align…"));
+            Assert.Equal("Withdraw the selected session's alignment", Offered(window, "Withdraw alignment"));
+            Assert.Equal("Say whether the selected session's host is one host with another", Offered(window, "One host…"));
+            Assert.Equal("Open the selected session in InterCat", Offered(window, "Open in InterCat"));
+
+            // A join is decided once each way: with none made there is none to withdraw, and one made is not made again.
+            window.ShowTab(1);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Find candidate joins first.", WhyNot(window, "Accept as one connection"));
+            await window.FindCandidatesAsync();
+            Assert.Equal("Select a candidate join first.", WhyNot(window, "Reject"));
+            window.SelectCandidate(0);
+            Assert.Equal("You have made no decision about this candidate to withdraw.", WhyNot(window, "Withdraw decision"));
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
+            window.SelectCandidate(0);
+            Assert.Equal("You accepted this candidate as one connection already.", WhyNot(window, "Accept as one connection"));
+            Assert.Equal("Withdraw your decision about the selected candidate", Offered(window, "Withdraw decision"));
+
+            // The whole investigation shown, it is neither zoomed out nor shown whole again; the column the timeline's keys
+            // stand on opens.
+            window.ShowTab(2);
+            await window.ShowTimelineAsync();
+            Assert.Equal("The timeline shows the whole investigation already.", WhyNot(window, "Zoom out"));
+            Assert.Equal("The timeline shows the whole investigation already.", WhyNot(window, "Whole investigation"));
+            Assert.Equal("Zoom the timeline in around the chosen column", Offered(window, "Zoom in"));
+            Assert.Equal("Open the chosen column's records in InterCat", Offered(window, "Open this column"));
+
+            // A note about the whole investigation has no place on the timeline; a note is reworded once one is chosen.
+            window.ShowTab(3);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal("Select a note first.", WhyNot(window, "Reword…"));
+            window.SelectNote(0);
+            Assert.Equal("That note is about the whole investigation, not an instant, so the timeline has no place for it.",
+                WhyNot(window, "Show on the timeline"));
+            Assert.Null(Offered(window, "Reword…"));
+
+            // A session not where it was last found does not open, and says why on Open and when Enter asks it to open.
+            window.ShowTab(0);
+            Directory.Move(Path.Combine(root.Path, "server"), Path.Combine(root.Path, "server-moved"));
+            await window.RefreshAsync();
+            sessions.SelectedIndex = 1;
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            string notThere = $"Session {Short(b)} is not where it was last found: relink it to open it.";
+            Assert.Equal(notThere, WhyNot(window, "Open in InterCat"));
+            Assert.True(sessions.ContainerFromIndex(1)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.Equal(notThere, Named<TextBlock>(window, "Investigation status").Text);
+
+            // An investigation that no longer reads offers nothing of what it held, and says why.
+            File.WriteAllText(workspace, "{");
+            await window.RefreshAsync();
+            const string unread = "The investigation could not be read: Refresh reads it again.";
+            Assert.Equal(unread, WhyNot(window, "Open in InterCat"));
+            Assert.Equal(unread, WhyNot(window, "Package…"));
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§8.4: Package asks nothing when no session is there to copy, nor when the investigation no longer reads, and says why")]
     public void PackageSaysWhyThereIsNothingToPackage()
     {
@@ -2776,6 +2883,34 @@ public sealed class InvestigationWindowTests
     }
 
     private static string Short(Guid identity) => identity.ToString("N")[..8];
+
+    /// <summary>
+    /// Why the shown action labelled <paramref name="label"/> is not offered: its tooltip, shown on the disabled button, and
+    /// its help text, which say the same.
+    /// </summary>
+    private static string? WhyNot(Window window, string label)
+    {
+        Button button = Labelled(window, label);
+        Assert.False(button.IsEnabled);
+        Assert.True(ToolTip.GetShowOnDisabled(button));
+        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
+        return AutomationProperties.GetHelpText(button);
+    }
+
+    /// <summary>What the shown action labelled <paramref name="label"/> says it does, offered; null where its name says it.</summary>
+    private static string? Offered(Window window, string label)
+    {
+        Button button = Labelled(window, label);
+        Assert.True(button.IsEnabled);
+        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
+        return AutomationProperties.GetHelpText(button);
+    }
+
+    private static Button Labelled(Window window, string label)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        return window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
+    }
 
     private static void WaitFor(Func<bool> condition)
     {

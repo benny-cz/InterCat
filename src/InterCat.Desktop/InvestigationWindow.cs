@@ -228,6 +228,18 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         AutomationProperties.SetHelpText(keysButton, "List every key this window takes, by where it acts");
         AccessibleItems.Name(members);
         AccessibleItems.Name(candidates);
+
+        // An action not offered says why on itself: its reason is its tooltip, shown on the disabled button, and its help
+        // text, so the pointer and a screen reader find it where the action is (R15). Offered, it says what it does.
+        foreach (Button offered in new[]
+                 {
+                     open, relink, alignButton, withdraw, oneHost, acceptJoin, rejectJoin, withdrawJoin, rewordNote, removeNote,
+                     showNote, compareInstants, zoomIn, zoomOut, zoomWhole, openColumn, refreshTimeline, package,
+                 })
+        {
+            ToolTip.SetShowOnDisabled(offered, true);
+            if (AutomationProperties.GetHelpText(offered) is { } does) explained[offered] = does;
+        }
         members.ItemTemplate = new FuncDataTemplate<InvestigationMemberRow>((row, _) => new StackPanel
         {
             Margin = new Thickness(2, 4),
@@ -303,7 +315,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         timelineChart.CursorMoved += (_, _) =>
         {
             columnReadout.Text = timelineChart.Describe() ?? string.Empty;
-            openColumn.IsEnabled = timelineChart.ChosenColumn is not null && openSessionAt is not null;
+            Offer(openColumn, timelineChart.ChosenColumn is null ? ChooseAColumn : openSessionAt is null ? NoInterCat : null);
         };
         acceptJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
         rejectJoin.Click += (_, _) => _ = DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
@@ -491,6 +503,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         grid.Children.Add(footer);
         Content = grid;
 
+        ShowSelected();
+        ShowSelectedNote();
+        ShowSelectedCandidate();
+        OfferPackage();
+        Offer(compareInstants, NotRead);
+        Offer(openColumn, ChooseAColumn);
+        foreach (Button zooming in new[] { zoomIn, zoomOut, zoomWhole }) Offer(zooming, "The timeline is being drawn.");
         Opened += (_, _) => _ = RefreshAsync(opening);
 
         // A control that loses the keyboard to nothing - a button disabled by what it did, a row its list's new rows replace -
@@ -509,6 +528,42 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     internal InvestigationCandidates? Candidates { get; private set; }
 
     private const string PackageName = "Package this investigation with its sessions, to share it";
+
+    /// <summary>Why Open this column waits: no column of the timeline is chosen.</summary>
+    private const string ChooseAColumn = "Choose a column of the timeline first.";
+
+    /// <summary>Why an action opening a session waits: the window was given no InterCat window to open it in.</summary>
+    private const string NoInterCat = "InterCat's window is not open to show it in.";
+
+    /// <summary>What each action that is not always offered does, said while it is; none where its name says it.</summary>
+    private readonly Dictionary<Button, string> explained = [];
+
+    /// <summary>Whether the investigation's file could not be read when it was last read.</summary>
+    private bool unreadable;
+
+    /// <summary>
+    /// Why an action on the investigation's contents waits while none is shown: the file is still being read, or could not
+    /// be; null once it is shown.
+    /// </summary>
+    private string? NotRead => View is not null ? null
+        : unreadable ? "The investigation could not be read: Refresh reads it again."
+        : "The investigation is still being read.";
+
+    /// <summary>
+    /// Offers an action, or says why it is not offered: the reason is the disabled button's tooltip and its help text.
+    /// Offered, it says what it does, where its name does not already say it.
+    /// </summary>
+    private void Offer(Button button, string? whyNot)
+    {
+        button.IsEnabled = whyNot is null;
+        string? said = whyNot ?? explained.GetValueOrDefault(button);
+        ToolTip.SetTip(button, said);
+        AutomationProperties.SetHelpText(button, said);
+    }
+
+    /// <summary>Package, offered while the investigation names a session or a package is being made, or why not.</summary>
+    private void OfferPackage() => Offer(package, packaging is not null || View is { Members.Count: > 0 } ? null
+        : NotRead ?? "Add a session first: a package holds the investigation with its sessions.");
 
     /// <summary>The timeline as last drawn; null before it was first shown.</summary>
     internal InvestigationTimelineView? Timeline { get; private set; }
@@ -534,7 +589,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 
     private async Task LoadTimelineAsync()
     {
-        refreshTimeline.IsEnabled = false;
+        Offer(refreshTimeline, "The timeline is being drawn.");
         timelineWords.Text = "Placing each session on the investigation's time…";
         try
         {
@@ -569,8 +624,12 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             whole = view.Whole;
 
             timelineChart.Show(view, labels);
-            zoomIn.IsEnabled = view.Interval is { } shown && shown.EndTicks - shown.StartTicks > 200;
-            zoomOut.IsEnabled = zoomWhole.IsEnabled = zoom is not null;
+            Offer(zoomIn, view.Interval is not { } shown
+                ? "No session has a place in the investigation's time yet: align one to another first."
+                : shown.EndTicks - shown.StartTicks > 200 ? null : "The timeline shows as little of the investigation's time as it can.");
+            string? showsWhole = zoom is null ? "The timeline shows the whole investigation already." : null;
+            Offer(zoomOut, showsWhole);
+            Offer(zoomWhole, showsWhole);
             timelineWords.Text = string.Join("\n", sentences);
             timelineLoaded = true;
         }
@@ -584,7 +643,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         }
         finally
         {
-            refreshTimeline.IsEnabled = true;
+            Offer(refreshTimeline, null);
         }
     }
 
@@ -777,6 +836,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             }
 
             View = view;
+            unreadable = false;
             ShowPanes(view.Panes);
             summary.Text = view.Summary;
             time.Text = view.Time;
@@ -799,8 +859,8 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             }
 
             ShowSelectedNote();
-            package.IsEnabled = packaging is not null || view.Members.Count > 0;
-            compareInstants.IsEnabled = view.Members.Count > 0;
+            OfferPackage();
+            Offer(compareInstants, view.Members.Count > 0 ? null : "Add a session first.");
             int unresolved = view.Members.Count(row => !row.HoldsItsCapture);
             status.Text = message ?? (view.Members.Count == 0
                 ? "This investigation holds no session yet: add the sessions it covers."
@@ -825,10 +885,12 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         {
             if (closed) return;
             View = null;
+            unreadable = true;
             ShowPanes(null);
             members.ItemsSource = Array.Empty<InvestigationMemberRow>();
-            package.IsEnabled = packaging is not null;
-            compareInstants.IsEnabled = false;
+            OfferPackage();
+            Offer(compareInstants, NotRead);
+            ShowSelectedNote();
             summary.Text = string.Empty;
             time.Text = string.Empty;
             status.Text = "This investigation could not be read: " + InvestigationTrouble.Why(path, exception);
@@ -1007,10 +1069,18 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 
     private void ShowSelectedCandidate()
     {
-        InvestigationCandidateRow? row = candidates.SelectedItem as InvestigationCandidateRow;
-        acceptJoin.IsEnabled = row is not null && row.Decision != WorkspaceJoinDecision.Accepted;
-        rejectJoin.IsEnabled = row is not null && row.Decision != WorkspaceJoinDecision.Rejected;
-        withdrawJoin.IsEnabled = row?.Decision is not null;
+        if (candidates.SelectedItem is not InvestigationCandidateRow row)
+        {
+            string none = Candidates is null ? "Find candidate joins first."
+                : Candidates.Rows.Count == 0 ? "No candidate join was found to decide on."
+                : "Select a candidate join first.";
+            foreach (Button deciding in new[] { acceptJoin, rejectJoin, withdrawJoin }) Offer(deciding, none);
+            return;
+        }
+
+        Offer(acceptJoin, row.Decision == WorkspaceJoinDecision.Accepted ? "You accepted this candidate as one connection already." : null);
+        Offer(rejectJoin, row.Decision == WorkspaceJoinDecision.Rejected ? "You rejected this candidate already." : null);
+        Offer(withdrawJoin, row.Decision is null ? "You have made no decision about this candidate to withdraw." : null);
     }
 
     /// <summary>
@@ -1239,8 +1309,8 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             if (!closed)
             {
                 package.Content = "Package…";
-                package.IsEnabled = View is { Members.Count: > 0 };
                 AutomationProperties.SetName(package, PackageName);
+                OfferPackage();
             }
         }
     }
@@ -1456,7 +1526,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         if (notesList.SelectedItem is not InvestigationNoteRow row) return;
         if (row.At is null)
         {
-            status.Text = "That note is about the whole investigation, not an instant, so the timeline has no place for it.";
+            status.Text = NoPlaceForNote;
             return;
         }
 
@@ -1538,8 +1608,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private void ShowSelectedNote()
     {
         InvestigationNoteRow? row = notesList.SelectedItem as InvestigationNoteRow;
-        rewordNote.IsEnabled = removeNote.IsEnabled = row is not null;
-        showNote.IsEnabled = row is { At: not null };
+        string? none = NotRead ?? (View is { Notes.Count: 0 } ? "Add a note first." : row is null ? "Select a note first." : null);
+        Offer(rewordNote, none);
+        Offer(removeNote, none);
+        Offer(showNote, none ?? (row is { At: null } ? NoPlaceForNote : null));
     }
 
     private async Task AlignSelectedAsync()
@@ -1554,7 +1626,14 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 
     private async Task OpenSelectedAsync()
     {
-        if (members.SelectedItem is not InvestigationMemberRow { HoldsItsCapture: true } row || openSession is null) return;
+        if (members.SelectedItem is not InvestigationMemberRow row || openSession is null) return;
+        if (!row.HoldsItsCapture)
+        {
+            // Enter and a double click say why a session not where it was last found does not open, as Open does.
+            status.Text = NotWhereItWas(row);
+            return;
+        }
+
         status.Text = $"Opening {row.FullPath}…";
         string? refused = await openSession(row.FullPath, row.SessionId);
         if (!closed)
@@ -1564,6 +1643,14 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
                 : await NotOpenedAsync(row, refused);
         }
     }
+
+    /// <summary>Why a session not where it was last found does not open, and what to do.</summary>
+    private static string NotWhereItWas(InvestigationMemberRow row) =>
+        $"{row.Title.Split(',')[0]} is not where it was last found: relink it to open it.";
+
+    /// <summary>Why a note about the whole investigation is not shown on the timeline.</summary>
+    private const string NoPlaceForNote =
+        "That note is about the whole investigation, not an instant, so the timeline has no place for it.";
 
     /// <summary>
     /// Why a member did not open. Its folder is looked at again, and the sessions restated with what it holds now: one that
@@ -1689,11 +1776,28 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private void ShowSelected()
     {
         InvestigationMemberRow? row = members.SelectedItem as InvestigationMemberRow;
-        open.IsEnabled = row is { HoldsItsCapture: true } && openSession is not null;
-        relink.IsEnabled = row is not null;
-        alignButton.IsEnabled = row is { IsTimeReference: false } && View is { Members.Count: > 1 };
-        withdraw.IsEnabled = row is { IsAligned: true };
-        oneHost.IsEnabled = row is not null && View is { } shown && shown.Members.Any(other => other.HostId != row.HostId);
+        if (row is null || View is not { } shown)
+        {
+            string none = NotRead ?? (View is { Members.Count: 0 } ? "Add a session first." : "Select a session first.");
+            foreach (Button acting in new[] { open, relink, alignButton, withdraw, oneHost }) Offer(acting, none);
+        }
+        else
+        {
+            string name = row.Title.Split(',')[0];
+            Offer(open, !row.HoldsItsCapture ? NotWhereItWas(row) : openSession is null ? NoInterCat : null);
+            Offer(relink, null);
+            Offer(alignButton, shown.Members.Count < 2 ? "Add another session first: a session is aligned to another."
+                : row.IsTimeReference ? $"{name} is the investigation's time reference: the other sessions are aligned to its clock."
+                : null);
+            Offer(withdraw, row.IsAligned ? null
+                : row.IsTimeReference ? $"{name} is the investigation's time reference, so it has no alignment to withdraw."
+                : $"{name} is not aligned, so it has no alignment to withdraw.");
+            Offer(oneHost, shown.Members.Count < 2 ? "Add another session first: one host is said of two sessions."
+                : shown.Members.All(other => other.HostId == row.HostId)
+                    ? "Every session of this investigation was recorded on one host already."
+                    : null);
+        }
+
         detail.Text = row is null ? string.Empty : $"{row.Title.Split(',')[0]} {(row.HoldsItsCapture ? "is at" : "was last found at")}";
         detailPath.Text = row?.FullPath;
         ToolTip.SetTip(detailPath, row?.FullPath);

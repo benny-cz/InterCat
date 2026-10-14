@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 524 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 525 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 525 — an investigation action not offered says why (R15):**
+  - Eighteen buttons of the investigation window were disabled without a word; each now says why as its tooltip
+    on the disabled button and its help text, and what it does once offered where its name does not.
+  - Enter or a double click on a session not where it was last found said nothing; it now says to relink it.
+  - Debug and Release each ran 2,212 tests with revision 473's 93 failures and 4 skips. The test caught each of 19
+    mutations: a reason not shown on a disabled button, an explanation dropped, a tooltip or help text set apart
+    from the other, an unreadable investigation called one still being read, Open offered for a session not where it
+    was last found and Enter saying nothing for it, the time reference's align and withdraw reasons, one host
+    offered among one host's sessions, a decision offered again or a missing one offered to withdraw, a note about
+    the whole investigation offered to show, no session or note said as none chosen, the zooms at the whole
+    investigation, the zoom with no session placed, Compare instants with no session, and Open this column with its
+    column chosen.
 
 - **Revision 524 — a redacted package's record is synthetic from the window's first word (§11.3, R15, R21):**
   - The record window is told what a package's rows open: its title, heading, status, accessible names and
