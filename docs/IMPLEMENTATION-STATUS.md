@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 535 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 536 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 536 — icat recover and icat staging run whole, as a person runs them (§20.1, R18):**
+  - A publication or release refused on a session whose newest generation does not verify says so in plain words
+    and names `icat recover "<folder>"`; icat session names it too, and names icat staging with the folder.
+  - icat recover's review says what readers read, what is refused until the repair and what it keeps; after a
+    repair it no longer promises a cleanup nothing performs.
+  - icat staging's review lists every file, what it is and whether a cleanup removes it - the ownership markers a
+    confirmation removed unnamed included - and each refusal names the review that supplies what it lacks.
+  - Debug and Release each ran 2,253 tests with revision 473's 93 failures and 4 skips, and one more: a test still
+    held recover's old "No repair is needed or performed" sentence. Its assertion now holds the new one, and the
+    CLI's 96 tests passed in both configurations again. The tests caught each of 29 mutations: either half of a
+    confirmation accepted alone, by recover or staging; a review that loses what readers read, or claims to keep the
+    bytes of a pointer that is gone; a repair that claims a backup it did not make or is silent about the files it
+    kept; those files counted without their noun or as no bytes; a generation that fails called a damaged pointer;
+    icat session or a storage refusal naming recover or staging without the folder; a cleanup counting fewer files
+    than it removes, or a review leaving a marker unlisted; a cleanup saying it keeps what it kept; every row listed
+    past twelve, or the rest uncounted; files removed stated in a review; a writer's file or an unmarked one unsaid
+    or said as plural; nothing staged said as a cleanup that removes nothing; the confirmation printed unindented;
+    five files removed said as none; and a cleanup headed as a review.
 
 - **Revision 535 — icat verify re-evaluates a curated fixture's run and says what it found (I14, R18, R21):**
   - Runs rebuilt from each of the four curated transport fixtures verify to the coverage they were published with;

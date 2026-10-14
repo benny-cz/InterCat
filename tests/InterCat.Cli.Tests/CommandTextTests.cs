@@ -151,7 +151,8 @@ public sealed class CommandTextTests : IDisposable
         (InterCatExitCode reviewed, string review, _) = await Run("recover", demo.ServerSession);
         Assert.Equal(InterCatExitCode.Success, reviewed);
         Assert.Matches(@"Current pointer\s+verifies; it names generation 2", review);
-        Assert.Contains("The current pointer verifies. No repair is needed or performed.", review, StringComparison.Ordinal);
+        Assert.Contains("The current pointer verifies, so there is nothing to repair. Nothing was changed.", review,
+            StringComparison.Ordinal);
     }
 
     private static string CaptureProfileReason() =>

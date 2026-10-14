@@ -31,9 +31,9 @@ public sealed class CommandLineTests : IDisposable
         "demo",
     ];
 
-    /// <summary>The fields of icat staging's preview, whose labels run past the column a short label takes.</summary>
+    /// <summary>The fields of icat staging's review, whose labels run past the column a short label takes.</summary>
     private static readonly string[] StagingFields =
-        ["Session", "Abandoned staged files", "Marker-only files", "Active writer files", "Unmarked legacy files", "Files removed"];
+        ["Session", "Abandoned staged files", "Marker-only files", "Active writer files", "Unmarked staged files"];
 
     /// <summary>The fields an export's report states before its caveats.</summary>
     private static readonly string[] ExportFields =
@@ -215,7 +215,7 @@ public sealed class CommandLineTests : IDisposable
     [Fact(DisplayName = "§20.4: each group of a report's fields lines up, and the last group is written when its command ends")]
     public async Task AReportsFieldsLineUp()
     {
-        // The staging preview's labels run past the column a short one takes; every value still starts with the rest.
+        // The staging review's labels run past the column a short one takes; every value still starts with the rest.
         (InterCatExitCode previewed, string preview, _) = await Run("staging", session.Path);
         Assert.Equal(InterCatExitCode.Success, previewed);
         Assert.Single(StagingFields.Select(label => ValueColumn(preview, label)).Distinct());

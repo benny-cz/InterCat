@@ -472,7 +472,8 @@ internal static class SessionCommand
         {
             notes.Add(
                 "The newest generation did not verify, so this is the retained last-known-good one. Nothing was "
-                + "repaired and nothing was removed.");
+                + $"repaired and nothing was removed. icat recover \"{path}\" reviews the pointer and, once you confirm, "
+                + "re-points it to this generation, so the session can be published into again.");
         }
 
         if (store.Recovery.OrphanFiles.Count > 0)
@@ -486,8 +487,8 @@ internal static class SessionCommand
             {
                 notes.Add(
                     "Staging files are also kept: another process may have completed them and not yet committed. "
-                    + "Use icat staging to preview ownership and clean only files whose owner has let go. "
-                    + "Unmarked legacy files still need manual review.");
+                    + $"icat staging \"{path}\" lists each one, and removes, once you confirm, only those whose writer let "
+                    + "go; a file staged with no ownership marker is never removed.");
             }
         }
 
@@ -1178,7 +1179,7 @@ internal static class SessionCommand
             "Unreferenced files",
             document.Recovery.OrphanFiles.Count == 0
                 ? "none"
-                : $"{document.Recovery.OrphanFiles.Count:N0} kept, {document.Recovery.OrphanBytes:N0} B");
+                : $"{CountText.Of(document.Recovery.OrphanFiles.Count, "file")} kept, {ConsoleUi.Bytes(document.Recovery.OrphanBytes)}");
     }
 
     private static void RenderNotes(SessionDocument document)

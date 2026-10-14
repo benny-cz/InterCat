@@ -238,12 +238,12 @@ internal static class Icat
         ConsoleUi.Line("      directory, where it reopens as the same session; it says what it carries before it copies.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat recover <directory> [--confirm --expect-manifest <digest>] [--json]");
-        ConsoleUi.Line("      Reviews a damaged current pointer and a verified last-known-good generation.");
-        ConsoleUi.Line("      Only digest-bound --confirm re-points current; it preserves damaged bytes and orphans.");
+        ConsoleUi.Line("      Reviews a session whose newest generation does not verify; --confirm with the review's digest");
+        ConsoleUi.Line("      re-points it to the generation readers read in its place. No file is deleted.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat staging <directory> [--confirm --expect-set <digest>] [--json]");
-        ConsoleUi.Line("      Previews staged files and cleans only reviewed abandoned files with released owners.");
-        ConsoleUi.Line("      Active writers and unmarked legacy staging are kept for manual review.");
+        ConsoleUi.Line("      Reviews the files staged in a session; --confirm with the review's digest removes only those");
+        ConsoleUi.Line("      it listed whose writer let go. A writer's files and unmarked staging are always kept.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat retain <directory> --release-before <moment>");
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");

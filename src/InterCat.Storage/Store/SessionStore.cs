@@ -1978,8 +1978,9 @@ public sealed partial class SessionStore
             if (!string.Equals(preview.CandidateDigest, expectedCandidateDigest, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    "The abandoned staging set changed after the preview. Review it again before confirming "
-                    + "cleanup; newly abandoned files are never added to an older decision.");
+                    "The staged files this confirmation names are not the ones the session holds now, so nothing was "
+                    + "removed: a file left behind since the review is never added to an earlier decision. "
+                    + $"icat staging \"{directory.Path}\" reviews them again.");
             }
 
             var reviewed = new HashSet<string>(
@@ -2009,8 +2010,8 @@ public sealed partial class SessionStore
                 || !string.Equals(manifest.Digest, publicationBaseline.Digest, StringComparison.Ordinal))
             {
                 throw new InvalidOperationException(
-                    "The verified recovery generation changed after this store was opened. Reopen and review "
-                    + "the current recovery state before confirming repair.");
+                    "The session's verified generation changed after it was reviewed, so its pointer was not repaired. "
+                    + $"icat recover \"{directory.Path}\" reviews it again.");
             }
 
             if (!rolledBack)
@@ -2730,9 +2731,12 @@ public sealed partial class SessionStore
         (SessionManifestV1? disk, bool rolledBack, _) = Acquire(directory, measurements);
         if (rolledBack)
         {
+            // Publishing on the generation read in the pointer's place would branch from it unseen; the person repairs
+            // the pointer first, having reviewed what that keeps (§20.1).
             throw new InvalidOperationException(
-                "The current pointer failed verification and opening selected last-known-good. Publication "
-                + "is refused until recovery resolves that pointer; it cannot be treated as a fresh branch.");
+                "This session's newest generation does not verify, so it is read at its last complete one, and nothing "
+                + "can be published into it or released from it until its pointer is repaired. Nothing was changed. "
+                + $"icat recover \"{directory.Path}\" reviews the pointer and repairs it once you confirm.");
         }
 
         if (disk?.Generation != publicationBaseline?.Generation

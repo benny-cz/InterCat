@@ -362,7 +362,8 @@ public sealed class SessionStoreTests
 
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             stale.RepairCurrentPointer());
-        Assert.Contains("changed after this store was opened", refusal.Message, StringComparison.Ordinal);
+        Assert.Equal("The session's verified generation changed after it was reviewed, so its pointer was not repaired. "
+            + $"icat recover \"{session.Path}\" reviews it again.", refusal.Message);
         Assert.Equal(3, session.Reopen().Current!.Generation);
     }
 
@@ -402,7 +403,7 @@ public sealed class SessionStoreTests
 
         InvalidOperationException refused = Assert.Throws<InvalidOperationException>(() =>
             Publish(session.Store, ("segment-0003.icats", "third")));
-        Assert.Contains("failed verification", refused.Message, StringComparison.Ordinal);
+        Assert.Contains("This session's newest generation does not verify", refused.Message, StringComparison.Ordinal);
         Assert.Equal(2, session.ManifestOf(2).Generation);
         Assert.False(File.Exists(Path.Combine(session.Path, SessionManifestV1.FileNameFor(3))));
     }
@@ -739,7 +740,8 @@ public sealed class SessionStoreTests
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             session.Store.CleanupAbandonedStaging(before.CandidateDigest));
 
-        Assert.Contains("changed after the preview", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains("are not the ones the session holds now, so nothing was removed", refusal.Message, StringComparison.Ordinal);
+        Assert.Contains($"icat staging \"{session.Path}\" reviews them again.", refusal.Message, StringComparison.Ordinal);
         Assert.True(File.Exists(Path.Combine(session.Path, staged.StagingName)));
         Assert.True(File.Exists(Path.Combine(session.Path, staged.OwnershipName)));
     }
