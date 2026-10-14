@@ -998,9 +998,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     private void StartExploring(object? sender, RoutedEventArgs eventArgs) => StartChosenCapture();
 
-    /// <summary>Starts the capture the Keep choice names: Explore, or the messages of processes the person now chooses.</summary>
+    /// <summary>
+    /// Starts the capture the Keep choice names: Explore, or the messages of processes the person now chooses. While
+    /// something holds the session shown, nothing starts, and the card says what and until when.
+    /// </summary>
     private void StartChosenCapture()
     {
+        if (HeldBy(start: true) is { } held)
+        {
+            Say(CaptureDetail, held, aloud: true);
+            return;
+        }
+
         if (KeepChoice.Content)
         {
             ChooseContentCapture();
@@ -1481,17 +1490,43 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>
     /// Whether a saved session can be opened now, as Open saved session opens one: while the button is offered - a
-    /// capture under way hides it, and an open or the finishing of an unfinished capture disables it - and while no
-    /// folder is being chosen and no package written.
+    /// capture under way hides it, and an open or the finishing of an unfinished capture disables it - while no folder
+    /// is being chosen, and while nothing holds the session shown.
     /// </summary>
     private bool OpensSavedSessionNow =>
         OpenSavedSessionButton is { IsEffectivelyVisible: true, IsEffectivelyEnabled: true }
-        && !openingSession && !choosingSession && packaging is null && finishingCapture is null
-        && captureTask is not { IsCompleted: false };
+        && !choosingSession && HeldBy(start: false) is null;
+
+    /// <summary>
+    /// Why the window can neither show another session nor start a capture now, as the card says it; null when it can. A
+    /// capture under way, a session being opened, a package of the session shown being saved and an unfinished capture
+    /// being finished each hold the session shown until they end, or their own button stops them: what replaced the
+    /// session would otherwise have the package's progress and end, or the finish's session, written over it.
+    /// </summary>
+    private string? HeldBy(bool start)
+    {
+        string act = start ? "start exploring" : "open another session";
+        return captureTask is { IsCompleted: false }
+            ? phase == CaptureUiPhase.Finishing ? $"The capture is being saved; {act} once it is."
+                : start ? "A capture is already under way; Stop ends it."
+                : $"A capture is under way; {act} once it has stopped."
+            : openingSession ? $"A session is being opened; {act} once it is open."
+            : packaging is not null
+                ? $"A package of the session shown is being saved; {act} once it is saved, or cancel it with Cancel packaging."
+            : finishingCapture is not null
+                ? $"An unfinished capture is being finished; {act} once it has finished, or stop it with Stop finishing."
+            : null;
+    }
 
     private async void OpenSavedSession(object? sender, RoutedEventArgs eventArgs)
     {
-        if (!OpensSavedSessionNow) return;
+        if (!OpensSavedSessionNow)
+        {
+            // What holds the session shown says why nothing opens; a folder already being chosen is in front.
+            if (!choosingSession && HeldBy(start: false) is { } held) Say(CaptureDetail, held, aloud: true);
+            return;
+        }
+
         string? folder;
         choosingSession = true;
         try
@@ -1653,7 +1688,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         var window = new InvestigationWindow(full,
-            (session, member) => FromInvestigationAsync(full, () => OpenSessionAsync(session, expected: member)), made,
+            (session, member) => FromInvestigationAsync(full, () => OpenSessionOrSayWhyNotAsync(session, null, member)), made,
             (session, member, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval, member)),
             other => ShowInvestigation(other));
         investigations.Add(window);
@@ -1683,13 +1718,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>Opens a member from its investigation, which then keeps its pins and view settings (§26.3).</summary>
-    private async Task<bool> FromInvestigationAsync(string investigation, Func<Task<bool>> open)
+    private async Task<string?> FromInvestigationAsync(string investigation, Func<Task<string?>> open)
     {
         openingFromInvestigation = investigation;
-        bool opened;
+        string? refused;
         try
         {
-            opened = await open();
+            refused = await open();
         }
         finally
         {
@@ -1698,13 +1733,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         // The session is shown here, so this window comes in front of the investigation's to show it, the keyboard on its
         // ranked table, as a session opened here has it, rather than on whatever control of this window last had it.
-        if (opened && !closed)
+        if (refused is null && !closed)
         {
             Forward(this);
             FocusRail();
         }
 
-        return opened;
+        return refused;
     }
 
     /// <summary>
@@ -1975,18 +2010,24 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>
     /// Opens a session - or keeps it, when it is the one shown - with its timeline zoomed to <paramref name="interval"/> of
     /// its own time, with a column of it either side, and that interval selected, so its records are what this window shows.
-    /// With <paramref name="expected"/>, only that session is opened or kept, as <see cref="OpenSessionAsync"/> says.
+    /// With <paramref name="expected"/>, only that session is opened or kept, as <see cref="OpenSessionAsync"/> says. Null
+    /// once it is shown, else why it is not.
     /// </summary>
-    internal async Task<bool> OpenSessionAtAsync(string path, TimeRange interval, Guid? expected = null)
+    internal async Task<string?> OpenSessionAtAsync(string path, TimeRange interval, Guid? expected = null)
     {
         string full = Path.GetFullPath(path);
         bool shown = currentSessionPath is { } current
             && string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(current)), Path.TrimEndingDirectorySeparator(full),
                 StringComparison.OrdinalIgnoreCase)
             && (expected is null || displayedSessionId == expected);
-        if (!shown && !await OpenSessionAsync(full, expected: expected) || closed)
+        if (!shown && await OpenSessionOrSayWhyNotAsync(full, null, expected) is { } refused)
         {
-            return false;
+            return refused;
+        }
+
+        if (closed)
+        {
+            return "InterCat's window closed.";
         }
 
         // A column may reach past the session's own records, before or after its capture: only what the session holds of it
@@ -1994,14 +2035,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         TimeRange extent = workspace.Snapshot.Extent;
         if (interval.StartTicks >= extent.EndTicks || interval.EndTicks <= extent.StartTicks)
         {
-            return true;
+            return null;
         }
 
         TimeRange held = new(Math.Max(interval.StartTicks, extent.StartTicks), Math.Min(interval.EndTicks, extent.EndTicks));
         long span = Math.Max(held.EndTicks - held.StartTicks, 1);
         TimelineSurface.SetViewport(new TimeRange(held.StartTicks - span, held.EndTicks + span));
         workspace.SelectInterval(held);
-        return true;
+        return null;
     }
 
     /// <summary>
@@ -2013,14 +2054,22 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     internal async Task<bool> OpenSessionAsync(string path, (string Headline, string Detail)? status = null,
         Guid? expected = null) => await OpenSessionOrSayWhyNotAsync(path, status, expected) is null;
 
+    /// <summary>How the window opens a session's store, off its thread; a test holds an open partway, as a large one's is.</summary>
+    internal Func<string, Guid?, SessionStore> SessionOpener { get; set; } = SharedSessionStores.Open;
+
     /// <summary>
     /// Opens a session as <see cref="OpenSessionAsync"/> does: null once it is open, else why it is not, as said where the
-    /// status is read, or empty when an open or a capture under way left it untried.
+    /// status is read - what holds the session shown, among the reasons.
     /// </summary>
     private async Task<string?> OpenSessionOrSayWhyNotAsync(string path, (string Headline, string Detail)? status,
         Guid? expected)
     {
-        if (openingSession || captureTask is { IsCompleted: false }) return string.Empty;
+        if (HeldBy(start: false) is { } held)
+        {
+            Say(CaptureDetail, held, aloud: true);
+            return held;
+        }
+
         openingSession = true;
         StartExploringButton.IsEnabled = false;
         OpenSavedSessionButton.IsEnabled = false;
@@ -2030,7 +2079,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             string? investigation = openingFromInvestigation;
             (SessionStore store, SessionOverviewBundle overview) = await Task.Run(() =>
             {
-                SessionStore opened = SharedSessionStores.Open(path, expected);
+                SessionStore opened = SessionOpener(path, expected);
 
                 // A session opened is a workspace of its own, which counts correlated evidence until its person chooses,
                 // or as its investigation kept it when it is opened from one (§26.3).
@@ -3232,7 +3281,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     private async void BeginCapture(ContentCaptureChoice? content = null)
     {
-        if (openingSession || finishingCapture is not null || captureTask is { IsCompleted: false })
+        if (HeldBy(start: true) is not null)
         {
             return;
         }
@@ -3357,7 +3406,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             switch (e.Key)
             {
                 case Key.R:
-                    if (StartExploringButton.IsEnabled) StartChosenCapture();
+                    // As Start exploring does; what holds the session shown says why nothing starts.
+                    if (StartExploringButton.IsEnabled || HeldBy(start: true) is not null) StartChosenCapture();
                     return true;
                 case Key.E:
                     ExportView();

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 518 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 519 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 519 — what holds the session shown says so (§3.1, §8.4):**
+  - While a package was being saved, Open saved session and Ctrl+O did nothing and said nothing; Start
+    exploring started a capture whose card the package then wrote over; an investigation's Open said only that
+    its session could not be opened.
+  - One rule now names what holds the session shown - a capture, an open, a package, a finish - and every way
+    to replace it waits and says why, on the card and in an investigation's status line. Start exploring waits
+    for a package, as Open saved session did.
+  - Debug and Release each ran 2,195 tests, with revision 473's 93 failures and 4 skips. The tests caught each of 17
+    mutations: Start exploring, Open saved session or an open going ahead while the session shown is held, or
+    waiting unsaid; Ctrl+R silent while a capture runs; a capture, an open, a package or a finish not holding the
+    session shown; a capture being saved said as one under way; a start refused in the words of an open, in either
+    of two ways; and an investigation's Open or its column giving no reason, or saying the session opened.
 
 - **Revision 518 — closing over work under way (§3.1, §8.4, §11.3):**
   - Closed while a package was being saved or an unfinished capture finished, the window went at once: the

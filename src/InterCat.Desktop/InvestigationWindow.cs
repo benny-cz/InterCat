@@ -29,8 +29,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     /// <summary>The investigation file this window shows.</summary>
     internal string WorkspacePath => path;
     // Each opens a member by its path and its identity, so a folder that holds another session now is never opened as it.
-    private readonly Func<string, Guid, Task<bool>>? openSession;
-    private readonly Func<string, Guid, TimeRange, Task<bool>>? openSessionAt;
+    // Each opens a member in InterCat's window: null once it is shown there, else why it is not.
+    private readonly Func<string, Guid, Task<string?>>? openSession;
+    private readonly Func<string, Guid, TimeRange, Task<string?>>? openSessionAt;
     private readonly Action<string>? showInvestigation;
     private readonly CancellationTokenSource lifetime = new();
     private readonly TextBlock heading = new() { FontWeight = FontWeight.SemiBold, FontSize = 15, TextTrimming = TextTrimming.PathSegmentEllipsis };
@@ -155,9 +156,9 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
 
     public InvestigationWindow(
         string path,
-        Func<string, Guid, Task<bool>>? openSession,
+        Func<string, Guid, Task<string?>>? openSession,
         string? opening = null,
-        Func<string, Guid, TimeRange, Task<bool>>? openSessionAt = null,
+        Func<string, Guid, TimeRange, Task<string?>>? openSessionAt = null,
         Action<string>? showInvestigation = null)
     {
         this.path = Path.GetFullPath(path);
@@ -678,16 +679,16 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         }
 
         status.Text = $"Opening {name} at that column…";
-        bool opened = await openSessionAt(row.FullPath, row.SessionId, own);
+        string? refused = await openSessionAt(row.FullPath, row.SessionId, own);
         if (!closed)
         {
-            status.Text = opened
+            status.Text = refused is null
                 ? $"Opened {name} in the InterCat window, zoomed to {WorkspaceTime.FormatRange(own, CultureInfo.CurrentCulture)} of its "
                     + "own time, the column's interval selected."
-                : await NotOpenedAsync(row);
+                : await NotOpenedAsync(row, refused);
         }
 
-        return opened;
+        return refused is null;
     }
 
     /// <summary>Shows the sessions or the candidate joins, as choosing a tab does.</summary>
@@ -1521,21 +1522,27 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     {
         if (members.SelectedItem is not InvestigationMemberRow { HoldsItsCapture: true } row || openSession is null) return;
         status.Text = $"Opening {row.FullPath}…";
-        bool opened = await openSession(row.FullPath, row.SessionId);
-        if (!closed) status.Text = opened ? $"Opened {row.Title.Split(',')[0]} in the InterCat window." : await NotOpenedAsync(row);
+        string? refused = await openSession(row.FullPath, row.SessionId);
+        if (!closed)
+        {
+            status.Text = refused is null
+                ? $"Opened {row.Title.Split(',')[0]} in the InterCat window."
+                : await NotOpenedAsync(row, refused);
+        }
     }
 
     /// <summary>
     /// Why a member did not open. Its folder is looked at again, and the sessions restated with what it holds now: one that
     /// no longer holds the member - moved, written again with another session or emptied since the rows were read - says
-    /// so and what to do, as its row does; anything else could not be opened, as InterCat's window says.
+    /// so and what to do, as its row does; anything else says why InterCat's window did not open it, as that window does:
+    /// what it is doing that holds the session it shows, or what the open found.
     /// </summary>
-    private async Task<string> NotOpenedAsync(InvestigationMemberRow row)
+    private async Task<string> NotOpenedAsync(InvestigationMemberRow row, string why)
     {
         await RefreshAsync();
         return View?.Members.FirstOrDefault(now => now.SessionId == row.SessionId) is { HoldsItsCapture: false } now
             ? $"{row.Title.Split(',')[0]} could not be opened: {now.Reason}"
-            : $"{row.FullPath} could not be opened.";
+            : $"{row.Title.Split(',')[0]} was not opened: {why}";
     }
 
     private async Task PickRelinkAsync()
