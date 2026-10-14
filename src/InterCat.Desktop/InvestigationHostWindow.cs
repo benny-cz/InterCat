@@ -48,8 +48,6 @@ internal sealed class InvestigationHostWindow : Window
         AutomationProperties.SetName(note, "A note about this confirmation");
         AutomationProperties.SetName(status, "One host status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        AutomationProperties.SetHelpText(confirm, "Confirm that the two identities are one host");
-        AutomationProperties.SetHelpText(withdraw, "Withdraw your confirmation that the two identities are one host");
         other.SelectionChanged += (_, _) => ShowChoice();
         confirm.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Confirmed);
         withdraw.Click += (_, _) => _ = DecideAsync(WorkspaceHostDecision.Withdrawn);
@@ -109,7 +107,7 @@ internal sealed class InvestigationHostWindow : Window
     {
         if (deciding || other.SelectedItem is not HostChoice choice) return false;
         deciding = true;
-        confirm.IsEnabled = withdraw.IsEnabled = false;
+        ShowChoice();
         string? remark = string.IsNullOrWhiteSpace(note.Text) ? null : note.Text;
         try
         {
@@ -132,10 +130,19 @@ internal sealed class InvestigationHostWindow : Window
         }
     }
 
+    /// <summary>
+    /// Offers confirming and withdrawing one host, or says why not on each: the word is being recorded, no other host is
+    /// listed, or the two are one host by your word already - or not, so there is nothing to withdraw.
+    /// </summary>
     private void ShowChoice()
     {
         bool oneNow = other.SelectedItem is HostChoice { OneHostNow: true };
-        confirm.IsEnabled = other.SelectedItem is HostChoice && !oneNow;
-        withdraw.IsEnabled = oneNow;
+        string? none = deciding ? "Your word is being recorded in the investigation."
+            : other.SelectedItem is HostChoice ? null
+            : "No other host of this investigation is listed.";
+        Offering.Offer(confirm, none ?? (oneNow ? "They are one host by your word already." : null),
+            "Confirm that the two identities are one host");
+        Offering.Offer(withdraw, none ?? (oneNow ? null : "They are not one host by your word, so there is nothing to withdraw."),
+            "Withdraw your confirmation that the two identities are one host");
     }
 }

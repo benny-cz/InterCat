@@ -135,7 +135,7 @@ internal sealed class InvestigationCompareWindow : Window
         }
 
         comparing = true;
-        compare.IsEnabled = false;
+        Offering.Offer(compare, "The two instants are being compared.");
         try
         {
             CultureInfo culture = CultureInfo.CurrentCulture;
@@ -157,7 +157,7 @@ internal sealed class InvestigationCompareWindow : Window
         finally
         {
             comparing = false;
-            compare.IsEnabled = true;
+            Offering.Offer(compare, null);
         }
     }
 

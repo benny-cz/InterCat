@@ -34,7 +34,6 @@ internal sealed class InvestigationPackageWindow : Window
 
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is saved");
-        AutomationProperties.SetHelpText(save, "Save the package in a new folder you choose");
         AutomationProperties.SetName(statements, "What the package holds and exposes");
         cancel.Click += (_, _) => Close(false);
         save.Click += (_, _) => Close(true);
@@ -52,11 +51,15 @@ internal sealed class InvestigationPackageWindow : Window
             var choice = new CheckBox
             {
                 IsChecked = member.Selected,
-                IsEnabled = member.Measured is not null,
                 Content = new TextBlock { Text = Label(member), TextWrapping = TextWrapping.Wrap },
             };
-            // Named by what it shows, as a screen reader hears it, and described by what choosing it copies.
-            AutomationProperties.SetHelpText(choice, $"Copy session {Short(member.SessionId)}, found in {member.Folder}");
+            // Named by what it shows, as a screen reader hears it, and described by what choosing it copies - or, where
+            // there is nothing to copy, why.
+            Offering.Offer(choice,
+                member.Measured is null
+                    ? $"It is {member.Resolution.State.ToString().ToLowerInvariant()}, so it cannot be copied. {member.Resolution.Reason}"
+                    : null,
+                $"Copy session {Short(member.SessionId)}, found in {member.Folder}");
             choice.IsCheckedChanged += (_, _) => Restate();
             choices.Add(member.SessionId, choice);
             sessions.Children.Add(choice);
@@ -119,7 +122,11 @@ internal sealed class InvestigationPackageWindow : Window
             });
         }
 
-        save.IsEnabled = chosen.Copied.Count > 0;
+        Offering.Offer(save,
+            chosen.Copied.Count > 0 ? null
+                : preview.Members.Any(member => member.Measured is not null) ? "Choose a session to copy first."
+                : "No session can be copied: none is where it was last found. Relink one to copy it.",
+            "Save the package in a new folder you choose");
         save.Content = chosen.Unredacted ? "Save unredacted package…" : "Save package…";
     }
 

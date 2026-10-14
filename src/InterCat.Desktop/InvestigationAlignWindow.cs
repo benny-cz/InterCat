@@ -64,11 +64,11 @@ internal sealed class InvestigationAlignWindow : Window
         reference.ItemsSource = references;
         reference.SelectedItem = references.FirstOrDefault(choice => choice.SessionId == timeReference)
             ?? (references.Count > 0 ? references[0] : null);
-        reference.IsEnabled = references.Count > 1;
         byInstant.IsChecked = true;
         StartFrom(member, references);
         AutomationProperties.SetName(reference, "Session to align to");
-        AutomationProperties.SetHelpText(reference, "The investigation's clock, or a session placed in it");
+        Offering.Offer(reference, references.Count > 1 ? null : "It is the only session this one can be aligned to.",
+            "The investigation's clock, or a session placed in it");
         TrimmedChoices.Apply(reference);
         AutomationProperties.SetHelpText(byBoot, "Align exactly by the boot both captures recorded");
         AutomationProperties.SetHelpText(byWallClock, "Align by the two captures' wall clocks");
@@ -284,7 +284,7 @@ internal sealed class InvestigationAlignWindow : Window
         }
 
         aligning = true;
-        align.IsEnabled = false;
+        Offering.Offer(align, $"{name} is being aligned.");
         status.Text = "Aligning…";
         try
         {
@@ -301,7 +301,7 @@ internal sealed class InvestigationAlignWindow : Window
         finally
         {
             aligning = false;
-            align.IsEnabled = true;
+            Offering.Offer(align, null);
         }
     }
 

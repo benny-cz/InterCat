@@ -247,12 +247,16 @@ public partial class MainWindow
         };
         AutomationProperties.SetName(allowance, "Let the session hold up to, in MiB");
         var cancel = new Button { Content = "Cancel" };
-        var keep = new Button { Name = "PlacePin", Content = "Keep records", IsEnabled = false };
+        var keep = new Button { Name = "PlacePin", Content = "Keep records" };
+
+        // A pin is kept with the reason a person gives for it, so Keep records waits for one, saying so.
+        void OfferKeep() => Offering.Offer(keep, string.IsNullOrWhiteSpace(reason.Text) ? "Write why to keep these records first." : null);
+        OfferKeep();
         reason.PropertyChanged += (_, change) =>
         {
             if (change.Property == TextBox.TextProperty)
             {
-                keep.IsEnabled = !string.IsNullOrWhiteSpace(reason.Text);
+                OfferKeep();
             }
         };
         cancel.Click += (_, _) => prompt.Close(null);

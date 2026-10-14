@@ -867,7 +867,16 @@ public sealed class InvestigationWindowTests
             Field(dialog, "is the reference's instant, in seconds").Text = "5,5";
             Field(dialog, "The clocks drift at most (ppm)").Text = "20";
             Save(dialog, "investigation-align.png");
+
+            // Alpha is the one session beta can be aligned to, which the choice, not offered, says; Align waits while it
+            // aligns, saying so.
+            ComboBox to = Named<ComboBox>(dialog, "Session to align to");
+            Assert.False(to.IsEnabled);
+            Assert.True(ToolTip.GetShowOnDisabled(to));
+            Assert.Equal("It is the only session this one can be aligned to.", AutomationProperties.GetHelpText(to));
+            List<(bool, string?)> aligning = Offers.Heard(Named<Button>(dialog, "Align this session"));
             Assert.True(await dialog.AlignAsync());
+            Assert.Equal([(false, $"Session {Short(b)} is being aligned."), (true, null)], aligning);
             InvestigationWorkspaceFile aligned = InvestigationWorkspace.Read(workspace);
             WorkspaceAlignment made = InvestigationWorkspace.ActiveAlignment(aligned, b)!;
             Assert.Equal((a, 2_000_000_000L, 5_500_000_000L, 1_000_000L, (double?)20),
@@ -1053,6 +1062,7 @@ public sealed class InvestigationWindowTests
             dialog.Show(window);
             ComboBox to = Named<ComboBox>(dialog, "Session to align to");
             Assert.True(to.IsEnabled);
+            Assert.Equal("The investigation's clock, or a session placed in it", AutomationProperties.GetHelpText(to));
             Assert.Equal([a, b], ((IEnumerable<AlignmentReference>)to.ItemsSource!).Select(choice => choice.SessionId));
             to.SelectedIndex = 1;
             dialog.Choose(WorkspaceAlignmentMode.Manual);
@@ -1114,9 +1124,17 @@ public sealed class InvestigationWindowTests
             // Confirmed from alpha's side, the two identities read as one host, which the confirmation alone makes them.
             InvestigationHostWindow dialog = window.HostDialogForSelected()!;
             dialog.Show(window);
-            Assert.False(Named<Button>(dialog, "They are not one host").IsEnabled);
+            Assert.Equal("They are not one host by your word, so there is nothing to withdraw.",
+                Offers.WhyNot(Named<Button>(dialog, "They are not one host")));
             Save(dialog, "investigation-one-host.png");
+
+            // Confirm waits while the word is recorded, saying so.
+            Button confirm = Named<Button>(dialog, "They are one host");
+            Assert.Equal("Confirm that the two identities are one host", Offers.Offered(confirm));
+            List<(bool, string?)> deciding = Offers.Heard(confirm);
             Assert.True(await dialog.DecideAsync(WorkspaceHostDecision.Confirmed));
+            Assert.Equal([(false, "Your word is being recorded in the investigation."), (true, "Confirm that the two identities are one host")],
+                deciding);
             await window.RefreshAsync();
             WaitFor(() => window.View!.Summary.EndsWith(" · 1 host (2 identities)", StringComparison.Ordinal));
             Assert.StartsWith($"host {Short(hosts[0])}, one host with host {Short(hosts[1])} by a person's confirmation · ",
@@ -1126,12 +1144,20 @@ public sealed class InvestigationWindowTests
             list.SelectedIndex = 1;
             InvestigationHostWindow back = window.HostDialogForSelected()!;
             back.Show(window);
-            Assert.True(Named<Button>(back, "They are not one host").IsEnabled);
-            Assert.False(Named<Button>(back, "They are one host").IsEnabled);
+            Assert.Equal("Withdraw your confirmation that the two identities are one host",
+                Offers.Offered(Named<Button>(back, "They are not one host")));
+            Assert.Equal("They are one host by your word already.", Offers.WhyNot(Named<Button>(back, "They are one host")));
             Assert.True(await back.DecideAsync(WorkspaceHostDecision.Withdrawn));
             await window.RefreshAsync();
             WaitFor(() => window.View!.Summary.EndsWith(" · 2 hosts", StringComparison.Ordinal));
             Assert.Equal(2, InvestigationWorkspace.Read(workspace).HostEquivalences.Count);
+
+            // With no other host listed, neither is offered, and each says so.
+            var alone = new InvestigationHostWindow(workspace, hosts[0], "alpha", []);
+            alone.Show(window);
+            Assert.Equal("No other host of this investigation is listed.", Offers.WhyNot(Named<Button>(alone, "They are one host")));
+            Assert.Equal("No other host of this investigation is listed.", Offers.WhyNot(Named<Button>(alone, "They are not one host")));
+            alone.Close();
             window.Close();
         }
         finally
@@ -1163,9 +1189,12 @@ public sealed class InvestigationWindowTests
             dialog.Show(window);
             CultureInfo culture = CultureInfo.CurrentCulture;
 
-            // Beta's 2 s is alpha's 5.5 s within 500 µs: one instant, whose order is not stated; alpha's is exact.
+            // Beta's 2 s is alpha's 5.5 s within 500 µs: one instant, whose order is not stated; alpha's is exact. Compare
+            // waits while it compares, saying so.
             dialog.Enter(a, 5.5m.ToString(culture), b, "2");
+            List<(bool, string?)> comparing = Offers.Heard(Named<Button>(dialog, "Compare the two instants"));
             WorkspaceComparison? tie = await dialog.CompareAsync();
+            Assert.Equal([(false, "The two instants are being compared."), (true, null)], comparing);
             Assert.Equal(TimeOrder.Ambiguous, tie!.Result.Order);
             Assert.Contains($"The first instant, session {Short(a)}'s {5.5m.ToString("0.000", culture)} s, is the investigation's "
                 + $"{5.5m.ToString("0.000", culture)} s, exactly.", dialog.Said, StringComparison.Ordinal);
@@ -1802,11 +1831,25 @@ public sealed class InvestigationWindowTests
             // The client dialed a forward's public endpoint; stated, the two ends meet through it, and say so.
             InvestigationTranslationsWindow dialog = window.TranslationsDialog();
             dialog.Show(window);
+            dialog.Load();
+
+            // With none stated, there is nothing to withdraw; stating one says what it does.
+            const string Writing = "A change to the investigation is being written.";
+            const string States = "State that the seen endpoint is the other";
+            Button state = Named<Button>(dialog, "State translation");
+            Assert.Equal("No translation is stated.", Offers.WhyNot(Named<Button>(dialog, "Withdraw the selected translation")));
+            Assert.Equal(States, Offers.Offered(state));
             dialog.Enter("127.0.0.1:80", "10.0.0.2:80");
             Assert.False(await dialog.StateAsync());
             Assert.Contains("loopback", Named<TextBlock>(dialog, "Translation status").Text, StringComparison.Ordinal);
             dialog.Enter("203.0.113.7:8443", "10.0.0.2:443", "the router forwards 8443");
+
+            // State translation waits while the statement is written, saying so; stated, the translation is to be chosen
+            // before it is withdrawn.
+            List<(bool, string?)> stating = Offers.Heard(state);
             Assert.True(await dialog.StateAsync());
+            Assert.Equal([(false, Writing), (true, States)], stating);
+            Assert.Equal("Choose a translation first.", Offers.WhyNot(Named<Button>(dialog, "Withdraw the selected translation")));
             Assert.Equal(("203.0.113.7:8443", "10.0.0.2:443"), (Assert.Single(dialog.Listed).Seen, dialog.Listed[0].Is));
             Save(dialog, "investigation-translations.png");
             dialog.Close();
@@ -1819,8 +1862,12 @@ public sealed class InvestigationWindowTests
             again.Show(window);
             again.Load();
             again.Select(0);
+            Button withdraw = Named<Button>(again, "Withdraw the selected translation");
+            Assert.Null(Offers.Offered(withdraw));
+            List<(bool, string?)> withdrawing = Offers.Heard(withdraw);
             Assert.True(await again.WithdrawSelectedAsync());
             Assert.Empty(again.Listed);
+            Assert.Equal([(false, Writing), (false, "No translation is stated.")], withdrawing);
             again.Close();
             await window.FindCandidatesAsync();
             Assert.Empty(window.Candidates!.Rows);
@@ -1853,8 +1900,19 @@ public sealed class InvestigationWindowTests
             // A note pinned at beta's 100 µs reads where the investigation's time places it.
             InvestigationNoteWindow dialog = window.NoteDialog(reword: false)!;
             dialog.Show(window);
+
+            // Unpinned, where it would be pinned is not offered, and says how to offer it.
+            const string Unpinned = "Choose Pin it at an instant of a session to say where.";
+            Assert.Equal(Unpinned, Offers.WhyNot(Named<ComboBox>(dialog, "The session the note is pinned in")));
+            Assert.Equal(Unpinned, Offers.WhyNot(Named<TextBox>(dialog, "The instant it is pinned at, in seconds of that session's time")));
             dialog.Enter("Beta's datagrams begin", b, 0.0001m.ToString(culture));
+            Assert.Null(Offers.Offered(Named<ComboBox>(dialog, "The session the note is pinned in")));
+
+            // Add note waits while the note is written, saying so.
+            Button add = Named<Button>(dialog, "Add note");
+            List<(bool, string?)> adding = Offers.Heard(add);
             Assert.True(await dialog.SaveAsync());
+            Assert.Equal([(false, "The note is being written to the investigation."), (true, "Add the note")], adding);
             await window.RefreshAsync();
             InvestigationNoteRow row = Assert.Single(window.View!.Notes);
             Assert.Equal("Beta's datagrams begin", row.Text);
@@ -1915,8 +1973,15 @@ public sealed class InvestigationWindowTests
             InvestigationViewsWindow dialog = window.ViewsDialog();
             dialog.Show(window);
             dialog.Load();
+
+            // With no view saved, none is offered to show or remove, and each says so; saving says what it does.
+            Assert.Equal("No view is saved yet.", Offers.WhyNot(Named<Button>(dialog, "Show the selected view on the timeline")));
+            Assert.Equal("No view is saved yet.", Offers.WhyNot(Named<Button>(dialog, "Remove the selected view")));
+            Assert.Equal("Save the interval the timeline shows now under this name", Offers.Offered(Named<Button>(dialog, "Save the view shown")));
             dialog.NameIt("Alpha's datagrams");
             Assert.True(await dialog.SaveAsync());
+            Assert.Equal("Choose a view first.", Offers.WhyNot(Named<Button>(dialog, "Show the selected view on the timeline")));
+            Assert.Equal("Choose a view first.", Offers.WhyNot(Named<Button>(dialog, "Remove the selected view")));
             Assert.Equal(("Alpha's datagrams", zoomed, true), (Assert.Single(dialog.Listed).View.Name, dialog.Listed[0].View.Interval!.Value, dialog.Listed[0].Current));
             Save(dialog, "investigation-views.png");
             dialog.Close();
@@ -1932,6 +1997,8 @@ public sealed class InvestigationWindowTests
             again.Show(window);
             again.Load();
             again.Select(0);
+            Assert.Null(Offers.Offered(Named<Button>(again, "Show the selected view on the timeline")));
+            Assert.Null(Offers.Offered(Named<Button>(again, "Remove the selected view")));
             Assert.True(await again.RemoveSelectedAsync());
             Assert.Empty(again.Listed);
             again.Close();
@@ -1998,6 +2065,9 @@ public sealed class InvestigationWindowTests
             stale.Show(window);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Assert.False(Assert.Single(stale.Listed).Current);
+            Assert.Equal("'The first datagrams' was saved on another time reference, so this one cannot show it.",
+                Offers.WhyNot(Named<Button>(stale, "Show the selected view on the timeline")));
+            Assert.Null(Offers.Offered(Named<Button>(stale, "Remove the selected view")));
             Assert.True(stale.GetVisualDescendants().OfType<ListBox>().Single().ContainerFromIndex(0)!.Focus());
             stale.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             Assert.True(stale.IsVisible);
@@ -2340,8 +2410,13 @@ public sealed class InvestigationWindowTests
             // The confirmation offers each session that can be copied, chosen, and says what the choice exposes.
             var prompt = new InvestigationPackageWindow(InvestigationPackage.Preview(workspace));
             prompt.Show(window);
-            Assert.False(prompt.GetVisualDescendants().OfType<CheckBox>()
-                .Single(box => AutomationProperties.GetHelpText(box) == $"Copy session {Short(c)}, found in gamma").IsEnabled);
+            CheckBox Box(Guid session) => prompt.GetVisualDescendants().OfType<CheckBox>()
+                .Single(box => (box.Content as TextBlock)?.Text?.Contains($" · session {Short(session)}", StringComparison.Ordinal) == true);
+
+            // A session that can be copied says what choosing it copies; the one gone says why it cannot be.
+            Assert.Equal($"Copy session {Short(a)}, found in alpha", Offers.Offered(Box(a)));
+            Assert.Equal("It is missing, so it cannot be copied. Nothing is at this path: the session was moved or removed. "
+                + "Relink the session where it is now.", Offers.WhyNot(Box(c)));
             Assert.Equal([a, b], prompt.Chosen);
             Assert.StartsWith("This saves the investigation case.icat-workspace with an exact copy of 2 of its 3 sessions",
                 prompt.Statements[0], StringComparison.Ordinal);
@@ -2353,10 +2428,24 @@ public sealed class InvestigationWindowTests
                 prompt.Statements[0], StringComparison.Ordinal);
             prompt.Choose(b, copied: false);
             Assert.False(prompt.CanSave);
+            Assert.Equal("Choose a session to copy first.", Offers.WhyNot(Named<Button>(prompt, "Save package…")));
             prompt.Choose(b, copied: true);
             Assert.True(prompt.CanSave);
+            Assert.Equal("Save the package in a new folder you choose", Offers.Offered(Named<Button>(prompt, "Save unredacted package…")));
             Assert.Equal([b], prompt.Chosen);
             prompt.Close();
+
+            // With no session where it was last found, none can be copied, and Save says so.
+            string lone = Path.Combine(root.Path, "lone" + InvestigationWorkspace.Extension);
+            InvestigationWorkspace.Create(lone, Committed);
+            string delta = Datagrams(root.Path, "delta", 2);
+            _ = InvestigationWorkspace.Add(lone, delta, Committed);
+            Directory.Delete(delta, recursive: true);
+            var nothing = new InvestigationPackageWindow(InvestigationPackage.Preview(lone));
+            nothing.Show(window);
+            Assert.Equal("No session can be copied: none is where it was last found. Relink one to copy it.",
+                Offers.WhyNot(Named<Button>(nothing, "Save package…")));
+            nothing.Close();
 
             // The package holds what was chosen, and the status line says where it is and that it verified.
             string destination = Path.Combine(root.Path, "shared", "case-package");
@@ -2683,6 +2772,27 @@ public sealed class InvestigationWindowTests
             Assert.Equal("The investigation could not be read: " + gone, Named<TextBlock>(translations, "Translation status").Text);
             views.Load();
             Assert.Equal("The investigation could not be read: " + gone, Named<TextBlock>(views, "Saved views status").Text);
+
+            // Opened afresh on a file that does not read, the lists hold nothing to act on, and their actions say why.
+            const string Unread = "The investigation could not be read; the status line says why.";
+            var freshTranslations = new InvestigationTranslationsWindow(workspace);
+            freshTranslations.Show(window);
+            freshTranslations.Load();
+            Assert.Equal(Unread, Offers.WhyNot(Named<Button>(freshTranslations, "Withdraw the selected translation")));
+            var freshViews = new InvestigationViewsWindow(workspace, interval);
+            freshViews.Show(window);
+            freshViews.Load();
+            Assert.Equal(Unread, Offers.WhyNot(Named<Button>(freshViews, "Show the selected view on the timeline")));
+            Assert.Equal(Unread, Offers.WhyNot(Named<Button>(freshViews, "Remove the selected view")));
+
+            // Read again once a file is there, an empty list says it holds none.
+            InvestigationWorkspace.Create(workspace, Committed);
+            freshTranslations.Load();
+            Assert.Equal("No translation is stated.", Offers.WhyNot(Named<Button>(freshTranslations, "Withdraw the selected translation")));
+            freshViews.Load();
+            Assert.Equal("No view is saved yet.", Offers.WhyNot(Named<Button>(freshViews, "Remove the selected view")));
+            freshTranslations.Close();
+            freshViews.Close();
             foreach (Window dialog in new Window[] { align, host, adding, rewording, translations, views, compare })
             {
                 dialog.Close();

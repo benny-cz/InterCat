@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 528 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 529 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 529 — an investigation dialog's action not offered says why (R15):**
+  - The saved views', translations', one host's, package's, align, compare and note dialogs, and the pin dialog's
+    Keep records, say why an action or a choice is not offered, on the disabled control and as its help text, and
+    what it does once offered.
+  - A dialog opened on an investigation that no longer reads says so on its lists' actions, not that they hold none.
+  - Debug and Release each ran 2,215 tests with revision 473's 93 failures and 4 skips. The tests caught each of 39
+    mutations, one once State translation's explanation was read before a first statement: the saved views' Save
+    reason with nothing shown and its help, their reasons once read, with no view saved, chosen or readable and once
+    readable again, and for a view saved on another time reference; the translations' explanation, State
+    translation's and Withdraw's reasons while a change is written and after, and Withdraw's with none stated,
+    chosen or readable and once readable again; One host's reasons while the word is recorded, with no other host,
+    with the hosts one already or not, and its help; the package's reasons for a session that cannot be copied, for
+    none chosen or none copyable, and its help; the session to align to when it is the only one, and its help;
+    Align's and Compare's reasons while they work and after; where a note is pinned while it is not to be, and Add
+    note's reason while it writes, after, and its help; and Keep records' before a reason is written and with one of
+    spaces alone.
 
 - **Revision 528 — a dialog's action not offered says why (R15):**
   - The record window's Reveal, the content window's Copy as hex, Save bytes, Decode and part toggle, the channel

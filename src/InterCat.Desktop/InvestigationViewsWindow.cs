@@ -47,6 +47,9 @@ internal sealed class InvestigationViewsWindow : Window
     private readonly Button save = new() { Content = "Save the view shown" };
     private bool busy;
 
+    /// <summary>Why no view is listed when the investigation could not be read; null once it is.</summary>
+    private string? unread;
+
     public InvestigationViewsWindow(string path, TimeRange? shown)
     {
         this.path = path;
@@ -64,8 +67,8 @@ internal sealed class InvestigationViewsWindow : Window
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         AutomationProperties.SetName(show, "Show the selected view on the timeline");
         AutomationProperties.SetName(remove, "Remove the selected view");
-        AutomationProperties.SetHelpText(save, "Save the interval the timeline shows now under this name");
-        save.IsEnabled = shown is not null;
+        Offering.Offer(save, shown is null ? "The timeline shows nothing yet, so there is no view to save." : null,
+            "Save the interval the timeline shows now under this name");
         views.SelectionChanged += (_, _) => ShowChoice();
         views.DoubleTapped += (_, _) => ShowSelected();
         show.Click += (_, _) => ShowSelected();
@@ -168,12 +171,16 @@ internal sealed class InvestigationViewsWindow : Window
                 .Select(view => new ViewRow(view, InvestigationWorkspace.ViewIsCurrent(workspace, view)))];
             views.ItemsSource = rows;
             none.IsVisible = rows.Length == 0;
+            unread = null;
         }
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
             status.Text = "The investigation could not be read: " + InvestigationTrouble.Why(path, exception);
+            unread = "The investigation could not be read; the status line says why.";
         }
+
+        ShowChoice();
     }
 
     /// <summary>Saves the interval shown now under the name given; says in words why not when it is refused.</summary>
@@ -240,11 +247,20 @@ internal sealed class InvestigationViewsWindow : Window
         }
     }
 
+    /// <summary>
+    /// Offers showing and removing the chosen view, or says why not on each: no view is saved or none could be read, none
+    /// is chosen, or the one chosen was saved on another time reference, which this one cannot show.
+    /// </summary>
     private void ShowChoice()
     {
         ViewRow? row = views.SelectedItem as ViewRow;
-        show.IsEnabled = row is { Current: true };
-        remove.IsEnabled = row is not null;
+        string? none = row is not null ? null
+            : views.ItemCount > 0 ? "Choose a view first."
+            : unread ?? "No view is saved yet.";
+        Offering.Offer(show, none ?? (row is { Current: false }
+            ? $"'{row.View.Name}' was saved on another time reference, so this one cannot show it."
+            : null));
+        Offering.Offer(remove, none);
     }
 
     private static Control Column(Control control, int column)

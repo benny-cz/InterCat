@@ -27,6 +27,9 @@ internal sealed class InvestigationNoteWindow : Window
     private readonly Button save = new() { Classes = { "primary" } };
     private bool saving;
 
+    /// <summary>What saving does: adds the note, or saves its new words.</summary>
+    private readonly string saves;
+
     public InvestigationNoteWindow(
         string path,
         IReadOnlyList<CompareSession> sessions,
@@ -54,7 +57,8 @@ internal sealed class InvestigationNoteWindow : Window
         AutomationProperties.SetName(at, "The instant it is pinned at, in seconds of that session's time");
         AutomationProperties.SetName(status, "Note status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        AutomationProperties.SetHelpText(save, existing is null ? "Add the note" : "Save the note's new words");
+        saves = existing is null ? "Add the note" : "Save the note's new words";
+        Offering.Offer(save, null, saves);
         // The session takes the room the instant leaves it, so a long session name never pushes the instant out of the window.
         var atCaption = new TextBlock { Text = "at", VerticalAlignment = VerticalAlignment.Center };
         var place = new Grid { ColumnDefinitions = new ColumnDefinitions("*,Auto,Auto"), ColumnSpacing = 8, Margin = new Thickness(28, 0, 0, 0) };
@@ -64,7 +68,14 @@ internal sealed class InvestigationNoteWindow : Window
         place.Children.Add(session);
         place.Children.Add(atCaption);
         place.Children.Add(at);
-        void ShowPlace() => place.IsEnabled = pin.IsChecked == true;
+        // Where the note is pinned is chosen once it is to be pinned; until then each part of it says so.
+        void ShowPlace()
+        {
+            string? unpinned = pin.IsChecked == true ? null : "Choose Pin it at an instant of a session to say where.";
+            Offering.Offer(session, unpinned);
+            Offering.Offer(at, unpinned);
+        }
+
         pin.IsCheckedChanged += (_, _) => ShowPlace();
         ShowPlace();
         save.Click += (_, _) => _ = SaveAsync();
@@ -148,7 +159,7 @@ internal sealed class InvestigationNoteWindow : Window
         }
 
         saving = true;
-        save.IsEnabled = false;
+        Offering.Offer(save, "The note is being written to the investigation.", saves);
         try
         {
             _ = await Task.Run(() => editing is { } noteId
@@ -167,7 +178,7 @@ internal sealed class InvestigationNoteWindow : Window
         finally
         {
             saving = false;
-            save.IsEnabled = true;
+            Offering.Offer(save, null, saves);
         }
     }
 }

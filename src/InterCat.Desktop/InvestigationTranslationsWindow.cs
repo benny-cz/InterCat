@@ -47,6 +47,15 @@ internal sealed class InvestigationTranslationsWindow : Window
     private readonly Button withdraw = new() { Content = "Withdraw", IsEnabled = false };
     private bool busy;
 
+    /// <summary>Why no translation is listed when the investigation could not be read; null once it is.</summary>
+    private string? unread;
+
+    /// <summary>Why the dialog's actions wait while a change is written.</summary>
+    private const string Writing = "A change to the investigation is being written.";
+
+    /// <summary>What State translation does, which its label does not say whole.</summary>
+    private const string States = "State that the seen endpoint is the other";
+
     public InvestigationTranslationsWindow(string path)
     {
         this.path = path;
@@ -61,9 +70,9 @@ internal sealed class InvestigationTranslationsWindow : Window
         AutomationProperties.SetName(note, "A note about this translation");
         AutomationProperties.SetName(status, "Translation status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
-        AutomationProperties.SetHelpText(state, "State that the seen endpoint is the other");
+        Offering.Offer(state, null, States);
         AutomationProperties.SetName(withdraw, "Withdraw the selected translation");
-        known.SelectionChanged += (_, _) => withdraw.IsEnabled = known.SelectedItem is TranslationRow && !busy;
+        known.SelectionChanged += (_, _) => OfferWithdraw();
         state.Click += (_, _) => _ = StateAsync();
         withdraw.Click += (_, _) => _ = WithdrawSelectedAsync();
         var close = new Button { Content = "Close" };
@@ -166,18 +175,32 @@ internal sealed class InvestigationTranslationsWindow : Window
                 .Select(translation => new TranslationRow(translation))];
             known.ItemsSource = rows;
             none.IsVisible = rows.Length == 0;
+            unread = null;
         }
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
             status.Text = "The investigation could not be read: " + InvestigationTrouble.Why(path, exception);
+            unread = "The investigation could not be read; the status line says why.";
         }
+
+        OfferWithdraw();
     }
+
+    /// <summary>
+    /// Offers withdrawing the chosen translation, or says why not: a change is being written, none is stated or none
+    /// could be read, or none is chosen.
+    /// </summary>
+    private void OfferWithdraw() => Offering.Offer(withdraw, busy ? Writing
+        : known.SelectedItem is TranslationRow ? null
+        : known.ItemCount > 0 ? "Choose a translation first."
+        : unread ?? "No translation is stated.");
 
     private async Task<bool> RunAsync(Func<WorkspaceAddressTranslation> operation, bool clear, string notDone)
     {
         busy = true;
-        state.IsEnabled = withdraw.IsEnabled = false;
+        Offering.Offer(state, Writing, States);
+        OfferWithdraw();
         try
         {
             WorkspaceAddressTranslation done = await Task.Run(operation);
@@ -202,8 +225,8 @@ internal sealed class InvestigationTranslationsWindow : Window
         finally
         {
             busy = false;
-            state.IsEnabled = true;
-            withdraw.IsEnabled = known.SelectedItem is TranslationRow;
+            Offering.Offer(state, null, States);
+            OfferWithdraw();
         }
     }
 

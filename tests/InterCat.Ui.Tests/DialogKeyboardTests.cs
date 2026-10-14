@@ -304,6 +304,8 @@ public sealed class DialogKeyboardTests
         _ = nothing.ShowDialog<TimeRange?>(owner);
         Dispatch();
         Assert.Equal("Close", Assert.IsType<Button>(nothing.FocusManager?.GetFocusedElement()).Content);
+        Assert.Equal("The timeline shows nothing yet, so there is no view to save.",
+            Offers.WhyNot(Named<Button>(nothing, "Save the view shown")));
         nothing.Close();
         Dispatch();
 

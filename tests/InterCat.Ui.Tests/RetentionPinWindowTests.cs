@@ -222,10 +222,11 @@ public sealed class RetentionPinWindowTests
             NumericUpDown allowance = Named<NumericUpDown>(prompt, "PinAllowance");
             TextBox reason = Named<TextBox>(prompt, "PinReason");
             Assert.Equal(("Keep records", false, 4m, 4m), (keep.Content, keep.IsEnabled, allowance.Value, allowance.Minimum));
+            Assert.Equal("Write why to keep these records first.", Offers.WhyNot(keep));
             reason.Text = "   ";
-            Assert.False(keep.IsEnabled);
+            Assert.Equal("Write why to keep these records first.", Offers.WhyNot(keep));
             reason.Text = "  the burst ";
-            Assert.True(keep.IsEnabled);
+            Assert.Null(Offers.Offered(keep));
             allowance.Value = 64;
             keep.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
             Assert.Equal(new MainWindow.PlacePin(500_000_000, 64 * Mebibyte, "the burst"), await chosen);
