@@ -644,6 +644,12 @@
           </Border>
           <!-- Named by the graph itself, by the node its keyboard is on while it has the keyboard. -->
           <local:GraphView x:Name="GraphSurface" Grid.Row="1" Focusable="True" />
+          <!-- Why a session's graph draws no relationship, beneath its one node, so an empty pane is never read as a failure
+               (§6.8). It takes no pointer: the node above it stays the graph's to select and hover. -->
+          <TextBlock x:Name="GraphEmptyText" Grid.Row="1" Text="{Binding GraphEmptyExplanation}"
+                     IsVisible="{Binding ShowsGraphEmptyExplanation}"
+                     Classes="muted" FontSize="12" TextWrapping="Wrap" TextAlignment="Center" MaxWidth="620"
+                     HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="24,0,24,16" IsHitTestVisible="False" />
         </Grid>
       </Border>
 

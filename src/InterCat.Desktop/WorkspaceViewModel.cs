@@ -447,6 +447,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(GraphLayoutProblem));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
+        OnPropertyChanged(nameof(GraphEmptyExplanation));
+        OnPropertyChanged(nameof(ShowsGraphEmptyExplanation));
     }
 
     /// <summary>The last laid-out position of each node of <paramref name="display"/> that has one.</summary>
@@ -1822,7 +1824,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             int relationships = wholeSnapshot.Edges.Count;
             string text = Counted(processes, "process", "processes") + " · " + (relationships == 0
-                ? "no relationship drawn; observed records may still be in the timeline"
+                ? EmptyCensus is { } census
+                    ? RelationshipCensusText.Brief(census)
+                    : "no relationship drawn; observed records may still be in the timeline"
                 : Counted(relationships, "relationship", "relationships")
                     + (relatedProcesses.Count < processes
                         ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
@@ -1841,7 +1845,32 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// </summary>
     public string GraphScope => GraphScopeNote(brief: false) is { Length: > 0 } scope
         ? GraphSummary + ". " + scope
-        : GraphSummary;
+        : EmptyCensus is { } census
+            ? GraphSummary + ". " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
+            : GraphSummary;
+
+    /// <summary>
+    /// Why the machine's graph draws no relationship, said beneath it where the empty pane would otherwise be read as a
+    /// failure (§6.8): whether any TCP connection had a process of the session at each end, where its TCP records went, and
+    /// what the graph does not draw at all. Null while the graph draws a relationship, at a focused rung, and for a
+    /// workspace not projected from a session.
+    /// </summary>
+    public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && EmptyCensus is { } census
+        ? RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
+        : null;
+
+    /// <summary>Whether the graph says beneath it why it draws no relationship (<see cref="GraphEmptyExplanation"/>).</summary>
+    public bool ShowsGraphEmptyExplanation => GraphEmptyExplanation is not null;
+
+    /// <summary>
+    /// The census of a published session none of whose records relates two of its processes, under the policy it was
+    /// projected under: what explains a graph with no relationship. Null when the session has one, even one the view set
+    /// aside, whose absence its own words explain.
+    /// </summary>
+    private RelationshipCensus? EmptyCensus => realOverview && wholeSnapshot.Edges.Count == 0
+        && wholeSnapshot.Census is { Tcp.Relationships: 0 } census
+        ? census
+        : null;
 
     /// <summary>
     /// What a published session's graph draws its relationships from, in the ranked table's words: briefly after its
@@ -2527,6 +2556,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(RelayoutTip));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
+        OnPropertyChanged(nameof(GraphEmptyExplanation));
+        OnPropertyChanged(nameof(ShowsGraphEmptyExplanation));
         RaiseGraphSelectionChanged();
         if (!sameNodes)
         {
@@ -2818,6 +2849,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public string? RelationshipsAbsent => relationships.Count > 0 ? null
         : Snapshot.Edges.Count > 0
             ? "No relationship here: none has an end among the processes this rung draws. The others are listed at the machine rung."
+            : EmptyCensus is { } census
+                ? "No relationship here. " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
             : (Snapshot.SetAside.Count > 0
                 ? "No relationship here: none pairs two of the processes shown, InterCat's own being set aside with every "
                     + "relationship they are an end of."
@@ -3774,7 +3807,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return cluster.Kind switch
         {
             GraphNodeKind.Quiet => $"{members} with no admitted relationship in this session, counted in one node rather "
-                + "than drawn one by one. The ranked table lists each of them.",
+                + "than drawn one by one. The ranked table lists each of them."
+                + (EmptyCensus is { } census ? " " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) : string.Empty),
             GraphNodeKind.OtherMembers => $"{members} of this group not drawn on their own"
                 + (quiet == cluster.Members.Count ? ", none with a relationship"
                     : quiet > 0 ? string.Create(CultureInfo.CurrentCulture,
@@ -6257,6 +6291,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(RelayoutTip));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
+        OnPropertyChanged(nameof(GraphEmptyExplanation));
+        OnPropertyChanged(nameof(ShowsGraphEmptyExplanation));
         selectedRung = IsEvidenceRung ? selectedRung : RungRows.FirstOrDefault(row => row.Key == rowKey);
         OnPropertyChanged(nameof(Snapshot));
         OnPropertyChanged(nameof(IsRankedWithinInterval));

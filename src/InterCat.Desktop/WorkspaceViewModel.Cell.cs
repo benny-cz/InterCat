@@ -650,6 +650,8 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(CellGraphNodes));
         OnPropertyChanged(nameof(GraphSummary));
         OnPropertyChanged(nameof(GraphScope));
+        OnPropertyChanged(nameof(GraphEmptyExplanation));
+        OnPropertyChanged(nameof(ShowsGraphEmptyExplanation));
     }
 
     private static readonly IReadOnlySet<ProcessInstanceId> NoProcesses = new HashSet<ProcessInstanceId>();

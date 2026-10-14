@@ -103,7 +103,9 @@ declares no boundary is distinct from one that declares zero.
 - Every dependency's presence and length are checked each time. A file this store instance already hashed is
   confirmed by one listing of the directory: listed, not a reparse point, and with the length and last-write time it
   was measured at. Any other file, and every file of a directory that cannot list its files, is opened and checked
-  from its handle (revision 129).
+  from its handle (revision 129). A file removed between the listing and the reading of its length - a writer's staged
+  file, published or given up while a reader lists - is left out of the listing, as one a moment later would leave it;
+  a dependency a lease holds is never removed, so the listing never leaves one out (revision 541).
 - Its bytes are hashed unless the same store instance already hashed that file, under the same name, length and
   digest, and the file's last-write time has not moved since. A published file is immutable, so any write sends it
   back to be hashed.

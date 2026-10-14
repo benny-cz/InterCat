@@ -150,6 +150,26 @@ A one-sided channel with an undecided or unbound holder is not listed; nor is an
 revision 249 a connection's evidence rung focuses the timeline on its records, as a paired channel's does - by its
 channel number, at its one end, so without a paired channel's two-ends lanes.
 
+## 5c. What became of a mechanism's records (revision 541)
+
+A **census** of a related mechanism under an evidence policy counts each of its records once, by what became of it, and
+reads no record: every record is in exactly one incarnation of one end, or among the records that name no end (§5).
+
+- **Related**: an incarnation paired with one whose holder is decided, its own holder decided, and the relation's
+  strength (§5) admitted by the policy. Each such relation is counted once, from the end whose key sorts first, and its
+  records from both ends.
+- **Withheld**: the same, with a strength the policy does not admit - a candidate under the default policy.
+- **To another host**: an incarnation no mirror incarnation could pair with, held by one instance, whose remote address
+  is neither a loopback address (127.0.0.0/8, `::1`, or an IPv4-mapped loopback address) nor the end's own address.
+  Its connections and their distinct remote addresses are counted too.
+- **To an unseen end on this machine**: the same, with a loopback remote address or the end's own.
+- **Unpaired**: every other incarnation - undecided, or held by no instance or by more than one at an end.
+- **Without endpoints**: the records naming no complete endpoint pair (§2).
+
+A census is no rule of its own: it reads the incarnations, pairing and holders of `transport-endpoint-relation-v4` as
+they stand, and changes with them. It is what lets a view say why it draws no relationship, rather than leave an empty
+graph to be read as a failure (§6.8 of the plan): most of a real machine's TCP runs to other hosts.
+
 ## 6. What is not inferred
 
 - **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is

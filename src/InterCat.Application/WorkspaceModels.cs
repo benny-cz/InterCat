@@ -487,6 +487,12 @@ public sealed record WorkspaceSnapshot(
     public long? RowsNoProcessHolds { get; init; }
 
     /// <summary>
+    /// What became of the session's TCP, UDP and RPC records, over the whole session, so a graph that draws no relationship
+    /// can say why (§6.8); null for a snapshot not projected from a session.
+    /// </summary>
+    public RelationshipCensus? Census { get; init; }
+
+    /// <summary>
     /// The interval the session's capture recorded, which its whole-session rates divide by (<see cref="SessionRecording"/>);
     /// null when the capture recorded no stop.
     /// </summary>

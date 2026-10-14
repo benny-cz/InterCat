@@ -87,19 +87,36 @@ public sealed class LocalOwnedDirectory : IOwnedDirectory
     }
 
     /// <inheritdoc />
-    /// <remarks>One enumeration: the entries it returns carry their length, times and attributes.</remarks>
+    /// <remarks>
+    /// One enumeration: the entries it returns carry their length, times and attributes, read with the listing where the
+    /// platform's enumeration gives them and with the first of them read where it does not. A file removed between the
+    /// listing and that read - a writer's staged file, published or given up while a reader lists - is left out, as a
+    /// listing a moment later would leave it: no dependency a lease holds is ever removed, so none is.
+    /// </remarks>
     public IReadOnlyDictionary<string, OwnedFileFacts> DescribeOwnedFiles()
     {
         var facts = new Dictionary<string, OwnedFileFacts>(StringComparer.OrdinalIgnoreCase);
         foreach (FileInfo file in new DirectoryInfo(Path).EnumerateFiles())
         {
-            if (OwnedFileName.Validate(file.Name) is null)
+            if (OwnedFileName.Validate(file.Name) is not null)
             {
-                facts[file.Name] = new(
-                    file.Length,
-                    file.LastWriteTimeUtc.Ticks,
-                    (file.Attributes & FileAttributes.ReparsePoint) != 0);
+                continue;
             }
+
+            long length;
+            try
+            {
+                length = file.Length;
+            }
+            catch (FileNotFoundException)
+            {
+                continue;
+            }
+
+            facts[file.Name] = new(
+                length,
+                file.LastWriteTimeUtc.Ticks,
+                (file.Attributes & FileAttributes.ReparsePoint) != 0);
         }
 
         return facts;

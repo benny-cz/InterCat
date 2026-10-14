@@ -76,6 +76,12 @@ internal static class OverviewCommand
         ConsoleUi.Field("Graph-eligible rows", ConsoleUi.Count(overview.GraphEligibleRows));
         ConsoleUi.Field("Rows held by none", ConsoleUi.Count(overview.RowsNoProcessHolds));
 
+        // Why the graph draws no relationship, in the words the window says beneath its empty graph (§6.8, R18).
+        if (overview.Edges.Count == 0 && overview.Census is { Tcp.Relationships: 0 } census)
+        {
+            ConsoleUi.Note(RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture));
+        }
+
         // Which processes collected the capture: each by the instance it is, as the window labels it, or why none is it
         // (collector-binding-v1, §19.5). A capture that names none says nothing of them, rather than that it had none.
         if (overview.Collectors.Recorded)

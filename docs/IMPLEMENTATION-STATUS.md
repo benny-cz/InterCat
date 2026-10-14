@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 540 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 541 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,27 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 541 — say why the graph draws no relationship (§6.3, §6.8; reported from a live capture):**
+  - A live Explore capture shaped as Windows delivers it - manifest-compiled plans, bodies read as the admitter
+    reads them, a rundown, loopback TCP over IPv4 and IPv6 - relates both connections in the window's live view,
+    now a test of that path; a busy machine's TCP mostly runs to other hosts, and the graph said nothing of it.
+  - The relation index takes a census of each related mechanism (`relations-v1` §5c); where a graph draws none,
+    its summary, a line beneath it, its node, the relationship table and icat overview say where the TCP went and
+    that UDP and RPC calls without ALPC are not drawn. Drawing connections to other hosts in the graph is open.
+  - A reader's lease listing failed on a file the writer staged and removed while it listed, ending a live
+    follow; such a file is now left out of the listing (`store-v1` §3).
+  - Debug and Release each ran 2,314 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 31 mutations: a census admitting a withheld relationship, counting a relationship from both
+    its ends, taking an end two processes hold for one-sided, placing an end's other end on the wrong side of this
+    machine - at its own IPv4 or IPv6 address, at another loopback address named as IPv4 or mapped into IPv6, or at
+    a mapped address that is not loopback - counting a host per connection, or losing the records naming no
+    endpoint; a withheld relationship not given first, one record said as all of several, a lone UDP datagram or a
+    capture with no TCP left unsaid, RPC calls called unjoinable from a capture that collected ALPC, or a list's
+    last item without its and; the overview's RPC count, UDP census or workspace census lost; the window's summary
+    or its node's, table's or line's reason left out, or the line shown at a rung, beside relationships set aside,
+    or hidden; icat overview's reason; an IPv6 address the plan compiler refuses, or TCP owned by its header,
+    breaking the live view's relationships; and a listing failing on a file removed while it lists.
 
 - **Revision 540 — icat retain's journal prefix release, run whole (S5, R18):**
   - A confirmed release the store refused - beside content kept with a single journal, or from a session read at

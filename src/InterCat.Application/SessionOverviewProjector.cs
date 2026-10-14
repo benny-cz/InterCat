@@ -124,6 +124,12 @@ public sealed record SessionOverviewBundle(
     /// overview: correlated evidence unless a person chose otherwise.
     /// </summary>
     public EvidencePolicy Policy { get; init; } = EvidencePolicy.IncludeCorrelated;
+
+    /// <summary>
+    /// What became of the session's TCP, UDP and RPC records under <see cref="Policy"/>, so a graph that draws no
+    /// relationship can say why (§6.8); null for an overview no session was projected for.
+    /// </summary>
+    public RelationshipCensus? Census { get; init; }
 }
 
 /// <summary>
@@ -255,6 +261,14 @@ public static class SessionOverviewProjector
             Rule = RelationRule.RpcCallPeer,
             Evidence = [edge.Key],
         })];
+
+        // Why the graph draws what it draws, and none: where the transport records went and whether RPC calls could be
+        // joined at all, read from the relations already derived, opening no segment.
+        var census = new RelationshipCensus(
+            relations.Census(Mechanism.Tcp, policy),
+            relations.Census(Mechanism.Udp, policy),
+            nodes.Sum(node => node.Activity.Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records)),
+            RpcPeerEdges.Collected(coverage));
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
@@ -395,6 +409,7 @@ public static class SessionOverviewProjector
             Pins = pins,
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
+            Census = census,
             Collectors = collectors,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])

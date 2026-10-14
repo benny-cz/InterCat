@@ -38,13 +38,17 @@ public sealed class GraphScopeTests
             Assert.EndsWith(" · paired TCP and RPC calls", workspace.GraphSummary, StringComparison.Ordinal);
         }
 
-        // Without ALPC the same calls draw no edge, and a graph with no relationship says only what its summary says.
+        // Without ALPC the same calls draw no edge, and a graph with no relationship says why rather than what it draws:
+        // no TCP was recorded, and a call is joined to the process that served it only by a capture that collects ALPC.
         using var plain = new TemporarySession();
         Publish(plain.Store, rows, fields: fields, coverage: RpcLedger(alpc: false));
         using (WorkspaceViewModel workspace = await Open(plain))
         {
             Assert.Empty(workspace.Snapshot.Edges);
-            Assert.Equal(workspace.GraphSummary, workspace.GraphScope);
+            Assert.EndsWith(" · no relationship drawn · no TCP recorded", workspace.GraphSummary, StringComparison.Ordinal);
+            Assert.Equal(workspace.GraphSummary + ". This capture recorded no TCP, so no relationship between two of its "
+                + "processes can be drawn. RPC calls are on their processes' rungs: a call is drawn to the process that served "
+                + "it only from a capture that collects ALPC, as icat record --profile rpc-peers does.", workspace.GraphScope);
             Assert.DoesNotContain("paired TCP", workspace.GraphSummary, StringComparison.Ordinal);
         }
 

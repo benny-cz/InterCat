@@ -128,10 +128,16 @@ public sealed class RelationshipExplanationWindowTests
             TextBlock why = window.GetControl<TextBlock>("RelationshipsAbsentText");
             Assert.Equal(0, window.GetControl<ListBox>("RelationshipList").ItemCount);
             Assert.True(why.IsEffectivelyVisible);
-            Assert.Equal("No relationship here: no record pairs two of this session's processes. A connection whose other end "
-                + "is outside the session - on another host, or in a process it did not record - is listed on its process's "
-                + "rung, and every record is in the timeline.", why.Text);
+            string reason = "No TCP connection was seen with a process of this session at each of its two ends. Its 1 TCP "
+                + "record belongs to 1 connection to 1 other host. A process's connections are listed on its rung.";
+            Assert.Equal("No relationship here. " + reason, why.Text);
             Assert.Equal("Why the relationship table lists none", Avalonia.Automation.AutomationProperties.GetName(why));
+
+            // The graph says the same beneath its one process, where its empty pane would otherwise read as a failure.
+            TextBlock beneath = window.GetControl<TextBlock>("GraphEmptyText");
+            Assert.True(beneath.IsEffectivelyVisible);
+            Assert.Equal(reason, beneath.Text);
+            Assert.False(beneath.IsHitTestVisible);
         }
         finally
         {
@@ -153,6 +159,7 @@ public sealed class RelationshipExplanationWindowTests
             TextBlock line = listing.GetControl<TextBlock>("RelationshipsAbsentText");
             Assert.Equal(2, listing.GetControl<ListBox>("RelationshipList").ItemCount);
             Assert.False(line.IsVisible);
+            Assert.False(listing.GetControl<TextBlock>("GraphEmptyText").IsVisible);
             ProcessNode idle = workspace.Snapshot.Processes.Single(node => node.ProcessId == 500);
             foreach (string key in new[] { idle.GroupKey, idle.Id.ToString() })
             {

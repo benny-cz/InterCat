@@ -60,6 +60,7 @@ public static class OverviewWorkspace
             CoverageLedgerPublished = overview.CoverageLedgerPublished,
             MechanismCoverage = overview.MechanismCoverage,
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
+            Census = overview.Census,
             Recording = overview.Recording,
             Began = overview.Began,
             WallClock = overview.WallClock,
