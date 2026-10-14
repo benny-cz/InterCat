@@ -218,6 +218,19 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private InterruptedCaptureOffer? offer;
     private CancellationTokenSource? finishingCapture;
 
+    /// <summary>What the card's start action does for the Keep choice, which its help text says when it is offered.</summary>
+    private string startDoes = "Start the default Explore capture";
+
+    /// <summary>Why the last capture could not run, which the start action's hover says; null when it ran.</summary>
+    private string? startTip;
+
+    private const string OpenDoes = "Open an existing InterCat session";
+    private const string OpenTip = "Open an existing InterCat session (Ctrl+O), or drop its folder on this window";
+    private const string StopDoes = "Stop recording and save published evidence";
+    private const string Stopping = "The capture is stopping, and what it published is being saved.";
+    private const string ForgetDoes = "Stop offering to finish this capture; the session and the evidence stay";
+    private const string DemoDoes = "Open InterCat's generated demo investigation of two hosts; nothing in it was captured";
+
     /// <summary>The finish's work off the window's thread while one runs, which a close that stops it waits.</summary>
     private (Task Work, CloseStop Stop)? finishWork;
     private readonly DispatcherTimer offerRecheck = new() { Interval = TimeSpan.FromSeconds(5) };
@@ -379,6 +392,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         UpdateThemeMenu();
 
         // The session's actions say from the first frame what they do, or why not: none is offered before a session is.
+        Offering.Offer(StopCaptureButton, null, StopDoes);
+        OfferDemo();
         UpdateEvidenceAction();
 
         // The operating system's light or dark setting (§26.2) reaches the resources on its own; the canvases and the
@@ -1400,8 +1415,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         exploringDemo = true;
-        ExploreDemoButton.IsEnabled = false;
-        ExploreDemoItem.IsEnabled = false;
+        OfferDemo();
         try
         {
             string root = DemoRoot ?? DemoPlace.Root();
@@ -1423,9 +1437,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         finally
         {
             exploringDemo = false;
-            ExploreDemoButton.IsEnabled = true;
-            ExploreDemoItem.IsEnabled = true;
+            OfferDemo();
         }
+    }
+
+    /// <summary>Offers the demo, on the card and in the Investigation menu, or says it is being opened.</summary>
+    private void OfferDemo()
+    {
+        string? opening = exploringDemo ? "The demo is being opened." : null;
+        Offering.Offer(ExploreDemoButton, opening, DemoDoes);
+        Offering.Offer(ExploreDemoItem, opening, DemoDoes);
     }
 
     private void OpenOriginalRecord(object? sender, RoutedEventArgs eventArgs) => OpenOriginalRecord();
@@ -1512,7 +1533,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     private void StopCapture(object? sender, RoutedEventArgs eventArgs)
     {
-        StopCaptureButton.IsEnabled = false;
+        Offering.Offer(StopCaptureButton, Stopping, StopDoes);
         captureStop?.Cancel();
         KeepKeyboard();
     }
@@ -2116,8 +2137,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         openingSession = true;
-        StartExploringButton.IsEnabled = false;
-        OpenSavedSessionButton.IsEnabled = false;
+        OfferCardActions();
         try
         {
             CaptureStatus.Text = "Opening saved session";
@@ -2183,8 +2203,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             openingSession = false;
             if (!closed)
             {
-                StartExploringButton.IsEnabled = true;
-                OpenSavedSessionButton.IsEnabled = true;
                 UpdateEvidenceAction();
                 KeepKeyboard();
             }
@@ -2582,10 +2600,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         UnfinishedCaptureDetail.Text = offer.Detail;
         FinishCaptureButton.IsVisible = offer.Action != InterruptedCaptureAction.None;
         FinishCaptureButton.Content = offer.ActionLabel;
-        FinishCaptureButton.IsEnabled = true;
         Avalonia.Automation.AutomationProperties.SetName(FinishCaptureButton, offer.ActionLabel + ": " + offer.Headline);
         ForgetCaptureButton.Content = offer.ForgetLabel;
-        ForgetCaptureButton.IsEnabled = true;
+        OfferCardActions();
         if (offer.Rechecks) offerRecheck.Start();
         else offerRecheck.Stop();
     }
@@ -2602,8 +2619,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     {
         if (finishingCapture is { } running)
         {
-            FinishCaptureButton.IsEnabled = false;
-            await running.CancelAsync();
+            Task stopping = running.CancelAsync();
+            OfferCardActions();
+            await stopping;
             return;
         }
 
@@ -2735,9 +2753,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         FinishCaptureButton.Content = "Stop finishing";
         Avalonia.Automation.AutomationProperties.SetName(
             FinishCaptureButton, "Stop finishing; the session keeps what is derived");
-        ForgetCaptureButton.IsEnabled = false;
-        StartExploringButton.IsEnabled = false;
-        OpenSavedSessionButton.IsEnabled = false;
+        OfferCardActions();
     }
 
     private void EndFinishing()
@@ -2745,10 +2761,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         finishingCapture = null;
         finishWork = null;
         if (closed) return;
-        StartExploringButton.IsEnabled = true;
-        OpenSavedSessionButton.IsEnabled = true;
-        FinishCaptureButton.IsEnabled = true;
-        ForgetCaptureButton.IsEnabled = true;
+        OfferCardActions();
     }
 
     /// <summary>
@@ -3198,8 +3211,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         var whole = new RadioButton
         {
             GroupName = "package-scope", Content = "The whole session", IsChecked = scope is null && !tooLarge,
-            IsEnabled = !tooLarge, IsVisible = scope is not null || tooLarge,
+            IsVisible = scope is not null || tooLarge,
         };
+
+        // A session over the bound is shared an interval at a time, which the whole session's choice says where it waits.
+        string tooMany = string.Create(CultureInfo.CurrentCulture,
+            $"It holds {overview.ObservationRows:N0} records, more than the {RedactedSessionPackage.MaximumRows:N0} a package holds.");
+        Offering.Offer(whole, tooLarge ? tooMany : null);
         TextBlock kept = Paragraph(string.Empty);
         var cancel = new Button { Content = "Cancel" };
         var proceed = new Button { Content = "Choose a folder…" };
@@ -3213,7 +3231,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 : $"Kept: every record, {overview.ObservationRows:N0} in all, with its time, size, status and quality; "
                     + $"every process, {overview.Nodes.Count:N0} in all, and how they relate; coverage and loss.";
             // A session over the bound with no interval chosen keeps nothing yet, and says what to do instead.
-            proceed.IsEnabled = interval || !tooLarge;
+            Offering.Offer(proceed, interval || !tooLarge ? null
+                : "Brush or zoom to an interval in the timeline first: the whole session is more than a package holds.");
             kept.IsVisible = proceed.IsEnabled;
         }
 
@@ -3432,9 +3451,33 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         bool content = KeepChoice.Content;
         StartExploringButton.Content = content ? "Choose processes…"
             : unavailable && StartedWith?.Content is null ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
-        AutomationProperties.SetHelpText(StartExploringButton, content
+        startDoes = content
             ? "Choose your own processes whose HTTP messages a capture keeps (Ctrl+R); you review it before anything is recorded"
-            : "Start the default Explore capture");
+            : "Start the default Explore capture";
+        OfferCardActions();
+    }
+
+    /// <summary>
+    /// Offers the card's start and open actions, or says why they wait (R15), in the words a click or its key says: a
+    /// capture under way or being saved, a session being opened, an unfinished capture being finished. A package being
+    /// saved leaves them offered, and a click says why it waits. Start says what it starts, and why the last capture could
+    /// not run on hover; Open its key, and that a session's folder can be dropped. The unfinished capture's card says why
+    /// its action waits while a session is opened or once it was asked to stop finishing, and why Forget waits while it
+    /// finishes.
+    /// </summary>
+    private void OfferCardActions()
+    {
+        bool waits = phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing
+            || openingSession || finishingCapture is not null;
+        Offering.Offer(StartExploringButton, waits ? HeldBy(start: true) ?? "A capture is starting." : null, startDoes, startTip);
+        Offering.Offer(OpenSavedSessionButton, waits ? HeldBy(start: false) ?? "A capture is starting." : null, OpenDoes, OpenTip);
+        Offering.Offer(FinishCaptureButton,
+            finishingCapture is { IsCancellationRequested: true } ? "Finishing is being stopped; the session keeps what was derived."
+            : openingSession ? "A session is being opened; this capture waits until it is open."
+            : null);
+        Offering.Offer(ForgetCaptureButton,
+            finishingCapture is not null ? "The session is being finished: stop finishing first to forget this capture." : null,
+            ForgetDoes, InterruptedCaptureOffer.ForgetExplanation);
     }
 
     /// <summary>
@@ -3578,8 +3621,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         bool unavailable = update.Phase == CaptureUiPhase.Unavailable;
 
         // Retrying is offered for the capture that could not run, and why it could not is on hover.
+        startTip = unavailable ? update.Detail : null;
         NameStart(unavailable);
-        ToolTip.SetTip(StartExploringButton, unavailable ? update.Detail : null);
         // An unavailable capture is a warning in words: caution ink, never a mechanism's hue (§6.6).
         CaptureStatus.Classes.Set("caution", unavailable);
 
@@ -3596,8 +3639,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (update.SessionPath is not null) CaptureSessionPath.Text = update.SessionPath;
         NameWindow();
         bool busy = update.Phase is CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
-        StartExploringButton.IsEnabled = !busy;
-        OpenSavedSessionButton.IsEnabled = !busy;
+        OfferCardActions();
         InvestigationButton.IsEnabled = !busy;
 
         // While a capture runs the card holds only what can be done now - stop it, pause the view - and its state. The
@@ -3609,8 +3651,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         InvestigationButton.IsVisible = !busy;
         UnfinishedCaptureCard.IsVisible = !busy && offer is not null;
         StopCaptureButton.IsVisible = update.Phase is CaptureUiPhase.Recording or CaptureUiPhase.Finishing;
-        StopCaptureButton.IsEnabled = update.Phase == CaptureUiPhase.Recording
-            && captureStop?.IsCancellationRequested != true;
+        Offering.Offer(StopCaptureButton,
+            update.Phase == CaptureUiPhase.Recording && captureStop?.IsCancellationRequested != true ? null : Stopping, StopDoes);
         KeepKeyboard();
         FollowButton.IsVisible = IsLive;
         liveHealth = IsLive ? update.LiveHealth : null;
@@ -4566,6 +4608,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     private void UpdateEvidenceAction()
     {
+        OfferCardActions();
         ProcessInstanceId? channelProcess = ChannelDiscoveryScope(workspace.CaptureNavigation());
         bool session = currentSessionPath is not null && displayedGeneration > 0;
         ShowRecordsButton.IsEnabled = session && !workspace.IsEvidenceRung;

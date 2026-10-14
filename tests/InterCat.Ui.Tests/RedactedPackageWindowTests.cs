@@ -220,8 +220,10 @@ public sealed class RedactedPackageWindowTests
             Window refused = MainWindow.RedactedPackagePrompt(large);
             _ = refused.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
             Dispatch();
-            Assert.False(Proceed(refused).IsEnabled);
-            Assert.False(Choices(refused).Whole.IsEnabled);
+            string tooMany = $"It holds {large.ObservationRows:N0} records, more than the {RedactedSessionPackage.MaximumRows:N0} a package holds.";
+            Assert.Equal("Brush or zoom to an interval in the timeline first: the whole session is more than a package holds.",
+                Offers.WhyNot(Proceed(refused)));
+            Assert.Equal(tooMany, Offers.WhyNot(Choices(refused).Whole));
             Assert.False(Kept(refused).IsVisible);
             Assert.Contains(refused.GetLogicalDescendants().OfType<TextBlock>(), text => text.IsVisible
                 && text.Text?.Contains("so it is shared an interval at a time", StringComparison.Ordinal) == true);
@@ -230,7 +232,8 @@ public sealed class RedactedPackageWindowTests
             _ = scoped.ShowDialog<MainWindow.RedactedPackageScope?>(owner);
             Dispatch();
             Assert.True(Proceed(scoped).IsEnabled && Choices(scoped).Part.IsChecked == true && Kept(scoped).IsVisible);
-            Assert.False(Choices(scoped).Whole.IsEnabled);
+            Assert.Null(Offers.Offered(Proceed(scoped)));
+            Assert.Equal(tooMany, Offers.WhyNot(Choices(scoped).Whole));
             scoped.Close();
         }
         finally

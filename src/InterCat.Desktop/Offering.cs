@@ -10,13 +10,16 @@ namespace InterCat.Desktop;
 /// </summary>
 internal static class Offering
 {
-    public static void Offer(Control control, string? whyNot, string? does = null)
+    /// <param name="tip">
+    /// What the pointer reads of the offered action where it is more than what it does - its key, a folder it takes when
+    /// dropped, why the last attempt failed; null where it is what it does.
+    /// </param>
+    public static void Offer(Control control, string? whyNot, string? does = null, string? tip = null)
     {
         ArgumentNullException.ThrowIfNull(control);
         control.IsEnabled = whyNot is null;
-        string? said = whyNot ?? does;
         ToolTip.SetShowOnDisabled(control, true);
-        ToolTip.SetTip(control, said);
-        AutomationProperties.SetHelpText(control, said);
+        ToolTip.SetTip(control, whyNot ?? tip ?? does);
+        AutomationProperties.SetHelpText(control, whyNot ?? does);
     }
 }

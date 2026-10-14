@@ -1459,7 +1459,8 @@
         "R15: the views dialog opens on its first view, chosen, else on the name to save the view shown, else on Close",
         "R15: the window renders at its minimum size and at a review size",
         "R15: the window renders every rung of the ladder down to evidence",
-        "R15: what an action did is said aloud: a pin placed from the inspector says what it keeps"
+        "R15: what an action did is said aloud: a pin placed from the inspector says what it keeps",
+        "R15: while a session is opened, an unfinished capture's card waits, saying so on its action"
       ],
       "R16": [
         "R16: Windows may rename a trustee or reorder inheritance flags without changing the grant",

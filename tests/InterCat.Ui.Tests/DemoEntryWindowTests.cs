@@ -45,8 +45,8 @@ public sealed class DemoEntryWindowTests
             // The first time it makes the demo in its own folder; while it does, a second click starts nothing: it is
             // answered at once, with nothing opened.
             Task<InvestigationWindow?> opening = window.ExploreDemoAsync();
-            Assert.False(offered.IsEnabled);
-            Assert.False(window.GetControl<MenuItem>("ExploreDemoItem").IsEnabled);
+            Assert.Equal("The demo is being opened.", Offers.WhyNot(offered));
+            Assert.Equal("The demo is being opened.", Offers.WhyNot(window.GetControl<MenuItem>("ExploreDemoItem")));
             Task<InvestigationWindow?> second = window.ExploreDemoAsync();
             Assert.True(second.IsCompleted);
             Assert.Null(await second);
@@ -55,7 +55,9 @@ public sealed class DemoEntryWindowTests
             InvestigationWindow first = Assert.IsType<InvestigationWindow>(await opening);
             string workspace = Path.Combine(root, "demo", DemoInvestigation.WorkspaceFileName);
             Assert.Equal(workspace, first.WorkspacePath);
-            Assert.True(offered.IsEnabled);
+            Assert.Contains("nothing in it was captured", Offers.Offered(offered), StringComparison.Ordinal);
+            Assert.Contains("nothing in it was captured", Offers.Offered(window.GetControl<MenuItem>("ExploreDemoItem")),
+                StringComparison.Ordinal);
             Assert.StartsWith(DemoInvestigation.Disclosure + " ", window.GetControl<TextBlock>("CaptureDetail").Text,
                 StringComparison.Ordinal);
             Assert.Equal(["demo"], Directory.EnumerateDirectories(root).Select(Path.GetFileName));

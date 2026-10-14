@@ -11,6 +11,7 @@ using InterCat.Application;
 using InterCat.Capture.Journal;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using Xunit;
 
 namespace InterCat.Ui.Tests;
@@ -68,7 +69,10 @@ public sealed class HeldSessionTests : IDisposable
             string starts = "A package of the session shown is being saved; start exploring once it is saved, or cancel "
                 + "it with Cancel packaging.";
 
-            // Each asks for nothing and starts nothing, and the card says why.
+            // Both stay offered while a package is saved, saying what they do; each asks for nothing and starts nothing,
+            // and the card says why.
+            Assert.Equal("Start the default Explore capture", Offers.Offered(window.GetControl<Button>("StartExploringButton")));
+            Assert.Equal(OpenDoes, OpenOffered(window));
             Assert.Equal(PackageOpens, SaidAfter(window, () => Click(window, "OpenSavedSessionButton")));
             Assert.Equal(PackageOpens, SaidAfter(window, () => window.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.Control)));
             Assert.Equal(starts, SaidAfter(window, () => Click(window, "StartExploringButton")));
@@ -119,6 +123,11 @@ public sealed class HeldSessionTests : IDisposable
             Task<bool> opening = window.OpenSessionAsync(demo.ClientSession);
             await hold.Reached;
             string opens = "A session is being opened; open another session once it is open.";
+
+            // Each waits, saying why on itself, in the words its key says.
+            Assert.Equal("A session is being opened; start exploring once it is open.",
+                Offers.WhyNot(window.GetControl<Button>("StartExploringButton")));
+            Assert.Equal(opens, Offers.WhyNot(window.GetControl<Button>("OpenSavedSessionButton")));
             Assert.Equal(opens, SaidAfter(window, () => window.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.Control)));
             Assert.Equal("A session is being opened; start exploring once it is open.",
                 SaidAfter(window, () => window.KeyPressQwerty(PhysicalKey.R, RawInputModifiers.Control)));
@@ -133,6 +142,10 @@ public sealed class HeldSessionTests : IDisposable
             Assert.Equal(demo.ClientSession, window.GetControl<TextBlock>("CaptureSessionPath").Text);
             await Settle();
             Assert.Equal((0, 0), (choices.Asked, started));
+
+            // Opened, both are offered again, saying what they do.
+            Assert.Equal("Start the default Explore capture", Offers.Offered(window.GetControl<Button>("StartExploringButton")));
+            Assert.Equal(OpenDoes, OpenOffered(window));
         }
         finally
         {
@@ -225,8 +238,65 @@ public sealed class HeldSessionTests : IDisposable
                 + "Stop finishing.", SaidAfter(window, () => window.KeyPressQwerty(PhysicalKey.R, RawInputModifiers.Control)));
             await Settle();
             Assert.Equal((0, 0), (choices.Asked, started));
+
+            // Start, Open and Forget each say on themselves why they wait; Stop finishing is offered.
+            Assert.Equal("An unfinished capture is being finished; start exploring once it has finished, or stop it with "
+                + "Stop finishing.", Offers.WhyNot(window.GetControl<Button>("StartExploringButton")));
+            Assert.Equal("An unfinished capture is being finished; open another session once it has finished, or stop it "
+                + "with Stop finishing.", Offers.WhyNot(window.GetControl<Button>("OpenSavedSessionButton")));
+            Assert.Equal("The session is being finished: stop finishing first to forget this capture.",
+                Offers.WhyNot(window.GetControl<Button>("ForgetCaptureButton")));
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.Equal("Stop finishing", finish.Content);
+            Assert.Null(Offers.Offered(finish));
+
+            // Asked to stop, it waits until the finish has stopped, saying so, and is offered again after.
+            List<(bool, string?)> stopping = Offers.Heard(finish);
+            Task stop = window.ActOnInterruptedCaptureAsync();
+            Assert.Equal("Finishing is being stopped; the session keeps what was derived.", Offers.WhyNot(finish));
             hold.Release();
+            await stop.WaitAsync(TimeSpan.FromSeconds(30));
             await finishing.WaitAsync(TimeSpan.FromSeconds(30));
+            Dispatch();
+            Assert.Equal([(false, "Finishing is being stopped; the session keeps what was derived."), (true, null)], stopping);
+            Assert.Equal(("Forget", InterruptedCaptureOffer.ForgetExplanation), (window.GetControl<Button>("ForgetCaptureButton").Content,
+                ToolTip.GetTip(window.GetControl<Button>("ForgetCaptureButton"))));
+        }
+        finally
+        {
+            hold.Release();
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: while a session is opened, an unfinished capture's card waits, saying so on its action")]
+    public async Task AnOpenHoldsTheUnfinishedCapturesCard()
+    {
+        using var root = new TemporaryDirectory();
+        (string sessions, _, _) = await InterruptedCaptureWindowTests.CrashedFollow(root.Path, unfinalized: false);
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        using var hold = new WorkHold();
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(sessions);
+            Dispatch();
+            Button finish = window.GetControl<Button>("FinishCaptureButton");
+            Assert.True(finish.IsVisible);
+            Assert.Null(Offers.Offered(finish));
+            window.SessionOpener = (path, expected) =>
+            {
+                hold.Here(CancellationToken.None);
+                return SharedSessionStores.Open(path, expected);
+            };
+            Task<bool> opening = window.OpenSessionAsync(demo.ClientSession);
+            await hold.Reached;
+            Assert.Equal("A session is being opened; this capture waits until it is open.", Offers.WhyNot(finish));
+            hold.Release();
+            Assert.True(await opening.WaitAsync(TimeSpan.FromSeconds(30)));
+            Dispatch();
+            Assert.Null(Offers.Offered(finish));
         }
         finally
         {
@@ -299,6 +369,17 @@ public sealed class HeldSessionTests : IDisposable
 
     private static void Click(Window window, string name) =>
         window.GetControl<Button>(name).RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+    private const string OpenDoes = "Open an existing InterCat session";
+
+    /// <summary>What Open saved session, offered, says it does; its hover says more - its key and the folder it takes dropped.</summary>
+    private static string? OpenOffered(Window window)
+    {
+        Button open = window.GetControl<Button>("OpenSavedSessionButton");
+        Assert.True(open.IsEnabled);
+        Assert.Equal("Open an existing InterCat session (Ctrl+O), or drop its folder on this window", ToolTip.GetTip(open));
+        return AutomationProperties.GetHelpText(open);
+    }
 
     private static T Named<T>(Window window, string name)
         where T : Control =>

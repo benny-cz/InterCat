@@ -44,6 +44,7 @@ public sealed class CaptureKeyboardTests
             window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "Recording."));
             Dispatch();
             Assert.True(stop.IsFocused, Focused(window));
+            Assert.Equal("Stop recording and save published evidence", Offers.Offered(stop));
             window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Recording));
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
             Dispatch();
@@ -53,10 +54,12 @@ public sealed class CaptureKeyboardTests
             // first row, and once the session is saved.
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             Dispatch();
-            Assert.False(stop.IsEnabled);
+            const string Stopping = "The capture is stopping, and what it published is being saved.";
+            Assert.Equal(Stopping, Offers.WhyNot(stop));
             Assert.Same(rail.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
             window.ApplyCaptureUpdate(new(CaptureUiPhase.Finishing, "Stopping", "Stopping."));
             Dispatch();
+            Assert.Equal(Stopping, Offers.WhyNot(stop));
             Publish(session.Store, Rows(100));
             window.ApplyCaptureUpdate(Published(session, CaptureUiPhase.Complete));
             await Assert.IsType<WorkspaceViewModel>(window.DataContext).LayoutReady;
