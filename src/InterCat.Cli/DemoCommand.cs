@@ -33,7 +33,7 @@ internal static class DemoCommand
         string? directory = command.TakePositional();
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
+            ConsoleUi.Failure(command.Refusal(unknown!));
             ConsoleUi.Explain(PrintHelp);
             return Task.FromResult(InterCatExitCode.InvalidInvocation);
         }

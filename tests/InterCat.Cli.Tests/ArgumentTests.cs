@@ -50,6 +50,16 @@ public sealed class ArgumentTests
             CommandLine.Unknown("-> retry"));
         Assert.Contains("follows --", CommandLine.Unknown("--rows=2"), StringComparison.Ordinal);
         Assert.Equal("Unexpected argument: extra", CommandLine.Unknown("extra"));
+
+        // An option the command took and that is given again is said to be given twice, never called unknown.
+        var twice = new CommandLine(["--generation", "1", "--json", "--generation", "7", "--json"]);
+        Assert.Equal("1", twice.TakeOption("--generation"));
+        Assert.True(twice.TryTakeFlag("--json"));
+        Assert.True(twice.TryReportUnknown(out string? again));
+        Assert.Equal("--generation is given more than once; give it once.", twice.Refusal(again!));
+        Assert.Equal("--json is given more than once; give it once.", twice.Refusal("--json"));
+        Assert.Equal("Unknown or incomplete option: --bogus", twice.Refusal("--bogus"));
+        Assert.Equal("Unexpected argument: 7", twice.Refusal("7"));
     }
 
     [Fact(DisplayName = "R18: a verb is read first, and no option is read after an operand")]

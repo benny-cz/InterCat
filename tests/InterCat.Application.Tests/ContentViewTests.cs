@@ -76,6 +76,7 @@ public sealed class ContentViewTests
         Assert.Equal("Enter the last byte as an offset, like 4095 or 0xFFF.", Problem("0", "0x"));
         Assert.Equal("The first byte comes after the last.", Problem("10", "5"));
         Assert.EndsWith("choose a range within them.", Problem("0", "4096"), StringComparison.Ordinal);
+        Assert.EndsWith("choose a range within them.", Problem("5000", "4095"), StringComparison.Ordinal);
         Assert.Equal("16 to 31 (16 bytes)", hex.Describe(CultureInfo.InvariantCulture)["bytes ".Length..]);
     }
 

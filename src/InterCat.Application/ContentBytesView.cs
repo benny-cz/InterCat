@@ -443,15 +443,17 @@ public static class ContentBytesView
             return false;
         }
 
-        if (from > to)
+        // Each end outside the kept bytes is said as such first: a first byte past them, with the last left at its default,
+        // is out of range, not after the last.
+        if (from < kept.First || from > kept.Last || to < kept.First || to > kept.Last)
         {
-            problem = "The first byte comes after the last.";
+            problem = string.Create(culture, $"The kept bytes are {kept.First:N0} to {kept.Last:N0}; choose a range within them.");
             return false;
         }
 
-        if (from < kept.First || to > kept.Last)
+        if (from > to)
         {
-            problem = string.Create(culture, $"The kept bytes are {kept.First:N0} to {kept.Last:N0}; choose a range within them.");
+            problem = "The first byte comes after the last.";
             return false;
         }
 
@@ -481,16 +483,16 @@ public static class ContentBytesView
             return false;
         }
 
-        if (from > to)
-        {
-            problem = "The first buffer comes after the last.";
-            return false;
-        }
-
-        if (from < recorded.First || to > recorded.Last)
+        if (from < recorded.First || from > recorded.Last || to < recorded.First || to > recorded.Last)
         {
             problem = string.Create(culture,
                 $"The part's recorded buffers are {recorded.First:N0} to {recorded.Last:N0}; choose buffers within them.");
+            return false;
+        }
+
+        if (from > to)
+        {
+            problem = "The first buffer comes after the last.";
             return false;
         }
 

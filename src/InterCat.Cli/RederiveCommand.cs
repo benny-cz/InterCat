@@ -57,7 +57,7 @@ internal static class RederiveCommand
         bool check = command.TryTakeFlag("--check");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
+            ConsoleUi.Failure(command.Refusal(unknown!));
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -72,7 +72,9 @@ internal static class RederiveCommand
             && (!int.TryParse(rowsOption, NumberStyles.None, CultureInfo.InvariantCulture, out int parsedRows)
                 || parsedRows is < 1 or > SegmentFormatV1.MaximumRowsPerSegment))
         {
-            ConsoleUi.Failure($"--rows-per-segment must be between 1 and {SegmentFormatV1.MaximumRowsPerSegment:N0}.");
+            ConsoleUi.Failure(
+                $"--rows-per-segment expects a number of rows from 1 to {SegmentFormatV1.MaximumRowsPerSegment:N0}; "
+                + $"'{rowsOption}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -105,19 +107,37 @@ internal static class RederiveCommand
 
         if (inspected.Recovery.RolledBackToLastKnownGood)
         {
+            // A replacement is never published over a generation read in the newest one's place, so a re-derivation is
+            // refused before it replays anything; a check reads and publishes nothing, so it goes ahead and says what.
+            if (!check)
+            {
+                ConsoleUi.Failure(
+                    $"The newest generation did not verify: {inspected.Recovery.RollbackReason}. This session is read at "
+                    + $"generation {current.Generation}, and nothing can be published into it until its pointer is repaired, "
+                    + $"so nothing was replayed. icat recover \"{full}\" reviews the pointer and repairs it once you confirm.");
+                return InterCatExitCode.PermissionOrCapabilityFailure;
+            }
+
             ConsoleUi.Warn(
                 $"The newest generation did not verify, so the retained last-known-good generation {current.Generation} is "
-                + $"re-derived: {inspected.Recovery.RollbackReason}.");
+                + $"checked: {inspected.Recovery.RollbackReason}.");
         }
+
+        // What cannot be replayed at all is refused by the replay itself, in its own words; it never says it began.
+        bool replayable = JournalRederivation.Assess(current).CanAttempt;
 
         // A live recording's journal is a sequence of chunks (ADR-022), replayed in order as one capture (ADR-023).
         int chunks = current.Dependencies.Count(dependency => dependency.Kind == StoreDependencyKind.Journal);
         string evidence = chunks > 1 ? $"{chunks} retained journal chunks, in order," : "retained journal";
         if (check)
         {
-            ConsoleUi.Progress(
-                $"Checking generation {current.Generation}'s retained plan and every committed record of its {evidence} "
-                + "without publishing any file or generation.");
+            if (replayable)
+            {
+                ConsoleUi.Progress(
+                    $"Checking generation {current.Generation}'s retained plan and every committed record of its {evidence} "
+                    + "without publishing any file or generation.");
+            }
+
             JournalRederivationVerification verified;
             try
             {
@@ -183,9 +203,13 @@ internal static class RederiveCommand
                 : int.Parse(rowsOption, CultureInfo.InvariantCulture),
         };
         SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(full), current.SessionId, current.SourceIdentity);
-        ConsoleUi.Progress(
-            $"Replaying generation {current.Generation}'s {evidence} in bounded batches; the current "
-            + "generation stays published until the replacement is complete.");
+        if (replayable)
+        {
+            ConsoleUi.Progress(
+                $"Replaying generation {current.Generation}'s {evidence} in bounded batches; the current "
+                + "generation stays published until the replacement is complete.");
+        }
+
         JournalRederivationResult result;
         try
         {
@@ -267,6 +291,7 @@ internal static class RederiveCommand
         ConsoleUi.Line("      journal chunks are replayed in order, and must continue one capture.");
         ConsoleUi.Line("      --check fully replays and validates without staging files or publishing a generation.");
         ConsoleUi.Line("      The old generation stays current until publication and remains last-known-good afterwards.");
-        ConsoleUi.Line("      Legacy sessions without a saved plan are refused until a verified plan migration exists.");
+        ConsoleUi.Line("      A session an earlier version of InterCat published without a saved plan is refused; it");
+        ConsoleUi.Line("      stays readable as it is.");
     }
 }

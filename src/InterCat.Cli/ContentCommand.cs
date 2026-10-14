@@ -41,7 +41,7 @@ internal static class ContentCommand
             out long generation) && generation > 0;
         bool validRow = int.TryParse(rowText, NumberStyles.None, CultureInfo.InvariantCulture, out int row);
         string? problem = directory is null ? "A session directory is required: icat content <directory>."
-            : hasUnknown ? CommandLine.Unknown(unknown!)
+            : hasUnknown ? command.Refusal(unknown!)
             : !validSession ? "--session-id must be the nonempty GUID printed by icat evidence."
             : !validGeneration ? "--generation must be the positive number printed by icat evidence."
             : string.IsNullOrWhiteSpace(segment) ? "--segment must name an evidence-page segment."

@@ -1224,7 +1224,8 @@
         "P2: a view of a part with gaps stops at the bytes it shows at once, at a buffer's start, and says so",
         "P2: an RPC call never reports a byte value, and the byte criterion stays not measured",
         "P2: icat content --decode lists a fixture message's fields with the bytes each came from and what it did not decode, only when asked and never into JSON",
-        "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one"
+        "P2: icat content shows a part that is not whole with each gap in place, and never saves it as one",
+        "P2: icat content shows and saves a whole HTTP part as one, and refuses --part of a record that belongs to none"
       ],
       "P20": [
         "P20: no product code reads another process's memory, duplicates its handles, or opens a pipe but the broker's"
@@ -1600,13 +1601,16 @@
       "R20": [
         "R20: a legacy journal without its descriptor plan is refused without changing the generation",
         "R20: a published journal re-derives byte-identical segments in a replacement generation",
+        "R20: a session read at its last complete generation is checked, and refused re-derivation before any replay",
         "R20: an in-place change after store open and a cancelled check never publish",
         "R20: an unchanged layout keeps one schema fingerprint across formatting differences",
         "R20: colour measurements match published reference values",
         "R20: greyscale simulation keeps luminance and drops chroma",
+        "R20: icat rederive --check replays a recording's journal and says what it verified, publishing nothing",
         "R20: importing into an existing generation is refused before reading an ETL",
         "R20: the committed theme report matches what the palette computes today",
-        "R20: the retained descriptor plan round-trips and refuses a different journal schema"
+        "R20: the retained descriptor plan round-trips and refuses a different journal schema",
+        "R20: what icat rederive cannot replay is refused before it says it began, in words that name no step there is not"
       ],
       "R21": [
         "R21: a 32-bit process's record keeps its width, and only a plan whose offsets do not move admits it",
@@ -2031,6 +2035,8 @@
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
         "R18: icat raw says a record's facts as the window does, in words - its provider named, its lengths counted - and its bytes only when asked",
+        "R18: icat rederive needs a session's folder, and says so of none and of one that is not there",
+        "R18: icat rederive refuses an option it cannot read, saying what it expects",
         "R18: icat session states a session's size on disk, bytes per record and tier in the window's words",
         "R18: icat session states what a recording's chunk releases gave up in all, and icat follow goes on across them",
         "R18: icat verify refuses a run it cannot verify, saying why, and writes over curated output only when asked",

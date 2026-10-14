@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 537 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 538 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 538 — icat rederive and icat content run whole (R18, R20, §3.7):**
+  - icat rederive refuses a session read at its last complete generation before replaying it, naming `icat
+    recover`; a check of one says the generation it checked; a session with no saved plan is refused without a
+    progress line, in words that promise no migration.
+  - Every command names an option given twice as given twice, not as unknown.
+  - icat content's text view, saves, whole parts and what there is not to show are tested; a range past the kept
+    bytes names them, in the window's content dialog as well.
+  - Debug and Release each ran 2,275 tests with revision 473's 93 failures and 4 skips, and one more: a test still
+    held the no-plan explanation's words "legacy session". Its assertion now holds the new ones, and the journal
+    tests passed in both configurations again, but for their 3 known Windows-only ticket tests. The tests caught
+    each of 12 mutations: an option or a flag the command line took forgotten, so one given twice reads as unknown,
+    or a repeated one never named; a range's or a part's buffers checked at one end only; --rows-per-segment's value
+    unnamed; a session read at its last complete generation replayed rather than refused, or its check said to
+    re-derive it; a progress line said for a replay or a check that never begins; and the no-plan explanation or
+    refusal in their old words.
 
 - **Revision 537 — a coverage pass over the command line's untested paths, each run whole (R5, R18, R21):**
   - icat operations lists a process's calls with each call's other end named as its group's is, and says of each

@@ -736,7 +736,7 @@ public sealed partial class SessionStore
                 {
                     throw new InvalidOperationException(
                         "A replacement derivation needs the journal its boundary names and one retained normalization "
-                        + "plan; a legacy session needs a verified plan migration.");
+                        + "plan; a session an earlier version published without one cannot be re-derived.");
                 }
             }
             else

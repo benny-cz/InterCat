@@ -249,6 +249,8 @@ public sealed class ContentPartTests
         Assert.Equal("The part's recorded buffers are 0 to 4; choose buffers within them.", problem);
         Assert.False(ContentBytesView.TryParseBuffers("3", "2", new(0, 4), out _, out problem));
         Assert.Equal("The first buffer comes after the last.", problem);
+        Assert.False(ContentBytesView.TryParseBuffers("9", "4", new(0, 4), out _, out problem));
+        Assert.Equal("The part's recorded buffers are 0 to 4; choose buffers within them.", problem);
         Assert.Equal(("buffer 3", "buffers 0 to 4"), (new ContentBufferRange(3, 3).Describe(Invariant), new ContentBufferRange(0, 4).Describe(Invariant)));
     }
 

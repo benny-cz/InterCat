@@ -552,7 +552,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Contains($"The newest generation did not verify, so the answer is from the retained last-known-good generation 1: {why}.",
             measuring, StringComparison.Ordinal);
         (_, _, string rederiving) = await Run("rederive", twice.Path, "--check");
-        Assert.Contains($"The newest generation did not verify, so the retained last-known-good generation 1 is re-derived: {why}.",
+        Assert.Contains($"The newest generation did not verify, so the retained last-known-good generation 1 is checked: {why}.",
             rederiving, StringComparison.Ordinal);
     }
 

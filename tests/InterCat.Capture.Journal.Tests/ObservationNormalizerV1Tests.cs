@@ -192,7 +192,8 @@ public sealed class ObservationNormalizerV1Tests
             JournalRederivation.Rebuild(session.Store, DateTimeOffset.UtcNow));
         JournalRederivationReadiness readiness = JournalRederivation.Assess(session.Store.Current);
         Assert.False(readiness.CanAttempt);
-        Assert.Contains("legacy session", readiness.Explanation, StringComparison.Ordinal);
+        Assert.Contains("an earlier version of InterCat published this session before plans were kept", readiness.Explanation,
+            StringComparison.Ordinal);
         Assert.Contains("no retained normalization plan", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(1, session.Store.Current!.Generation);
     }

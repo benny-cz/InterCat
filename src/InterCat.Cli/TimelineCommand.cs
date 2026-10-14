@@ -50,7 +50,7 @@ internal static class TimelineCommand
         if (directory is null || hasUnknown || invalidColumns || interval is null || scopeProblem is not null)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat timeline <directory>."
-                : hasUnknown ? CommandLine.Unknown(unknown!)
+                : hasUnknown ? command.Refusal(unknown!)
                 : invalidColumns ? $"--columns must be an integer from 1 to {SessionTimelineQuery.MaximumColumns:N0}."
                 : interval is null ? tooWide ?? "--interval is required: " + TickInterval.Takes + "."
                 : scopeProblem!);

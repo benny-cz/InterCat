@@ -125,7 +125,7 @@ internal static class ProfilesCommand
 
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
+            ConsoleUi.Failure(command.Refusal(unknown!));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

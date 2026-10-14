@@ -22,6 +22,9 @@ internal sealed class CommandLine
 
     private bool positionalTaken;
 
+    /// <summary>Every option the command read, so one given again is named as given twice rather than as unknown.</summary>
+    private readonly HashSet<string> taken = new(StringComparer.Ordinal);
+
     public CommandLine(IEnumerable<string> arguments)
     {
         ArgumentNullException.ThrowIfNull(arguments);
@@ -58,6 +61,7 @@ internal sealed class CommandLine
 
             string value = arguments[index + 1];
             arguments.RemoveRange(index, 2);
+            taken.Add(name);
             return value;
         }
 
@@ -84,6 +88,7 @@ internal sealed class CommandLine
         }
 
         arguments.RemoveAt(index);
+        taken.Add(name);
         return true;
     }
 
@@ -132,6 +137,15 @@ internal sealed class CommandLine
             : NamesAnOption(argument) ? $"Unknown or incomplete option: {argument}"
             : $"Unknown or incomplete option: {argument} - an operand that starts with a dash follows --, as in -- \"{argument}\"";
     }
+
+    /// <summary>
+    /// How a refusal names what <see cref="TryReportUnknown"/> found in this command line: an option the command took once
+    /// and that is given again is named as given twice - `--generation 1 --generation 7` - since it is not unknown; anything
+    /// else as <see cref="Unknown"/> names it.
+    /// </summary>
+    public string Refusal(string argument) => taken.Contains(argument)
+        ? $"{argument} is given more than once; give it once."
+        : Unknown(argument);
 
     public bool TryReportUnknown(out string? unknown)
     {

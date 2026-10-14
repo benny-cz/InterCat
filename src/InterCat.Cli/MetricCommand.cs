@@ -373,7 +373,7 @@ internal static class MetricCommand
             bool asJson = command.TryTakeFlag("--json");
             if (command.TryReportUnknown(out string? extra))
             {
-                ConsoleUi.Failure(CommandLine.Unknown(extra!));
+                ConsoleUi.Failure(command.Refusal(extra!));
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -411,7 +411,7 @@ internal static class MetricCommand
         bool printCanonical = command.TryTakeFlag("--print-canonical");
         if (command.TryReportUnknown(out string? unknown))
         {
-            ConsoleUi.Failure(CommandLine.Unknown(unknown!));
+            ConsoleUi.Failure(command.Refusal(unknown!));
             return InterCatExitCode.InvalidInvocation;
         }
 

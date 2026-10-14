@@ -88,7 +88,8 @@ public static class JournalRederivation
         if (plans.Length != 1)
         {
             return new(false, plans.Length == 0
-                ? "No retained normalization plan; this legacy session needs a verified plan migration."
+                ? "No retained normalization plan: an earlier version of InterCat published this session before plans "
+                    + "were kept, so its journal cannot be replayed. The session stays readable as it is."
                 : "More than one retained normalization plan is present; the interpretation is ambiguous.");
         }
 
@@ -237,9 +238,9 @@ public static class JournalRederivation
         StoreDependency planFile = manifest.Dependencies.SingleOrDefault(dependency =>
             dependency.Kind == StoreDependencyKind.DerivationPlan)
             ?? throw new InvalidOperationException(
-                "This generation has no retained normalization plan. Its journal schema fingerprints do not "
-                + "contain the field layout or roles needed to replay safely; a verified legacy-plan migration "
-                + "is required before re-derivation.");
+                "This generation has no retained normalization plan: an earlier version of InterCat published it before "
+                + "plans were kept, and its journal's schema fingerprints do not hold the field layout or roles a replay "
+                + "needs, so it cannot be re-derived. Nothing was changed; the session stays readable as it is.");
         if (planFile.LengthBytes is < 1 or > JournalNormalizationPlanV1.MaximumBytes)
         {
             throw new InvalidDataException("The retained normalization plan is outside its 1 MiB bound.");
