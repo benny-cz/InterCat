@@ -123,6 +123,15 @@ public sealed class ChosenPathFlowTests : IDisposable
         Press(await Prompt(window), "Choose bundle file");
         await Until(() => File.Exists(bundle));
         await Until(() => detail.Text == $"Support bundle saved to {bundle}. It holds no name, address or content; review it before sending it.");
+
+        // A file it cannot write - in a folder that is a file - is said, and the bundle can be asked for again.
+        choices.Answer(Path.Combine(bundle, "support.json"));
+        Click(window, "SupportBundleButton");
+        Press(await Prompt(window), "Choose bundle file");
+        await Until(() => detail.Text!.StartsWith("Could not save the support bundle: ", StringComparison.Ordinal));
+        Click(window, "SupportBundleButton");
+        Press(await Prompt(window), "Cancel");
+        await Until(() => window.OwnedWindows.Count == 0);
         window.Close();
     }
 
@@ -252,6 +261,19 @@ public sealed class ChosenPathFlowTests : IDisposable
         Choose(window, "NewInvestigationItem");
         await Until(() => window.Investigations.Count > 0);
         Assert.Equal(existing, File.ReadAllText(demo.WorkspacePath));
+        window.Investigations.Single().Close();
+
+        // One that cannot be made where it was asked for - inside a session's own folder - opens no window for a file that
+        // is not there: the card says why, and nothing is written.
+        string inside = Path.Combine(demo.ClientSession, "case" + InvestigationWorkspace.Extension);
+        choices.Answer(inside);
+        Choose(window, "NewInvestigationItem");
+        await Until(() => status.Text == "No investigation was made");
+        Assert.Equal($"The investigation could not be made: {demo.ClientSession} is a session's directory. An investigation's "
+            + "file is kept beside its sessions, never in one: a session keeps only its own files, and would count the "
+            + "investigation's file as an orphan.", window.GetControl<TextBlock>("CaptureDetail").Text);
+        Assert.Empty(window.Investigations);
+        Assert.False(File.Exists(inside));
         window.Close();
     }
 
@@ -310,6 +332,18 @@ public sealed class ChosenPathFlowTests : IDisposable
         Assert.StartsWith("Saved an exact copy of generation 2 to " + copy + ". ", detail.Text, StringComparison.Ordinal);
         Press(window.OwnedWindows[0], "Done");
         await Until(() => window.OwnedWindows.Count == 0);
+
+        // Saved again and opened here, the window shows the copy, which reopens as the same session.
+        choices.Answer(target);
+        Click(window, "ShareOriginalButton");
+        Press(await Prompt(window), "Save unredacted copy…");
+        await Until(() => window.OwnedWindows.Count == 1 && window.OwnedWindows[0].Title == "Original session saved");
+        string second = Assert.Single(Directory.EnumerateDirectories(target), path => path != copy);
+        Press(window.OwnedWindows[0], "Open it here");
+        TextBlock shown = window.GetControl<TextBlock>("CaptureSessionPath");
+        await Until(() => window.OwnedWindows.Count == 0 && shown.Text == second);
+        Assert.Equal("Saved session open", window.GetControl<TextBlock>("CaptureStatus").Text);
+        await window.SessionFilesChecked;
         window.Close();
     }
 

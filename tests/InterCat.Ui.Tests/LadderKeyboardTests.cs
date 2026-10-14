@@ -123,6 +123,21 @@ public sealed class LadderKeyboardTests
         window.KeyPressQwerty(PhysicalKey.P, RawInputModifiers.None);
         await viewModel.LayoutReady;
         Assert.DoesNotContain(node.Key, viewModel.PinnedGraphNodeKeys);
+
+        // The buttons do as the keys do: Pin node pins and unpins, and Re-layout lays the graph out afresh, the pin kept.
+        pin.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await viewModel.LayoutReady;
+        Assert.Contains(node.Key, viewModel.PinnedGraphNodeKeys);
+        Assert.Equal("Unpin node (P)", pin.Content);
+        Task laidOut = viewModel.LayoutReady;
+        relayout.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        Assert.NotSame(laidOut, viewModel.LayoutReady);
+        await viewModel.LayoutReady;
+        Assert.Contains(node.Key, viewModel.PinnedGraphNodeKeys);
+        pin.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        await viewModel.LayoutReady;
+        Assert.DoesNotContain(node.Key, viewModel.PinnedGraphNodeKeys);
+        Assert.Equal("Pin node (P)", pin.Content);
         window.Close();
     }
 

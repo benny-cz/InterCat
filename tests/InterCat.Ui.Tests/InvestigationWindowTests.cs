@@ -806,7 +806,7 @@ public sealed class InvestigationWindowTests
         main.Show();
         try
         {
-            InvestigationWindow window = main.ShowInvestigation(workspace, create: true);
+            InvestigationWindow window = Assert.IsType<InvestigationWindow>(main.StartInvestigation(workspace));
             WaitFor(() => window.View is not null);
             Assert.Empty(window.View!.Members);
             Assert.Equal("No session yet: add the sessions this investigation covers.", window.View.Summary);
@@ -816,11 +816,22 @@ public sealed class InvestigationWindowTests
 
             // Asked to make one that exists, the window opens it as it is, saying it holds no session yet - never that
             // every session is where it was last found.
-            InvestigationWindow again = main.ShowInvestigation(workspace, create: true);
+            InvestigationWindow again = Assert.IsType<InvestigationWindow>(main.StartInvestigation(workspace));
             WaitFor(() => again.View is not null);
             Assert.Equal(written, File.ReadAllText(workspace));
             Assert.Equal("This investigation holds no session yet: add the sessions it covers.",
                 Named<TextBlock>(again, "Investigation status").Text);
+
+            // Its file gone from under its window, a new one started there is read again by that window, not left saying
+            // it was moved, renamed or deleted.
+            File.Delete(workspace);
+            _ = again.RefreshAsync();
+            WaitFor(() => again.View is null && Named<TextBlock>(again, "Investigation status").Text!.StartsWith(
+                "This investigation could not be read: No file is at ", StringComparison.Ordinal));
+            Assert.Same(again, main.StartInvestigation(workspace));
+            WaitFor(() => again.View is not null);
+            Assert.Equal("A new investigation: add the sessions it covers.", Named<TextBlock>(again, "Investigation status").Text);
+            Assert.Same(again, Assert.Single(main.Investigations));
             again.Close();
         }
         finally
@@ -1281,8 +1292,10 @@ public sealed class InvestigationWindowTests
             Assert.EndsWith(", and what its capture covered there is unknown, so that is not proof of inactivity. There is nothing of it to open: "
                 + "choose a column with records.", Named<TextBlock>(window, "Investigation status").Text, StringComparison.Ordinal);
 
-            // Only what the session holds of the column is selected: this one reaches back before beta's capture began.
-            Assert.True(await window.OpenColumnAsync(new TimelineColumn(1, column)));
+            // Only what the session holds of the column is selected: this one reaches back before beta's capture began. Its
+            // button opens the column chosen, as Enter does.
+            window.ChooseColumn(1, column);
+            Named<Button>(window, "Open this column").RaiseEvent(new Avalonia.Interactivity.RoutedEventArgs(Button.ClickEvent));
             WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == betaPath);
             var opened = (WorkspaceViewModel)main.DataContext!;
             TimeRange extent = opened.Snapshot.Extent;
@@ -1564,7 +1577,8 @@ public sealed class InvestigationWindowTests
         Assert.Equal((WindowState.Normal, 1), (window.WindowState, activated));
 
         // Another investigation has a window of its own; each opens its sessions in InterCat's window, so none outlives it.
-        InvestigationWindow other = main.ShowInvestigation(Path.Combine(root.Path, "other" + InvestigationWorkspace.Extension), create: true);
+        InvestigationWindow other = Assert.IsType<InvestigationWindow>(
+            main.StartInvestigation(Path.Combine(root.Path, "other" + InvestigationWorkspace.Extension)));
         Assert.NotSame(window, other);
         Assert.Equal(2, main.Investigations.Count);
         int closed = 0;

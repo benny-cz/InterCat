@@ -21,8 +21,9 @@ namespace InterCat.Ui.Tests;
 
 /// <summary>
 /// The main window's paths that only the methods behind them were tested through, run as a person runs them: a session's
-/// channels, a record's original and its content opened from the window, records kept through the pins dialog, a process's
-/// next page of HTTP exchanges, and the ranked table and header by the pointer.
+/// channels, a record's original and its content opened from the window, by key or double click, records kept through the
+/// pins dialog, a process's next page of HTTP exchanges, a call's other end by O, the ranked table and header by the
+/// pointer, and a capture that ends before it shows anything.
 /// </summary>
 public sealed class MainWindowPathTests
 {
@@ -355,6 +356,187 @@ public sealed class MainWindowPathTests
 
     private const string ClientEnd = "127.0.0.1:50000";
     private const string ServerEnd = "127.0.0.1:8080";
+
+    [AvaloniaFact(DisplayName = "§3.2: O on a linked call opens the call at its other end, its records the keyboard's, and on a call whose other end is unknown does nothing")]
+    public async Task OOpensACallsOtherEnd()
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        var window = new MainWindow { Width = 1_400, Height = 900 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await Open(window, session);
+            await CallsOfTheCaller(workspace);
+            Settle(window);
+            ListBox rung = window.GetControl<ListBox>("RungList");
+            Assert.Equal([true, false, true], workspace.RungRows.Select(row => row.HasOtherEnd));
+
+            // The second call's other end is unknown: O on it goes nowhere, and the call keeps the keyboard.
+            Click(window, rung, 1, RawInputModifiers.None);
+            (string Badge, int Crumbs) at = (workspace.LevelBadge, workspace.Crumbs.Count);
+            window.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.None);
+            Settle(window);
+            Assert.Equal(at, (workspace.LevelBadge, workspace.Crumbs.Count));
+            Assert.True(RecordHasKeyboard(window, rung, 1));
+
+            // The first's is known: O opens the call that served it, as its menu does, its records the keyboard's.
+            Click(window, rung, 0, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.O, RawInputModifiers.None);
+            await workspace.EvidenceReady;
+            Settle(window);
+            Assert.True(workspace.IsEvidenceRung);
+            Assert.Contains("RPC calls served on svcctl", workspace.Crumbs[^2].Label, StringComparison.Ordinal);
+            WaitFor(() => RecordHasKeyboard(window, rung, 0));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.2: a record double-clicked opens its original record, as Enter does, and Esc gives the keyboard back to it")]
+    public async Task ARecordDoubleClickedOpensItsOriginal()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 32, 100, 2).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 2_000 },
+        ]);
+        var window = new MainWindow { Width = 1_456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await Open(window, session);
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            Settle(window);
+            ListBox rung = window.GetControl<ListBox>("RungList");
+
+            // The second record, double-clicked, is the one its original record window opens on.
+            Click(window, rung, 1, RawInputModifiers.None);
+            Click(window, rung, 1, RawInputModifiers.None);
+            SessionRawRecordWindow raw = Owned<SessionRawRecordWindow>(window);
+            Assert.Equal((workspace.RungRows[1].Key, true), (workspace.SelectedRung?.Key, workspace.HasSelectedEvidence));
+            WaitFor(() => raw.FocusManager?.GetFocusedElement() is TextBox { Text.Length: > 0 });
+            raw.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            WaitFor(() => window.OwnedWindows.Count == 0 && RecordHasKeyboard(window, rung, 1));
+            Assert.Equal("L5 · EVIDENCE", workspace.LevelBadge);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a capture that ends before it shows anything gives back the session shown - its actions, name and records - and says whether it saved one")]
+    public async Task ACaptureThatShowsNothingGivesTheSessionBack()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 1).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 1_000 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 2).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 2_000 },
+        ]);
+        string recorded = Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Captures", Guid.NewGuid().ToString("N"));
+        var window = new MainWindow { Width = 1_456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await Open(window, session);
+            TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
+            TextBlock detail = window.GetControl<TextBlock>("CaptureDetail");
+            TextBlock path = window.GetControl<TextBlock>("CaptureSessionPath");
+            string named = window.Title!;
+            Assert.Equal(session.Path, path.Text);
+
+            // An approval declined: the session is shown as it was, and is still the one the window's actions act on.
+            window.CaptureRunner = (report, _, _) =>
+            {
+                report(new(CaptureUiPhase.Unavailable, "Administrator approval declined",
+                    "Windows did not approve the broker, so nothing was recorded."));
+                return Task.CompletedTask;
+            };
+            Start(window);
+            WaitFor(() => status.Text == "Administrator approval declined");
+            Settle(window);
+            Assert.Same(workspace, window.DataContext);
+            Assert.Equal((session.Path, named), (path.Text, window.Title));
+            Assert.Equal("Show this rung's source records in the ladder", Offered(window.GetControl<Button>("ShowRecordsButton")));
+            Assert.Equal("Keep this session's records from the time scope's start through every release, or remove a pin",
+                Offered(window.GetControl<Button>("KeepRecordsButton")));
+            Assert.Equal("Save an exact, unredacted copy of this session's evidence to share",
+                Offered(window.GetControl<Button>("ShareOriginalButton")));
+
+            // A capture that fails before saving anything says so, never that a session below holds its evidence; its
+            // records still open from the session given back.
+            window.CaptureRunner = (_, _, _) => throw new InvalidOperationException("The broker's pipe closed.");
+            Start(window);
+            WaitFor(() => status.Text == "Capture interrupted");
+            Assert.Equal("The broker's pipe closed. The capture saved no session.", detail.Text);
+            Assert.Equal((session.Path, named), (path.Text, window.Title));
+            Assert.True(workspace.ShowEvidence());
+            await workspace.EvidenceReady;
+            Settle(window);
+            ListBox rung = window.GetControl<ListBox>("RungList");
+            Click(window, rung, 0, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            SessionRawRecordWindow raw = Owned<SessionRawRecordWindow>(window);
+            WaitFor(() => raw.FocusManager?.GetFocusedElement() is TextBox { Text.Length: > 0 });
+            raw.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            WaitFor(() => window.OwnedWindows.Count == 0);
+
+            // One that showed a view of its own before it stopped leaves that view, which its words point to: the session
+            // before is not given back over it.
+            using var published = new TemporarySession();
+            Publish(published.Store,
+            [
+                Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 16, 300, 3).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 3_000 },
+            ]);
+            window.CaptureRunner = (report, _, _) =>
+            {
+                report(new(CaptureUiPhase.Recording, "Recording · follow latest", "Recording.", SessionPath: published.Path,
+                    Overview: SessionOverviewProjector.Project(published.Store)));
+                report(new(CaptureUiPhase.Unavailable, "Capture interrupted",
+                    "The broker stopped. Any published session data remains at the path shown below.", SessionPath: published.Path));
+                return Task.CompletedTask;
+            };
+            Start(window);
+            WaitFor(() => status.Text == "Capture interrupted" && path.Text == published.Path);
+            Settle(window);
+            Assert.NotSame(workspace, window.DataContext);
+            Assert.Single(((WorkspaceViewModel)window.DataContext!).Snapshot.Processes);
+            Assert.Equal($"InterCat · {Path.GetFileName(published.Path)}", window.Title);
+
+            // One that recorded into a session of its own before it failed has shown that session's place instead, which
+            // it points to; the session before is not given back over it.
+            window.CaptureRunner = (report, _, _) =>
+            {
+                report(new(CaptureUiPhase.Recording, "Recording · follow latest", "Recording.", SessionPath: recorded));
+                throw new InvalidOperationException("The broker's pipe closed.");
+            };
+            Start(window);
+            WaitFor(() => status.Text == "Capture interrupted");
+            Assert.Equal("The broker's pipe closed. Any published evidence is retained in the session shown below.", detail.Text);
+            Assert.Equal(recorded, path.Text);
+            Assert.True(((WorkspaceViewModel)window.DataContext!).IsEmptyWorkspace);
+            Assert.Equal("Open or record a session first.", Offers.WhyNot(window.GetControl<Button>("ShowRecordsButton")));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>Starts a capture as Start exploring does.</summary>
+    private static void Start(MainWindow window)
+    {
+        Button start = window.GetControl<Button>("StartExploringButton");
+        Assert.True(start.IsEffectivelyEnabled);
+        start.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+    }
 
     [AvaloniaFact(DisplayName = "R15: a ranked row's menu offers what acts on its row - a linked call's other end, never a selection a call or a record cannot join - and a row with nothing to offer opens none")]
     public async Task ARowsMenuOffersWhatActsOnIt()

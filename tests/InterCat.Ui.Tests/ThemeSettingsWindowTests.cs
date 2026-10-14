@@ -69,8 +69,65 @@ public sealed class ThemeSettingsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§26.3: a theme that cannot be kept is applied until InterCat closes, and the menu says why where it said where choices are kept")]
+    public void AThemeThatCannotBeKeptSaysWhy()
+    {
+        string directory = Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.Settings", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(directory);
+
+        // The settings file's folder is a file, so nothing can be written there.
+        string blocked = Path.Combine(directory, "InterCat");
+        File.WriteAllText(blocked, "not a folder");
+        var store = new ApplicationSettingsStore(Path.Combine(blocked, "settings.json"));
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        ThemeMode? pinned = App.PinnedMode;
+        App app = Assert.IsType<App>(Avalonia.Application.Current);
+        App.PinnedMode = null;
+        try
+        {
+            window.UseSettings(store, store.Load());
+            MenuFlyout menu = Assert.IsType<MenuFlyout>(window.GetControl<Button>("ThemeButton").Flyout);
+            Assert.Equal(["Kept in " + store.FilePath], Notes(menu));
+
+            // Light is applied and checked, and the menu no longer says the choice is kept: it says it lasts until InterCat
+            // closes, and why.
+            Choices(menu)[2].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Dispatch();
+            Assert.Equal(ThemeMode.Light, ThemeResources.CurrentMode);
+            Assert.True(Choices(menu)[2].IsChecked);
+            string said = Assert.Single(Notes(menu));
+            Assert.StartsWith($"This choice lasts until InterCat closes: it could not be kept in {store.FilePath}. ", said,
+                StringComparison.Ordinal);
+            Assert.True(said.Length > $"This choice lasts until InterCat closes: it could not be kept in {store.FilePath}. ".Length);
+            Assert.False(File.Exists(store.FilePath));
+
+            // Once its folder can be made, the next choice is kept, and the menu says where again.
+            File.Delete(blocked);
+            Choices(menu)[1].RaiseEvent(new RoutedEventArgs(MenuItem.ClickEvent));
+            Dispatch();
+            Assert.Equal(ThemeMode.Dark, new ApplicationSettingsStore(store.FilePath).Load().Theme);
+            Assert.Equal(["Kept in " + store.FilePath], Notes(menu));
+        }
+        finally
+        {
+            App.PinnedMode = pinned;
+            app.ChooseTheme(null);
+            ThemeResources.Apply(app, ThemeMode.Dark);
+            window.Close();
+            if (Directory.Exists(directory))
+            {
+                Directory.Delete(directory, recursive: true);
+            }
+        }
+    }
+
     private static MenuItem[] Choices(MenuFlyout menu) =>
         [.. menu.Items.OfType<MenuItem>().Where(item => item.ToggleType == MenuItemToggleType.Radio)];
+
+    /// <summary>What the menu says beneath its choices: where they are kept, or why one is not.</summary>
+    private static string[] Notes(MenuFlyout menu) =>
+        [.. menu.Items.OfType<MenuItem>().Where(item => !item.IsEnabled).Select(item => (string)item.Header!)];
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 }

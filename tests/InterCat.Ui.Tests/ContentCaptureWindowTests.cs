@@ -127,16 +127,7 @@ public sealed class ContentCaptureWindowTests
     [AvaloniaFact(DisplayName = "§11.1: a content capture's review states what the broker would keep of whose messages, and starts nothing on Cancel")]
     public void TheReviewStatesWhatTheBrokerWouldKeep()
     {
-        var summary = new BrokerEffectiveCaptureSummary(
-            "content", "content", AdmissionMode.ScopedContent, AdmissionMode.ScopedContent, null, null, [4_242], [4_242],
-            true, false, false,
-            [new("etw/kernel/process", ProviderProcessScope.WholeMachineRequiredContext, [], true, "Lifecycle."),
-                new(ContentSources.WinInetCapture, ProviderProcessScope.ProcessFiltered, [4_242], false, "Content.")],
-            "Content is kept only from the named processes.",
-            "WinINet keeps each HTTP exchange's messages; over HTTPS as their plaintext.",
-            new BrokerCaptureQuota(3_600, 1L << 30, 1L << 30), BrokerRetentionPolicy.StopAtLimit, [],
-            BrokerJournalPublication.Live, 4_000, null,
-            new(ContentSources.WinInetCapture, [Started], 64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, ["*"]));
+        BrokerEffectiveCaptureSummary summary = Prepared();
         var review = new ContentCaptureReviewWindow(summary, Mechanism.Http,
             new Dictionary<int, SeenProcess> { [4_242] = new(4_242, "client", Started) });
         review.Show();
@@ -263,6 +254,86 @@ public sealed class ContentCaptureWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§11.1: a content capture runs whole from the card - your process chosen, the broker's plan reviewed - and starts only on Start capture")]
+    public async Task AContentCaptureRunsWholeFromTheCard()
+    {
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.RunningProcesses = () => [new(4_242, "client", Started)];
+        var asked = new List<(IReadOnlyList<int> Processes, bool Started)>();
+        window.CaptureRunner = async (report, _, options) =>
+        {
+            // As the broker's runner does: the plan it prepared is reviewed before anything is recorded.
+            report(new(CaptureUiPhase.Starting, "Starting the content capture", "Preparing."));
+            bool started = await options.Review!(Prepared());
+            lock (asked) asked.Add((options.Content!.Request.ProcessIds, started));
+            report(new(CaptureUiPhase.Unavailable, started ? "The broker stopped" : "The content capture did not start",
+                started ? "The test ends the capture." : "You did not start it after its review. Nothing was recorded."));
+        };
+        window.Show();
+        try
+        {
+            window.GetControl<ComboBox>("CaptureKeepSelector").SelectedItem = CaptureKeepChoice.All[^1];
+            Dispatch();
+            foreach (bool start in new[] { false, true })
+            {
+                // Choose processes… lists the person's own; the process is chosen by its box, and Review asks the broker.
+                window.GetControl<Button>("StartExploringButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                ContentCaptureWindow chooser = await Chooser(window);
+                Assert.Equal(["client, process 4242"], chooser.Listed.Select(Head));
+                Button review = Named<Button>(chooser, "Review with the broker…");
+                Assert.False(review.IsEnabled);
+                CheckBox box = chooser.GetVisualDescendants().OfType<CheckBox>()
+                    .Single(candidate => AutomationProperties.GetName(candidate)?.StartsWith("client, process 4242", StringComparison.Ordinal) == true);
+                box.IsChecked = true;
+                Dispatch();
+                review.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+
+                // The broker's plan is reviewed over the window, the process named; only Start capture starts it.
+                ContentCaptureReviewWindow plan = await Owned<ContentCaptureReviewWindow>(window);
+                Assert.False(chooser.IsVisible);
+                Assert.StartsWith("client, started ", plan.Lines.Single(line => line.Label == "Process 4242").Value, StringComparison.Ordinal);
+                Named<Button>(plan, start ? "Start capture" : "Cancel: nothing is recorded")
+                    .RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                await Assert.IsAssignableFrom<Task>(window.CaptureRun).WaitAsync(TimeSpan.FromSeconds(30));
+                Dispatch();
+                Assert.Equal([4_242], asked[^1].Processes);
+                Assert.Equal(start, asked[^1].Started);
+            }
+
+            Assert.Equal("The broker stopped", window.GetControl<TextBlock>("CaptureStatus").Text);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A content capture of process 4242's messages as the broker would prepare it.</summary>
+    private static BrokerEffectiveCaptureSummary Prepared() => new(
+        "content", "content", AdmissionMode.ScopedContent, AdmissionMode.ScopedContent, null, null, [4_242], [4_242],
+        true, false, false,
+        [new("etw/kernel/process", ProviderProcessScope.WholeMachineRequiredContext, [], true, "Lifecycle."),
+            new(ContentSources.WinInetCapture, ProviderProcessScope.ProcessFiltered, [4_242], false, "Content.")],
+        "Content is kept only from the named processes.",
+        "WinINet keeps each HTTP exchange's messages; over HTTPS as their plaintext.",
+        new BrokerCaptureQuota(3_600, 1L << 30, 1L << 30), BrokerRetentionPolicy.StopAtLimit, [],
+        BrokerJournalPublication.Live, 4_000, null,
+        new(ContentSources.WinInetCapture, [Started], 64 * 1024, 16L * 1024 * 1024, ContentInspectionMode.Disabled, ["*"]));
+
+    /// <summary>A dialog the window shows over itself, once it is shown.</summary>
+    private static async Task<T> Owned<T>(Window window)
+        where T : Window
+    {
+        for (int attempt = 0; attempt < 200 && !window.OwnedWindows.OfType<T>().Any(); attempt++)
+        {
+            await Task.Delay(25);
+            Dispatch();
+        }
+
+        Dispatch();
+        return window.OwnedWindows.OfType<T>().Single();
     }
 
     /// <summary>The chooser once open: the processes are listed off the window's thread before it shows.</summary>

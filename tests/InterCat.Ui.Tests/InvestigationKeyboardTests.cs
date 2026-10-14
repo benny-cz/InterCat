@@ -440,7 +440,7 @@ public sealed class InvestigationKeyboardTests
         }
     }
 
-    [AvaloniaFact(DisplayName = "R15: F1 lists the investigation window's keys by where they act, and Esc gives the keyboard back to the session")]
+    [AvaloniaFact(DisplayName = "R15: F1 lists the investigation window's keys by where they act, Esc gives the keyboard back to the session, and Esc then closes the window")]
     public void F1ListsTheInvestigationWindowsKeys()
     {
         using var root = new TemporaryDirectory();
@@ -497,7 +497,11 @@ public sealed class InvestigationKeyboardTests
             sheet.Close();
             Dispatch();
             Assert.Null(window.KeysSheet);
-            window.Close();
+
+            // With no sheet over it, Esc closes the window, as the sheet says it does from anywhere.
+            Assert.Equal("close the window", listed.Single(key => key is { Where: "Anywhere", Keys: "Esc" }).Does);
+            Press(window, PhysicalKey.Escape);
+            WaitFor(() => !window.IsVisible && main.Investigations.Count == 0);
         }
         finally
         {

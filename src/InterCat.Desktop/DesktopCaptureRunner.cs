@@ -564,8 +564,10 @@ public static class DesktopCaptureRunner
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or OperationCanceledException)
         {
-            report(new(CaptureUiPhase.Unavailable, "Capture interrupted",
-                exception.Message + " Any published session data remains at the path shown below.",
+            // Before its session is named, the capture has derived nothing, so there is no path below to point at.
+            report(new(CaptureUiPhase.Unavailable, "Capture interrupted", exception.Message + (sessionPath is null
+                    ? " The capture saved no session."
+                    : " Any published session data remains at the path shown below."),
                 summary, sessionPath));
         }
         finally

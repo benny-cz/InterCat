@@ -209,6 +209,26 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private TimeSpan? publishedEvery;
     private int displayedChunks;
 
+    /// <summary>
+    /// The session shown when the latest capture began, and what the window knew of it, until that capture's own view takes
+    /// its place: a capture that ends without one - an approval declined, a broker that could not start - gives it back
+    /// whole, rather than leaving it shown but forgotten, its actions waiting for a session and the window unnamed.
+    /// </summary>
+    private ShownBeforeCapture? shownBeforeCapture;
+
+    private sealed record ShownBeforeCapture(
+        Guid? SessionId,
+        long Generation,
+        string? Path,
+        SessionOverviewBundle? Overview,
+        int Chunks,
+        (SessionSize Size, DateTimeOffset? Began, RetainedInterval? Retained, string? Pinned, IReadOnlyList<RetentionPin> Pins)? Growth,
+        string? Summary,
+        string? SessionPathText,
+        EvidencePolicy Policy,
+        LaneGrouping Grouping,
+        bool CollectorsAside);
+
     // A capture an earlier viewer left unfinished, offered in the rail (§3.1 step 6): where to look for one, the one
     // offered, what its card says, and the finish running for it, whose cancellation is the finish button's second meaning.
     private string? sessionRoot;
@@ -418,10 +438,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         };
     }
 
-    /// <summary>
-    /// Keyboard equivalents for the header actions. Every affordance on this window has one, so no
-    /// behaviour is reachable by pointer alone (R15, section 6.7).
-    /// </summary>
     /// <summary>The widest a crumb is drawn, as the crumb template states; a wider name ends in an ellipsis.</summary>
     private const double CrumbWidth = 220;
 
@@ -480,6 +496,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         (FocusManager?.GetFocusedElement() is Control focused ? SearchResultsList.IndexFromContainer(focused)
             : SearchResultsList.SelectedIndex) <= 0;
 
+    /// <summary>
+    /// Keyboard equivalents for the header actions. Every affordance on this window has one, so no
+    /// behaviour is reachable by pointer alone (R15, section 6.7).
+    /// </summary>
     private void OnShortcutKey(object? sender, KeyEventArgs e)
     {
         if (DataContext is not WorkspaceViewModel viewModel)
@@ -1700,7 +1720,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             ShowOverwritePrompt = false,
         });
         if (file is null || closed) return;
-        _ = ShowInvestigation(file, create: true);
+        _ = StartInvestigation(file);
     }
 
     private static readonly Avalonia.Platform.Storage.FilePickerFileType InvestigationFiles = new("InterCat investigation")
@@ -1709,36 +1729,46 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     };
 
     /// <summary>
-    /// Shows an investigation in a window of its own, beside the session this window shows, making it first when asked
-    /// and none is there; a file that already exists is opened, never written over. Opening a member opens it here. An
-    /// investigation already shown is brought in front rather than shown twice, so two windows never write one file.
+    /// Starts an investigation at <paramref name="path"/> and shows it, or opens the one there as it is, never written
+    /// over; null when none could be made there, which the card says. A window opened for a file that was never made would
+    /// say only that it had been moved, renamed or deleted.
     /// </summary>
-    internal InvestigationWindow ShowInvestigation(string path, bool create = false)
+    internal InvestigationWindow? StartInvestigation(string path)
+    {
+        string full = Path.GetFullPath(path);
+        if (File.Exists(full)) return ShowInvestigation(full);
+        try
+        {
+            InvestigationWorkspace.Create(full, DateTimeOffset.UtcNow);
+        }
+        catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            Say(CaptureStatus, "No investigation was made", aloud: true);
+            Say(CaptureDetail, "The investigation could not be made: " + exception.Message, aloud: true);
+            return null;
+        }
+
+        return ShowInvestigation(full, "A new investigation: add the sessions it covers.");
+    }
+
+    /// <summary>
+    /// Shows an investigation in a window of its own, beside the session this window shows, its status line saying
+    /// <paramref name="opening"/> first when given. Opening a member opens it here. An investigation already shown is brought
+    /// in front rather than shown twice, so two windows never write one file; told something new of it, it reads it again.
+    /// </summary>
+    internal InvestigationWindow ShowInvestigation(string path, string? opening = null)
     {
         string full = Path.GetFullPath(path);
         if (investigations.FirstOrDefault(shown => string.Equals(shown.WorkspacePath, full,
             OperatingSystem.IsWindows() ? StringComparison.OrdinalIgnoreCase : StringComparison.Ordinal)) is { } open)
         {
+            if (opening is not null) _ = open.RefreshAsync(opening);
             Forward(open);
             return open;
         }
 
-        string? made = null;
-        if (create && !File.Exists(full))
-        {
-            try
-            {
-                InvestigationWorkspace.Create(full, DateTimeOffset.UtcNow);
-                made = "A new investigation: add the sessions it covers.";
-            }
-            catch (Exception exception) when (exception is IOException or InvalidOperationException or UnauthorizedAccessException)
-            {
-                made = "The investigation could not be made: " + exception.Message;
-            }
-        }
-
         var window = new InvestigationWindow(full,
-            (session, member) => FromInvestigationAsync(full, () => OpenSessionOrSayWhyNotAsync(session, null, member)), made,
+            (session, member) => FromInvestigationAsync(full, () => OpenSessionOrSayWhyNotAsync(session, null, member)), opening,
             (session, member, interval) => FromInvestigationAsync(full, () => OpenSessionAtAsync(session, interval, member)),
             other => ShowInvestigation(other));
         investigations.Add(window);
@@ -2325,7 +2355,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>
     /// Applies a theme, or the system's when null, and keeps the choice in the settings file. A file that cannot be
-    /// written leaves the theme applied for this run, and the menu says why.
+    /// written leaves the theme applied for this run, and the menu says why, in place of where it is kept.
     /// </summary>
     internal void ChooseTheme(ThemeMode? choice)
     {
@@ -2341,7 +2371,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             catch (Exception exception) when (exception is IOException or UnauthorizedAccessException
                 or InvalidOperationException)
             {
-                settingsProblem = "This choice lasts until InterCat closes: " + exception.Message;
+                settingsProblem = $"This choice lasts until InterCat closes: it could not be kept in {store.FilePath}. "
+                    + exception.Message;
             }
         }
 
@@ -2367,10 +2398,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
 
         _ = menu.Items.Add(new Separator());
-        string kept = settingsStore is { } store
-            ? "Kept in " + store.FilePath
-            : "No settings file is in use: a choice lasts until InterCat closes.";
-        foreach (string line in settings.Notices.Prepend(kept).Append(settingsProblem).OfType<string>())
+        string kept = settingsProblem
+            ?? (settingsStore is { } store
+                ? "Kept in " + store.FilePath
+                : "No settings file is in use: a choice lasts until InterCat closes.");
+        foreach (string line in settings.Notices.Prepend(kept))
         {
             _ = menu.Items.Add(new MenuItem { Header = line, IsEnabled = false });
         }
@@ -2456,8 +2488,6 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         RailActions.MaxHeight = RailActionsHeight(RailGrid.Bounds.Height, above) - RailActions.Margin.Top;
     }
 
-    /// <summary>The saved sessions show only while no session is open and no capture is running, where the ranked table
-    /// will be.</summary>
     /// <summary>
     /// What the rail offers only before any session is shown and while no capture runs: the saved sessions, the card's
     /// heading and what exploring records, and the demo to try (§14 M5). Once a session is shown the ranked list needs the
@@ -3349,13 +3379,17 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        IReadOnlyList<SeenProcess> running = await Task.Run(BrokerContentReview.Running);
-        var chooser = new ContentCaptureWindow(running, BrokerContentReview.Running);
+        Func<IReadOnlyList<SeenProcess>> list = RunningProcesses;
+        IReadOnlyList<SeenProcess> running = await Task.Run(list);
+        var chooser = new ContentCaptureWindow(running, list);
         if (await chooser.ShowDialog<bool>(this) && !closed && chooser.Chosen is { } chosen)
         {
             BeginCapture(chosen);
         }
     }
+
+    /// <summary>How the window lists the person's own running processes for a content capture; a test lists its own.</summary>
+    internal Func<IReadOnlyList<SeenProcess>> RunningProcesses { get; set; } = BrokerContentReview.Running;
 
     /// <summary>Starts a content capture already chosen, as the chooser's Review does; a test uses it.</summary>
     internal void BeginContentCapture(ContentCaptureChoice chosen) => BeginCapture(chosen);
@@ -3382,6 +3416,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         captureStop?.Dispose();
         captureStop = new CancellationTokenSource();
         int run = ++captureRunId;
+        shownBeforeCapture = workspace.IsEmptyWorkspace ? null : new(displayedSessionId, displayedGeneration,
+            currentSessionPath, displayedOverview, displayedChunks, growth, CaptureSummary.Text, CaptureSessionPath.Text,
+            evidencePolicy, laneGrouping, collectorsAside);
         ForgetDisplayedSession();
         evidencePolicy = EvidencePolicy.IncludeCorrelated;
         laneGrouping = LaneGrouping.Executable;
@@ -3409,9 +3446,44 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
         catch (Exception exception)
         {
-            ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture interrupted",
-                exception.Message + " Any published evidence is retained in the session shown below."));
+            // Said after whatever the capture said before it failed, which waits its turn on the window's thread as this
+            // does: said first, a recording it reported last would be shown over it, as if it still ran. Only a capture
+            // that said where its session is has one to point at.
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (closed || run != captureRunId) return;
+                bool saved = !string.IsNullOrEmpty(CaptureSessionPath.Text);
+                ApplyCaptureUpdate(new(CaptureUiPhase.Unavailable, "Capture interrupted", exception.Message
+                    + (saved ? " Any published evidence is retained in the session shown below." : " The capture saved no session.")));
+                GiveBackShownSession();
+            });
         }
+    }
+
+    /// <summary>
+    /// Gives back the session shown when the capture began, once the capture has ended without a view of its own - a view
+    /// of its own lets that session go - so that, still shown, it is again the session the window's actions act on, its
+    /// name and size line describe, and its view settings project.
+    /// </summary>
+    private void GiveBackShownSession()
+    {
+        if (shownBeforeCapture is not { } before) return;
+        shownBeforeCapture = null;
+        displayedSessionId = before.SessionId;
+        displayedGeneration = before.Generation;
+        currentSessionPath = before.Path;
+        displayedOverview = before.Overview;
+        displayedChunks = before.Chunks;
+        growth = before.Growth;
+        evidencePolicy = before.Policy;
+        laneGrouping = before.Grouping;
+        collectorsAside = before.CollectorsAside;
+        CaptureSummary.Text = before.Summary;
+        CaptureSessionPath.Text = before.SessionPathText;
+        NameWindow();
+        UpdateEvidenceAction();
+        UpdateSessionGrowth();
+        UpdateBeforeSessionVisibility();
     }
 
     /// <summary>What the latest capture this window started was told: how long it records and what its session keeps.</summary>
@@ -3576,6 +3648,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             if (!closed && run == captureRunId)
             {
                 ApplyCaptureUpdate(update);
+                if (update.Phase == CaptureUiPhase.Unavailable) GiveBackShownSession();
 
                 // A capture that ends has saved a session: the next time none is open, it is listed.
                 if (update.Phase == CaptureUiPhase.Complete)
@@ -3719,6 +3792,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     {
         if (capturePhase == CaptureUiPhase.Recording && !workspace.IsEmptyWorkspace)
         {
+            shownBeforeCapture = null;
             workspace.PropertyChanged -= OnWorkspaceChanged;
             workspace.Dispose();
             workspace = new WorkspaceViewModel(OverviewWorkspace.Empty(), "empty-workspace");
@@ -4116,6 +4190,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private void ReplaceWorkspace(CaptureUiUpdate update, SessionOverviewBundle overview, bool forceOverview,
         bool regrouping = false)
     {
+        shownBeforeCapture = null;
         WorkspaceNavigationMemento? savedNavigation = !forceOverview && overview.SessionId == displayedSessionId
             ? workspace.CaptureNavigation() : null;
 

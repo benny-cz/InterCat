@@ -3,7 +3,9 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.VisualTree;
+using InterCat.Application;
 using InterCat.Capture.Journal.Tests;
 using InterCat.Desktop;
 using InterCat.Desktop.Presentation;
@@ -244,6 +246,86 @@ public sealed class RecentSessionsWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§3.1: a capture's session is listed once the capture ends, shown when no session is, and a saved session opens on a double click, as Enter opens it")]
+    public async Task ACapturesSessionIsListedAndOpensOnADoubleClick()
+    {
+        using var root = new TemporaryDirectory();
+        string captured = Path.Combine(root.Path, "explore-20261014T090000Z-c");
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        int runs = 0;
+        window.CaptureRunner = (report, _, _) =>
+        {
+            if (Interlocked.Increment(ref runs) == 1)
+            {
+                // The first capture saves its session among the saved ones, and ends.
+                report(new(CaptureUiPhase.Recording, "Recording · follow latest", "Recording.", SessionPath: captured));
+                SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(Directory.CreateDirectory(captured).FullName),
+                    Guid.NewGuid(), "recent-window-tests");
+                _ = Publish(store, [Lifecycle(100, ObservationKind.Create, 400, 1) with { SessionRelativeTicks = 100 }],
+                    committedUtc: Committed);
+                report(new(CaptureUiPhase.Complete, "Capture saved", "Saved.", SessionPath: captured,
+                    Overview: SessionOverviewProjector.Project(store)));
+                return Task.CompletedTask;
+            }
+
+            // The next records, then stops before it shows anything.
+            string next = Path.Combine(root.Path, "explore-20261014T100000Z-d");
+            report(new(CaptureUiPhase.Recording, "Recording · follow latest", "Recording.", SessionPath: next));
+            report(new(CaptureUiPhase.Unavailable, "Capture interrupted", "The broker stopped.", SessionPath: next));
+            return Task.CompletedTask;
+        };
+        window.Show();
+        try
+        {
+            await window.UseSessionRootAsync(root.Path);
+            Dispatch();
+            StackPanel panel = window.GetControl<StackPanel>("RecentSessionsPanel");
+            ListBox list = window.GetControl<ListBox>("RecentSessionsList");
+            TextBlock status = window.GetControl<TextBlock>("CaptureStatus");
+            Assert.Empty(Paths(list));
+
+            // The capture's session is shown once it ends, and listed among the saved ones for when none is.
+            window.GetControl<Button>("StartExploringButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => status.Text == "Capture saved" && Paths(list).SequenceEqual([captured]));
+            Assert.False(panel.IsVisible);
+
+            // The next capture shows nothing before it stops: no session is shown, and the saved ones are listed.
+            window.GetControl<Button>("StartExploringButton").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            await Until(() => status.Text == "Capture interrupted");
+            Assert.True(panel.IsVisible);
+            Assert.Equal([captured], Paths(list));
+
+            // A double click on it opens it, as Enter does.
+            _ = window.CaptureRenderedFrame();
+            Control row = list.ContainerFromIndex(0)!;
+            Point at = row.TranslatePoint(new Point(row.Bounds.Width / 2, row.Bounds.Height / 2), window)!.Value;
+            for (int click = 0; click < 2; click++)
+            {
+                window.MouseDown(at, MouseButton.Left);
+                window.MouseUp(at, MouseButton.Left);
+            }
+
+            await Until(() => status.Text == "Saved session open");
+            Assert.Equal(captured, window.GetControl<TextBlock>("CaptureSessionPath").Text);
+            Assert.False(panel.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    private static async Task Until(Func<bool> condition)
+    {
+        for (int attempt = 0; attempt < 500 && !condition(); attempt++)
+        {
+            await Task.Delay(10);
+            Dispatch();
+        }
+
+        Assert.True(condition());
     }
 
     /// <summary>Brings the window back into use, as from another window, and lets it read its folder again.</summary>
