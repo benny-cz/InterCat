@@ -1194,10 +1194,7 @@ public sealed partial class SessionStore
             RequireNoPins();
             if (manifest.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content))
             {
-                throw new InvalidOperationException(
-                    "This session keeps content beside its journal. Rewriting the journal's prefix would leave content "
-                    + "whose records it no longer holds, so its content goes only with whole recording chunks, or all of "
-                    + "it on its own by a content release first (content-v1 §2). Nothing was published.");
+                throw new InvalidOperationException(JournalRetention.BesideContent + " Nothing was published.");
             }
 
             StoreDependency previous = manifest.Dependencies.FirstOrDefault(dependency =>

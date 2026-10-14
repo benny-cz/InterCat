@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 539 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 540 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 540 — icat retain's journal prefix release, run whole (S5, R18):**
+  - A confirmed release the store refused - beside content kept with a single journal, or from a session read at
+    its last complete generation - ended the command with an unhandled exception; what the store refuses at every
+    boundary is now disclosed before it is asked, and a refusal is said in the report, exiting 1.
+  - A boundary that empties the journal is never offered for confirmation; a session read at its last complete
+    generation refuses every confirmed release before measuring, naming icat recover (exit 3).
+  - Debug and Release each ran 2,303 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 22 mutations: content beside a single journal or a standing pin left undisclosed, or a
+    release that empties the journal, keeps content or is pinned offered for confirmation or attempted; the store's
+    content or pin refusal in other words; a confirmed release from a session read at its last complete generation
+    measured rather than refused; that session's note left out of a journal, interval or content measurement, or
+    such a measurement exiting 0; a reason alone told to add one; the report not written where asked; and a refused
+    release's note, the content release's command, the pin's field or JSON, or the content beside the journal left
+    unsaid.
 
 - **Revision 539 — the refusals of pin, checkpoint, channels, exchanges and profiles, run whole (R18):**
   - Each refusal of an option's value names what it expects and the value given; icat profiles' "Invalid process

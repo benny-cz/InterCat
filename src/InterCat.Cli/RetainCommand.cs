@@ -46,6 +46,15 @@ internal sealed record RetentionPreviewDocument
 
     /// <summary>The largest boundary that still leaves admitted evidence behind.</summary>
     public required long LargestReleasingBoundary { get; init; }
+
+    /// <summary>
+    /// Whether content is kept beside the single journal, so that no boundary is released until a content release has given
+    /// that content up on its own.
+    /// </summary>
+    public required bool KeepsContent { get; init; }
+
+    /// <summary>The pin that stops every release by record number while it stands; null when none does.</summary>
+    public PinDocument? HeldBy { get; init; }
 }
 
 internal sealed record RetentionResultDocument
@@ -274,19 +283,9 @@ internal static class RetainCommand
             return InterCatExitCode.InvalidInvocation;
         }
 
-        if (releaseContent)
-        {
-            return await ReleaseContentAsync(full, confirm ? reasonOption : null, outputPath, json, cancellationToken)
-                .ConfigureAwait(false);
-        }
-
-        if (momentOption is not null)
-        {
-            return await ReleaseIntervalAsync(full, momentOption, confirm ? reasonOption : null, outputPath, json,
-                cancellationToken).ConfigureAwait(false);
-        }
-
-        if (!long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out long before))
+        long before = 0;
+        if (beforeOption is not null
+            && !long.TryParse(beforeOption, NumberStyles.None, CultureInfo.InvariantCulture, out before))
         {
             ConsoleUi.Failure(
                 $"--release-journal-before-record expects a non-negative whole number; '{beforeOption}' is not one.");
@@ -294,24 +293,62 @@ internal static class RetainCommand
         }
 
         SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(full));
-        if (store.Current is null)
+        if (store.Current is not { } manifest)
         {
             return Icat.NoSession();
         }
 
+        // Nothing is published over a generation read in the newest one's place, so a release is refused before anything is
+        // measured; a measurement publishes nothing, so it goes ahead and says that nothing can be released yet.
+        string? unrepaired = null;
+        if (store.Recovery.RolledBackToLastKnownGood)
+        {
+            if (confirm)
+            {
+                ConsoleUi.Failure(
+                    $"The newest generation did not verify: {store.Recovery.RollbackReason}. This session is read at "
+                    + $"generation {manifest.Generation}, and nothing can be released from it until its pointer is repaired, "
+                    + $"so nothing was measured or released. icat recover \"{full}\" reviews the pointer and repairs it once "
+                    + "you confirm.");
+                return InterCatExitCode.PermissionOrCapabilityFailure;
+            }
+
+            unrepaired = $"This session is read at generation {manifest.Generation}, its last complete one, because the newest "
+                + $"did not verify: {store.Recovery.RollbackReason}. Nothing can be released from it until its pointer is "
+                + $"repaired: icat recover \"{full}\" reviews the pointer and repairs it once you confirm.";
+        }
+
+        var request = new Request(full, store, manifest, reasonOption, confirm, unrepaired, outputPath, json);
+        if (releaseContent)
+        {
+            return await ReleaseContentAsync(request, cancellationToken).ConfigureAwait(false);
+        }
+
+        return momentOption is not null
+            ? await ReleaseIntervalAsync(request, momentOption, cancellationToken).ConfigureAwait(false)
+            : await ReleaseJournalPrefixAsync(request, before, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Measures, and with a reason performs, the release of a prefix of the session's admitted journal: the batches before a
+    /// record number, or a live recording's chunks wholly before it.
+    /// </summary>
+    private static async Task<InterCatExitCode> ReleaseJournalPrefixAsync(Request request, long before,
+        CancellationToken cancellationToken)
+    {
         ConsoleUi.Progress($"Measuring what releasing records before {before} would give up. Nothing is written yet.");
-        JournalReleasePreview preview = JournalRetention.Preview(store, before, cancellationToken);
+        JournalReleasePreview preview = JournalRetention.Preview(request.Store, before, cancellationToken);
         RetentionOutcome? outcome = null;
         string? refused = null;
-        if (confirm && preview.ReleasesAnything && !preview.WouldEmptyTheJournal)
+        if (request.Performing is { } reason && preview.CanRelease)
         {
             // A store opened for reading cannot publish, because a generation names the session it belongs to
             // and this one was handed a directory. The session identity comes from the generation it already
             // published, which is the only identity a retention may write under.
             SessionStore writable = SessionStore.Open(
-                LocalOwnedDirectory.Open(full),
-                store.Current.SessionId,
-                store.Current.SourceIdentity);
+                LocalOwnedDirectory.Open(request.Path),
+                request.Manifest.SessionId,
+                request.Manifest.SourceIdentity);
             ConsoleUi.Progress(
                 preview.JournalChunks > 1
                     ? $"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in the "
@@ -324,51 +361,56 @@ internal static class RetainCommand
                 outcome = JournalRetention.Release(
                     writable,
                     before,
-                    reasonOption!,
+                    reason,
                     DateTimeOffset.UtcNow,
                     cancellationToken: cancellationToken);
             }
-            catch (RetentionPinnedException exception)
+            catch (InvalidOperationException exception)
             {
+                // The store checks again as it publishes, under its locks, so what changed since the measurement - a pin
+                // placed, another generation published - refuses it, saying that nothing was published.
                 refused = exception.Message;
             }
         }
 
-        RetentionDocument document = Describe(store, full, preview, outcome, confirm, refused);
+        RetentionDocument document = Describe(request, preview, outcome, refused, cancellationToken);
+        await Report(request, document, () => Render(document), cancellationToken).ConfigureAwait(false);
+        return document.Performed || (request.Performing is null && preview.CanRelease && request.Unrepaired is null)
+            ? InterCatExitCode.Success
+            : InterCatExitCode.PartialResultSuccess;
+    }
+
+    /// <summary>
+    /// Says a release's document: as JSON when asked, or in words; and writes it where --output asks. A refusal is among its
+    /// notes, so it is said once, in the report.
+    /// </summary>
+    private static async Task Report<TDocument>(Request request, TDocument document, Action render,
+        CancellationToken cancellationToken)
+    {
         string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
-        if (json)
+        if (request.Json)
         {
             Console.Out.WriteLine(payload);
         }
         else
         {
-            Render(document);
+            render();
         }
 
-        if (outputPath is not null)
+        if (request.OutputPath is { } outputPath)
         {
             Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
             await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
             ConsoleUi.Success($"Retention report written to {outputPath}.");
         }
-
-        if (refused is not null)
-        {
-            ConsoleUi.Warn(refused);
-        }
-
-        return document.Performed || (preview.ReleasesAnything && refused is null)
-            ? InterCatExitCode.Success
-            : InterCatExitCode.PartialResultSuccess;
     }
 
     private static RetentionDocument Describe(
-        SessionStore store,
-        string path,
+        Request request,
         JournalReleasePreview preview,
         RetentionOutcome? outcome,
-        bool confirmed,
-        string? refused)
+        string? refused,
+        CancellationToken cancellationToken)
     {
         bool chunked = preview.JournalChunks > 1;
         var notes = new List<string>
@@ -405,14 +447,29 @@ internal static class RetainCommand
                 + "published: a session with no journal cannot re-derive anything.");
         }
 
-        if (outcome is null && confirmed)
+        // What the store refuses at every boundary, said before it is asked.
+        if (preview.KeepsContent)
+        {
+            notes.Add(JournalRetention.BesideContent
+                + $" icat retain \"{request.Path}\" --release-content measures what that gives up.");
+        }
+
+        if (preview.HeldBy is { } pin)
+        {
+            notes.Add(JournalRetention.HeldByPin(pin));
+        }
+
+        if (outcome is null && request.Confirm)
         {
             notes.Add(refused ?? "Nothing was published, because the release above is refused.");
         }
-
-        if (outcome is null && !confirmed && preview.ReleasesAnything)
+        else if (request.Unrepaired is { } unrepaired)
         {
-            notes.Add("This was a measurement. Add --confirm and --reason to perform it.");
+            notes.Add(unrepaired);
+        }
+        else if (outcome is null && preview.CanRelease)
+        {
+            notes.Add(request.Measured);
         }
 
         if (outcome?.AwaitingRelease == true)
@@ -426,12 +483,12 @@ internal static class RetainCommand
         return new()
         {
             Contract = "store-v1",
-            Path = path,
+            Path = request.Path,
             Action = "release-journal-prefix",
             Performed = outcome is not null,
             Preview = new()
             {
-                Generation = store.Current!.Generation,
+                Generation = request.Manifest.Generation,
                 JournalName = preview.JournalName,
                 JournalChunks = preview.JournalChunks,
                 ReleaseUnit = preview.ReleaseUnit,
@@ -446,6 +503,8 @@ internal static class RetainCommand
                 WouldEmptyTheJournal = preview.WouldEmptyTheJournal,
                 SmallestReleasingBoundary = preview.SmallestReleasingBoundary,
                 LargestReleasingBoundary = preview.LargestReleasingBoundary,
+                KeepsContent = preview.KeepsContent,
+                HeldBy = preview.HeldBy is { } holding ? PinDocument.Of(holding, Moment(request, holding, cancellationToken)) : null,
             },
             Result = outcome is null ? null : new()
             {
@@ -485,6 +544,10 @@ internal static class RetainCommand
             preview.SmallestReleasingBoundary == 0
                 ? chunked ? "none; no chunk's release leaves records behind" : "none; the journal is a single batch"
                 : Boundaries(preview.SmallestReleasingBoundary, preview.LargestReleasingBoundary));
+        if (preview.HeldBy is { } pin)
+        {
+            ConsoleUi.Field("Pinned", $"pin {pin.ShortId} keeps every record from {pin.From} ({pin.Reason})");
+        }
 
         ConsoleUi.Heading("What this boundary gives up");
         int releasedChunks = preview.ReleasedChunks.Count;
@@ -542,15 +605,11 @@ internal static class RetainCommand
     /// a moment, placed as `icat evidence --from` places one, with their rows, but for the rows later records rest on. A
     /// session a recorder may still be writing is refused, since its next publication would fail beneath the release.
     /// </summary>
-    private static async Task<InterCatExitCode> ReleaseIntervalAsync(string path, string moment, string? reason,
-        string? outputPath, bool json, CancellationToken cancellationToken)
+    private static async Task<InterCatExitCode> ReleaseIntervalAsync(Request request, string moment,
+        CancellationToken cancellationToken)
     {
-        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
-        if (store.Current is not { } manifest)
-        {
-            return Icat.NoSession();
-        }
-
+        SessionStore store = request.Store;
+        SessionManifestV1 manifest = request.Manifest;
         if (SessionRecording.RecordsExtent(store, cancellationToken) is not { } extent)
         {
             ConsoleUi.Failure($"No record of this session has a session time, so {moment} places nothing in it.");
@@ -586,9 +645,10 @@ internal static class RetainCommand
         bool finished = NoRecorderWrites(store, manifest);
         IntervalReleaseResult? released = null;
         string? refused = null;
-        if (reason is not null && preview.ReleasesAnything && finished)
+        if (request.Performing is { } reason && preview.ReleasesAnything && finished)
         {
-            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(path), manifest.SessionId, manifest.SourceIdentity);
+            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(request.Path), manifest.SessionId,
+                manifest.SourceIdentity);
             ConsoleUi.Progress($"Releasing {CountText.Of(preview.ReleasedRecords, "record")} in {Units(preview)} and "
                 + "publishing the retention generation.");
             try
@@ -639,11 +699,15 @@ internal static class RetainCommand
 
         if (refused is not null)
         {
-            notes.Add("Nothing was published: " + refused);
+            notes.Add(refused);
         }
-        else if (released is null && reason is null && preview.ReleasesAnything && finished)
+        else if (request.Unrepaired is { } unrepaired)
         {
-            notes.Add("This was a measurement. Add --confirm and --reason to perform it.");
+            notes.Add(unrepaired);
+        }
+        else if (request.Performing is null && preview.ReleasesAnything && finished)
+        {
+            notes.Add(request.Measured);
         }
 
         if (released?.Retention.AwaitingRelease == true)
@@ -655,7 +719,7 @@ internal static class RetainCommand
         var document = new IntervalRetentionDocument
         {
             Contract = "store-v1",
-            Path = path,
+            Path = request.Path,
             Action = "release-interval",
             Performed = released is not null,
             Moment = moment,
@@ -694,29 +758,9 @@ internal static class RetainCommand
             },
             Notes = notes,
         };
-        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
-        if (json)
-        {
-            Console.Out.WriteLine(payload);
-        }
-        else
-        {
-            RenderInterval(document, wall, extent);
-        }
-
-        if (outputPath is not null)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-            await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
-            ConsoleUi.Success($"Retention report written to {outputPath}.");
-        }
-
-        if (refused is not null)
-        {
-            ConsoleUi.Warn("Nothing was published: " + refused);
-        }
-
-        return document.Performed || (reason is null && preview.ReleasesAnything && finished)
+        await Report(request, document, () => RenderInterval(document, wall, extent), cancellationToken).ConfigureAwait(false);
+        return document.Performed
+            || (request.Performing is null && preview.ReleasesAnything && finished && request.Unrepaired is null)
             ? InterCatExitCode.Success
             : InterCatExitCode.PartialResultSuccess;
     }
@@ -779,16 +823,25 @@ internal static class RetainCommand
     private static PinDocument Pin(RetentionPin pin, SessionWallClock? wall, TimeRange extent) =>
         PinDocument.Of(pin, Instant(pin.FromNanoseconds, wall, extent));
 
-    /// <summary>The units a release gives up, as its report names them: "the oldest chunk of 3", "2 batches of 5".</summary>
     /// <summary>The boundaries a journal prefix release allows, "2 to 4 records", or the one it allows, "2 records".</summary>
     private static string Boundaries(long smallest, long largest) => smallest == largest
         ? CountText.Of(smallest, "record")
         : string.Create(CultureInfo.CurrentCulture, $"{smallest:N0} to {largest:N0} records");
 
+    /// <summary>
+    /// A pin's moment as a journal release's report names it: where it falls on the wall clock the capture's machine read,
+    /// when the session recorded one, and its session time.
+    /// </summary>
+    private static string Moment(Request request, RetentionPin pin, CancellationToken cancellationToken) =>
+        SessionRecording.RecordsExtent(request.Store, cancellationToken) is { } extent
+            ? Instant(pin.FromNanoseconds, SessionRecording.WallClock(request.Store), extent)
+            : SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture);
+
     private static string Units(IntervalReleasePreview preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
 
     private static string Units(IntervalRetentionPreviewDocument preview) => Units(preview.ReleaseUnit, preview.ReleasedUnits, preview.Units);
 
+    /// <summary>The units a release gives up, as its report names them: "the oldest chunk of 3", "2 batches of 5".</summary>
     private static string Units(string unit, int released, int units) => unit == "chunk"
         ? (released == 1 ? "the oldest chunk" : string.Create(CultureInfo.CurrentCulture, $"the {released:N0} oldest chunks"))
             + string.Create(CultureInfo.CurrentCulture, $" of {units:N0}")
@@ -821,15 +874,10 @@ internal static class RetainCommand
     /// Measures, and with a reason performs, the release of every content chunk the session keeps (content-v1 §2). The
     /// messages' bytes and each record's content facts go; every journal, row and derived file stays.
     /// </summary>
-    private static async Task<InterCatExitCode> ReleaseContentAsync(string path, string? reason, string? outputPath, bool json,
-        CancellationToken cancellationToken)
+    private static async Task<InterCatExitCode> ReleaseContentAsync(Request request, CancellationToken cancellationToken)
     {
-        SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
-        if (store.Current is not { } manifest)
-        {
-            return Icat.NoSession();
-        }
-
+        SessionStore store = request.Store;
+        SessionManifestV1 manifest = request.Manifest;
         ConsoleUi.Progress("Measuring what releasing the session's kept content would give up. Nothing is written yet.");
         ContentReleasePreview preview = ContentRetention.Preview(store, cancellationToken);
         SessionContentSummary? summary = preview.ReleasesAnything
@@ -837,9 +885,10 @@ internal static class RetainCommand
             : null;
         RetentionOutcome? outcome = null;
         string? refused = null;
-        if (reason is not null && preview.ReleasesAnything && preview.Finished)
+        if (request.Performing is { } reason && preview.ReleasesAnything && preview.Finished)
         {
-            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(path), manifest.SessionId, manifest.SourceIdentity);
+            SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(request.Path), manifest.SessionId,
+                manifest.SourceIdentity);
             ConsoleUi.Progress(string.Create(CultureInfo.CurrentCulture,
                 $"Releasing the content of {CountText.Of(preview.Records, "record")} and publishing the retention generation."));
             try
@@ -876,11 +925,15 @@ internal static class RetainCommand
 
         if (refused is not null)
         {
-            notes.Add("Nothing was published: " + refused);
+            notes.Add(refused);
         }
-        else if (outcome is null && reason is null && preview.ReleasesAnything && preview.Finished)
+        else if (request.Unrepaired is { } unrepaired)
         {
-            notes.Add("This was a measurement. Add --confirm and --reason to perform it.");
+            notes.Add(unrepaired);
+        }
+        else if (request.Performing is null && preview.ReleasesAnything && preview.Finished)
+        {
+            notes.Add(request.Measured);
         }
 
         if (outcome?.AwaitingRelease == true)
@@ -892,7 +945,7 @@ internal static class RetainCommand
         var document = new ContentRetentionDocument
         {
             Contract = "store-v1",
-            Path = path,
+            Path = request.Path,
             Action = "release-content",
             Performed = outcome is not null,
             Preview = new()
@@ -919,29 +972,9 @@ internal static class RetainCommand
             },
             Notes = notes,
         };
-        string payload = JsonSerializer.Serialize(document, JsonContracts.Indented);
-        if (json)
-        {
-            Console.Out.WriteLine(payload);
-        }
-        else
-        {
-            RenderContent(document, summary);
-        }
-
-        if (outputPath is not null)
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
-            await File.WriteAllTextAsync(outputPath, payload, cancellationToken).ConfigureAwait(false);
-            ConsoleUi.Success($"Retention report written to {outputPath}.");
-        }
-
-        if (refused is not null)
-        {
-            ConsoleUi.Warn("Nothing was published: " + refused);
-        }
-
-        return document.Performed || (reason is null && preview.ReleasesAnything && preview.Finished)
+        await Report(request, document, () => RenderContent(document, summary), cancellationToken).ConfigureAwait(false);
+        return document.Performed
+            || (request.Performing is null && preview.ReleasesAnything && preview.Finished && request.Unrepaired is null)
             ? InterCatExitCode.Success
             : InterCatExitCode.PartialResultSuccess;
     }
@@ -983,6 +1016,30 @@ internal static class RetainCommand
         }
     }
 
+    /// <summary>
+    /// A release as it was asked for, once its session is open: performed when it is confirmed with a reason, measured
+    /// otherwise, and only measured while the session is read at its last complete generation, which
+    /// <see cref="Unrepaired"/> then says.
+    /// </summary>
+    private sealed record Request(
+        string Path,
+        SessionStore Store,
+        SessionManifestV1 Manifest,
+        string? Reason,
+        bool Confirm,
+        string? Unrepaired,
+        string? OutputPath,
+        bool Json)
+    {
+        /// <summary>The reason a release is performed with; null when it is measured only.</summary>
+        public string? Performing => Confirm ? Reason : null;
+
+        /// <summary>What a measurement of a release that could be performed ends on: what performs it.</summary>
+        public string Measured => string.IsNullOrWhiteSpace(Reason)
+            ? "This was a measurement. Add --confirm and --reason to perform it."
+            : "This was a measurement: a reason alone performs nothing. Add --confirm to perform it.";
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat retain <directory> --release-before <moment>");
@@ -1000,7 +1057,8 @@ internal static class RetainCommand
         ConsoleUi.Line("      unit of release, and a whole chunk for a live recording; a release that would");
         ConsoleUi.Line("      empty the journal is refused. <n> counts records in stored order across the");
         ConsoleUi.Line("      journal the current generation holds. Re-derivation is refused afterwards,");
-        ConsoleUi.Line("      because the released records' rows could not be rebuilt.");
+        ConsoleUi.Line("      because the released records' rows could not be rebuilt. None is made while");
+        ConsoleUi.Line("      a pin stands, since a record's number cannot say when it was read.");
         ConsoleUi.Line("  icat retain <directory> --release-content");
         ConsoleUi.Line("             [--confirm --reason <text>] [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Measures what releasing every message's kept content would give up - its bytes and");

@@ -124,11 +124,7 @@ public sealed partial class SessionStore
     {
         if (PinsForRelease() is [var first, ..])
         {
-            throw new RetentionPinnedException(
-                $"A pin keeps every record read from {Seconds(first.FromNanoseconds)} ({first.Reason}). A release by record "
-                + "number cannot say when its records were read, so none is made while a pin stands: release the interval "
-                + "before the pin by its session time instead, or remove the pin. Nothing was published.",
-                first);
+            throw new RetentionPinnedException(JournalRetention.HeldByPin(first) + " Nothing was published.", first);
         }
     }
 

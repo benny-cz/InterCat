@@ -44,6 +44,24 @@ public sealed record JournalReleasePreview(
     /// <summary>What a release gives up whole: a batch of one journal, or a chunk of a recording.</summary>
     public string ReleaseUnit => JournalChunks > 1 ? "chunk" : "batch";
 
+    /// <summary>
+    /// Whether the generation keeps content beside its single journal, whose prefix the store then refuses to rewrite
+    /// (content-v1 §2). A recording's chunks take their content with them, so this is never true of chunks.
+    /// </summary>
+    public bool KeepsContent { get; init; }
+
+    /// <summary>
+    /// The earliest pin standing on the session, or null. A release by record number cannot say when its records were read,
+    /// so the store makes none while a pin stands (ADR-046).
+    /// </summary>
+    public RetentionPin? HeldBy { get; init; }
+
+    /// <summary>
+    /// Whether the store would publish this release as it was measured: it gives something up, leaves admitted evidence,
+    /// and neither content beside a single journal nor a pin stops it. The store checks again as it publishes.
+    /// </summary>
+    public bool CanRelease => ReleasesAnything && !WouldEmptyTheJournal && !KeepsContent && HeldBy is null;
+
     public override string ToString() => JournalChunks > 1
         ? string.Create(
             CultureInfo.InvariantCulture,
@@ -103,22 +121,54 @@ public static class JournalRetention
     /// Computes what releasing every batch entirely before <paramref name="firstRetainedRecordIndex"/> would
     /// give up. Nothing is written and nothing is published.
     /// </summary>
+    /// <exception cref="InvalidDataException">The session's pins cannot be read, so whether one stops the release is not known.</exception>
     public static JournalReleasePreview Preview(
         SessionStore store,
         long firstRetainedRecordIndex,
         CancellationToken cancellationToken = default)
     {
+        JournalReleasePreview measured;
         if (ChunksOf(store) is { } chunks)
         {
-            return MeasureChunks(store, chunks, firstRetainedRecordIndex, cancellationToken);
+            measured = MeasureChunks(store, chunks, firstRetainedRecordIndex, cancellationToken);
+        }
+        else
+        {
+            (string name, JournalV1Contents contents, long length) = Read(store);
+            using (contents)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                measured = Measure(name, contents, length, firstRetainedRecordIndex);
+            }
         }
 
-        (string name, JournalV1Contents contents, long length) = Read(store);
-        using (contents)
+        // What the store refuses as it publishes, disclosed before it is asked.
+        return measured with
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            return Measure(name, contents, length, firstRetainedRecordIndex);
-        }
+            KeepsContent = measured.JournalChunks == 1
+                && store.Current!.Dependencies.Any(dependency => dependency.Kind == StoreDependencyKind.Content),
+            HeldBy = store.Pins() is [var earliest, ..] ? earliest : null,
+        };
+    }
+
+    /// <summary>
+    /// Why a single journal's prefix is not rewritten while content is kept beside it, in a person's words, without the
+    /// closing that says nothing was published (content-v1 §2).
+    /// </summary>
+    public const string BesideContent =
+        "This session keeps content beside its journal, and rewriting the journal's prefix would leave content whose records "
+        + "it no longer holds, so its prefix is released only once a content release has given that content up on its own.";
+
+    /// <summary>
+    /// Why no release by record number is made while <paramref name="pin"/> stands, in a person's words, without the closing
+    /// that says nothing was published: it cannot say when its records were read, so it could give up a pinned one.
+    /// </summary>
+    public static string HeldByPin(RetentionPin pin)
+    {
+        ArgumentNullException.ThrowIfNull(pin);
+        return $"A pin keeps every record read from {SessionTimeText.Seconds(pin.FromNanoseconds, CultureInfo.CurrentCulture)} "
+            + $"({pin.Reason}). A release by record number cannot say when its records were read, so none is made while a "
+            + "pin stands: release the interval before the pin by its session time instead, or remove the pin.";
     }
 
     /// <summary>

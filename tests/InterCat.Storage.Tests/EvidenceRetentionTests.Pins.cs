@@ -46,6 +46,7 @@ public sealed partial class EvidenceRetentionTests
             session.Store.ReleaseJournalChunks([first.JournalName], 4, "by number", Committed, Committed));
         Assert.Equal(pin, numbered.Pin);
         Assert.Contains("A release by record number cannot say when its records were read", numbered.Message, StringComparison.Ordinal);
+        Assert.Equal(JournalRetention.HeldByPin(pin) + " Nothing was published.", numbered.Message);
         Assert.Equal(recorded.Generation, session.Store.Current!.Generation);
 
         // One whose every record was read before the pin is published.

@@ -2317,7 +2317,8 @@ public sealed class CommandLineTests : IDisposable
 
         (code, output, said) = await Run("retain", followed.Path, "--release-journal-before-record", "2", "--confirm", "--reason", "by number");
         Assert.Equal(InterCatExitCode.PartialResultSuccess, code);
-        Assert.Contains("A release by record number cannot say when its records were read", said, StringComparison.Ordinal);
+        Assert.Contains("A release by record number cannot say when its records were read", output, StringComparison.Ordinal);
+        Assert.DoesNotContain("Releasing", said, StringComparison.Ordinal);
         Assert.Equal(session.Generation, SessionStore.OpenExisting(LocalOwnedDirectory.Open(followed.Path)).Current!.Generation);
 
         // The session lists the pin in the words icat pin uses.

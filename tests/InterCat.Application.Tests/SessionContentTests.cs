@@ -144,6 +144,7 @@ public sealed class SessionContentTests
 
         InvalidOperationException refusal = Assert.Throws<InvalidOperationException>(() =>
             JournalRetention.Release(session.Store, 1, "free space", DateTimeOffset.UnixEpoch));
+        Assert.Equal(JournalRetention.BesideContent + " Nothing was published.", refusal.Message);
         Assert.Contains("keeps content", refusal.Message, StringComparison.Ordinal);
         Assert.Contains("content release", refusal.Message, StringComparison.Ordinal);
         Assert.Equal(generation, session.Store.Current!.Generation);
