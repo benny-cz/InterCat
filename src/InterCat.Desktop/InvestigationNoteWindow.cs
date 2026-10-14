@@ -160,7 +160,8 @@ internal sealed class InvestigationNoteWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = (editing is null ? "The note was not added: " : "The note was not reworded: ")
+                + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally

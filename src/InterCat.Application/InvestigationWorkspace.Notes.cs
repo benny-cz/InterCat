@@ -81,12 +81,13 @@ public static partial class InvestigationWorkspace
         WorkspaceNote? current = NotesInForce(workspace).FirstOrDefault(note => note.NoteId == noteId);
         if (existing && current is null)
         {
-            throw new InvalidOperationException($"No note {noteId:N} is in force.");
+            throw new InvalidOperationException($"No note {Short(noteId)} is in force.");
         }
 
         if (at is { } anchor && workspace.Members.All(member => member.SessionId != anchor.SessionId))
         {
-            throw new InvalidOperationException($"No member of this workspace is session {anchor.SessionId:N}, so no note is pinned there.");
+            throw new InvalidOperationException(
+                $"No member of this workspace is session {Short(anchor.SessionId)}, so no note is pinned there.");
         }
 
         var note = new WorkspaceNote

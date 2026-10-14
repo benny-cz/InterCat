@@ -198,7 +198,8 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string file) = Load(full);
         if (workspace.Members.All(member => member.SessionId != sessionId))
         {
-            throw new InvalidOperationException($"Session {sessionId:N} is not a member of this investigation, so it keeps no layout here.");
+            throw new InvalidOperationException(
+                $"Session {Short(sessionId)} is not a member of this investigation, so it keeps no layout here.");
         }
 
         if ((PinsProblem(pins) ?? LanesProblem(pinnedLanes)) is { } problem)
@@ -310,7 +311,7 @@ public static partial class InvestigationWorkspace
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.Layouts.GroupBy(layout => layout.SessionId).FirstOrDefault(group => group.Count() > 1) is { } twice)
         {
-            return $"session {twice.Key:N} has two layouts";
+            return $"session {Short(twice.Key)} has two layouts";
         }
 
         // Records are what no ranking ranks by, so a layout names another metric or none; correlated evidence is what every
@@ -322,7 +323,7 @@ public static partial class InvestigationWorkspace
             || layout.EvidencePolicy is not (null or Domain.EvidencePolicy.IncludeCandidates)
             || layout.Grouping is not (null or LaneGrouping.UserSession)
             || PinsProblem(layout.Pins) is not null || LanesProblem(layout.PinnedLanes) is not null) is { } wrong
-            ? $"the layout of session {wrong.SessionId:N} "
+            ? $"the layout of session {Short(wrong.SessionId)} "
                 + (!members.Contains(wrong.SessionId) ? "is of no member"
                     : !wrong.KeepsAnything ? "keeps nothing"
                     : (PinsProblem(wrong.Pins) ?? LanesProblem(wrong.PinnedLanes)) is { } problem ? "is refused: " + problem

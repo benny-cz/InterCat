@@ -1418,7 +1418,7 @@ public sealed class InvestigationWindowTests
             // alpha, rather than zoom it as alpha - and the investigation says why, as alpha's row now does, and what to do.
             Assert.False(await window.OpenColumnAsync(new TimelineColumn(0, column)));
             TextBlock status = Named<TextBlock>(window, "Investigation status");
-            Assert.StartsWith($"Session {Short(a)} could not be opened: Session {g:N} of capture ", status.Text, StringComparison.Ordinal);
+            Assert.StartsWith($"Session {Short(a)} could not be opened: Session {Short(g)} of capture ", status.Text, StringComparison.Ordinal);
             Assert.EndsWith(" is at this path, not this member. " + InvestigationWorkspace.RelinkWhereItIs, status.Text,
                 StringComparison.Ordinal);
             Assert.True(ShowsGamma(main));
@@ -2377,6 +2377,194 @@ public sealed class InvestigationWindowTests
             Assert.Null(await window.WritePackageAsync(destination, null));
             Assert.StartsWith("The investigation could not be packaged: ", status.Text, StringComparison.Ordinal);
             Assert.Contains("exists", status.Text, StringComparison.Ordinal);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.4: an action on an investigation whose file no longer reads, or is gone, says what it did not do, then why, a gone file in the window's own words")]
+    public async Task AnActionNotDoneSaysWhatAndWhy()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000_000, 50, null, Committed);
+        _ = InvestigationWorkspace.AddNote(workspace, "the first look", null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is { Members.Count: 2, Notes.Count: 1 });
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            window.SelectNote(0);
+            TextBlock status = Named<TextBlock>(window, "Investigation status");
+            window.ShowTab(1);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            await window.FindCandidatesAsync();
+            Assert.Single(window.Candidates!.Rows);
+            window.SelectCandidate(0);
+            TextBlock joins = Named<TextBlock>(window, "Candidate joins status");
+
+            // The file no longer reads as an investigation: each action says what it did not do, then why.
+            File.WriteAllText(workspace, "{");
+            string unreadable = Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message;
+            await window.RemoveSelectedNoteAsync();
+            Assert.Equal("The note was not removed: " + unreadable, status.Text);
+            await window.WithdrawSelectedAsync();
+            Assert.Equal($"Session {Short(b)}'s alignment was not withdrawn: " + unreadable, status.Text);
+            await window.RelinkAsync(b, window.View!.Members[1].FullPath);
+            Assert.Equal($"Session {Short(b)} was not relinked: " + unreadable, status.Text);
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Accepted);
+            Assert.Equal("The join was not accepted: " + unreadable, joins.Text);
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Rejected);
+            Assert.Equal("The join was not rejected: " + unreadable, joins.Text);
+            await window.DecideSelectedAsync(WorkspaceJoinDecision.Withdrawn);
+            Assert.Equal("Your decision was not withdrawn: " + unreadable, joins.Text);
+
+            // A session that could not be added says so, and the investigation is not read again only to say it cannot be.
+            await window.AddAsync([Session(root.Path, "third")]);
+            Assert.Equal("third was not added: " + unreadable, status.Text);
+            Assert.Equal(2, window.View!.Members.Count);
+
+            // Gone, the file is said to be gone - never with the command line's advice to make one - and so is it read again.
+            File.Delete(workspace);
+            string gone = $"No file is at {workspace} any more; it was moved, renamed or deleted.";
+            await window.RemoveSelectedNoteAsync();
+            Assert.Equal("The note was not removed: " + gone, status.Text);
+            await window.RefreshAsync();
+            Assert.Equal("This investigation could not be read: " + gone, status.Text);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§8.4: a dialog of an investigation whose file no longer reads, or is gone, says what it did not do, then why")]
+    public async Task ADialogsActionNotDoneSaysWhatAndWhy()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "client", ["10.0.0.1:50000", "10.0.0.2:443"], 100), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "server", ["10.0.0.2:443", "10.0.0.1:50000"], 200), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000_000, 50, null, Committed);
+        _ = InvestigationWorkspace.AddNote(workspace, "the first look", null, Committed);
+        _ = InvestigationWorkspace.StateTranslation(workspace, "203.0.113.7:8443", "10.0.0.2:443", null, Committed);
+        var interval = new TimeRange(0, 10_000_000);
+        _ = InvestigationWorkspace.SaveView(workspace, "the first second", interval, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is { Members.Count: 2, Notes.Count: 1 });
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            window.SelectNote(0);
+
+            // Each dialog opens on the investigation as it read...
+            InvestigationAlignWindow align = window.AlignDialogForSelected()!;
+            InvestigationHostWindow host = window.HostDialogForSelected()!;
+            InvestigationNoteWindow adding = window.NoteDialog(reword: false)!;
+            InvestigationNoteWindow rewording = window.NoteDialog(reword: true)!;
+            InvestigationTranslationsWindow translations = window.TranslationsDialog();
+            var views = new InvestigationViewsWindow(workspace, interval);
+            InvestigationCompareWindow compare = window.CompareDialog()!;
+            foreach (Window dialog in new Window[] { align, host, adding, rewording, translations, views, compare })
+            {
+                dialog.Show(window);
+            }
+
+            translations.Load();
+            translations.Select(0);
+            views.Load();
+            views.Select(0);
+
+            // ...and the file then no longer reads: each says what it did not do, then why.
+            File.WriteAllText(workspace, "{");
+            string unreadable = Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message;
+            Assert.False(await align.AlignAsync());
+            Assert.Equal($"Session {Short(b)} was not aligned: " + unreadable, Named<TextBlock>(align, "Alignment status").Text);
+            Assert.False(await host.DecideAsync(WorkspaceHostDecision.Confirmed));
+            Assert.Equal("Nothing was recorded: " + unreadable, Named<TextBlock>(host, "One host status").Text);
+            adding.Enter("a second look");
+            Assert.False(await adding.SaveAsync());
+            Assert.Equal("The note was not added: " + unreadable, Named<TextBlock>(adding, "Note status").Text);
+            rewording.Enter("the first look, again");
+            Assert.False(await rewording.SaveAsync());
+            Assert.Equal("The note was not reworded: " + unreadable, Named<TextBlock>(rewording, "Note status").Text);
+            Assert.False(await translations.WithdrawSelectedAsync());
+            Assert.Equal("The translation was not withdrawn: " + unreadable, Named<TextBlock>(translations, "Translation status").Text);
+            translations.Enter("203.0.113.8:8443", "10.0.0.2:443");
+            Assert.False(await translations.StateAsync());
+            Assert.Equal("The translation was not stated: " + unreadable, Named<TextBlock>(translations, "Translation status").Text);
+            Assert.False(await views.RemoveSelectedAsync());
+            Assert.Equal("'the first second' was not removed: " + unreadable, Named<TextBlock>(views, "Saved views status").Text);
+            views.NameIt("the second second");
+            Assert.False(await views.SaveAsync());
+            Assert.Equal("The view was not saved: " + unreadable, Named<TextBlock>(views, "Saved views status").Text);
+
+            // Gone, the file is said to be gone, as the investigation's window says it.
+            File.Delete(workspace);
+            string gone = $"No file is at {workspace} any more; it was moved, renamed or deleted.";
+            Assert.False(await host.DecideAsync(WorkspaceHostDecision.Confirmed));
+            Assert.Equal("Nothing was recorded: " + gone, Named<TextBlock>(host, "One host status").Text);
+            compare.Enter(a, "1", b, "1");
+            Assert.Null(await compare.CompareAsync());
+            Assert.Equal("They could not be compared: " + gone, Named<TextBlock>(compare, "What may be said of their order").Text);
+            translations.Load();
+            Assert.Equal("The investigation could not be read: " + gone, Named<TextBlock>(translations, "Translation status").Text);
+            views.Load();
+            Assert.Equal("The investigation could not be read: " + gone, Named<TextBlock>(views, "Saved views status").Text);
+            foreach (Window dialog in new Window[] { align, host, adding, rewording, translations, views, compare })
+            {
+                dialog.Close();
+            }
+
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R5: an alignment another session is aligned through is not withdrawn, and the window says whose rests on it and what to do first, each session named as its row is")]
+    public async Task AnAlignmentAnotherRestsOnIsKept()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Session(root.Path, "alpha"), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Session(root.Path, "beta"), Committed).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, Session(root.Path, "gamma"), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 0, 1_000_000, 50, null, Committed);
+        InvestigationWorkspace.Align(workspace, c, 0, b, 0, 1_000_000, 50, null, Committed);
+        string kept = File.ReadAllText(workspace);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is { Members.Count: 3 });
+            Assert.Equal([$"Session {Short(a)}", $"Session {Short(b)}", $"Session {Short(c)}"],
+                window.View!.Members.Select(row => row.Title.Split(',')[0]));
+            Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one").SelectedIndex = 1;
+            Button withdraw = Named<Button>(window, "Withdraw alignment");
+            Assert.True(withdraw.IsEnabled);
+            await window.WithdrawSelectedAsync();
+            Assert.Equal($"Session {Short(b)}'s alignment was not withdrawn: Session {Short(c)} is aligned through session {Short(b)}, so "
+                + $"withdrawing session {Short(b)}'s alignment would leave it with no place in the workspace's time. Withdraw session "
+                + $"{Short(c)}'s alignment, or align it to another session, first.", Named<TextBlock>(window, "Investigation status").Text);
+            Assert.Equal(kept, File.ReadAllText(workspace));
+            Assert.True(window.View!.Members[1].IsAligned);
             window.Close();
         }
         finally

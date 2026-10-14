@@ -580,7 +580,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) timelineWords.Text = "The timeline could not be drawn: " + exception.Message;
+            if (!closed) timelineWords.Text = "The timeline could not be drawn: " + InvestigationTrouble.Why(path, exception);
         }
         finally
         {
@@ -829,7 +829,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             compareInstants.IsEnabled = false;
             summary.Text = string.Empty;
             time.Text = string.Empty;
-            status.Text = "This investigation could not be read: " + exception.Message;
+            status.Text = "This investigation could not be read: " + InvestigationTrouble.Why(path, exception);
             ShowSelected();
         }
         finally
@@ -953,7 +953,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) candidateSummary.Text = "Candidate joins could not be found: " + exception.Message;
+            if (!closed) candidateSummary.Text = "Candidate joins could not be found: " + InvestigationTrouble.Why(path, exception);
         }
         finally
         {
@@ -976,7 +976,15 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) candidateSummary.Text = exception.Message;
+            if (!closed)
+            {
+                candidateSummary.Text = decision switch
+                {
+                    WorkspaceJoinDecision.Accepted => "The join was not accepted: ",
+                    WorkspaceJoinDecision.Rejected => "The join was not rejected: ",
+                    _ => "Your decision was not withdrawn: ",
+                } + InvestigationTrouble.Why(path, exception);
+            }
         }
     }
 
@@ -1021,7 +1029,8 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
                 or UnauthorizedAccessException)
             {
-                refused.Add($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(directory))} was not added: {exception.Message}");
+                refused.Add($"{Path.GetFileName(Path.TrimEndingDirectorySeparator(directory))} was not added: "
+                    + InvestigationTrouble.Why(path, exception));
             }
         }
 
@@ -1032,7 +1041,21 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         }
 
         notes.AddRange(refused);
-        await RefreshAsync(notes.Count == 0 ? null : string.Join(" ", notes));
+        if (added > 0)
+        {
+            await RefreshAsync(string.Join(" ", notes));
+            return;
+        }
+
+        // Nothing was added, so the investigation is as it is shown and is not read again: a reading that failed for the
+        // reason none was added would say only that, not that none was. One already under way finishes first, so its words
+        // do not take the place of these.
+        while (loading && !closed)
+        {
+            await reading;
+        }
+
+        if (!closed && notes.Count > 0) status.Text = string.Join(" ", notes);
     }
 
     /// <summary>Relinks a member to a folder, which must hold that member's session; says why when it does not.</summary>
@@ -1047,7 +1070,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) status.Text = exception.Message;
+            if (!closed)
+            {
+                status.Text = $"Session {sessionId.ToString("N")[..8]} was not relinked: " + InvestigationTrouble.Why(path, exception);
+            }
         }
     }
 
@@ -1083,7 +1109,10 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) status.Text = exception.Message;
+            if (!closed)
+            {
+                status.Text = $"{row.Title.Split(',')[0]}'s alignment was not withdrawn: " + InvestigationTrouble.Why(path, exception);
+            }
         }
     }
 
@@ -1114,7 +1143,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) status.Text = "The investigation could not be measured to package it: " + exception.Message;
+            if (!closed) status.Text = "The investigation could not be measured to package it: " + InvestigationTrouble.Why(path, exception);
             return;
         }
 
@@ -1195,7 +1224,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException or ArgumentException)
         {
-            if (!closed) status.Text = "The investigation could not be packaged: " + exception.Message;
+            if (!closed) status.Text = "The investigation could not be packaged: " + InvestigationTrouble.Why(path, exception);
             return null;
         }
         finally
@@ -1297,7 +1326,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            status.Text = "This investigation could not be read: " + exception.Message;
+            status.Text = "This investigation could not be read: " + InvestigationTrouble.Why(path, exception);
             return null;
         }
 
@@ -1407,7 +1436,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         catch (Exception exception) when (exception is IOException or InvalidDataException or InvalidOperationException
             or UnauthorizedAccessException)
         {
-            if (!closed) status.Text = exception.Message;
+            if (!closed) status.Text = "The note was not removed: " + InvestigationTrouble.Why(path, exception);
         }
     }
 

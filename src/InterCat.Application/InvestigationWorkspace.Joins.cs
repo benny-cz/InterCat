@@ -72,7 +72,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.SessionId != end.SessionId))
             {
-                throw new InvalidOperationException($"No member of this workspace is session {end.SessionId:N}.");
+                throw new InvalidOperationException($"No member of this workspace is session {Short(end.SessionId)}.");
             }
 
             if (!TransportConnection.IsKey(end.Key))

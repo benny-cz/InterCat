@@ -122,7 +122,7 @@ internal sealed class InvestigationHostWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = "Nothing was recorded: " + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally

@@ -117,8 +117,8 @@ public static class InvestigationPackage
                 measured = OriginalEvidencePackage.Preview(Open(resolution.FullPath));
                 if (measured.SessionId != resolution.Member.SessionId)
                 {
-                    throw new InvalidDataException($"Session {measured.SessionId:N} is at {resolution.FullPath} now, not "
-                        + $"member {resolution.Member.SessionId:N}. Look at the investigation again before packaging it.");
+                    throw new InvalidDataException($"Session {Short(measured.SessionId)} is at {resolution.FullPath} now, not "
+                        + $"member {Short(resolution.Member.SessionId)}. Look at the investigation again before packaging it.");
                 }
             }
 
@@ -138,7 +138,7 @@ public static class InvestigationPackage
         foreach (Guid named in only ?? [])
         {
             InvestigationPackageMemberPreview member = preview.Members.FirstOrDefault(known => known.SessionId == named)
-                ?? throw new InvalidOperationException($"No member of this investigation is session {named:N}.");
+                ?? throw new InvalidOperationException($"No member of this investigation is session {Short(named)}.");
             if (member.Measured is null)
             {
                 throw new InvalidOperationException($"Session {Short(named)} is "
@@ -413,7 +413,7 @@ public static class InvestigationPackage
                 && (!found.HoldsItsCapture || found.CurrentGeneration != copy.Copy.Source.Generation))
             {
                 throw new InvalidDataException($"The package did not verify when it was reopened: its copy of session "
-                    + $"{found.Member.SessionId:N} is {found.State.ToString().ToLowerInvariant()}. {found.Reason}");
+                    + $"{Short(found.Member.SessionId)} is {found.State.ToString().ToLowerInvariant()}. {found.Reason}");
             }
         }
 

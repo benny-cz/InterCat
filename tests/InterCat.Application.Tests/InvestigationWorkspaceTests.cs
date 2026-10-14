@@ -117,7 +117,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         SessionStore again = NewSession(Path.Combine(root, "again"), "lab-1", Guid.NewGuid(), Capture);
         InvalidOperationException capture = Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Add(workspace, again.Root.Path, Now));
-        Assert.Contains($"records capture {Capture.Value:N}", capture.Message, StringComparison.Ordinal);
+        Assert.Contains($"records capture {Short(Capture.Value)}, which member ", capture.Message, StringComparison.Ordinal);
         Assert.Equal(text, File.ReadAllText(workspace));
 
         // Two captures whose stores name one source - as every broker capture under one plan does - are two members.
@@ -167,7 +167,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         Directory.Move(beta.Root.Path, moved);
         WorkspaceMemberResolution different = Single(workspace);
         Assert.Equal(WorkspaceMemberState.Different, different.State);
-        Assert.Equal($"Session {beta.SessionId:N} of capture {betaCapture.Value:N} is at this path, not this member. Relink the "
+        Assert.Equal($"Session {Short(beta.SessionId)} of capture {Short(betaCapture.Value)} is at this path, not this member. Relink the "
             + "member where it is now.", different.Reason);
         Directory.Move(moved, beta.Root.Path);
         Directory.CreateDirectory(moved);
@@ -1337,6 +1337,67 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R5: what a workspace says names a session, capture, host or note by its first eight hex digits, as the investigation's window and icat do, never by all 32")]
+    public void WhatAWorkspaceSaysNamesByLeadingDigits()
+    {
+        string workspace = NewWorkspace();
+        CaptureId betaCapture = CaptureId.New();
+        CaptureId gammaCapture = CaptureId.New();
+        SessionStore gamma = NewSession(Path.Combine(root, "gamma"), "lab-2", Guid.NewGuid(), gammaCapture);
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "beta"), "lab-2", Guid.NewGuid(), betaCapture).Root.Path, Now).SessionId;
+        Guid c = InvestigationWorkspace.Add(workspace, gamma.Root.Path, Now).SessionId;
+        Guid d = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "delta"), "lab-3", Guid.NewGuid(), CaptureId.New()).Root.Path, Now).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, Seconds(5), 1_000_000, 10, null, Now);
+        InvestigationWorkspace.Align(workspace, c, 0, b, Seconds(1), 2_000, 1, null, Now);
+        string Said<T>(Action refused)
+            where T : Exception
+        {
+            // The test's own folder is named by a whole identity, which a path in what is said carries.
+            string message = Assert.Throws<T>(refused).Message;
+            Assert.DoesNotMatch("[0-9a-fA-F]{32}", message.Replace(root, string.Empty, StringComparison.Ordinal));
+            return message;
+        }
+
+        // A session another is aligned through keeps its alignment, and says whose rests on it, whose alignment each sentence
+        // means, and what to do first; so do two.
+        Assert.Equal($"Session {Short(c)} is aligned through session {Short(b)}, so withdrawing session {Short(b)}'s alignment "
+            + $"would leave it with no place in the workspace's time. Withdraw session {Short(c)}'s alignment, or align it to "
+            + "another session, first.", Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
+        InvestigationWorkspace.Align(workspace, d, 0, b, Seconds(1), 2_000, 1, null, Now);
+        Assert.Equal($"Sessions {Short(c)}, {Short(d)} are aligned through session {Short(b)}, so withdrawing session {Short(b)}'s "
+            + "alignment would leave them with no place in the workspace's time. Withdraw their alignments, or align them to "
+            + "other sessions, first.", Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, b, Now)));
+        Assert.Equal($"Session {Short(a)} is not aligned to the workspace's time.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Withdraw(workspace, a, Now)));
+
+        // A folder holding another session relinks nothing, and names both sessions and their captures.
+        Assert.Equal($"The session at {gamma.Root.Path} is session {Short(c)} of capture {Short(gammaCapture.Value)}, not member "
+            + $"{Short(b)} of capture {Short(betaCapture.Value)}. A member is relinked only to itself.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Relink(workspace, b, gamma.Root.Path, Now)));
+
+        // A note, a host and a confirmation that are not there.
+        Guid note = Guid.NewGuid();
+        Assert.Equal($"No note {Short(note)} is in force.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.RemoveNote(workspace, note, Now)));
+        Guid stranger = Guid.NewGuid();
+        Assert.Equal($"No member of this workspace was recorded on host {Short(stranger)}.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.Alias(workspace, stranger, "lab", Now)));
+        Guid one = HostId.Derive("lab-1").Value;
+        Guid two = HostId.Derive("lab-2").Value;
+        Assert.Equal($"No confirmation that hosts {Short(one)} and {Short(two)} are one is in force, so there is none to withdraw.",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.WithdrawOneHost(workspace, one, two, Now)));
+
+        // A session with no calibration to align by, and a file naming a time reference no member is.
+        Assert.Contains($"Session {Short(d)} records no clock calibration",
+            Said<InvalidOperationException>(() => InvestigationWorkspace.AlignByWallClock(workspace, d, a, 10_000_000, 50, null, Now)),
+            StringComparison.Ordinal);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"timeReference\": \"{a}\"", $"\"timeReference\": \"{stranger}\"",
+            StringComparison.Ordinal));
+        Assert.Contains($"its time reference {Short(stranger)} is no member",
+            Said<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)), StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "R21: a member aligned through another is placed through both, and two members of one chain compare as it allows")]
     public void AMemberAlignedThroughAnotherIsPlacedThroughBoth()
     {
@@ -1375,9 +1436,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         // Nothing is aligned to a member with no place, nor through itself; a member others are aligned through keeps its own.
         Assert.Contains("has no place in the workspace's time", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, c, 0, e, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
-        Assert.Contains($"is aligned through session {b:N}", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains($"is aligned through session {Short(b)}, so ", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Align(workspace, b, 0, c, 0, 1_000, 1, null, Now)).Message, StringComparison.Ordinal);
-        Assert.Contains($"Session {c.ToString("N")[..8]} is aligned through session {b:N}", Assert.Throws<InvalidOperationException>(() =>
+        Assert.Contains($"Session {Short(c)} is aligned through session {Short(b)}, so ", Assert.Throws<InvalidOperationException>(() =>
             InvestigationWorkspace.Withdraw(workspace, b, Now)).Message, StringComparison.Ordinal);
 
         // A decision about gamma and delta was made under beta's alignment too, so re-aligning beta flags it for review.
@@ -1483,6 +1544,9 @@ public sealed class InvestigationWorkspaceTests : IDisposable
     }
 
     private static long Seconds(int seconds) => seconds * 1_000_000_000L;
+
+    /// <summary>A session, capture, host or note as what the workspace says names it: its first eight hex digits.</summary>
+    private static string Short(Guid identity) => identity.ToString("N")[..8];
 
     private static (long?, TimeUncertainty?) Placed(WorkspaceInstant instant) => (instant.WorkspaceNanoseconds, instant.Uncertainty);
 

@@ -25,6 +25,7 @@ internal sealed class InvestigationAlignWindow : Window
 {
     private readonly string path;
     private readonly Guid sessionId;
+    private readonly string name;
     private readonly ComboBox reference = new() { MinWidth = 320 };
     private readonly RadioButton byBoot = new() { Content = "By their boot: exact, when both captures recorded one boot", GroupName = "alignment" };
     private readonly RadioButton byWallClock = new() { Content = "By their wall clocks", GroupName = "alignment" };
@@ -53,7 +54,7 @@ internal sealed class InvestigationAlignWindow : Window
         ArgumentNullException.ThrowIfNull(references);
         this.path = path;
         sessionId = member.SessionId;
-        string name = member.Title.Split(',')[0];
+        name = member.Title.Split(',')[0];
         Title = $"Align {name}";
         Width = 640;
         SizeToContent = SizeToContent.Height;
@@ -294,7 +295,7 @@ internal sealed class InvestigationAlignWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = $"{name} was not aligned: " + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally

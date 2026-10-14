@@ -267,21 +267,21 @@ public static partial class InvestigationWorkspace
         (SourceClockDescriptor referenceClock, ClockCalibrationV1 referenceCalibration) = Recorded(full, workspace, referenceSessionId);
         if (calibration.BootToken is not { } boot || referenceCalibration.BootToken is not { } referenceBoot)
         {
-            throw new InvalidOperationException($"Session {(calibration.BootToken is null ? sessionId : referenceSessionId):N} "
+            throw new InvalidOperationException($"Session {Short(calibration.BootToken is null ? sessionId : referenceSessionId)} "
                 + "recorded no boot token - the process that captured it could keep none - so no other capture can be shown to "
                 + "share its boot. Align it by its wall clock or by a stated instant.");
         }
 
         if (boot != referenceBoot)
         {
-            throw new InvalidOperationException($"Sessions {sessionId:N} and {referenceSessionId:N} ran in different boots "
-                + $"({boot:N} and {referenceBoot:N}), so their counters are not one clock. Align them by their wall clocks.");
+            throw new InvalidOperationException($"Sessions {Short(sessionId)} and {Short(referenceSessionId)} ran in different boots "
+                + $"({Short(boot)} and {Short(referenceBoot)}), so their counters are not one clock. Align them by their wall clocks.");
         }
 
         if (clock.HostId != referenceClock.HostId || clock.Encoding != referenceClock.Encoding
             || clock.TicksPerSecond != referenceClock.TicksPerSecond)
         {
-            throw new InvalidOperationException($"Sessions {sessionId:N} and {referenceSessionId:N} name one boot but not one "
+            throw new InvalidOperationException($"Sessions {Short(sessionId)} and {Short(referenceSessionId)} name one boot but not one "
                 + "host, encoding and rate of their clocks, which one boot's counter cannot be; nothing is aligned.");
         }
 
@@ -382,19 +382,22 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         if (ActiveAlignment(workspace, sessionId) is null)
         {
-            throw new InvalidOperationException($"Session {sessionId:N} is not aligned to the workspace's time.");
+            throw new InvalidOperationException($"Session {Short(sessionId)} is not aligned to the workspace's time.");
         }
 
         Guid[] dependents = [.. workspace.Members.Select(member => member.SessionId)
             .Where(member => ActiveAlignment(workspace, member)?.ReferenceSessionId == sessionId)];
         if (dependents.Length > 0)
         {
-            throw new InvalidOperationException($"Session{(dependents.Length == 1 ? string.Empty : "s")} "
-                + string.Join(", ", dependents.Select(member => member.ToString("N")[..8]))
-                + $" {(dependents.Length == 1 ? "is" : "are")} aligned through session {sessionId:N}, so withdrawing its alignment "
-                + (dependents.Length == 1
-                    ? "would leave it with no place. Withdraw or re-align its first."
-                    : "would leave them with no place. Withdraw or re-align theirs first."));
+            // Each session is named, and so is whose alignment each sentence means.
+            string named = Short(sessionId);
+            throw new InvalidOperationException(dependents.Length == 1
+                ? $"Session {Short(dependents[0])} is aligned through session {named}, so withdrawing session {named}'s alignment "
+                    + $"would leave it with no place in the workspace's time. Withdraw session {Short(dependents[0])}'s alignment, "
+                    + "or align it to another session, first."
+                : $"Sessions {string.Join(", ", dependents.Select(Short))} are aligned through session {named}, so withdrawing "
+                    + $"session {named}'s alignment would leave them with no place in the workspace's time. Withdraw their "
+                    + "alignments, or align them to other sessions, first.");
         }
 
         var withdrawal = new WorkspaceAlignment
@@ -549,7 +552,7 @@ public static partial class InvestigationWorkspace
         ArgumentNullException.ThrowIfNull(workspace);
         if (workspace.Members.All(member => member.SessionId != sessionId))
         {
-            throw new InvalidOperationException($"No member of this workspace is session {sessionId:N}.");
+            throw new InvalidOperationException($"No member of this workspace is session {Short(sessionId)}.");
         }
 
         if (ChainOf(workspace, sessionId) is not { } chain)
@@ -606,7 +609,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.SessionId != named))
             {
-                throw new InvalidOperationException($"No member of this workspace is session {named:N}.");
+                throw new InvalidOperationException($"No member of this workspace is session {Short(named)}.");
             }
         }
 
@@ -622,19 +625,19 @@ public static partial class InvestigationWorkspace
 
         if (sessionId == reference)
         {
-            throw new InvalidOperationException($"Session {reference:N} is the workspace's time reference: its clock is the "
+            throw new InvalidOperationException($"Session {Short(reference)} is the workspace's time reference: its clock is the "
                 + "workspace's time, so it is not aligned; align the other members to it.");
         }
 
         if (ChainOf(workspace, referenceSessionId) is not { } chain)
         {
-            throw new InvalidOperationException($"Session {referenceSessionId:N} has no place in the workspace's time, so nothing "
-                + $"aligned to it would have one. Align it first, or align session {sessionId:N} to session {reference:N}.");
+            throw new InvalidOperationException($"Session {Short(referenceSessionId)} has no place in the workspace's time, so nothing "
+                + $"aligned to it would have one. Align it first, or align session {Short(sessionId)} to session {Short(reference)}.");
         }
 
         if (chain.Links.Any(link => link.Clock == sessionId))
         {
-            throw new InvalidOperationException($"Session {referenceSessionId:N} is aligned through session {sessionId:N}, so "
+            throw new InvalidOperationException($"Session {Short(referenceSessionId)} is aligned through session {Short(sessionId)}, so "
                 + "aligning that session to it would make each the other's reference. Align it to another member.");
         }
     }
@@ -652,18 +655,18 @@ public static partial class InvestigationWorkspace
         WorkspaceMemberResolution resolution = ResolveOne(System.IO.Path.GetDirectoryName(workspacePath)!, member);
         if (!resolution.HoldsItsCapture)
         {
-            throw new InvalidOperationException($"Session {sessionId:N} is {resolution.State.ToString().ToLowerInvariant()}: "
+            throw new InvalidOperationException($"Session {Short(sessionId)} is {resolution.State.ToString().ToLowerInvariant()}: "
                 + $"{resolution.Reason} Relink it before aligning it by what it recorded.");
         }
 
         Found found = Open(resolution.FullPath);
         ClockCalibrationV1 calibration = ClockCalibrationV1.Read(found.Root, found.Manifest)
-            ?? throw new InvalidOperationException($"Session {sessionId:N} records no clock calibration - it was imported, "
+            ?? throw new InvalidOperationException($"Session {Short(sessionId)} records no clock calibration - it was imported, "
                 + "packaged, or captured by an earlier version of InterCat - so it has no recorded wall clock or boot to align "
                 + "by. Align it by a stated instant.");
         return calibration.ClockId == found.Clock.Id.Value
             ? (found.Clock, calibration)
-            : throw new InvalidDataException($"Session {sessionId:N}'s clock calibration names another clock than its journal.");
+            : throw new InvalidDataException($"Session {Short(sessionId)}'s clock calibration names another clock than its journal.");
     }
 
     /// <summary>A source reading as session time, converted as every reader converts it (§8.1).</summary>
@@ -705,7 +708,7 @@ public static partial class InvestigationWorkspace
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];
         if (workspace.TimeReference is { } reference && !members.Contains(reference))
         {
-            return $"its time reference {reference:N} is no member";
+            return $"its time reference {Short(reference)} is no member";
         }
 
         if (workspace.Alignments.GroupBy(alignment => alignment.Revision).FirstOrDefault(group => group.Key < 1 || group.Count() > 1)
@@ -763,24 +766,24 @@ public static partial class InvestigationWorkspace
             {
                 if (workspace.TimeReference is not { } time)
                 {
-                    return $"session {member.SessionId:N} is aligned, and the workspace has no time reference";
+                    return $"session {Short(member.SessionId)} is aligned, and the workspace has no time reference";
                 }
 
                 if (member.SessionId == time)
                 {
-                    return $"the time reference {time:N} is aligned to another member";
+                    return $"the time reference {Short(time)} is aligned to another member";
                 }
 
                 // Aligning through another member arrived with the sixth version (revision 265).
                 if (VersionOf(workspace) < 6 && active.ReferenceSessionId != time)
                 {
-                    return $"session {member.SessionId:N} is aligned to a member that is not the workspace's time reference, "
+                    return $"session {Short(member.SessionId)} is aligned to a member that is not the workspace's time reference, "
                         + $"which a {workspace.Contract} file does not";
                 }
 
                 if (ChainOf(workspace, member.SessionId) is null)
                 {
-                    return $"session {member.SessionId:N} is aligned to a member with no place in the workspace's time, or "
+                    return $"session {Short(member.SessionId)} is aligned to a member with no place in the workspace's time, or "
                         + "through itself";
                 }
             }

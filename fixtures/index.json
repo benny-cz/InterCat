@@ -1895,6 +1895,7 @@
         "R5: a record's kind and layer, a missing field's reason, a capability's state, tier and overhead and a profile's admission each read as words",
         "R5: a timeline card at every rung's lanes says cell and column, never bucket, as the inspector does",
         "R5: an accounting reads as the window labels it, its meaning after the label, an unknown one by its number",
+        "R5: an alignment another session is aligned through is not withdrawn, and the window says whose rests on it and what to do first, each session named as its row is",
         "R5: an operation's state reads as a call's does, and the tour's operations name their kind, direction and state in words",
         "R5: icat metric names its basis, byte domain and accounting in the words the window uses, never by the enumeration",
         "R5: icat metric states its coverage in the inspector's words, and names a mechanism as the window does",
@@ -1906,6 +1907,7 @@
         "R5: the manifest parser resolves descriptors, keyword masks and template fields",
         "R5: the profiles a capture can ask for, and how one compiles, read in words, and the flight recorder says where it is",
         "R5: the timeline's spoken help and its gestures' tooltip say column and cell, as its cards and the inspector do, never bucket",
+        "R5: what a workspace says names a session, capture, host or note by its first eight hex digits, as the investigation's window and icat do, never by all 32",
         "R5: why a record binds to no process reads in one set of words, the window's and icat's, an unknown reason by its number"
       ],
       "R6": [

@@ -105,7 +105,7 @@ public static partial class InvestigationWorkspace
         {
             if (workspace.Members.All(member => member.HostId != host))
             {
-                throw new InvalidOperationException($"No member of this workspace was recorded on host {host:N}.");
+                throw new InvalidOperationException($"No member of this workspace was recorded on host {Short(host)}.");
             }
         }
 
@@ -117,13 +117,13 @@ public static partial class InvestigationWorkspace
         bool inForce = EquivalencesInForce(workspace).Any(equivalence => HostPair(equivalence.First, equivalence.Second) == HostPair(first, second));
         if (decision == WorkspaceHostDecision.Withdrawn && !inForce)
         {
-            throw new InvalidOperationException($"No confirmation that hosts {first:N} and {second:N} are one is in force, so there "
+            throw new InvalidOperationException($"No confirmation that hosts {Short(first)} and {Short(second)} are one is in force, so there "
                 + "is none to withdraw.");
         }
 
         if (decision == WorkspaceHostDecision.Confirmed && inForce)
         {
-            throw new InvalidOperationException($"Hosts {first:N} and {second:N} are confirmed one host already.");
+            throw new InvalidOperationException($"Hosts {Short(first)} and {Short(second)} are confirmed one host already.");
         }
 
         var equivalence = new WorkspaceHostEquivalence

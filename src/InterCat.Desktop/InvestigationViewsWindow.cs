@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -171,7 +172,7 @@ internal sealed class InvestigationViewsWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = "The investigation could not be read: " + exception.Message;
+            status.Text = "The investigation could not be read: " + InvestigationTrouble.Why(path, exception);
         }
     }
 
@@ -192,7 +193,7 @@ internal sealed class InvestigationViewsWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = "The view was not saved: " + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally
@@ -216,7 +217,7 @@ internal sealed class InvestigationViewsWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = $"'{row.View.Name}' was not removed: " + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally

@@ -96,6 +96,15 @@ public sealed class InvestigationDropTests : IDisposable
             Assert.False(asked.IsCompleted);
             await Task.WhenAll(reading, asked);
             Assert.Equal("Asked while the investigation was read.", StatusOf(window));
+
+            // A drop that adds nothing reads nothing again, and its words wait for a reading under way, which would
+            // otherwise say what it found in their place.
+            const string NotAdded = "notes.txt was not added: a session joins an investigation by its folder.";
+            reading = window.RefreshAsync();
+            Task dropped = window.AddAsync([], [NotAdded]);
+            Assert.False(dropped.IsCompleted);
+            await Task.WhenAll(reading, dropped);
+            Assert.Equal(NotAdded, StatusOf(window));
         }
         finally
         {

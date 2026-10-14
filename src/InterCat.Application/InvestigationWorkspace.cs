@@ -242,6 +242,13 @@ public static partial class InvestigationWorkspace
     public const string Extension = ".icat-workspace";
 
     /// <summary>
+    /// A session, capture, host or note as what the workspace says names it: by its identity's first eight hex digits, as
+    /// the investigation's window and icat name it, and as a leading part names it on the command line and in the file -
+    /// never by all 32.
+    /// </summary>
+    internal static string Short(Guid identity) => identity.ToString("N")[..8];
+
+    /// <summary>
     /// A known file's version number: 1 for `workspace-v1` up to this one's. A kind of fact is refused only in a file of a
     /// version before the one that introduced it, so every later version reads what an earlier one wrote.
     /// </summary>
@@ -311,9 +318,9 @@ public static partial class InvestigationWorkspace
             is { } same)
         {
             throw new InvalidOperationException(same.SessionId == member.SessionId
-                ? $"Session {member.SessionId:N} is already a member, found at {same.Path}. A copy of a session is the same "
+                ? $"Session {Short(member.SessionId)} is already a member, found at {same.Path}. A copy of a session is the same "
                     + "capture, and a capture added twice would count its records twice."
-                : $"This session records capture {member.CaptureId:N}, which member {same.SessionId:N} at {same.Path} already "
+                : $"This session records capture {Short(member.CaptureId)}, which member {Short(same.SessionId)} at {same.Path} already "
                     + "records. A capture added twice would count its records twice.");
         }
 
@@ -330,13 +337,13 @@ public static partial class InvestigationWorkspace
         string full = System.IO.Path.GetFullPath(workspacePath);
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         WorkspaceMember member = workspace.Members.FirstOrDefault(known => known.SessionId == sessionId)
-            ?? throw new InvalidOperationException($"No member of this workspace is session {sessionId:N}.");
+            ?? throw new InvalidOperationException($"No member of this workspace is session {Short(sessionId)}.");
         WorkspaceMember found = Describe(full, sessionDirectory, now);
         if (found.SessionId != member.SessionId || found.CaptureId != member.CaptureId)
         {
             throw new InvalidOperationException($"The session at {System.IO.Path.GetFullPath(sessionDirectory)} is session "
-                + $"{found.SessionId:N} of capture {found.CaptureId:N}, not member {member.SessionId:N} of capture "
-                + $"{member.CaptureId:N}. A member is relinked only to itself.");
+                + $"{Short(found.SessionId)} of capture {Short(found.CaptureId)}, not member {Short(member.SessionId)} of capture "
+                + $"{Short(member.CaptureId)}. A member is relinked only to itself.");
         }
 
         WorkspaceMember relinked = found with { AddedUtc = member.AddedUtc };
@@ -358,14 +365,14 @@ public static partial class InvestigationWorkspace
         (InvestigationWorkspaceFile workspace, string text) = Load(full);
         if (workspace.Members.All(member => member.HostId != hostId))
         {
-            throw new InvalidOperationException($"No member of this workspace was recorded on host {hostId:N}.");
+            throw new InvalidOperationException($"No member of this workspace was recorded on host {Short(hostId)}.");
         }
 
         string? name = string.IsNullOrWhiteSpace(alias) ? null : alias.Trim();
         if (name is not null && workspace.HostAliases.FirstOrDefault(known => known.HostId != hostId
             && string.Equals(known.Alias, name, StringComparison.OrdinalIgnoreCase)) is { } taken)
         {
-            throw new InvalidOperationException($"Host {taken.HostId:N} is already called '{taken.Alias}'. One name for two host "
+            throw new InvalidOperationException($"Host {Short(taken.HostId)} is already called '{taken.Alias}'. One name for two host "
                 + "identities would read as one host, which their identities do not say.");
         }
 
@@ -464,7 +471,7 @@ public static partial class InvestigationWorkspace
         if (manifest.SessionId != member.SessionId || found.Capture.Value != member.CaptureId)
         {
             return new(member, full, WorkspaceMemberState.Different, manifest.Generation,
-                $"Session {manifest.SessionId:N} of capture {found.Capture.Value:N} is at this path, not this member. "
+                $"Session {Short(manifest.SessionId)} of capture {Short(found.Capture.Value)} is at this path, not this member. "
                 + RelinkWhereItIs);
         }
 
@@ -618,27 +625,27 @@ public static partial class InvestigationWorkspace
             || member.HostId == Guid.Empty || member.ClockId == Guid.Empty || member.Generation < 1
             || string.IsNullOrWhiteSpace(member.Path) || string.IsNullOrWhiteSpace(member.ManifestDigest)) is { } nameless)
         {
-            return $"member {nameless.SessionId:N} lacks its session, capture, host, clock, generation, digest or path";
+            return $"member {Short(nameless.SessionId)} lacks its session, capture, host, clock, generation, digest or path";
         }
 
         if (workspace.Members.GroupBy(member => member.SessionId).FirstOrDefault(group => group.Count() > 1) is { } session)
         {
-            return $"two members are session {session.Key:N}";
+            return $"two members are session {Short(session.Key)}";
         }
 
         if (workspace.Members.GroupBy(member => member.CaptureId).FirstOrDefault(group => group.Count() > 1) is { } capture)
         {
-            return $"two members record capture {capture.Key:N}, which would count its records twice";
+            return $"two members record capture {Short(capture.Key)}, which would count its records twice";
         }
 
         if (workspace.HostAliases.FirstOrDefault(alias => string.IsNullOrWhiteSpace(alias.Alias)) is { } blank)
         {
-            return $"host {blank.HostId:N} has an empty name";
+            return $"host {Short(blank.HostId)} has an empty name";
         }
 
         if (workspace.HostAliases.GroupBy(alias => alias.HostId).FirstOrDefault(group => group.Count() > 1) is { } host)
         {
-            return $"host {host.Key:N} has two names";
+            return $"host {Short(host.Key)} has two names";
         }
 
         return workspace.HostAliases.GroupBy(alias => alias.Alias.Trim(), StringComparer.OrdinalIgnoreCase)

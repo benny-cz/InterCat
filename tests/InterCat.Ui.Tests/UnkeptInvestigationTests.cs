@@ -69,6 +69,21 @@ public sealed class UnkeptInvestigationTests : IDisposable
             await Written(main);
             Assert.Equal((1, 1), (Count(detail.Text, LayoutUnkept), Count(detail.Text, PanesUnkept)));
 
+            // Gone, the file is said to be gone, in the window's words - never the command line's advice to make one - and
+            // still once for each.
+            File.Delete(demo.WorkspacePath);
+            string gone = $"No file is at {demo.WorkspacePath} any more; it was moved, renamed or deleted.";
+            shown.RankBy = RankingMetric.BytesSent;
+            await Written(main);
+            shown.RankBy = RankingMetric.Records;
+            await Written(main);
+            main.ExpandPane(MainPane.Graph);
+            await Written(main);
+            main.ExpandPane(null);
+            await Written(main);
+            Assert.Equal((1, 1, 1, 1), (Count(detail.Text, LayoutUnkept), Count(detail.Text, PanesUnkept),
+                Count(detail.Text, LayoutUnkept + gone), Count(detail.Text, PanesUnkept + gone)));
+
             // Readable again, a change is kept, and the card no longer says it is not.
             File.WriteAllText(demo.WorkspacePath, file);
             shown.RankBy = RankingMetric.BytesSent;

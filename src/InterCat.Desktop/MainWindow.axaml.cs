@@ -1903,7 +1903,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             if (!closed)
             {
                 keptPanes = null;
-                SayUnkept(ref panesUnkept, " The window's panes could not be kept in the investigation: " + exception.Message);
+                SayUnkept(ref panesUnkept,
+                    " The window's panes could not be kept in the investigation: " + InvestigationTrouble.Why(investigation, exception));
             }
 
             return;
@@ -2013,7 +2014,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 keptLanes = null;
                 keptSettings = null;
                 SayUnkept(ref layoutUnkept,
-                    " The pins and view settings could not be kept in the investigation: " + exception.Message);
+                    " The pins and view settings could not be kept in the investigation: " + InvestigationTrouble.Why(home.Workspace, exception));
             }
 
             return;

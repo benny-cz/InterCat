@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.Layout;
 using Avalonia.Media;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 
 namespace InterCat.Desktop;
 
@@ -144,14 +145,16 @@ internal sealed class InvestigationTranslationsWindow : Window
         string from = seen.Text ?? string.Empty;
         string to = actual.Text ?? string.Empty;
         string? remark = string.IsNullOrWhiteSpace(note.Text) ? null : note.Text;
-        return await RunAsync(() => InvestigationWorkspace.StateTranslation(path, from, to, remark, DateTimeOffset.UtcNow), clear: true);
+        return await RunAsync(() => InvestigationWorkspace.StateTranslation(path, from, to, remark, DateTimeOffset.UtcNow), clear: true,
+            notDone: "The translation was not stated: ");
     }
 
     /// <summary>Withdraws the selected translation, kept as a revision.</summary>
     internal async Task<bool> WithdrawSelectedAsync()
     {
         if (busy || known.SelectedItem is not TranslationRow row) return false;
-        return await RunAsync(() => InvestigationWorkspace.WithdrawTranslation(path, row.Translation.Seen, row.Translation.Is, DateTimeOffset.UtcNow), clear: false);
+        return await RunAsync(() => InvestigationWorkspace.WithdrawTranslation(path, row.Translation.Seen, row.Translation.Is, DateTimeOffset.UtcNow), clear: false,
+            notDone: "The translation was not withdrawn: ");
     }
 
     /// <summary>Lists the translations in force; a test calls it where the dialog is not opened.</summary>
@@ -167,11 +170,11 @@ internal sealed class InvestigationTranslationsWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = "The investigation could not be read: " + exception.Message;
+            status.Text = "The investigation could not be read: " + InvestigationTrouble.Why(path, exception);
         }
     }
 
-    private async Task<bool> RunAsync(Func<WorkspaceAddressTranslation> operation, bool clear)
+    private async Task<bool> RunAsync(Func<WorkspaceAddressTranslation> operation, bool clear, string notDone)
     {
         busy = true;
         state.IsEnabled = withdraw.IsEnabled = false;
@@ -193,7 +196,7 @@ internal sealed class InvestigationTranslationsWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            status.Text = exception.Message;
+            status.Text = notDone + InvestigationTrouble.Why(path, exception);
             return false;
         }
         finally

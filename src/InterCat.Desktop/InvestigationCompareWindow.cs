@@ -150,7 +150,7 @@ internal sealed class InvestigationCompareWindow : Window
         catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
             or UnauthorizedAccessException)
         {
-            statement.Text = "They could not be compared: " + exception.Message;
+            statement.Text = "They could not be compared: " + InvestigationTrouble.Why(path, exception);
             placements.Text = string.Empty;
             return null;
         }
