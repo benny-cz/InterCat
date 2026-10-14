@@ -175,7 +175,10 @@ public sealed class LiveDerivationTests
     {
         using var evidence = new TemporaryDirectory();
         using var user = new TemporarySession();
-        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6], bursts: [2, 4],
+
+        // A record a second in session time, the first published alone: a chunk read wholly before half a second. Published on
+        // a timer, the first chunk otherwise held the first record alone or the first two, as the timer fell.
+        _ = await EvidenceRecordings.RecordEvidence(evidence.Path, ordinals: [1, 2, 3, 4, 5, 6], bursts: [1, 2, 4],
             qpcStep: Stopwatch.Frequency);
         SessionManifestV1 source = SessionStore.OpenExisting(LocalOwnedDirectory.Open(evidence.Path)).Current!;
 
@@ -197,11 +200,12 @@ public sealed class LiveDerivationTests
         using var derivation = new LiveDerivation(evidence.Path, sessionPath, Stopwatch.StartNew(),
             new SessionStoreRegistry(capacity: 4), rolling: rolling);
 
-        // The release due before the newest second is held at the pin, which releases nothing before it, and the session
-        // holds more than the pin allows: the step says the capture must stop, and why.
+        // The release due before the newest second is held at the pin: it gives up the first chunk, read before then, and
+        // nothing the pin keeps. The session still holds more than the pin allows: the step says the capture must stop, and why.
         LiveDerivationStep step = await derivation.StepAsync(CancellationToken.None);
         RollingStep held = Assert.IsType<RollingStep>(step.Rolling);
-        Assert.Null(held.Released);
+        long? boundary = Assert.IsType<IntervalReleaseResult>(held.Released).Preview.BoundaryNanoseconds;
+        Assert.True(boundary <= pin.FromNanoseconds, $"The release reached {boundary} ns, past the pin's moment.");
         Assert.Equal((pin.Id, true), (held.HeldBy!.Id, held.NewlyHeld));
         // The size is measured as the step ran, before the finished session's checkpoint was published beside it.
         Assert.StartsWith($"The pin from 0.500 s (the first burst) allows this session {ByteSizeText.Of(1_024)}, and it holds ",

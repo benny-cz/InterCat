@@ -94,6 +94,10 @@ internal static class WindowKeys
         new("Search box", "Enter", "open the chosen hit"),
         new("Search box", "Down", "move to the hits"),
         new("Search box", "Esc", "clear the search, and give the keyboard back to the ranked table"),
+        new("Search hits", "Up or Down", "choose the previous or next hit; Up on the first gives the keyboard back to the "
+            + "search box, its words kept"),
+        new("Search hits", "Enter", "open the chosen hit"),
+        new("Search hits", "Esc", "clear the search, and give the keyboard back to the search box"),
         new("Inspector", "Enter", "on one of a chosen cell's records, open it among the level's records, chosen there"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),
         new("A level's records", "C", "inspect the chosen record's content"),

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 520 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 521 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 521 — the search's hits by keyboard (§6.7, R15):**
+  - No test walked the hits by keyboard, and Up on the first did nothing: a person who went into them had to
+    clear the search to go on typing it. Up there now gives the search box the keyboard back, its words kept.
+  - The keys sheet lists the hits' keys - Up or Down, Enter, Esc - under a place of their own.
+  - Debug and Release each ran 2,202 tests, with revision 473's 93 failures and 4 skips; Release once failed a live
+    pin test besides. Its recording fixture publishes on a timer, which can put the first record in a chunk of its
+    own, wholly before the pin, and the step then rightly releases it: the split the command line's two pin tests
+    were fixed for earlier. The test now publishes the first record alone on purpose and expects its release, never
+    one past the pin, and passed 16 runs in a row, 8 in each build. The tests caught each of 5 mutations: Up on the
+    first hit keeping the keyboard there, Up on the second leaving the hits, the search's words lost on the way
+    back, the caret left where it was, and the hits' keys missing from the sheet.
 
 - **Revision 520 — what an investigation could not keep, said once (§8.4, §11.3, §26.3):**
   - A change a session's investigation could not keep added a sentence beside the session's status each time,

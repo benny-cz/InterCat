@@ -65,7 +65,7 @@ public sealed class KeysSheetTests
         int step = listed.ToList().FindIndex(key => key.Keys == "[ or ]");
         Assert.Equal("Left or right bracket: step to the previous or next moment holding records.", Name(keys, step));
         Assert.Equal(["Anywhere", "Ranked table", "Graph", "Timeline", "Minimap", "Relationship table", "Interval table",
-            "Search box", "Inspector", "A level's records"], listed.Where(key => key.Heads).Select(key => key.Where));
+            "Search box", "Search hits", "Inspector", "A level's records"], listed.Where(key => key.Heads).Select(key => key.Where));
 
         // The ranked table's and the graph's Ctrl with an arrow, which move the keyboard without choosing, are listed before
         // the Ctrl+Space that adds what it is on.

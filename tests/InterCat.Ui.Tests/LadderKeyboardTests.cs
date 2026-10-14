@@ -284,6 +284,57 @@ public sealed class LadderKeyboardTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "R15: the search's hits are walked by keyboard: Down into them, Up from the first back to the box with its words kept, Esc to the box cleared, Enter into the hit's level")]
+    public void TheSearchHitsAreWalkedByKeyboard()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        TextBox search = window.GetControl<TextBox>("SearchBox");
+        ListBox hits = window.GetControl<ListBox>("SearchResultsList");
+        ListBox ranked = window.GetControl<ListBox>("RungList");
+        FocusRankedTable(window);
+        window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+        search.Text = "c";
+        Settle(window);
+        Assert.True(viewModel.SearchResults.Count > 2);
+
+        // Down moves from the box onto the first hit, and on to the next.
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.Same(viewModel.SearchResults[0], HitWithKeyboard(hits));
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.Same(viewModel.SearchResults[1], HitWithKeyboard(hits));
+
+        // Up goes back, and from the first hit gives the box the keyboard, its words kept and the caret after them.
+        window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Settle(window);
+        Assert.Same(viewModel.SearchResults[0], HitWithKeyboard(hits));
+        window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+        Settle(window);
+        Assert.True(search.IsFocused);
+        Assert.Equal(("c", 1, "c"), (search.Text, search.CaretIndex, viewModel.SearchText));
+
+        // Esc in the hits clears the search and gives the box the keyboard.
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.Same(viewModel.SearchResults[0], HitWithKeyboard(hits));
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        Assert.True(search.IsFocused);
+        Assert.Equal(string.Empty, viewModel.SearchText);
+
+        // Enter on a hit opens its level, and the ranked table takes the keyboard.
+        search.Text = "c";
+        Settle(window);
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal((string.Empty, "L2 · PROCESS"), (viewModel.SearchText, viewModel.LevelBadge));
+        Assert.Contains(TableRowWithKeyboard(ranked), viewModel.RungRows.OfType<RungRow>());
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§3.2: Escape out of the search, or Enter on a hit, gives the keyboard to the ranked table's row")]
     public void TheSearchHandsTheKeyboardBackToTheTable()
     {
@@ -551,6 +602,14 @@ public sealed class LadderKeyboardTests
         ListBoxItem item = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement());
         Assert.Same(list, item.GetVisualAncestors().OfType<ListBox>().First());
         return Assert.IsType<RungRow>(item.DataContext);
+    }
+
+    /// <summary>The search hit that has the keyboard; fails when the keyboard is anywhere else.</summary>
+    private static SearchRow HitWithKeyboard(ListBox hits)
+    {
+        ListBoxItem item = Assert.IsType<ListBoxItem>(TopLevel.GetTopLevel(hits)!.FocusManager!.GetFocusedElement());
+        Assert.Same(hits, item.GetVisualAncestors().OfType<ListBox>().First());
+        return Assert.IsType<SearchRow>(item.DataContext);
     }
 
     /// <summary>Runs the bindings and a layout pass, so visibility and bounds are the ones drawn.</summary>

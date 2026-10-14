@@ -457,6 +457,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }
 
+    /// <summary>Whether the keyboard is on the first of the search's hits, above which is the search box.</summary>
+    private bool OnFirstSearchHit() =>
+        (FocusManager?.GetFocusedElement() is Control focused ? SearchResultsList.IndexFromContainer(focused)
+            : SearchResultsList.SelectedIndex) <= 0;
+
     private void OnShortcutKey(object? sender, KeyEventArgs e)
     {
         if (DataContext is not WorkspaceViewModel viewModel)
@@ -532,6 +537,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             {
                 viewModel.SearchText = string.Empty;
                 SearchBox.Focus();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Up && e.KeyModifiers == KeyModifiers.None && OnFirstSearchHit())
+            {
+                // Up from the first hit gives the search box the keyboard back, its words kept to go on with, as Down
+                // from the box gave the hits it (§6.7).
+                SearchBox.Focus();
+                SearchBox.CaretIndex = SearchBox.Text?.Length ?? 0;
                 e.Handled = true;
             }
 
