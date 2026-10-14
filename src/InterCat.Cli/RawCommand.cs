@@ -79,58 +79,47 @@ internal static class RawCommand
             return detail.Available ? InterCatExitCode.Success : InterCatExitCode.PartialResultSuccess;
         }
 
-        // A redacted package's journal holds synthetic records under its own policy; they are never called originals.
-        bool synthetic = detail.AdmissionPolicyId == RedactedSessionPackage.Policy;
+        // A redacted package's journal holds synthetic records under its own policy; they are never called originals, found
+        // or not. The record's facts are the window's, in its words (R18).
+        bool synthetic = detail.Synthetic;
         ConsoleUi.Heading(synthetic ? "Synthetic record of a redacted package" : "Original admitted journal record");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Session ID", detail.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", detail.Generation.ToString(CultureInfo.InvariantCulture));
-        // The same locator an evidence page prints for the row, and the fact and normalizer derivation that name it.
-        RawRecordId raw = detail.ObservationId.RawRecordId;
+        // The fact and normalizer derivation that name the row the locator found; its raw identity is the first fact below.
         ConsoleUi.Field("Normalized fact", string.Create(CultureInfo.InvariantCulture,
-            $"raw {raw.StreamId}/{raw.SourceEpoch}/{raw.RecordOrdinal} · fact {detail.ObservationId.FactKey} · "
-            + $"observation-v{detail.ObservationId.NormalizerContractVersion.Value}"));
-        if (raw.CaptureId.Value != detail.SessionId)
+            $"fact {detail.ObservationId.FactKey} · observation-v{detail.ObservationId.NormalizerContractVersion.Value}"));
+        if (detail.JournalName is { } journal)
         {
-            ConsoleUi.Field("Capture", raw.CaptureId.ToString());
+            ConsoleUi.Field("Journal", journal);
         }
-        // What the record holds of its message comes from the normalized row, so it holds with or without the journal.
-        if (detail.Content is { } content)
+
+        foreach ((string label, string value) in RawRecordText.Facts(detail))
         {
-            ConsoleUi.Field("Content", content.Describe());
+            ConsoleUi.Field(label, value);
         }
+
         if (!detail.Available)
         {
             ConsoleUi.Warn(detail.UnavailableReason!);
             return InterCatExitCode.PartialResultSuccess;
         }
 
-        EventHeaderFieldsV1 header = detail.Header!.Value;
-        ConsoleUi.Field("Journal", detail.JournalName!);
-        ConsoleUi.Field("Source descriptor", $"{header.ProviderId:N} event {header.EventId} v{header.Version} opcode {header.Opcode}");
-        ConsoleUi.Field("Native reading", $"{detail.NativeTicks} on {detail.ClockId} ({detail.TimestampEncoding})");
-        ConsoleUi.Field("Header PID/TID", $"{header.ProcessId}/{header.ThreadId}");
-        ConsoleUi.Field("Schema", detail.SchemaFingerprint ?? "unavailable");
-        ConsoleUi.Field("Admission policy", detail.AdmissionPolicyId ?? "unavailable");
-        ConsoleUi.Field("Body", $"{detail.BodyClassification}/{detail.BodyDisposition}; "
-            + $"original {detail.OriginalBodyLength:N0} bytes, retained {detail.RetainedBodyLength:N0} bytes");
-        ConsoleUi.Field("Extended items", $"retained {detail.ExtendedItems.Count:N0}, omitted {detail.OmittedExtendedItemCount:N0}");
         foreach (RawExtendedItemSummary item in detail.ExtendedItems)
-            ConsoleUi.Line($"  type {item.Type}, flags {item.Flags}: original {item.OriginalLength:N0}, retained {item.RetainedLength:N0} bytes");
+            ConsoleUi.Line("  " + RawRecordText.ExtendedItem(item));
         if (detail.BodyPreview is { } bytes)
         {
-            ConsoleUi.Line("  Retained body prefix · inert hexadecimal:");
-            for (int offset = 0; offset < bytes.Length; offset += 16)
-                ConsoleUi.Line($"  {offset:X4}: {Convert.ToHexString(bytes.AsSpan(offset, Math.Min(16, bytes.Length - offset)))}");
-            if (detail.BodyPreviewTruncated) ConsoleUi.Note("Preview stopped at 256 bytes; more retained bytes exist.");
+            ConsoleUi.Line("  Retained body preview · inert hexadecimal:");
+            foreach (string line in RawRecordText.PreviewRows(bytes))
+                ConsoleUi.Line("  " + line);
+            if (detail.BodyPreviewTruncated) ConsoleUi.Note(RawRecordText.PreviewStopped);
         }
         else if (detail.RetainedBodyLength > 0)
             ConsoleUi.Note("Body bytes are hidden. Add --reveal-bytes to print at most 256 inert hex bytes.");
         else if (!synthetic)
-            ConsoleUi.Note("No body bytes were retained; the recorded disposition states why.");
+            ConsoleUi.Note(RawRecordText.NoBody);
         ConsoleUi.Note(synthetic
-            ? "This package holds no original record. This synthetic entry carries the row's pseudonymous descriptor, "
-                + "header and reading, and never a body or extended data (redacted-session-v1)."
+            ? RawRecordText.SyntheticDisclosure + " (redacted-session-v1)"
             : "This is an original source envelope, not a decoded message, operation or payload export.");
         return InterCatExitCode.Success;
     }

@@ -51,10 +51,15 @@ public sealed class RawRecordWindowTests
         Assert.DoesNotContain("{ ", detail, StringComparison.Ordinal);
         Assert.DoesNotContain("RawRecordId", detail, StringComparison.Ordinal);
 
-        // A public provider is named beside its identity, and the envelope's codes read as words, not enumeration names.
-        Assert.Contains($"Provider Microsoft-Windows-Kernel-Network ({NetworkProvider:N}) · event ", detail, StringComparison.Ordinal);
+        // A public provider is named beside its identity, and the envelope's codes read as words, not enumeration names: the
+        // facts icat raw lists, a line each.
+        Assert.Contains($"Provider: Microsoft-Windows-Kernel-Network ({NetworkProvider:N}) · event ", detail, StringComparison.Ordinal);
         string body = detail.Split(Environment.NewLine).Single(line => line.StartsWith("Body: ", StringComparison.Ordinal));
         Assert.Matches("^Body: [a-z ]+, [a-z ]+ · original ", body);
+        SessionRawRecordDetail read = SessionRawRecordQuery.Read(session.Store, page.SessionId, page.Generation, record);
+        session.Store.ReleaseSegmentReaders();
+        Assert.Equal([.. RawRecordText.Facts(read).Select(fact => $"{fact.Label}: {fact.Value}"), RawRecordText.NoBody],
+            detail.Split(Environment.NewLine));
 
         // The record retained no body, so Reveal, not offered, says so on itself, as the record does.
         Assert.Equal("No body bytes were retained; the record's disposition gives the recorded reason.", Offers.WhyNot(Reveal(window)));
@@ -156,7 +161,7 @@ public sealed class RawRecordWindowTests
             Assert.Equal("InterCat · Synthetic record of a redacted package", told.Title);
             Assert.Equal("Locating the synthetic record…", status.Text);
             Assert.Contains(told.GetLogicalDescendants().OfType<TextBlock>(),
-                text => text.Text == "Synthetic record of a redacted session package");
+                text => text.Text == "Synthetic record of a redacted package");
             Assert.Equal("The synthetic record, field by field", AutomationProperties.GetName(detail));
             Assert.Contains(told.GetLogicalDescendants().OfType<TextBlock>(),
                 text => text.Text?.StartsWith("This package holds no original record. ", StringComparison.Ordinal) == true);
@@ -204,6 +209,21 @@ public sealed class RawRecordWindowTests
             Assert.Equal("The package's journal holds no entry for this row, though every row of a redacted package has one: "
                 + "the package is not as it was saved.", missing.GetVisualDescendants().OfType<TextBox>().Single().Text);
             missing.Close();
+
+            // The package itself says why, as every reader of it does: every row has its entry.
+            SessionRawRecordDetail gone = SessionRawRecordQuery.ReadRetained(package, page.SessionId, absent);
+            package.ReleaseSegmentReaders();
+            Assert.Equal((false, true, RawRecordText.SyntheticMissing), (gone.Available, gone.Synthetic, gone.UnavailableReason));
+
+            // Not told, the window learns it from the package itself, whose row has no entry, and says the same.
+            using var unknown = new SessionRawRecordWindow(destination, page.SessionId, absent);
+            unknown.Show();
+            WaitFor(() => unknown.Title == "InterCat · Synthetic record of a redacted package");
+            TextBlock found = unknown.GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => AutomationProperties.GetName(text) == "Synthetic record status");
+            WaitFor(() => found.Text == "Synthetic record unavailable in this package");
+            Assert.Equal(RawRecordText.SyntheticMissing, unknown.GetVisualDescendants().OfType<TextBox>().Single().Text);
+            unknown.Close();
         }
         finally
         {

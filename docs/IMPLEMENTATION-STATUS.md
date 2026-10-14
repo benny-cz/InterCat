@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 531 · Branch: `main`
+Updated: 2026-10-14 · Plan revision: 532 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 532 — icat raw says a record as the window does (§3.7, R5, R18):**
+  - icat raw printed a record's provider as a bare identity and its codes as enumeration names (Qpc,
+    ApprovedMetadata/Retained); it now lists the window's facts in the window's words, each length counted, from
+    one set of lines the window and the command share.
+  - A redacted package's record is called its synthetic entry by both, found or not, with the package's own reason
+    when its entry is missing.
+  - icat raw now runs in tests on real sessions - hidden and revealed bytes, a preview stopped at 256 bytes, a
+    released journal batch, a redacted package - where no test had run it on one.
+  - Debug and Release each ran 2,228 tests with revision 473's 93 failures and 4 skips. The tests caught each of 20
+    mutations: a provider named from the wrong identity; a clock's encoding or a body's classification printed as an
+    enumeration's name; a length of one counted as 1 bytes; a record outside the retained journal listed without its
+    raw identity; a record's content left out of its facts; an extended item's retained length read from its
+    original; a preview's last row dropped; a code's words begun with a space; a CPU cycle counter called unknown;
+    icat raw listing only a record's first fact, calling a record synthetic because it names no admission policy,
+    saying a preview stopped when it had not, or saying no body bytes were kept of a package's entry rather than an
+    original's; the query calling an original record synthetic, calling a package's missing entry an original
+    record's, or giving it an original's reason; and the window not presenting a package's record as synthetic,
+    listing a fact without its colon, or leaving out why no body bytes were kept.
 
 - **Revision 531 — the main window's untested paths, run whole (§3.1, R15, R21):**
   - A capture that ends before it shows anything gives back the session shown before it - its records, actions

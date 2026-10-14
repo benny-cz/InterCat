@@ -39,6 +39,12 @@ public sealed record SessionRawRecordDetail(
     /// <summary>The content the capture kept of the record, when it kept any (`contracts/content-v1.md`); never its bytes.</summary>
     [System.Text.Json.Serialization.JsonIgnore]
     public SessionContentEntry? KeptContent { get; init; }
+
+    /// <summary>
+    /// Whether the record is a redacted package's synthetic entry, which every reader names as one: a package holds no
+    /// original record. Known from the package itself, so it holds for a row whose entry was not found.
+    /// </summary>
+    public bool Synthetic { get; init; }
 }
 
 public sealed record RawExtendedItemSummary(ushort Type, ushort Flags, int OriginalLength, int RetainedLength);
@@ -231,17 +237,25 @@ public static class SessionRawRecordQuery
             {
                 Content = RecordContent.Of(expected, synthetic: policyId == RedactedSessionPackage.Policy, keptContent, content.Problem),
                 KeptContent = keptContent,
+                Synthetic = policyId == RedactedSessionPackage.Policy,
             };
         }
 
-        // Without its journal the record still says what its source carries: the normalized row names the source.
-        SessionRawRecordDetail Unavailable(string reason) => new(
-            manifest.SessionId, manifest.Generation, selected.ObservationId, null, false, reason,
-            null, null, null, null, null, null, null, null, null, null, null, null, null, null,
-            [], null, null, false)
+        // Without its journal the record still says what its source carries: the normalized row names the source. A
+        // package's every row has its entry, so one not found says the package changed since it was saved.
+        SessionRawRecordDetail Unavailable(string reason)
         {
-            Content = RecordContent.Of(expected, kept: keptContent, problem: content.Problem),
-            KeptContent = keptContent,
-        };
+            bool package = SessionRedaction.Read(store.Root, manifest) is not null;
+            return new(
+                manifest.SessionId, manifest.Generation, selected.ObservationId, null, false,
+                package ? RawRecordText.SyntheticMissing : reason,
+                null, null, null, null, null, null, null, null, null, null, null, null, null, null,
+                [], null, null, false)
+            {
+                Content = RecordContent.Of(expected, synthetic: package, kept: keptContent, problem: content.Problem),
+                KeptContent = keptContent,
+                Synthetic = package,
+            };
+        }
     }
 }

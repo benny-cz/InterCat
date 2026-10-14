@@ -137,23 +137,21 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
                 SharedSessionStores.Open(path, expectedSessionId), expectedSessionId,
                 selected, revealBytes, cancellationToken: token), token);
             if (closed) return;
+            // A record read as a package's entry is presented as one, found or not, whatever the caller said.
+            if (result.Synthetic) PresentAsSynthetic();
             if (!result.Available)
             {
                 // Every row of a package has its synthetic entry, checked as the package was saved, so one not found says
                 // the package changed since - never that an original was released.
                 status.Text = synthetic ? "Synthetic record unavailable in this package"
                     : "Original record unavailable in retained evidence";
-                detail.Text = synthetic
-                    ? "The package's journal holds no entry for this row, though every row of a redacted package has one: "
-                        + "the package is not as it was saved."
-                    : result.UnavailableReason;
+                detail.Text = synthetic ? RawRecordText.SyntheticMissing : result.UnavailableReason;
                 Offering.Offer(reveal, "The original record is not retained, so it has no body byte to reveal.");
                 return;
             }
 
             revealed = revealBytes;
             status.Text = $"Verified generation {result.Generation:N0} · {result.JournalName}";
-            if (result.AdmissionPolicyId == RedactedSessionPackage.Policy) PresentAsSynthetic();
 
             detail.Text = Describe(result);
             Offering.Offer(reveal, revealed ? "The revealed bytes are shown at the end of the record."
@@ -192,9 +190,8 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     {
         synthetic = true;
         Title = "InterCat · Synthetic record of a redacted package";
-        heading.Text = "Synthetic record of a redacted session package";
-        disclosure.Text = "This package holds no original record. This entry carries the row's pseudonymous "
-            + "descriptor, header and reading, and never a body or extended data.";
+        heading.Text = "Synthetic record of a redacted package";
+        disclosure.Text = RawRecordText.SyntheticDisclosure;
         AutomationProperties.SetName(detail, "The synthetic record, field by field");
         AutomationProperties.SetName(status, "Synthetic record status");
         reveal.IsVisible = false;
@@ -212,72 +209,21 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         (string.IsNullOrEmpty(detail.Text) ? close : (Control)detail).Focus(NavigationMethod.Tab);
     }
 
+    /// <summary>The record's facts as icat raw lists them, a line each, and its revealed bytes, or why none are shown.</summary>
     private static string Describe(SessionRawRecordDetail result)
     {
-        EventHeaderFieldsV1 header = result.Header!.Value;
-        BufferContextFieldsV1 buffer = result.BufferContext!.Value;
-        RawRecordId raw = result.ObservationId.RawRecordId;
-        var lines = new List<string>
-        {
-            // The raw identity in words: a record's generated ToString would show its type and field names instead.
-            $"Raw record: capture {raw.CaptureId} · stream {raw.StreamId} · source epoch {raw.SourceEpoch} · ordinal {raw.RecordOrdinal}",
-            // A public provider is named beside its identity, and every code is said in words (R5).
-            $"Provider {(KnownProviders.NameOf(header.ProviderId) is { } name ? $"{name} ({header.ProviderId:N})" : header.ProviderId.ToString("N"))}"
-                + $" · event {header.EventId} · version {header.Version} · opcode {header.Opcode} · task {header.Task}",
-            $"Header PID/TID {header.ProcessId}/{header.ThreadId} · activity {header.ActivityId} · related {header.RelatedActivityId}",
-            $"Clock {result.ClockId} · encoding {Encoding(result.TimestampEncoding)} · native reading {result.NativeTicks}",
-            $"Processor {buffer.ProcessorNumber} · logger {buffer.LoggerId} · pointer size {result.PointerSize} bytes",
-            $"Schema reference {result.SchemaReference?.ToString(CultureInfo.InvariantCulture) ?? "none"} · fingerprint {result.SchemaFingerprint ?? "unavailable"}",
-            $"Admission policy reference {result.AdmissionPolicyReference} · {result.AdmissionPolicyId}",
-            $"Body: {Words(result.BodyClassification)}, {Words(result.BodyDisposition)} · original {result.OriginalBodyLength:N0} bytes · retained {result.RetainedBodyLength:N0} bytes",
-            $"Extended items retained {result.ExtendedItems.Count:N0} · omitted {result.OmittedExtendedItemCount:N0}",
-        };
-
-        // The body is the event's own fields; whether the message itself was kept is a separate statement (§3.7).
-        if (result.Content is { } content) lines.Insert(8, "Content: " + content.Describe());
-        foreach (RawExtendedItemSummary item in result.ExtendedItems)
-            lines.Add($"  item type {item.Type}, flags {item.Flags}: original {item.OriginalLength:N0}, retained {item.RetainedLength:N0} bytes");
+        var lines = new List<string>(RawRecordText.Facts(result).Select(fact => $"{fact.Label}: {fact.Value}"));
+        lines.AddRange(result.ExtendedItems.Select(item => "  " + RawRecordText.ExtendedItem(item)));
         if (result.BodyPreview is { } bytes)
         {
-            lines.Add("Retained body preview · inert hex:");
-            for (int offset = 0; offset < bytes.Length; offset += 16)
-            {
-                int count = Math.Min(16, bytes.Length - offset);
-                lines.Add($"  {offset:X4}: {Convert.ToHexString(bytes.AsSpan(offset, count))}");
-            }
-            if (result.BodyPreviewTruncated)
-                lines.Add("Preview stopped at 256 bytes; more retained body bytes exist.");
+            lines.Add("Retained body preview · inert hexadecimal:");
+            lines.AddRange(RawRecordText.PreviewRows(bytes).Select(row => "  " + row));
+            if (result.BodyPreviewTruncated) lines.Add(RawRecordText.PreviewStopped);
         }
         else if (result.RetainedBodyLength > 0)
             lines.Add("Retained body bytes are hidden. Choose Reveal to inspect a bounded prefix.");
         else
-            lines.Add("No body bytes were retained; the disposition above gives the recorded reason.");
+            lines.Add(RawRecordText.NoBody);
         return string.Join(Environment.NewLine, lines);
     }
-
-    /// <summary>A code's name in lower-case words: "ApprovedMetadata" reads "approved metadata".</summary>
-    private static string Words<T>(T? value)
-        where T : struct, Enum
-    {
-        if (value is not { } known) return "not recorded";
-        string name = known.ToString();
-        var words = new System.Text.StringBuilder(name.Length + 4);
-        for (int index = 0; index < name.Length; index++)
-        {
-            if (index > 0 && char.IsUpper(name[index])) words.Append(' ');
-            words.Append(char.ToLowerInvariant(name[index]));
-        }
-
-        return words.ToString();
-    }
-
-    /// <summary>How the record's native reading is encoded, in words.</summary>
-    private static string Encoding(TimestampEncoding? encoding) => encoding switch
-    {
-        TimestampEncoding.Qpc => "QPC (performance counter)",
-        TimestampEncoding.FileTimeUtc => "UTC file time",
-        TimestampEncoding.EtwSystemTimeConverted => "ETW system time, converted",
-        TimestampEncoding.CpuCycleCounter => "CPU cycle counter",
-        _ => "unknown",
-    };
 }
