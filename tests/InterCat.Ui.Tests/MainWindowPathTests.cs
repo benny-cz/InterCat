@@ -207,13 +207,7 @@ public sealed class MainWindowPathTests
     }
 
     /// <summary>Why an action is not offered: its tooltip, shown on the disabled button, and its help text, which say the same.</summary>
-    private static string? WhyNot(Button button)
-    {
-        Assert.False(button.IsEnabled);
-        Assert.True(ToolTip.GetShowOnDisabled(button));
-        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
-        return AutomationProperties.GetHelpText(button);
-    }
+    private static string? WhyNot(Button button) => Offers.WhyNot(button);
 
     /// <summary>What an offered action says it does.</summary>
     private static string? Offered(Button button)

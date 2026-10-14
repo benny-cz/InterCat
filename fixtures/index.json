@@ -1364,6 +1364,7 @@
         "R14: the primary action's ink clears 4.5 to 1 on its fill in every state, and that fill is no family's"
       ],
       "R15": [
+        "R15: Copy and Save say why they are not offered: no content kept of the record, no byte of its message, none in it, or none read",
         "R15: Ctrl+E where there is nothing to export says why, as the button's tip does",
         "R15: Ctrl+Enter saves a note, whose words take Enter as a new line",
         "R15: Ctrl+O opens a saved session as Open saved session does, and waits with it while a capture runs",
@@ -1389,6 +1390,7 @@
         "R15: a capture stopped before it published anything gives Start exploring the keyboard back",
         "R15: a capture that cannot start here gives Start exploring the keyboard back",
         "R15: a capture's update gives the window no keyboard while another window is the one in use, and Stop has it once this one is",
+        "R15: a channel page that could not be read leaves Show and Next saying why, never that no channel is in scope",
         "R15: a custom workspace header names its session without inventing a capture gap",
         "R15: a lane selector's options and its chosen value read as sentences and labels, not record fields",
         "R15: a lane's bytes are its own records': a process's, one direction of them, a channel end's, a mechanism's",

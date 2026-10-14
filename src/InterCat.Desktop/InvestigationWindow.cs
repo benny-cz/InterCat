@@ -553,13 +553,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     /// Offers an action, or says why it is not offered: the reason is the disabled button's tooltip and its help text.
     /// Offered, it says what it does, where its name does not already say it.
     /// </summary>
-    private void Offer(Button button, string? whyNot)
-    {
-        button.IsEnabled = whyNot is null;
-        string? said = whyNot ?? explained.GetValueOrDefault(button);
-        ToolTip.SetTip(button, said);
-        AutomationProperties.SetHelpText(button, said);
-    }
+    private void Offer(Button button, string? whyNot) => Offering.Offer(button, whyNot, explained.GetValueOrDefault(button));
 
     /// <summary>Package, offered while the investigation names a session or a package is being made, or why not.</summary>
     private void OfferPackage() => Offer(package, packaging is not null || View is { Members.Count: > 0 } ? null

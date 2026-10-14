@@ -67,8 +67,6 @@ internal sealed class ContentCaptureWindow : Window
 
         var cancel = new Button { Content = "Cancel" };
         AutomationProperties.SetName(cancel, "Cancel: nothing is asked of the broker");
-        AutomationProperties.SetHelpText(proceed,
-            "Ask the broker to prepare the capture, then review what it would keep before anything is recorded");
         AutomationProperties.SetName(filter, "Filter your processes by name or process ID");
         AutomationProperties.SetName(processes, "Your processes, each by name, process ID and start");
         AutomationProperties.SetName(recordLimit, "The most one message keeps");
@@ -279,7 +277,8 @@ internal sealed class ContentCaptureWindow : Window
                 + $"{RecordLimits[Math.Max(recordLimit.SelectedIndex, 0)].Label} of each message, for up to "
                 + $"{Durations[Math.Max(duration.SelectedIndex, 0)].Label}.",
         };
-        proceed.IsEnabled = Chosen is not null;
+        Offering.Offer(proceed, Chosen is not null ? null : chosenText.Text,
+            "Ask the broker to prepare the capture, then review what it would keep before anything is recorded");
     }
 
     /// <summary>A process as the list names it: "notepad, process 4242, started 2026-10-08 11:00:00.123".</summary>

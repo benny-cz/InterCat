@@ -8,6 +8,7 @@ using Avalonia.Headless.XUnit;
 using Avalonia.Input;
 using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
+using Avalonia.LogicalTree;
 using Avalonia.Media;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
@@ -39,6 +40,10 @@ public sealed class ContentWindowTests
         SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
 
         using var window = new SessionContentWindow(session.Path, page.SessionId, page.Records[1]);
+
+        // Until the record's content is read, Copy and Save wait, each saying so on itself.
+        Assert.Equal("The record's kept content is being read.", Offers.WhyNot(Labelled(window, "Copy as hex")));
+        Assert.Equal("The record's kept content is being read.", Offers.WhyNot(Labelled(window, "Save bytes…")));
         window.Show();
         WaitFor(() => Texts(window).Any(text => text.StartsWith("Checked content-0000000001.icatc", StringComparison.Ordinal)));
 
@@ -52,11 +57,27 @@ public sealed class ContentWindowTests
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Same(reveal, window.FocusManager?.GetFocusedElement());
+
+        // Copy and Save say to show the bytes first; while they are read, those and the button that shows them wait.
+        Button copy = Named<Button>(window, "Copy as hex");
+        Button save = Named<Button>(window, "Save bytes…");
+        Assert.Equal("Show the kept bytes first.", Offers.WhyNot(copy));
+        Assert.Equal("Show the kept bytes first.", Offers.WhyNot(save));
+        List<(bool, string?)> revealSaid = Offers.Heard(reveal);
+        List<(bool, string?)> copySaid = Offers.Heard(copy);
+        List<(bool, string?)> saveSaid = Offers.Heard(save);
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => window.GetVisualDescendants().OfType<ListBox>().Any(list =>
             AutomationProperties.GetName(list) == "Hex view of the chosen bytes" && list.ItemsSource is IEnumerable<ContentLine>));
         ListBox hex = Named<ListBox>(window, "Hex view of the chosen bytes");
         Assert.False(reveal.IsEffectivelyVisible);
+
+        // Shown, the bytes can be copied and saved, each button saying what it does.
+        const string Reading = "The kept bytes are being read and checked.";
+        Assert.Equal([(false, Reading)], revealSaid);
+        Assert.Equal([(false, Reading), (true, "Copy the chosen bytes as hex")], copySaid);
+        Assert.Equal([(false, Reading), (true, "Save the chosen bytes to a file")], saveSaid);
+        Assert.Equal("Copy the chosen bytes as hex", Offers.Offered(copy));
 
         // The keyboard moves from the vanished button to the first line of bytes, where the arrows read on.
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -218,7 +239,10 @@ public sealed class ContentWindowTests
         Assert.DoesNotContain(window.GetVisualDescendants().OfType<ListBox>(), list => list.IsEffectivelyVisible);
         Assert.Contains(Texts(window), text => text.StartsWith("The capture kept these bytes without consent to inspect them",
             StringComparison.Ordinal));
-        Assert.False(Named<Button>(window, "Save bytes…").IsEnabled);
+        const string NotConsented = "These bytes were kept without consent to inspect them, so they are never copied or saved "
+            + "one record at a time.";
+        Assert.Equal(NotConsented, Offers.WhyNot(Named<Button>(window, "Copy as hex")));
+        Assert.Equal(NotConsented, Offers.WhyNot(Named<Button>(window, "Save bytes…")));
 
         // With nothing to show, Close has the keyboard.
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -256,7 +280,7 @@ public sealed class ContentWindowTests
 
         // The whole part replaces the buffer in the view, and back.
         Button toggle = Named<Button>(window, "Switch between this buffer and its part");
-        Assert.True(toggle.IsEnabled);
+        Assert.Null(Offers.Offered(toggle));
         Assert.Equal("Show its whole part", toggle.Content);
         toggle.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
@@ -293,7 +317,9 @@ public sealed class ContentWindowTests
         Assert.Contains("Buffers from", Texts(gapped));
         Assert.StartsWith("Chosen: buffers 0 to 2 of the response body of exchange 8, from its first buffer recorded to its last.",
             Named<TextBlock>(gapped, "Which bytes are shown").Text, StringComparison.Ordinal);
-        Assert.False(Named<Button>(gapped, "Save bytes…").IsEnabled);
+        Assert.Equal("A part that is not whole is never saved as one: save a buffer from its own record.",
+            Offers.WhyNot(Named<Button>(gapped, "Save bytes…")));
+        Assert.Equal("Copy the chosen bytes as hex", Offers.Offered(Named<Button>(gapped, "Copy as hex")));
         TabItem textView = gapped.GetVisualDescendants().OfType<TabItem>().Single(tab => Equals(tab.Header, "Text (UTF-8)"));
         Assert.False(textView.IsVisible);
         Assert.Equal("Show this buffer only", part.Content);
@@ -341,7 +367,7 @@ public sealed class ContentWindowTests
         part.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(ContentBytesView.Rows("ab"u8, 0).Single().Line, Lines(lines).Single());
-        Assert.True(Named<Button>(gapped, "Save bytes…").IsEnabled);
+        Assert.Equal("Save the chosen bytes to a file", Offers.Offered(Named<Button>(gapped, "Save bytes…")));
         Assert.Contains("Bytes from", Texts(gapped));
         Assert.Equal("Show its part, with its gaps", part.Content);
         Assert.True(textView.IsVisible);
@@ -393,10 +419,13 @@ public sealed class ContentWindowTests
         // value read aloud with its field and bytes - and says what it did not decode, on a tab of its own. Decode waits
         // disabled while it decodes, and gives the keyboard to that tab, from where Tab goes on into what it lists.
         Assert.True(decode.Focus(NavigationMethod.Tab));
+        string? reads = Offers.Offered(decode);
+        List<(bool, string?)> decodeSaid = Offers.Heard(decode);
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => decoded.IsVisible && decoded.IsSelected);
         Settle(window);
         Assert.Same(decoded, window.FocusManager?.GetFocusedElement());
+        Assert.Equal([(false, "The kept bytes are being decoded."), (true, reads)], decodeSaid);
         Assert.Equal("Decoded 3 fields; the Decoded tab lists them and what was not decoded.",
             Named<TextBlock>(window, "Content status").Text);
         ScrollViewer view = Named<ScrollViewer>(window, "What the decoder made of the kept bytes");
@@ -448,6 +477,80 @@ public sealed class ContentWindowTests
         Assert.False(Named<Button>(other, "Decode the kept bytes").IsEffectivelyVisible);
         other.Close();
     }
+
+    [AvaloniaFact(DisplayName = "R15: Copy and Save say why they are not offered: no content kept of the record, no byte of its message, none in it, or none read")]
+    public void CopyAndSaveSayWhyTheyAreNotOffered()
+    {
+        using var session = new TemporarySession();
+        ObservationRowV1[] rows =
+        [
+            .. Rows(),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 300, 100, 3).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 6, 100, 4).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        ];
+        (ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes) limited = Content(rows[2], new byte[300], 8);
+        Publish(session.Store, rows, content: (ContentHeader(recordLimit: 8),
+        [
+            Content(rows[1], ReadOnlyMemory<byte>.Empty, 8),
+            (limited.Fragment with { Disposition = ContentDispositionV1.OmittedBySessionLimit, Kept = 0 }, ReadOnlyMemory<byte>.Empty),
+            Content(rows[3], Encoding.UTF8.GetBytes("GET /x"), 8),
+        ]));
+        SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store);
+        SessionEvidenceRecord Record(ulong ordinal) => page.Records.Single(record => record.Observation.RawRecordOrdinal == ordinal);
+
+        // The session keeps no content of the first record; the second's message held no bytes; the session's limit kept
+        // no byte of the third's. Each says so on Copy and Save alike.
+        Assert.Equal("This record has no kept content in the current generation.",
+            WhyNeitherIsOffered(session.Path, page.SessionId, Record(1), "No kept content in the current generation"));
+        Assert.Equal("The message held no bytes, so none can be copied or saved.",
+            WhyNeitherIsOffered(session.Path, page.SessionId, Record(2), "Checked "));
+        Assert.Equal("No byte of this message was kept, so none can be copied or saved.",
+            WhyNeitherIsOffered(session.Path, page.SessionId, Record(3), "Checked "));
+
+        // A record whose content could not be read - its folder holds another session - says the status line says why.
+        const string Unread = "The record's kept content could not be read; the status line says why.";
+        Assert.Equal(Unread, WhyNeitherIsOffered(session.Path, Guid.NewGuid(), Record(2), "Could not read the record's kept content: "));
+
+        // Its bytes not read when asked for - the session gone from its folder since - Show the kept bytes is offered
+        // again, and Copy and Save say why they are not.
+        using var window = new SessionContentWindow(session.Path, page.SessionId, Record(4));
+        window.Show();
+        TextBlock status = Named<TextBlock>(window, "Content status");
+        WaitFor(() => status.Text?.StartsWith("Checked ", StringComparison.Ordinal) == true);
+        session.Store.ReleaseSegmentReaders();
+        SharedSessionStores.Open(session.Path).ReleaseSegmentReaders();
+        foreach (string file in Directory.EnumerateFiles(session.Path))
+        {
+            File.Delete(file);
+        }
+
+        Button reveal = Named<Button>(window, "Show the kept bytes");
+        reveal.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+        WaitFor(() => status.Text?.StartsWith("Could not read the record's kept content: ", StringComparison.Ordinal) == true);
+        Assert.Null(Offers.Offered(reveal));
+        Assert.Equal(Unread, Offers.WhyNot(Named<Button>(window, "Copy as hex")));
+        Assert.Equal(Unread, Offers.WhyNot(Named<Button>(window, "Save bytes…")));
+        window.Close();
+    }
+
+    /// <summary>
+    /// Why the viewer of <paramref name="record"/>, once its status begins <paramref name="status"/>, offers neither Copy nor
+    /// Save, which say the same.
+    /// </summary>
+    private static string? WhyNeitherIsOffered(string path, Guid sessionId, SessionEvidenceRecord record, string status)
+    {
+        using var window = new SessionContentWindow(path, sessionId, record);
+        window.Show();
+        WaitFor(() => Named<TextBlock>(window, "Content status").Text?.StartsWith(status, StringComparison.Ordinal) == true);
+        string? why = Offers.WhyNot(Named<Button>(window, "Copy as hex"));
+        Assert.Equal(why, Offers.WhyNot(Named<Button>(window, "Save bytes…")));
+        window.Close();
+        return why;
+    }
+
+    /// <summary>The window's button labelled <paramref name="label"/>, shown or not yet.</summary>
+    private static Button Labelled(Window window, string label) =>
+        window.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
 
     /// <summary>A WinINet response body record of process 4242, whose payload names no owner.</summary>
     private static ObservationRowV1 Http(long ticks, ulong ordinal) =>

@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.LogicalTree;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -39,6 +40,10 @@ public sealed class ChannelBrowserWindowTests
         owner.Show();
         using var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null,
             id => snapshot.Processes.FirstOrDefault(process => process.Id == id)?.NameWithPid);
+
+        // Until its first page is read, the browser's actions wait, each saying so on itself.
+        Assert.Equal("A page of channels is being read.", Offers.WhyNot(Labelled(browser, ShowChannel)));
+        Assert.Equal("A page of channels is being read.", Offers.WhyNot(Labelled(browser, NextPage)));
         Task<Channel?> chosen = browser.ShowDialog<Channel?>(owner);
         ListBox list = browser.GetVisualDescendants().OfType<ListBox>().Single();
         for (int wait = 0; wait < 250 && list.ItemCount == 0; wait++)
@@ -55,6 +60,14 @@ public sealed class ChannelBrowserWindowTests
         // The chosen row has the keyboard once the page is read, and Enter opens it, as a double click does.
         Dispatch();
         Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
+
+        // Its channel chosen is offered to show, its label saying what that does; with none chosen, the button says to
+        // choose one. The one page is the last, which Next says.
+        Assert.Null(Offers.Offered(Labelled(browser, ShowChannel)));
+        Assert.Equal("This page is the last: no channel in scope follows it.", Offers.WhyNot(Labelled(browser, NextPage)));
+        list.SelectedIndex = -1;
+        Assert.Equal("Choose a channel first.", Offers.WhyNot(Labelled(browser, ShowChannel)));
+        list.SelectedIndex = 0;
         browser.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatch();
         Channel opened = Assert.IsType<Channel>(await chosen);
@@ -131,9 +144,11 @@ public sealed class ChannelBrowserWindowTests
         Assert.DoesNotContain(browser.GetVisualDescendants().OfType<TextBlock>(), block =>
             block != status && block.Text?.Contains("was not collected", StringComparison.Ordinal) == true);
 
-        // With no channel to choose, Close has the keyboard.
+        // With no channel to choose, Close has the keyboard, and Show and Next each say there is none.
         Dispatch();
         Assert.Equal("Close", Assert.IsType<Button>(browser.FocusManager?.GetFocusedElement()).Content);
+        Assert.Equal("No channel is in this scope.", Offers.WhyNot(Labelled(browser, ShowChannel)));
+        Assert.Equal("No channel is in this scope.", Offers.WhyNot(Labelled(browser, NextPage)));
         browser.Close();
         Assert.Null(await closed);
         owner.Close();
@@ -172,9 +187,12 @@ public sealed class ChannelBrowserWindowTests
         Dispatch();
         Assert.Equal(SessionChannelQuery.DefaultPageSize, list.ItemCount);
         Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
+        Assert.Null(Offers.Offered(next));
         browser.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
         browser.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
         Assert.True(next.IsFocused);
+        List<(bool, string?)> nextSaid = Offers.Heard(next);
+        List<(bool, string?)> showSaid = Offers.Heard(Labelled(browser, ShowChannel));
         browser.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         for (int wait = 0; wait < 250 && list.ItemCount != 1; wait++)
         {
@@ -184,12 +202,77 @@ public sealed class ChannelBrowserWindowTests
 
         Dispatch();
         Assert.Equal(1, list.ItemCount);
-        Assert.False(next.IsEnabled);
+
+        // While the next page is read, both actions wait, saying so; read, its channel is offered, and Next says this page
+        // is the last.
+        const string Reading = "A page of channels is being read.";
+        Assert.Equal([(false, Reading), (false, "This page is the last: no channel in scope follows it.")], nextSaid);
+        Assert.Equal([(false, Reading), (true, null)], showSaid);
         Assert.Same(list.ContainerFromIndex(0), browser.FocusManager?.GetFocusedElement());
         browser.Close();
         Assert.Null(await closed);
         owner.Close();
     }
+
+    [AvaloniaFact(DisplayName = "R15: a channel page that could not be read leaves Show and Next saying why, never that no channel is in scope")]
+    public async Task APageNotReadSaysWhyNothingIsOffered()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var owner = new Window { Width = 400, Height = 300 };
+        owner.Show();
+
+        // The folder holds another session than the one asked for, so no page of it is read as that one's.
+        using var browser = new SessionChannelWindow(session.Path, Guid.NewGuid(), overview.Generation, null, null);
+        Task<Channel?> closed = browser.ShowDialog<Channel?>(owner);
+        TextBlock status = browser.GetVisualDescendants().OfType<TextBlock>()
+            .Single(block => AutomationProperties.GetName(block) == "Channels status");
+        for (int wait = 0; wait < 250 && status.Text?.StartsWith("Could not read", StringComparison.Ordinal) != true; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        Dispatch();
+        Assert.Equal("Could not read this channel page: " + SessionStore.AnotherSession, status.Text);
+        Assert.Equal(NoPage, Offers.WhyNot(Labelled(browser, ShowChannel)));
+        Assert.Equal(NoPage, Offers.WhyNot(Labelled(browser, NextPage)));
+        browser.Close();
+        Assert.Null(await closed);
+
+        // A folder holding an older generation than the window showed shifts no page, and says so the same way.
+        using var older = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation + 1, null, null);
+        closed = older.ShowDialog<Channel?>(owner);
+        status = older.GetVisualDescendants().OfType<TextBlock>().Single(block => AutomationProperties.GetName(block) == "Channels status");
+        for (int wait = 0; wait < 250 && status.Text?.StartsWith("This folder", StringComparison.Ordinal) != true; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        Dispatch();
+        Assert.StartsWith("This folder no longer holds the generation InterCat's window shows.", status.Text, StringComparison.Ordinal);
+        Assert.Equal(NoPage, Offers.WhyNot(Labelled(older, ShowChannel)));
+        Assert.Equal(NoPage, Offers.WhyNot(Labelled(older, NextPage)));
+        older.Close();
+        Assert.Null(await closed);
+        owner.Close();
+    }
+
+    private const string NoPage = "No page of channels is shown; the status line says why.";
+
+    private const string ShowChannel = "Show this channel's source records";
+
+    private const string NextPage = "Next 100 channels";
+
+    /// <summary>The browser's button labelled <paramref name="label"/>, shown or not yet.</summary>
+    private static Button Labelled(Window window, string label) =>
+        window.GetLogicalDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 }

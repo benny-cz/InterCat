@@ -47,6 +47,10 @@ public sealed class ContentCaptureWindowTests
             Assert.Null(chooser.Chosen);
             Assert.Equal("Choose the processes whose messages to keep.", chooser.ChosenStatement);
 
+            // Its review, not offered, says why on itself in the line's words; offered, it says what it asks of the broker.
+            Button review = Named<Button>(chooser, "Review with the broker…");
+            Assert.Equal("Choose the processes whose messages to keep.", Offers.WhyNot(review));
+
             // A filter narrows the list by name or ID; one chosen stays listed whatever the filter.
             chooser.Filter("work");
             Assert.Equal(["worker, process 6001"], chooser.Listed.Select(Head));
@@ -59,6 +63,8 @@ public sealed class ContentCaptureWindowTests
 
             // Chosen, it asks for every exchange of the process within the default limits, its content never shown.
             Assert.True(chooser.CanProceed);
+            Assert.Equal("Ask the broker to prepare the capture, then review what it would keep before anything is recorded",
+                Offers.Offered(review));
             Assert.Equal("1 process chosen. The capture keeps up to 16 MiB in all, the first 64 KiB of each message, for up to "
                 + "10 minutes.", chooser.ChosenStatement);
             ContentCaptureChoice choice = chooser.Chosen!;
@@ -109,6 +115,7 @@ public sealed class ContentCaptureWindowTests
 
             Assert.False(crowded.CanProceed);
             Assert.Equal("65 processes are chosen; a content capture names at most 64.", crowded.ChosenStatement);
+            Assert.Equal(crowded.ChosenStatement, Offers.WhyNot(Named<Button>(crowded, "Review with the broker…")));
             Assert.False(Named<Button>(crowded, "Refresh the list").IsVisible);
         }
         finally

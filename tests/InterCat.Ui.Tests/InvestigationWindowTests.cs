@@ -2888,23 +2888,10 @@ public sealed class InvestigationWindowTests
     /// Why the shown action labelled <paramref name="label"/> is not offered: its tooltip, shown on the disabled button, and
     /// its help text, which say the same.
     /// </summary>
-    private static string? WhyNot(Window window, string label)
-    {
-        Button button = Labelled(window, label);
-        Assert.False(button.IsEnabled);
-        Assert.True(ToolTip.GetShowOnDisabled(button));
-        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
-        return AutomationProperties.GetHelpText(button);
-    }
+    private static string? WhyNot(Window window, string label) => Offers.WhyNot(Labelled(window, label));
 
     /// <summary>What the shown action labelled <paramref name="label"/> says it does, offered; null where its name says it.</summary>
-    private static string? Offered(Window window, string label)
-    {
-        Button button = Labelled(window, label);
-        Assert.True(button.IsEnabled);
-        Assert.Equal(ToolTip.GetTip(button) as string, AutomationProperties.GetHelpText(button));
-        return AutomationProperties.GetHelpText(button);
-    }
+    private static string? Offered(Window window, string label) => Offers.Offered(Labelled(window, label));
 
     private static Button Labelled(Window window, string label)
     {

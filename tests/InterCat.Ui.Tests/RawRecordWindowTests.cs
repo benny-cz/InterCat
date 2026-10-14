@@ -56,6 +56,9 @@ public sealed class RawRecordWindowTests
         string body = detail.Split(Environment.NewLine).Single(line => line.StartsWith("Body: ", StringComparison.Ordinal));
         Assert.Matches("^Body: [a-z ]+, [a-z ]+ · original ", body);
 
+        // The record retained no body, so Reveal, not offered, says so on itself, as the record does.
+        Assert.Equal("No body bytes were retained; the record's disposition gives the recorded reason.", Offers.WhyNot(Reveal(window)));
+
         // The record's text has the keyboard once read, whose caret reads it a line at a time.
         Assert.Same(window.GetVisualDescendants().OfType<TextBox>().Single(), window.FocusManager?.GetFocusedElement());
 
@@ -81,20 +84,28 @@ public sealed class RawRecordWindowTests
             });
         SessionEvidencePage page = SessionEvidenceQuery.Read(session.Store, pageSize: 1, resolveOwners: true);
         using var window = new SessionRawRecordWindow(session.Path, page.SessionId, Assert.Single(page.Records));
-        window.Show();
-        Button reveal = window.GetVisualDescendants().OfType<Button>()
+
+        // Until the record is read, Reveal waits, saying so on itself; read, it is offered, its label saying what it does.
+        Button reveal = window.GetLogicalDescendants().OfType<Button>()
             .Single(button => (button.Content as string)?.StartsWith("Reveal", StringComparison.Ordinal) == true);
+        Assert.Equal("The record is being read.", Offers.WhyNot(reveal));
+        window.Show();
         TextBox detail = window.GetVisualDescendants().OfType<TextBox>().Single();
         WaitFor(() => reveal.IsEnabled && detail.IsFocused);
+        Assert.Null(Offers.Offered(reveal));
 
         // Tab reaches Reveal; Enter there reads the bytes, and the record's text, now holding them, has the keyboard.
         window.KeyPressQwerty(PhysicalKey.Tab, RawInputModifiers.None);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.True(reveal.IsFocused);
+        List<(bool, string?)> said = Offers.Heard(reveal);
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         WaitFor(() => detail.Text?.Contains("0000: CAFE01", StringComparison.Ordinal) == true);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.False(reveal.IsEnabled);
+
+        // Reveal waits, saying so, while the bytes are read, then says where they are.
+        Assert.Equal([(false, "The record is being read."), (false, "The revealed bytes are shown at the end of the record.")], said);
+        Assert.Equal("The revealed bytes are shown at the end of the record.", Offers.WhyNot(reveal));
         Assert.True(detail.IsFocused);
         window.Close();
     }
@@ -115,6 +126,8 @@ public sealed class RawRecordWindowTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         Assert.Equal(string.Empty, window.GetVisualDescendants().OfType<TextBox>().Single().Text);
         Assert.Equal("Close", Assert.IsType<Button>(window.FocusManager?.GetFocusedElement()).Content);
+        Assert.Equal("The record could not be verified, so none of its bytes are revealed; the status line says why.",
+            Offers.WhyNot(Reveal(window)));
         window.Close();
     }
 
@@ -228,13 +241,15 @@ public sealed class RawRecordWindowTests
         WaitFor(() => status.Text == "Original record unavailable in retained evidence");
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 
-        // The reason is the record's text, with the keyboard, and nothing is offered to reveal.
+        // The reason is the record's text, with the keyboard, and nothing is offered to reveal, Reveal saying why.
         Assert.StartsWith("The original record is outside the retained journal boundary. ", detail.Text, StringComparison.Ordinal);
         Assert.True(detail.IsFocused);
-        Assert.False(window.GetVisualDescendants().OfType<Button>()
-            .Single(button => (button.Content as string)?.StartsWith("Reveal", StringComparison.Ordinal) == true).IsEnabled);
+        Assert.Equal("The original record is not retained, so it has no body byte to reveal.", Offers.WhyNot(Reveal(window)));
         window.Close();
     }
+
+    private static Button Reveal(Window window) => window.GetVisualDescendants().OfType<Button>()
+        .Single(button => (button.Content as string)?.StartsWith("Reveal", StringComparison.Ordinal) == true);
 
     private static void WaitFor(Func<bool> condition)
     {

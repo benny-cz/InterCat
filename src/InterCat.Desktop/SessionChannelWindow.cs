@@ -42,6 +42,9 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     private bool closed;
     private bool disposed;
 
+    /// <summary>Why the page's actions are not offered when no page could be shown; null while one is.</summary>
+    private string? unshown;
+
     /// <param name="processName">
     /// Names a process instance as the workspace names it, by name and PID, so a channel reads by the processes it joins
     /// rather than by endpoints alone; null for one the workspace does not hold.
@@ -130,6 +133,10 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         grid.Children.Add(footer);
         Content = grid;
 
+        // Until the first page is read, its actions wait for it, saying so.
+        Offering.Offer(inspect, Reading);
+        Offering.Offer(next, Reading);
+
         Opened += (_, _) => _ = LoadPageAsync(null);
         Closed += (_, _) => Dispose();
     }
@@ -143,16 +150,21 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         lifetime.Dispose();
     }
 
+    /// <summary>Why the page's actions wait while a page is read.</summary>
+    private const string Reading = "A page of channels is being read.";
+
+    /// <summary>Why the page's actions are not offered when the page could not be shown.</summary>
+    private const string NoPage = "No page of channels is shown; the status line says why.";
+
     private async Task LoadPageAsync(string? cursor)
     {
         if (loading || closed) return;
         loading = true;
-        next.IsEnabled = false;
         nextCursor = null;
         currentChannels = [];
         rows.ItemsSource = Array.Empty<string>();
         selectedDetail.Text = string.Empty;
-        inspect.IsEnabled = false;
+        OfferActions();
         status.Text = "Reading a verified channel page…";
         try
         {
@@ -165,6 +177,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             if (closed) return;
             if (page.Generation < expectedGeneration)
             {
+                unshown = NoPage;
                 status.Text = "This folder no longer holds the generation InterCat's window shows. Close this "
                     + "browser and open it again from that window; no page was shifted.";
                 return;
@@ -184,7 +197,6 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             rows.ItemsSource = currentChannels.Select(Describe).ToArray();
             rows.SelectedIndex = currentChannels.Count > 0 ? 0 : -1;
             nextCursor = page.NextCursor;
-            next.IsEnabled = nextCursor is not null;
 
             // What the capture covered of TCP is said once (R21): as the reason an empty list holds none, where it is
             // announced, and beside the caveat under a list of channels.
@@ -203,7 +215,11 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         catch (Exception exception) when (exception is IOException or InvalidDataException
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
-            if (!closed) status.Text = "Could not read this channel page: " + exception.Message;
+            if (!closed)
+            {
+                unshown = NoPage;
+                status.Text = "Could not read this channel page: " + exception.Message;
+            }
         }
         finally
         {
@@ -232,12 +248,24 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     {
         int index = rows.SelectedIndex;
         bool selected = index >= 0 && index < currentChannels.Count;
-        inspect.IsEnabled = selected && !loading;
+        OfferActions();
         selectedDetail.Text = selected
             ? $"{currentChannels[index].Name} · {currentChannels[index].ObservationCount:N0} records at its two ends\n"
                 + "Enter shows its source records. Its channel rung, one step below either process's, states what was "
                 + $"sent across it and each end's records by direction.\nStable channel key: {currentChannels[index].Key}"
             : string.Empty;
+    }
+
+    /// <summary>
+    /// Offers showing the chosen channel and the next page, or says why not, on each: while a page is read, when none could
+    /// be shown, with no channel in scope, no channel chosen, or no page after this one.
+    /// </summary>
+    private void OfferActions()
+    {
+        int index = rows.SelectedIndex;
+        string? none = loading ? Reading : unshown ?? (currentChannels.Count == 0 ? "No channel is in this scope." : null);
+        Offering.Offer(inspect, none ?? (index >= 0 && index < currentChannels.Count ? null : "Choose a channel first."));
+        Offering.Offer(next, none ?? (nextCursor is null ? "This page is the last: no channel in scope follows it." : null));
     }
 
     /// <summary>

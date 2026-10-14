@@ -47,6 +47,9 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     private bool revealed;
     private bool synthetic;
 
+    /// <summary>Why Reveal waits while the record is read.</summary>
+    private const string Reading = "The record is being read.";
+
     /// <param name="synthetic">
     /// Whether the record is a redacted package's synthetic entry, so the window never calls it an original - not while
     /// it is read, nor when it could not be. A record read as one is presented as one whatever the caller said.
@@ -72,6 +75,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
         AutomationProperties.SetName(status, "Original record status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         reveal.Click += (_, _) => _ = LoadAsync(revealBytes: true);
+        Offering.Offer(reveal, Reading);
         close.Click += (_, _) => Close();
         // Escape closes the window, as it cancels InterCat's prompts and every Windows dialog.
         KeyDown += (_, key) =>
@@ -120,7 +124,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
     {
         if (loading || closed || (revealBytes && revealed)) return;
         loading = true;
-        reveal.IsEnabled = false;
+        Offering.Offer(reveal, Reading);
         detail.Text = string.Empty;
         status.Text = revealBytes ? "Reading a bounded byte preview…"
             : synthetic ? "Verifying the synthetic record…" : "Verifying the original journal record…";
@@ -143,6 +147,7 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
                     ? "The package's journal holds no entry for this row, though every row of a redacted package has one: "
                         + "the package is not as it was saved."
                     : result.UnavailableReason;
+                Offering.Offer(reveal, "The original record is not retained, so it has no body byte to reveal.");
                 return;
             }
 
@@ -151,7 +156,10 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             if (result.AdmissionPolicyId == RedactedSessionPackage.Policy) PresentAsSynthetic();
 
             detail.Text = Describe(result);
-            reveal.IsEnabled = !revealed && result.RetainedBodyLength > 0;
+            Offering.Offer(reveal, revealed ? "The revealed bytes are shown at the end of the record."
+                : result.RetainedBodyLength == 0
+                    ? "No body bytes were retained; the record's disposition gives the recorded reason."
+                    : null);
         }
         catch (OperationCanceledException) when (closed)
         {
@@ -161,8 +169,12 @@ internal sealed class SessionRawRecordWindow : Window, IDisposable
             or InvalidOperationException or UnauthorizedAccessException or ArgumentException)
         {
             if (!closed)
+            {
                 status.Text = (synthetic ? "Could not verify the synthetic record: "
                     : "Could not verify the original record: ") + exception.Message;
+                Offering.Offer(reveal,
+                    "The record could not be verified, so none of its bytes are revealed; the status line says why.");
+            }
         }
         finally
         {

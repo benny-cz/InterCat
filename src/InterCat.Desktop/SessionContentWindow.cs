@@ -84,6 +84,18 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     private bool closed;
     private bool disposed;
 
+    /// <summary>What Decode does, in words, once a decoder reads the record; null until then.</summary>
+    private string? decodes;
+
+    /// <summary>Why the content's actions wait while the record's content is read.</summary>
+    private const string ReadingContent = "The record's kept content is being read.";
+
+    /// <summary>Why they wait while the kept bytes are read and checked.</summary>
+    private const string ReadingBytes = "The kept bytes are being read and checked.";
+
+    /// <summary>Why they are not offered once the content could not be read.</summary>
+    private const string Unread = "The record's kept content could not be read; the status line says why.";
+
     public SessionContentWindow(string path, Guid expectedSessionId, SessionEvidenceRecord selected)
     {
         this.path = path;
@@ -120,8 +132,6 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         AutomationProperties.SetHelpText(showAll, "Show all kept bytes");
         AutomationProperties.SetName(hex, "Hex view of the chosen bytes");
         AutomationProperties.SetName(text, "The chosen bytes as the text their source declares");
-        AutomationProperties.SetHelpText(copy, "Copy the chosen bytes as hex");
-        AutomationProperties.SetHelpText(save, "Save the chosen bytes to a file");
         AutomationProperties.SetName(rangeSummary, "Which bytes are shown");
         AutomationProperties.SetName(partToggle, "Switch between this buffer and its part");
         AutomationProperties.SetName(decode, "Decode the kept bytes");
@@ -265,6 +275,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
         grid.Children.Add(views);
         grid.Children.Add(footer);
         Content = grid;
+        OfferBytes(ReadingContent);
 
         Opened += (_, _) => _ = LoadAsync(revealBytes: false);
         Closed += (_, _) => Dispose();
@@ -312,7 +323,8 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     {
         if (loading || closed) return;
         loading = true;
-        reveal.IsEnabled = false;
+        Offering.Offer(reveal, ReadingBytes);
+        OfferBytes(revealBytes ? ReadingBytes : ReadingContent);
         status.Text = revealBytes ? "Reading and checking the kept bytes…" : "Finding the record's kept content…";
         try
         {
@@ -338,6 +350,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 status.Text = "No kept content in the current generation";
                 disclosure.Text = result.UnavailableReason ?? string.Empty;
                 reveal.IsVisible = false;
+                OfferBytes("This record has no kept content in the current generation.");
                 return;
             }
 
@@ -352,10 +365,13 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 $"Checked {entry.ChunkName} in generation {result.Generation:N0}");
             if (kept is null)
             {
-                disclosure.Text = entry.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit
+                bool omitted = entry.Fragment.Disposition == ContentDispositionV1.OmittedBySessionLimit;
+                disclosure.Text = omitted
                     ? "No byte of this message was kept, so there is nothing to show."
                     : "The message held no bytes, so there is nothing to show.";
                 reveal.IsVisible = false;
+                OfferBytes(omitted ? "No byte of this message was kept, so none can be copied or saved."
+                    : "The message held no bytes, so none can be copied or saved.");
                 return;
             }
 
@@ -364,13 +380,16 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 disclosure.Text = "The capture kept these bytes without consent to inspect them, so they are never shown, "
                     + "copied or saved one record at a time. An original evidence package carries them as evidence.";
                 reveal.IsVisible = false;
+                OfferBytes("These bytes were kept without consent to inspect them, so they are never copied or saved one "
+                    + "record at a time.");
                 return;
             }
 
             if (result.Bytes is null)
             {
                 reveal.IsVisible = true;
-                reveal.IsEnabled = true;
+                Offering.Offer(reveal, null);
+                OfferBytes("Show the kept bytes first.");
                 return;
             }
 
@@ -382,7 +401,8 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             {
                 // A whole part is shown as one run of its bytes; one that is not whole, with its gaps in place.
                 partToggle.IsVisible = true;
-                partToggle.IsEnabled = found.Complete ? found.Bytes is { Length: > 0 } : found.BytesRead;
+                Offering.Offer(partToggle, (found.Complete ? found.Bytes is { Length: > 0 } : found.BytesRead) ? null
+                    : PartNotRead(found));
                 partToggle.Content = PartToggleText(found);
             }
             textTab.IsVisible = ContentBytesView.DeclaresText(entry.Fragment.Encoding);
@@ -391,10 +411,9 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             // A decoding is offered where a decoder reads the record, and made only when asked (§11.2).
             if (ContentDecoders.For(result.Observation) is { } decoder)
             {
-                string reads = $"Reads the kept bytes with {decoder}: each field it reads, with the bytes it came from, and "
+                decodes = $"Reads the kept bytes with {decoder}: each field it reads, with the bytes it came from, and "
                     + "what it did not decode. The decoding is made each time you ask, and never kept.";
-                ToolTip.SetTip(decode, reads);
-                AutomationProperties.SetHelpText(decode, reads);
+                Offering.Offer(decode, null, decodes);
                 decode.IsVisible = true;
             }
 
@@ -410,7 +429,8 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             if (!closed)
             {
                 status.Text = "Could not read the record's kept content: " + exception.Message;
-                reveal.IsEnabled = detail?.Entry is { Inspectable: true } && detail.Bytes is null;
+                Offering.Offer(reveal, detail?.Entry is { Inspectable: true } && detail.Bytes is null ? null : Unread);
+                OfferBytes(Unread);
             }
         }
         finally
@@ -536,8 +556,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 : char.ToUpperInvariant(notes[0][0]) + string.Join("; ", notes)[1..] + ".";
         }
 
-        copy.IsEnabled = true;
-        save.IsEnabled = true;
+        OfferBytes(null);
     }
 
     /// <summary>
@@ -564,9 +583,29 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
                 ? string.Create(culture, $"; the view stops before buffer {stop:N0}, at the {ContentBytesView.MaximumShownBytes:N0} bytes it shows at once")
                 : string.Empty)
             + ". A part that is not whole is never saved as one: save a buffer from its own record.";
-        copy.IsEnabled = lines.Lines.Count > 0;
-        save.IsEnabled = false;
+        OfferBytes(lines.Lines.Count > 0 ? null : "No buffer of this part was recorded in the range chosen.",
+            "A part that is not whole is never saved as one: save a buffer from its own record.");
     }
+
+    /// <summary>
+    /// Offers copying and saving the chosen bytes, or says why not on each (R15); <paramref name="whyNotSaved"/> is why
+    /// saving alone is not, where copying is. Offered, each says what it does.
+    /// </summary>
+    private void OfferBytes(string? whyNot, string? whyNotSaved = null)
+    {
+        Offering.Offer(copy, whyNot, "Copy the chosen bytes as hex");
+        Offering.Offer(save, whyNotSaved ?? whyNot, "Save the chosen bytes to a file");
+    }
+
+    /// <summary>
+    /// Why a part's bytes were not read, so it is not shown: kept without consent to inspect them, or more than a part is
+    /// read up to.
+    /// </summary>
+    private static string PartNotRead(SessionContentPartDetail found) =>
+        found.Buffers.Any(buffer => buffer.Entry is { Inspectable: false })
+            ? "Its part's bytes were kept without consent to inspect them, so the part is never shown."
+            : string.Create(CultureInfo.CurrentCulture,
+                $"Its part keeps more than the {SessionContentPartQuery.MaximumPartBytes:N0} bytes a part is read up to, so each buffer is shown from its own record.");
 
     /// <summary>The part shown with its gaps in place, when that is what the view shows.</summary>
     private SessionContentPartDetail? GappedPart() => showingPart && part is { Complete: false } gapped ? gapped : null;
@@ -620,7 +659,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
     {
         if (decoding || closed || detail is not { Bytes: not null } read) return;
         decoding = true;
-        decode.IsEnabled = false;
+        Offering.Offer(decode, "The kept bytes are being decoded.", decodes);
         status.Text = "Decoding the kept bytes…";
         try
         {
@@ -649,7 +688,7 @@ internal sealed class SessionContentWindow : Window, IDisposable, IChoosingWindo
             decoding = false;
             if (!closed)
             {
-                decode.IsEnabled = true;
+                Offering.Offer(decode, null, decodes);
                 KeepKeyboard();
             }
         }
