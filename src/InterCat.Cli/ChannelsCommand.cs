@@ -39,8 +39,10 @@ internal static class ChannelsCommand
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat channels <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
                 : invalidProcess
-                    ? "--process must be a process-instance GUID from the overview."
-                    : "--page-size must be an integer from 1 to 200.");
+                    ? $"--process expects a process instance id, as icat overview or icat processes prints it; '{processText}' "
+                        + "is not one."
+                    : string.Create(CultureInfo.CurrentCulture,
+                        $"--page-size expects a number of channels from 1 to {SessionChannelQuery.MaximumPageSize:N0}; '{size}' is not one."));
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }

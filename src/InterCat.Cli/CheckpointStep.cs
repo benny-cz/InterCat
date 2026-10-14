@@ -8,13 +8,17 @@ namespace InterCat.Cli;
 /// The last thing a command that finished writing a session does: publish the session's derivation checkpoint, so that
 /// opening it builds its processes and relationships without reading every record (`contracts/derivation-checkpoint-v1.md`).
 /// A checkpoint only saves time, so one that is not published is a warning and never fails the command. Everything is
-/// said on standard error, beside the command's own progress, so a `--json` document is unchanged.
+/// said on standard error, beside the command's own progress, so a `--json` document is unchanged. icat checkpoint, whose
+/// report states what came of it, says only what it is doing.
 /// </summary>
 internal static class CheckpointStep
 {
-    public static CheckpointPublication Publish(SessionStore store, CancellationToken cancellationToken)
+    public static CheckpointPublication Publish(SessionStore store, CancellationToken cancellationToken, bool reported = false)
     {
-        ConsoleUi.Progress("Publishing the session's derivation checkpoint, so it reopens without reading every record.");
+        ConsoleUi.Progress(reported
+            ? "Publishing the session's derivation checkpoint unless the generation names one, so it reopens without reading "
+                + "every record."
+            : "Publishing the session's derivation checkpoint, so it reopens without reading every record.");
         CheckpointPublication publication;
         try
         {
@@ -25,6 +29,11 @@ internal static class CheckpointStep
             // What the command wrote is already published; only the checkpoint is left for another time.
             publication = new(CheckpointOutcome.Refused, store.Current?.Generation ?? 0, null, 0, TimeSpan.Zero,
                 "It was cancelled; icat checkpoint publishes it later.");
+        }
+
+        if (reported)
+        {
+            return publication;
         }
 
         switch (publication.Outcome)

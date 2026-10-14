@@ -86,7 +86,7 @@ internal static class CheckpointCommand
         // A store opened for reading cannot publish: a generation names its session, which is taken from the one this
         // session already published.
         SessionStore writable = SessionStore.Open(LocalOwnedDirectory.Open(full), current.SessionId, current.SourceIdentity);
-        CheckpointPublication publication = CheckpointStep.Publish(writable, cancellationToken);
+        CheckpointPublication publication = CheckpointStep.Publish(writable, cancellationToken, reported: true);
         var document = new CheckpointDocument
         {
             Contract = "checkpoint-v1",

@@ -135,8 +135,8 @@ internal static class PinCommand
                 || mebibytes is < 1 or > MaximumAllowanceMebibytes)
             {
                 ConsoleUi.Failure(string.Create(CultureInfo.CurrentCulture,
-                        $"--allow-mib expects whole mebibytes from 1 to {MaximumAllowanceMebibytes:N0}: ")
-                    + "the most the session may hold while the pin stands.");
+                        $"--allow-mib expects whole mebibytes from 1 to {MaximumAllowanceMebibytes:N0}, ")
+                    + $"the most the session may hold while the pin stands; '{allowOption}' is not one.");
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -223,7 +223,7 @@ internal static class PinCommand
             if (matching.Length != 1)
             {
                 ConsoleUi.Failure(matching.Length == 0
-                    ? $"No pin of this session is named {removeOption}. icat pin {full} lists them."
+                    ? $"No pin of this session is named {removeOption}. icat pin \"{full}\" lists them."
                     : $"{removeOption} names {matching.Length:N0} pins of this session: "
                         + string.Join(", ", matching.Select(pin => pin.ShortId)) + ". Give more of its identity.");
                 return InterCatExitCode.InvalidInvocation;

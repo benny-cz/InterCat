@@ -41,13 +41,14 @@ internal static class ProfilesCommand
             if (!int.TryParse(rawProcessId, NumberStyles.None, CultureInfo.InvariantCulture, out int processId)
                 || processId <= 0)
             {
-                ConsoleUi.Failure($"Invalid process ID: {rawProcessId}. Use a positive decimal integer.");
+                ConsoleUi.Failure($"--pid expects a process id; '{rawProcessId}' is not one.");
                 return InterCatExitCode.InvalidInvocation;
             }
 
             if (processIds.Contains(processId))
             {
-                ConsoleUi.Failure($"Process ID {processId} was supplied more than once.");
+                ConsoleUi.Failure(string.Create(CultureInfo.InvariantCulture,
+                    $"--pid {processId} is given more than once; give it once."));
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -68,7 +69,7 @@ internal static class ProfilesCommand
 
             if (channelSelectors.Contains(channelSelector, StringComparer.Ordinal))
             {
-                ConsoleUi.Failure($"Channel selector '{channelSelector}' was supplied more than once.");
+                ConsoleUi.Failure($"--channel {channelSelector} is given more than once; give it once.");
                 return InterCatExitCode.InvalidInvocation;
             }
 
@@ -105,21 +106,22 @@ internal static class ProfilesCommand
         ContentRetentionMode? retention = ParseContentRetention(retentionText);
         if (retentionText is not null && retention is null)
         {
-            ConsoleUi.Failure($"Unknown content retention: {retentionText}. Use stop-at-limit.");
+            ConsoleUi.Failure($"--retention expects stop-at-limit; '{retentionText}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
         ContentInspectionMode? inspection = ParseContentInspection(inspectionText);
         if (inspectionText is not null && inspection is null)
         {
-            ConsoleUi.Failure($"Unknown content inspection: {inspectionText}. Use disabled or hex-text.");
+            ConsoleUi.Failure($"--inspection expects disabled or hex-text; '{inspectionText}' is not one.");
             return InterCatExitCode.InvalidInvocation;
         }
 
         Mechanism? mechanism = ParseMechanism(mechanismText);
         if (mechanismText is not null && mechanism is null)
         {
-            ConsoleUi.Failure($"Unknown mechanism: {mechanismText}. Known names are tcp, udp, rpc and http; availability is checked per profile.");
+            ConsoleUi.Failure($"--mechanism expects tcp, udp, rpc or http; '{mechanismText}' is not one. Which of them a "
+                + "profile can capture is checked per profile.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -133,7 +135,7 @@ internal static class ProfilesCommand
         string? fullPath = outputPath is null ? null : Path.GetFullPath(outputPath);
         if (fullPath is not null && File.Exists(fullPath) && !overwrite)
         {
-            ConsoleUi.Failure($"{fullPath} already exists. Pass --overwrite to replace it.");
+            ConsoleUi.Failure($"{fullPath} exists. Pass --overwrite to replace it.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -167,7 +169,7 @@ internal static class ProfilesCommand
         CaptureProfileDescriptor? selected = CaptureProfileCatalog.Find(profileId);
         if (selected is null)
         {
-            ConsoleUi.Failure($"Unknown capture profile: {profileId}");
+            ConsoleUi.Failure($"'{profileId}' is no capture profile; icat profiles lists every one.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
