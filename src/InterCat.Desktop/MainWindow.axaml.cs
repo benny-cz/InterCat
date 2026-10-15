@@ -4384,6 +4384,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             replacement.PinLanes(workspace.PinnedLanes);
             replacement.AdoptTimeline(workspace.CarryTimeline());
             replacement.AdoptScope(workspace.CarryScope());
+
+            // So does the read of the candidate other ends its investigation proposes for its hosts, done or still running.
+            if (workspace.CarryCandidateHosts() is { } candidates)
+            {
+                replacement.AdoptCandidateHosts(candidates);
+            }
+        }
+        else if (layoutHome is { } member)
+        {
+            // A session opened from an investigation it is a member of names its hosts' candidate other ends there (§8.3),
+            // read in the background, since candidate joins compare every member's connections.
+            replacement.ReadCandidateHosts(member.Workspace);
         }
 
         workspace.PropertyChanged -= OnWorkspaceChanged;

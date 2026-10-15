@@ -165,6 +165,12 @@ public sealed partial class WorkspaceViewModel
 
         lines.Add(HostScope);
         lines.Add("Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it");
+        if (CandidatesProposed(hosts) is { } proposed)
+        {
+            lines.Add("Its investigation proposes candidate other ends for " + proposed
+                + ", never an established join; chosen, it names them with each host it lists");
+        }
+
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
         lines.Add("Size: fixed; a resource, not a process");
         lines.Add(drawn.OpenedHosts is { Count: > 0 }
@@ -234,7 +240,8 @@ public sealed partial class WorkspaceViewModel
         HostLink[] links = HubLinks(graphDisplay);
         IReadOnlyList<string> parts = HostLinkText.Parts(links);
         string reach = parts.Count == 0 ? string.Empty : ": " + WorkspaceLayout.Series(parts);
-        string listed = OtherHost.Of(links).Count switch
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        string listed = hosts.Count switch
         {
             0 => string.Empty,
             1 => "Chosen, its host below has its records highlighted and listed by E; Enter on it finds who reached it. ",
@@ -242,10 +249,28 @@ public sealed partial class WorkspaceViewModel
         };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
-            + "these addresses is not observed. " + listed + "Its edges are connections, with no traffic value. "
+            + "these addresses is not observed. "
+            + (CandidatesProposed(hosts) is { } proposed
+                ? "Its investigation proposes candidate other ends for " + proposed + ", named with each below: processes of "
+                    + "its other sessions whose connections mirror these, never an established join. "
+                : string.Empty)
+            + listed
+            + "Its edges are connections, with no traffic value. "
             + (graphDisplay.OpenedHosts is { Count: > 0 }
                 ? "Enter folds the hosts drawn on their own back into it."
                 : "Enter draws its busiest hosts on their own.");
+    }
+
+    /// <summary>
+    /// Which of the hosts Other hosts stands for a session opened from its investigation is proposed candidate other ends
+    /// for: "its host", or "1 of its 2 hosts"; null where it is proposed none.
+    /// </summary>
+    private string? CandidatesProposed(IReadOnlyList<OtherHost> hosts)
+    {
+        int proposed = hosts.Count(host => CandidatesAt(host.Address) is not null);
+        return proposed == 0 ? null
+            : hosts.Count == 1 ? "its host"
+            : string.Create(CultureInfo.CurrentCulture, $"{proposed:N0} of its {hosts.Count:N0} hosts");
     }
 
     /// <summary>
@@ -284,7 +309,10 @@ public sealed partial class WorkspaceViewModel
                     + HostLinkText.Reached(entry.Host, several)
                     + (entry.Host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(entry.Host.Ports))
                     + " · " + CountText.Of(entry.Host.Records, "record")
-                    + (entry.Traffic is { } traffic ? " · " + traffic.Transfers(CultureInfo.CurrentCulture) : string.Empty)))];
+                    + (entry.Traffic is { } traffic ? " · " + traffic.Transfers(CultureInfo.CurrentCulture) : string.Empty)
+                    + (CandidatesAt(entry.Host.Address) is { } candidates
+                        ? " · candidate other ends: " + candidates.Words
+                        : string.Empty)))];
         }
     }
 
@@ -391,6 +419,11 @@ public sealed partial class WorkspaceViewModel
         }
 
         lines.Add("Reached by " + ReachedBy(links));
+        if (CandidatesAt(host.Label) is { } candidates)
+        {
+            lines.Add("Candidate other ends: " + candidates.Words + ", never an established join");
+        }
+
         lines.Add(HostScope);
         lines.Add("Who is at this address is not observed; searching it (Ctrl+F) marks the processes that reached it");
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
@@ -420,7 +453,11 @@ public sealed partial class WorkspaceViewModel
                 : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
                     + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
             + (AddressScope.Meaning(host.Label) is { } meaning ? ". " + meaning : string.Empty)
-            + ". Reached by " + ReachedBy(links) + ". Who is at it is not observed. Its records, whichever process held them, are "
+            + ". Reached by " + ReachedBy(links) + "."
+            + (CandidatesAt(host.Label) is { } candidates
+                ? " Its candidate other ends in its investigation, never an established join: " + candidates.Words + "."
+                : string.Empty)
+            + " Who is at it is not observed. Its records, whichever process held them, are "
             + "highlighted and listed by E; searching its address (Ctrl+F) marks who reached it. Enter folds the hosts back "
             + "into Other hosts.";
     }

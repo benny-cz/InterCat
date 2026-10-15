@@ -2859,6 +2859,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         CancelConnections();
         CancelHostRecords();
         CancelHostTraffic();
+        CancelCandidateRead();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;

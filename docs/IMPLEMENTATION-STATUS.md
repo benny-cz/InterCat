@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 570 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 571 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -55,7 +55,7 @@ two real sessions, one sparse and one dense. Since revision 545 it relates proce
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
 revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
-processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there, and since revision 565 one chosen in the list it gives the inspector, is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Hubs draw as stars with components apart, executable groups read as file names,
+processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there, and since revision 565 one chosen in the list it gives the inspector, is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Since revision 570 a member of an investigation names each host's candidate other ends in another member's capture, never as an established join, and since revision 571 a session opened from its investigation names them in the window. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint, and since revision 551 processes by an address they reached, which since revision 553 the graph marks; endpoint strings and addresses can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
@@ -96,6 +96,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 571 — a session opened from its investigation names its hosts' candidate other ends (§8.3, P6):**
+  - Only icat hosts --investigation named them; the window said nothing of who may be at a host.
+  - A session opened from its investigation reads them in the background under its view's evidence policy.
+    Other hosts' list and description, and a drawn host's card and description, name them, never as an
+    established join. A later publication takes the read over, done or running; another policy reads again.
+  - Debug and Release each ran 2,444 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 26 mutations was caught: a host's row, card or description not naming its candidates; Other hosts'
+    description or card not saying them once, saying them for its one host as for several, or for hosts with none;
+    the list or the description not restated as they arrive; a finished read a later publication took not shown with
+    its first rows, or a running one never shown; a read given up shown anyway; a read that found none leaving an
+    earlier one's said; its own cancellation not taken as its end; a read not handed over, taken by another
+    session's view, kept under another policy or not read again under it; a read made under the first-run policy, or
+    its candidates read under it whatever the view counted by; a read begun by an ended view; an unreadable
+    investigation failing the read; letting a read go twice failing; a view's end not letting its read go; and the
+    window not carrying the read to a later publication, nor reading it for a session opened from its investigation.
+    Of these, the candidates read under the first-run policy were caught once a test held that direct evidence alone
+    proposes none of the demo's correlated connections.
 
 - **Revision 570 — an other host's candidate other ends in its investigation (§8.3, P6, R18):**
   - Nothing said which process of another member's capture a host's connections may have reached.

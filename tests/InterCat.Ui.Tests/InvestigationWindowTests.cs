@@ -96,6 +96,60 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§8.3: a session opened from its investigation names its hosts' candidate other ends in Other hosts' list, read again under another evidence policy; opened on its own, it names none")]
+    public async Task ASessionOpenedFromItsInvestigationNamesItsHostsCandidateOtherEnds()
+    {
+        using var root = new TemporaryDirectory();
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(root.Path, "demo"));
+        const string Candidates = " · candidate other ends: demo server: api.exe · PID 5100 and files.exe · PID 5300";
+        var main = new MainWindow { Width = 1456, Height = 939 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(demo.WorkspacePath);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = window.View!.Members.ToList().FindIndex(member =>
+                member.FullPath.EndsWith(DemoInvestigation.ClientFolder, StringComparison.Ordinal));
+            Named<Button>(window, "Open in InterCat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == demo.ClientSession);
+
+            // Its hosts' candidate other ends are read in the background, and Other hosts' list names them where it lists
+            // their host, wrapped whole within the inspector.
+            var shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.LayoutReady;
+            await shown.CandidateHostsReady;
+            shown.SelectGraphNode(shown.GraphDisplay.OtherHosts!.Key);
+            ListBox hosts = main.GetControl<ListBox>("HostList");
+            TextBlock server = HostDetail(hosts, "10.0.0.20");
+            Assert.EndsWith(Candidates, server.Text, StringComparison.Ordinal);
+            Assert.DoesNotContain("candidate", HostDetail(hosts, "10.0.0.53").Text, StringComparison.Ordinal);
+            Save(main, "inspector-hosts-candidates.png");
+            Assert.True(server.TextLayout.Width <= server.Bounds.Width + 0.5,
+                $"The host's {server.TextLayout.Width} px run past its {server.Bounds.Width} px.");
+
+            // Counted under another evidence policy, they are read again under it, and named again.
+            Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates));
+            shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.CandidateHostsReady;
+            Assert.Equal(shown.GraphDisplay.OtherHosts!.Key, shown.SelectedGraphNodeKey);
+            Assert.EndsWith(Candidates, HostDetail(hosts, "10.0.0.20").Text, StringComparison.Ordinal);
+            window.Close();
+
+            // Opened on its own, the session names none.
+            Assert.True(await main.OpenSessionAsync(demo.ClientSession));
+            shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.LayoutReady;
+            await shown.CandidateHostsReady;
+            shown.SelectGraphNode(shown.GraphDisplay.OtherHosts!.Key);
+            Assert.DoesNotContain("candidate", HostDetail(hosts, "10.0.0.20").Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R22: a session opened from an investigation keeps its pins, ranking, evidence policy and lane scale there, which its window lists, and gets them back when opened from it again")]
     public async Task AnInvestigationKeepsASessionsPins()
     {
@@ -3144,6 +3198,15 @@ public sealed class InvestigationWindowTests
     {
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
         return window.GetVisualDescendants().OfType<Button>().Single(button => Equals(button.Content, label));
+    }
+
+    /// <summary>What Other hosts' list shows beneath the address of the host at <paramref name="address"/>.</summary>
+    private static TextBlock HostDetail(ListBox hosts, string address)
+    {
+        Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+        int index = hosts.Items.Cast<HostRow>().ToList().FindIndex(row => row.Address == address);
+        return hosts.ContainerFromIndex(index)!.GetVisualDescendants().OfType<TextBlock>()
+            .Single(text => text.Text != address);
     }
 
     private static void WaitFor(Func<bool> condition)
