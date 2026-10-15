@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using Xunit;
@@ -161,6 +162,16 @@ public sealed class GraphProperties
         Assert.Equal(snapshot.HostLinks.Any(link => drawnIn[link.Process].Kind != GraphNodeKind.Context),
             display.OtherHosts is not null);
 
+        // The hosts the drawn connections reached, as Other hosts names them, account for every one of their connections
+        // and records, each address once, the busiest first.
+        HostLink[] drawnLinks = [.. snapshot.HostLinks.Where(link => display.EdgeOfHostLink(link.Key) is not null)];
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(drawnLinks);
+        Assert.Equal(drawnLinks.Sum(link => link.Records), hosts.Sum(host => host.Records));
+        Assert.Equal(drawnLinks.Sum(link => link.Connections), hosts.Sum(host => host.TcpConnections + host.UdpFlows));
+        Assert.Equal(drawnLinks.SelectMany(link => link.Addresses).Select(address => address.Address).Distinct(StringComparer.Ordinal).Count(),
+            hosts.Count);
+        Assert.True(hosts.Zip(hosts.Skip(1)).All(pair => pair.First.Records >= pair.Second.Records), $"{label}: hosts out of order");
+
         // The relationships between two nodes run in lanes of their own, evenly about the line between them; a node's
         // edges to the other hosts too.
         foreach (IGrouping<(string, string), GraphDisplayEdge> between in display.Edges
@@ -234,16 +245,22 @@ public sealed class GraphProperties
             });
         }
 
-        // A link's connections run to at most as many hosts, each holding a record or more.
+        // A link's connections run to distinct addresses of a pool the machine's processes share, each address reached by a
+        // connection or more, each holding a record or more.
         HostLink[] links = [.. processes
             .Where(_ => random.Next(3) > 0)
             .SelectMany(process => new[] { Mechanism.Tcp, Mechanism.Udp }
                 .Where(_ => random.Next(2) == 0)
                 .Select(mechanism =>
                 {
-                    int connections = random.Next(1, 20);
-                    return new HostLink(process.Id, mechanism, connections, random.Next(1, connections + 1),
-                        connections + random.Next(0, 300), random.Next(4) == 0 ? RelationStrength.Correlated : RelationStrength.Direct);
+                    HostAddress[] addresses = [.. Enumerable.Range(0, 40).OrderBy(_ => random.Next()).Take(random.Next(1, 12))
+                        .Select(host =>
+                        {
+                            int connections = random.Next(1, 4);
+                            return new HostAddress($"203.0.113.{host}", connections, connections + random.Next(0, 30));
+                        })];
+                    return new HostLink(process.Id, mechanism, addresses,
+                        random.Next(4) == 0 ? RelationStrength.Correlated : RelationStrength.Direct);
                 }))];
         return new WorkspaceSnapshot("random machine", new TimeRange(0, 10), groups, processes, edges, [], [], [], [])
         {

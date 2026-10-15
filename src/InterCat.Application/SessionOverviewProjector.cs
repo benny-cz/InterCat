@@ -280,13 +280,12 @@ public static class SessionOverviewProjector
             nodes.Sum(node => node.Activity.Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records)),
             alpc);
 
-        // Each process's connections to other hosts, which the graph draws to one node of its own as resources are drawn:
-        // with no traffic value and never naming who is at their other ends (§6.3, P7).
+        // Each process's connections to other hosts, address by address, which the graph draws to one node of its own as
+        // resources are drawn: with no traffic value, naming where they ran and never who is at their other ends (§6.3, P7).
         HostLink[] hostLinks = [.. new[] { Mechanism.Tcp, Mechanism.Udp }
             .SelectMany(mechanism => relations.ReachOfOtherHosts(mechanism))
             .Where(reach => Admitted(reach.Strength, policy))
-            .Select(reach => new HostLink(processes.Instances[reach.Holder].Id, reach.Mechanism, reach.Connections, reach.Hosts,
-                reach.Records, reach.Strength))
+            .Select(reach => new HostLink(processes.Instances[reach.Holder].Id, reach.Mechanism, reach.Addresses, reach.Strength))
             .OrderBy(link => link.Key, StringComparer.Ordinal)];
 
         string? channelProblem = admitted.Length > maximumChannels

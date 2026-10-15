@@ -137,6 +137,16 @@ internal static class OverviewCommand
                     .ThenBy(links => links.Key.ToString(), StringComparer.Ordinal)
                     .Take(5)
                     .Select(links => (IReadOnlyList<string>)[CollectorText.Named(nodes[links.Key]), HostLinkText.Line(links)])]);
+
+            // The hosts they ran to, the busiest first by the records their connections hold, as the Other hosts node names
+            // them: where the connections ran, each process's rung listing its own, and never who is at them (P7).
+            IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
+            ConsoleUi.Table(
+                ["Busiest other host", "Connections", "Records"],
+                [.. hosts.Take(5).Select(host => (IReadOnlyList<string>)
+                    [host.Address, HostLinkText.Reached(host), ConsoleUi.Count(host.Records)])]);
+            ConsoleUi.Note(CountText.Of(hosts.Count, "other host") + " in all, counted by address; who is at them is not "
+                + "observed. icat channels <directory> --process <instance-guid> --one-sided lists a process's connections.");
         }
 
         foreach (string caveat in overview.Caveats) ConsoleUi.Note(caveat);

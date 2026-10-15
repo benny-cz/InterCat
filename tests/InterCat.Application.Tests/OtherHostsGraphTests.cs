@@ -40,13 +40,13 @@ public sealed class OtherHostsGraphTests
 
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         ProcessInstanceId browser = overview.Nodes.Single(node => node.ProcessId == 300).Id;
-        // A transfer binds to its PID's first instance as correlated (entities-v1), and so do the browser's connections.
-        Assert.Equal(
-            [
-                new HostLink(browser, Mechanism.Tcp, 2, 2, 3, RelationStrength.Correlated),
-                new HostLink(browser, Mechanism.Udp, 1, 1, 1, RelationStrength.Correlated),
-            ],
-            overview.HostLinks);
+        // A transfer binds to its PID's first instance as correlated (entities-v1), and so do the browser's connections,
+        // each link counting them address by address as the relation index does (relations-v1 §5d).
+        Assert.Equal([(browser, Mechanism.Tcp, RelationStrength.Correlated), (browser, Mechanism.Udp, RelationStrength.Correlated)],
+            overview.HostLinks.Select(link => (link.Process, link.Mechanism, link.Strength)));
+        Assert.Equal([new HostAddress("142.250.1.1", 1, 2), new HostAddress("20.42.65.1", 1, 1)], overview.HostLinks[0].Addresses);
+        Assert.Equal((2, 2, 3L), (overview.HostLinks[0].Connections, overview.HostLinks[0].Hosts, overview.HostLinks[0].Records));
+        Assert.Equal([new HostAddress("8.8.8.8", 1, 1)], overview.HostLinks[1].Addresses);
         Assert.Equal([$"hosts:tcp:{browser}", $"hosts:udp:{browser}"], overview.HostLinks.Select(link => link.Key));
         Assert.All(overview.HostLinks, link => Assert.True(HostLink.IsKey(link.Key)));
         Assert.False(HostLink.IsKey(overview.Edges.Single().Key));
@@ -305,11 +305,16 @@ public sealed class OtherHostsGraphTests
 
         Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link, link)));
         Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(Link(Node(9, group.Key), Mechanism.Tcp, 1, 1, 1))));
-        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Connections = 0 })));
-        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Hosts = 0 })));
-        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Hosts = 3 })));
-        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Records = -1 })));
-        _ = GraphProjection.Project(Of(link with { Hosts = 2, Records = 0 }));
+        // At least one address, each named once, each reached by a connection and each connection holding a record.
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Addresses = [] })));
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Addresses = [new("198.51.100.1", 0, 4)] })));
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Addresses = [new("198.51.100.1", 2, 1)] })));
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with { Addresses = [new("", 2, 4)] })));
+        Assert.Throws<ArgumentException>(() => GraphProjection.Project(Of(link with
+        {
+            Addresses = [new("198.51.100.1", 1, 2), new("198.51.100.1", 1, 2)],
+        })));
+        _ = GraphProjection.Project(Of(link with { Addresses = [new("198.51.100.1", 1, 1), new("198.51.100.2", 1, 3)] }));
 
         GraphDisplay display = GraphProjection.Project(Of(link));
         GraphDisplayNode hub = display.OtherHosts!;
@@ -357,17 +362,65 @@ public sealed class OtherHostsGraphTests
         Assert.Equal("5 UDP flows with 3 hosts", HostLinkText.Reach(Link(one, Mechanism.Udp, 5, 3, 9)));
         Assert.Equal("1,200 TCP connections", HostLinkText.Connections(Mechanism.Tcp, 1_200));
 
-        // Several processes' are counted by connection and process; their hosts may be shared, so they are not added up.
-        Assert.Equal("7 TCP connections from 2 processes",
+        // Several processes' are counted by connection, process and host: a host two of them reached is one host.
+        Assert.Equal("7 TCP connections from 2 processes to 4 hosts",
             HostLinkText.Reach(Mechanism.Tcp, [Link(one, Mechanism.Tcp, 3, 2, 4), Link(two, Mechanism.Tcp, 4, 4, 4)]));
-        Assert.Equal("2 UDP flows from 1 process", HostLinkText.Reach(Mechanism.Udp, [Link(one, Mechanism.Udp, 2, 1, 4)]));
+        Assert.Equal("2 UDP flows from 1 process with 1 host", HostLinkText.Reach(Mechanism.Udp, [Link(one, Mechanism.Udp, 2, 1, 4)]));
 
         // A line says TCP before UDP, one process's with its hosts and several processes' by how many made them.
         Assert.Equal("3 TCP connections to 2 hosts · 5 UDP flows with 3 hosts",
             HostLinkText.Line([Link(one, Mechanism.Udp, 5, 3, 9), Link(one, Mechanism.Tcp, 3, 2, 4)]));
-        Assert.Equal(["7 TCP connections from 2 processes", "5 UDP flows from 1 process"],
+        Assert.Equal(["7 TCP connections from 2 processes to 4 hosts", "5 UDP flows from 1 process with 3 hosts"],
             HostLinkText.Parts([Link(one, Mechanism.Udp, 5, 3, 9), Link(one, Mechanism.Tcp, 3, 2, 4), Link(two, Mechanism.Tcp, 4, 4, 4)]));
         Assert.Equal(string.Empty, HostLinkText.Line([]));
+    }
+
+    [Fact(DisplayName = "§6.3: the hosts a set of processes reached are each counted once over both transports, the busiest first, and named so")]
+    public void TheHostsProcessesReachedAreCountedOnceTheBusiestFirst()
+    {
+        ProcessInstanceId browser = Node(1, "g").Id;
+        ProcessInstanceId updater = Node(2, "g").Id;
+        ProcessInstanceId resolver = Node(3, "g").Id;
+        HostLink[] links =
+        [
+            new(browser, Mechanism.Tcp, [new("142.250.1.1", 3, 40), new("20.42.65.1", 1, 5)], RelationStrength.Direct),
+            // The browser's QUIC to the host it also reached over TCP.
+            new(browser, Mechanism.Udp, [new("142.250.1.1", 1, 7)], RelationStrength.Direct),
+            new(updater, Mechanism.Tcp, [new("20.42.65.1", 2, 35), new("13.107.4.50", 1, 9)], RelationStrength.Correlated),
+            new(resolver, Mechanism.Udp, [new("9.9.9.9", 4, 9), new("8.8.8.8", 4, 9)], RelationStrength.Direct),
+        ];
+
+        // The most records first, then the most connections over both transports, then by address.
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        Assert.Equal(
+            [
+                new OtherHost("142.250.1.1", 3, 1, 1, 47),
+                new OtherHost("20.42.65.1", 3, 0, 2, 40),
+                new OtherHost("8.8.8.8", 0, 4, 1, 9),
+                new OtherHost("9.9.9.9", 0, 4, 1, 9),
+                new OtherHost("13.107.4.50", 1, 0, 1, 9),
+            ],
+            hosts);
+        Assert.Empty(OtherHost.Of([]));
+
+        // What reached each, transport by transport and from how many processes.
+        Assert.Equal("3 TCP connections and 1 UDP flow from 1 process", HostLinkText.Reached(hosts[0]));
+        Assert.Equal("3 TCP connections from 2 processes", HostLinkText.Reached(hosts[1]));
+        Assert.Equal("4 UDP flows from 1 process", HostLinkText.Reached(hosts[2]));
+
+        // Named, the busiest first: all of them where they fit, else the busiest of how many.
+        Assert.Equal("Busiest of 5 hosts: 142.250.1.1, 20.42.65.1 and 8.8.8.8", HostLinkText.Named(hosts, 3));
+        Assert.Equal("Hosts: 142.250.1.1, 20.42.65.1 and 8.8.8.8", HostLinkText.Named([.. hosts.Take(3)], 3));
+        Assert.Equal("Hosts: 142.250.1.1 and 20.42.65.1", HostLinkText.Named([.. hosts.Take(2)], 3));
+        Assert.Equal("Host: 13.107.4.50", HostLinkText.Named([hosts[^1]], 3));
+        Assert.Null(HostLinkText.Named([], 3));
+        Assert.Throws<ArgumentOutOfRangeException>(() => HostLinkText.Named(hosts, 0));
+
+        // A transport's hosts are counted once whichever processes reached them.
+        Assert.Equal("7 TCP connections from 2 processes to 3 hosts",
+            HostLinkText.Reach(Mechanism.Tcp, [.. links.Where(link => link.Mechanism == Mechanism.Tcp)]));
+        Assert.Equal("9 UDP flows from 2 processes with 3 hosts",
+            HostLinkText.Reach(Mechanism.Udp, [.. links.Where(link => link.Mechanism == Mechanism.Udp)]));
     }
 
     private static object Drawn(GraphDisplayEdge edge) => (edge.Key, edge.SourceKey, edge.TargetKey, edge.Mechanism,
@@ -405,5 +458,15 @@ public sealed class OtherHostsGraphTests
         };
 
     private static HostLink Link(ProcessNode process, Mechanism mechanism, int connections, int hosts, long records,
-        RelationStrength strength = RelationStrength.Direct) => new(process.Id, mechanism, connections, hosts, records, strength);
+        RelationStrength strength = RelationStrength.Direct) => new(process.Id, mechanism, Addresses(connections, hosts, records),
+        strength);
+
+    /// <summary>
+    /// <paramref name="hosts"/> addresses from 198.51.100.1: the first holding the connections and records the others' one
+    /// each leave.
+    /// </summary>
+    private static HostAddress[] Addresses(int connections, int hosts, long records) =>
+        [.. Enumerable.Range(1, hosts).Select(index => index == 1
+            ? new HostAddress("198.51.100.1", connections - hosts + 1, records - hosts + 1)
+            : new HostAddress($"198.51.100.{index}", 1, 1))];
 }

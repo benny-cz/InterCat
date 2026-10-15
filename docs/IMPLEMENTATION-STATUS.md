@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 549 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 550 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -54,7 +54,8 @@ presets exist: a metadata-only **report**, a reopenable redacted **session packa
 two real sessions, one sparse and one dense. Since revision 545 it relates processes by paired UDP flows beside TCP
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
 revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
-collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
+collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
+processes' connections ran to. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint; endpoint strings can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
@@ -95,6 +96,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 550 — name the busiest other hosts by address (§6.3, P7):**
+  - The Other hosts node said how many hosts the drawn processes reached, never which; only each process's rung
+    listed its own. A host link now carries its connections address by address, its counts its addresses'.
+  - The node's card names the three busiest hosts by records with what reached each, its description five, and an
+    edge's card the three its source reached; a transport's line counts distinct hosts, and a process's rung names
+    its own alone. icat overview lists the five busiest, and its JSON carries each host link's addresses.
+  - Debug and Release each ran 2,365 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 24 mutations was caught: a process's addresses out of order by records, connections or address, IPv6
+    written as IPv4, its connections miscounted per address; a link's connections not its addresses'; a host's UDP
+    flows counted as TCP, its processes uncounted, the hosts out of order or ties; a transport's hosts counted once
+    per process; one process's hosts saying whose; a list that fits named as the busiest; a link with no address, an
+    address twice or fewer records than connections accepted; the overview dropping addresses; Other hosts naming
+    the whole machine's hosts on a process's rung, an edge's card another's, or either naming too many or too few;
+    and icat overview leaving out the busiest.
 
 - **Revision 549 — the graph's compaction over random machines (§6.3, R10):**
   - A property test draws six hundred random machines - groups of every size, TCP, UDP and RPC relationships in

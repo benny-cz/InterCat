@@ -51,16 +51,37 @@ public sealed record TransportCensus(
 }
 
 /// <summary>
+/// One address a process instance's connections to other hosts ran to, over one mechanism: how many of its connections
+/// and how many of their records. The address is where they ran, as the source named it; who is at it is not observed (P7).
+/// </summary>
+/// <param name="Address">The address: IPv4 in dotted-decimal form, IPv6 in RFC 5952's text, with no port.</param>
+/// <param name="Connections">The instance's connections to it.</param>
+/// <param name="Records">The records those connections hold, at least one each.</param>
+public sealed record HostAddress(string Address, int Connections, long Records);
+
+/// <summary>
 /// One process instance's connections to other hosts over one mechanism (§6.3's unresolved resources): the one-sided
-/// connections a census counts as to another host, held by that instance. Who is at their other ends is not observed (P7).
+/// connections a census counts as to another host, held by that instance, address by address. Who is at their other ends
+/// is not observed (P7).
 /// </summary>
 /// <param name="Mechanism">The transport the connections ran over.</param>
 /// <param name="Holder">The instance's position in the process index the relations were derived with.</param>
-/// <param name="Connections">Its connections to other hosts.</param>
-/// <param name="Hosts">The distinct addresses they ran to.</param>
-/// <param name="Records">The records they hold.</param>
+/// <param name="Addresses">
+/// The distinct addresses they ran to, each with its connections and records: the most records first, then the most
+/// connections, then by address.
+/// </param>
 /// <param name="Strength">How strongly their records bind to the instance: the weakest of them.</param>
-public sealed record HostReach(Mechanism Mechanism, int Holder, int Connections, int Hosts, long Records, RelationStrength Strength);
+public sealed record HostReach(Mechanism Mechanism, int Holder, IReadOnlyList<HostAddress> Addresses, RelationStrength Strength)
+{
+    /// <summary>Its connections to other hosts.</summary>
+    public int Connections => Addresses.Sum(address => address.Connections);
+
+    /// <summary>The distinct addresses they ran to.</summary>
+    public int Hosts => Addresses.Count;
+
+    /// <summary>The records they hold.</summary>
+    public long Records => Addresses.Sum(address => address.Records);
+}
 
 public sealed partial class TransportRelationIndex
 {
@@ -76,7 +97,8 @@ public sealed partial class TransportRelationIndex
                 "This rule relates no record of that mechanism, so it reaches no host.");
         }
 
-        var reach = new SortedDictionary<int, (int Connections, HashSet<(byte, UInt128)> Hosts, long Records, RelationStrength Weakest)>();
+        var reach = new SortedDictionary<int, (Dictionary<(byte Family, UInt128 Address), (int Connections, long Records)> Hosts,
+            RelationStrength Weakest)>();
         foreach ((EndKey key, EndTimeline timeline) in ends)
         {
             if (key.Protocol != (byte)mechanism || OnThisMachine(key))
@@ -93,18 +115,30 @@ public sealed partial class TransportRelationIndex
 
                 if (!reach.TryGetValue(incarnation.Holder, out var held))
                 {
-                    held = (0, [], 0, RelationStrength.Direct);
+                    held = ([], RelationStrength.Direct);
                 }
 
-                _ = held.Hosts.Add((key.Family, key.RemoteAddress));
-                reach[incarnation.Holder] = (held.Connections + 1, held.Hosts, held.Records + incarnation.Records,
-                    Weaker(held.Weakest, incarnation.Weakest));
+                (int connections, long records) = held.Hosts.GetValueOrDefault((key.Family, key.RemoteAddress));
+                held.Hosts[(key.Family, key.RemoteAddress)] = (connections + 1, records + incarnation.Records);
+                reach[incarnation.Holder] = (held.Hosts, Weaker(held.Weakest, incarnation.Weakest));
             }
         }
 
         return [.. reach.Select(entry => new HostReach(
-            mechanism, entry.Key, entry.Value.Connections, entry.Value.Hosts.Count, entry.Value.Records, entry.Value.Weakest))];
+            mechanism,
+            entry.Key,
+            [.. entry.Value.Hosts
+                .Select(host => new HostAddress(AddressText(host.Key.Family, host.Key.Address), host.Value.Connections,
+                    host.Value.Records))
+                .OrderByDescending(address => address.Records)
+                .ThenByDescending(address => address.Connections)
+                .ThenBy(address => address.Address, StringComparer.Ordinal)],
+            entry.Value.Weakest))];
     }
+
+    /// <summary>A remote address as every surface writes one, with no port: IPv4 dotted, IPv6 in RFC 5952's text.</summary>
+    private static string AddressText(byte family, UInt128 address) =>
+        family == 6 ? EndpointText.Ipv6(address) : EndpointText.Ipv4((uint)address);
 
     /// <summary>
     /// What became of <paramref name="mechanism"/>'s records under <paramref name="policy"/>. It reads no row: every record

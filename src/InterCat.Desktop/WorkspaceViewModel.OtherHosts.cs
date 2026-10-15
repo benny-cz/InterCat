@@ -7,11 +7,20 @@ namespace InterCat.Desktop;
 /// <summary>
 /// The graph's Other hosts node and its edges (§6.3's unresolved resources, which remain visible): where the drawn
 /// processes' connections ran with no process of the capture at their other end. Their cards and the node's description
-/// say what they are drawn from and what is not observed (P7); a click on an edge chooses its process, and a double click
-/// opens it, whose rung lists each connection.
+/// say what they are drawn from, name the busiest of the addresses they ran to and say what is not observed: who is at
+/// them (P7). A click on an edge chooses its process, and a double click opens it, whose rung lists each connection.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
+    /// <summary>How many hosts the Other hosts node's card names, a line each.</summary>
+    private const int HostsOnCard = 3;
+
+    /// <summary>How many hosts the Other hosts node's description names, chosen, where there is room to read more.</summary>
+    private const int HostsDescribed = 5;
+
+    /// <summary>How many hosts an edge to the other hosts names on its card, on one line.</summary>
+    private const int HostsOnEdgeCard = 3;
+
     /// <summary>The host links a drawn edge to the other hosts stands for, by their keys.</summary>
     private HostLink[] HostLinksOf(GraphDisplayEdge edge)
     {
@@ -50,7 +59,10 @@ public sealed partial class WorkspaceViewModel
     private string HostScope => "Scope: " + TimeBase.HalfOpenRange(wholeSnapshot.Extent, CultureInfo.CurrentCulture)
         + " · whole session" + (appliedInterval is not null ? "; the brushed interval does not re-count it" : string.Empty);
 
-    /// <summary>The Other hosts node's card: whose connections it stands for, transport by transport, and what is not observed.</summary>
+    /// <summary>
+    /// The Other hosts node's card: whose connections it stands for, transport by transport, the busiest hosts they ran to,
+    /// a line each, and what is not observed.
+    /// </summary>
     private HoverCard DescribeOtherHostsHover(GraphDisplayNode hub, GraphDisplay drawn)
     {
         HostLink[] links = DrawnHostLinks(drawn);
@@ -65,8 +77,20 @@ public sealed partial class WorkspaceViewModel
                 + CountText.Of(transport.Sum(link => link.Records), "record"));
         }
 
+        // The busiest hosts by the records their connections hold, a line each beneath what heads them; one process's
+        // need not say whose they are.
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        if (hosts.Count > 0)
+        {
+            lines.Add(hosts.Count <= HostsOnCard
+                ? CountText.Agree(hosts.Count, "Host:", "Hosts:")
+                : string.Create(CultureInfo.CurrentCulture, $"Busiest {HostsOnCard} of {hosts.Count:N0} hosts:"));
+            lines.AddRange(hosts.Take(HostsOnCard).Select(host => "  " + host.Address + " · "
+                + HostLinkText.Reached(host, hub.ConnectedProcesses > 1) + " · " + CountText.Of(host.Records, "record")));
+        }
+
         lines.Add(HostScope);
-        lines.Add("Who is at their other ends is not observed; each process's rung lists its connections and their addresses");
+        lines.Add("Who is at these addresses is not observed; each process's rung lists its own connections");
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
         lines.Add("Size: fixed; a resource, not a process");
         return new(hub.Label, lines);
@@ -84,13 +108,21 @@ public sealed partial class WorkspaceViewModel
         {
             (links is [{ } only] ? HostLinkText.Reach(only) : HostLinkText.Reach(edge.Mechanism, links))
                 + " · " + DescribeStrength(edge.Strength) + " evidence",
+        };
+        if (HostLinkText.Named(OtherHost.Of(links), HostsOnEdgeCard) is { } named)
+        {
+            lines.Add(named);
+        }
+
+        lines.AddRange(
+        [
             string.Create(CultureInfo.CurrentCulture, $"Records: {edge.ObservationCount:N0}"),
             HostScope,
-            "Who is at their other ends is not observed; " + (links.Length == 1
-                ? "its process's rung lists each connection and its addresses"
-                : "each process's rung lists its own"),
+            "Who is at these addresses is not observed; " + (links.Length == 1
+                ? "its process's rung lists each connection"
+                : "each process's rung lists its own connections"),
             "Thickness: the same for every connection to other hosts, which carries no traffic value in the graph",
-        };
+        ]);
 
         // What OpenGraphEdge will do, so the gesture is discoverable where the edge is read.
         if (source is { Kind: GraphNodeKind.Group } && ladder.Current.Level == DetailLevel.Machine)
@@ -109,19 +141,26 @@ public sealed partial class WorkspaceViewModel
         return new($"{source?.Title ?? edge.SourceKey} → {drawn.Node(edge.TargetKey)?.Label ?? edge.TargetKey}", lines);
     }
 
-    /// <summary>The Other hosts node, selected: whose connections it stands for and where each one is listed.</summary>
+    /// <summary>
+    /// The Other hosts node, selected: whose connections it stands for, the busiest hosts they ran to and where each
+    /// connection is listed.
+    /// </summary>
     private string DescribeOtherHosts(GraphDisplayNode hub)
     {
-        IReadOnlyList<string> parts = HostLinkText.Parts(DrawnHostLinks(graphDisplay));
-        string reach = parts.Count switch
-        {
-            0 => string.Empty,
-            1 => ": " + parts[0],
-            _ => ": " + string.Join(", ", parts.Take(parts.Count - 1)) + " and " + parts[^1],
-        };
+        HostLink[] links = DrawnHostLinks(graphDisplay);
+        IReadOnlyList<string> parts = HostLinkText.Parts(links);
+        string reach = parts.Count == 0 ? string.Empty : ": " + WorkspaceLayout.Series(parts);
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        string busiest = hosts.Count == 0 ? string.Empty
+            : (hosts.Count <= HostsDescribed
+                ? " " + CountText.Agree(hosts.Count, "Their host: ", "Their hosts: ")
+                : string.Create(CultureInfo.CurrentCulture, $" The busiest of their {hosts.Count:N0} hosts: "))
+                + WorkspaceLayout.Series([.. hosts.Take(HostsDescribed).Select(host => host.Address + " ("
+                    + HostLinkText.Reached(host, hub.ConnectedProcesses > 1) + ", " + CountText.Of(host.Records, "record") + ")")])
+                + ".";
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
-            + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is "
-            + "at their other ends is not observed; each process's rung lists its connections and their addresses. Its "
+            + " ran with no process of this capture at their other end, most often another machine" + reach + "."
+            + busiest + " Who is at these addresses is not observed; each process's rung lists its own connections. Its "
             + "edges are connections, not relationships, and carry no traffic value.";
     }
 

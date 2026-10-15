@@ -946,8 +946,11 @@ public static class GraphProjection
                     nameof(snapshot));
             }
 
-            // At least one host, and no more hosts than connections: at least one connection.
-            if (link.Records < 0 || link.Hosts < 1 || link.Hosts > link.Connections)
+            // At least one address, each named once, each reached by a connection and each connection holding a record.
+            if (link.Addresses.Count == 0
+                || link.Addresses.Any(address => string.IsNullOrEmpty(address.Address) || address.Connections < 1
+                    || address.Records < address.Connections)
+                || link.Addresses.Select(address => address.Address).Distinct(StringComparer.Ordinal).Count() != link.Addresses.Count)
             {
                 throw new ArgumentException($"Host link {link.Key} has impossible counts.", nameof(snapshot));
             }

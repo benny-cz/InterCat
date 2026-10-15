@@ -167,18 +167,29 @@ public sealed record MechanismCount(Mechanism Mechanism, long Records);
 
 /// <summary>
 /// A process's connections to other hosts over one transport (§6.3's unresolved resources): connections whose other end no
-/// record of the capture holds, at an address neither loopback nor the connection's own (`relations-v1` §5c). The graph
-/// draws them to one Other hosts node, as a resource is drawn - with no traffic value - and never names who is at their
-/// other ends (P7). Its counts are the whole session's.
+/// record of the capture holds, at an address neither loopback nor the connection's own (`relations-v1` §5d), address by
+/// address. The graph draws them to one Other hosts node, as a resource is drawn - with no traffic value - and names the
+/// addresses they ran to, never who is at them (P7). Its counts are the whole session's, and are its addresses'.
 /// </summary>
+/// <param name="Addresses">
+/// The addresses its connections ran to, each once with its connections and records: the most records first, then the
+/// most connections, then by address.
+/// </param>
 public sealed record HostLink(
     ProcessInstanceId Process,
     Mechanism Mechanism,
-    int Connections,
-    int Hosts,
-    long Records,
+    IReadOnlyList<HostAddress> Addresses,
     RelationStrength Strength)
 {
+    /// <summary>Its connections to other hosts: its addresses'.</summary>
+    public int Connections => Addresses.Sum(address => address.Connections);
+
+    /// <summary>The distinct addresses they ran to.</summary>
+    public int Hosts => Addresses.Count;
+
+    /// <summary>The records they hold: its addresses'.</summary>
+    public long Records => Addresses.Sum(address => address.Records);
+
     /// <summary>What every host link's key begins with.</summary>
     public const string KeyPrefix = "hosts:";
 
@@ -187,6 +198,46 @@ public sealed record HostLink(
 
     /// <summary>Whether a key names a host link.</summary>
     public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>
+/// One other host as a set of processes' connections reached it, over both transports (§6.3): how many TCP connections and
+/// UDP flows ran to its address, from how many of the processes, holding how many records. Its address is where they ran;
+/// who is at it is not observed (P7).
+/// </summary>
+public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows, int Processes, long Records)
+{
+    /// <summary>
+    /// The hosts <paramref name="links"/> ran to, each once whichever processes and transports reached it, the busiest first:
+    /// the most records, then the most connections, then by address.
+    /// </summary>
+    public static IReadOnlyList<OtherHost> Of(IEnumerable<HostLink> links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        var hosts = new Dictionary<string, (int Tcp, int Udp, HashSet<ProcessInstanceId> Processes, long Records)>(
+            StringComparer.Ordinal);
+        foreach (HostLink link in links)
+        {
+            foreach (HostAddress address in link.Addresses)
+            {
+                if (!hosts.TryGetValue(address.Address, out var host))
+                {
+                    host = (0, 0, [], 0);
+                }
+
+                _ = host.Processes.Add(link.Process);
+                hosts[address.Address] = link.Mechanism == Mechanism.Udp
+                    ? (host.Tcp, host.Udp + address.Connections, host.Processes, host.Records + address.Records)
+                    : (host.Tcp + address.Connections, host.Udp, host.Processes, host.Records + address.Records);
+            }
+        }
+
+        return [.. hosts
+            .Select(host => new OtherHost(host.Key, host.Value.Tcp, host.Value.Udp, host.Value.Processes.Count, host.Value.Records))
+            .OrderByDescending(host => host.Records)
+            .ThenByDescending(host => (long)host.TcpConnections + host.UdpFlows)
+            .ThenBy(host => host.Address, StringComparer.Ordinal)];
+    }
 }
 
 /// <summary>

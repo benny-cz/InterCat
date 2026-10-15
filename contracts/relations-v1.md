@@ -183,6 +183,14 @@ a reused PID's later instance, a candidate, is left out. The overview carries th
 re-count them. The window's graph draws them to one **Other hosts** node (§6.3 of the plan), and `icat overview`
 lists the processes that hold them; nothing names who is at their other ends (P7).
 
+Since revision 550 each instance's connections to other hosts are also given address by address: for each distinct
+remote address, how many of the connections ran to it and how many records they hold, the most records first, then
+the most connections, then by the address's text - IPv4 in dotted-decimal form, IPv6 in RFC 5952's, and an
+IPv4-mapped address as the source named it, an address of its own. A host link carries them, its connections, hosts
+and records its addresses' (`hostLinks[].addresses` in `icat overview --json`), and the window's Other hosts node
+and `icat overview` name the busiest, a host counted once whichever processes and transports reached it. An address
+is where the connections ran: who is at it is not observed (P7), and it pairs nothing (§6).
+
 ## 5e. What the overview draws (revision 545)
 
 The overview draws every relation of both transports whose strength the evidence policy admits: TCP connection

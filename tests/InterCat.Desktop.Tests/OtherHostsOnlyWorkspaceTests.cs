@@ -36,7 +36,7 @@ public sealed class OtherHostsOnlyWorkspaceTests
         HoverCard card = workspace.DescribeGraphHover(folded.Key)!;
         Assert.Equal("4 processes with no admitted relationship, connected only to other hosts, the less busy folded together",
             card.Lines[0]);
-        Assert.Equal("Other hosts: 4 TCP connections from 4 processes", card.Lines[1]);
+        Assert.Equal("Other hosts: 4 TCP connections from 4 processes to 4 hosts", card.Lines[1]);
         GraphDisplayEdge toHosts = Assert.Single(drawn.Edges, edge => edge.SourceKey == folded.Key);
         Assert.Equal("Click chooses its processes; the ranked table lists each, and each one's rung its connections",
             workspace.DescribeGraphHover(toHosts.Key)!.Lines[^1]);
