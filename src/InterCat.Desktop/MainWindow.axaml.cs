@@ -3736,8 +3736,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         // An unavailable capture is a warning in words: caution ink, never a mechanism's hue (§6.6).
         CaptureStatus.Classes.Set("caution", unavailable);
 
-        // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it.
-        if (!string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
+        // A repeated detail (a live-counter update) keeps any navigation notice the last refresh appended to it. A session
+        // opened afresh says its own, though its words repeat the last one's, as two sessions published in the same
+        // generation's do, so no notice of the session shown before it stays, or is said twice.
+        if (forceOverview || !string.Equals(update.Detail, appliedDetail, StringComparison.Ordinal))
         {
             appliedDetail = update.Detail;
             Say(CaptureDetail, update.Detail, aloud);

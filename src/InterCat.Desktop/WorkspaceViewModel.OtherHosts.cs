@@ -167,8 +167,8 @@ public sealed partial class WorkspaceViewModel
         lines.Add("Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it");
         if (CandidatesProposed(hosts) is { } proposed)
         {
-            lines.Add("Its investigation proposes candidate other ends for " + proposed
-                + ", never an established join; chosen, it names them with each host it lists");
+            lines.Add("Its investigation's other sessions propose candidate other ends for " + proposed
+                + ": processes whose connections mirror these, never an established join; chosen, it lists them");
         }
 
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
@@ -249,12 +249,7 @@ public sealed partial class WorkspaceViewModel
         };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
-            + "these addresses is not observed. "
-            + (CandidatesProposed(hosts) is { } proposed
-                ? "Its investigation proposes candidate other ends for " + proposed + ", named with each below: processes of "
-                    + "its other sessions whose connections mirror these, never an established join. "
-                : string.Empty)
-            + listed
+            + "these addresses is not observed. " + listed
             + "Its edges are connections, with no traffic value. "
             + (graphDisplay.OpenedHosts is { Count: > 0 }
                 ? "Enter folds the hosts drawn on their own back into it."
@@ -331,19 +326,24 @@ public sealed partial class WorkspaceViewModel
     };
 
     /// <summary>
-    /// What the host list leaves out, and how to reach it, and why its bytes could not be read where they could not; empty
-    /// when it lists every host as ranked.
+    /// What the host list leaves out, and how to reach it, why its bytes could not be read where they could not, and what
+    /// the candidate other ends it names are, beneath the rows that name them; empty when it lists every host as ranked and
+    /// names none.
     /// </summary>
     public string HostsNote => string.Join(" ", new[]
     {
         HostTrafficProblem,
+        CandidatesProposed(ListedHosts()) is { } proposed
+            ? "The candidate other ends named for " + proposed + " are processes of its investigation's other sessions whose "
+                + "connections mirror these, never an established join."
+            : string.Empty,
         ListedHosts() is { Count: > HostsListed } hosts
             ? string.Create(CultureInfo.CurrentCulture, $"{hosts.Count - HostsListed:N0} more, quieter. Searching an address ")
                 + "(Ctrl+F) finds the processes that reached any of them."
             : string.Empty,
     }.Where(part => part.Length > 0));
 
-    /// <summary>Whether the host list says what it leaves out, or why its bytes could not be read.</summary>
+    /// <summary>Whether the host list says what it leaves out, why its bytes could not be read, or what its candidates are.</summary>
     public bool HasHostsNote => HostsNote.Length > 0;
 
     /// <summary>

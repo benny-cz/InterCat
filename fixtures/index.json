@@ -1809,6 +1809,7 @@
         "R22: between(A,B) keeps the records connecting two sets, either way or one way, and discloses what it cannot decide",
         "R22: calls direct evidence only leaves unattributed are said as what they are, never as a reused PID's candidates",
         "R22: candidate relations enter the overview only under an explicit candidate policy",
+        "R22: each session opened says its own notice once, though it was published in the same generation as the one shown before it",
         "R22: every capture on this machine records its installation's host, each on a clock of its own",
         "R22: hosts are one only by identity, and a name never makes two of them one",
         "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy, lane scale and Other hosts opened, and the window's panes",

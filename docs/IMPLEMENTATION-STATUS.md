@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 571 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 572 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 572 — a live pass over an investigation's hosts (§6.3, §8.3, §26.3):**
+  - Opening the demo's server from its investigation after its client said its notice twice: both open in the
+    same words, which the rail kept as a live capture's repeated detail. A session opened afresh says its own.
+  - Other hosts' description said what candidate other ends are, pushing its second host below the fold at the
+    window's first size; the list's note says it beneath the rows instead.
+  - Debug and Release each ran 2,445 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 6 mutations was caught: a session opened afresh keeping the last one's detail when its words repeat it;
+    the list's note not saying what its candidates are, or saying it for its one host as for several; Other hosts'
+    description lengthened with it again, caught by its own text and by both hosts no longer fitting above the
+    inspector's fold at the window's first size; and Other hosts' card not saying it.
 
 - **Revision 571 — a session opened from its investigation names its hosts' candidate other ends (§8.3, P6):**
   - Only icat hosts --investigation named them; the window said nothing of who may be at a host.

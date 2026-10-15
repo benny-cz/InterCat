@@ -32,7 +32,9 @@ public sealed class CandidateHostsWorkspaceTests : IDisposable
         workspace.SelectGraphNode(hub.Key);
         string unread = Row(workspace, "10.0.0.20").Detail;
         Assert.DoesNotContain("candidate", unread, Ordinal);
-        Assert.DoesNotContain("andidate", workspace.SelectionSubtitle, Ordinal);
+        string described = workspace.SelectionSubtitle;
+        Assert.DoesNotContain("andidate", described, Ordinal);
+        Assert.DoesNotContain("andidate", workspace.HostsNote, Ordinal);
         Assert.DoesNotContain(workspace.DescribeGraphHover(hub.Key)!.Lines, line => line.Contains("andidate", Ordinal));
 
         // Read with its investigation, the server's address names the server's two processes whose connections mirror the
@@ -49,13 +51,15 @@ public sealed class CandidateHostsWorkspaceTests : IDisposable
         Assert.DoesNotContain("candidate", Row(workspace, "10.0.0.53").Detail, Ordinal);
         Assert.Equal("10.0.0.20", workspace.ChosenHostRow?.Address);
 
-        // Other hosts says once what the candidates named with its hosts are.
-        Assert.Contains(nameof(WorkspaceViewModel.SelectionSubtitle), changed);
-        Assert.Contains(" Who is at these addresses is not observed. Its investigation proposes candidate other ends for 1 of its "
-            + "2 hosts, named with each below: processes of its other sessions whose connections mirror these, never an "
-            + "established join. A host chosen below", workspace.SelectionSubtitle, Ordinal);
-        Assert.Contains("Its investigation proposes candidate other ends for 1 of its 2 hosts, never an established join; chosen, "
-            + "it names them with each host it lists", workspace.DescribeGraphHover(hub.Key)!.Lines);
+        // Beneath the rows that name them, the list says once what they are; Other hosts' description, above the list,
+        // stays as long as it was.
+        Assert.Contains(nameof(WorkspaceViewModel.HostsNote), changed);
+        Assert.True(workspace.HasHostsNote);
+        Assert.Equal("The candidate other ends named for 1 of its 2 hosts are processes of its investigation's other sessions "
+            + "whose connections mirror these, never an established join.", workspace.HostsNote);
+        Assert.Equal(described, workspace.SelectionSubtitle);
+        Assert.Contains("Its investigation's other sessions propose candidate other ends for 1 of its 2 hosts: processes whose "
+            + "connections mirror these, never an established join; chosen, it lists them", workspace.DescribeGraphHover(hub.Key)!.Lines);
 
         // Drawn on its own, its card and its description name them, never as an established join; the resolver's name none.
         Assert.True(workspace.OpenGraphNode(hub.Key));
@@ -200,8 +204,8 @@ public sealed class CandidateHostsWorkspaceTests : IDisposable
         Assert.Equal(["10.0.0.10"], workspace.HostRows.Select(row => row.Address));
         Assert.EndsWith(" · candidate other ends: demo client: browser.exe · PID 4100 and sync.exe · PID 4200",
             Row(workspace, "10.0.0.10").Detail, Ordinal);
-        Assert.Contains(" Its investigation proposes candidate other ends for its host, named with each below: ",
-            workspace.SelectionSubtitle, Ordinal);
+        Assert.Equal("The candidate other ends named for its host are processes of its investigation's other sessions whose "
+            + "connections mirror these, never an established join.", workspace.HostsNote);
     });
 
     public void Dispose()

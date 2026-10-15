@@ -102,7 +102,7 @@ public sealed class InvestigationWindowTests
         using var root = new TemporaryDirectory();
         DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(root.Path, "demo"));
         const string Candidates = " · candidate other ends: demo server: api.exe · PID 5100 and files.exe · PID 5300";
-        var main = new MainWindow { Width = 1456, Height = 939 };
+        var main = new MainWindow { Width = 1440, Height = 900 };
         main.Show();
         try
         {
@@ -128,6 +128,20 @@ public sealed class InvestigationWindowTests
             Assert.True(server.TextLayout.Width <= server.Bounds.Width + 0.5,
                 $"The host's {server.TextLayout.Width} px run past its {server.Bounds.Width} px.");
 
+            // At the window's first size both hosts are listed above the inspector's fold, the candidates beside the first,
+            // and what they are said beneath them.
+            ScrollViewer inspector = main.GetControl<Border>("Inspector").GetVisualDescendants().OfType<ScrollViewer>().First();
+            foreach (HostRow row in hosts.Items.Cast<HostRow>())
+            {
+                Control container = hosts.ContainerFromItem(row)!;
+                double bottom = container.TranslatePoint(new Point(0, container.Bounds.Height), inspector)!.Value.Y;
+                Assert.True(bottom <= inspector.Bounds.Height,
+                    $"{row.Address} ends {bottom} px down, below the inspector's {inspector.Bounds.Height} px.");
+            }
+
+            Assert.StartsWith("The candidate other ends named for 1 of its 2 hosts are ", main.GetControl<TextBlock>("HostsNoteText").Text,
+                StringComparison.Ordinal);
+
             // Counted under another evidence policy, they are read again under it, and named again.
             Assert.True(await main.ChooseEvidencePolicyAsync(EvidencePolicy.IncludeCandidates));
             shown = (WorkspaceViewModel)main.DataContext!;
@@ -143,6 +157,44 @@ public sealed class InvestigationWindowTests
             await shown.CandidateHostsReady;
             shown.SelectGraphNode(shown.GraphDisplay.OtherHosts!.Key);
             Assert.DoesNotContain("candidate", HostDetail(hosts, "10.0.0.20").Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R22: each session opened says its own notice once, though it was published in the same generation as the one shown before it")]
+    public async Task EachSessionOpenedSaysItsOwnNoticeOnce()
+    {
+        using var root = new TemporaryDirectory();
+        DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(root.Path, "demo"));
+        const string Kept = "Its pins and view settings are kept in the investigation demo.icat-workspace.";
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(demo.WorkspacePath);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            TextBlock detail = main.GetControl<TextBlock>("CaptureDetail");
+
+            // The demo's two sessions were both published in their second generation, so each opens in the same words, and
+            // each says once that its investigation keeps its pins.
+            foreach (string session in new[] { demo.ClientSession, demo.ServerSession })
+            {
+                list.SelectedIndex = window.View!.Members.ToList().FindIndex(member =>
+                    Path.GetFileName(member.FullPath) == Path.GetFileName(session));
+                Named<Button>(window, "Open in InterCat").RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+                WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == session);
+                Assert.Equal("Published generation 2. " + Kept, detail.Text);
+            }
+
+            window.Close();
+
+            // Opened on its own, a session in the same words says nothing of the investigation it was last opened from.
+            Assert.True(await main.OpenSessionAsync(demo.ClientSession));
+            Assert.Equal("Published generation 2.", detail.Text);
         }
         finally
         {
