@@ -171,6 +171,7 @@ public sealed class IncrementalDerivationTests
         TransportRelationIndex expected, TransportRelationIndex actual, IReadOnlyList<SegmentReaderV1> segments)
     {
         Assert.Equal(expected.Relations, actual.Relations);
+        Assert.Equal(expected.OneSided, actual.OneSided);
         Assert.Equal(expected.Channels, actual.Channels);
         foreach (SegmentReaderV1 segment in segments)
         {
@@ -180,6 +181,8 @@ public sealed class IncrementalDerivationTests
             Assert.Equal(expectedChannels, actualChannels);
         }
 
+        // What became of each mechanism's records, and each process's reach of other hosts address by address: what a
+        // graph that draws no relationship says, and what it draws to Other hosts.
         foreach (Mechanism mechanism in new[] { Mechanism.Tcp, Mechanism.Udp })
         {
             foreach (EvidencePolicy policy in Enum.GetValues<EvidencePolicy>())
@@ -187,8 +190,17 @@ public sealed class IncrementalDerivationTests
                 Assert.Equal(
                     expected.RecordsWithoutAdmittedPeer(mechanism, policy),
                     actual.RecordsWithoutAdmittedPeer(mechanism, policy));
+                Assert.Equal(expected.Census(mechanism, policy), actual.Census(mechanism, policy));
             }
+
+            Assert.Equal(Reach(expected, mechanism), Reach(actual, mechanism));
         }
+
+        static IEnumerable<(int Holder, string Addresses, RelationStrength Strength)> Reach(
+            TransportRelationIndex relations, Mechanism mechanism) =>
+            relations.ReachOfOtherHosts(mechanism).Select(entry => (entry.Holder,
+                string.Join(" ", entry.Addresses.Select(address => $"{address.Address}={address.Connections}/{address.Records}")),
+                entry.Strength));
     }
 
     internal static (SegmentReaderV1[] Observations, SegmentReaderV1[] Fields) SegmentsOf(SessionStore store)
