@@ -10,17 +10,18 @@ namespace InterCat.Cli;
 /// <summary>
 /// The other hosts a session's processes reached, as the window's Other hosts node and its search state them (§6.3, §6.7,
 /// R18): every address their connections ran to with no process of the capture at the other end, the busiest first by
-/// the records those connections hold, or the processes that reached an address. An address is where the connections
-/// ran; who is at it is not observed (P7).
+/// the records those connections hold, or by the bytes they sent or received there, or the processes that reached an
+/// address. An address is where the connections ran; who is at it is not observed (P7).
 /// </summary>
 internal static class HostsCommand
 {
     /// <summary>
     /// The document --json writes: every host's count and the listed hosts, or the processes that reached an address, each
-    /// address with the ports at it the connections ran to since its second version, and each listed host with its
-    /// address's scope since its third.
+    /// address with the ports at it the connections ran to since its second version, each listed host with its address's
+    /// scope since its third, and since its fourth the ranking the hosts are listed by and, under a byte ranking, what each
+    /// host's connections' transfers measured.
     /// </summary>
-    internal const string Contract = "other-hosts-v3";
+    internal const string Contract = "other-hosts-v4";
 
     private const int DefaultLimit = 50;
 
@@ -37,6 +38,7 @@ internal static class HostsCommand
 
         string? address = command.TakeOption("--address");
         string? limitText = command.TakeOption("--limit");
+        string? rankText = command.TakeOption("--rank-by");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -45,6 +47,23 @@ internal static class HostsCommand
             ConsoleUi.Failure(directory is null
                 ? "A session directory is required: icat hosts <directory>."
                 : command.Refusal(unknown!));
+            ConsoleUi.Explain(PrintHelp);
+            return InterCatExitCode.InvalidInvocation;
+        }
+
+        RankingMetric? rankBy = rankText switch
+        {
+            null or "records" => RankingMetric.Records,
+            "bytes-sent" => RankingMetric.BytesSent,
+            "bytes-received" => RankingMetric.BytesReceived,
+            "bytes-sent-and-received" => RankingMetric.EndpointBytes,
+            _ => null,
+        };
+        if (rankBy is null || (address is not null && rankText is not null))
+        {
+            ConsoleUi.Failure(rankBy is null
+                ? $"--rank-by ranks the hosts by records, bytes-sent, bytes-received or bytes-sent-and-received; '{rankText}' is none of them."
+                : "--rank-by ranks the hosts; --address lists the processes that reached one, the busiest by records first.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -73,10 +92,17 @@ internal static class HostsCommand
         }
 
         SessionOverviewBundle overview;
+        IReadOnlyList<HostTraffic>? traffic = null;
         try
         {
-            overview = SessionOverviewProjector.Project(
-                SessionStore.OpenExisting(LocalOwnedDirectory.Open(path)), cancellationToken: cancellationToken);
+            SessionStore store = SessionStore.OpenExisting(LocalOwnedDirectory.Open(path));
+            overview = SessionOverviewProjector.Project(store, cancellationToken: cancellationToken);
+
+            // Records the census holds, reading no segment; bytes take a pass over the segments the connections meet.
+            if (address is null && rankBy != RankingMetric.Records)
+            {
+                traffic = SessionHostTraffic.Of(store, overview.HostLinks, rankBy.Value, cancellationToken: cancellationToken);
+            }
         }
         catch (InvalidOperationException exception) when (exception is not NoSessionException)
         {
@@ -84,13 +110,19 @@ internal static class HostsCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
-        return address is null ? ListHosts(overview, path, limit, json) : ListReached(overview, path, address, limit, json);
+        return address is null
+            ? ListHosts(overview, traffic, rankBy.Value, path, limit, json)
+            : ListReached(overview, path, address, limit, json);
     }
 
-    /// <summary>Every other host, the busiest first, as many as the limit allows.</summary>
-    private static InterCatExitCode ListHosts(SessionOverviewBundle overview, string path, int limit, bool json)
+    /// <summary>
+    /// Every other host, the busiest first by records, or by the bytes <paramref name="traffic"/> read for a byte ranking,
+    /// as many as the limit allows.
+    /// </summary>
+    private static InterCatExitCode ListHosts(SessionOverviewBundle overview, IReadOnlyList<HostTraffic>? traffic,
+        RankingMetric rankBy, string path, int limit, bool json)
     {
-        IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
+        IReadOnlyList<OtherHost> hosts = traffic is null ? OtherHost.Of(overview.HostLinks) : [.. traffic.Select(host => host.Host)];
         int processes = overview.HostLinks.Select(link => link.Process).Distinct().Count();
         if (json)
         {
@@ -98,9 +130,10 @@ internal static class HostsCommand
             {
                 Contract = Contract,
                 SessionPath = path,
+                RankedBy = RankName(rankBy),
                 Hosts = hosts.Count,
                 Processes = processes,
-                Listed = hosts.Take(limit).Select(host => new
+                Listed = hosts.Take(limit).Select((host, index) => new
                 {
                     host.Address,
                     Scope = AddressScope.Of(host.Address),
@@ -109,6 +142,15 @@ internal static class HostsCommand
                     host.Processes,
                     host.Records,
                     host.Ports,
+                    Transfers = traffic is null ? null : new
+                    {
+                        traffic[index].Sends,
+                        traffic[index].SentBytes,
+                        traffic[index].UnmeasuredSends,
+                        traffic[index].Receives,
+                        traffic[index].ReceivedBytes,
+                        traffic[index].UnmeasuredReceives,
+                    },
                 }),
             }, JsonContracts.Indented));
             return InterCatExitCode.Success;
@@ -124,11 +166,28 @@ internal static class HostsCommand
         }
 
         ConsoleUi.Field("Hosts", CountText.Of(hosts.Count, "host") + ", reached by " + CountText.Of(processes, "process", "processes"));
-        ConsoleUi.Table(
-            ["Host", "Scope", "Connections", "Ports", "Records"],
-            [.. hosts.Take(limit).Select(host => (IReadOnlyList<string>)
-                [host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports),
-                    ConsoleUi.Count(host.Records)])]);
+        ConsoleUi.Field("Ranked by", traffic is null
+            ? "the records their connections hold"
+            : RankingMetrics.Phrase(rankBy) + ", as this machine's end of their connections measured them; hosts whose "
+                + "transfers stated no size follow, then those that made none");
+        if (traffic is null)
+        {
+            ConsoleUi.Table(
+                ["Host", "Scope", "Connections", "Ports", "Records"],
+                [.. hosts.Take(limit).Select(host => (IReadOnlyList<string>)
+                    [host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports),
+                        ConsoleUi.Count(host.Records)])]);
+        }
+        else
+        {
+            ConsoleUi.Table(
+                ["Host", "Scope", "Connections", "Ports", "Records", "Sent", "Received"],
+                [.. traffic.Take(limit).Select(host => (IReadOnlyList<string>)
+                    [host.Host.Address, AddressScope.Of(host.Host.Address) ?? "-", HostLinkText.Reached(host.Host),
+                        HostLinkText.PortNumbers(host.Host.Ports), ConsoleUi.Count(host.Host.Records),
+                        Bytes(host.SentBytes, host.Sends, host.UnmeasuredSends, "no sends"),
+                        Bytes(host.ReceivedBytes, host.Receives, host.UnmeasuredReceives, "no receives")])]);
+        }
         if (hosts.Count > limit)
         {
             ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
@@ -205,15 +264,35 @@ internal static class HostsCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>A ranking as --rank-by names it.</summary>
+    private static string RankName(RankingMetric metric) => metric switch
+    {
+        RankingMetric.BytesSent => "bytes-sent",
+        RankingMetric.BytesReceived => "bytes-received",
+        RankingMetric.EndpointBytes => "bytes-sent-and-received",
+        _ => "records",
+    };
+
+    /// <summary>
+    /// One direction's bytes as the window's rows say them (R21): what its measured transfers carried, "unmeasured" when
+    /// none of them stated a size, or <paramref name="none"/> when it made none.
+    /// </summary>
+    private static string Bytes(long bytes, long transfers, long unmeasured, string none) =>
+        transfers > unmeasured ? ConsoleUi.Bytes(bytes) : transfers > 0 ? "unmeasured" : none;
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat hosts <session-directory> [--address <address>] [--limit <n>] [--json]");
+        ConsoleUi.Line("icat hosts <session-directory> [--address <address>] [--limit <n>]");
+        ConsoleUi.Line("           [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received] [--json]");
         ConsoleUi.Line("  The other hosts the session's processes reached: each address their connections ran to with no");
         ConsoleUi.Line("  process of the capture at the other end, the busiest first by the records those connections hold,");
         ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to. --address lists");
         ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
         ConsoleUi.Line("  2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
         ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many,");
-        ConsoleUi.Line($"  {DefaultLimit} by default. Who is at an address, and what a port serves there, are not observed.");
+        ConsoleUi.Line($"  {DefaultLimit} by default. --rank-by lists the hosts by the bytes their connections sent there,");
+        ConsoleUi.Line("  received from there or both, as this machine's end of them measured, with both directions' bytes;");
+        ConsoleUi.Line("  a host whose transfers recorded no size comes after those that did, never as a zero. Who is at an");
+        ConsoleUi.Line("  address, and what a port serves there, are not observed.");
     }
 }

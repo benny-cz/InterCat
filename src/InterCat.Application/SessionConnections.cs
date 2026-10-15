@@ -193,6 +193,19 @@ public static class SessionConnections
     }
 
     /// <summary>
+    /// The one-sided connections <paramref name="selected"/> takes, with the records each holds and the transport bytes they
+    /// measured, within <paramref name="interval"/> when one is given, where a connection with no record in it is not
+    /// listed: one pass over the segments their lifetimes meet, for a read that groups them otherwise.
+    /// </summary>
+    internal static IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> Held(
+        SessionStore store,
+        Func<TransportConnection, bool> selected,
+        TimeRange? interval,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken) =>
+        Read(store, selected, interval, policy, ledger: false, cancellationToken).Held;
+
+    /// <summary>
     /// Every one-sided connection of the session, whoever held it, with its holder and its lifetime in session time - what
     /// an investigation compares with another capture's connections (`contracts/workspace-v21.md` §6).
     /// </summary>

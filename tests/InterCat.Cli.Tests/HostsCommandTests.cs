@@ -48,13 +48,14 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v3", 4, 2), (root.GetProperty("contract").GetString(), root.GetProperty("hosts").GetInt32(),
-            root.GetProperty("processes").GetInt32()));
+        Assert.Equal(("other-hosts-v4", "records", 4, 2), (root.GetProperty("contract").GetString(),
+            root.GetProperty("rankedBy").GetString(), root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
             busiest.GetProperty("udpFlows").GetInt32(), busiest.GetProperty("processes").GetInt32(), busiest.GetProperty("records").GetInt64()));
         Assert.Equal([443, 8443], busiest.GetProperty("ports").EnumerateArray().Select(port => port.GetInt32()));
         Assert.Equal(JsonValueKind.Null, busiest.GetProperty("scope").ValueKind);
+        Assert.Equal(JsonValueKind.Null, busiest.GetProperty("transfers").ValueKind);
 
         // A limit that is no count of hosts is refused.
         (code, _, said) = await Run("hosts", session.Path, "--limit", "0");
@@ -150,7 +151,8 @@ public sealed class HostsCommandTests
         // Asked for help, it says what it takes, ports and the rule an address is named by among them.
         (InterCatExitCode code, string text, string said) = await Run("hosts", "--help");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--limit <n>] [--json]", text, Ordinal);
+        Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--limit <n>]", text, Ordinal);
+        Assert.Contains("[--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
         Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
 
@@ -188,6 +190,53 @@ public sealed class HostsCommandTests
         Assert.Matches(@"(?m)^ *updater\.exe · PID 310 +142\.250\.1\.1 +1 TCP connection +8443 +3\r?$", text);
         Assert.Contains("2 more, quieter; --limit 3 lists every one.", text, Ordinal);
         Assert.DoesNotContain("browser.exe", text, Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat hosts --rank-by lists the hosts by the bytes their connections sent or received there, with both directions', and refuses a ranking hosts hold nothing of")]
+    public async Task IcatHostsRanksByBytes()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        session.Store.ReleaseSegmentReaders();
+
+        // By bytes sent: 142.250.1.1's five 100 B sends first, then the two hosts sent 100 B, by address, then the resolver's
+        // 40 B; none received anything.
+        (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path, "--rank-by", "bytes-sent");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Ranked by +bytes sent, as this machine's end of their connections measured them; hosts whose transfers "
+            + @"stated no size follow, then those that made none\r?$", text);
+        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Sent +Received\r?$", text);
+        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +-  .*? +(\d+) +([\d,]+ B) +(no receives)\r?$").Select(match =>
+            $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value}")];
+        Assert.Equal(
+            [
+                "142.250.1.1 | 5 | 500 B | no receives",
+                "142.250.1.10 | 1 | 100 B | no receives",
+                "2001:db8::1 | 1 | 100 B | no receives",
+                "8.8.8.8 | 1 | 40 B | no receives",
+            ],
+            rows);
+
+        // As JSON, the ranking and each host's transfers.
+        (code, text, _) = await Run("hosts", session.Path, "--rank-by", "bytes-sent-and-received", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement root = JsonDocument.Parse(text).RootElement;
+        Assert.Equal(("other-hosts-v4", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
+            root.GetProperty("rankedBy").GetString()));
+        JsonElement transfers = root.GetProperty("listed")[0].GetProperty("transfers");
+        Assert.Equal((5L, 500L, 0L, 0L), (transfers.GetProperty("sends").GetInt64(), transfers.GetProperty("sentBytes").GetInt64(),
+            transfers.GetProperty("unmeasuredSends").GetInt64(), transfers.GetProperty("receives").GetInt64()));
+        Assert.Equal("bytes-received", JsonDocument.Parse((await Run("hosts", session.Path, "--rank-by", "bytes-received", "--json")).Output)
+            .RootElement.GetProperty("rankedBy").GetString());
+
+        // A ranking hosts hold nothing of, and one beside --address, which lists processes, are refused.
+        (code, _, said) = await Run("hosts", session.Path, "--rank-by", "rpc-calls-made");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--rank-by ranks the hosts by records, bytes-sent, bytes-received or bytes-sent-and-received; "
+            + "'rpc-calls-made' is none of them.", said, Ordinal);
+        (code, _, said) = await Run("hosts", session.Path, "--rank-by", "bytes-sent", "--address", "142.250");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--rank-by ranks the hosts; --address lists the processes that reached one", said, Ordinal);
     }
 
     [Fact(DisplayName = "R18: icat evidence and icat timeline take --host: the records of every connection to an address, whichever process held it")]

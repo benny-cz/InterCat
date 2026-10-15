@@ -86,6 +86,7 @@ icat overview <session>
 icat channels <session>
 icat evidence <session> --channel <key from icat channels>
 icat timeline <session> --interval 0:10s
+icat hosts <session> --rank-by bytes-sent
 icat hosts <session> --address 10.0.0
 icat evidence <session> --host 10.0.0.20
 icat processes <session>
