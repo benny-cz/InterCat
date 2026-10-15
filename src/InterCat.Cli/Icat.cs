@@ -47,6 +47,7 @@ internal static class Icat
                 "session" => await SessionCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "hosts" => await HostsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -191,6 +192,10 @@ internal static class Icat
         ConsoleUi.Line("  icat overview <directory> [--json]");
         ConsoleUi.Line("      The Desktop's exact leased process graph, paired TCP and UDP channels and timeline bundle.");
         ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat hosts <directory> [--address <address>] [--limit <n>] [--json]");
+        ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, or with --address the");
+        ConsoleUi.Line("      processes that reached one: the address whole, or begun up to a dot or colon.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

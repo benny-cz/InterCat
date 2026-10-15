@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 555 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 556 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 556 — icat hosts (R18, §6.3):**
+  - Nothing headless listed every other host a session reached, or which processes reached one.
+  - icat hosts lists them, the busiest first, as many as --limit asks; --address lists the processes that reached
+    an address by the window's search rule; --json returns other-hosts-v1.
+  - Debug and Release each ran 2,377 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 7 mutations was caught: the busiest host left out of the list, the count of the rest unsaid, processes
+    counted by their links, a whole address not naming itself, a query naming no address accepted, the processes
+    that reached an address listed quietest first, and a limit of none accepted. The README's commands were each run
+    against the demo.
 
 - **Revision 555 — open Other hosts from the window (§6.3):**
   - Enter or a double click on Other hosts draws its busiest hosts on their own, and on it or a host folds them

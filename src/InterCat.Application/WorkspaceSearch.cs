@@ -153,6 +153,19 @@ public static class WorkspaceSearch
         : Rank(text, process.Name, null);
 
     /// <summary>
+    /// Whether <paramref name="query"/> names <paramref name="address"/> by the rule a process is found by an address it
+    /// reached (<see cref="Find"/>): the address whole, or begun up to a dot or colon, ignoring case, and an IPv4-mapped
+    /// address by its IPv4 address too; never a query with neither dot nor colon, which names no address.
+    /// </summary>
+    public static bool NamesAddress(string address, string? query)
+    {
+        ArgumentNullException.ThrowIfNull(address);
+        string text = query?.Trim() ?? string.Empty;
+        return (text.Contains('.', StringComparison.Ordinal) || text.Contains(':', StringComparison.Ordinal))
+            && AddressRank(address, text) >= 0;
+    }
+
+    /// <summary>
     /// Whether <paramref name="query"/> names an address <paramref name="links"/>, connections to other hosts, ran to, by
     /// the rule a process is found by one (<see cref="Find"/>): the Other hosts node that stands for them is found too.
     /// </summary>
