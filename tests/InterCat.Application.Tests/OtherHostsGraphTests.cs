@@ -171,6 +171,90 @@ public sealed class OtherHostsGraphTests
         Assert.DoesNotContain(quiet.Edges, edge => edge.ToHosts);
     }
 
+    [Fact(DisplayName = "§6.3: past the budget's count, the less busy of the processes that only reach other hosts are counted in one Other hosts only node, edged to Other hosts once per transport")]
+    public void TheLessBusyProcessesThatOnlyReachOtherHostsFoldTogether()
+    {
+        // Fourteen processes reach other hosts and relate to nothing, the busier the later by TCP, two of the quieter by UDP
+        // too - enough, added, to make the second of them one of the busiest; a client and a server relate to each other
+        // and reach other hosts as well.
+        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
+        ProcessNode[] reaching = [.. Enumerable.Range(1, 14).Select(index => Node(index, group.Key))];
+        ProcessNode client = Node(20, group.Key);
+        ProcessNode server = Node(21, group.Key);
+        CommunicationEdge pair = Edge("pair", client, server, 6);
+        HostLink[] links =
+        [
+            .. reaching.Select((process, index) => Link(process, Mechanism.Tcp, 1, 1, 10 + index)),
+            Link(reaching[0], Mechanism.Udp, 1, 1, 3, RelationStrength.Correlated),
+            Link(reaching[1], Mechanism.Udp, 2, 1, 9),
+            Link(client, Mechanism.Tcp, 1, 1, 1),
+        ];
+        WorkspaceSnapshot snapshot = Snapshot([group], [.. reaching, client, server], [pair], links);
+        GraphDisplay display = GraphProjection.Project(snapshot);
+
+        // The eight busiest by all their connections' records stay drawn; the six less busy are one node, and the related
+        // pair, however few its records to other hosts, stays drawn as itself.
+        GraphDisplayNode folded = Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly);
+        Assert.Equal(("Other hosts only", 0, 0L), (folded.Label, folded.Relationships, folded.Observations));
+        ProcessNode[] lessBusy = [reaching[0], .. reaching[2..7]];
+        Assert.Equal(Sorted([.. lessBusy.Select(process => process.Id)]), Sorted(folded.Members));
+        Assert.All(reaching.Except(lessBusy), process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+        Assert.All(new[] { client, server }, process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+        Assert.Equal(12, display.Nodes.Count);
+        Assert.Equal(15, display.OtherHosts!.ConnectedProcesses);
+
+        // Its edges to the other hosts are a transport each, side by side, naming every folded process's connections, as
+        // weak as the weakest of them.
+        Assert.Equal(
+            [(Mechanism.Tcp, 80L, RelationStrength.Direct, 6, -0.5), (Mechanism.Udp, 3L, RelationStrength.Correlated, 1, 0.5)],
+            display.Edges.Where(edge => edge.SourceKey == folded.Key).OrderBy(edge => edge.Mechanism)
+                .Select(edge => (edge.Mechanism, edge.ObservationCount, edge.Strength, edge.Relationships.Count, edge.Lane)));
+        Assert.All(display.Edges.Where(edge => edge.SourceKey == folded.Key), edge => Assert.True(edge.ToHosts));
+
+        // A brush re-counts the drawing and keeps who is folded.
+        GraphDisplay brushed = GraphProjection.Rescope(display, snapshot, snapshot with
+        {
+            Edges = [.. snapshot.Edges.Select(edge => edge with { ObservationCount = 1 })],
+        });
+        Assert.Equal(folded.Members, brushed.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members);
+
+        // A budget drawing thirteen of them folds none - the one less busy process left would be a one-member aggregate -
+        // and a budget drawing none folds every one.
+        GraphDisplay nine = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 13 });
+        Assert.DoesNotContain(nine.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly);
+        GraphDisplay none = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 0 });
+        Assert.Equal(14, none.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members.Count);
+        Assert.Equal(nameof(GraphDisplayBudget.HostOnlyDrawn), Assert.Throws<ArgumentOutOfRangeException>(
+            () => GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = -1 })).ParamName);
+
+        // The process kept in focus stays drawn, and an opened group's members are its focus: none of them is folded.
+        GraphDisplay kept = GraphProjection.Project(snapshot, kept: reaching[0].Id);
+        Assert.Equal(GraphNodeKind.Process, kept.NodeOf(reaching[0].Id)!.Kind);
+        Assert.Equal(5, kept.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members.Count);
+        Assert.DoesNotContain(reaching[0].Id, kept.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members);
+        GraphDisplay opened = GraphProjection.Project(snapshot, expandedGroup: group.Key);
+        Assert.DoesNotContain(opened.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly);
+    }
+
+    [Fact(DisplayName = "§6.3: a collapsed group keeps its members that only reach other hosts, and only the processes drawn on their own are folded")]
+    public void ACollapsedGroupKeepsItsMembers()
+    {
+        // Thirty workers of one executable collapse into their group; ten other processes reach other hosts on their own.
+        ProcessGroup pool = new("pool", "worker.exe", LaneGrouping.Executable);
+        ProcessGroup others = new("others", "other.exe", LaneGrouping.Executable);
+        ProcessNode[] workers = [.. Enumerable.Range(1, 30).Select(index => Node(index, pool.Key))];
+        ProcessNode[] reaching = [.. Enumerable.Range(40, 10).Select(index => Node(index, others.Key))];
+        HostLink[] links =
+        [
+            .. workers.Select(worker => Link(worker, Mechanism.Tcp, 1, 1, 100)),
+            .. reaching.Select((process, index) => Link(process, Mechanism.Tcp, 1, 1, 1 + index)),
+        ];
+        GraphDisplay display = GraphProjection.Project(Snapshot([pool, others], [.. workers, .. reaching], [], links));
+        Assert.Equal(30, Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.Group).Members.Count);
+        Assert.Equal(Sorted([reaching[0].Id, reaching[1].Id]),
+            Sorted(Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly).Members));
+    }
+
     [Fact(DisplayName = "§6.3: connections to other hosts carry no traffic value: a brush does not re-count them, a byte ranking does not size them, and they set no scale")]
     public void ConnectionsToOtherHostsCarryNoTrafficValue()
     {

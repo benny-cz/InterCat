@@ -671,13 +671,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             {
                 // A stack: two offset rims behind the face say "several" without relying on colour (R14). The face's
                 // stroke says which kind of several: a collapsed group, an opened group's other members, the cross-group
-                // remainder, or processes with no relationship at all.
+                // remainder, or processes with no relationship at all; processes that only reach other hosts carry the
+                // Other hosts node's globe on a muted face.
                 context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 5, point.Y - 5), radius, radius);
                 context.DrawEllipse(NodeBrush, StackPen, new Point(point.X + 2.5, point.Y - 2.5), radius, radius);
-                if (node.Key == focused || node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers)
+                if (node.Key == focused || node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers or GraphNodeKind.OtherHostsOnly)
                 {
                     context.DrawEllipse(face, node.Key == focused ? FocusPen
                         : node.Kind == GraphNodeKind.Group ? NodePen : MutedPen, point, radius, radius);
+                    if (node.Kind == GraphNodeKind.OtherHostsOnly)
+                    {
+                        DrawGlobe(context, point, radius * 0.6);
+                    }
                 }
                 else
                 {
@@ -722,7 +727,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         Rect face = new(point.X - radius, point.Y - radius, 2 * radius, 2 * radius);
         context.DrawRectangle(NodeBrush, focused ? FocusPen : NodePen, face, radius / 4, radius / 4);
-        double globe = radius * 0.55;
+        DrawGlobe(context, point, radius * 0.55);
+    }
+
+    /// <summary>A globe's lines - its rim, a meridian and the equator - in the stack's ink: what reaches other hosts.</summary>
+    private static void DrawGlobe(DrawingContext context, Point point, double globe)
+    {
         context.DrawEllipse(null, StackPen, point, globe, globe);
         context.DrawEllipse(null, StackPen, point, globe * 0.45, globe);
         context.DrawLine(StackPen, new Point(point.X - globe, point.Y), new Point(point.X + globe, point.Y));

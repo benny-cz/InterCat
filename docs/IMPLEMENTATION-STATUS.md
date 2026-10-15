@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 545 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 546 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -52,7 +52,8 @@ shared-section topology remain explicitly unavailable and move to M7 and M9. M4 
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Since revision 545 it relates processes by paired UDP flows beside TCP
-connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, and groups
+connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
+revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
 collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint; endpoint strings can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
@@ -94,6 +95,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 546 — fold the long tail of processes that only reach other hosts (§6.3):**
+  - A capture shaped as a busy machine - sixty processes reaching other hosts, three pairs related over loopback -
+    drew a star of sixty spokes that hid the relationships between processes.
+  - Outside the explicit focus, past the eight busiest by their connections' records, the processes that relate to
+    nothing and only reach other hosts fold into one Other hosts only node with the hub's globe, edged to Other hosts
+    per transport; collapsed groups, an opened group and a kept process keep theirs, and no aggregate holds one.
+  - Its cards and description say what it folds; chosen, it counts and lists its processes' records as any aggregate
+    does. The same capture draws fifteen nodes beside Other hosts.
+  - Debug and Release each ran 2,356 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 13 mutations: no fold however many; the busiest folded rather than the least; a process
+    ranked by one connection's records rather than all of them; a related process, the kept process, a collapsed
+    group's member or an opened group's member folded; the node drawn as Other processes; a budget below zero
+    refused only by its slice; and the summary, the node's card, its description and its edges' card not saying what
+    it folds.
 
 - **Revision 545 — draw paired UDP flows between processes in the graph (§6.3):**
   - Two processes exchanging only datagrams showed no relationship: the overview drew TCP alone, though the relation

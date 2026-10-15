@@ -34,15 +34,26 @@ public enum GraphNodeKind
     /// with no traffic value; who is at their other ends is not observed (P7). It is drawn only when one of them is.
     /// </summary>
     OtherHosts = 7,
+
+    /// <summary>
+    /// Processes whose only drawn activity is their connections to other hosts - an end of no relationship - outside the
+    /// explicit focus, past the budget's count of them: the less busy of them, counted in one node edged to Other hosts once
+    /// per transport, so a busy machine's dozens do not bury the relationships between processes in a star (§6.3).
+    /// </summary>
+    OtherHostsOnly = 8,
 }
 
 /// <summary>
 /// Workspace-owned graph compaction settings (§6.3). The defaults are deliberately below the layout engine's hard
 /// safety caps: projection keeps a graph legible; layout caps protect the worker from malformed or un-compacted input.
 /// </summary>
-public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThreshold)
+/// <param name="HostOnlyDrawn">
+/// How many processes whose only drawn activity is their connections to other hosts are drawn on their own, the busiest
+/// by their connections' records; past it the rest fold into one Other hosts only node.
+/// </param>
+public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThreshold, int HostOnlyDrawn = 8)
 {
-    public static GraphDisplayBudget Default { get; } = new(200, 500, 25);
+    public static GraphDisplayBudget Default { get; } = new(200, 500, 25, 8);
 
     public void Validate()
     {
@@ -62,6 +73,12 @@ public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThresh
         {
             throw new ArgumentOutOfRangeException(nameof(CollapseThreshold),
                 "The graph cluster threshold must be at least one member.");
+        }
+
+        if (HostOnlyDrawn < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(HostOnlyDrawn),
+                "The count of processes drawn only for their connections to other hosts cannot be below zero.");
         }
     }
 }
@@ -385,6 +402,7 @@ public sealed class GraphDisplay
 public static class GraphProjection
 {
     private const string QuietKey = "cluster:quiet";
+    private const string HostOnlyKey = "cluster:other-hosts-only";
     private const string RemainderKey = "cluster:remainder";
     private const string ContextKey = "cluster:context";
 
@@ -479,6 +497,7 @@ public static class GraphProjection
         var descriptors = new Dictionary<string, Descriptor>(processes.Count + 3, StringComparer.Ordinal)
         {
             [QuietKey] = new(GraphNodeKind.Quiet, "No relationships", null, null, null),
+            [HostOnlyKey] = new(GraphNodeKind.OtherHostsOnly, "Other hosts only", null, null, null),
             [RemainderKey] = new(GraphNodeKind.Remainder, "Other processes", null, null, null),
             [ContextKey] = new(GraphNodeKind.Context, "Rest of the machine", null, null, null),
         };
@@ -563,6 +582,27 @@ public static class GraphProjection
             nodeCount -= FoldTogether(GroupNodeKey(groupKey), drawn, assignment);
         }
 
+        // A process whose only drawn activity is its connections to other hosts is drawn beside the hub while few are. A
+        // busy machine has dozens, a star that buries the relationships between processes: past the budget's count, outside
+        // the explicit focus, the busiest by their connections' records stay drawn and the rest are counted in one Other
+        // hosts only node, edged to Other hosts once per transport. A collapsed group keeps its members.
+        HashSet<ProcessInstanceId> ends = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
+        Dictionary<ProcessInstanceId, long> reach = [];
+        foreach (HostLink link in snapshot.HostLinks)
+        {
+            reach[link.Process] = Add(reach.GetValueOrDefault(link.Process), link.Records);
+        }
+
+        ProcessInstanceId[] hostOnly = [.. reach.Keys
+            .Where(id => !ends.Contains(id) && kept != id && IsIndividual(id, assignment)
+                && !string.Equals(processes[id].GroupKey, expandedGroup, StringComparison.Ordinal))
+            .OrderByDescending(id => reach[id])
+            .ThenBy(id => id.ToString(), StringComparer.Ordinal)];
+        if (hostOnly.Length > budget.HostOnlyDrawn)
+        {
+            nodeCount -= FoldTogether(HostOnlyKey, hostOnly[budget.HostOnlyDrawn..], assignment);
+        }
+
         // Then collapse further groups, lowest whole-session incident metric first, until the budget fits. The order never
         // uses a brushed interval, so a gesture cannot re-cluster the graph under the hand. The node budget is met by an
         // exact count; the edge budget is found by bisection over the same order.
@@ -614,7 +654,7 @@ public static class GraphProjection
         // meaning, and nodes of the opened group go last; no process is lost.
         Fold[] remainder = [.. display.Nodes
             .Where(node => node.Kind is not (GraphNodeKind.Quiet or GraphNodeKind.Remainder or GraphNodeKind.Context
-                or GraphNodeKind.OtherHosts))
+                or GraphNodeKind.OtherHosts or GraphNodeKind.OtherHostsOnly))
             .Where(node => kept is not { } focus || !node.Members.Contains(focus))
             .OrderBy(node => expandedGroup is not null
                 && string.Equals(node.GroupKey, expandedGroup, StringComparison.Ordinal) ? 1 : 0)

@@ -1832,7 +1832,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
                         : string.Empty));
             return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
-                    or GraphNodeKind.Remainder)
+                    or GraphNodeKind.Remainder or GraphNodeKind.OtherHostsOnly)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.OtherHosts), "node", "nodes")
                 : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote;
         }
@@ -3845,6 +3845,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
                 + DescribeContextRelationships(cluster) + ". Esc returns to the wider graph.",
             GraphNodeKind.OtherHosts => DescribeOtherHosts(cluster),
+            GraphNodeKind.OtherHostsOnly => $"{members} whose only drawn activity is their connections to other hosts, the less "
+                + "busy of those that have no relationship, counted in one node rather than drawn one by one around Other "
+                + "hosts. The ranked table lists each of them, and each one's rung its connections.",
             _ => $"{members} folded together to keep the graph readable · {relationships}. The ranked table lists each of them.",
         };
     }
@@ -3910,6 +3913,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
                 GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
                 GraphNodeKind.Context => Counted(node.Members.Count, "process", "processes") + " outside this focus, counted rather than drawn",
+                GraphNodeKind.OtherHostsOnly => Counted(node.Members.Count, "process", "processes")
+                    + " with no admitted relationship, connected only to other hosts, the less busy folded together",
                 _ => Counted(node.Members.Count, "process", "processes") + " with no admitted relationship" + NoHostConnection,
             };
             HashSet<ProcessInstanceId> members = [.. node.Members];

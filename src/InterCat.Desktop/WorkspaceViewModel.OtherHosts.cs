@@ -101,6 +101,10 @@ public sealed partial class WorkspaceViewModel
         {
             lines.Add("Click chooses its process; double-click opens it");
         }
+        else if (source is { Kind: GraphNodeKind.OtherHostsOnly })
+        {
+            lines.Add("Click chooses its processes; the ranked table lists each, and each one's rung its connections");
+        }
 
         return new($"{source?.Title ?? edge.SourceKey} → {drawn.Node(edge.TargetKey)?.Label ?? edge.TargetKey}", lines);
     }
