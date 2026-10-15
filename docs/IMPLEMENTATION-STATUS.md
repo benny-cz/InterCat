@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 569 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 570 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 570 — an other host's candidate other ends in its investigation (§8.3, P6, R18):**
+  - Nothing said which process of another member's capture a host's connections may have reached.
+  - icat hosts --investigation names, for a member session, each host's candidate other ends; a rejected join
+    names none, an accepted one says so (`other-hosts-v5`).
+  - Debug and Release each ran 2,438 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 15 mutations was caught: a rejected join still naming an end; a member's own connection taken for the
+    other's, as the first member or the second; an accepted join not said so; a host's ends out of order; a host
+    found by its connection's local endpoint; a host's name lost, or its capture's in its place; its ends said
+    without their host, or without a person's acceptance; and icat hosts --investigation not refusing a session that
+    is no member, nor --address beside it, listing no column of ends, a host with none said otherwise, and its JSON
+    giving nothing where a host has no end.
 
 - **Revision 569 — a live pass over the demo's hosts (§6.3, R21):**
   - The empty graph's summary named TCP's connections to other hosts and hid the UDP flow beside them; it says both.

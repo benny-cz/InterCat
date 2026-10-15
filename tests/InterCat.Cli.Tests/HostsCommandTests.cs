@@ -48,7 +48,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v4", "records", 4, 2), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v5", "records", 4, 2), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString(), root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
@@ -152,7 +152,8 @@ public sealed class HostsCommandTests
         (InterCatExitCode code, string text, string said) = await Run("hosts", "--help");
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--limit <n>]", text, Ordinal);
-        Assert.Contains("[--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received] [--json]", text, Ordinal);
+        Assert.Contains("[--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received]", text, Ordinal);
+        Assert.Contains("[--investigation <file>] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
         Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
 
@@ -221,7 +222,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--rank-by", "bytes-sent-and-received", "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v4", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v5", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString()));
         JsonElement transfers = root.GetProperty("listed")[0].GetProperty("transfers");
         Assert.Equal((5L, 500L, 0L, 0L), (transfers.GetProperty("sends").GetInt64(), transfers.GetProperty("sentBytes").GetInt64(),
@@ -237,6 +238,63 @@ public sealed class HostsCommandTests
         (code, _, said) = await Run("hosts", session.Path, "--rank-by", "bytes-sent", "--address", "142.250");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--rank-by ranks the hosts; --address lists the processes that reached one", said, Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat hosts --investigation names each host's candidate other ends in the investigation's other captures, and refuses an investigation it cannot use")]
+    public async Task IcatHostsNamesCandidateOtherEnds()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "InterCat.Cli.Tests.Hosts", Guid.NewGuid().ToString("N"));
+        try
+        {
+            InterCat.Application.DemoInvestigationResult demo = InterCat.Application.DemoInvestigation.Create(Path.Combine(folder, "demo"));
+
+            // The client's connections to the server's address are candidates for two of the server's processes; its
+            // resolver's, which no member captured, for none.
+            (InterCatExitCode code, string text, string said) = await Run("hosts", demo.ClientSession, "--investigation", demo.WorkspacePath);
+            Assert.True(code == InterCatExitCode.Success, said);
+            Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Candidate other ends\r?$", text);
+            Assert.Matches(@"(?m)^  10\.0\.0\.20 +private +.* 78 +demo server: api\.exe · PID 5100 and files\.exe · PID 5300\r?$", text);
+            Assert.Matches(@"(?m)^  10\.0\.0\.53 +private +.* 12 +none\r?$", text);
+            Assert.Contains("never an established join", text, Ordinal);
+
+            // As JSON, each listed host's candidate other ends; read without an investigation, none is said.
+            (code, text, _) = await Run("hosts", demo.ClientSession, "--investigation", demo.WorkspacePath, "--json");
+            Assert.Equal(InterCatExitCode.Success, code);
+            JsonElement listed = JsonDocument.Parse(text).RootElement.GetProperty("listed");
+            JsonElement api = listed[0].GetProperty("candidateOtherEnds")[0];
+            Assert.Equal(("demo server", "api.exe", 5100, 1, false), (api.GetProperty("host").GetString(), api.GetProperty("process").GetString(),
+                api.GetProperty("processId").GetInt32(), api.GetProperty("connections").GetInt32(), api.GetProperty("accepted").GetBoolean()));
+            Assert.Equal(0, listed[1].GetProperty("candidateOtherEnds").GetArrayLength());
+            Assert.Equal(JsonValueKind.Null, JsonDocument.Parse((await Run("hosts", demo.ClientSession, "--json")).Output).RootElement
+                .GetProperty("listed")[0].GetProperty("candidateOtherEnds").ValueKind);
+
+            // An investigation the session is no member of, a file that is none, and beside --address, are refused.
+            using var stranger = new TemporarySession();
+            Publish(stranger.Store, Rows());
+            stranger.Store.ReleaseSegmentReaders();
+            (code, _, said) = await Run("hosts", stranger.Path, "--investigation", demo.WorkspacePath);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("This session is no member of ", said, Ordinal);
+            string notOne = Path.Combine(folder, "not-an-investigation.json");
+            File.WriteAllText(notOne, "{}");
+            (code, _, said) = await Run("hosts", demo.ClientSession, "--investigation", notOne);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("could not be read", said, Ordinal);
+            (code, _, said) = await Run("hosts", demo.ClientSession, "--investigation", demo.WorkspacePath, "--address", "10.0.0");
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains("--investigation names the hosts' candidate other ends; --address lists the processes that reached one.",
+                said, Ordinal);
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
     }
 
     [Fact(DisplayName = "R18: icat evidence and icat timeline take --host: the records of every connection to an address, whichever process held it")]

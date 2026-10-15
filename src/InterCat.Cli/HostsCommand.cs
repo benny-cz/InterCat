@@ -18,10 +18,11 @@ internal static class HostsCommand
     /// <summary>
     /// The document --json writes: every host's count and the listed hosts, or the processes that reached an address, each
     /// address with the ports at it the connections ran to since its second version, each listed host with its address's
-    /// scope since its third, and since its fourth the ranking the hosts are listed by and, under a byte ranking, what each
-    /// host's connections' transfers measured.
+    /// scope since its third, since its fourth the ranking the hosts are listed by and, under a byte ranking, what each
+    /// host's connections' transfers measured, and since its fifth, read with an investigation, each listed host's candidate
+    /// other ends in its other members' captures.
     /// </summary>
-    internal const string Contract = "other-hosts-v4";
+    internal const string Contract = "other-hosts-v5";
 
     private const int DefaultLimit = 50;
 
@@ -39,6 +40,7 @@ internal static class HostsCommand
         string? address = command.TakeOption("--address");
         string? limitText = command.TakeOption("--limit");
         string? rankText = command.TakeOption("--rank-by");
+        string? investigationText = command.TakeOption("--investigation");
         bool json = command.TryTakeFlag("--json");
         string? directory = command.TakePositional();
         bool hasUnknown = command.TryReportUnknown(out string? unknown);
@@ -59,11 +61,13 @@ internal static class HostsCommand
             "bytes-sent-and-received" => RankingMetric.EndpointBytes,
             _ => null,
         };
-        if (rankBy is null || (address is not null && rankText is not null))
+        if (rankBy is null || (address is not null && (rankText is not null || investigationText is not null)))
         {
             ConsoleUi.Failure(rankBy is null
                 ? $"--rank-by ranks the hosts by records, bytes-sent, bytes-received or bytes-sent-and-received; '{rankText}' is none of them."
-                : "--rank-by ranks the hosts; --address lists the processes that reached one, the busiest by records first.");
+                : rankText is not null
+                ? "--rank-by ranks the hosts; --address lists the processes that reached one, the busiest by records first."
+                : "--investigation names the hosts' candidate other ends; --address lists the processes that reached one.");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -110,8 +114,37 @@ internal static class HostsCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        // An investigation the session is a member of proposes candidate other ends for its hosts, from its other members'
+        // captures (§8.3).
+        IReadOnlyDictionary<string, CandidateHost>? candidates = null;
+        if (investigationText is not null)
+        {
+            string investigation = Path.GetFullPath(investigationText);
+            try
+            {
+                InvestigationWorkspaceFile workspace = InvestigationWorkspace.Read(investigation);
+                if (workspace.Members.All(member => member.SessionId != overview.SessionId))
+                {
+                    ConsoleUi.Failure($"This session is no member of {investigation}, so it proposes no other end for its hosts. icat "
+                        + "workspace add puts it in.");
+                    return InterCatExitCode.InvalidInvocation;
+                }
+
+                ConsoleUi.Progress("Reading every member's one-sided connections and comparing their endpoints, mirrored.");
+                candidates = InvestigationHosts.Of(workspace,
+                        WorkspaceCorrelation.Candidates(investigation, overview.Policy, cancellationToken), overview.SessionId)
+                    .ToDictionary(host => host.Address, StringComparer.OrdinalIgnoreCase);
+            }
+            catch (Exception exception) when (exception is InvalidOperationException or InvalidDataException or IOException
+                or UnauthorizedAccessException)
+            {
+                ConsoleUi.Failure($"The investigation {investigation} could not be read: {exception.Message}");
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         return address is null
-            ? ListHosts(overview, traffic, rankBy.Value, path, limit, json)
+            ? ListHosts(overview, traffic, candidates, rankBy.Value, path, limit, json)
             : ListReached(overview, path, address, limit, json);
     }
 
@@ -120,7 +153,7 @@ internal static class HostsCommand
     /// as many as the limit allows.
     /// </summary>
     private static InterCatExitCode ListHosts(SessionOverviewBundle overview, IReadOnlyList<HostTraffic>? traffic,
-        RankingMetric rankBy, string path, int limit, bool json)
+        IReadOnlyDictionary<string, CandidateHost>? candidates, RankingMetric rankBy, string path, int limit, bool json)
     {
         IReadOnlyList<OtherHost> hosts = traffic is null ? OtherHost.Of(overview.HostLinks) : [.. traffic.Select(host => host.Host)];
         int processes = overview.HostLinks.Select(link => link.Process).Distinct().Count();
@@ -151,6 +184,19 @@ internal static class HostsCommand
                         traffic[index].ReceivedBytes,
                         traffic[index].UnmeasuredReceives,
                     },
+                    CandidateOtherEnds = candidates is null ? null
+                        : candidates.TryGetValue(host.Address, out CandidateHost? proposed)
+                            ? proposed.Ends.Select(end => new
+                            {
+                                Session = end.SessionId,
+                                end.HostId,
+                                Host = end.HostAlias,
+                                end.Process,
+                                end.ProcessId,
+                                end.Connections,
+                                end.Accepted,
+                            }).ToArray()
+                            : [],
                 }),
             }, JsonContracts.Indented));
             return InterCatExitCode.Success;
@@ -170,24 +216,22 @@ internal static class HostsCommand
             ? "the records their connections hold"
             : RankingMetrics.Phrase(rankBy) + ", as this machine's end of their connections measured them; hosts whose "
                 + "transfers stated no size follow, then those that made none");
-        if (traffic is null)
-        {
-            ConsoleUi.Table(
-                ["Host", "Scope", "Connections", "Ports", "Records"],
-                [.. hosts.Take(limit).Select(host => (IReadOnlyList<string>)
-                    [host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports),
-                        ConsoleUi.Count(host.Records)])]);
-        }
-        else
-        {
-            ConsoleUi.Table(
-                ["Host", "Scope", "Connections", "Ports", "Records", "Sent", "Received"],
-                [.. traffic.Take(limit).Select(host => (IReadOnlyList<string>)
-                    [host.Host.Address, AddressScope.Of(host.Host.Address) ?? "-", HostLinkText.Reached(host.Host),
-                        HostLinkText.PortNumbers(host.Host.Ports), ConsoleUi.Count(host.Host.Records),
-                        Bytes(host.SentBytes, host.Sends, host.UnmeasuredSends, "no sends"),
-                        Bytes(host.ReceivedBytes, host.Receives, host.UnmeasuredReceives, "no receives")])]);
-        }
+        // Each row: what reached the host, its bytes under a byte ranking, and the candidate other ends an investigation proposes.
+        string[] heads = ["Host", "Scope", "Connections", "Ports", "Records",
+            .. traffic is null ? Array.Empty<string>() : ["Sent", "Received"],
+            .. candidates is null ? Array.Empty<string>() : ["Candidate other ends"]];
+        ConsoleUi.Table(heads, [.. hosts.Take(limit).Select((host, index) => (IReadOnlyList<string>)
+        [
+            host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports),
+            ConsoleUi.Count(host.Records),
+            .. traffic is null ? Array.Empty<string>() :
+            [
+                Bytes(traffic[index].SentBytes, traffic[index].Sends, traffic[index].UnmeasuredSends, "no sends"),
+                Bytes(traffic[index].ReceivedBytes, traffic[index].Receives, traffic[index].UnmeasuredReceives, "no receives"),
+            ],
+            .. candidates is null ? Array.Empty<string>()
+                : [candidates.TryGetValue(host.Address, out CandidateHost? proposed) ? proposed.Words : "none"],
+        ])]);
         if (hosts.Count > limit)
         {
             ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
@@ -196,6 +240,14 @@ internal static class HostsCommand
 
         ConsoleUi.Note("An address is where the connections ran; who is at it is not observed. icat hosts <directory> "
             + "--address <address> lists the processes that reached one.");
+        if (candidates is not null)
+        {
+            ConsoleUi.Note("A candidate other end is a process of another member's capture whose connection mirrors one to the "
+                + "host, never an established join: mirrored endpoints can be two connections behind an address translation, "
+                + "and a port used again is another connection. A join a person rejected names none. icat workspace correlate "
+                + "<investigation> lists each candidate with its evidence.");
+        }
+
         return InterCatExitCode.Success;
     }
 
@@ -283,7 +335,8 @@ internal static class HostsCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat hosts <session-directory> [--address <address>] [--limit <n>]");
-        ConsoleUi.Line("           [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received] [--json]");
+        ConsoleUi.Line("           [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received]");
+        ConsoleUi.Line("           [--investigation <file>] [--json]");
         ConsoleUi.Line("  The other hosts the session's processes reached: each address their connections ran to with no");
         ConsoleUi.Line("  process of the capture at the other end, the busiest first by the records those connections hold,");
         ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to. --address lists");
@@ -292,7 +345,9 @@ internal static class HostsCommand
         ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many,");
         ConsoleUi.Line($"  {DefaultLimit} by default. --rank-by lists the hosts by the bytes their connections sent there,");
         ConsoleUi.Line("  received from there or both, as this machine's end of them measured, with both directions' bytes;");
-        ConsoleUi.Line("  a host whose transfers recorded no size comes after those that did, never as a zero. Who is at an");
-        ConsoleUi.Line("  address, and what a port serves there, are not observed.");
+        ConsoleUi.Line("  a host whose transfers recorded no size comes after those that did, never as a zero.");
+        ConsoleUi.Line("  --investigation names, for a session that is one of its members, each host's candidate other");
+        ConsoleUi.Line("  ends: the processes of its other members' captures whose connections mirror one to the host, never");
+        ConsoleUi.Line("  an established join. Who is at an address, and what a port serves there, are not observed.");
     }
 }

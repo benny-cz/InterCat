@@ -73,6 +73,7 @@ dotnet run --project src/InterCat.Cli -- --help
 # A tour with no capture: the demo's two hosts and the investigation that aligns them.
 icat demo <new-folder>
 icat overview <new-folder>/demo-server
+icat hosts <new-folder>/demo-client --investigation <new-folder>/demo.icat-workspace
 icat channels <new-folder>/demo-server
 icat workspace show <new-folder>/demo.icat-workspace
 
