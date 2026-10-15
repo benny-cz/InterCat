@@ -2420,6 +2420,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(CanTogglePin));
         OnPropertyChanged(nameof(PinTip));
         RaiseLineageChanged();
+        RaiseHostListChanged();
         UpdateHighlight();
         FollowDescribedBytes();
     }

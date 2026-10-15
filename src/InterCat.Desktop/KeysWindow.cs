@@ -99,6 +99,8 @@ internal static class WindowKeys
         new("Search hits", "Enter", "open the chosen hit"),
         new("Search hits", "Esc", "clear the search, and give the keyboard back to the search box"),
         new("Inspector", "Enter", "on one of a chosen cell's records, open it among the level's records, chosen there"),
+        new("Inspector", "Enter", "on a host Other hosts lists, find the processes that reached it, as searching its address "
+            + "does"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),
         new("A level's records", "C", "inspect the chosen record's content"),
     ]);

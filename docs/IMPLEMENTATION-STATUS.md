@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 557 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 558 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 558 — the inspector lists Other hosts' hosts (§6.3, §6.7):**
+  - Other hosts' card names three hosts and its description named five; a busy machine's processes reach
+    hundreds, which only a search or icat hosts reached.
+  - Chosen, it lists every host it stands for, the busiest first and at most a hundred, saying how many more;
+    Enter or a double click on one finds the processes that reached it, the keyboard staying on the list.
+  - Debug and Release each ran 2,384 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 15 mutations was caught: a host node or any other cluster chosen listing Other hosts' hosts, the list
+    kept from an earlier drawing, past a hundred hosts, or counting processes where one reached them; the headings
+    of many or of one, the note always shown or miscounted; a host the list does not hold found, or a found host not
+    searched; the list not told of a new choice or drawing; the description of one host said as of many; Enter on
+    the list doing nothing or finding only a selected row; and a row read aloud as its address alone. A clause that
+    gave E's keyboard to the ranked table from the list was found redundant, since the window gives it there when a
+    focused list hides, and was left out; the window test holds that.
 
 - **Revision 557 — Other hosts opened kept in the investigation (§26.3, §6.3):**
   - Opening Other hosts lasted only while the window showed the session, and a host pinned on the opened graph

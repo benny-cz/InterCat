@@ -616,6 +616,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 // dialog: a row chosen in the ranked table is not descended into from it (R15).
                 break;
             case Key.Enter:
+                if (HostList.IsKeyboardFocusWithin)
+                {
+                    // Enter on a host Other hosts lists finds the processes that reached it, as a search for its address
+                    // does (§6.3); the keyboard stays on the list, so the next host is a key away.
+                    e.Handled = FindSelectedHost(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -2508,6 +2516,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         && phase is not (CaptureUiPhase.Starting or CaptureUiPhase.Recording or CaptureUiPhase.Finishing);
 
     private void OpenRecentSession(object? sender, TappedEventArgs eventArgs) => _ = OpenSelectedRecentSessionAsync();
+
+    private void FindListedHost(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            FindSelectedHost(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Finds the processes that reached the host of Other hosts' list the keyboard is on, or else the one selected, as a
+    /// search for its address does (§6.3). The keyboard stays on the list. False when there is none.
+    /// </summary>
+    internal bool FindSelectedHost(WorkspaceViewModel viewModel)
+    {
+        HostRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as HostRow
+            ?? HostList.SelectedItem as HostRow;
+        return row is not null && viewModel.FindHost(row);
+    }
 
     private void OpenCellRecord(object? sender, TappedEventArgs eventArgs)
     {

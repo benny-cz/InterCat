@@ -2,6 +2,7 @@ using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -114,11 +115,14 @@ public sealed class OtherHostsWorkspaceTests
         workspace.SelectGraphNode(hub.Key);
         Assert.Equal("Other hosts", workspace.SelectionTitle);
         Assert.Equal("Where the connections of 1 drawn process ran with no process of this capture at their other end, most "
-            + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Their hosts: 142.250.1.1 (1 TCP "
-            + "connection, 2 records), 20.42.65.1 (1 TCP connection, 1 record) and 8.8.8.8 (1 UDP flow, 1 record). Who is at "
-            + "these addresses is not observed. Searching one (Ctrl+F) finds the processes that reached it, and each process's "
-            + "rung lists its own connections. Its edges are connections, not relationships, and carry no traffic value. Enter "
-            + "draws its busiest hosts on their own.", workspace.SelectionSubtitle);
+            + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Who is at these addresses is not "
+            + "observed. Its hosts are listed below, the busiest first; choosing one finds the processes that reached it, as "
+            + "searching its address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, "
+            + "not relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
+            workspace.SelectionSubtitle);
+        Assert.Equal(["142.250.1.1 | 1 TCP connection · 2 records", "20.42.65.1 | 1 TCP connection · 1 record",
+                "8.8.8.8 | 1 UDP flow · 1 record"],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.Equal([hub.Key], workspace.SelectedGraphNodeKeys);
         Assert.Empty(workspace.PartlySelectedGraphNodeKeys);
@@ -157,7 +161,7 @@ public sealed class OtherHostsWorkspaceTests
         Assert.DoesNotContain("other hosts", workspace.GraphSummary, StringComparison.Ordinal);
     });
 
-    [Fact(DisplayName = "§6.3: Other hosts names the busiest hosts the drawn processes reached, on its card, its edges' and its description, and on a process's rung that process's alone")]
+    [Fact(DisplayName = "§6.3: Other hosts names the busiest hosts the drawn processes reached, on its card and its edges', lists them all once chosen, and on a process's rung that process's alone")]
     public void OtherHostsNamesTheBusiestHosts() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -190,12 +194,20 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Hosts: 20.42.65.1 and 13.107.4.50", workspace.DescribeGraphHover(Edge(310, Mechanism.Tcp).Key)!.Lines[1]);
         Assert.Equal("Host: 8.8.8.8", workspace.DescribeGraphHover(Edge(320, Mechanism.Udp).Key)!.Lines[1]);
 
-        // Chosen, it names more of them, ties by address.
+        // Chosen, it lists every one of them in the inspector, beneath a description that says so, ties by address.
         workspace.SelectGraphNode(hub.Key);
-        Assert.Contains("2 UDP flows from 2 processes with 2 hosts. The busiest of their 6 hosts: 142.250.1.1 (2 TCP connections "
-            + "and 1 UDP flow from 1 process, 5 records), 20.42.65.1 (2 TCP connections from 2 processes, 4 records), 8.8.8.8 "
-            + "(1 UDP flow from 1 process, 2 records), 13.107.4.50 (1 TCP connection from 1 process, 1 record) and 52.1.1.1 (1 "
-            + "TCP connection from 1 process, 1 record). Who is at", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Contains("2 UDP flows from 2 processes with 2 hosts. Who is at these addresses is not observed. Its hosts are "
+            + "listed below, the busiest first;", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Equal(
+            [
+                "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · 5 records",
+                "20.42.65.1 | 2 TCP connections from 2 processes · 4 records",
+                "8.8.8.8 | 1 UDP flow from 1 process · 2 records",
+                "13.107.4.50 | 1 TCP connection from 1 process · 1 record",
+                "52.1.1.1 | 1 TCP connection from 1 process · 1 record",
+                "52.1.1.2 | 1 TCP connection from 1 process · 1 record",
+            ],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
 
         // On the browser's rung Other hosts stands for the browser's connections alone: the updater's to the host they share
         // is left to the updater's rung.
@@ -311,6 +323,108 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Null(workspace.GraphDisplay.OpenedHosts);
     });
 
+    [Fact(DisplayName = "§6.3: Other hosts chosen lists every host it stands for, the busiest first, and a host chosen there finds the processes that reached it")]
+    public void OtherHostsListsItsHosts() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+        string browser = workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key;
+        string updater = workspace.GraphDisplay.NodeOf(Process(workspace, 310).Id)!.Key;
+
+        // Nothing is listed until Other hosts is chosen.
+        Assert.False(workspace.ListsHosts);
+        Assert.Empty(workspace.HostRows);
+
+        // Chosen, it lists its ten hosts, the busiest first, each with what reached it and the records its connections
+        // hold, and each said whole to a screen reader.
+        workspace.SelectGraphNode(hub.Key);
+        Assert.True(workspace.ListsHosts);
+        Assert.Equal("Its 10 hosts, the busiest first", workspace.HostsHeading);
+        Assert.Equal([.. Enumerable.Range(1, 10).Select(index => $"52.0.0.{index}")], workspace.HostRows.Select(row => row.Address));
+        Assert.Equal("2 TCP connections from 2 processes · 11 records", workspace.HostRows[0].Detail);
+        Assert.Equal("1 TCP connection from 1 process · 1 record", workspace.HostRows[^1].Detail);
+        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · 11 records. Press Enter to find the processes that reached "
+            + "it.", workspace.HostRows[0].AccessibleName);
+        Assert.False(workspace.HasHostsNote);
+        Assert.Equal(string.Empty, workspace.HostsNote);
+
+        // A host chosen there finds the processes that reached it, as a search for its address does, and Other hosts stays
+        // chosen; a host it does not list finds nothing.
+        Assert.True(workspace.FindHost(workspace.HostRows[0]));
+        Assert.Equal("52.0.0.1", workspace.SearchText);
+        Assert.Equal(hub.Key, workspace.SelectedGraphNodeKey);
+        Assert.Equal(new[] { browser, updater, hub.Key }.Order(StringComparer.Ordinal),
+            workspace.SearchedGraphNodeKeys.Order(StringComparer.Ordinal));
+        Assert.False(workspace.FindHost(new HostRow("192.0.2.1", "listed nowhere")));
+        Assert.Equal("52.0.0.1", workspace.SearchText);
+
+        // Opened, it lists only the hosts it still stands for, those not drawn on their own, and says so as the drawing
+        // changes.
+        var changed = new List<string?>();
+        workspace.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        Assert.Contains(nameof(WorkspaceViewModel.HostRows), changed);
+        Assert.Equal(hub.Key, workspace.SelectedGraphNodeKey);
+        Assert.Equal(["52.0.0.9", "52.0.0.10"], workspace.HostRows.Select(row => row.Address));
+        Assert.Equal("Its 2 hosts, the busiest first", workspace.HostsHeading);
+
+        // Another node chosen lists none: a host drawn on its own, which its card describes, or a process.
+        workspace.SelectGraphNode(GraphProjection.HostKey("52.0.0.1"));
+        Assert.Equal("52.0.0.1", workspace.SelectionTitle);
+        Assert.False(workspace.ListsHosts);
+        workspace.SelectGraphNode(browser);
+        Assert.False(workspace.ListsHosts);
+        Assert.Empty(workspace.HostRows);
+        Assert.Equal(string.Empty, workspace.HostsHeading);
+    });
+
+    [Fact(DisplayName = "§6.3: Other hosts standing for one host lists it as one, and its description says so")]
+    public void OtherHostsListsItsOneHost() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ManyHosts(1));
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+
+        Assert.Equal("Its host", workspace.HostsHeading);
+        Assert.Equal(["52.0.1.1 | 1 TCP connection · 3 records"], workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Contains(" Its host is listed below; choosing it finds the processes that reached it, as searching its address "
+            + "(Ctrl+F) does. ", workspace.SelectionSubtitle, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "§6.3: Other hosts lists its busiest hundred hosts, and says how many more there are and how to find them")]
+    public void OtherHostsListsItsBusiestHundred() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ManyHosts(105));
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+
+        Assert.Equal(WorkspaceViewModel.HostsListed, workspace.HostRows.Count);
+        Assert.Equal("Its busiest 100 of 105 hosts", workspace.HostsHeading);
+        Assert.True(workspace.HasHostsNote);
+        Assert.Equal("5 more, quieter. Searching an address (Ctrl+F) finds the processes that reached any of them.",
+            workspace.HostsNote);
+
+        // The busiest come first: the host with the most records, then those with one, by address.
+        Assert.Equal(("52.0.1.105", "1 TCP connection · 3 records"), (workspace.HostRows[0].Address, workspace.HostRows[0].Detail));
+        Assert.Equal("52.0.1.1", workspace.HostRows[1].Address);
+
+        // The last by address of those with one record is past the hundredth, so it is not listed and choosing it finds
+        // nothing; a search for its address finds it.
+        const string Quietest = "52.0.1.99";
+        Assert.DoesNotContain(workspace.HostRows, row => row.Address == Quietest);
+        Assert.False(workspace.FindHost(new HostRow(Quietest, string.Empty)));
+        workspace.SearchText = Quietest;
+        Assert.Contains(workspace.GraphDisplay.OtherHosts!.Key, workspace.SearchedGraphNodeKeys);
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {
@@ -381,6 +495,30 @@ public sealed class OtherHostsWorkspaceTests
 
         rows.Add(Transfer(900, ObservationKind.Send, AccountingSide.SendSide, 100, 310, ordinal)
             .Between("192.168.1.10:53000", "52.0.0.1:443") with { SessionRelativeTicks = 900 });
+        return [.. rows];
+    }
+
+    /// <summary>
+    /// browser.exe's TCP to <paramref name="hosts"/> hosts, 52.0.1.1 upwards, a record each but for the last, which holds
+    /// three.
+    /// </summary>
+    private static ObservationRowV1[] ManyHosts(int hosts)
+    {
+        ulong ordinal = 1;
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 300, ordinal++) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+        };
+        for (int host = 1; host <= hosts; host++)
+        {
+            for (int record = 0; record < (host == hosts ? 3 : 1); record++)
+            {
+                rows.Add(Transfer(200 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 300, ordinal)
+                    .Between($"192.168.1.10:{50_000 + host}", $"52.0.1.{host}:443") with { SessionRelativeTicks = 200 + (long)ordinal });
+                ordinal++;
+            }
+        }
+
         return [.. rows];
     }
 

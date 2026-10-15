@@ -81,6 +81,16 @@ public sealed record CellRecordRow(string Title, string Detail, string Glyph, st
 }
 
 /// <summary>
+/// A host the Other hosts node stands for, as the inspector lists it beneath the node's description (§6.3): its address,
+/// then what reached it and the records their connections hold.
+/// </summary>
+public sealed record HostRow(string Address, string Detail) : IAccessibleRow
+{
+    /// <summary>The host read aloud, with what Enter does on it.</summary>
+    public string AccessibleName => $"{Address}, {Detail}. Press Enter to find the processes that reached it.";
+}
+
+/// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
 /// holding no record, of one coverage state, as one row spanning them.
 /// </summary>

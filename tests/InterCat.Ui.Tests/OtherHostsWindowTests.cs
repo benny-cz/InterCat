@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Automation.Peers;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -190,6 +191,72 @@ public sealed class OtherHostsWindowTests
             Dispatch();
             Assert.False(workspace.HostsOpened);
             Assert.NotNull(workspace.GraphDisplay.OtherHosts);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: Other hosts chosen lists its hosts in the inspector, and Enter on one finds the processes that reached it, the keyboard staying on the list")]
+    public async Task TheInspectorListsOtherHostsHosts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            Control panel = window.GetControl<Control>("HostsPanel");
+            ListBox hosts = window.GetControl<ListBox>("HostList");
+            TextBox search = window.GetControl<TextBox>("SearchBox");
+            Assert.False(panel.IsVisible);
+
+            // Chosen, Other hosts lists its two hosts beneath its description, the busiest first, each said whole.
+            workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+            Dispatch();
+            Assert.True(panel.IsVisible);
+            Assert.Equal("Its 2 hosts, the busiest first", window.GetControl<TextBlock>("HostsHeadingText").Text);
+            Assert.False(window.GetControl<TextBlock>("HostsNoteText").IsVisible);
+            Assert.Equal(2, hosts.ItemCount);
+            Assert.Equal("142.250.1.1, 1 TCP connection · 1 record. Press Enter to find the processes that reached it.",
+                AutomationProperties.GetName(hosts.ContainerFromIndex(0)!));
+            Save(window, "inspector-other-hosts.png");
+
+            // Enter on one finds the processes that reached it, as a search for its address does; the keyboard stays on the
+            // list, so Down and Enter find the next host's.
+            Assert.True(hosts.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("142.250.1.1", search.Text);
+            Assert.Equal(["browser.exe · PID 300"], workspace.SearchResults.Select(row => row.Label));
+            Assert.True(hosts.IsKeyboardFocusWithin);
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("8.8.8.8", search.Text);
+            Assert.True(hosts.IsKeyboardFocusWithin);
+
+            // E lists the level's records, which hides the list, so the keyboard goes to their table rather than nowhere.
+            workspace.SearchText = string.Empty;
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(workspace.IsEvidenceRung);
+            Assert.False(panel.IsEffectivelyVisible);
+            Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+            workspace.ReturnTo(0);
+            Dispatch();
+
+            // Another node chosen takes the list away.
+            workspace.SelectGraphNode(workspace.GraphDisplay.NodeOf(
+                workspace.Snapshot.Processes.Single(process => process.ProcessId == 300).Id)!.Key);
+            Dispatch();
+            Assert.False(panel.IsVisible);
         }
         finally
         {

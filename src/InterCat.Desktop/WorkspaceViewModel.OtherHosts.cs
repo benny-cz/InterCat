@@ -1,6 +1,7 @@
 using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -11,7 +12,8 @@ namespace InterCat.Desktop;
 /// say what they are drawn from, name the busiest of the addresses they ran to and say what is not observed: who is at
 /// them (P7). A click on an edge chooses its process, and a double click opens it, whose rung lists each connection.
 /// Enter or a double click on Other hosts opens it into its busiest hosts, each drawn on its own and named by its
-/// address (§6.3's explicit expansion), and on any of them folds them back.
+/// address (§6.3's explicit expansion), and on any of them folds them back. Chosen, it lists in the inspector every host it
+/// stands for, the busiest first, and a host chosen there finds the processes that reached it.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -78,8 +80,14 @@ public sealed partial class WorkspaceViewModel
     /// <summary>How many hosts the Other hosts node's card names, a line each.</summary>
     private const int HostsOnCard = 3;
 
-    /// <summary>How many hosts the Other hosts node's description names, chosen, where there is room to read more.</summary>
-    private const int HostsDescribed = 5;
+    /// <summary>
+    /// The most hosts the inspector lists for Other hosts, the busiest; a search for its address finds the processes that
+    /// reached any of the rest.
+    /// </summary>
+    internal const int HostsListed = 100;
+
+    // The hosts the chosen Other hosts node stands for, worked out once for each drawing (R11).
+    private (GraphDisplay Display, IReadOnlyList<OtherHost> Hosts)? listedHosts;
 
     /// <summary>How many hosts an edge to the other hosts names on its card, on one line.</summary>
     private const int HostsOnEdgeCard = 3;
@@ -215,29 +223,114 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// The Other hosts node, selected: whose connections it stands for, the busiest hosts they ran to and where each
-    /// connection is listed.
+    /// The Other hosts node, selected: whose connections it stands for, that the inspector lists their hosts beneath, and
+    /// where each connection is listed.
     /// </summary>
     private string DescribeOtherHosts(GraphDisplayNode hub)
     {
         HostLink[] links = HubLinks(graphDisplay);
         IReadOnlyList<string> parts = HostLinkText.Parts(links);
         string reach = parts.Count == 0 ? string.Empty : ": " + WorkspaceLayout.Series(parts);
-        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
-        string busiest = hosts.Count == 0 ? string.Empty
-            : (hosts.Count <= HostsDescribed
-                ? " " + CountText.Agree(hosts.Count, "Their host: ", "Their hosts: ")
-                : string.Create(CultureInfo.CurrentCulture, $" The busiest of their {hosts.Count:N0} hosts: "))
-                + WorkspaceLayout.Series([.. hosts.Take(HostsDescribed).Select(host => host.Address + " ("
-                    + HostLinkText.Reached(host, hub.ConnectedProcesses > 1) + ", " + CountText.Of(host.Records, "record") + ")")])
-                + ".";
+        string listed = OtherHost.Of(links).Count switch
+        {
+            0 => string.Empty,
+            1 => "Its host is listed below; choosing it finds the processes that reached it, as searching its address "
+                + "(Ctrl+F) does. ",
+            _ => "Its hosts are listed below, the busiest first; choosing one finds the processes that reached it, as "
+                + "searching its address (Ctrl+F) does. ",
+        };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
-            + " ran with no process of this capture at their other end, most often another machine" + reach + "."
-            + busiest + " Who is at these addresses is not observed. Searching one (Ctrl+F) finds the processes that reached "
-            + "it, and each process's rung lists its own connections. Its edges are connections, not relationships, and "
-            + "carry no traffic value. " + (graphDisplay.OpenedHosts is { Count: > 0 }
+            + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
+            + "these addresses is not observed. " + listed + "Each process's rung lists its own connections. Its edges are "
+            + "connections, not relationships, and carry no traffic value. " + (graphDisplay.OpenedHosts is { Count: > 0 }
                 ? "Enter folds the hosts drawn on their own back into it."
                 : "Enter draws its busiest hosts on their own.");
+    }
+
+    /// <summary>
+    /// Every host the chosen Other hosts node stands for, the busiest first - those its drawn processes' connections ran
+    /// to, but for any drawn on its own - and none while another node, or none, is chosen.
+    /// </summary>
+    private IReadOnlyList<OtherHost> ListedHosts()
+    {
+        if (SelectedCluster is not { Kind: GraphNodeKind.OtherHosts })
+        {
+            return [];
+        }
+
+        if (listedHosts is { } known && ReferenceEquals(known.Display, graphDisplay))
+        {
+            return known.Hosts;
+        }
+
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(HubLinks(graphDisplay));
+        listedHosts = (graphDisplay, hosts);
+        return hosts;
+    }
+
+    /// <summary>
+    /// The hosts the inspector lists while Other hosts is chosen (§6.3), the busiest first and at most
+    /// <see cref="HostsListed"/>, each with what reached it and the records their connections hold, so every host it
+    /// stands for can be read, and who reached one found by choosing it.
+    /// </summary>
+    public IReadOnlyList<HostRow> HostRows
+    {
+        get
+        {
+            IReadOnlyList<OtherHost> hosts = ListedHosts();
+            bool several = SelectedCluster is { ConnectedProcesses: > 1 };
+            return [.. hosts.Take(HostsListed).Select(host => new HostRow(host.Address,
+                HostLinkText.Reached(host, several) + " · " + CountText.Of(host.Records, "record")))];
+        }
+    }
+
+    /// <summary>Whether the inspector lists hosts: Other hosts is chosen, and stands for some.</summary>
+    public bool ListsHosts => ListedHosts().Count > 0;
+
+    /// <summary>The host list's heading: "Its 12 hosts, the busiest first", or "Its busiest 100 of 1,234 hosts".</summary>
+    public string HostsHeading => ListedHosts() switch
+    {
+        { Count: 0 } => string.Empty,
+        { Count: 1 } => "Its host",
+        { Count: var count } when count <= HostsListed =>
+            string.Create(CultureInfo.CurrentCulture, $"Its {count:N0} hosts, the busiest first"),
+        { Count: var count } => string.Create(CultureInfo.CurrentCulture, $"Its busiest {HostsListed:N0} of {count:N0} hosts"),
+    };
+
+    /// <summary>What the host list leaves out, and how to reach it; empty when it lists every host.</summary>
+    public string HostsNote => ListedHosts() is { Count: > HostsListed } hosts
+        ? string.Create(CultureInfo.CurrentCulture, $"{hosts.Count - HostsListed:N0} more, quieter. Searching an address ")
+            + "(Ctrl+F) finds the processes that reached any of them."
+        : string.Empty;
+
+    /// <summary>Whether the host list says what it leaves out.</summary>
+    public bool HasHostsNote => ListedHosts().Count > HostsListed;
+
+    /// <summary>
+    /// Finds the processes that reached a host the inspector lists, as a search for its address does: the search box takes
+    /// the address, the rail lists the processes and the graph marks them, while Other hosts stays chosen. False for a host
+    /// the list does not hold.
+    /// </summary>
+    public bool FindHost(HostRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (!HostRows.Any(listed => string.Equals(listed.Address, row.Address, StringComparison.Ordinal)))
+        {
+            return false;
+        }
+
+        SearchText = row.Address;
+        return true;
+    }
+
+    /// <summary>Says the host list changed, after the choice or the drawing did.</summary>
+    private void RaiseHostListChanged()
+    {
+        OnPropertyChanged(nameof(HostRows));
+        OnPropertyChanged(nameof(ListsHosts));
+        OnPropertyChanged(nameof(HostsHeading));
+        OnPropertyChanged(nameof(HostsNote));
+        OnPropertyChanged(nameof(HasHostsNote));
     }
 
     /// <summary>
