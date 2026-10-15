@@ -191,6 +191,11 @@ and records its addresses' (`hostLinks[].addresses` in `icat overview --json`), 
 and `icat overview` name the busiest, a host counted once whichever processes and transports reached it. An address
 is where the connections ran: who is at it is not observed (P7), and it pairs nothing (§6).
 
+Since revision 559 each address also gives the remote ports its connections ran to there, each once, the lowest first
+(`hostLinks[].addresses[].ports`); a host's ports are those any connection to it ran to. A port is the other end's as
+the source named it - for a connection this machine opened, most often the service it reached, and for one it
+accepted, the other host's own - and what is served at it is not observed either.
+
 ## 5e. What the overview draws (revision 545)
 
 The overview draws every relation of both transports whose strength the evidence policy admits: TCP connection

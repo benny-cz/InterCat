@@ -224,7 +224,7 @@ public sealed class OtherHostsWindowTests
             Assert.Equal("Its 2 hosts, the busiest first", window.GetControl<TextBlock>("HostsHeadingText").Text);
             Assert.False(window.GetControl<TextBlock>("HostsNoteText").IsVisible);
             Assert.Equal(2, hosts.ItemCount);
-            Assert.Equal("142.250.1.1, 1 TCP connection · 1 record. Press Enter to find the processes that reached it.",
+            Assert.Equal("142.250.1.1, 1 TCP connection · port 443 · 1 record. Press Enter to find the processes that reached it.",
                 AutomationProperties.GetName(hosts.ContainerFromIndex(0)!));
             Save(window, "inspector-other-hosts.png");
 

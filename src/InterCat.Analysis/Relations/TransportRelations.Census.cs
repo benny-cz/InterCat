@@ -51,13 +51,25 @@ public sealed record TransportCensus(
 }
 
 /// <summary>
-/// One address a process instance's connections to other hosts ran to, over one mechanism: how many of its connections
-/// and how many of their records. The address is where they ran, as the source named it; who is at it is not observed (P7).
+/// One address a process instance's connections to other hosts ran to, over one mechanism: how many of its connections,
+/// how many of their records, and the ports at that address they ran to. The address and its ports are where they ran, as
+/// the source named them; who is at them, and what a port serves there, are not observed (P7).
 /// </summary>
 /// <param name="Address">The address: IPv4 in dotted-decimal form, IPv6 in RFC 5952's text, with no port.</param>
 /// <param name="Connections">The instance's connections to it.</param>
 /// <param name="Records">The records those connections hold, at least one each.</param>
-public sealed record HostAddress(string Address, int Connections, long Records);
+public sealed record HostAddress(string Address, int Connections, long Records)
+{
+    /// <summary>The ports at the address its connections ran to, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> Ports { get; init; } = [];
+
+    /// <summary>Whether it is the same address, with the same counts and the same ports.</summary>
+    public bool Equals(HostAddress? other) => other is not null
+        && string.Equals(Address, other.Address, StringComparison.Ordinal) && Connections == other.Connections
+        && Records == other.Records && Ports.SequenceEqual(other.Ports);
+
+    public override int GetHashCode() => HashCode.Combine(Address, Connections, Records, Ports.Count);
+}
 
 /// <summary>
 /// One process instance's connections to other hosts over one mechanism (§6.3's unresolved resources): the one-sided
@@ -97,8 +109,8 @@ public sealed partial class TransportRelationIndex
                 "This rule relates no record of that mechanism, so it reaches no host.");
         }
 
-        var reach = new SortedDictionary<int, (Dictionary<(byte Family, UInt128 Address), (int Connections, long Records)> Hosts,
-            RelationStrength Weakest)>();
+        var reach = new SortedDictionary<int, (Dictionary<(byte Family, UInt128 Address), (int Connections, long Records,
+            SortedSet<ushort> Ports)> Hosts, RelationStrength Weakest)>();
         foreach ((EndKey key, EndTimeline timeline) in ends)
         {
             if (key.Protocol != (byte)mechanism || OnThisMachine(key))
@@ -118,8 +130,10 @@ public sealed partial class TransportRelationIndex
                     held = ([], RelationStrength.Direct);
                 }
 
-                (int connections, long records) = held.Hosts.GetValueOrDefault((key.Family, key.RemoteAddress));
-                held.Hosts[(key.Family, key.RemoteAddress)] = (connections + 1, records + incarnation.Records);
+                (int connections, long records, SortedSet<ushort>? ports) = held.Hosts.GetValueOrDefault((key.Family, key.RemoteAddress));
+                ports ??= [];
+                _ = ports.Add(key.RemotePort);
+                held.Hosts[(key.Family, key.RemoteAddress)] = (connections + 1, records + incarnation.Records, ports);
                 reach[incarnation.Holder] = (held.Hosts, Weaker(held.Weakest, incarnation.Weakest));
             }
         }
@@ -129,7 +143,7 @@ public sealed partial class TransportRelationIndex
             entry.Key,
             [.. entry.Value.Hosts
                 .Select(host => new HostAddress(AddressText(host.Key.Family, host.Key.Address), host.Value.Connections,
-                    host.Value.Records))
+                    host.Value.Records) { Ports = [.. host.Value.Ports] })
                 .OrderByDescending(address => address.Records)
                 .ThenByDescending(address => address.Connections)
                 .ThenBy(address => address.Address, StringComparer.Ordinal)],

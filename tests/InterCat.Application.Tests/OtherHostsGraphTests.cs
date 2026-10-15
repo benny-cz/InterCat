@@ -44,9 +44,10 @@ public sealed class OtherHostsGraphTests
         // each link counting them address by address as the relation index does (relations-v1 §5d).
         Assert.Equal([(browser, Mechanism.Tcp, RelationStrength.Correlated), (browser, Mechanism.Udp, RelationStrength.Correlated)],
             overview.HostLinks.Select(link => (link.Process, link.Mechanism, link.Strength)));
-        Assert.Equal([new HostAddress("142.250.1.1", 1, 2), new HostAddress("20.42.65.1", 1, 1)], overview.HostLinks[0].Addresses);
+        Assert.Equal([new HostAddress("142.250.1.1", 1, 2) { Ports = [443] }, new HostAddress("20.42.65.1", 1, 1) { Ports = [443] }],
+            overview.HostLinks[0].Addresses);
         Assert.Equal((2, 2, 3L), (overview.HostLinks[0].Connections, overview.HostLinks[0].Hosts, overview.HostLinks[0].Records));
-        Assert.Equal([new HostAddress("8.8.8.8", 1, 1)], overview.HostLinks[1].Addresses);
+        Assert.Equal([new HostAddress("8.8.8.8", 1, 1) { Ports = [53] }], overview.HostLinks[1].Addresses);
         Assert.Equal([$"hosts:tcp:{browser}", $"hosts:udp:{browser}"], overview.HostLinks.Select(link => link.Key));
         Assert.All(overview.HostLinks, link => Assert.True(HostLink.IsKey(link.Key)));
         Assert.False(HostLink.IsKey(overview.Edges.Single().Key));
@@ -450,25 +451,37 @@ public sealed class OtherHostsGraphTests
         ProcessInstanceId resolver = Node(3, "g").Id;
         HostLink[] links =
         [
-            new(browser, Mechanism.Tcp, [new("142.250.1.1", 3, 40), new("20.42.65.1", 1, 5)], RelationStrength.Direct),
-            // The browser's QUIC to the host it also reached over TCP.
-            new(browser, Mechanism.Udp, [new("142.250.1.1", 1, 7)], RelationStrength.Direct),
-            new(updater, Mechanism.Tcp, [new("20.42.65.1", 2, 35), new("13.107.4.50", 1, 9)], RelationStrength.Correlated),
-            new(resolver, Mechanism.Udp, [new("9.9.9.9", 4, 9), new("8.8.8.8", 4, 9)], RelationStrength.Direct),
+            new(browser, Mechanism.Tcp, [new("142.250.1.1", 3, 40) { Ports = [443] }, new("20.42.65.1", 1, 5) { Ports = [443] }],
+                RelationStrength.Direct),
+            // The browser's QUIC to the host it also reached over TCP, at the same port.
+            new(browser, Mechanism.Udp, [new("142.250.1.1", 1, 7) { Ports = [443] }], RelationStrength.Direct),
+            new(updater, Mechanism.Tcp, [new("20.42.65.1", 2, 35) { Ports = [8443, 443] }, new("13.107.4.50", 1, 9) { Ports = [80] }],
+                RelationStrength.Correlated),
+            new(resolver, Mechanism.Udp, [new("9.9.9.9", 4, 9) { Ports = [53] }, new("8.8.8.8", 4, 9) { Ports = [53] }],
+                RelationStrength.Direct),
         ];
 
-        // The most records first, then the most connections over both transports, then by address.
+        // The most records first, then the most connections over both transports, then by address; each at every port any
+        // of them ran to there, once, the lowest first.
         IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
         Assert.Equal(
             [
-                new OtherHost("142.250.1.1", 3, 1, 1, 47),
-                new OtherHost("20.42.65.1", 3, 0, 2, 40),
-                new OtherHost("8.8.8.8", 0, 4, 1, 9),
-                new OtherHost("9.9.9.9", 0, 4, 1, 9),
-                new OtherHost("13.107.4.50", 1, 0, 1, 9),
+                new OtherHost("142.250.1.1", 3, 1, 1, 47) { Ports = [443] },
+                new OtherHost("20.42.65.1", 3, 0, 2, 40) { Ports = [443, 8443] },
+                new OtherHost("8.8.8.8", 0, 4, 1, 9) { Ports = [53] },
+                new OtherHost("9.9.9.9", 0, 4, 1, 9) { Ports = [53] },
+                new OtherHost("13.107.4.50", 1, 0, 1, 9) { Ports = [80] },
             ],
             hosts);
+        Assert.NotEqual(new OtherHost("13.107.4.50", 1, 0, 1, 9), hosts[^1]);
         Assert.Empty(OtherHost.Of([]));
+
+        // Its ports, said: numbers alone in a table's cell, the lowest first, past three counted; never what they serve.
+        Assert.Equal(["port 443", "ports 443 and 8443", "port 53"], hosts.Take(3).Select(host => HostLinkText.Ports(host.Ports)));
+        Assert.Equal("443 and 8443", HostLinkText.PortNumbers(hosts[1].Ports));
+        Assert.Equal("ports 22, 80, 443 and 2 more", HostLinkText.Ports([22, 80, 443, 3389, 8080]));
+        Assert.Equal("22, 80 and 443", HostLinkText.PortNumbers([22, 80, 443]));
+        Assert.Equal(string.Empty, HostLinkText.Ports([]));
 
         // What reached each, transport by transport and from how many processes.
         Assert.Equal("3 TCP connections and 1 UDP flow from 1 process", HostLinkText.Reached(hosts[0]));

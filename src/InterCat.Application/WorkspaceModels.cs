@@ -202,11 +202,23 @@ public sealed record HostLink(
 
 /// <summary>
 /// One other host as a set of processes' connections reached it, over both transports (§6.3): how many TCP connections and
-/// UDP flows ran to its address, from how many of the processes, holding how many records. Its address is where they ran;
-/// who is at it is not observed (P7).
+/// UDP flows ran to its address, from how many of the processes, holding how many records, and the ports at the address
+/// they ran to. Its address and ports are where they ran; who is at it, and what a port serves there, are not observed
+/// (P7).
 /// </summary>
 public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows, int Processes, long Records)
 {
+    /// <summary>The ports at the address any of the connections ran to, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> Ports { get; init; } = [];
+
+    /// <summary>Whether it is the same host, reached as often and at the same ports.</summary>
+    public bool Equals(OtherHost? other) => other is not null
+        && string.Equals(Address, other.Address, StringComparison.Ordinal) && TcpConnections == other.TcpConnections
+        && UdpFlows == other.UdpFlows && Processes == other.Processes && Records == other.Records
+        && Ports.SequenceEqual(other.Ports);
+
+    public override int GetHashCode() => HashCode.Combine(Address, TcpConnections, UdpFlows, Processes, Records, Ports.Count);
+
     /// <summary>
     /// The hosts <paramref name="links"/> ran to, each once whichever processes and transports reached it, the busiest first:
     /// the most records, then the most connections, then by address.
@@ -214,26 +226,30 @@ public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows,
     public static IReadOnlyList<OtherHost> Of(IEnumerable<HostLink> links)
     {
         ArgumentNullException.ThrowIfNull(links);
-        var hosts = new Dictionary<string, (int Tcp, int Udp, HashSet<ProcessInstanceId> Processes, long Records)>(
-            StringComparer.Ordinal);
+        var hosts = new Dictionary<string, (int Tcp, int Udp, HashSet<ProcessInstanceId> Processes, long Records,
+            SortedSet<ushort> Ports)>(StringComparer.Ordinal);
         foreach (HostLink link in links)
         {
             foreach (HostAddress address in link.Addresses)
             {
                 if (!hosts.TryGetValue(address.Address, out var host))
                 {
-                    host = (0, 0, [], 0);
+                    host = (0, 0, [], 0, []);
                 }
 
                 _ = host.Processes.Add(link.Process);
+                host.Ports.UnionWith(address.Ports);
                 hosts[address.Address] = link.Mechanism == Mechanism.Udp
-                    ? (host.Tcp, host.Udp + address.Connections, host.Processes, host.Records + address.Records)
-                    : (host.Tcp + address.Connections, host.Udp, host.Processes, host.Records + address.Records);
+                    ? (host.Tcp, host.Udp + address.Connections, host.Processes, host.Records + address.Records, host.Ports)
+                    : (host.Tcp + address.Connections, host.Udp, host.Processes, host.Records + address.Records, host.Ports);
             }
         }
 
         return [.. hosts
-            .Select(host => new OtherHost(host.Key, host.Value.Tcp, host.Value.Udp, host.Value.Processes.Count, host.Value.Records))
+            .Select(host => new OtherHost(host.Key, host.Value.Tcp, host.Value.Udp, host.Value.Processes.Count, host.Value.Records)
+            {
+                Ports = [.. host.Value.Ports],
+            })
             .OrderByDescending(host => host.Records)
             .ThenByDescending(host => (long)host.TcpConnections + host.UdpFlows)
             .ThenBy(host => host.Address, StringComparer.Ordinal)];

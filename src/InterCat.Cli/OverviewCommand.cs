@@ -142,9 +142,9 @@ internal static class OverviewCommand
             // them: where the connections ran, each process's rung listing its own, and never who is at them (P7).
             IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
             ConsoleUi.Table(
-                ["Busiest other host", "Connections", "Records"],
+                ["Busiest other host", "Connections", "Ports", "Records"],
                 [.. hosts.Take(5).Select(host => (IReadOnlyList<string>)
-                    [host.Address, HostLinkText.Reached(host), ConsoleUi.Count(host.Records)])]);
+                    [host.Address, HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports), ConsoleUi.Count(host.Records)])]);
             ConsoleUi.Note(CountText.Of(hosts.Count, "other host") + " in all, counted by address; who is at them is not "
                 + "observed. icat channels <directory> --process <instance-guid> --one-sided lists a process's connections.");
         }

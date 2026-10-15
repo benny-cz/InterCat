@@ -120,8 +120,8 @@ public sealed class OtherHostsWorkspaceTests
             + "searching its address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, "
             + "not relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
             workspace.SelectionSubtitle);
-        Assert.Equal(["142.250.1.1 | 1 TCP connection · 2 records", "20.42.65.1 | 1 TCP connection · 1 record",
-                "8.8.8.8 | 1 UDP flow · 1 record"],
+        Assert.Equal(["142.250.1.1 | 1 TCP connection · port 443 · 2 records", "20.42.65.1 | 1 TCP connection · port 443 · 1 record",
+                "8.8.8.8 | 1 UDP flow · port 53 · 1 record"],
             workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.Equal([hub.Key], workspace.SelectedGraphNodeKeys);
@@ -200,12 +200,12 @@ public sealed class OtherHostsWorkspaceTests
             + "listed below, the busiest first;", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal(
             [
-                "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · 5 records",
-                "20.42.65.1 | 2 TCP connections from 2 processes · 4 records",
-                "8.8.8.8 | 1 UDP flow from 1 process · 2 records",
-                "13.107.4.50 | 1 TCP connection from 1 process · 1 record",
-                "52.1.1.1 | 1 TCP connection from 1 process · 1 record",
-                "52.1.1.2 | 1 TCP connection from 1 process · 1 record",
+                "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · port 443 · 5 records",
+                "20.42.65.1 | 2 TCP connections from 2 processes · port 443 · 4 records",
+                "8.8.8.8 | 1 UDP flow from 1 process · port 53 · 2 records",
+                "13.107.4.50 | 1 TCP connection from 1 process · port 443 · 1 record",
+                "52.1.1.1 | 1 TCP connection from 1 process · port 443 · 1 record",
+                "52.1.1.2 | 1 TCP connection from 1 process · port 443 · 1 record",
             ],
             workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
 
@@ -258,9 +258,10 @@ public sealed class OtherHostsWorkspaceTests
             [
                 "Connections of 2 drawn processes to this address, with no process of this capture at their other end",
                 "2 TCP connections from 2 processes · 11 records",
+                "Port 443",
                 "Reached by browser.exe · PID 300 and updater.exe · PID 310",
             ],
-            card.Lines.Take(3));
+            card.Lines.Take(4));
         Assert.Equal("Double-click or Enter folds the hosts drawn on their own back into Other hosts", card.Lines[^1]);
 
         // An edge to a host counts its source's connections there alone.
@@ -274,7 +275,8 @@ public sealed class OtherHostsWorkspaceTests
         workspace.SelectGraphNode(shared.Key);
         Assert.Equal("52.0.0.1", workspace.SelectionTitle);
         Assert.StartsWith("52.0.0.1: where the connections of 2 drawn processes ran with no process of this capture at their other "
-            + "end: 2 TCP connections from 2 processes, 11 records. Reached by browser.exe · PID 300 and updater.exe · PID 310.",
+            + "end: 2 TCP connections from 2 processes, 11 records, at port 443. Reached by browser.exe · PID 300 and updater.exe · "
+            + "PID 310.",
             workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.Equal([GraphNodeKind.Process, GraphNodeKind.Process, .. Enumerable.Repeat(GraphNodeKind.Host, 8), GraphNodeKind.OtherHosts],
@@ -344,10 +346,10 @@ public sealed class OtherHostsWorkspaceTests
         Assert.True(workspace.ListsHosts);
         Assert.Equal("Its 10 hosts, the busiest first", workspace.HostsHeading);
         Assert.Equal([.. Enumerable.Range(1, 10).Select(index => $"52.0.0.{index}")], workspace.HostRows.Select(row => row.Address));
-        Assert.Equal("2 TCP connections from 2 processes · 11 records", workspace.HostRows[0].Detail);
-        Assert.Equal("1 TCP connection from 1 process · 1 record", workspace.HostRows[^1].Detail);
-        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · 11 records. Press Enter to find the processes that reached "
-            + "it.", workspace.HostRows[0].AccessibleName);
+        Assert.Equal("2 TCP connections from 2 processes · port 443 · 11 records", workspace.HostRows[0].Detail);
+        Assert.Equal("1 TCP connection from 1 process · port 443 · 1 record", workspace.HostRows[^1].Detail);
+        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · port 443 · 11 records. Press Enter to find the processes "
+            + "that reached it.", workspace.HostRows[0].AccessibleName);
         Assert.False(workspace.HasHostsNote);
         Assert.Equal(string.Empty, workspace.HostsNote);
 
@@ -392,7 +394,7 @@ public sealed class OtherHostsWorkspaceTests
         workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
 
         Assert.Equal("Its host", workspace.HostsHeading);
-        Assert.Equal(["52.0.1.1 | 1 TCP connection · 3 records"], workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Equal(["52.0.1.1 | 1 TCP connection · port 443 · 3 records"], workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
         Assert.Contains(" Its host is listed below; choosing it finds the processes that reached it, as searching its address "
             + "(Ctrl+F) does. ", workspace.SelectionSubtitle, StringComparison.Ordinal);
     });
@@ -413,7 +415,7 @@ public sealed class OtherHostsWorkspaceTests
             workspace.HostsNote);
 
         // The busiest come first: the host with the most records, then those with one, by address.
-        Assert.Equal(("52.0.1.105", "1 TCP connection · 3 records"), (workspace.HostRows[0].Address, workspace.HostRows[0].Detail));
+        Assert.Equal(("52.0.1.105", "1 TCP connection · port 443 · 3 records"), (workspace.HostRows[0].Address, workspace.HostRows[0].Detail));
         Assert.Equal("52.0.1.1", workspace.HostRows[1].Address);
 
         // The last by address of those with one record is past the hundredth, so it is not listed and choosing it finds

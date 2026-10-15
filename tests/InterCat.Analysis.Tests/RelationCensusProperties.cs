@@ -101,8 +101,9 @@ public sealed class RelationCensusProperties
                     (census.Related + census.Withheld, census.Relationships + census.WithheldRelationships));
             }
 
-            // Each process's reach of other hosts is its one-sided connections to other hosts, address by address: the
-            // most records first, then the most connections, then by address; as weak as the weakest of them.
+            // Each process's reach of other hosts is its one-sided connections to other hosts, address by address, with the
+            // ports at each they ran to: the most records first, then the most connections, then by address; as weak as the
+            // weakest of them.
             IReadOnlyList<HostReach> reach = relations.ReachOfOtherHosts(mechanism);
             Assert.Equal(reach.Select(entry => entry.Holder).Order(), reach.Select(entry => entry.Holder));
             Assert.Equal(reach.Count, reach.Select(entry => entry.Holder).Distinct().Count());
@@ -113,7 +114,10 @@ public sealed class RelationCensusProperties
                     .GroupBy(connection => connection.Holder.Id)
                     .Select(holder => (holder.Key.ToString(), Addresses(holder
                         .GroupBy(connection => Address(connection.RemoteEndpoint), StringComparer.Ordinal)
-                        .Select(address => new HostAddress(address.Key, address.Count(), address.Sum(connection => connection.Records)))
+                        .Select(address => new HostAddress(address.Key, address.Count(), address.Sum(connection => connection.Records))
+                        {
+                            Ports = [.. address.Select(connection => Port(connection.RemoteEndpoint)).Distinct().Order()],
+                        })
                         .OrderByDescending(address => address.Records)
                         .ThenByDescending(address => address.Connections)
                         .ThenBy(address => address.Address, StringComparer.Ordinal)),
@@ -151,8 +155,8 @@ public sealed class RelationCensusProperties
             .Select(entry => (processes.Instances[entry.Holder].Id.ToString(), Addresses(entry.Addresses), entry.Strength));
 
     private static string Addresses(IEnumerable<HostAddress> addresses) =>
-        string.Join(" ", addresses.Select(address =>
-            string.Create(CultureInfo.InvariantCulture, $"{address.Address}={address.Connections}/{address.Records}")));
+        string.Join(" ", addresses.Select(address => string.Create(CultureInfo.InvariantCulture,
+            $"{address.Address}={address.Connections}/{address.Records}@{string.Join(',', address.Ports)}")));
 
     /// <summary>A census with its relationships left out: what no evidence policy may change.</summary>
     private static TransportCensus Unrelated(TransportCensus census) =>
@@ -172,6 +176,10 @@ public sealed class RelationCensusProperties
             || (!remote.StartsWith('[') && far.StartsWith("127.", StringComparison.Ordinal))
             || far.StartsWith("::ffff:127.", StringComparison.Ordinal);
     }
+
+    /// <summary>An endpoint's port: the number after its last colon.</summary>
+    private static ushort Port(string endpoint) =>
+        ushort.Parse(endpoint.AsSpan(endpoint.LastIndexOf(':') + 1), NumberStyles.None, CultureInfo.InvariantCulture);
 
     /// <summary>An endpoint's address: "a.b.c.d" of "a.b.c.d:port", the address inside the brackets of "[v6]:port".</summary>
     private static string Address(string endpoint) => endpoint.StartsWith('[')

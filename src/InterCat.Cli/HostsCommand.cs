@@ -15,6 +15,12 @@ namespace InterCat.Cli;
 /// </summary>
 internal static class HostsCommand
 {
+    /// <summary>
+    /// The document --json writes: every host's count and the listed hosts, or the processes that reached an address, each
+    /// address with the ports at it the connections ran to since its second version.
+    /// </summary>
+    internal const string Contract = "other-hosts-v2";
+
     private const int DefaultLimit = 50;
 
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
@@ -88,7 +94,7 @@ internal static class HostsCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "other-hosts-v1",
+                Contract = Contract,
                 SessionPath = path,
                 Hosts = hosts.Count,
                 Processes = processes,
@@ -108,9 +114,9 @@ internal static class HostsCommand
 
         ConsoleUi.Field("Hosts", CountText.Of(hosts.Count, "host") + ", reached by " + CountText.Of(processes, "process", "processes"));
         ConsoleUi.Table(
-            ["Host", "Connections", "Records"],
+            ["Host", "Connections", "Ports", "Records"],
             [.. hosts.Take(limit).Select(host => (IReadOnlyList<string>)
-                [host.Address, HostLinkText.Reached(host), ConsoleUi.Count(host.Records)])]);
+                [host.Address, HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports), ConsoleUi.Count(host.Records)])]);
         if (hosts.Count > limit)
         {
             ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
@@ -139,7 +145,7 @@ internal static class HostsCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "other-hosts-v1",
+                Contract = Contract,
                 SessionPath = path,
                 Address = query.Trim(),
                 Reached = reached.Take(limit).Select(entry => new
@@ -149,6 +155,7 @@ internal static class HostsCommand
                     entry.Address.Address,
                     Mechanism = MechanismText.Name(entry.Link.Mechanism),
                     entry.Address.Connections,
+                    entry.Address.Ports,
                     entry.Address.Records,
                     entry.Link.Strength,
                 }),
@@ -167,10 +174,11 @@ internal static class HostsCommand
         }
 
         ConsoleUi.Table(
-            ["Process", "Address", "Connections", "Records"],
+            ["Process", "Address", "Connections", "Ports", "Records"],
             [.. reached.Take(limit).Select(entry => (IReadOnlyList<string>)
                 [CollectorText.Named(nodes[entry.Link.Process]), entry.Address.Address,
-                    HostLinkText.Connections(entry.Link.Mechanism, entry.Address.Connections), ConsoleUi.Count(entry.Address.Records)])]);
+                    HostLinkText.Connections(entry.Link.Mechanism, entry.Address.Connections),
+                    HostLinkText.PortNumbers(entry.Address.Ports), ConsoleUi.Count(entry.Address.Records)])]);
         if (reached.Length > limit)
         {
             ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
@@ -187,8 +195,10 @@ internal static class HostsCommand
         ConsoleUi.Line("icat hosts <session-directory> [--address <address>] [--limit <n>] [--json]");
         ConsoleUi.Line("  The other hosts the session's processes reached: each address their connections ran to with no");
         ConsoleUi.Line("  process of the capture at the other end, the busiest first by the records those connections hold,");
-        ConsoleUi.Line("  as the window's Other hosts node names them. --address lists the processes that reached it - the");
-        ConsoleUi.Line("  address whole, or begun up to a dot or colon, as 142.250 or 2001:db8: - as the window's search");
-        ConsoleUi.Line($"  finds them. --limit lists at most that many, {DefaultLimit} by default. Who is at an address is not observed.");
+        ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to. --address lists");
+        ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
+        ConsoleUi.Line("  2001:db8: - as the window's search finds them. --limit lists at most that many, "
+            + $"{DefaultLimit} by default.");
+        ConsoleUi.Line("  Who is at an address, and what a port serves there, are not observed.");
     }
 }

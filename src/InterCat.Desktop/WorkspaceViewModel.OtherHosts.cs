@@ -280,7 +280,8 @@ public sealed partial class WorkspaceViewModel
             IReadOnlyList<OtherHost> hosts = ListedHosts();
             bool several = SelectedCluster is { ConnectedProcesses: > 1 };
             return [.. hosts.Take(HostsListed).Select(host => new HostRow(host.Address,
-                HostLinkText.Reached(host, several) + " · " + CountText.Of(host.Records, "record")))];
+                HostLinkText.Reached(host, several) + (host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(host.Ports))
+                    + " · " + CountText.Of(host.Records, "record")))];
         }
     }
 
@@ -352,6 +353,13 @@ public sealed partial class WorkspaceViewModel
                 + CountText.Of(transport.Sum(link => link.Records), "record"));
         }
 
+        if (OtherHost.Of(links) is [{ Ports.Count: > 0 } reached])
+        {
+            // Where at the address they ran, never what it serves there.
+            string ports = HostLinkText.Ports(reached.Ports);
+            lines.Add(char.ToUpperInvariant(ports[0]) + ports[1..]);
+        }
+
         lines.Add("Reached by " + ReachedBy(links));
         lines.Add(HostScope);
         lines.Add("Who is at this address is not observed; searching it (Ctrl+F) marks the processes that reached it");
@@ -375,7 +383,8 @@ public sealed partial class WorkspaceViewModel
         return host.Label + ": where the connections of " + Counted(host.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end"
             + (reached is null ? string.Empty
-                : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record"))
+                : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
+                    + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
             + ". Reached by " + ReachedBy(links) + ". Who is at this address is not observed; searching it (Ctrl+F) marks the "
             + "processes that reached it, and each process's rung lists its own connections. Enter folds the hosts drawn on "
             + "their own back into Other hosts.";

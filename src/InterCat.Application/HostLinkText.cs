@@ -52,6 +52,30 @@ public static class HostLinkText
             + (countsProcesses ? " from " + CountText.Of(host.Processes, "process", "processes") : string.Empty);
     }
 
+    /// <summary>The most ports <see cref="Ports"/> names before it counts the rest.</summary>
+    public const int PortsNamed = 3;
+
+    /// <summary>
+    /// The ports at an address connections ran to, the lowest first: "port 443", "ports 80 and 443", or past
+    /// <see cref="PortsNamed"/> of them, "ports 80, 443, 8080 and 2 more". A port is where they ran at that address, never
+    /// what it serves. Empty when none is known.
+    /// </summary>
+    public static string Ports(IReadOnlyList<ushort> ports)
+    {
+        ArgumentNullException.ThrowIfNull(ports);
+        return ports.Count == 0 ? string.Empty : (ports.Count == 1 ? "port " : "ports ") + PortNumbers(ports);
+    }
+
+    /// <summary>The same ports as a table's cell states them, numbers alone: "443", "80 and 443", "80, 443, 8080 and 2 more".</summary>
+    public static string PortNumbers(IReadOnlyList<ushort> ports)
+    {
+        ArgumentNullException.ThrowIfNull(ports);
+        string[] named = [.. ports.Take(PortsNamed).Select(port => port.ToString(CultureInfo.InvariantCulture))];
+        return ports.Count <= PortsNamed
+            ? WorkspaceLayout.Series(named)
+            : string.Join(", ", named) + string.Create(CultureInfo.CurrentCulture, $" and {ports.Count - PortsNamed:N0} more");
+    }
+
     /// <summary>
     /// Hosts named, the busiest first, at most <paramref name="named"/> of them: "Hosts: 142.250.1.1 and 20.42.65.1", or
     /// where there are more, "Busiest of 17 hosts: 142.250.1.1, 20.42.65.1 and 8.8.8.8". Null when there are none.

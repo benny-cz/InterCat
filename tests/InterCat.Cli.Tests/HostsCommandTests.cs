@@ -25,14 +25,15 @@ public sealed class HostsCommandTests
         (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Hosts +4 hosts, reached by 2 processes\r?$", text);
-        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\d.*?) +(\d+)\r?$").Select(match =>
-            $"{match.Groups[1].Value} | {match.Groups[2].Value.TrimEnd()} | {match.Groups[3].Value}")];
+        Assert.Matches(@"(?m)^  Host +Connections +Ports +Records\r?$", text);
+        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\d.*?(?:process|processes)) +(\d.*?) +(\d+)\r?$").Select(match =>
+            $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value.TrimEnd()} | {match.Groups[4].Value}")];
         Assert.Equal(
             [
-                "142.250.1.1 | 2 TCP connections from 2 processes | 5",
-                "142.250.1.10 | 1 TCP connection from 1 process | 1",
-                "2001:db8::1 | 1 TCP connection from 1 process | 1",
-                "8.8.8.8 | 1 UDP flow from 1 process | 1",
+                "142.250.1.1 | 2 TCP connections from 2 processes | 443 and 8443 | 5",
+                "142.250.1.10 | 1 TCP connection from 1 process | 443 | 1",
+                "2001:db8::1 | 1 TCP connection from 1 process | 443 | 1",
+                "8.8.8.8 | 1 UDP flow from 1 process | 53 | 1",
             ],
             rows);
         Assert.Contains("who is at it is not observed", text, Ordinal);
@@ -47,11 +48,12 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v1", 4, 2), (root.GetProperty("contract").GetString(), root.GetProperty("hosts").GetInt32(),
+        Assert.Equal(("other-hosts-v2", 4, 2), (root.GetProperty("contract").GetString(), root.GetProperty("hosts").GetInt32(),
             root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
             busiest.GetProperty("udpFlows").GetInt32(), busiest.GetProperty("processes").GetInt32(), busiest.GetProperty("records").GetInt64()));
+        Assert.Equal([443, 8443], busiest.GetProperty("ports").EnumerateArray().Select(port => port.GetInt32()));
 
         // A limit that is no count of hosts is refused.
         (code, _, said) = await Run("hosts", session.Path, "--limit", "0");
@@ -81,22 +83,23 @@ public sealed class HostsCommandTests
         // A whole address: the processes that reached it, the busiest first, and not 142.250.1.10, which it only begins.
         (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path, "--address", "142.250.1.1");
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches(@"(?m)^ *updater\.exe · PID 310 +142\.250\.1\.1 +1 TCP connection +3\r?$", text);
-        Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +142\.250\.1\.1 +1 TCP connection +2\r?$", text);
+        Assert.Matches(@"(?m)^ *updater\.exe · PID 310 +142\.250\.1\.1 +1 TCP connection +8443 +3\r?$", text);
+        Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +142\.250\.1\.1 +1 TCP connection +443 +2\r?$", text);
         Assert.True(text.IndexOf("updater.exe", Ordinal) < text.IndexOf("browser.exe", Ordinal));
         Assert.DoesNotContain("142.250.1.10", text, Ordinal);
 
         // Begun up to a dot, it finds every address it begins; IPv6 in either case.
         (code, text, _) = await Run("hosts", session.Path, "--address", "142.250");
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +142\.250\.1\.10 +1 TCP connection +1\r?$", text);
+        Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +142\.250\.1\.10 +1 TCP connection +443 +1\r?$", text);
         (code, text, _) = await Run("hosts", session.Path, "--address", "2001:DB8::", "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
         JsonElement reached = Assert.Single(root.GetProperty("reached").EnumerateArray());
-        Assert.Equal(("updater.exe · PID 310", "2001:db8::1", "TCP", 1, 1L),
+        Assert.Equal(("updater.exe · PID 310", "2001:db8::1", "TCP", 1, 1L, 443),
             (reached.GetProperty("name").GetString(), reached.GetProperty("address").GetString(), reached.GetProperty("mechanism").GetString(),
-                reached.GetProperty("connections").GetInt32(), reached.GetProperty("records").GetInt64()));
+                reached.GetProperty("connections").GetInt32(), reached.GetProperty("records").GetInt64(),
+                Assert.Single(reached.GetProperty("ports").EnumerateArray()).GetInt32()));
         Assert.Equal(1, root.GetProperty("matched").GetInt32());
         Assert.True(Guid.TryParse(reached.GetProperty("process").GetString(), out _));
 
@@ -110,8 +113,8 @@ public sealed class HostsCommandTests
     }
 
     /// <summary>
-    /// browser.exe's TCP to 142.250.1.1, two records, and to 142.250.1.10, and its UDP to a resolver; updater.exe's TCP to
-    /// 142.250.1.1, three records, and to an IPv6 host.
+    /// browser.exe's TCP to 142.250.1.1's port 443, two records, and to 142.250.1.10, and its UDP to a resolver; updater.exe's
+    /// TCP to 142.250.1.1's port 8443, three records, and to an IPv6 host.
     /// </summary>
     private static ObservationRowV1[] Rows() =>
     [
@@ -122,9 +125,9 @@ public sealed class HostsCommandTests
         Transfer(22, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 5).Between("192.168.1.10:52001", "142.250.1.10:443") with { SessionRelativeTicks = 220 },
         Transfer(23, ObservationKind.Send, AccountingSide.SendSide, 40, 300, 6).Between("192.168.1.10:61000", "8.8.8.8:53")
             with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 230 },
-        Transfer(24, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 7).Between("192.168.1.10:53000", "142.250.1.1:443") with { SessionRelativeTicks = 240 },
-        Transfer(25, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 8).Between("192.168.1.10:53000", "142.250.1.1:443") with { SessionRelativeTicks = 250 },
-        Transfer(26, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 9).Between("192.168.1.10:53000", "142.250.1.1:443") with { SessionRelativeTicks = 260 },
+        Transfer(24, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 7).Between("192.168.1.10:53000", "142.250.1.1:8443") with { SessionRelativeTicks = 240 },
+        Transfer(25, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 8).Between("192.168.1.10:53000", "142.250.1.1:8443") with { SessionRelativeTicks = 250 },
+        Transfer(26, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 9).Between("192.168.1.10:53000", "142.250.1.1:8443") with { SessionRelativeTicks = 260 },
         Transfer(27, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 10).Between("[2001:db8::10]:53001", "[2001:db8::1]:443") with { SessionRelativeTicks = 270 },
     ];
 

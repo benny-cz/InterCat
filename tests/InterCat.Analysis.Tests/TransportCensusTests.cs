@@ -152,8 +152,10 @@ public sealed class TransportCensusTests
         HostReach browser = tcp.Single(reach => Pid(reach) == 300);
         Assert.Equal((Mechanism.Tcp, 3, 2, 4L, RelationStrength.Correlated),
             (browser.Mechanism, browser.Connections, browser.Hosts, browser.Records, browser.Strength));
-        // Address by address: two connections to one host, holding three records, and one to another.
-        Assert.Equal([new HostAddress("142.250.1.1", 2, 3), new HostAddress("142.250.1.2", 1, 1)], browser.Addresses);
+        // Address by address: two connections to one host, holding three records, and one to another, each at the ports it
+        // ran to there.
+        Assert.Equal([new HostAddress("142.250.1.1", 2, 3) { Ports = [443] }, new HostAddress("142.250.1.2", 1, 1) { Ports = [443] }],
+            browser.Addresses);
         HostReach reused = tcp.Single(reach => Pid(reach) == 210);
         Assert.Equal((1, 1, 1L, RelationStrength.Candidate), (reused.Connections, reused.Hosts, reused.Records, reused.Strength));
         Assert.Equal(2u, processes.Instances[reused.Holder].LifecycleEpoch);
@@ -167,23 +169,24 @@ public sealed class TransportCensusTests
 
         HostReach udp = Assert.Single(relations.ReachOfOtherHosts(Mechanism.Udp));
         Assert.Equal((700, Mechanism.Udp, 2, 2, 3L), (Pid(udp), udp.Mechanism, udp.Connections, udp.Hosts, udp.Records));
-        Assert.Equal([new HostAddress("224.0.0.251", 1, 2), new HostAddress("8.8.8.8", 1, 1)], udp.Addresses);
+        Assert.Equal([new HostAddress("224.0.0.251", 1, 2) { Ports = [5353] }, new HostAddress("8.8.8.8", 1, 1) { Ports = [53] }],
+            udp.Addresses);
         Assert.Throws<ArgumentOutOfRangeException>(() => relations.ReachOfOtherHosts(Mechanism.Rpc));
     }
 
-    [Fact(DisplayName = "§6.3: a process's connections to other hosts are counted address by address, the busiest first, each written as every surface writes it")]
+    [Fact(DisplayName = "§6.3: a process's connections to other hosts are counted address by address, the busiest first, each written as every surface writes it, with the ports at it they ran to")]
     public void AProcesssConnectionsToOtherHostsAreCountedAddressByAddress()
     {
         using var session = new TemporarySession();
         Publish(session.Store,
         [
-            // Five records to an IPv6 host; two connections of one record each to 10.0.0.30, which its connections put
-            // before 10.0.0.3 though its address sorts after; one connection of two records to each of 10.0.0.3 and
+            // Five records to an IPv6 host; two connections of one record each to 10.0.0.30, at two ports, which its
+            // connections put before 10.0.0.3 though its address sorts after; one connection of two records to each of 10.0.0.3 and
             // 9.9.9.9; one record to 142.250.1.1, and one to the same address IPv4-mapped, which the source named as an
             // IPv6 address and so is an address of its own (R22).
             .. Enumerable.Range(0, 5).Select(index => Transfer(100 + index, ObservationKind.Send, AccountingSide.SendSide, 1, 300,
                 (ulong)(10 + index)).Between("[2001:db8::10]:52000", "[2001:db8::1]:443")),
-            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 20).Between("192.168.1.10:52001", "10.0.0.30:443"),
+            Transfer(110, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 20).Between("192.168.1.10:52001", "10.0.0.30:8443"),
             Transfer(111, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 21).Between("192.168.1.10:52002", "10.0.0.30:443"),
             Transfer(112, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 22).Between("192.168.1.10:52003", "9.9.9.9:443"),
             Transfer(113, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 23).Between("192.168.1.10:52003", "9.9.9.9:443"),
@@ -195,18 +198,20 @@ public sealed class TransportCensusTests
         ]);
         (_, TransportRelationIndex relations) = Derive(session.Store);
 
-        // The most records first, then the most connections, then by address.
+        // The most records first, then the most connections, then by address; each with the ports at it they ran to, the
+        // lowest first.
         HostReach reach = Assert.Single(relations.ReachOfOtherHosts(Mechanism.Tcp));
         Assert.Equal(
             [
-                new HostAddress("2001:db8::1", 1, 5),
-                new HostAddress("10.0.0.30", 2, 2),
-                new HostAddress("10.0.0.3", 1, 2),
-                new HostAddress("9.9.9.9", 1, 2),
-                new HostAddress("142.250.1.1", 1, 1),
-                new HostAddress("::ffff:142.250.1.1", 1, 1),
+                new HostAddress("2001:db8::1", 1, 5) { Ports = [443] },
+                new HostAddress("10.0.0.30", 2, 2) { Ports = [443, 8443] },
+                new HostAddress("10.0.0.3", 1, 2) { Ports = [443] },
+                new HostAddress("9.9.9.9", 1, 2) { Ports = [443] },
+                new HostAddress("142.250.1.1", 1, 1) { Ports = [443] },
+                new HostAddress("::ffff:142.250.1.1", 1, 1) { Ports = [443] },
             ],
             reach.Addresses);
+        Assert.NotEqual(new HostAddress("10.0.0.30", 2, 2) { Ports = [443] }, reach.Addresses[1]);
         Assert.Equal((7, 6, 13L), (reach.Connections, reach.Hosts, reach.Records));
 
         // As the census counts them.

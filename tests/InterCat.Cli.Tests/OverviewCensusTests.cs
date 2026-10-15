@@ -41,9 +41,9 @@ public sealed class OverviewCensusTests
         Assert.Matches(@"(?m)^  Reaching other hosts +1 TCP connection to 1 host\r?$", text);
         Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +1 TCP connection to 1 host\r?$", text);
 
-        // And the hosts they ran to, the busiest first, by address, with what reached each and its records.
-        Assert.Matches(@"(?m)^  Busiest other host +Connections +Records\r?$", text);
-        Assert.Matches(@"(?m)^  142\.250\.1\.1 +1 TCP connection from 1 process +2\r?$", text);
+        // And the hosts they ran to, the busiest first, by address, with what reached each, the ports at it and its records.
+        Assert.Matches(@"(?m)^  Busiest other host +Connections +Ports +Records\r?$", text);
+        Assert.Matches(@"(?m)^  142\.250\.1\.1 +1 TCP connection from 1 process +443 +2\r?$", text);
         Assert.Contains("1 other host in all, counted by address; who is at them is not observed. icat channels <directory> "
             + "--process <instance-guid> --one-sided lists a process's connections.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
@@ -60,6 +60,7 @@ public sealed class OverviewCensusTests
         JsonElement address = Assert.Single(link.GetProperty("addresses").EnumerateArray());
         Assert.Equal(("142.250.1.1", 1, 2L), (address.GetProperty("address").GetString(), address.GetProperty("connections").GetInt32(),
             address.GetProperty("records").GetInt64()));
+        Assert.Equal([443], address.GetProperty("ports").EnumerateArray().Select(port => port.GetInt32()));
 
         // A session whose graph draws a relationship says nothing of why it would draw none.
         using var paired = new TemporarySession();
