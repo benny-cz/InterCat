@@ -16,7 +16,7 @@ namespace InterCat.Desktop.Tests;
 /// </summary>
 public sealed class GraphSearchMarkTests
 {
-    [Fact(DisplayName = "§6.7: a search marks the graph's nodes holding the processes it finds, wholly or in part, and Other hosts for an address, and says so")]
+    [Fact(DisplayName = "§6.7: a search marks the graph's nodes holding the processes it finds, wholly or in part, and Other hosts for an address or an endpoint, and says so")]
     public void ASearchMarksTheNodesItFinds() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -57,6 +57,18 @@ public sealed class GraphSearchMarkTests
             workspace.SearchedGraphNodeKeys.Order(StringComparer.Ordinal));
         Assert.Equal("Found by the search: an address these connections reached", workspace.DescribeGraphHover(hub.Key)!.Lines[^1]);
         workspace.SearchText = "20.42.65.1";
+        Assert.Empty(workspace.SearchedGraphNodeKeys);
+
+        // An endpoint, the address at a port its connections ran to, or a port alone, finds them as the address does; the
+        // address at another port finds nothing.
+        workspace.SearchText = "142.250.1.1:443";
+        Assert.Equal(new[] { browser.Key, hub.Key }.Order(StringComparer.Ordinal),
+            workspace.SearchedGraphNodeKeys.Order(StringComparer.Ordinal));
+        workspace.SearchText = ":443";
+        Assert.Equal(new[] { browser.Key, hub.Key }.Order(StringComparer.Ordinal),
+            workspace.SearchedGraphNodeKeys.Order(StringComparer.Ordinal));
+
+        workspace.SearchText = "142.250.1.1:80";
         Assert.Empty(workspace.SearchedGraphNodeKeys);
 
         // A search that finds nothing says so; cleared, the graph is as it was.

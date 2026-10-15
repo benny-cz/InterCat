@@ -73,7 +73,7 @@ public sealed class HostsCommandTests
         Assert.Contains("No process of this session reached another host", text, Ordinal);
     }
 
-    [Fact(DisplayName = "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, as the window's search finds them")]
+    [Fact(DisplayName = "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, at a port or any address at a port, as the window's search finds them")]
     public async Task IcatHostsFindsTheProcessesThatReachedAnAddress()
     {
         using var session = new TemporarySession();
@@ -102,6 +102,23 @@ public sealed class HostsCommandTests
                 Assert.Single(reached.GetProperty("ports").EnumerateArray()).GetInt32()));
         Assert.Equal(1, root.GetProperty("matched").GetInt32());
         Assert.True(Guid.TryParse(reached.GetProperty("process").GetString(), out _));
+
+        // An endpoint finds the processes that reached the address at that port alone, and a port alone those that reached
+        // any address at it; an endpoint no process reached says so in its own words.
+        (code, text, _) = await Run("hosts", session.Path, "--address", "142.250.1.1:8443");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^ *updater\.exe · PID 310 +142\.250\.1\.1 +1 TCP connection +8443 +3\r?$", text);
+        Assert.DoesNotContain("browser.exe", text, Ordinal);
+        (code, text, _) = await Run("hosts", session.Path, "--address", ":443", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        string[] atPort = [.. JsonDocument.Parse(text).RootElement.GetProperty("reached").EnumerateArray()
+            .Select(row => row.GetProperty("name").GetString() + " " + row.GetProperty("address").GetString())];
+        Assert.Equal("browser.exe · PID 300 142.250.1.1", atPort[0]);
+        Assert.Equal(["browser.exe · PID 300 142.250.1.1", "browser.exe · PID 300 142.250.1.10", "updater.exe · PID 310 2001:db8::1"],
+            atPort.Order(StringComparer.Ordinal));
+        (code, text, _) = await Run("hosts", session.Path, "--address", "142.250.1.1:80");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("No process of this session reached 142.250.1.1:80: an address whole at that port", text, Ordinal);
 
         // An address no process reached says so; a query with neither dot nor colon names no address and is refused.
         (code, text, _) = await Run("hosts", session.Path, "--address", "192.0.2.1");

@@ -207,6 +207,73 @@ public sealed class WorkspaceSearchTests
             both.Hits.Select(found => found.Detail));
     }
 
+    [Fact(DisplayName = "§6.7: a process is found by an endpoint it reached, an address whole at one of its ports, or by a port alone at any address, its hit never repeating either")]
+    public void AProcessIsFoundByAnEndpointOrAPortItReached()
+    {
+        ProcessGroup apps = new("apps", "app.exe", LaneGrouping.Executable);
+        ProcessNode browser = Process(1, 300, "browser.exe", apps.Key, (Mechanism.Tcp, 50));
+        ProcessNode updater = Process(2, 310, "updater.exe", apps.Key, (Mechanism.Tcp, 20));
+        ProcessNode resolver = Process(3, 320, "resolver.exe", apps.Key, (Mechanism.Udp, 10));
+        ProcessNode mapped = Process(4, 330, "mapped.exe", apps.Key, (Mechanism.Tcp, 5));
+        HostLink[] links =
+        [
+            new(browser.Id, Mechanism.Tcp, [new("142.250.1.1", 2, 30) { Ports = [443] }, new("20.42.65.1", 1, 5) { Ports = [80] }],
+                RelationStrength.Direct),
+            new(updater.Id, Mechanism.Tcp, [new("142.250.1.1", 1, 4) { Ports = [8443] }, new("2001:db8::1", 1, 2) { Ports = [443] }],
+                RelationStrength.Direct),
+            new(resolver.Id, Mechanism.Udp, [new("8.8.8.8", 3, 3) { Ports = [53] }], RelationStrength.Direct),
+            new(mapped.Id, Mechanism.Tcp, [new("::ffff:142.250.1.1", 1, 1) { Ports = [443] }], RelationStrength.Direct),
+        ];
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [apps], [browser, updater, resolver, mapped], [], [], [],
+            [], [])
+        {
+            HostLinks = links,
+        };
+        string[] Found(string query) => [.. WorkspaceSearch.Find(snapshot, query).Hits.Select(hit => hit.Key)];
+
+        // An address with a port, as netstat writes an endpoint, finds the processes that reached it there and no other
+        // port - an IPv4-mapped address by its IPv4 address too - each hit saying over which transport, never the endpoint.
+        Assert.Equal([browser.Id.ToString(), mapped.Id.ToString()], Found("142.250.1.1:443"));
+        SearchHit endpoint = WorkspaceSearch.Find(snapshot, "142.250.1.1:443").Hits[0];
+        Assert.Equal("Process instance of app.exe · TCP connections to the endpoint searched", endpoint.Detail);
+        Assert.DoesNotContain("443", endpoint.Label + endpoint.Detail, StringComparison.Ordinal);
+        Assert.Equal([updater.Id.ToString()], Found("142.250.1.1:8443"));
+        Assert.Empty(Found("142.250.1.1:80"));
+
+        // An IPv6 address is written in brackets before its port, in either case.
+        Assert.Equal([updater.Id.ToString()], Found("[2001:DB8::1]:443"));
+
+        // A port alone, after a colon, finds every process that reached any address at it, below an endpoint's rank.
+        Assert.Equal([browser.Id.ToString(), updater.Id.ToString(), mapped.Id.ToString()], Found(":443"));
+        Assert.Equal("Process instance of app.exe · UDP flows to 1 address at the port searched",
+            Assert.Single(WorkspaceSearch.Find(snapshot, ":53").Hits).Detail);
+        Assert.Equal([browser.Id.ToString()], Found(":80"));
+
+        // An endpoint names its address whole; what is no port names an address as before, or nothing.
+        Assert.Empty(Found("142.250:443"));
+        Assert.Empty(Found(":65536"));
+        Assert.Empty(Found(":443x"));
+        Assert.Equal([updater.Id.ToString()], Found("2001:db8::1"));
+
+        // The rule a process is found by is the one its hit is ranked by, and the one icat hosts names a host by.
+        foreach (string query in new[] { "142.250.1.1:443", "142.250.1.1:8443", "[2001:db8::1]:443", ":443", ":53", "142.250:443", ":443x" })
+        {
+            Assert.Equal(
+                [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits.Select(found => found.Key).Order(StringComparer.Ordinal)],
+                snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, links.Where(link => link.Process == process.Id), query))
+                    .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal));
+        }
+
+        Assert.True(WorkspaceSearch.NamesHost(new HostAddress("142.250.1.1", 1, 1) { Ports = [80, 443] }, " 142.250.1.1:443 "));
+        Assert.False(WorkspaceSearch.NamesHost(new HostAddress("142.250.1.1", 1, 1) { Ports = [80] }, "142.250.1.1:443"));
+        Assert.True(WorkspaceSearch.NamesHost(new HostAddress("142.250.1.1", 1, 1), "142.250"));
+        Assert.False(WorkspaceSearch.NamesHost(new HostAddress("142.250.1.1", 1, 1), "142"));
+        Assert.True(WorkspaceSearch.NamesPort(":443"));
+        Assert.True(WorkspaceSearch.NamesPort("[::1]:443"));
+        Assert.False(WorkspaceSearch.NamesPort("::1"));
+        Assert.False(WorkspaceSearch.NamesPort("142.250.1.1"));
+    }
+
     private static ProcessNode Process(int index, int processId, string name, string group, params (Mechanism, long)[] made) =>
         new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), processId, name, "test", group, 0.5, 0.5,
             CoverageState.Covered)

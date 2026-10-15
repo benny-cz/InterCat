@@ -2036,7 +2036,7 @@
         "R18: icat evidence --from lists the rows from a moment on, placed as the window's search places it, on the wall clock or in session time",
         "R18: icat export --group-by session reaches a session's rung by its key, as the window groups it, and never guesses a session",
         "R18: icat follow refuses a follow it cannot run, saying why, and stops waiting for a recording that never published",
-        "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, as the window's search finds them",
+        "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, at a port or any address at a port, as the window's search finds them",
         "R18: icat hosts lists the other hosts the session's processes reached, the busiest first, and as many as asked",
         "R18: icat metric names a process focus by its role, and refuses an other end with no focus to be relative to",
         "R18: icat metric prints its matrix and a request's canonical form as a person reads them",

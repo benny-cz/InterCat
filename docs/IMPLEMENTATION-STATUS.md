@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 559 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 560 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 560 — search an endpoint or a port (§6.7, §6.3):**
+  - An endpoint copied from netstat, 142.250.1.1:443, found nothing.
+  - A search for an address at a port, or a port alone (:443), finds the processes that reached it there; the
+    graph's marks, the lanes and icat hosts --address find by the same rule.
+  - Debug and Release each ran 2,385 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 13 mutations was caught: a port alone, an IPv6 endpoint or an IPv4 endpoint not read as one; an endpoint
+    naming an address it only begins, or ignoring its port; a port alone finding every address; a hit's detail
+    naming the endpoint's address, dropping the port searched, or leaving out UDP flows; a host an endpoint names
+    said not to be named, and a port query said to be none; and icat hosts finding by addresses alone, or saying an
+    endpoint found nothing in an address's words.
 
 - **Revision 559 — the ports at each other host (§6.3, R18):**
   - An address alone told a busy machine's connections to other hosts little apart.

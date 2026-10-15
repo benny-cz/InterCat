@@ -32,9 +32,9 @@ public sealed record SearchResult(string Query, IReadOnlyList<SearchHit> Hits, i
 
 /// <summary>
 /// §6.7's search (Ctrl+F) over one snapshot's metadata: executable groups by name or image path, process instances by
-/// name, PID or an address their connections to other hosts ran to (§6.3), and channels by endpoint. It reads no
-/// payload and no source field beyond what the ladder already shows (§10, P16), and it is bounded: a result states how
-/// many matched beyond the hits it lists.
+/// name, PID or an address their connections to other hosts ran to (§6.3) - with its port, or a port alone - and channels
+/// by endpoint. It reads no payload and no source field beyond what the ladder already shows (§10, P16), and it is
+/// bounded: a result states how many matched beyond the hits it lists.
 /// </summary>
 public static class WorkspaceSearch
 {
@@ -153,17 +153,75 @@ public static class WorkspaceSearch
         : Rank(text, process.Name, null);
 
     /// <summary>
-    /// Whether <paramref name="query"/> names <paramref name="address"/> by the rule a process is found by an address it
-    /// reached (<see cref="Find"/>): the address whole, or begun up to a dot or colon, ignoring case, and an IPv4-mapped
-    /// address by its IPv4 address too; never a query with neither dot nor colon, which names no address.
+    /// Whether <paramref name="query"/> names <paramref name="address"/>, an address connections ran to with the ports
+    /// they ran to there, by the rule a process is found by an address it reached (<see cref="Find"/>): the address whole,
+    /// or begun up to a dot or colon, ignoring case, and an IPv4-mapped address by its IPv4 address too; the address whole
+    /// with a port it was reached at, "142.250.1.1:443" or "[2001:db8::1]:443"; or a port alone, ":443". Never a query
+    /// with neither dot nor colon, which names no address.
     /// </summary>
-    public static bool NamesAddress(string address, string? query)
+    public static bool NamesHost(HostAddress address, string? query)
     {
         ArgumentNullException.ThrowIfNull(address);
-        string text = query?.Trim() ?? string.Empty;
-        return (text.Contains('.', StringComparison.Ordinal) || text.Contains(':', StringComparison.Ordinal))
-            && AddressRank(address, text) >= 0;
+        return HostQueryOf(query?.Trim() ?? string.Empty) is { } host && HostRank(address, host) >= 0;
     }
+
+    /// <summary>Whether <paramref name="query"/> asks for a port: an endpoint or a port alone, rather than an address.</summary>
+    public static bool NamesPort(string? query) => HostQueryOf(query?.Trim() ?? string.Empty) is { Port: not null };
+
+    /// <summary>
+    /// What a query asks of the addresses connections to other hosts ran to: <see cref="Address"/>, the address or its
+    /// beginning, null for any; and <see cref="Port"/>, a port it was reached at, null for any. An endpoint names its
+    /// address whole.
+    /// </summary>
+    private readonly record struct HostQuery(string? Address, ushort? Port);
+
+    /// <summary>
+    /// The address and port a query names: ":443", a port at any address, since no IPv6 address begins with one colon
+    /// and a number; "[2001:db8::1]:443", an IPv6 address with a port; "142.250.1.1:443", an IPv4 address with a port
+    /// after its last dot and its only colon; else an address or its beginning, when it holds a dot or a colon. Null for
+    /// a query that names no address.
+    /// </summary>
+    private static HostQuery? HostQueryOf(string text)
+    {
+        if (text.Length > 1 && text[0] == ':' && PortOf(text[1..]) is { } alone)
+        {
+            return new(null, alone);
+        }
+
+        if (text.StartsWith('[') && text.IndexOf("]:", StringComparison.Ordinal) is > 1 and var close
+            && PortOf(text[(close + 2)..]) is { } v6)
+        {
+            return new(text[1..close], v6);
+        }
+
+        int colon = text.IndexOf(':', StringComparison.Ordinal);
+        if (colon > 0 && colon == text.LastIndexOf(':') && text.LastIndexOf('.') is >= 0 and var dot && dot < colon
+            && PortOf(text[(colon + 1)..]) is { } v4)
+        {
+            return new(text[..colon], v4);
+        }
+
+        return text.Contains('.', StringComparison.Ordinal) || text.Contains(':', StringComparison.Ordinal) ? new(text, null) : null;
+    }
+
+    /// <summary>A port written as a number from 0 to 65535, with no sign or space.</summary>
+    private static ushort? PortOf(string text) =>
+        text.Length is > 0 and <= 5 && ushort.TryParse(text, NumberStyles.None, CultureInfo.InvariantCulture, out ushort port)
+            ? port
+            : null;
+
+    /// <summary>
+    /// How well an address connections ran to matches a query, as <see cref="AddressRankOf"/> ranks it: an address or its
+    /// beginning by <see cref="AddressRank"/>; an endpoint 0 where it names the address whole and one of its ports; a port
+    /// alone 1, as broad as an address's beginning, where it is one of the address's ports; -1 otherwise.
+    /// </summary>
+    private static int HostRank(HostAddress address, HostQuery query) => query switch
+    {
+        { Address: null, Port: { } port } => address.Ports.Contains(port) ? 1 : -1,
+        { Address: { } whole, Port: { } port } => AddressRank(address.Address, whole) == 0 && address.Ports.Contains(port) ? 0 : -1,
+        { Address: { } text } => AddressRank(address.Address, text),
+        _ => -1,
+    };
 
     /// <summary>
     /// Whether <paramref name="query"/> names an address <paramref name="links"/>, connections to other hosts, ran to, by
@@ -180,13 +238,15 @@ public static class WorkspaceSearch
     /// How well the addresses a process's connections to other hosts ran to match the query (§6.3): 0 when one is the
     /// query, 1 when one begins with it up to a '.' or ':' - "142.250" begins 142.250.1.1, "142.250.1.1" does not begin
     /// 142.250.1.10 - ignoring case, as IPv6 is written either way, and an IPv4-mapped address matching as its IPv4
-    /// address too; -1 when none does, and for a query with neither '.' nor ':', which names no address: a bare number is
-    /// a PID, a word a name. With it, what reached the addresses that match best, for the hit's detail, which never repeats
-    /// an address (P16): "12 TCP connections and 1 UDP flow to 1 matching address".
+    /// address too; 0 when the query is an endpoint, an address whole with a port its connections ran to there; 1 when it
+    /// is a port alone that they ran to at any address; -1 when none does, and for a query with neither '.' nor ':', which
+    /// names no address: a bare number is a PID, a word a name. With it, what reached the addresses that match best, for
+    /// the hit's detail, which never repeats an address or a port (P16): "12 TCP connections and 1 UDP flow to 1 matching
+    /// address", or, since an address's counts are not kept port by port, "TCP connections to the endpoint searched".
     /// </summary>
     private static (int Rank, string? Reached) AddressRankOf(IEnumerable<HostLink> links, string text)
     {
-        if (!text.Contains('.', StringComparison.Ordinal) && !text.Contains(':', StringComparison.Ordinal))
+        if (HostQueryOf(text) is not { } query)
         {
             return (-1, null);
         }
@@ -197,7 +257,7 @@ public static class WorkspaceSearch
         {
             foreach (HostAddress address in link.Addresses)
             {
-                int rank = AddressRank(address.Address, text);
+                int rank = HostRank(address, query);
                 if (rank < 0 || (best >= 0 && rank > best))
                 {
                     continue;
@@ -220,12 +280,25 @@ public static class WorkspaceSearch
 
         int tcp = matched.Where(match => match.Mechanism != Mechanism.Udp).Sum(match => match.Address.Connections);
         int udp = matched.Where(match => match.Mechanism == Mechanism.Udp).Sum(match => match.Address.Connections);
+        int addresses = matched.Select(match => match.Address.Address).Distinct(StringComparer.Ordinal).Count();
+        if (query.Port is not null)
+        {
+            // An address's connections are counted whatever port each ran to, so those at the port searched are not
+            // counted: the hit says over which transports, and to how many addresses.
+            string transports = string.Join(" and ", new[]
+            {
+                tcp > 0 ? "TCP connections" : null,
+                udp > 0 ? "UDP flows" : null,
+            }.OfType<string>());
+            return (best, transports + (query.Address is not null ? " to the endpoint searched"
+                : " to " + CountText.Of(addresses, "address", "addresses") + " at the port searched"));
+        }
+
         string connections = string.Join(" and ", new[]
         {
             tcp > 0 ? HostLinkText.Connections(Mechanism.Tcp, tcp) : null,
             udp > 0 ? HostLinkText.Connections(Mechanism.Udp, udp) : null,
         }.OfType<string>());
-        int addresses = matched.Select(match => match.Address.Address).Distinct(StringComparer.Ordinal).Count();
         return (best, connections + " to " + CountText.Of(addresses, "matching address", "matching addresses"));
     }
 

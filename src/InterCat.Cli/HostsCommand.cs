@@ -58,8 +58,9 @@ internal static class HostsCommand
 
         if (address is not null && !address.Contains('.', StringComparison.Ordinal) && !address.Contains(':', StringComparison.Ordinal))
         {
-            ConsoleUi.Failure($"--address takes an address, or its beginning up to a dot or colon - 142.250 or 2001:db8: - "
-                + $"and '{address}' names none.");
+            ConsoleUi.Failure($"--address takes an address, or its beginning up to a dot or colon - 142.250 or 2001:db8: - an "
+                + $"address with a port - 142.250.1.1:443 or [2001:db8::1]:443 - or a port alone - :443 - and '{address}' names "
+                + "none.");
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -134,7 +135,7 @@ internal static class HostsCommand
         Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
         var reached = overview.HostLinks
             .SelectMany(link => link.Addresses
-                .Where(address => WorkspaceSearch.NamesAddress(address.Address, query))
+                .Where(address => WorkspaceSearch.NamesHost(address, query))
                 .Select(address => (Link: link, Address: address)))
             .OrderByDescending(entry => entry.Address.Records)
             .ThenBy(entry => entry.Link.Process.ToString(), StringComparer.Ordinal)
@@ -168,8 +169,11 @@ internal static class HostsCommand
         ConsoleUi.Field("Session", path);
         if (reached.Length == 0)
         {
-            ConsoleUi.Note($"No process of this session reached an address {query.Trim()} names: the address whole, or begun "
-                + "up to a dot or colon. icat hosts <directory> lists every host they reached.");
+            ConsoleUi.Note(WorkspaceSearch.NamesPort(query)
+                ? $"No process of this session reached {query.Trim()}: an address whole at that port, or any address at a port "
+                    + "alone. icat hosts <directory> lists every host they reached, with its ports."
+                : $"No process of this session reached an address {query.Trim()} names: the address whole, or begun up to a dot "
+                    + "or colon. icat hosts <directory> lists every host they reached.");
             return InterCatExitCode.Success;
         }
 
@@ -197,7 +201,8 @@ internal static class HostsCommand
         ConsoleUi.Line("  process of the capture at the other end, the busiest first by the records those connections hold,");
         ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to. --address lists");
         ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
-        ConsoleUi.Line("  2001:db8: - as the window's search finds them. --limit lists at most that many, "
+        ConsoleUi.Line("  2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
+        ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many, "
             + $"{DefaultLimit} by default.");
         ConsoleUi.Line("  Who is at an address, and what a port serves there, are not observed.");
     }
