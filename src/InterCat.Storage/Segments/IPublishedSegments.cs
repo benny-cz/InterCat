@@ -9,4 +9,10 @@ public interface IPublishedSegments : IReadOnlyList<SegmentReaderV1>
 {
     /// <summary>Each segment's published name, in order, read without opening it.</summary>
     IReadOnlyList<string> Names { get; }
+
+    /// <summary>
+    /// Each segment's published identity - its name, length and digest, as its generation records it - in order, read
+    /// without opening it: what tells one session's segments from another's, where a name alone does not.
+    /// </summary>
+    IReadOnlyList<StoreDependency> Published { get; }
 }

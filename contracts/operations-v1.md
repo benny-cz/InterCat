@@ -46,6 +46,26 @@ derivation counts it as such.
   no call is paired across sides by its activity id. A call's other end is §5c's, found through ALPC or left unresolved
   with its reason (P7).
 
+## 3a. From one live generation to the next (revision 544)
+
+A live capture publishes a generation per chunk, and a later generation's calls and their other ends (§5c) are
+extended from the earlier generation's rather than derived again, with exactly a full derivation's result:
+
+- **What is kept.** Beside its calls a derivation keeps the records of every key with a call open, and of every key
+  with a record read within 15 seconds of the latest call record read (the *late window*), each from a record
+  before which its key had no call open; and its calls in canonical order. Its other ends keep the ALPC sends and
+  receives they read, sorted as §5c looks them up.
+- **What extends.** A generation whose segments and source-field segments begin with the same files the earlier
+  one read - by name, length and digest, not by name alone - reads only its added segments. The kept keys are
+  paired again with the added records; every other call stands, and all are bound again to the generation's
+  instances by their first records' readings, as §4 binds them. The added ALPC records are merged into those kept,
+  and every call is linked again. The ALPC records pass to the extension, so one generation holds them.
+- **What declines.** Anything an extension could not add exactly is derived in full: a record with an activity id
+  read before the late window and before every record kept of its key, which could re-pair a call decided before;
+  a segment read before that the generation no longer names, or names with another length or digest; and a source
+  field, or an ALPC message id, naming no record the generation added. A record's source fields are published with
+  it, so such a field could change a call or a link already made.
+
 ## 4. A call
 
 | Field | Value |
@@ -200,8 +220,7 @@ derivation they rest on, and the generation; a change to what links, how, or whe
   `contracts/metrics-v1.md` §8a since revision 186.
 - Linking a client call to its server call other than through §5c's ALPC chain: by thread nesting, by time, or across
   machines.
-- Extending calls or their other ends from one live generation to the next: a derivation reads its generation whole,
-  holding every call record while it pairs and the keys with a call open while it walks them (revision 184). A finished
-  generation keeps both in its operation index since revision 440 (`contracts/operation-index-v1.md`), so a reopen
-  pairs none.
+- Extending calls or their other ends from a derivation checkpoint or an operation index: a finished generation keeps
+  both in its operation index since revision 440 (`contracts/operation-index-v1.md`), so a reopen pairs none, but
+  only a derivation made in memory extends to a later live generation (§3a).
 - Late evidence revisions (I17): a later generation derives its calls again.

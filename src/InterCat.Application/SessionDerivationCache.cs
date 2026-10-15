@@ -142,6 +142,18 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
     /// <summary>Each instance's records, once counted.</summary>
     public ProcessActivityIndex? DerivedActivity => Volatile.Read(ref activity);
 
+    /// <summary>The RPC calls already made, or null before they are asked for: what a later generation extends.</summary>
+    public RpcCallIndex? DerivedRpcCalls => Volatile.Read(ref rpcCalls);
+
+    /// <summary>The other ends of the RPC calls already followed, or null before they are asked for.</summary>
+    public RpcPeerIndex? DerivedRpcPeers => Volatile.Read(ref rpcPeers);
+
+    /// <summary>Whether the RPC calls were extended from an earlier generation's rather than paired in full.</summary>
+    internal bool RpcCallsExtended { get; private set; }
+
+    /// <summary>Whether the calls' other ends were extended from an earlier generation's rather than read in full.</summary>
+    internal bool RpcPeersExtended { get; private set; }
+
     /// <summary>Whether the counts were extended from an earlier generation's rather than counted in full.</summary>
     internal bool ActivityExtended { get; private set; }
 
@@ -288,9 +300,9 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>
     /// The generation's RPC calls (`contracts/operations-v1.md`), taken on first use from the operation index the
-    /// generation names when it covers its segments (`contracts/operation-index-v1.md`), with their other ends, or else
-    /// paired from the segments. They are not extended from an earlier generation's: a call still open in one generation
-    /// may close in the next.
+    /// generation names when it covers its segments (`contracts/operation-index-v1.md`), with their other ends; or else
+    /// extended from the latest earlier generation's, pairing again only what its added records can change (a call still
+    /// open in one generation may close in the next); or else paired from every segment.
     /// </summary>
     public RpcCallIndex RpcCalls(
         IOwnedDirectory directory,
@@ -315,7 +327,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
             }
 
             ProcessInstanceIndex instances = ProcessesLocked(directory, segments, clock, fields, cancellationToken);
-            RpcCallIndex paired = RpcCallIndex.Derive(segments, fields, instances, clock, cancellationToken);
+            RpcCallIndex? extended =
+                SessionDerivationCache.Earlier(this, entry => entry.DerivedRpcCalls)?.Extend(segments, fields, instances, cancellationToken);
+            RpcCallsExtended = extended is not null;
+            RpcCallIndex paired = extended ?? RpcCallIndex.Derive(segments, fields, instances, clock, cancellationToken);
             Volatile.Write(ref rpcCalls, paired);
             return paired;
         }
@@ -413,7 +428,8 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
 
     /// <summary>
     /// The other ends of the generation's RPC calls (`contracts/operations-v1.md` §5c), followed once on first use over the
-    /// calls <see cref="RpcCalls"/> paired, from the same segments in the same order.
+    /// calls <see cref="RpcCalls"/> paired, from the same segments in the same order: extended from the latest earlier
+    /// generation's, which reads only the ALPC records added since, or else read from every segment.
     /// </summary>
     public RpcPeerIndex RpcPeers(
         IOwnedDirectory directory,
@@ -430,7 +446,10 @@ internal sealed class SessionDerivation(SessionManifestV1 manifest)
                 return known;
             }
 
-            RpcPeerIndex followed = RpcPeerIndex.Derive(calls, segments, fields, cancellationToken);
+            RpcPeerIndex? extended =
+                SessionDerivationCache.Earlier(this, entry => entry.DerivedRpcPeers)?.Extend(calls, segments, fields, cancellationToken);
+            RpcPeersExtended = extended is not null;
+            RpcPeerIndex followed = extended ?? RpcPeerIndex.Derive(calls, segments, fields, cancellationToken);
             Volatile.Write(ref rpcPeers, followed);
             return followed;
         }

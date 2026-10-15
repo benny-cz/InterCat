@@ -13,6 +13,11 @@ internal sealed class SegmentsOnDemand(SessionStore store, SessionManifestV1 man
 
     public IReadOnlyList<string> Names { get; } = names;
 
+    public IReadOnlyList<StoreDependency> Published { get; } =
+    [
+        .. names.Select(name => manifest.Dependencies.Single(dependency => string.Equals(dependency.Name, name, StringComparison.Ordinal))),
+    ];
+
     public int Count => Names.Count;
 
     public SegmentReaderV1 this[int index] => opened[index] ??= SessionSegments.Open(store, manifest, Names[index]);

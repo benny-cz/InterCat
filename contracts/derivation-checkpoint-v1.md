@@ -208,7 +208,8 @@ name, length and digest:
   other evidence and is not used, silently. §2 keeps writers from publishing one.
 
 A derivation already in memory for an earlier generation of the same session is extended in preference to reading a
-checkpoint. Both give the same result.
+checkpoint. Both give the same result. RPC calls and their other ends extend only from a derivation in memory, by
+`contracts/operations-v1.md` §3a, and never from a checkpoint or an operation index.
 
 ## 5. What is not defined at this version
 

@@ -284,6 +284,9 @@ public sealed partial class RpcCallIndex
             StopRow = closed.Row,
             Status = status,
             HasStatus = hasStatus,
+
+            // An operation index holds no thread: the peer rule reads a start's from its row, as it always did.
+            StartThread = -1,
         };
     }
 

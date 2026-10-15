@@ -111,11 +111,29 @@ public sealed partial class RpcPeerIndex
     private readonly RpcPeerState[] states;
     private readonly int[] peers;
 
-    private RpcPeerIndex(RpcCallIndex calls, RpcPeerState[] states, int[] peers, long sends, long receives)
+    /// <summary>The published identities of the source-field segments the message ids were read from; null where nothing extends.</summary>
+    private readonly StoreDependency?[]? fieldsRead;
+
+    /// <summary>
+    /// The ALPC records read, sorted as the rule looks them up, for a later generation to extend (<see cref="Extend"/>);
+    /// null where nothing extends, and given up to the first index extended from it, which holds them merged.
+    /// </summary>
+    private Evidence? evidence;
+
+    private RpcPeerIndex(
+        RpcCallIndex calls,
+        RpcPeerState[] states,
+        int[] peers,
+        long sends,
+        long receives,
+        StoreDependency?[]? fieldsRead = null,
+        Evidence? evidence = null)
     {
         this.calls = calls;
         this.states = states;
         this.peers = peers;
+        this.fieldsRead = fieldsRead;
+        this.evidence = evidence;
         AlpcSends = sends;
         AlpcReceives = receives;
     }
@@ -144,15 +162,100 @@ public sealed partial class RpcPeerIndex
         ArgumentNullException.ThrowIfNull(calls);
         ArgumentNullException.ThrowIfNull(fieldSegments);
         calls.RequireDerivedFrom(segments);
+        return Link(calls, segments, Read(calls, segments, fieldSegments, cancellationToken), RpcCallIndex.IdentitiesOf(fieldSegments),
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// The other ends of <paramref name="calls"/>, extended from these rather than read again, when the calls' segments
+    /// and the source-field segments begin with every one these were read from, in the same order, as a live capture's
+    /// next generation's do (I14): only the added segments' ALPC records and message ids are read, merged into those read
+    /// already, and every call is linked again. The result is exactly <see cref="Derive"/>'s over the same segments. Null,
+    /// for a full derivation to answer, when these keep no records to extend (read from an operation index, or given up to
+    /// a later extension already), when a segment read here is missing or another, or when an added message id names no
+    /// added ALPC record: a record's fields are published with it, so such an id could change a link these hold.
+    /// </summary>
+    public RpcPeerIndex? Extend(
+        RpcCallIndex calls,
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(calls);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        calls.RequireDerivedFrom(segments);
+        StoreDependency?[] offeredFields = RpcCallIndex.IdentitiesOf(fieldSegments);
+        if (fieldsRead is null
+            || this.calls.Read is not { } earlier
+            || calls.Clock.Id != this.calls.Clock.Id
+            || !RpcCallIndex.Begins(RpcCallIndex.IdentitiesOf(segments), earlier.Segments)
+            || !RpcCallIndex.Begins(offeredFields, fieldsRead)
+            || Interlocked.Exchange(ref evidence, null) is not { } before)
+        {
+            return null;
+        }
+
+        // Until the records are merged, these keep theirs: for another extension, should this one decline or fail.
+        Dictionary<RecordAddress, long> ids;
+        var sends = new List<Message>();
+        var receives = new List<Message>();
+        int named = 0;
+        try
+        {
+            ids = ReadMessageIds(
+                [.. Enumerable.Range(fieldsRead.Length, fieldSegments.Count - fieldsRead.Length).Select(position => fieldSegments[position])],
+                cancellationToken);
+            for (int position = earlier.Segments.Length; position < segments.Count; position++)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                named += CollectAlpc(segments[position], position, ids, sends, receives);
+            }
+        }
+        catch
+        {
+            evidence = before;
+            throw;
+        }
+
+        if (named != ids.Count)
+        {
+            evidence = before;
+            return null;
+        }
+
+        Message[] sent = [.. sends];
+        sent.AsSpan().Sort(BySender);
+        Message[] received = [.. receives.Where(receive => receive.HasId)];
+        received.AsSpan().Sort(ById);
+        var merged = new Evidence(
+            Merge(before.Sent, sent, BySender),
+            Merge(before.Received, received, ById),
+            ServerStarts(calls, segments),
+            Window(calls),
+            before.Sends + sends.Count,
+            before.Receives + receives.Count);
+        return Link(calls, segments, merged, offeredFields, cancellationToken);
+    }
+
+    /// <summary>
+    /// Links every completed client call to the server call that served it from <paramref name="evidence"/>, and says
+    /// of every other call what it reached; the index keeps the evidence, for a later generation to extend.
+    /// </summary>
+    private static RpcPeerIndex Link(
+        RpcCallIndex calls,
+        IReadOnlyList<SegmentReaderV1> segments,
+        Evidence evidence,
+        StoreDependency?[] fieldsRead,
+        CancellationToken cancellationToken)
+    {
         int count = calls.Count;
         var states = new RpcPeerState[count];
         int[] peers = new int[count];
         Array.Fill(peers, -1);
-        Evidence evidence = Read(calls, segments, fieldSegments, cancellationToken);
         if (evidence.Sends + evidence.Receives == 0)
         {
             Array.Fill(states, RpcPeerState.NoAlpcEvidence);
-            return new(calls, states, peers, 0, 0);
+            return new(calls, states, peers, 0, 0, fieldsRead, evidence);
         }
 
         ReadOnlySpan<Message> sent = evidence.Sent;
@@ -203,7 +306,23 @@ public sealed partial class RpcPeerIndex
             }
         }
 
-        return new(calls, states, peers, evidence.Sends, evidence.Receives);
+        return new(calls, states, peers, evidence.Sends, evidence.Receives, fieldsRead, evidence);
+    }
+
+    /// <summary>Two sorted runs of messages as one, in <paramref name="order"/>: what sorting them together gives.</summary>
+    private static Message[] Merge(Message[] first, Message[] second, Comparison<Message> order)
+    {
+        var merged = new Message[first.Length + second.Length];
+        int left = 0;
+        int right = 0;
+        for (int at = 0; at < merged.Length; at++)
+        {
+            merged[at] = right >= second.Length || (left < first.Length && order(first[left], second[right]) <= 0)
+                ? first[left++]
+                : second[right++];
+        }
+
+        return merged;
     }
 
     /// <summary>
@@ -223,7 +342,7 @@ public sealed partial class RpcPeerIndex
         for (int position = 0; position < segments.Count; position++)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            CollectAlpc(segments[position], position, messageIds, sends, receives);
+            _ = CollectAlpc(segments[position], position, messageIds, sends, receives);
         }
 
         if (sends.Count + receives.Count == 0)
@@ -232,9 +351,23 @@ public sealed partial class RpcPeerIndex
         }
 
         Message[] sent = [.. sends];
-        sent.AsSpan().Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks).CompareTo((right.ProcessId, right.ThreadId, right.Ticks)));
+        sent.AsSpan().Sort(BySender);
         Message[] received = [.. receives.Where(receive => receive.HasId)];
-        received.AsSpan().Sort(static (left, right) => (left.Id, left.Ticks).CompareTo((right.Id, right.Ticks)));
+        received.AsSpan().Sort(ById);
+        return new(sent, received, ServerStarts(calls, segments), Window(calls), sends.Count, receives.Count);
+    }
+
+    /// <summary>Sends as the rule looks them up: by the thread that made them, then by reading.</summary>
+    private static readonly Comparison<Message> BySender =
+        static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks).CompareTo((right.ProcessId, right.ThreadId, right.Ticks));
+
+    /// <summary>Receives as the rule looks them up: by message id, then by reading.</summary>
+    private static readonly Comparison<Message> ById =
+        static (left, right) => (left.Id, left.Ticks).CompareTo((right.Id, right.Ticks));
+
+    /// <summary>Every server call's start, by the thread that began it, its reading and the call.</summary>
+    private static ServerStart[] ServerStarts(RpcCallIndex calls, IReadOnlyList<SegmentReaderV1> segments)
+    {
         List<ServerStart> servers = [];
         for (int call = 0; call < calls.Count; call++)
         {
@@ -247,9 +380,12 @@ public sealed partial class RpcPeerIndex
 
         ServerStart[] started = [.. servers];
         started.AsSpan().Sort(static (left, right) => (left.ProcessId, left.ThreadId, left.Ticks, left.Call).CompareTo((right.ProcessId, right.ThreadId, right.Ticks, right.Call)));
-        long window = (long)((Int128)ServerStartWindowNanoseconds * calls.Clock.TicksPerSecond / 1_000_000_000);
-        return new(sent, received, started, window, sends.Count, receives.Count);
+        return started;
     }
+
+    /// <summary>The server-start window in the calls' clock ticks.</summary>
+    private static long Window(RpcCallIndex calls) =>
+        (long)((Int128)ServerStartWindowNanoseconds * calls.Clock.TicksPerSecond / 1_000_000_000);
 
     /// <summary>What the peer rule reads, sorted for its lookups (<see cref="Read"/>).</summary>
     private sealed record Evidence(Message[] Sent, Message[] Received, ServerStart[] Started, long Window, int Sends, int Receives);
@@ -469,8 +605,11 @@ public sealed partial class RpcPeerIndex
             : (RpcPeerState.Conflicting, -1);
     }
 
+    /// <summary>The thread that began a call: as the index holds it, or read from the start's row where it holds none.</summary>
     private static int ThreadOf(IReadOnlyList<SegmentReaderV1> segments, RpcCallIndex.PeerFacts facts) =>
-        (int)(segments[facts.StartSegment].Slice(SegmentColumnId.HeaderThreadId).UnsignedAt(facts.StartRow) ?? 0);
+        facts.Thread >= 0
+            ? facts.Thread
+            : (int)(segments[facts.StartSegment].Slice(SegmentColumnId.HeaderThreadId).UnsignedAt(facts.StartRow) ?? 0);
 
     private static int LowerBound(ReadOnlySpan<Message> sorted, int processId, int threadId, long ticks)
     {
@@ -532,13 +671,15 @@ public sealed partial class RpcPeerIndex
         return low;
     }
 
-    private static void CollectAlpc(
+    /// <summary>Reads one segment's ALPC sends and receives; returns how many of them <paramref name="messageIds"/> named.</summary>
+    private static int CollectAlpc(
         SegmentReaderV1 segment,
         int position,
         Dictionary<RecordAddress, long> messageIds,
         List<Message> sends,
         List<Message> receives)
     {
+        int named = 0;
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
         bool opened = false;
         SegmentColumnSlice kinds = default;
@@ -583,6 +724,7 @@ public sealed partial class RpcPeerIndex
                 ordinals.UnsignedAt(row)!.Value,
                 new FactKey(factHigh.UnsignedAt(row)!.Value, factLow.UnsignedAt(row)!.Value));
             bool hasId = messageIds.TryGetValue(address, out long id);
+            named += hasId ? 1 : 0;
             var message = new Message(
                 (int)(processes.UnsignedAt(row) ?? 0),
                 (int)(threads.UnsignedAt(row) ?? 0),
@@ -593,6 +735,8 @@ public sealed partial class RpcPeerIndex
                 row);
             (kind == ObservationKind.Send ? sends : receives).Add(message);
         }
+
+        return named;
     }
 
     /// <summary>

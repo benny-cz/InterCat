@@ -179,10 +179,26 @@ public sealed partial class RpcCallIndex
     /// <summary>The pairing rule's identity. A change to what pairs, how, or what a call holds is a new rule (§24).</summary>
     public const string OperationRule = "rpc-call-operation-v1";
 
+    /// <summary>
+    /// How far behind the latest call record read a later generation's record may be read and still extend the calls
+    /// (<see cref="Extend"/>): records arrive out of order across a live capture's chunks by about a delivery flush, far
+    /// less than this. A record read earlier than the window, of a key not kept, is paired again in full.
+    /// </summary>
+    public const long LateWindowNanoseconds = 15_000_000_000;
+
     private readonly Entry[] entries;
     private readonly Guid[] interfaces;
     private readonly string?[] segmentNames;
     private readonly SourceClockDescriptor clock;
+
+    /// <summary>
+    /// The published identities of the segments and source-field segments the calls were paired from, for an extension
+    /// to tell they still begin a later generation's; null where nothing extends.
+    /// </summary>
+    private readonly (StoreDependency?[] Segments, StoreDependency?[] Fields)? read;
+
+    /// <summary>What a later generation's records can still change, for <see cref="Extend"/>; null where nothing extends.</summary>
+    private readonly CallTail? tail;
 
     private RpcCallIndex(
         Entry[] entries,
@@ -193,11 +209,15 @@ public sealed partial class RpcCallIndex
         long callRecords,
         long otherRecords,
         RpcCallGroup[] groups,
-        RpcCallCounts totals)
+        RpcCallCounts totals,
+        (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
+        CallTail? tail = null)
     {
         this.entries = entries;
         this.interfaces = interfaces;
         this.segmentNames = segmentNames;
+        this.read = read;
+        this.tail = tail;
         this.clock = clock;
         Processes = processes;
         CallRecords = callRecords;
@@ -444,7 +464,8 @@ public sealed partial class RpcCallIndex
             entry.StartSegment,
             entry.StartRow,
             entry.StopTicks,
-            entry.StopSegment >= 0);
+            entry.StopSegment >= 0,
+            entry.StartThread);
     }
 
     /// <summary>The interface one call's start named; null without a start or where it named none.</summary>
@@ -473,7 +494,9 @@ public sealed partial class RpcCallIndex
 
     /// <summary>
     /// One call as the peer rule reads it: its side, state and process, the interface position and procedure its start
-    /// carried, and where its start is. A call without a start has a start segment below zero.
+    /// carried, where its start is, and the thread that raised it. A call without a start has a start segment below zero;
+    /// a thread below zero is one the index does not hold, as calls read from an operation index do not, and is read from
+    /// the start's row.
     /// </summary>
     internal readonly record struct PeerFacts(
         RpcCallSide Side,
@@ -486,7 +509,8 @@ public sealed partial class RpcCallIndex
         int StartSegment,
         int StartRow,
         long StopTicks,
-        bool HasStop);
+        bool HasStop,
+        int Thread);
 
     /// <summary>
     /// Pairs the call records of <paramref name="segments"/>, whose process instances are <paramref name="processes"/>,
@@ -520,9 +544,14 @@ public sealed partial class RpcCallIndex
         }
 
         // Every call record is read before any is paired, and then in canonical order, so the segments' cut and the
-        // records' delivery order change no call (§3, I14).
+        // records' delivery order change no call (§3, I14). The keys a later generation's records can still change are
+        // kept with their records, for that generation to extend these calls rather than pair them all again.
         int[] order = CanonicalOrder(collected, cancellationToken);
-        List<Entry> drafts = Walk(CollectionsMarshal.AsSpan(collected), order, cancellationToken);
+        long? latest = order.Length == 0 ? null : collected[order[^1]].Ticks;
+        var tails = new Dictionary<CallKey, List<int>>();
+        List<Entry> drafts = Walk(
+            CollectionsMarshal.AsSpan(collected), order, cancellationToken, boundary: BoundaryOf(collected, order, Watermark(latest, clock)),
+            tails: tails);
         return Assemble(
             CollectionsMarshal.AsSpan(drafts),
             processes,
@@ -531,7 +560,254 @@ public sealed partial class RpcCallIndex
             clock,
             collected.Count,
             otherRecords,
+            cancellationToken,
+            read: (IdentitiesOf(segments), IdentitiesOf(fieldSegments)),
+            tail: new(latest, Kept(collected, order, tails), []));
+    }
+
+    /// <summary>
+    /// The calls of <paramref name="segments"/>, extended from these rather than paired again, when the segments and the
+    /// source-field segments begin with every one these were paired from, in the same order, as a live capture's next
+    /// generation's do (I14). Only the added segments are read, and only the keys these kept - those with a call open,
+    /// or a record within <see cref="LateWindowNanoseconds"/> of the latest read - and the keys the added records name are
+    /// paired again, each from a record after which it had no call open; every other call stands, bound again to
+    /// <paramref name="processes"/>. The result is exactly <see cref="Derive"/>'s over the same segments. Null, for a full
+    /// derivation to answer, when a segment read here is missing or another (after a compaction or a retention), when an
+    /// added record with an activity id is read before that window and before the records kept of its key (it could change
+    /// a call decided before them), or when an added source field names no added call start: a record's fields are
+    /// published with it, so such a field could change a call these hold.
+    /// </summary>
+    public RpcCallIndex? Extend(
+        IReadOnlyList<SegmentReaderV1> segments,
+        IReadOnlyList<SegmentReaderV1> fieldSegments,
+        ProcessInstanceIndex processes,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        ArgumentNullException.ThrowIfNull(fieldSegments);
+        ArgumentNullException.ThrowIfNull(processes);
+        if (tail is null || read is not { } before || processes.Clock != clock.Id)
+        {
+            return null;
+        }
+
+        StoreDependency?[] offered = IdentitiesOf(segments);
+        StoreDependency?[] offeredFields = IdentitiesOf(fieldSegments);
+        if (!Begins(offered, before.Segments) || !Begins(offeredFields, before.Fields))
+        {
+            return null;
+        }
+
+        Dictionary<RecordAddress, FieldSlot> fields = ReadFields(
+            [.. Enumerable.Range(before.Fields.Length, fieldSegments.Count - before.Fields.Length).Select(position => fieldSegments[position])],
             cancellationToken);
+        var known = new List<Guid>(interfaces);
+        var knownIndex = new Dictionary<Guid, int>(interfaces.Length);
+        for (int position = 0; position < interfaces.Length; position++)
+        {
+            knownIndex[interfaces[position]] = position;
+        }
+
+        var added = new List<CallRecord>();
+        long otherRecords = OtherRpcRecords;
+        for (int position = segmentNames.Length; position < segments.Count; position++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            otherRecords += Collect(segments[position], position, fields, known, knownIndex, added);
+        }
+
+        if (fields.Count > 0)
+        {
+            var starts = new HashSet<RecordAddress>(added.Where(record => record.IsStart).Select(record => record.Address));
+            if (fields.Keys.Any(address => !starts.Contains(address)))
+            {
+                return null;
+            }
+        }
+
+        // An added record of a key read within the window, or after the records kept of it, can change only calls these
+        // kept; one read earlier than both could change a call decided before them.
+        long watermark = Watermark(tail.LatestTicks, clock);
+        foreach (CallRecord record in added)
+        {
+            if (record.HasActivity
+                && record.Ticks < watermark
+                && (!tail.Keys.TryGetValue(KeyOf(record), out CallRecord[]? kept) || CompareRecords(record, kept[0]) < 0))
+            {
+                return null;
+            }
+        }
+
+        // Every kept key is paired again with the added records, from its kept records on, each of which begins where the
+        // key had no call open; the calls those records made are withdrawn and replaced.
+        var tracked = new List<CallRecord>(added.Count);
+        var withdrawn = new HashSet<RecordAddress>();
+        foreach (CallRecord[] kept in tail.Keys.Values)
+        {
+            tracked.AddRange(kept);
+            foreach (CallRecord record in kept)
+            {
+                _ = withdrawn.Add(record.Address);
+            }
+        }
+
+        tracked.AddRange(added);
+        int[] order = CanonicalOrder(tracked, cancellationToken);
+        long? latest = tail.LatestTicks;
+        if (added.Count > 0)
+        {
+            long newest = added.Max(record => record.Ticks);
+            latest = latest is { } previous ? Math.Max(previous, newest) : newest;
+        }
+
+        var tails = new Dictionary<CallKey, List<int>>();
+        List<Entry> walked = Walk(
+            CollectionsMarshal.AsSpan(tracked), order, cancellationToken, boundary: BoundaryOf(tracked, order, Watermark(latest, clock)),
+            tails: tails);
+        walked.Sort(static (left, right) => left.FirstRank.CompareTo(right.FirstRank));
+
+        // The calls that stand, in the canonical order of their first records, and those paired again, merged into it.
+        var drafted = new Entry[entries.Length - CountWithdrawn(withdrawn) + walked.Count];
+        int at = 0;
+        int next = 0;
+        foreach (int stands in tail.Canonical)
+        {
+            if (withdrawn.Contains(entries[stands].FirstAddress))
+            {
+                continue;
+            }
+
+            while (next < walked.Count && CompareFirstRecords(walked[next], entries[stands]) < 0)
+            {
+                drafted[at] = walked[next++] with { FirstRank = at };
+                at++;
+            }
+
+            drafted[at] = entries[stands] with { FirstRank = at };
+            at++;
+        }
+
+        while (next < walked.Count)
+        {
+            drafted[at] = walked[next++] with { FirstRank = at };
+            at++;
+        }
+
+        return Assemble(
+            drafted,
+            processes,
+            [.. known],
+            [.. offered.Select(identity => identity!.Name)],
+            clock,
+            CallRecords + added.Count,
+            otherRecords,
+            cancellationToken,
+            read: (offered, offeredFields),
+            tail: new(latest, Kept(tracked, order, tails), []));
+    }
+
+    /// <summary>How many of the calls these hold began with a withdrawn record.</summary>
+    private int CountWithdrawn(HashSet<RecordAddress> withdrawn)
+    {
+        int count = 0;
+        foreach (Entry entry in entries)
+        {
+            count += withdrawn.Contains(entry.FirstAddress) ? 1 : 0;
+        }
+
+        return count;
+    }
+
+    /// <summary>
+    /// The published identities of segments - name, length and digest - read without opening one where they declare
+    /// them; null for a segment with none.
+    /// </summary>
+    internal static StoreDependency?[] IdentitiesOf(IReadOnlyList<SegmentReaderV1> segments) => segments is IPublishedSegments published
+        ? [.. published.Published]
+        : [.. segments.Select(segment => segment.Published)];
+
+    /// <summary>
+    /// Whether <paramref name="identities"/>, each published, begin with every one of <paramref name="before"/>, in
+    /// order: the same files, not only the same names, which another session's segments can share.
+    /// </summary>
+    internal static bool Begins(StoreDependency?[] identities, StoreDependency?[] before)
+    {
+        if (identities.Length < before.Length || identities.Any(identity => identity is null))
+        {
+            return false;
+        }
+
+        for (int position = 0; position < before.Length; position++)
+        {
+            if (identities[position] != before[position])
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /// <summary>The published identities of the segments and source-field segments the calls were paired from; null where nothing extends.</summary>
+    internal (StoreDependency?[] Segments, StoreDependency?[] Fields)? Read => read;
+
+    /// <summary>The earliest reading a later record may have and still extend calls whose latest record is <paramref name="latest"/>.</summary>
+    private static long Watermark(long? latest, SourceClockDescriptor clock)
+    {
+        if (latest is not { } newest)
+        {
+            return long.MinValue;
+        }
+
+        Int128 ticks = (Int128)LateWindowNanoseconds * clock.TicksPerSecond / 1_000_000_000;
+        long window = ticks > long.MaxValue ? long.MaxValue : (long)ticks;
+        return newest < long.MinValue + window ? long.MinValue : newest - window;
+    }
+
+    /// <summary>The first rank, in canonical order, whose record is read at or after <paramref name="watermark"/>.</summary>
+    private static int BoundaryOf(List<CallRecord> records, int[] order, long watermark)
+    {
+        int low = 0;
+        int high = order.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (records[order[middle]].Ticks < watermark)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        return low;
+    }
+
+    /// <summary>Each kept key's records, by the ranks the walk kept, in canonical order.</summary>
+    private static Dictionary<CallKey, CallRecord[]> Kept(List<CallRecord> records, int[] order, Dictionary<CallKey, List<int>> tails)
+    {
+        var kept = new Dictionary<CallKey, CallRecord[]>(tails.Count);
+        foreach ((CallKey key, List<int> ranks) in tails)
+        {
+            kept[key] = [.. ranks.Select(rank => records[order[rank]])];
+        }
+
+        return kept;
+    }
+
+    private static CallKey KeyOf(in CallRecord record) => new(record.ProcessId, record.Side, record.Activity);
+
+    /// <summary>Two records by the canonical order (§3): reading, then raw locator, then fact key.</summary>
+    private static int CompareRecords(in CallRecord one, in CallRecord other)
+    {
+        int order = one.Ticks.CompareTo(other.Ticks);
+        order = order != 0 ? order : one.Address.Stream.CompareTo(other.Address.Stream);
+        order = order != 0 ? order : one.Address.Epoch.CompareTo(other.Address.Epoch);
+        order = order != 0 ? order : one.Address.Ordinal.CompareTo(other.Address.Ordinal);
+        order = order != 0 ? order : one.Address.FactKey.High.CompareTo(other.Address.FactKey.High);
+        return order != 0 ? order : one.Address.FactKey.Low.CompareTo(other.Address.FactKey.Low);
     }
 
     /// <summary>
@@ -539,6 +815,8 @@ public sealed partial class RpcCallIndex
     /// what a derivation does once it has paired the calls, and a reader of an operation index once it has read them.
     /// </summary>
     /// <param name="placed">When given, receives where each drafted call is in the index made.</param>
+    /// <param name="read">The segments and source-field segments read, when the index made may be extended.</param>
+    /// <param name="tail">What a later generation can still change, when the index made may be extended.</param>
     private static RpcCallIndex Assemble(
         Span<Entry> drafted,
         ProcessInstanceIndex processes,
@@ -548,7 +826,9 @@ public sealed partial class RpcCallIndex
         long callRecords,
         long otherRecords,
         CancellationToken cancellationToken,
-        int[]? placed = null)
+        int[]? placed = null,
+        (StoreDependency?[] Segments, StoreDependency?[] Fields)? read = null,
+        CallTail? tail = null)
     {
         for (int index = 0; index < drafted.Length; index++)
         {
@@ -558,9 +838,11 @@ public sealed partial class RpcCallIndex
             };
         }
 
-        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed);
+        int[]? canonical = tail is null ? null : new int[drafted.Length];
+        Entry[] entries = InGroupsInReadingOrder(drafted, cancellationToken, placed, canonical);
         (RpcCallGroup[] groups, RpcCallCounts totals) = Group(entries, interfaces, clock);
-        return new(entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, groups, totals);
+        return new(entries, interfaces, segmentNames, clock, processes, callRecords, otherRecords, groups, totals, read,
+            tail is null ? null : tail with { Canonical = canonical! });
     }
 
     /// <summary>
@@ -736,6 +1018,7 @@ public sealed partial class RpcCallIndex
         SegmentColumnSlice statuses = default;
         SegmentColumnSlice activities = default;
         SegmentColumnSlice identifiers = default;
+        SegmentColumnSlice threads = default;
         var owners = new RecordOwnerColumns(segment);
         for (int row = 0; row < segment.RowCount; row++)
         {
@@ -758,6 +1041,7 @@ public sealed partial class RpcCallIndex
                 statuses = segment.Slice(SegmentColumnId.StatusCode);
                 activities = segment.Slice(SegmentColumnId.ActivityId);
                 identifiers = segment.Slice(SegmentColumnId.SourceIdentifier);
+                threads = segment.Slice(SegmentColumnId.HeaderThreadId);
                 opened = true;
             }
 
@@ -813,7 +1097,8 @@ public sealed partial class RpcCallIndex
                 row,
                 interfaceAt,
                 callSide,
-                flags));
+                flags,
+                (int)(threads.UnsignedAt(row) ?? 0)));
         }
 
         return other;
@@ -882,11 +1167,19 @@ public sealed partial class RpcCallIndex
     /// in flight rather than every key the capture has seen.
     /// </summary>
     /// <param name="groups">When given, receives each call's records, and each ambiguous run's, by their canonical rank.</param>
+    /// <param name="boundary">The first rank of the late window, from which <paramref name="tails"/> keeps every key's records.</param>
+    /// <param name="tails">
+    /// When given, receives the ranks of the records a later record can still re-pair: of every key with a call open at
+    /// <paramref name="boundary"/>, from the first record of that call or its ambiguous run, and of every key with a record
+    /// at or after it, from that record; each list begins where its key had no call open.
+    /// </param>
     private static List<Entry> Walk(
         ReadOnlySpan<CallRecord> records,
         int[] order,
         CancellationToken cancellationToken,
-        List<int[]>? groups = null)
+        List<int[]>? groups = null,
+        int boundary = int.MaxValue,
+        Dictionary<CallKey, List<int>>? tails = null)
     {
         var calls = new List<Entry>((records.Length / 2) + 1);
         var open = new Dictionary<CallKey, OpenCall>();
@@ -895,6 +1188,11 @@ public sealed partial class RpcCallIndex
             if ((rank & 0xFFFF) == 0)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (rank == boundary && tails is not null)
+            {
+                KeepOpen(open, tails);
             }
 
             ref readonly CallRecord record = ref records[order[rank]];
@@ -906,6 +1204,12 @@ public sealed partial class RpcCallIndex
             }
 
             var key = new CallKey(record.ProcessId, record.Side, record.Activity);
+            if (tails is not null && rank >= boundary)
+            {
+                ref List<int>? kept = ref CollectionsMarshal.GetValueRefOrAddDefault(tails, key, out _);
+                (kept ??= []).Add(rank);
+            }
+
             ref OpenCall state = ref CollectionsMarshal.GetValueRefOrNullRef(open, key);
             if (Unsafe.IsNullRef(ref state))
             {
@@ -949,6 +1253,11 @@ public sealed partial class RpcCallIndex
             }
         }
 
+        if (tails is not null && boundary >= order.Length)
+        {
+            KeepOpen(open, tails);
+        }
+
         foreach (OpenCall still in open.Values)
         {
             if (still.Run is { } run)
@@ -964,6 +1273,15 @@ public sealed partial class RpcCallIndex
         }
 
         return calls;
+    }
+
+    /// <summary>Keeps every key with a call open, from that call's first record, or its ambiguous run's: its every record so far.</summary>
+    private static void KeepOpen(Dictionary<CallKey, OpenCall> open, Dictionary<CallKey, List<int>> tails)
+    {
+        foreach ((CallKey key, OpenCall state) in open)
+        {
+            tails[key] = state.Run is { } run ? [.. run] : [state.First];
+        }
     }
 
     private static void AddAmbiguous(ReadOnlySpan<CallRecord> records, int[] order, List<int> run, List<Entry> calls)
@@ -994,6 +1312,7 @@ public sealed partial class RpcCallIndex
         StopRow = stop.Row,
         Status = stop.Status,
         HasStatus = stop.HasStatus,
+        StartThread = start.Thread,
     };
 
     private static Entry Single(in CallRecord record, RpcCallState state, int rank) => record.IsStart
@@ -1014,6 +1333,7 @@ public sealed partial class RpcCallIndex
             StartRow = record.Row,
             StopSegment = -1,
             StopRow = -1,
+            StartThread = record.Thread,
         }
         : new()
         {
@@ -1030,6 +1350,7 @@ public sealed partial class RpcCallIndex
             StopRow = record.Row,
             Status = record.Status,
             HasStatus = record.HasStatus,
+            StartThread = -1,
         };
 
     /// <summary>
@@ -1038,7 +1359,9 @@ public sealed partial class RpcCallIndex
     /// Every call's first record has a canonical rank of its own, so the calls are taken in rank order by placing each at
     /// its rank, and dealt into their groups in that order: nothing is compared but the groups' identities.
     /// </summary>
-    private static Entry[] InGroupsInReadingOrder(ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken, int[]? placed = null)
+    /// <param name="canonical">When given, receives the index's call positions in the canonical order of their first records.</param>
+    private static Entry[] InGroupsInReadingOrder(
+        ReadOnlySpan<Entry> drafted, CancellationToken cancellationToken, int[]? placed = null, int[]? canonical = null)
     {
         var numbered = new Dictionary<GroupKey, int>();
         int[] provisional = new int[drafted.Length];
@@ -1090,6 +1413,7 @@ public sealed partial class RpcCallIndex
         }
 
         var entries = new Entry[drafted.Length];
+        int ranked = 0;
         foreach (int index in byRank)
         {
             if (index < 0)
@@ -1102,6 +1426,11 @@ public sealed partial class RpcCallIndex
             if (placed is not null)
             {
                 placed[index] = at;
+            }
+
+            if (canonical is not null)
+            {
+                canonical[ranked++] = at;
             }
         }
 
@@ -1243,7 +1572,8 @@ public sealed partial class RpcCallIndex
         int Row,
         int Interface,
         RpcCallSide Side,
-        CallFlags Flags)
+        CallFlags Flags,
+        int Thread)
     {
         public bool IsStart => (Flags & CallFlags.Start) != 0;
 
@@ -1258,6 +1588,13 @@ public sealed partial class RpcCallIndex
 
     /// <summary>What pairs a call's records: the process they belong to, their side and their activity id (§3).</summary>
     private readonly record struct CallKey(int ProcessId, RpcCallSide Side, Guid Activity);
+
+    /// <summary>
+    /// What a later generation's records can still change (<see cref="Extend"/>): the latest reading of any call record
+    /// read; the records of each key with a call open, or with a record within the late window of that reading, from a
+    /// record before which it had no call open; and the index's calls in the canonical order of their first records.
+    /// </summary>
+    private sealed record CallTail(long? LatestTicks, Dictionary<CallKey, CallRecord[]> Keys, int[] Canonical);
 
     /// <summary>
     /// A key with a call open: the rank of its run's first start, how many starts await their stop, and, once the id has
@@ -1312,6 +1649,9 @@ public sealed partial class RpcCallIndex
         public long Status { get; init; }
 
         public bool HasStatus { get; init; }
+
+        /// <summary>The thread that raised the call's start, which the peer rule reads; -1 without a start, or unknown.</summary>
+        public int StartThread { get; init; }
 
         /// <summary>The reading the call binds by: its first record's.</summary>
         public long FirstTicks => StartSegment >= 0 ? StartTicks : StopTicks;

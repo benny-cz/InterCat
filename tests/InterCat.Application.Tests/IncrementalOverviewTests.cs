@@ -65,6 +65,71 @@ public sealed class IncrementalOverviewTests
         Assert.Equal(extended, JsonSerializer.Serialize(SessionOverviewProjector.Project(session.Store)));
     }
 
+    [Fact(DisplayName = "I14: each generation of a live RPC peers capture extends its calls and their other ends, and projects as a fresh derivation would")]
+    public void RpcPeersGenerationsExtendAndProjectAsFresh()
+    {
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        byte[] plan = JsonSerializer.SerializeToUtf8Bytes(new
+        {
+            contract = "normalizer-plan-v1",
+            descriptors = new[] { new { mechanism = (int)Mechanism.Rpc }, new { mechanism = (int)Mechanism.Alpc } },
+        });
+        var how = new List<(bool Calls, bool Peers)>();
+        (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)[] chunks = LiveCalls();
+        for (int index = 0; index < chunks.Length; index++)
+        {
+            Publish(session.Store, chunks[index].Rows, fields: chunks[index].Fields, plan: index == 0 ? plan : null);
+            string extended = JsonSerializer.Serialize(SessionOverviewProjector.Project(session.Store));
+            SessionDerivation derivation = SessionDerivationCache.For(session.Store.Current!);
+            how.Add((derivation.RpcCallsExtended, derivation.RpcPeersExtended));
+            SessionDerivationCache.Clear();
+            Assert.Equal(extended, JsonSerializer.Serialize(SessionOverviewProjector.Project(session.Store)));
+            _ = SessionOverviewProjector.Project(session.Store);
+            if (index + 1 < chunks.Length)
+            {
+                // The fresh projection leaves the derivation a later generation extends, as the live follow's would.
+                Assert.NotNull(SessionDerivationCache.For(session.Store.Current!).DerivedRpcPeers);
+            }
+        }
+
+        // The first generation has nothing to extend; every later one extends both, the call open across the second
+        // chunk's cut and the message received in the next chunk included.
+        Assert.Equal([(false, false), (true, true), (true, true)], how);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        Assert.Equal(12, Assert.Single(overview.Edges, edge => edge.Mechanism == Mechanism.Rpc).ObservationCount);
+    }
+
+    /// <summary>
+    /// Three chunks of a live RPC peers capture: the service control manager's three calls, linked through ALPC, and a
+    /// fourth whose client stop and whose message's receive arrive in the third chunk.
+    /// </summary>
+    private static (ObservationRowV1[] Rows, SourceFieldRowV1[] Fields)[] LiveCalls()
+    {
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Guid client = new(4, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+        Guid server = new(14, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
+        ObservationRowV1 start = RpcCall(400, ObservationKind.RequestStart, Direction.Outbound, 400, 70, client, ServiceControlInterface);
+        ObservationRowV1 send = Alpc(402, ObservationKind.Send, 400, 401, 71);
+        ObservationRowV1 receive = Alpc(403, ObservationKind.Receive, 1_960, 1_961, 72);
+        ObservationRowV1 served = RpcCall(405, ObservationKind.RequestStart, Direction.Inbound, 1_960, 73, server, ServiceControlInterface);
+        ObservationRowV1[] second =
+        [
+            start,
+            send,
+            served,
+            RpcCall(410, ObservationKind.RequestEnd, Direction.Inbound, 1_960, 74, server, status: 0),
+        ];
+        ObservationRowV1[] third = [receive, RpcCall(420, ObservationKind.RequestEnd, Direction.Outbound, 400, 75, client, status: 0)];
+        return
+        [
+            (rows, fields),
+            (second, [Field(start, SourceField.RpcProcedureNumber, 7), Field(served, SourceField.RpcProcedureNumber, 7),
+                Field(send, SourceField.AlpcMessageId, 31)]),
+            (third, [Field(receive, SourceField.AlpcMessageId, 31)]),
+        ];
+    }
+
     private static (ProcessInstanceIndex Processes, TransportRelationIndex Relations) Fresh(SessionStore store)
     {
         using EvidenceLease lease = store.AcquireLease();
