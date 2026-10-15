@@ -144,7 +144,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal(445, context.Members.Count);
         Assert.False(viewModel.OpenGraphGroup(context.Key));
         // Its members talk only among themselves, so the focus claims no peers.
-        Assert.Equal("Group 0: 89 processes drawn · 445 more in Rest of the machine · paired TCP only", viewModel.GraphSummary);
+        Assert.Equal("Group 0: 89 processes drawn · 445 more in Rest of the machine · paired TCP and UDP only", viewModel.GraphSummary);
     });
 
     [Fact(DisplayName = "§6.4: a selected group row rings where its members are drawn and scopes E to the group")]
@@ -194,7 +194,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.Equal("No relationships", viewModel.SelectionTitle);
         Assert.Equal("Selected aggregate", viewModel.EvidenceHeading);
         Assert.StartsWith("3 processes with no admitted relationship", viewModel.SelectionSubtitle, StringComparison.Ordinal);
-        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP only", viewModel.GraphSummary);
+        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP and UDP only", viewModel.GraphSummary);
     });
 
     [Fact(DisplayName = "§6.3: a later publication of the session keeps each node that is still drawn where it was")]
@@ -396,7 +396,7 @@ public sealed class GraphLayoutIntegrationTests
         Assert.EndsWith(" · whole session", process.Lines[1], StringComparison.Ordinal);
         Assert.Contains("Basis: source observations", process.Lines[2], StringComparison.Ordinal);
         Assert.Contains("accounting: not applicable to a count", process.Lines[2], StringComparison.Ordinal);
-        Assert.Equal("Paired TCP observations on its relationships: 10", process.Lines[3]);
+        Assert.Equal("Paired TCP and UDP observations on its relationships: 10", process.Lines[3]);
         Assert.Equal("Bytes: unknown · 10 contributing observations are on relationships with no byte total", process.Lines[4]);
         Assert.Equal("Coverage: covered", process.Lines[5]);
         Assert.Equal("Size: log scale against the busiest drawn node, 10", process.Lines[6]);
@@ -541,18 +541,18 @@ public sealed class GraphLayoutIntegrationTests
         viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == "idle");
         Assert.True(viewModel.Descend());
         await viewModel.LayoutReady;
-        Assert.Equal("idle.exe: 2 processes drawn as 1 node · 3 more in Rest of the machine · paired TCP only", viewModel.GraphSummary);
+        Assert.Equal("idle.exe: 2 processes drawn as 1 node · 3 more in Rest of the machine · paired TCP and UDP only", viewModel.GraphSummary);
 
         // busy.exe's pair talk only to each other, so the group has no peers either; the pair's first process does.
         viewModel.ReturnTo(0);
         viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == busy.Key);
         Assert.True(viewModel.Descend());
         await viewModel.LayoutReady;
-        Assert.Equal("busy.exe: 3 processes drawn · 2 more in Rest of the machine · paired TCP only", viewModel.GraphSummary);
+        Assert.Equal("busy.exe: 3 processes drawn · 2 more in Rest of the machine · paired TCP and UDP only", viewModel.GraphSummary);
         viewModel.SelectedRung = viewModel.RungRows.Single(row => row.Key == processes[0].Id.ToString());
         Assert.True(viewModel.Descend());
         await viewModel.LayoutReady;
-        Assert.Equal("Process 1 · PID 2001 and its peers: 2 processes drawn · 3 more in Rest of the machine · paired TCP only",
+        Assert.Equal("Process 1 · PID 2001 and its peers: 2 processes drawn · 3 more in Rest of the machine · paired TCP and UDP only",
             viewModel.GraphSummary);
     });
 

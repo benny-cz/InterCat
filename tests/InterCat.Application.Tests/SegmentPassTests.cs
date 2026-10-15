@@ -32,7 +32,7 @@ public sealed class SegmentPassTests
                 SessionIntervalCounts counts = SessionIntervalQuery.Count(session.Store, interval, policy);
 
                 Dictionary<int, (string Edge, string Channel)> drawn = relations.Relations
-                    .Where(relation => relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy))
+                    .Where(relation => TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy))
                     .ToDictionary(relation => relation.Channel, relation => (SessionOverviewProjector.EdgeKeyOf(relation), relation.StableKey));
                 long observed = 0;
                 long graph = 0;
@@ -121,7 +121,7 @@ public sealed class SegmentPassTests
 
             // One admitted paired channel: its records at each of its two ends.
             TransportRelation[] admitted = [.. relations.Relations
-                .Where(relation => relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy))];
+                .Where(relation => TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy))];
             if (admitted.Length > 0)
             {
                 TransportRelation relation = admitted[random.Next(admitted.Length)];
@@ -161,7 +161,7 @@ public sealed class SegmentPassTests
             }
 
             foreach (TransportRelation relation in relations.Relations
-                .Where(relation => relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy)))
+                .Where(relation => TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy)))
             {
                 Assert.Equal(
                     Expected(segments, (segment, row) => Memo(segment, relations.ChannelsOf)[row].Channel == relation.Channel),

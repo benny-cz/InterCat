@@ -173,8 +173,8 @@ public sealed class DemoEntryWindowTests
 
             // What the graph draws its relationships from is said where they are drawn, in full on hover.
             TextBlock graph = window.GetControl<TextBlock>("GraphSummaryText");
-            Assert.Equal("3 processes · 1 relationship among 2 of them · paired TCP only", graph.Text);
-            Assert.Equal(graph.Text + ". The graph draws admitted paired TCP; a process's RPC calls are on its rung, and all "
+            Assert.Equal("3 processes · 1 relationship among 2 of them · paired TCP and UDP only", graph.Text);
+            Assert.Equal(graph.Text + ". The graph draws admitted paired TCP and UDP; a process's RPC calls are on its rung, and all "
                 + "other observed activity is in the timeline.", ToolTip.GetTip(graph));
             Assert.Equal(ToolTip.GetTip(graph), AutomationProperties.GetHelpText(graph));
 

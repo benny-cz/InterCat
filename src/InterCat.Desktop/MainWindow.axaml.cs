@@ -4702,11 +4702,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             : workspace.IsEvidenceRung ? "You are at the source records. Esc returns to where you were."
             : "Open or record a session first.", "Show this rung's source records in the ladder");
         Explain(BrowseChannelsButton, BrowseChannelsButton.IsEnabled
-            ? (channelProcess is null ? "Browse every admitted paired TCP channel in this generation."
-                : "Browse admitted paired TCP channels involving this process instance.")
+            ? (channelProcess is null ? "Browse every admitted paired TCP and UDP channel in this generation."
+                : "Browse admitted paired TCP and UDP channels involving this process instance.")
                 + " Choosing one opens its source records within the ranking's time scope: a brush, or else the zoomed range."
             : workspace.IsEvidenceRung ? "Esc leaves the source records; paired channels can be browsed from any other level."
-            : "Open or record a session first.", "Browse all admitted paired TCP channels");
+            : "Open or record a session first.", "Browse all admitted paired TCP and UDP channels");
 
         // Packaging reads a whole published generation, so it waits until a live capture has stopped. One package is made
         // at a time: its own button cancels it, and the other waits.

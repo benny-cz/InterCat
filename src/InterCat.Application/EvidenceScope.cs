@@ -170,8 +170,13 @@ public static class EvidenceScopes
                     return new($"Records of {filter.Value}{time}", filter.Key, [], interval, null);
                 case DetailLevel.Channel when filter.Key is { } channelKey:
                     Channel? channel = snapshot.Channels.FirstOrDefault(candidate => candidate.Key == channelKey);
-                    return new($"Paired TCP channel {channel?.Name ?? filter.Value}{time}", channelKey, [], interval,
-                        channel?.EdgeKey);
+                    string paired = channel switch
+                    {
+                        { Mechanism: Mechanism.Udp } => "Paired UDP flow",
+                        null => "Paired channel",
+                        _ => "Paired TCP channel",
+                    };
+                    return new($"{paired} {channel?.Name ?? filter.Value}{time}", channelKey, [], interval, channel?.EdgeKey);
                 case DetailLevel.ProcessInstance when filter.Key is { } processKey:
                     if (!Guid.TryParse(processKey, out Guid id) || id == Guid.Empty)
                         return Unreadable($"The process filter '{filter.Value}' names no process instance.", interval);
@@ -232,7 +237,7 @@ public static class EvidenceScopes
 
         if (end is not null && (scope.ChannelKey is null || TransportConnection.IsKey(scope.ChannelKey)))
         {
-            return Unreadable("An end filter names one end of a paired TCP channel, and this scope reads none. Remove it to "
+            return Unreadable("An end filter names one end of a paired channel, and this scope reads none. Remove it to "
                 + "read the scope's records.", scope.Interval);
         }
 

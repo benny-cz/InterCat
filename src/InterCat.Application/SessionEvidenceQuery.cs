@@ -122,7 +122,7 @@ public static class SessionEvidenceQuery
 
     private const string Caveat = "These are exact admitted observation-v1 rows with provider, descriptor, native "
         + "reading and raw-record locator, in native-reading order. They are normalized facts, not a replay of "
-        + "original payload bytes. A channel page includes only the admitted paired TCP incarnation; an owner-process "
+        + "original payload bytes. A channel page includes only the admitted paired TCP incarnation or UDP flow; an owner-process "
         + "page includes only rows canonically bound to those processes as owner, not possible peer rows. One-sided "
         + "and ambiguous rows remain available in unscoped evidence. This page does not infer completeness from "
         + "observed rows: its coverage states what the capture's sources covered over its time scope.";
@@ -250,7 +250,7 @@ public static class SessionEvidenceQuery
         if (narrowing.End is not (null or 0 or 1))
             throw new ArgumentOutOfRangeException(nameof(narrowing), "A paired channel has two ends, 0 and 1.");
         if (narrowing.End is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
-            throw new ArgumentException("An end narrows a paired TCP channel's records to those made at one of its ends; "
+            throw new ArgumentException("An end narrows a paired channel's records to those made at one of its ends; "
                 + "name the channel by its key.", nameof(narrowing));
     }
 
@@ -367,10 +367,10 @@ public static class SessionEvidenceQuery
             else
             {
                 TransportRelation[] matching = [.. relations.Relations.Where(relation =>
-                    relation.Mechanism == Mechanism.Tcp && relation.StableKey == channelKey
+                    TransportRelationIndex.Relates(relation.Mechanism) && relation.StableKey == channelKey
                     && SessionOverviewProjector.Admitted(relation.Strength, policy))];
                 if (matching.Length != 1)
-                    throw new InvalidOperationException("This paired TCP channel is not uniquely admitted in the "
+                    throw new InvalidOperationException("This paired channel is not uniquely admitted in the "
                         + "current generation and evidence policy. Return to the overview and select it again.");
                 selectedChannel = matching[0].Channel;
             }

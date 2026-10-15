@@ -75,7 +75,7 @@ internal static class EvidenceCommand
         }
 
         ProcessInstanceId[] owners = [.. ownerTexts.Select(text => new ProcessInstanceId(Guid.Parse(text)))];
-        // A relationship's evidence key opens its records at both ends (R4): a paired TCP channel's, or an RPC
+        // A relationship's evidence key opens its records at both ends (R4): a paired TCP or UDP channel's, or an RPC
         // relationship's, channel's or call's, whose records the RPC calls name.
         bool rpc = RpcChannelKeys.IsRpc(channel);
         SessionEvidencePage page;
@@ -143,7 +143,7 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Session ID", page.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
-        if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired TCP channel", channel);
+        if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired channel", channel);
         if (page.End is { } side) ConsoleUi.Field("Channel end", side == 0 ? "0, its first end" : "1, its second end");
         if (page.Mechanism is { } kind) ConsoleUi.Field("Mechanism", MechanismText.Name(kind));
         if (page.Direction is { } way) ConsoleUi.Field("Source direction", ObservationText.DirectionOf(way));
@@ -259,7 +259,7 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  Read-only pages of admitted normalized source rows in native-reading order.");
         ConsoleUi.Line("  A cursor continues after its last row, in a newer generation too; a changed scope, policy");
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
-        ConsoleUi.Line("  paired TCP channel's, or an RPC relationship's, which opens the calls its links join at both");
+        ConsoleUi.Line("  paired TCP or UDP channel's, or an RPC relationship's, which opens the calls its links join at both");
         ConsoleUi.Line("  ends; an RPC channel's or call's key opens its own records, and no RPC key takes --owner-process.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");

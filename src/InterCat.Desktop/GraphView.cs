@@ -538,7 +538,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 continue;
             }
 
-            (Point source, Point target) = InLane(from, to, edge.Lane);
+            (Point source, Point target) = InLane(from, to, edge);
             if (edge.Key == highlighted)
             {
                 // The edge that contributes to the rung is haloed in the accent under its own stroke, so its hue,
@@ -1127,7 +1127,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 continue;
             }
 
-            (Point source, Point target) = InLane(from, to, edge.Lane);
+            (Point source, Point target) = InLane(from, to, edge);
             double distance = DistanceToSegment(pointer, source, target);
             if (distance <= (ThicknessOf(edge, scale) / 2) + HitSlop && distance < bestDistance)
             {
@@ -1143,20 +1143,26 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private const double HostLaneSpacing = 4;
 
     /// <summary>
-    /// The line an edge is drawn and hit along: between its nodes, or beside that line by its lane, so a node's TCP and UDP
-    /// to the other hosts run side by side rather than one over the other.
+    /// How far apart, in logical pixels, the relationships between two nodes run side by side: the widest stroke and a gap,
+    /// so neither the thickest edge nor a chosen one's halo covers its neighbour.
     /// </summary>
-    private static (Point Source, Point Target) InLane(Point source, Point target, double lane)
+    private const double PairLaneSpacing = 8;
+
+    /// <summary>
+    /// The line an edge is drawn and hit along: between its nodes, or beside that line by its lane, so a node's TCP and UDP
+    /// to the other hosts, or two processes' TCP, UDP and RPC, run side by side rather than one over another.
+    /// </summary>
+    internal static (Point Source, Point Target) InLane(Point source, Point target, GraphDisplayEdge edge)
     {
         double dx = target.X - source.X;
         double dy = target.Y - source.Y;
         double length = Math.Sqrt((dx * dx) + (dy * dy));
-        if (lane == 0 || length < 1)
+        if (edge.Lane == 0 || length < 1)
         {
             return (source, target);
         }
 
-        double offset = lane * HostLaneSpacing / length;
+        double offset = edge.Lane * (edge.ToHosts ? HostLaneSpacing : PairLaneSpacing) / length;
         Vector across = new(-dy * offset, dx * offset);
         return (source + across, target + across);
     }

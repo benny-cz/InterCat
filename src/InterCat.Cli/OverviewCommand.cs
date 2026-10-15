@@ -69,15 +69,15 @@ internal static class OverviewCommand
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(overview.Generation));
         ConsoleUi.Field("Process instances", ConsoleUi.Count(overview.Nodes.Count));
-        ConsoleUi.Field("Paired TCP edges", ConsoleUi.Count(overview.Edges.Count));
-        ConsoleUi.Field("Paired TCP channels", overview.ChannelProjectionProblem is null
+        ConsoleUi.Field("Relationships", ConsoleUi.Count(overview.Edges.Count));
+        ConsoleUi.Field("Paired channels", overview.ChannelProjectionProblem is null
             ? ConsoleUi.Count(overview.Channels.Count) : "unavailable above overview bound");
         ConsoleUi.Field("Observed rows", ConsoleUi.Count(overview.ObservationRows));
         ConsoleUi.Field("Graph-eligible rows", ConsoleUi.Count(overview.GraphEligibleRows));
         ConsoleUi.Field("Rows held by none", ConsoleUi.Count(overview.RowsNoProcessHolds));
 
         // Why the graph draws no relationship, in the words the window says beneath its empty graph (§6.8, R18).
-        if (overview.Edges.Count == 0 && overview.Census is { Tcp.Relationships: 0 } census)
+        if (overview.Edges.Count == 0 && overview.Census is { Tcp.Relationships: 0, Udp.Relationships: 0 } census)
         {
             ConsoleUi.Note(RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture));
         }
@@ -142,7 +142,8 @@ internal static class OverviewCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat overview <session-directory> [--json]");
-        ConsoleUi.Line("  Read-only, leased process graph, admitted paired TCP channels and all-observations timeline.");
+        ConsoleUi.Line("  Read-only, leased process graph, admitted paired TCP and UDP channels and all-observations");
+        ConsoleUi.Line("  timeline.");
         ConsoleUi.Line("  The graph is narrower than the session. --json returns the Desktop's exact numeric bundle.");
         ConsoleUi.Line("  It says what the capture covered, mechanism by mechanism, in the words the window's inspector");
         ConsoleUi.Line("  uses beneath its time scope.");

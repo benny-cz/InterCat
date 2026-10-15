@@ -25,7 +25,7 @@ public sealed record IntervalByteScope
     /// <summary>With <see cref="Owner"/>, only its records of this source direction (`EN-Direction`).</summary>
     public Direction? Direction { get; init; }
 
-    /// <summary>Only the records of this admitted paired TCP channel, at either end.</summary>
+    /// <summary>Only the records of this admitted paired channel - a TCP connection or a UDP flow - at either end.</summary>
     public string? ChannelKey { get; init; }
 
     /// <summary>With <see cref="ChannelKey"/>, only the records made at this end: 0 the first, 1 the second.</summary>

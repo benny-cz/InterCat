@@ -14,7 +14,7 @@ public static class OverviewWorkspace
     /// no keys.
     /// </summary>
     public const string SessionDisclosure =
-        "The graph shows admitted paired TCP, and each process's connections to other hosts drawn to one Other hosts "
+        "The graph shows admitted paired TCP and UDP, and each process's connections to other hosts drawn to one Other hosts "
         + "node; a process's rung also lists its RPC calls by interface, call by call. The timeline includes every "
         + "observed row. TCP and UDP records are completed transfers with no operation rung.";
 
@@ -24,7 +24,7 @@ public static class OverviewWorkspace
     /// §5c).
     /// </summary>
     public const string LinkedCallsDisclosure =
-        "The graph shows admitted paired TCP and RPC calls linked through ALPC to the processes that served them, and "
+        "The graph shows admitted paired TCP and UDP, RPC calls linked through ALPC to the processes that served them, and "
         + "each process's connections to other hosts drawn to one Other hosts node; a process's rung lists its RPC calls "
         + "by interface, call by call, with who served each. The timeline includes every observed row. TCP and UDP "
         + "records are completed transfers with no operation rung.";
@@ -106,7 +106,7 @@ public static class OverviewWorkspace
             Channels = [.. snapshot.Channels.Select(channel => channel with
             {
                 ObservationCount = counts.ChannelRecords.GetValueOrDefault(channel.Key),
-                Coverage = counts.TcpCoverage ?? channel.Coverage,
+                Coverage = (channel.Mechanism == Mechanism.Udp ? counts.UdpCoverage : counts.TcpCoverage) ?? channel.Coverage,
             })],
             RowsNoProcessHolds = snapshot.RowsNoProcessHolds is null
                 ? null

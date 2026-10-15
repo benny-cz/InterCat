@@ -7,7 +7,10 @@ using InterCat.Storage;
 
 namespace InterCat.Application;
 
-/// <summary>A complete count and a bounded page of admitted paired TCP incarnations in a leased generation.</summary>
+/// <summary>
+/// A complete count and a bounded page of admitted paired TCP incarnations and UDP flows in a leased generation, with what
+/// the capture covered of each transport.
+/// </summary>
 public sealed record SessionChannelPage(
     string QueryIdentity,
     Guid SessionId,
@@ -32,7 +35,7 @@ public static class SessionChannelQuery
     public const int DefaultPageSize = 100;
     public const int MaximumPageSize = 200;
 
-    private const string Caveat = "Only paired TCP incarnations whose two process instances are admitted under "
+    private const string Caveat = "Only paired TCP incarnations and UDP flows whose two process instances are admitted under "
         + "this evidence policy appear here. One-sided and ambiguous transport records remain in unscoped "
         + "evidence, not a guessed channel. Counts are observed records, not byte totals, logical operations "
         + "or proof of complete capture coverage.";
@@ -73,22 +76,24 @@ public static class SessionChannelQuery
                 + "Return to the overview and select it again.");
         TransportRelationIndex relations = derivation.Relations(store.Root, segments, clock, fields, cancellationToken);
         TransportRelation[] admitted = [.. relations.Relations.Where(relation =>
-                relation.Mechanism == Mechanism.Tcp
+                TransportRelationIndex.Relates(relation.Mechanism)
                 && SessionOverviewProjector.Admitted(relation.Strength, policy)
                 && (processScope is null || relation.First.Id == processScope || relation.Second.Id == processScope))
             .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)];
         if (admitted.Select(relation => relation.StableKey).Distinct(StringComparer.Ordinal).Count() != admitted.Length)
-            throw new InvalidDataException("Two admitted TCP incarnations have the same raw-fact channel key.");
+            throw new InvalidDataException("Two admitted paired channels have the same raw-fact channel key.");
         if (cursor is not null && offset >= admitted.Length)
             throw new ArgumentException("The cursor points outside this generation's channel set.", nameof(cursor));
 
         int count = Math.Min(pageSize, admitted.Length - offset);
-        MechanismCoverage tcp = SessionCoverage.Of(SessionSegments.CoverageLedger(store.Root, manifest), Mechanism.Tcp);
+        CoverageLedgerV1? ledger = SessionSegments.CoverageLedger(store.Root, manifest);
+        MechanismCoverage tcp = SessionCoverage.Of(ledger, Mechanism.Tcp);
+        MechanismCoverage udp = SessionCoverage.Of(ledger, Mechanism.Udp);
         Channel[] channels = [.. admitted.Skip(offset).Take(count)
-            .Select(relation => SessionOverviewProjector.ProjectChannel(relation, tcp.State))];
+            .Select(relation => SessionOverviewProjector.ProjectChannel(relation, (relation.Mechanism == Mechanism.Udp ? udp : tcp).State))];
         int next = offset + count;
         return new(identity, manifest.SessionId, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
-            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat) { Coverage = [tcp] };
+            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat) { Coverage = [tcp, udp] };
     }
 
     private static string Identity(SessionManifestV1 manifest, ProcessInstanceId? scope, EvidencePolicy policy)

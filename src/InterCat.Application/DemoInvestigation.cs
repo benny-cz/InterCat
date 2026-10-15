@@ -298,15 +298,21 @@ public static class DemoInvestigation
         Transfer(seconds, direction == Direction.Outbound ? (ushort)10 : (ushort)11, Mechanism.Tcp, processId, direction, bytes,
             local, remote);
 
+    /// <summary>
+    /// A datagram: a send names its owner's endpoint first, and a receive the datagram's sender first, as the kernel's UDP
+    /// descriptors do (ADR-019), so the relation index reads the receive's own end as the owner's.
+    /// </summary>
     private static ObservationRowV1 Udp(double seconds, int processId, Direction direction, long bytes, string local, string remote) =>
-        Transfer(seconds, direction == Direction.Outbound ? (ushort)42 : (ushort)43, Mechanism.Udp, processId, direction, bytes,
-            local, remote);
+        direction == Direction.Outbound
+            ? Transfer(seconds, 42, Mechanism.Udp, processId, direction, bytes, local, remote)
+            : Transfer(seconds, 43, Mechanism.Udp, processId, direction, bytes, remote, local);
 
+    /// <summary>A transfer naming the endpoint pair as its source does: <paramref name="source"/> first.</summary>
     private static ObservationRowV1 Transfer(double seconds, ushort eventId, Mechanism mechanism, int processId,
-        Direction direction, long bytes, string local, string remote)
+        Direction direction, long bytes, string source, string destination)
     {
-        (uint localAddress, ushort localPort) = Endpoint(local);
-        (uint remoteAddress, ushort remotePort) = Endpoint(remote);
+        (uint sourceAddress, ushort sourcePort) = Endpoint(source);
+        (uint destinationAddress, ushort destinationPort) = Endpoint(destination);
         bool sent = direction == Direction.Outbound;
         return Row(seconds, eventId, processId) with
         {
@@ -316,10 +322,10 @@ public static class DemoInvestigation
             Kind = sent ? ObservationKind.Send : ObservationKind.Receive,
             Direction = direction,
             EndpointAddressFamily = 4,
-            SourceEndpointAddress = localAddress,
-            SourceEndpointPort = localPort,
-            DestinationEndpointAddress = remoteAddress,
-            DestinationEndpointPort = remotePort,
+            SourceEndpointAddress = sourceAddress,
+            SourceEndpointPort = sourcePort,
+            DestinationEndpointAddress = destinationAddress,
+            DestinationEndpointPort = destinationPort,
             ByteValue = bytes,
             ByteDomain = InterCat.Domain.ByteDomain.TransportObserved,
             AccountingSide = sent ? InterCat.Domain.AccountingSide.SendSide : InterCat.Domain.AccountingSide.ReceiveSide,

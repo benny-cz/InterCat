@@ -216,7 +216,7 @@ public sealed class EvidenceScopeTests
         Assert.Null(EvidenceScopes.Resolve(Snapshot, channel with { Filters = channel.Filters.Take(1).ToArray() }).End);
 
         // An end narrows only a paired channel, and a filter naming no mechanism is said, never ignored.
-        Assert.StartsWith("An end filter names one end of a paired TCP channel", EvidenceScopes.Resolve(Snapshot,
+        Assert.StartsWith("An end filter names one end of a paired channel", EvidenceScopes.Resolve(Snapshot,
             Rung(process, EvidenceScopes.EndFilter(1, "127.0.0.1:2", "test"))).Problem, StringComparison.Ordinal);
         Assert.NotNull(EvidenceScopes.Resolve(Snapshot,
             Rung(new ImpliedFilter(EvidenceScopes.MechanismField, "Pigeon", "test") { Key = "Pigeon" })).Problem);

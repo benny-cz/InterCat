@@ -602,10 +602,10 @@ public sealed class SessionTileIndexTests
             long low = ticks.Min() - stretch;
             long high = ticks.Max() + 1 + stretch;
 
-            // Every paired TCP channel, and every connection or flow whose other end the capture does not hold.
+            // Every paired TCP or UDP channel, and every connection or flow whose other end the capture does not hold.
             string[] keys =
             [
-                .. bound.Relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp).Select(relation => relation.StableKey),
+                .. bound.Relations.Relations.Where(relation => TransportRelationIndex.Relates(relation.Mechanism)).Select(relation => relation.StableKey),
                 .. bound.Relations.OneSided.Select(connection => connection.StableKey),
             ];
             SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tiled.Path));
@@ -634,7 +634,7 @@ public sealed class SessionTileIndexTests
             reopened.ReleaseSegmentReaders();
 
             // A channel's records of some processes, which no tally holds together, read their rows.
-            if (bound.Relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp).GroupBy(relation => relation.StableKey)
+            if (bound.Relations.Relations.Where(relation => TransportRelationIndex.Relates(relation.Mechanism)).GroupBy(relation => relation.StableKey)
                 .FirstOrDefault(named => named.Count() == 1) is { } paired)
             {
                 var both = new TimelineFocus(paired.Key, [.. bound.Processes.Instances.Select(instance => instance.Id)]);
@@ -1401,7 +1401,7 @@ public sealed class SessionTileIndexTests
     private static List<string> Counted(Bound bound, TimeRange interval, EvidencePolicy policy)
     {
         Dictionary<int, (string Edge, string Channel)> drawn = bound.Relations.Relations
-            .Where(relation => relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy))
+            .Where(relation => TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy))
             .ToDictionary(relation => relation.Channel, relation => (SessionOverviewProjector.EdgeKeyOf(relation), relation.StableKey));
         long observed = 0;
         long graph = 0;
@@ -1610,7 +1610,7 @@ public sealed class SessionTileIndexTests
         int drawn = 0;
         foreach (TransportRelation relation in bound.Relations.Relations)
         {
-            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy))
+            if (TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy))
             {
                 slotOfChannel[relation.Channel] = drawn++;
             }

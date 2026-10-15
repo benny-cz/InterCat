@@ -138,7 +138,7 @@ public sealed class TimelineFocus
 
         if (end is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
         {
-            throw new ArgumentException("An end narrows a paired TCP channel's records; name the channel.", nameof(end));
+            throw new ArgumentException("An end narrows a paired channel's records; name the channel.", nameof(end));
         }
 
         if (channelKey is null && ownerProcesses.Count == 0 && operationKey is null && mechanism is null && direction is null)
@@ -953,12 +953,12 @@ internal sealed class FocusRows
         {
             relations = generation.Relations(cancellationToken);
             TransportRelation[] matching = [.. relations.Relations.Where(candidate =>
-                candidate.Mechanism == Mechanism.Tcp && candidate.StableKey == pairedKey
+                TransportRelationIndex.Relates(candidate.Mechanism) && candidate.StableKey == pairedKey
                 && SessionOverviewProjector.Admitted(candidate.Strength, policy))];
             if (matching.Length != 1)
             {
                 throw new InvalidOperationException(
-                    "The focused paired TCP channel is not uniquely admitted in this generation and evidence policy.");
+                    "The focused paired channel is not uniquely admitted in this generation and evidence policy.");
             }
 
             relation = matching[0];

@@ -295,7 +295,7 @@ public static class LadderProjection
     private static List<LadderRow> Channels(WorkspaceSnapshot snapshot, string? processKey, RankingMetric ranking)
     {
         // A byte ranking ranks a process's channels by its own end's bytes on each; a call ranking leaves them by records,
-        // since no TCP channel carries a call.
+        // since no TCP or UDP channel carries a call.
         ProcessInstanceId? focus = processKey is not null && Guid.TryParse(processKey, out Guid id) ? new ProcessInstanceId(id) : null;
         bool byBytes = RankingMetrics.FamilyOf(ranking) == RankingFamily.Bytes && focus is not null;
         var rows = new List<LadderRow>();

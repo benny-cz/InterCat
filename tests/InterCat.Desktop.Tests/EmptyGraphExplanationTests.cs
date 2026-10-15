@@ -126,7 +126,7 @@ public sealed class EmptyGraphExplanationTests
         await paired.LayoutReady;
         Assert.Null(paired.GraphEmptyExplanation);
         Assert.Null(paired.RelationshipsAbsent);
-        Assert.Equal("2 processes · 1 relationship · paired TCP only", paired.GraphSummary);
+        Assert.Equal("2 processes · 1 relationship · paired TCP and UDP only", paired.GraphSummary);
 
         // A snapshot no session was projected for has no census to explain itself with, and keeps its own words.
         using var synthetic = new WorkspaceViewModel(SyntheticWorkspace.Create() with { Edges = [] }, "zero-edge-generation");

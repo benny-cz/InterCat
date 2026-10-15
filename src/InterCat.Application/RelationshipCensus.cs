@@ -17,71 +17,67 @@ public static class RelationshipCensusText
 {
     /// <summary>
     /// The reason in a few words, for the graph's one-line summary: "no relationship drawn · 37 TCP connections ran to
-    /// other hosts".
+    /// other hosts", TCP's when the capture recorded any, else UDP's.
     /// </summary>
     public static string Brief(RelationshipCensus census)
     {
         ArgumentNullException.ThrowIfNull(census);
-        TransportCensus tcp = census.Tcp;
-        string reason = tcp.Records == 0 ? "no TCP recorded"
-            : tcp.WithheldRelationships > 0
-                ? CountText.Of(tcp.WithheldRelationships, "TCP relationship") + " left out as "
-                    + CountText.Agree(tcp.WithheldRelationships, "a candidate", "candidates")
-            : tcp.OtherHostConnections > 0
-                ? CountText.Of(tcp.OtherHostConnections, "TCP connection") + " ran to other hosts"
-            : tcp.UnseenLocalConnections > 0
-                ? CountText.Of(tcp.UnseenLocalConnections, "TCP connection") + " with an unseen other end"
-            : tcp.Unpaired > 0 ? "TCP ends could not be paired"
-            : "no TCP record names both endpoints";
-        return "no relationship drawn · " + reason;
+        return "no relationship drawn · " + (Reason(census.Tcp) ?? Reason(census.Udp) ?? "no TCP or UDP recorded");
     }
 
     /// <summary>
-    /// The whole reason, where a person reads why the graph is empty: whether any TCP connection had both ends held by the
-    /// session's processes, where its TCP records went instead, and what the graph does not draw at all - UDP, and RPC
-    /// calls a capture without ALPC cannot join to the process that served them.
+    /// The whole reason, where a person reads why the graph is empty: whether any TCP connection or UDP flow had both ends
+    /// held by the session's processes, where each transport's records went instead, and what the graph does not draw at
+    /// all - RPC calls a capture without ALPC cannot join to the process that served them.
     /// </summary>
     public static string Explain(RelationshipCensus census, CultureInfo culture)
     {
         ArgumentNullException.ThrowIfNull(census);
         ArgumentNullException.ThrowIfNull(culture);
-        TransportCensus tcp = census.Tcp;
+        TransportCensus[] recorded = [.. new[] { census.Tcp, census.Udp }.Where(transport => transport.Records > 0)];
         var sentences = new List<string>();
-        if (tcp.Records == 0)
+        int withheld = census.Tcp.WithheldRelationships + census.Udp.WithheldRelationships;
+        if (recorded.Length == 0)
         {
-            sentences.Add("This capture recorded no TCP, so no relationship between two of its processes can be drawn.");
+            sentences.Add("This capture recorded no TCP or UDP, so no relationship between two of its processes can be drawn.");
         }
-        else if (tcp.WithheldRelationships > 0)
+        else if (withheld > 0)
         {
-            sentences.Add(CountText.Of(tcp.WithheldRelationships, "TCP relationship") + " "
-                + CountText.Agree(tcp.WithheldRelationships, "rests", "rest")
+            sentences.Add(Series([.. recorded
+                    .Where(transport => transport.WithheldRelationships > 0)
+                    .Select(transport => CountText.Of(transport.WithheldRelationships, Name(transport) + " relationship"))])
+                + " " + CountText.Agree(withheld, "rests", "rest")
                 + " on a reused PID's later holder, so the evidence policy leaves "
-                + CountText.Agree(tcp.WithheldRelationships, "it", "them") + " out as "
-                + CountText.Agree(tcp.WithheldRelationships, "a candidate", "candidates")
-                + "; counting candidates draws " + CountText.Agree(tcp.WithheldRelationships, "it", "them") + ".");
+                + CountText.Agree(withheld, "it", "them") + " out as "
+                + CountText.Agree(withheld, "a candidate", "candidates")
+                + "; counting candidates draws " + CountText.Agree(withheld, "it", "them") + ".");
         }
         else
         {
-            sentences.Add("No TCP connection was seen with a process of this session at each of its two ends.");
+            sentences.Add("No " + string.Join(" or ", recorded.Select(Channel))
+                + " was seen with a process of this session at each of its two ends.");
         }
 
-        if (tcp.Records > 0 && Parts(tcp) is { Count: > 0 } parts)
+        foreach (TransportCensus transport in recorded)
         {
+            if (Parts(transport) is not { Count: > 0 } parts)
+            {
+                continue;
+            }
+
+            string name = Name(transport);
             sentences.Add(parts.Count == 1
-                ? (tcp.Records == 1 ? "Its 1 TCP record " : string.Create(culture, $"All {tcp.Records:N0} of its TCP records "))
+                ? (transport.Records == 1
+                    ? $"Its 1 {name} record "
+                    : string.Create(culture, $"All {transport.Records:N0} of its {name} records "))
                     + parts[0].Belong + "."
-                : "Of its " + CountText.Of(tcp.Records, "TCP record") + ", "
+                : "Of its " + CountText.Of(transport.Records, name + " record") + ", "
                     + Series([.. parts.Select(part => string.Create(culture, $"{part.Records:N0} {part.Belong}"))]) + ".");
         }
 
-        if (tcp.OtherHostConnections + tcp.UnseenLocalConnections > 0)
+        if (recorded.Any(transport => transport.OtherHostConnections + transport.UnseenLocalConnections > 0))
         {
             sentences.Add("A process's connections are listed on its rung.");
-        }
-
-        if (census.Udp.Records > 0)
-        {
-            sentences.Add("UDP datagrams are not drawn as relationships; they are in the timeline and on their processes' rungs.");
         }
 
         if (census.RpcRecords > 0 && !census.RpcLinked)
@@ -94,37 +90,57 @@ public static class RelationshipCensusText
         return string.Join(" ", sentences);
     }
 
-    /// <summary>Where a census's TCP records went, outside any drawn relationship, each part with its verb.</summary>
-    private static List<(long Records, string Belong)> Parts(TransportCensus tcp)
+    /// <summary>Why a transport the capture recorded joins no two of its processes, in a few words; null when it recorded none.</summary>
+    private static string? Reason(TransportCensus census) => census.Records == 0 ? null
+        : census.WithheldRelationships > 0
+            ? CountText.Of(census.WithheldRelationships, Name(census) + " relationship") + " left out as "
+                + CountText.Agree(census.WithheldRelationships, "a candidate", "candidates")
+        : census.OtherHostConnections > 0
+            ? CountText.Of(census.OtherHostConnections, Channel(census)) + " ran to other hosts"
+        : census.UnseenLocalConnections > 0
+            ? CountText.Of(census.UnseenLocalConnections, Channel(census)) + " with an unseen other end"
+        : census.Unpaired > 0 ? Name(census) + " ends could not be paired"
+        : "no " + Name(census) + " record names both endpoints";
+
+    /// <summary>A transport's name: "TCP", "UDP".</summary>
+    private static string Name(TransportCensus census) => census.Mechanism == Mechanism.Udp ? "UDP" : "TCP";
+
+    /// <summary>What a transport's channel is called: "TCP connection", "UDP flow".</summary>
+    private static string Channel(TransportCensus census) => census.Mechanism == Mechanism.Udp ? "UDP flow" : "TCP connection";
+
+    /// <summary>Where a census's records went, outside any drawn relationship, each part with its verb.</summary>
+    private static List<(long Records, string Belong)> Parts(TransportCensus census)
     {
+        bool udp = census.Mechanism == Mechanism.Udp;
+        string channel = udp ? "flow" : "connection";
         var parts = new List<(long, string)>();
-        if (tcp.Withheld > 0)
+        if (census.Withheld > 0)
         {
-            parts.Add((tcp.Withheld, (tcp.Withheld == 1 ? "belongs" : "belong") + " to the relationships left out"));
+            parts.Add((census.Withheld, (census.Withheld == 1 ? "belongs" : "belong") + " to the relationships left out"));
         }
 
-        if (tcp.ToOtherHosts > 0)
+        if (census.ToOtherHosts > 0)
         {
-            parts.Add((tcp.ToOtherHosts, (tcp.ToOtherHosts == 1 ? "belongs" : "belong") + " to "
-                + CountText.Of(tcp.OtherHostConnections, "connection") + " to "
-                + CountText.Of(tcp.OtherHosts, "other host")));
+            parts.Add((census.ToOtherHosts, (census.ToOtherHosts == 1 ? "belongs" : "belong") + " to "
+                + CountText.Of(census.OtherHostConnections, channel) + (udp ? " with " : " to ")
+                + CountText.Of(census.OtherHosts, "other host")));
         }
 
-        if (tcp.ToUnseenLocalEnds > 0)
+        if (census.ToUnseenLocalEnds > 0)
         {
-            parts.Add((tcp.ToUnseenLocalEnds, (tcp.ToUnseenLocalEnds == 1 ? "belongs" : "belong") + " to "
-                + CountText.Of(tcp.UnseenLocalConnections, "connection") + " on this machine whose other end no record holds"));
+            parts.Add((census.ToUnseenLocalEnds, (census.ToUnseenLocalEnds == 1 ? "belongs" : "belong") + " to "
+                + CountText.Of(census.UnseenLocalConnections, channel) + " on this machine whose other end no record holds"));
         }
 
-        if (tcp.Unpaired > 0)
+        if (census.Unpaired > 0)
         {
-            parts.Add((tcp.Unpaired, (tcp.Unpaired == 1 ? "belongs" : "belong")
-                + " to connections that could not be paired with one process at each end"));
+            parts.Add((census.Unpaired, (census.Unpaired == 1 ? "belongs" : "belong")
+                + " to " + channel + "s that could not be paired with one process at each end"));
         }
 
-        if (tcp.WithoutEndpoints > 0)
+        if (census.WithoutEndpoints > 0)
         {
-            parts.Add((tcp.WithoutEndpoints, (tcp.WithoutEndpoints == 1 ? "names" : "name") + " no complete endpoint"));
+            parts.Add((census.WithoutEndpoints, (census.WithoutEndpoints == 1 ? "names" : "name") + " no complete endpoint"));
         }
 
         return parts;

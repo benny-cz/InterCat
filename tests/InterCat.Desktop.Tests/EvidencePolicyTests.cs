@@ -171,7 +171,7 @@ public sealed class EvidencePolicyTests
             workspace.SelectedRung = Assert.Single(workspace.RungRows);
             Assert.True(workspace.Descend());
             Assert.True(workspace.IsEmptyRung);
-            Assert.StartsWith("No admitted paired TCP channel belongs to this process", workspace.EmptyReason, StringComparison.Ordinal);
+            Assert.StartsWith("No admitted paired TCP or UDP channel belongs to this process", workspace.EmptyReason, StringComparison.Ordinal);
             Assert.False(workspace.OffersRungCandidates);
         }
 

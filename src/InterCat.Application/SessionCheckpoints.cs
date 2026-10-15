@@ -235,7 +235,7 @@ public static class SessionCheckpoints
     }
 
     /// <summary>
-    /// The overview's lane bytes, when it has columns, and every process's and TCP channel end's bytes before any evidence
+    /// The overview's lane bytes, when it has columns, and every process's and paired channel end's bytes before any evidence
     /// policy, when an overview keeps them, summed in one pass over the segments; each null when it is not kept.
     /// </summary>
     private static (OverviewLaneBytes? Lanes, OverviewProcessBytes? Processes) SumBytes(

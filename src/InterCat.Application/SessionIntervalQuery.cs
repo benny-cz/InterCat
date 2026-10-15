@@ -33,8 +33,11 @@ public sealed record SessionIntervalCounts(
     /// </summary>
     public CoverageState? CaptureCoverage { get; init; }
 
-    /// <summary>TCP's coverage over the interval, which a paired channel's count there is judged by. Null when not judged.</summary>
+    /// <summary>TCP's coverage over the interval, which a TCP connection's count there is judged by. Null when not judged.</summary>
     public CoverageState? TcpCoverage { get; init; }
+
+    /// <summary>UDP's coverage over the interval, which a UDP flow's count there is judged by. Null when not judged.</summary>
+    public CoverageState? UdpCoverage { get; init; }
 
     /// <summary>
     /// Each mechanism's coverage over the interval and the fact that decided it (`coverage-v2` §4): what a count of its
@@ -70,14 +73,14 @@ public static class SessionIntervalQuery
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
 
-        // Only the relations the overview draws: paired TCP incarnations whose two instances the policy admits. Each
-        // gets a dense slot, so a row's count is an array index rather than a key hashed per row (R11).
+        // Only the relations the overview draws: paired TCP incarnations and UDP flows whose two instances the policy
+        // admits. Each gets a dense slot, so a row's count is an array index rather than a key hashed per row (R11).
         int[] slotOfChannel = new int[relations.Channels];
         Array.Fill(slotOfChannel, -1);
         var drawn = new List<(string Edge, string Channel)>();
         foreach (TransportRelation relation in relations.Relations)
         {
-            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy)
+            if (TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy)
                 && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
             {
                 slotOfChannel[relation.Channel] = drawn.Count;
@@ -153,6 +156,7 @@ public static class SessionIntervalQuery
             ProcessRecords = processRecords,
             CaptureCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.CaptureStates(ledger, [native])[0],
             TcpCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.Of(ledger, Mechanism.Tcp, native).State,
+            UdpCoverage = native is null ? CoverageState.UnknownCoverage : SessionCoverage.Of(ledger, Mechanism.Udp, native).State,
             MechanismCoverage = CoverageText.Over(ledger, clock, interval),
         };
     }

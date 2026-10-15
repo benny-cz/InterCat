@@ -160,8 +160,10 @@ public sealed record GraphDisplayEdge(
     public bool ToHosts { get; init; }
 
     /// <summary>
-    /// Where an edge to the other hosts runs beside its source's others, in strokes from the line between the two nodes:
-    /// 0 alone, -0.5 and 0.5 for a node's TCP and UDP, so neither is drawn over the other. 0 for every other edge.
+    /// Where an edge runs beside the others between the same two nodes, in lanes from the line between them: 0 alone,
+    /// -0.5 and 0.5 for two - a node's TCP and UDP to the other hosts, or two processes' TCP and UDP - and -1, 0 and 1 for
+    /// three, so none is drawn over another. A lane is taken across the line from the ordinally first of the two nodes,
+    /// whichever the edge's source is.
     /// </summary>
     public double Lane { get; init; }
 }
@@ -1105,6 +1107,23 @@ public static class GraphProjection
                 Array.AsReadOnly(relationships)));
         }
 
+        // The relationships between the same two drawn nodes - over two transports, an RPC link beside them, or two whose
+        // ends were met in the other order - run side by side, so none is drawn over another.
+        foreach (IGrouping<(string, string), int> between in Enumerable.Range(0, builtEdges.Count)
+            .GroupBy(index => Unordered(builtEdges[index].SourceKey, builtEdges[index].TargetKey)))
+        {
+            int[] side = [.. between];
+            for (int lane = 0; side.Length > 1 && lane < side.Length; lane++)
+            {
+                GraphDisplayEdge edge = builtEdges[side[lane]];
+                double across = lane - ((side.Length - 1) / 2d);
+                builtEdges[side[lane]] = edge with
+                {
+                    Lane = string.CompareOrdinal(edge.SourceKey, edge.TargetKey) <= 0 ? across : -across,
+                };
+            }
+        }
+
         // Each drawn node's connections to other hosts, one edge per transport, to the one node that stands for them. A
         // process outside a focused rung's neighbourhood is context, and its connections are left to its own rung.
         var hostEdges = new Dictionary<(string Source, Mechanism Mechanism), EdgeAggregate>();
@@ -1187,6 +1206,10 @@ public static class GraphProjection
 
         return display;
     }
+
+    /// <summary>Two drawn nodes' keys in ordinal order, which names the pair whichever of them an edge leaves from.</summary>
+    private static (string First, string Second) Unordered(string source, string target) =>
+        string.CompareOrdinal(source, target) <= 0 ? (source, target) : (target, source);
 
     private static string AggregateEdgeKey(EdgeAggregate aggregate, IReadOnlyList<string> relationships)
     {

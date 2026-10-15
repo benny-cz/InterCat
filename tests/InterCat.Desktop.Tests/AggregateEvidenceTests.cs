@@ -30,7 +30,7 @@ public sealed class AggregateEvidenceTests
         // At the machine rung the three quiet processes are one node: their three creations, with no relationship and no
         // byte between them.
         await AssertTheAggregateIsItsProcesses(workspace, GraphNodeKind.Quiet, 3,
-            "3 own records, all process lifecycle · no admitted paired TCP relationship · no send recorded · no receive recorded");
+            "3 own records, all process lifecycle · no admitted relationship · no send recorded · no receive recorded");
 
         // At client.exe's rung everything else but its server is the context node: the quiet three and the peer, whose
         // own send to the server is the one relationship it holds.

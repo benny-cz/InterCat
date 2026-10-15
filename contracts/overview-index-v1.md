@@ -1,7 +1,7 @@
 # InterCat overview index v1
 
 Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289, minor 3 in revision
-292, minor 4 in revision 445. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
+292, minor 4 in revision 445, minor 5 in revision 545. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
 beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
 no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
 lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
@@ -59,8 +59,8 @@ reader applies to them as the projection applies one to relations:
 - for each process instance and each strength its records bind at - direct, correlated, candidate or conflicting, the
   strengths a policy can admit - their bytes;
 - the bytes of records bound to no instance, or at a strength no policy admits;
-- for each end of each TCP channel (`relations-v1`), whatever the channel's own strength, the bytes of the records the
-  instance holding that end raised there, and the one strength they bind at. A process's records other than its
+- for each end of each paired channel (`relations-v1` §5e) - a TCP connection's, and since minor 5 a UDP flow's -
+  whatever the channel's own strength, the bytes of the records the instance holding that end raised there, and the one strength they bind at. A process's records other than its
   lifecycle bind as strongly as its place among its PID's instances allows (`entities-v1` §4), so an end's records share
   one; a process connected to itself has its records counted at the first end, as a read counts them.
 
@@ -68,12 +68,16 @@ Under a policy, an instance's bytes at the strengths it admits are that process'
 end's bytes are its holder's on that channel when the policy admits both the channel and their strength. That is
 exactly what a read of every segment measures under the policy (`SessionByteRanking`), so the ranked table's
 whole-session byte ranking and the graph sized by bytes read no segment either. An interval is still read. A session
-with more than 20,000 TCP channels, or whose process bytes would take more than 12 MiB, keeps none, as does one where an
+with more than 20,000 paired channels, or whose process bytes would take more than 12 MiB, keeps none, as does one where an
 end's records bind at two strengths, which no binding rule gives today; it is then read as before.
 
 Since minor 4 (plan revision 445) it also holds how many timed rows were read **before the extent** begins: those a
 generation that released an interval kept from before its boundary. The main and minimap columns, with them, add up to
 the timed rows. Every other overview holds zero.
+
+Minor 5 (plan revision 545) changes no byte of the layout: its process bytes keep each UDP flow's ends beside each TCP
+connection's, as the graph draws both (`relations-v1` §5e). An earlier overview's kept TCP's alone, so a reader uses
+them only for a session with no paired UDP flow, and reads the segments for one with a flow.
 
 ## 2. Files and publication
 
@@ -167,6 +171,6 @@ from the segments' tiles.
 
 - Deeper levels, which `contracts/tile-index-v1.md` defines since revision 456.
 - Focused counts, which filter rows by owner or channel and are not what these counts hold (§10.3).
-- Byte sums beyond the main columns' lanes and the whole session's processes and TCP channel ends: the minimap's, a
-  datagram flow's, and any interval's, which are read from the segments.
+- Byte sums beyond the main columns' lanes and the whole session's processes and paired channel ends: the minimap's
+  and any interval's, which are read from the segments.
 - RPC links within an interval. A brush still follows the calls it holds from the segments.

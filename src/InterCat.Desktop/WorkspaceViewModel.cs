@@ -1840,8 +1840,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// The graph's summary with what its relationships are drawn from in full, for its hover and a screen reader's help
-    /// text: a published session's graph draws admitted paired TCP, and RPC calls linked through ALPC where it has them,
-    /// never every observation, which the timeline holds (R21).
+    /// text: a published session's graph draws admitted paired TCP and UDP, and RPC calls linked through ALPC where it has
+    /// them, never every observation, which the timeline holds (R21).
     /// </summary>
     public string GraphScope => GraphScopeNote(brief: false) is { Length: > 0 } scope
         ? GraphSummary + ". " + scope
@@ -1851,8 +1851,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Why the machine's graph draws no relationship, said beneath it where the empty pane would otherwise be read as a
-    /// failure (§6.8): whether any TCP connection had a process of the session at each end, where its TCP records went, and
-    /// what the graph does not draw at all. Null while the graph draws a relationship, or connections to other hosts across
+    /// failure (§6.8): whether any TCP connection or UDP flow had a process of the session at each end, where each
+    /// transport's records went, and what the graph does not draw at all. Null while the graph draws a relationship, or connections to other hosts across
     /// the pane - its summary, nodes and table still say why - at a focused rung, and for a workspace not projected from a
     /// session.
     /// </summary>
@@ -1870,7 +1870,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// aside, whose absence its own words explain.
     /// </summary>
     private RelationshipCensus? EmptyCensus => realOverview && wholeSnapshot.Edges.Count == 0
-        && wholeSnapshot.Census is { Tcp.Relationships: 0 } census
+        && wholeSnapshot.Census is { Tcp.Relationships: 0, Udp.Relationships: 0 } census
         ? census
         : null;
 
@@ -1887,14 +1887,24 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         bool calls = wholeSnapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
-        return brief
-            ? calls ? " · paired TCP and RPC calls" : " · paired TCP only"
-            : (calls
-                ? "The graph draws admitted paired TCP and RPC calls linked through ALPC"
-                : "The graph draws admitted paired TCP")
-                + (graphDisplay.OtherHosts is null ? string.Empty
-                    : ", and to Other hosts each drawn process's TCP and UDP with no process of the capture at their other end")
-                + "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.";
+        if (brief)
+        {
+            return calls ? " · paired TCP, UDP and RPC calls" : " · paired TCP and UDP only";
+        }
+
+        var drawn = new List<string>(3) { "admitted paired TCP and UDP" };
+        if (calls)
+        {
+            drawn.Add("RPC calls linked through ALPC");
+        }
+
+        if (graphDisplay.OtherHosts is not null)
+        {
+            drawn.Add("to Other hosts each drawn process's TCP and UDP with no process of the capture at their other end");
+        }
+
+        return "The graph draws " + (drawn.Count == 1 ? drawn[0] : string.Join(", ", drawn[..^1]) + ", and " + drawn[^1])
+            + "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.";
     }
 
     private static string Counted(int count, string one, string many) =>
@@ -3001,7 +3011,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// An RPC channel row under a byte ranking of its process's channels: RPC carries no size, so the row says so and
-    /// ranks after every TCP channel, whose own bytes rank them.
+    /// ranks after every TCP and UDP channel, whose own bytes rank them.
     /// </summary>
     private RungRow RankedRpcChannel(RungRow row) => ShownMeasures is SessionByteMeasures
         && ladder.Current.Level == DetailLevel.ProcessInstance
@@ -3016,7 +3026,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// A process's HTTP exchanges under a byte ranking: their bytes are HTTP messages, which never rank with the transport
-    /// bytes the channels beside them rank by (P3), so the row says so and ranks after every TCP channel.
+    /// bytes the channels beside them rank by (P3), so the row says so and ranks after every TCP and UDP channel.
     /// </summary>
     private RungRow RankedHttpChannel(RungRow row) => ShownMeasures is SessionByteMeasures
         && ladder.Current.Level == DetailLevel.ProcessInstance
@@ -3115,7 +3125,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// What a published session's rung total counts, said after it. The machine and group rungs count each process's
     /// own records (`process-activity-v1`), and the machine rung says how many rows no process holds, which only the
-    /// timeline counts; the process rung's channels count admitted paired TCP only.
+    /// timeline counts; the process rung's channels count admitted paired TCP and UDP only.
     /// </summary>
     private string RealScopeNote(bool brief)
     {
@@ -3136,27 +3146,27 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return ListedNote(brief) + ReadFailureNote(brief);
     }
 
-    /// <summary>What a process's rung lists, said after its total: admitted paired TCP, and what else it read.</summary>
+    /// <summary>What a process's rung lists, said after its total: admitted paired TCP and UDP, and what else it read.</summary>
     private string ListedNote(bool brief)
     {
         if (ladder.Current.Level == DetailLevel.ProcessInstance && (httpChannelRows.Count > 0 || ConnectionCount > 0))
         {
             // It names what the rung lists, and only what it lists.
-            var listed = new List<string>(4) { brief ? "paired TCP" : "admitted paired TCP" };
+            var listed = new List<string>(4) { brief ? "paired TCP and UDP" : "admitted paired TCP and UDP" };
             if (ConnectionCount > 0) listed.Add(brief ? "connections" : "its connections whose other end no record holds");
             if (rpcChannelRows.Count > 0) listed.Add(brief ? "RPC calls" : "its RPC calls by interface");
             if (httpChannelRows.Count > 0) listed.Add(brief ? "HTTP exchanges" : "its HTTP exchanges");
-            string joined = listed.Count == 2 ? $"{listed[0]} and {listed[1]}" : string.Join(", ", listed[..^1]) + " and " + listed[^1];
+            string joined = string.Join(", ", listed[..^1]) + ", and " + listed[^1];
             return brief ? " · " + joined : " · " + joined + "; not all session observations";
         }
 
         if (ladder.Current.Level == DetailLevel.ProcessInstance && rpcChannelRows.Count > 0)
         {
-            return brief ? " · paired TCP and RPC calls"
-                : " · admitted paired TCP and this process's RPC calls by interface; not all session observations";
+            return brief ? " · paired TCP, UDP and RPC calls"
+                : " · admitted paired TCP and UDP, and this process's RPC calls by interface; not all session observations";
         }
 
-        return brief ? " · paired TCP only" : " · admitted paired TCP only; not all session observations";
+        return brief ? " · paired TCP and UDP only" : " · admitted paired TCP and UDP only; not all session observations";
     }
 
     /// <summary>
@@ -3208,6 +3218,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         && ladder.Current.Focus is { } focus
             ? Snapshot.Channels.FirstOrDefault(channel => channel.Key == focus.Key)
             : null;
+
+    /// <summary>What the focused channel is, in its end lanes' words: a "paired TCP channel" or a "paired UDP flow".</summary>
+    private string FocusedPairedChannel => FocusedRealChannel is { Mechanism: Mechanism.Udp } ? "paired UDP flow" : "paired TCP channel";
 
     /// <summary>Why this rung is empty, naming the source that would supply it. Empty when it has rows.</summary>
     public string EmptyReason
@@ -3287,13 +3300,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 // promises no records one step away, which the same failure may keep from being read.
                 if (ProcessReadProblem is { } failed)
                 {
-                    return failed + " No admitted paired TCP channel belongs to this process in this generation.";
+                    return failed + " No admitted paired TCP or UDP channel belongs to this process in this generation.";
                 }
 
                 return Snapshot.ChannelProjectionProblem is { } problem
                     ? problem + " Choose Browse paired channels here to page this process's admitted channels "
                         + "and inspect a selected channel's source rows."
-                    : "No admitted paired TCP channel belongs to this process in this generation. Its one-sided, "
+                    : "No admitted paired TCP or UDP channel belongs to this process in this generation. Its one-sided, "
                         + "ambiguous and other-mechanism records are still one step away.";
             }
 
@@ -3861,12 +3874,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(key);
         bool linkedCalls = realOverview && Snapshot.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
-        string metric = linkedCalls ? "Paired TCP observations and linked RPC call records"
-            : realOverview ? "Paired TCP observations" : "Observations";
+        string metric = linkedCalls ? "Paired TCP and UDP observations and linked RPC call records"
+            : realOverview ? "Paired TCP and UDP observations" : "Observations";
         string semantics = linkedCalls
-            ? "Basis: source observations · unit: records · domain: paired TCP transport evidence and RPC calls linked through ALPC · accounting: not applicable to a count; both ends contribute"
+            ? "Basis: source observations · unit: records · domain: paired TCP and UDP transport evidence and RPC calls linked through ALPC · accounting: not applicable to a count; both ends contribute"
             : realOverview
-            ? "Basis: source observations · unit: observations · domain: paired TCP transport evidence · accounting: not applicable to a count; both witnessed endpoints contribute"
+            ? "Basis: source observations · unit: observations · domain: paired TCP and UDP transport evidence · accounting: not applicable to a count; both witnessed endpoints contribute"
             : "Basis: source observations · unit: observations · domain: relationship evidence · accounting: not applicable to a count";
         string scope = appliedInterval is { } interval
             ? "Scope: " + TimeBase.HalfOpenRange(interval, CultureInfo.CurrentCulture) + " · brushed interval"
@@ -3967,6 +3980,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             semantics = "Basis: source observations · unit: records · domain: RPC calls linked to the calls that served them "
                 + "through ALPC (rpc-call-peer-v1) · accounting: both ends' call records; the ALPC records are the link's "
                 + "evidence, not counted";
+        }
+        else if (realOverview)
+        {
+            // A transport edge counts its own transport's records: a TCP connection's, or a UDP flow's.
+            string transport = MechanismText.Name(drawn.Mechanism);
+            metric = $"Paired {transport} observations";
+            semantics = $"Basis: source observations · unit: observations · domain: paired {transport} transport evidence · "
+                + "accounting: not applicable to a count; both witnessed endpoints contribute";
         }
         var lines = new List<string>
         {
@@ -4266,7 +4287,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : Counted(bucket.ObservationCount, "observed record", "observed records")
                     + $" · the {end.Endpoint} end, held by {holder}",
             $"Basis: source observations · unit: records · domain: records made at {end.Endpoint}, the end of this "
-                + $"paired TCP channel that {holder} holds · accounting: each record at exactly one end",
+                + $"{FocusedPairedChannel} that {holder} holds · accounting: each record at exactly one end",
             string.Create(CultureInfo.CurrentCulture,
                 $"Direction: {outbound:N0} outbound, drawn above the midline · {inbound:N0} inbound, below · ")
                 + string.Create(CultureInfo.CurrentCulture, $"{undirected:N0} with no data direction, marked on it"),
@@ -4516,6 +4537,28 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     TimeBase).Description
             : null;
 
+    /// <summary>
+    /// What a sum of drawn relationships' records counts, by the mechanisms among them: "paired TCP observations", "paired
+    /// TCP and UDP observations", "paired TCP, UDP and linked RPC call records", "linked RPC call records".
+    /// </summary>
+    private static string CountedOver(IReadOnlyCollection<CommunicationEdge> edges)
+    {
+        string[] transports = [.. edges
+            .Select(edge => edge.Mechanism)
+            .Where(mechanism => mechanism != Mechanism.Rpc)
+            .Distinct()
+            .Order()
+            .Select(mechanism => MechanismText.Name(mechanism))];
+        if (!edges.Any(edge => edge.Mechanism == Mechanism.Rpc))
+        {
+            return "paired " + string.Join(" and ", transports) + " observations";
+        }
+
+        return transports.Length == 0
+            ? "linked RPC call records"
+            : "paired " + string.Join(", ", transports) + " and linked RPC call records";
+    }
+
     public string EvidenceSummary
     {
         get
@@ -4524,7 +4567,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (selectedRelationship is { } chosen)
             {
                 bool calls = RpcChannelKeys.IsRpc(chosen.Key);
-                string counted = calls ? "linked RPC call records" : realOverview ? "paired TCP observations" : "observations";
+                Mechanism? transport = Snapshot.Edges.FirstOrDefault(edge => edge.Key == chosen.Key)?.Mechanism;
+                string counted = calls ? "linked RPC call records"
+                    : realOverview && transport is { } paired ? $"paired {MechanismText.Name(paired)} observations"
+                    : realOverview ? "paired observations" : "observations";
                 return string.Create(CultureInfo.CurrentCulture, $"{chosen.ObservationCount:N0} {counted} · ")
                     + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
             }
@@ -4558,11 +4604,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             CommunicationEdge[] edges = [.. Snapshot.Edges
                 .Where(edge => scope.Contains(edge.SourceId) || scope.Contains(edge.TargetId))];
             long observations = edges.Sum(edge => edge.ObservationCount);
-            string kind = realOverview
-                ? edges.Any(edge => edge.Mechanism == Mechanism.Rpc) ? "paired TCP and linked RPC call records" : "paired TCP observations"
-                : "observations";
+            string kind = realOverview ? CountedOver(edges) : "observations";
             string relationships = edges.Length == 0
-                ? realOverview ? "no admitted paired TCP relationship" : "no relationship"
+                ? realOverview ? "no admitted relationship" : "no relationship"
                 : realOverview && SelectedGroup is null && SelectedCluster is null && !HasMultiSelection
                     ? string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind}")
                     : string.Create(CultureInfo.CurrentCulture, $"{observations:N0} {kind} on ")

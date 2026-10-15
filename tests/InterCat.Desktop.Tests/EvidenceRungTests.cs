@@ -622,10 +622,10 @@ public sealed class EvidenceRungTests
         Assert.True(workspace.ShowsProcessLanes);
         Assert.Equal(workspace.RungRows.Select(row => row.Key), workspace.ProcessLaneDisplay.Select(lane => lane.ProcessId.ToString()));
 
-        // A process's channel rung counts admitted paired TCP, and says so.
+        // A process's channel rung counts admitted paired TCP and UDP, and says so.
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
         DescendTo(workspace, client.Id.ToString());
-        Assert.EndsWith(" · admitted paired TCP only; not all session observations", workspace.LevelSummary, StringComparison.Ordinal);
+        Assert.EndsWith(" · admitted paired TCP and UDP only; not all session observations", workspace.LevelSummary, StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "R22: an RPC server no lifecycle record names is a process of its own calls, and its rows name it")]
@@ -704,7 +704,7 @@ public sealed class EvidenceRungTests
             workspace.RungRows.Select(row => row.Label));
         Assert.Equal(workspace.Snapshot.Channels.Single().Name, workspace.RungRows[1].Source.Label);
         Assert.Equal("RPC client · 3 calls · 1 failed · median 400 ns", workspace.RungRows[2].Detail.Replace(' ', ' '));
-        Assert.EndsWith(" · admitted paired TCP and this process's RPC calls by interface; not all session observations",
+        Assert.EndsWith(" · admitted paired TCP and UDP, and this process's RPC calls by interface; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);
 
         // A channel lists its calls a page at a time, in reading order.
@@ -776,7 +776,7 @@ public sealed class EvidenceRungTests
         Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture,
             $"TCP from {local} · opened and closed in the capture · {1_500:N0} B sent, {90_000:N0} B received"), row.Detail);
         Assert.Contains(workspace.RungRows, candidate => candidate.Label.StartsWith('↔'));
-        Assert.EndsWith(" · admitted paired TCP and its connections whose other end no record holds; not all session observations",
+        Assert.EndsWith(" · admitted paired TCP and UDP, and its connections whose other end no record holds; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);
 
         // Under a byte ranking it ranks by its own transport bytes, as the paired channel beside it does.
@@ -857,7 +857,7 @@ public sealed class EvidenceRungTests
         Assert.Equal(HttpChannelSummary.Name, row.Source.Label);
         Assert.Equal("HTTP client · 2 exchanges · 1 not recorded whole · median 600 ns", row.Detail.Replace(' ', ' '));
         Assert.Equal("7", row.Observations);
-        Assert.EndsWith(" · admitted paired TCP and its HTTP exchanges; not all session observations",
+        Assert.EndsWith(" · admitted paired TCP and UDP, and its HTTP exchanges; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);
 
         // Chosen, the exchanges are what the card counts, the timeline highlights and E lists: their buffers alone.

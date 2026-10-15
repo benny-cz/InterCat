@@ -42,6 +42,12 @@ public sealed class DemoInvestigationTests
                 server.Nodes.Select(node => (node.Name, node.Records)).OrderBy(node => node.Name, StringComparer.Ordinal));
             Assert.Empty(client.Edges);
             CommunicationEdge loopback = Assert.Single(server.Edges);
+
+            // The browser's datagrams to the name server neither capture recorded run to another host beside its TCP: each
+            // answer names the name server first, as a UDP receive does, so none relates the browser to itself.
+            ProcessInstanceId browser = client.Nodes.Single(node => node.Name == "browser.exe").Id;
+            HostLink datagrams = Assert.Single(client.HostLinks, link => link.Mechanism == Mechanism.Udp);
+            Assert.Equal((browser, 1, 1, 12L), (datagrams.Process, datagrams.Connections, datagrams.Hosts, datagrams.Records));
             Assert.Equal(Mechanism.Tcp, loopback.Mechanism);
             Assert.Equal(["api.exe", "db.exe"], new[] { loopback.SourceId, loopback.TargetId }
                 .Select(id => server.Nodes.Single(node => node.Id == id).Name).Order(StringComparer.Ordinal));

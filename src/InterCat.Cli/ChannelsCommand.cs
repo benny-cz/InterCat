@@ -7,7 +7,7 @@ using InterCat.Storage;
 
 namespace InterCat.Cli;
 
-/// <summary>Read-only pages of paired TCP channels, including generations above the overview bound.</summary>
+/// <summary>Read-only pages of paired TCP and UDP channels, including generations above the overview bound.</summary>
 internal static class ChannelsCommand
 {
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
@@ -89,7 +89,7 @@ internal static class ChannelsCommand
             return page.RestartRequired ? InterCatExitCode.PartialResultSuccess : InterCatExitCode.Success;
         }
 
-        ConsoleUi.Heading("Admitted paired TCP channels");
+        ConsoleUi.Heading("Admitted paired TCP and UDP channels");
         ConsoleUi.Field("Session", path);
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         if (scope is not null) ConsoleUi.Field("Process instance", scope.ToString()!);
@@ -102,7 +102,8 @@ internal static class ChannelsCommand
         ConsoleUi.Field("Channels in scope", ConsoleUi.Count(page.TotalChannels));
         foreach (Channel channel in page.Channels)
         {
-            ConsoleUi.Line($"  {channel.Key} · {channel.Name} · {CountText.Of(channel.ObservationCount, "observed record")}");
+            ConsoleUi.Line($"  {channel.Key} · {MechanismText.Name(channel.Mechanism)} · {channel.Name} · "
+                + CountText.Of(channel.ObservationCount, "observed record"));
 
             // How it was paired, in the inspector's words (R18): the rule and how strongly, its lifetime, and the coverage.
             if (channel.Rule is not null)
@@ -110,8 +111,12 @@ internal static class ChannelsCommand
                 ConsoleUi.Line("    " + ChannelPairingText.Explain(channel));
             }
         }
-        // Whether a channel listed nowhere could have been seen at all is the ledger's to say (R21).
-        ConsoleUi.Note(SessionCoverage.Sentence(page.Coverage[0], "the session"));
+        // Whether a channel listed nowhere could have been seen at all is the ledger's to say (R21), of each transport.
+        foreach (MechanismCoverage coverage in page.Coverage)
+        {
+            ConsoleUi.Note(SessionCoverage.Sentence(coverage, "the session"));
+        }
+
         ConsoleUi.Note(page.Caveat);
         if (page.NextCursor is not null)
             ConsoleUi.Note($"Next page: icat channels <directory> --cursor {page.NextCursor}"
@@ -176,8 +181,9 @@ internal static class ChannelsCommand
     {
         ConsoleUi.Line("icat channels <session-directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--json]");
-        ConsoleUi.Line("  Read-only pages of admitted paired TCP channels, even above the overview bound, with what the");
-        ConsoleUi.Line("  capture covered of TCP, from its coverage ledger, so a page of none is not read as no traffic.");
+        ConsoleUi.Line("  Read-only pages of admitted paired TCP and UDP channels, even above the overview bound, with");
+        ConsoleUi.Line("  what the capture covered of each, from its coverage ledger, so a page of none is not read as no");
+        ConsoleUi.Line("  traffic.");
         ConsoleUi.Line("  A stale cursor requests an explicit restart; --process scopes by stable instance ID.");
         ConsoleUi.Line("  --one-sided lists the process's connections whose other end no record holds - most often");
         ConsoleUi.Line("  another host's - with their records and bytes, as its rung does.");

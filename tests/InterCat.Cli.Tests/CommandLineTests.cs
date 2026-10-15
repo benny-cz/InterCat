@@ -349,15 +349,17 @@ public sealed class CommandLineTests : IDisposable
         quiet.Store.ReleaseSegmentReaders();
         Assert.Contains("none resolved, the generation holds no ALPC record (ALPC coverage: covered)",
             (await Run("operations", quiet.Path)).Output, StringComparison.Ordinal);
+        string channels = (await Run("channels", tcp.Path)).Output;
         Assert.Contains("TCP was covered over the session: 2 records from its 1 admitted descriptor, and nothing was reported lost.",
-            (await Run("channels", tcp.Path)).Output, StringComparison.Ordinal);
+            channels, StringComparison.Ordinal);
+        Assert.Contains("UDP" + NotCollected, channels, StringComparison.Ordinal);
 
         // A script reads the same coverage by the enumerations' names.
         foreach ((string[] args, Func<JsonElement, JsonElement> coverage, (string, string)[] expected) in new (string[], Func<JsonElement, JsonElement>, (string, string)[])[]
         {
             (["operations", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Rpc", "NotCollected"), ("Alpc", "NotCollected")]),
             (["exchanges", tcp.Path, "--json"], root => root.GetProperty("coverage"), [("Http", "NotCollected")]),
-            (["channels", tcp.Path, "--json"], root => root.GetProperty("page").GetProperty("coverage"), [("Tcp", "Covered")]),
+            (["channels", tcp.Path, "--json"], root => root.GetProperty("page").GetProperty("coverage"), [("Tcp", "Covered"), ("Udp", "NotCollected")]),
         })
         {
             using JsonDocument document = JsonDocument.Parse((await Run(args)).Output);
@@ -1069,7 +1071,7 @@ public sealed class CommandLineTests : IDisposable
             + "correlated. Open before the capture and after it. Coverage over the session: unknown.", paired);
         (InterCatExitCode code, string text, string said) = await Run("channels", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Contains($"  {channel.Key} · {channel.Name} · 2 observed records{Environment.NewLine}    {paired}{Environment.NewLine}", text,
+        Assert.Contains($"  {channel.Key} · TCP · {channel.Name} · 2 observed records{Environment.NewLine}    {paired}{Environment.NewLine}", text,
             StringComparison.Ordinal);
     }
 
@@ -1714,7 +1716,8 @@ public sealed class CommandLineTests : IDisposable
     public async Task ACountOfOneReadsInTheSingular()
     {
         // client.exe, the only process, connects once to another host and sends one datagram to a third: one PID, two
-        // connections of one record each, one record that is neither a send nor a receive, and one TCP row with no peer.
+        // connections of one record each, one record that is neither a send nor a receive, and one TCP row and one UDP row
+        // with no peer.
         using var single = new TemporarySession();
         Publish(single.Store,
         [
@@ -1741,7 +1744,7 @@ public sealed class CommandLineTests : IDisposable
 
         (code, text, said) = await Run("overview", single.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Contains("1 TCP row has no admitted peer; 0 paired relationships were withheld", text, StringComparison.Ordinal);
+        Assert.Contains("1 TCP row and 1 UDP row have no admitted peer; 0 paired relationships were withheld", text, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "R5: icat overview and icat processes number a reused PID's holders alike, as the window does")]

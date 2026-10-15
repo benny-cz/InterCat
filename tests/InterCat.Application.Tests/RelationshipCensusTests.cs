@@ -9,14 +9,14 @@ namespace InterCat.Application.Tests;
 
 /// <summary>
 /// Why a session's graph draws no relationship, said where it would otherwise look broken (§6.3, §6.8): a real machine's
-/// TCP mostly runs to other hosts, its UDP is not drawn, and its RPC calls are joined to the process that served them only
-/// in a capture that collects ALPC.
+/// TCP and UDP mostly run to other hosts, and its RPC calls are joined to the process that served them only in a capture
+/// that collects ALPC.
 /// </summary>
 public sealed class RelationshipCensusTests
 {
     private static readonly CultureInfo Culture = CultureInfo.InvariantCulture;
 
-    [Fact(DisplayName = "§6.8: a session whose TCP all runs to other hosts says so, with its UDP and RPC, and its graph draws none")]
+    [Fact(DisplayName = "§6.8: a session whose TCP and UDP all run to other hosts says so of each, with its RPC, and its graph draws none")]
     public void ASessionWhoseTcpRunsToOtherHostsSaysSo()
     {
         using var session = new TemporarySession();
@@ -40,17 +40,17 @@ public sealed class RelationshipCensusTests
         Assert.Empty(overview.Edges);
         RelationshipCensus census = Assert.IsType<RelationshipCensus>(overview.Census);
         Assert.Equal(new TransportCensus(Mechanism.Tcp, 0, 0, 0, 0, 3, 2, 2, 0, 0, 0, 0), census.Tcp);
-        Assert.Equal(1, census.Udp.ToOtherHosts);
+        Assert.Equal(new TransportCensus(Mechanism.Udp, 0, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0), census.Udp);
         Assert.Equal((1L, false), (census.RpcRecords, census.RpcLinked));
         Assert.Same(census, OverviewWorkspace.From(overview).Census);
 
         Assert.Equal("no relationship drawn · 2 TCP connections ran to other hosts", RelationshipCensusText.Brief(census));
         Assert.Equal(
-            "No TCP connection was seen with a process of this session at each of its two ends. All 3 of its TCP records "
-            + "belong to 2 connections to 2 other hosts. A process's connections are listed on its rung. UDP datagrams are "
-            + "not drawn as relationships; they are in the timeline and on their processes' rungs. RPC calls are on their "
-            + "processes' rungs: a call is drawn to the process that served it only from a capture that collects ALPC - "
-            + "choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.",
+            "No TCP connection or UDP flow was seen with a process of this session at each of its two ends. All 3 of its TCP "
+            + "records belong to 2 connections to 2 other hosts. Its 1 UDP record belongs to 1 flow with 1 other host. A "
+            + "process's connections are listed on its rung. RPC calls are on their processes' rungs: a call is drawn to the "
+            + "process that served it only from a capture that collects ALPC - choose RPC peers in the window's Keep, or run "
+            + "icat capture --profile rpc-peers.",
             RelationshipCensusText.Explain(census, Culture));
     }
 
@@ -77,11 +77,12 @@ public sealed class RelationshipCensusTests
     {
         TransportCensus none = TransportCensus.None(Mechanism.Tcp);
         TransportCensus noUdp = TransportCensus.None(Mechanism.Udp);
-        RelationshipCensus Census(TransportCensus tcp, long rpc = 0, bool linked = false) => new(tcp, noUdp, rpc, linked);
+        RelationshipCensus Census(TransportCensus tcp, long rpc = 0, bool linked = false, TransportCensus? udp = null) =>
+            new(tcp, udp ?? noUdp, rpc, linked);
 
-        // Nothing recorded: no TCP at all, and no RPC to speak of.
-        Assert.Equal("no relationship drawn · no TCP recorded", RelationshipCensusText.Brief(Census(none)));
-        Assert.Equal("This capture recorded no TCP, so no relationship between two of its processes can be drawn.",
+        // Nothing recorded: no TCP or UDP at all, and no RPC to speak of.
+        Assert.Equal("no relationship drawn · no TCP or UDP recorded", RelationshipCensusText.Brief(Census(none)));
+        Assert.Equal("This capture recorded no TCP or UDP, so no relationship between two of its processes can be drawn.",
             RelationshipCensusText.Explain(Census(none), Culture));
 
         // A relationship the policy leaves out says how to draw it.
@@ -119,6 +120,31 @@ public sealed class RelationshipCensusTests
             RelationshipCensusText.Brief(Census(none with { Unpaired = 3 })));
         Assert.Equal("no relationship drawn · no TCP record names both endpoints",
             RelationshipCensusText.Brief(Census(none with { WithoutEndpoints = 3 })));
+
+        // UDP alone is said in its own words: flows, with other hosts.
+        TransportCensus datagrams = noUdp with { ToOtherHosts = 4, OtherHostConnections = 2, OtherHosts = 1, Unpaired = 1 };
+        Assert.Equal("no relationship drawn · 2 UDP flows ran to other hosts", RelationshipCensusText.Brief(Census(none, udp: datagrams)));
+        Assert.Equal(
+            "No UDP flow was seen with a process of this session at each of its two ends. Of its 5 UDP records, 4 belong to "
+            + "2 flows with 1 other host and 1 belongs to flows that could not be paired with one process at each end. A "
+            + "process's connections are listed on its rung.",
+            RelationshipCensusText.Explain(Census(none, udp: datagrams), Culture));
+        Assert.Equal("no relationship drawn · 1 UDP flow with an unseen other end",
+            RelationshipCensusText.Brief(Census(none, udp: noUdp with { ToUnseenLocalEnds = 2, UnseenLocalConnections = 1 })));
+        Assert.Equal("no relationship drawn · UDP ends could not be paired",
+            RelationshipCensusText.Brief(Census(none, udp: noUdp with { Unpaired = 3 })));
+
+        // Both transports' relationships left out are said together; TCP's reason leads the summary.
+        TransportCensus withheldUdp = noUdp with { Withheld = 3, WithheldRelationships = 2 };
+        Assert.Equal("no relationship drawn · 1 TCP relationship left out as a candidate",
+            RelationshipCensusText.Brief(Census(withheld, udp: withheldUdp)));
+        Assert.Equal(
+            "1 TCP relationship and 2 UDP relationships rest on a reused PID's later holder, so the evidence policy leaves "
+            + "them out as candidates; counting candidates draws them. All 2 of its TCP records belong to the relationships "
+            + "left out. All 3 of its UDP records belong to the relationships left out.",
+            RelationshipCensusText.Explain(Census(withheld, udp: withheldUdp), Culture));
+        Assert.Equal("no relationship drawn · 2 UDP relationships left out as candidates",
+            RelationshipCensusText.Brief(Census(none, udp: withheldUdp)));
 
         // A capture that collected ALPC can join RPC calls, so nothing is said of them.
         Assert.DoesNotContain("ALPC", RelationshipCensusText.Explain(Census(none, rpc: 4, linked: true), Culture), StringComparison.Ordinal);

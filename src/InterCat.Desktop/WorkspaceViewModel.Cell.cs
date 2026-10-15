@@ -205,7 +205,7 @@ public sealed partial class WorkspaceViewModel
                 candidate => channelEnd.Buckets[candidate].Interval == bucket.Interval, -1);
             int outbound = index < 0 ? 0 : channelEnd.Outbound[index].ObservationCount;
             int inbound = index < 0 ? 0 : channelEnd.Inbound[index].ObservationCount;
-            string place = $"made at {channelEnd.Endpoint}, the end of this paired TCP channel that {ChannelEndHolder(channelEnd)} holds";
+            string place = $"made at {channelEnd.Endpoint}, the end of this {FocusedPairedChannel} that {ChannelEndHolder(channelEnd)} holds";
             held = (count == 0
                     ? $"No record {place}, has a session time in this interval."
                     : $"{Counted(count, "record", "records")} {place}, {Have(count)} a session time in this interval: "

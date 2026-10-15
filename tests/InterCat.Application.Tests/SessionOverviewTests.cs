@@ -530,10 +530,11 @@ public sealed class SessionOverviewTests
         SessionChannelPage page = SessionChannelQuery.Read(session.Store);
         Assert.Equal(CoverageState.PartialGap, Assert.Single(page.Channels).Coverage);
 
-        // A page of channels says what the capture covered of TCP, with the fact behind it, as a page of none would.
-        MechanismCoverage tcp = Assert.Single(page.Coverage);
-        Assert.Equal((Mechanism.Tcp, CoverageState.PartialGap), (tcp.Mechanism, tcp.State));
-        Assert.Equal(SessionCoverage.Of(ledger, Mechanism.Tcp), tcp);
+        // A page of channels says what the capture covered of TCP and of UDP, each with the fact behind it, as a page of none
+        // would: this capture collected TCP alone.
+        Assert.Equal([SessionCoverage.Of(ledger, Mechanism.Tcp), SessionCoverage.Of(ledger, Mechanism.Udp)], page.Coverage);
+        Assert.Equal([(Mechanism.Tcp, CoverageState.PartialGap), (Mechanism.Udp, CoverageState.NotCollected)],
+            page.Coverage.Select(coverage => (coverage.Mechanism, coverage.State)));
         Assert.Equal("created during capture", overview.Nodes.Single(node => node.ProcessId == 100).Role);
         Assert.Equal("seen only in its own records", overview.Nodes.Single(node => node.ProcessId == 200).Role);
 
@@ -545,7 +546,8 @@ public sealed class SessionOverviewTests
 
         // Past the delivered readings nothing is known, and nothing is called covered.
         SessionIntervalCounts beyond = SessionIntervalQuery.Count(session.Store, new TimeRange(50, 60));
-        Assert.Equal((CoverageState.UnknownCoverage, CoverageState.UnknownCoverage), (beyond.CaptureCoverage, beyond.TcpCoverage));
+        Assert.Equal((CoverageState.UnknownCoverage, CoverageState.UnknownCoverage, CoverageState.UnknownCoverage),
+            (beyond.CaptureCoverage, beyond.TcpCoverage, beyond.UdpCoverage));
 
         // A generation without a ledger keeps every row unknown.
         using var legacy = new TemporarySession();

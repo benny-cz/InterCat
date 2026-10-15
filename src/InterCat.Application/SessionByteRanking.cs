@@ -83,7 +83,7 @@ public readonly record struct ChannelEnd(string ChannelKey, ProcessInstanceId Pr
 
 /// <summary>
 /// Every process instance's transport bytes over one scope of one generation, and each end's bytes on every channel the
-/// overview draws: an admitted paired TCP incarnation, whose two ends are held by the two processes it relates.
+/// overview draws: an admitted paired TCP incarnation or UDP flow, whose two ends are held by the two processes it relates.
 /// </summary>
 public sealed record SessionByteMeasures(
     Guid SessionId,
@@ -165,7 +165,7 @@ public static class SessionByteRanking
         var drawn = new List<(string Key, int First, int Second)>();
         foreach (TransportRelation relation in relations.Relations)
         {
-            if (relation.Mechanism == Mechanism.Tcp && SessionOverviewProjector.Admitted(relation.Strength, policy)
+            if (TransportRelationIndex.Relates(relation.Mechanism) && SessionOverviewProjector.Admitted(relation.Strength, policy)
                 && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
             {
                 slotOfChannel[relation.Channel] = drawn.Count;
@@ -253,12 +253,18 @@ public static class SessionByteRanking
             }
         }
 
-        // The channels kept are every TCP channel, whatever its own strength; the policy draws some of them.
+        // The channels kept are every paired channel, whatever its own strength; the policy draws some of them. An overview
+        // kept before the graph drew UDP flows kept TCP's alone, so a session with a flow measures its ends again.
         var channels = new Dictionary<string, TransportRelation>(StringComparer.Ordinal);
         foreach (TransportRelation relation in relations.Relations)
         {
-            if (relation.Mechanism == Mechanism.Tcp && relation.Channel >= 0 && relation.Channel < relations.Channels)
+            if (TransportRelationIndex.Relates(relation.Mechanism) && relation.Channel >= 0 && relation.Channel < relations.Channels)
             {
+                if (relation.Mechanism == Mechanism.Udp && !kept.CoversUdp)
+                {
+                    return null;
+                }
+
                 channels[relation.StableKey] = relation;
             }
         }
@@ -288,12 +294,13 @@ public static class SessionByteRanking
 
     /// <summary>
     /// What a pass keeping the whole session's bytes before any evidence policy needs (overview-index-v1 minor 3): every
-    /// TCP channel, whatever its own strength, with the instances holding its two ends, and a slot for each instance at each
-    /// strength a policy can admit. Null when the session has more TCP channels than an overview keeps the ends of.
+    /// paired channel - TCP connection or UDP flow - whatever its own strength, with the instances holding its two ends, and
+    /// a slot for each instance at each strength a policy can admit. Null when the session has more paired channels than an
+    /// overview keeps the ends of.
     /// </summary>
     internal sealed class KeptPlan
     {
-        /// <summary>The most TCP channels whose ends an overview keeps; a session with more reads them when asked.</summary>
+        /// <summary>The most paired channels whose ends an overview keeps; a session with more reads them when asked.</summary>
         public const int MaximumChannels = 20_000;
 
         /// <summary>The most bytes the kept bytes take in an overview, of the 16 MiB it may take in all.</summary>
@@ -338,7 +345,7 @@ public static class SessionByteRanking
             var channels = new List<(string Key, int First, int Second)>();
             foreach (TransportRelation relation in relations.Relations)
             {
-                if (relation.Mechanism == Mechanism.Tcp && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
+                if (TransportRelationIndex.Relates(relation.Mechanism) && relation.Channel >= 0 && relation.Channel < slotOfChannel.Length)
                 {
                     slotOfChannel[relation.Channel] = channels.Count;
                     channels.Add((relation.StableKey, indexOf[relation.First.Id], indexOf[relation.Second.Id]));

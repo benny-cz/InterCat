@@ -30,9 +30,9 @@ public sealed class OtherHostsWorkspaceTests
 
         // The summary counts the drawn processes that reach other hosts after what the relationships are drawn from, and
         // the graph's scope says what is drawn to Other hosts.
-        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP only · 1 connects to other hosts",
+        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP and UDP only · 1 connects to other hosts",
             workspace.GraphSummary);
-        Assert.Equal(workspace.GraphSummary + ". The graph draws admitted paired TCP, and to Other hosts each drawn process's "
+        Assert.Equal(workspace.GraphSummary + ". The graph draws admitted paired TCP and UDP, and to Other hosts each drawn process's "
             + "TCP and UDP with no process of the capture at their other end; a process's RPC calls are on its rung, and all "
             + "other observed activity is in the timeline.", workspace.GraphScope);
 
@@ -128,7 +128,7 @@ public sealed class OtherHostsWorkspaceTests
         // they meet at is no process the rung draws.
         GraphDisplayEdge own = workspace.GraphDisplay.Edges.Single(edge => edge.ToHosts && edge.Mechanism == Mechanism.Udp);
         Assert.Equal(1, workspace.GraphDisplay.OtherHosts!.ConnectedProcesses);
-        Assert.Equal("browser.exe · PID 300: 1 process drawn · 4 more in Rest of the machine · paired TCP only · 1 connects "
+        Assert.Equal("browser.exe · PID 300: 1 process drawn · 4 more in Rest of the machine · paired TCP and UDP only · 1 connects "
             + "to other hosts", workspace.GraphSummary);
         Assert.DoesNotContain(workspace.DescribeGraphHover(own.Key)!.Lines, line => line.Contains("double-click", StringComparison.Ordinal));
         Assert.False(workspace.OpenGraphEdge(own.Key));

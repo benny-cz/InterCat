@@ -723,7 +723,7 @@ public sealed class MainWindowPathTests
         Assert.True(workspace.ShowsEmptyReason);
         Assert.StartsWith("This process's RPC calls could not be read: This session cannot be read", workspace.EmptyReason,
             StringComparison.Ordinal);
-        Assert.EndsWith(". No admitted paired TCP channel belongs to this process in this generation.", workspace.EmptyReason,
+        Assert.EndsWith(". No admitted paired TCP or UDP channel belongs to this process in this generation.", workspace.EmptyReason,
             StringComparison.Ordinal);
         Assert.DoesNotContain("one step away", workspace.EmptyReason, StringComparison.Ordinal);
         Assert.EndsWith(" · RPC calls could not be read", workspace.LevelSummaryShort, StringComparison.Ordinal);

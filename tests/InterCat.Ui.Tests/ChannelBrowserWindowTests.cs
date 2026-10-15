@@ -52,10 +52,12 @@ public sealed class ChannelBrowserWindowTests
             await Task.Delay(20);
         }
 
-        // The server's port sorts first, so its end is named first; the endpoints follow, compacted, then the records.
-        Assert.Equal("server.exe · PID 200 ↔ client.exe · PID 100 · :8080 ↔ :50000 on 127.0.0.1 · 2 records",
+        // The server's port sorts first, so its end is named first; the transport and the endpoints follow, compacted, then
+        // the records.
+        Assert.Equal("server.exe · PID 200 ↔ client.exe · PID 100 · TCP · :8080 ↔ :50000 on 127.0.0.1 · 2 records",
             Assert.IsType<string>(Assert.Single(list.Items)));
-        Assert.Equal("Paired TCP channels. Enter shows the selected channel's source records.", AutomationProperties.GetName(list));
+        Assert.Equal("Paired channels. Enter shows the selected channel's source records.", AutomationProperties.GetName(list));
+        Assert.Equal("InterCat · Paired channels", browser.Title);
 
         // The chosen row has the keyboard once the page is read, and Enter opens it, as a double click does.
         Dispatch();
@@ -73,8 +75,10 @@ public sealed class ChannelBrowserWindowTests
         Channel opened = Assert.IsType<Channel>(await chosen);
         Assert.Equal(Assert.Single(snapshot.Channels).Key, opened.Key);
 
-        // Beneath a list of channels the caveat ends with what the capture covered of TCP, which this one did not judge (R21).
-        Assert.EndsWith(" TCP's coverage over the session is unknown: this generation publishes no coverage ledger.",
+        // Beneath a list of channels the caveat ends with what the capture covered of TCP and of UDP, which this one did not
+        // judge (R21).
+        Assert.EndsWith(" TCP's coverage over the session is unknown: this generation publishes no coverage ledger. UDP's "
+            + "coverage over the session is unknown: this generation publishes no coverage ledger.",
             browser.GetVisualDescendants().OfType<TextBlock>().Single(block =>
                 block.Text?.StartsWith("Only paired TCP", StringComparison.Ordinal) == true).Text, StringComparison.Ordinal);
 
@@ -88,7 +92,7 @@ public sealed class ChannelBrowserWindowTests
         owner.Close();
     }
 
-    [AvaloniaFact(DisplayName = "R21: the channel browser says what the capture covered of TCP, as the reason an empty list holds none")]
+    [AvaloniaFact(DisplayName = "R21: the channel browser says what the capture covered of TCP and of UDP, as the reason an empty list holds none")]
     public async Task AnEmptyBrowserSaysWhatTheCaptureCoveredOfTcp()
     {
         // A capture that collected process lifecycle alone holds no channel because it could see none.
@@ -139,8 +143,9 @@ public sealed class ChannelBrowserWindowTests
         }
 
         // The announced status says why the list is empty, and the caveat beneath it does not say it again.
-        Assert.Equal("No admitted paired TCP channel is in this scope. TCP was not collected over the session: no admitted "
-            + "descriptor records it.", status.Text);
+        Assert.Equal("No admitted paired TCP or UDP channel is in this scope. TCP was not collected over the session: no "
+            + "admitted descriptor records it. UDP was not collected over the session: no admitted descriptor records it.",
+            status.Text);
         Assert.DoesNotContain(browser.GetVisualDescendants().OfType<TextBlock>(), block =>
             block != status && block.Text?.Contains("was not collected", StringComparison.Ordinal) == true);
 

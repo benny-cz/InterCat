@@ -339,7 +339,7 @@ that counting from the segments' own tiles took:
 ### Brushing
 
 A brush counts the records inside its interval: every one observed, each by the instance its owner binds to where the
-evidence policy admits the binding, and each of a paired TCP channel the policy admits by that channel. It counts from
+evidence policy admits the binding, and each of a paired TCP or UDP channel the policy admits by that channel. It counts from
 the index only when the index describes every observation segment the generation names, as a zoom does, and states the
 derivation the brush binds with: the same rules, instance and channel counts and fingerprint. It then counts each
 segment from its top level down:
@@ -398,7 +398,7 @@ was 312 to 323 MB, against 1.35 GB.
 
 ### A channel's focus
 
-A channel's focus - a paired TCP channel's, or a connection's whose other end the capture does not hold - counts the
+A channel's focus - a paired TCP or UDP channel's, or a connection's whose other end the capture does not hold - counts the
 records bound to its channel, of one mechanism, in one source direction and, for a paired channel, at one end where it
 names them: in the view's columns, by mechanism; and for a paired channel, at each of its two ends, every record made
 there and its outbound and inbound records apart. It counts from the index under the same conditions as a brush, and

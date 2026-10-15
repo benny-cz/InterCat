@@ -6,8 +6,9 @@ using InterCat.Storage;
 namespace InterCat.Application;
 
 /// <summary>
-/// One immutable, evidence-bounded overview. Its edges are only paired TCP relationships whose two process instances
-/// are admitted under the requested policy; they are not a total of all traffic. The timeline counts all observations
+/// One immutable, evidence-bounded overview. Its edges are only paired TCP and UDP relationships whose two process
+/// instances are admitted under the requested policy, and RPC calls linked to the calls that served them where the capture
+/// collected ALPC; they are not a total of all traffic. The timeline counts all observations
 /// with a usable session time and projects capture coverage only when this generation publishes a ledger. The graph's
 /// own counts are the displayed relations' records, a narrower scope that never stands in for the timeline's. Each node
 /// carries its own records (`process-activity-v1`), which rank the groups and processes of the ladder's table.
@@ -204,6 +205,7 @@ public static class SessionOverviewProjector
         // The instances that collected the capture, by the PID and creation time it names them by (collector-binding-v1).
         CollectorMatch collectors = CollectorBinding.Match(processes.Instances, CollectorIdentitiesV1.Read(store.Root, manifest));
         CoverageState tcpCoverage = SessionCoverage.Of(coverage, Mechanism.Tcp).State;
+        CoverageState udpCoverage = SessionCoverage.Of(coverage, Mechanism.Udp).State;
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
@@ -231,25 +233,26 @@ public static class SessionOverviewProjector
         long heldByProcesses = nodes.Sum(node => node.Records);
         long heldByNone = counted.Rows - heldByProcesses;
 
-        // The overview graph shows TCP relationships; UDP datagram flows are related too, and join the graph when its edges
-        // and timeline carry a mechanism of their own rather than a TCP label.
-        TransportRelation[] tcp = [.. relations.Relations.Where(relation => relation.Mechanism == Mechanism.Tcp)];
-        TransportRelation[] admitted = [.. tcp.Where(relation => Admitted(relation.Strength, policy))];
-        long notAdmitted = tcp.Length - admitted.Length;
+        // The overview graph shows paired transport relationships - TCP connections and UDP datagram flows whose two ends
+        // the session's processes hold - each pair of processes an edge per transport, in its mechanism's hue.
+        TransportRelation[] paired = [.. relations.Relations.Where(relation => TransportRelationIndex.Relates(relation.Mechanism))];
+        TransportRelation[] admitted = [.. paired.Where(relation => Admitted(relation.Strength, policy))];
+        long notAdmitted = paired.Length - admitted.Length;
         CommunicationEdge[] edges = [.. admitted
-            .GroupBy(relation => Pair(relation.First.Id, relation.Second.Id))
-            .OrderBy(group => group.Key.First.ToString(), StringComparer.Ordinal)
-            .ThenBy(group => group.Key.Second.ToString(), StringComparer.Ordinal)
+            .GroupBy(relation => (Pair: Pair(relation.First.Id, relation.Second.Id), relation.Mechanism))
+            .OrderBy(group => group.Key.Pair.First.ToString(), StringComparer.Ordinal)
+            .ThenBy(group => group.Key.Pair.Second.ToString(), StringComparer.Ordinal)
+            .ThenBy(group => group.Key.Mechanism)
             .Select(group => new CommunicationEdge(
-                $"tcp:{group.Key.First}:{group.Key.Second}",
-                group.Key.First,
-                group.Key.Second,
-                Mechanism.Tcp,
+                EdgeKeyOf(group.First()),
+                group.Key.Pair.First,
+                group.Key.Pair.Second,
+                group.Key.Mechanism,
                 group.Sum(relation => relation.Records),
                 null,
                 group.Max(relation => relation.Strength))
             {
-                // Each connection by the key its channel rung opens: the first record of the connection at either end.
+                // Each connection or flow by the key its channel rung opens: its first record at either end.
                 Rule = RelationRule.TransportEndpoint,
                 Evidence = [.. group.Select(relation => relation.StableKey).Order(StringComparer.Ordinal)],
             })];
@@ -287,19 +290,19 @@ public static class SessionOverviewProjector
             .OrderBy(link => link.Key, StringComparer.Ordinal)];
 
         string? channelProblem = admitted.Length > maximumChannels
-            ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
+            ? $"This generation has {admitted.Length:N0} admitted paired channels, above the "
                 + $"{maximumChannels:N0}-channel overview bound. The graph and timeline remain available; "
                 + "the channel rung needs a scoped query before it can show the complete set. "
                 + "Use icat channels <session-directory> --process <instance-guid> to page admitted channels."
             : null;
         Channel[] channels = channelProblem is not null ? [] : [.. admitted
             .OrderBy(relation => relation.StableKey, StringComparer.Ordinal)
-            .Select(relation => ProjectChannel(relation, tcpCoverage))];
+            .Select(relation => ProjectChannel(relation, relation.Mechanism == Mechanism.Udp ? udpCoverage : tcpCoverage))];
         if (channelProblem is null
             && channels.Select(channel => channel.Key).Distinct(StringComparer.Ordinal).Count() != channels.Length)
         {
             throw new InvalidDataException(
-                "Two admitted TCP incarnations have the same raw-fact channel key. Refusing to merge them.");
+                "Two admitted paired channels have the same raw-fact channel key. Refusing to merge them.");
         }
 
         int unrelated = nodes.Length - edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId }).Distinct().Count();
@@ -309,12 +312,13 @@ public static class SessionOverviewProjector
         long graphRows = admitted.Sum(relation => relation.Records) + rpc.Sum(edge => edge.Records);
         long graphWithoutTime = admitted.Sum(relation => relation.RecordsWithoutSessionTime);
         long unresolved = relations.RecordsWithoutAdmittedPeer(Mechanism.Tcp, policy);
+        long unresolvedUdp = relations.RecordsWithoutAdmittedPeer(Mechanism.Udp, policy);
         (TimeRange? extent, TimelineBucket[] timeline, MechanismTimelineLane[] lanes, SessionMinimap? minimap,
             long rows, long withoutTime) = Timeline(counted, clock, coverage);
         string[] caveats =
         [
-            "Graph edges show paired TCP connection incarnations whose two process instances are admitted. "
-                + "One-sided, ambiguous and unsupported relationships are not rendered as guessed edges.",
+            "Graph edges show paired TCP connection incarnations and UDP datagram flows whose two process instances are "
+                + "admitted. One-sided, ambiguous and unsupported relationships are not rendered as guessed edges.",
             .. (rpc.Length == 0 ? [] : new[]
             {
                 "RPC edges join a process and the process that served its calls, each call linked through its one ALPC "
@@ -332,7 +336,10 @@ public static class SessionOverviewProjector
                     + "loss has no finer location than its epoch, and coverage does not prove a graph relationship complete.",
             $"{withoutTime:N0} {(withoutTime == 1 ? "row has" : "rows have")} no usable session time and "
                 + $"{(withoutTime == 1 ? "is" : "are")} absent from the timeline; "
-                + $"{CountText.Of(unresolved, "TCP row")} {CountText.Agree(unresolved, "has", "have")} no admitted peer; "
+                + (unresolvedUdp == 0 ? $"{CountText.Of(unresolved, "TCP row")} {CountText.Agree(unresolved, "has", "have")}"
+                    : unresolved == 0 ? $"{CountText.Of(unresolvedUdp, "UDP row")} {CountText.Agree(unresolvedUdp, "has", "have")}"
+                    : $"{CountText.Of(unresolved, "TCP row")} and {CountText.Of(unresolvedUdp, "UDP row")} have")
+                + " no admitted peer; "
                 + $"{CountText.Of(notAdmitted, "paired relationship")} {CountText.Agree(notAdmitted, "was", "were")} withheld by the "
                 + "evidence policy.",
             // An edge holds records at both of its ends, so the graph's rows are never one.
@@ -347,7 +354,7 @@ public static class SessionOverviewProjector
                 + $"({activity.RecordsNotBound:N0}), or {CountText.Agree(heldByNone, "binds", "bind")} only as strongly as the "
                 + $"policy withholds; the timeline counts {CountText.Agree(heldByNone, "it", "them")} and no process does.",
             "Byte totals, logical operations and exact-record drill-down are not in this overview bundle. "
-                + "Channels name only admitted paired TCP incarnations; one-sided or ambiguous transport activity "
+                + "Channels name only admitted paired TCP incarnations and UDP flows; one-sided or ambiguous transport activity "
                 + "remains in the all-observations timeline, not a guessed channel.",
             .. (channelProblem is null ? [] : new[] { channelProblem }),
             .. (unrelated < 2 && nodes.Length <= GraphDisplayBudget.Default.Nodes
@@ -552,16 +559,23 @@ public static class SessionOverviewProjector
         _ => false,
     };
 
-    /// <summary>The graph edge a paired TCP relation contributes to: one edge per unordered pair of process instances.</summary>
+    /// <summary>
+    /// The graph edge a paired relation contributes to: one edge per unordered pair of process instances and transport,
+    /// "tcp:" or "udp:" and the pair.
+    /// </summary>
     internal static string EdgeKeyOf(TransportRelation relation) =>
-        $"tcp:{Pair(relation.First.Id, relation.Second.Id).First}:{Pair(relation.First.Id, relation.Second.Id).Second}";
+        (relation.Mechanism == Mechanism.Udp ? "udp:" : "tcp:")
+        + $"{Pair(relation.First.Id, relation.Second.Id).First}:{Pair(relation.First.Id, relation.Second.Id).Second}";
 
-    /// <summary>A paired TCP relation as a channel, with TCP's coverage over the scope its count is over.</summary>
+    /// <summary>
+    /// A paired relation as a channel - a TCP connection incarnation or a UDP datagram flow - with its transport's coverage
+    /// over the scope its count is over.
+    /// </summary>
     internal static Channel ProjectChannel(TransportRelation relation, CoverageState coverage) => new(
         relation.StableKey,
         EdgeKeyOf(relation),
         ChannelNames.Of(relation.FirstEndpoint, relation.SecondEndpoint),
-        Mechanism.Tcp,
+        relation.Mechanism,
         Direction.UnknownDirection,
         relation.Records,
         null,

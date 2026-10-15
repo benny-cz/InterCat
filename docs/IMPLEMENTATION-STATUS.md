@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 544 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 545 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -50,7 +50,8 @@ shared-section topology remain explicitly unavailable and move to M7 and M9. M4 
 §11.3's sharing
 presets exist: a metadata-only **report**, a reopenable redacted **session package**, and an exact, unredacted
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
-two real sessions, one sparse and one dense. Processes with no relationship are counted in one parked node, and groups
+two real sessions, one sparse and one dense. Since revision 545 it relates processes by paired UDP flows beside TCP
+connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, and groups
 collapse only under budget pressure. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint; endpoint strings can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
@@ -92,6 +93,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 545 — draw paired UDP flows between processes in the graph (§6.3):**
+  - Two processes exchanging only datagrams showed no relationship: the overview drew TCP alone, though the relation
+    index has paired UDP flows since revision 57.
+  - The graph draws each pair's UDP flows as an edge of its own in UDP's hue, its channels judged by UDP's coverage;
+    a brush, the channel rung and its ends, E, the channel browser, icat channels and a byte ranking read them as
+    they read TCP's. A persisted overview keeps a flow's ends at minor 5, and an older one's bytes are read again for a
+    session with a flow (`overview-index-v1`, `relations-v1` §5e).
+  - Two edges between the same two nodes run side by side, 8 px apart, so either is hovered and chosen where drawn.
+  - The census explains both transports, a flow's pairing says no record opens or closes it, and the demo's UDP
+    answers name their sender first, as a UDP receive does, so its browser's flow no longer pairs with itself.
+  - Debug and Release each ran 2,353 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 33 mutations: TCP's relations drawn alone; a pair's TCP and UDP merged into one edge, or
+    keyed as TCP; a flow's channel named TCP, or judged by TCP's coverage over the session, a brush or a page; a
+    brush, the channel pages, E or a channel's focus reading TCP alone; a page stating TCP's coverage alone; a byte
+    measure, or the overview's kept bytes, without a flow's ends; an overview before minor 5 read for a session with
+    a flow, or one written as minor 4; the census without UDP's reason, name, hosts or records; rows without a peer
+    said of TCP alone; parallel edges on one line, two met in the other order not parted, or 4 px apart; a flow's
+    pairing, its evidence scope, its card, the evidence card's two counts and its ends' words said as TCP's; and the
+    demo's answers naming their own end first.
 
 - **Revision 544 — extend RPC calls and their other ends between live generations (I14, §12.1):**
   - A live RPC peers capture, which the window draws since revision 543, paired every call and read every ALPC record

@@ -30,7 +30,7 @@ internal sealed record OverviewCounts(
     public OverviewLaneBytes? LaneBytes { get; init; }
 
     /// <summary>
-    /// Each process's and TCP channel end's bytes over the whole session, before any evidence policy, which the ranked
+    /// Each process's and paired channel end's bytes over the whole session, before any evidence policy, which the ranked
     /// table and the graph read under a byte ranking, when a persisted overview kept them (overview-index-v1 minor 3);
     /// null when it did not, and then they are read from the segments when a view asks.
     /// </summary>
@@ -74,17 +74,21 @@ internal sealed class OverviewLaneBytes
 /// <summary>
 /// What every record's transport-observed measurements came to over the whole session, before any evidence policy
 /// (overview-index-v1 minor 3): for each process instance and each strength its records bind at, their bytes; for each
-/// end of each TCP channel, the bytes of its holder's own records there and the one strength they bind at; and the
-/// bytes of records bound to no instance at a strength a policy could admit. A policy applied to them gives exactly what
-/// <see cref="SessionByteRanking.Measure"/> reads from every segment under it.
+/// end of each paired channel - a TCP connection's, and since minor 5 a UDP flow's - the bytes of its holder's own records
+/// there and the one strength they bind at; and the bytes of records bound to no instance at a strength a policy could
+/// admit. A policy applied to them gives exactly what <see cref="SessionByteRanking.Measure"/> reads from every segment
+/// under it.
 /// </summary>
 internal sealed class OverviewProcessBytes
 {
+    /// <param name="coversUdp">Whether the ends include every UDP flow's, as an overview of minor 5 on keeps them.</param>
     public OverviewProcessBytes(
         TransportBytes unbound,
         IEnumerable<(ProcessInstanceId Instance, RelationStrength Strength, TransportBytes Bytes)> processes,
-        IEnumerable<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)> ends)
+        IEnumerable<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)> ends,
+        bool coversUdp = true)
     {
+        CoversUdp = coversUdp;
         ArgumentNullException.ThrowIfNull(unbound);
         ArgumentNullException.ThrowIfNull(processes);
         ArgumentNullException.ThrowIfNull(ends);
@@ -103,8 +107,14 @@ internal sealed class OverviewProcessBytes
     /// <summary>Each instance's bytes at each strength its records bind at, by instance and then strength.</summary>
     public IReadOnlyList<(ProcessInstanceId Instance, RelationStrength Strength, TransportBytes Bytes)> Processes { get; }
 
-    /// <summary>Each TCP channel end's bytes, its holder's own, and the strength they bind at, by channel and then holder.</summary>
+    /// <summary>Each paired channel end's bytes, its holder's own, and the strength they bind at, by channel and then holder.</summary>
     public IReadOnlyList<(string Channel, ProcessInstanceId Holder, RelationStrength Strength, TransportBytes Bytes)> Ends { get; }
+
+    /// <summary>
+    /// Whether <see cref="Ends"/> hold every UDP flow's ends beside every TCP connection's: since minor 5, when the graph
+    /// draws UDP flows too. An earlier overview kept TCP's alone, so a session with a UDP flow measures its ends again.
+    /// </summary>
+    public bool CoversUdp { get; }
 
     /// <summary>How many bytes they take in a persisted overview (overview-index-v1 §3), flag included.</summary>
     public long EncodedLength =>
@@ -131,10 +141,11 @@ internal static class SessionOverviewIndex
 
     /// <summary>
     /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them,
-    /// minor 3 each process's and TCP channel end's bytes after those, and minor 4 how many timed rows were read before the
-    /// extent begins (§3); an earlier overview holds what its minor did and is still read.
+    /// minor 3 each process's and TCP channel end's bytes after those, minor 4 how many timed rows were read before the
+    /// extent begins, and minor 5 keeps each UDP flow's ends beside each TCP connection's, as the graph draws both (§3);
+    /// an earlier overview holds what its minor did and is still read.
     /// </summary>
-    private const ushort Minor = 4;
+    private const ushort Minor = 5;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -277,7 +288,7 @@ internal static class SessionOverviewIndex
             }
         }
 
-        // Minor 3: each process's and TCP channel end's bytes over the whole session, before any evidence policy, kept by a
+        // Minor 3: each process's and paired channel end's bytes over the whole session, before any evidence policy, kept by a
         // writer that summed them, in their canonical order.
         writer.Flag(counts.ProcessBytes is not null);
         if (counts.ProcessBytes is { } kept)
@@ -414,7 +425,7 @@ internal static class SessionOverviewIndex
         {
             IReadOnlyList<RpcPeerLinkTotal>? untimedLinks = minor >= 1 ? ReadLinks(reader) : null;
             OverviewLaneBytes? untimedBytes = minor >= 2 ? ReadLaneBytes(reader, main: null) : null;
-            OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader) : null;
+            OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
             long untimedBefore = minor >= 4 ? reader.I64() : 0;
             reader.RequireEnd();
             return rows == withoutTime && untimedBefore == 0
@@ -484,7 +495,7 @@ internal static class SessionOverviewIndex
 
         IReadOnlyList<RpcPeerLinkTotal>? links = minor >= 1 ? ReadLinks(reader) : null;
         OverviewLaneBytes? laneBytes = minor >= 2 ? ReadLaneBytes(reader, main) : null;
-        OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader) : null;
+        OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
         long beforeExtent = minor >= 4 ? reader.I64() : 0;
         reader.RequireEnd();
         if (beforeExtent < 0 || beforeExtent > timed)
@@ -542,10 +553,11 @@ internal static class SessionOverviewIndex
 
     /// <summary>
     /// Minor 3's process bytes (§3): none when they were not kept; otherwise the bytes of records bound to no instance, then
-    /// each instance's at each strength a policy can admit, and each TCP channel end's by its holder, each once and in
-    /// order, with no count below zero, no sum without a contribution that measured it, and some contribution.
+    /// each instance's at each strength a policy can admit, and each paired channel end's by its holder - TCP's alone
+    /// before minor 5, UDP's too since (<paramref name="coversUdp"/>) - each once and in order, with no count below zero,
+    /// no sum without a contribution that measured it, and some contribution.
     /// </summary>
-    private static OverviewProcessBytes? ReadProcessBytes(IndexFileReader reader)
+    private static OverviewProcessBytes? ReadProcessBytes(IndexFileReader reader, bool coversUdp)
     {
         if (!reader.Flag())
         {
@@ -595,7 +607,7 @@ internal static class SessionOverviewIndex
             ends.Add((channel, holder, strength, bytes));
         }
 
-        return new(unbound, processes, ends);
+        return new(unbound, processes, ends, coversUdp);
     }
 
     /// <summary>Whether a binding at <paramref name="strength"/> is one some evidence policy admits.</summary>

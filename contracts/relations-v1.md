@@ -183,6 +183,17 @@ a reused PID's later instance, a candidate, is left out. The overview carries th
 re-count them. The window's graph draws them to one **Other hosts** node (§6.3 of the plan), and `icat overview`
 lists the processes that hold them; nothing names who is at their other ends (P7).
 
+## 5e. What the overview draws (revision 545)
+
+The overview draws every relation of both transports whose strength the evidence policy admits: TCP connection
+incarnations and UDP datagram flows alike. Each unordered pair of process instances has an edge per transport, keyed
+`tcp:{first}:{second}` or `udp:{first}:{second}`, the instances in ordinal order of their identities, whose records are
+its relations' from both ends and whose evidence is their keys. Each relation is a channel of its edge, judged by its
+own transport's coverage over the scope its count is over (`coverage-v2`). A UDP flow has no record that opens or
+closes it, so a channel's lifetime is said of a TCP connection alone. Whatever reads the drawn relations - an
+interval's counts, a channel's focus and its two ends, the evidence of a channel, the channel pages and the byte
+measures of a channel's ends - reads both transports. Before revision 545 the overview drew TCP's alone.
+
 ## 6. What is not inferred
 
 - **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is

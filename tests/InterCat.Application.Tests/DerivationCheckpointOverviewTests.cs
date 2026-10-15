@@ -623,6 +623,54 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(Sorted(halfRead.ByChannelEnd), Sorted(scoped.ByChannelEnd));
     }
 
+    [Fact(DisplayName = "I14: an overview kept before the graph drew UDP flows holds no flow's ends, so a session with one measures its bytes again, and one without reads them")]
+    public void AnOverviewBeforeUdpFlowsKeepsNoneOfTheirEnds()
+    {
+        // Revision 545's overview keeps a UDP flow's ends beside a TCP connection's, as the graph draws both.
+        SessionDerivationCache.Clear();
+        using var session = new TemporarySession();
+        Publish(session.Store, KeptBytesSession());
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
+        SessionManifestV1 manifest = session.Store.Current!;
+        byte[] written = SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes);
+        Assert.Equal(5, BitConverter.ToUInt16(written, 10));
+        OverviewProcessBytes kept = SessionOverviewIndex.Read(written, manifest.SessionId).Counts.ProcessBytes!;
+        Assert.True(kept.CoversUdp);
+        SessionByteMeasures read = SessionByteRanking.Measure(session.Store, null);
+        Channel flow = SessionOverviewProjector.Project(session.Store).Channels.Single(channel => channel.Mechanism == Mechanism.Udp);
+        Assert.Contains(kept.Ends, end => end.Channel == flow.Key);
+        Assert.Contains(read.ByChannelEnd.Keys, end => end.ChannelKey == flow.Key);
+
+        // The same bytes under minor 4, which kept TCP's ends alone, are not used for this session's flow: its bytes are read.
+        byte[] minorFour = [.. written];
+        minorFour[10] = 4;
+        Assert.False(SessionOverviewIndex.Read(minorFour, manifest.SessionId).Counts.ProcessBytes!.CoversUdp);
+        PublishIndexes(session.Store, withCheckpoint: true, minorFour);
+        SessionDerivationCache.Clear();
+        SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        SessionByteMeasures again = SessionByteRanking.Measure(reopened, null);
+        Assert.False(again.FromPersistedOverview);
+        Assert.Equal(Sorted(read.ByProcess), Sorted(again.ByProcess));
+        Assert.Equal(Sorted(read.ByChannelEnd), Sorted(again.ByChannelEnd));
+
+        // A session with no UDP flow loses nothing to minor 4, and reads its bytes from the overview.
+        SessionDerivationCache.Clear();
+        using var tcp = new TemporarySession();
+        Publish(tcp.Store, [.. KeptBytesSession().Where(row => row.Mechanism != Mechanism.Udp)]);
+        Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(tcp.Store, Committed).Outcome);
+        SessionByteMeasures tcpRead = SessionByteRanking.Measure(tcp.Store, null);
+        SessionManifestV1 tcpManifest = tcp.Store.Current!;
+        byte[] tcpFour = SessionSegments.ReadVerified(tcp.Store.Root, SessionOverviewIndex.NamedBy(tcpManifest)!, SessionOverviewIndex.MaximumBytes);
+        tcpFour[10] = 4;
+        PublishIndexes(tcp.Store, withCheckpoint: true, tcpFour);
+        SessionDerivationCache.Clear();
+        SessionStore tcpReopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(tcp.Path));
+        SessionByteMeasures answered = SessionByteRanking.Measure(tcpReopened, null);
+        Assert.True(answered.FromPersistedOverview);
+        Assert.Equal(Sorted(tcpRead.ByChannelEnd), Sorted(answered.ByChannelEnd));
+        Assert.Equal(0, tcpReopened.SegmentReaderCache.Entries);
+    }
+
     [Fact(DisplayName = "I14: process bytes that name an instance or a channel end the checkpoint does not hold are not used, and the segments are read")]
     public void ProcessBytesTheCheckpointDoesNotHoldAreRead()
     {

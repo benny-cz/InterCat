@@ -31,7 +31,7 @@ public sealed class OverviewCensusTests
 
         (InterCatExitCode code, string text, string said) = await Run("overview", remote.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches(@"(?m)^  Paired TCP edges +0\r?$", text);
+        Assert.Matches(@"(?m)^  Relationships +0\r?$", text);
         Assert.Contains("No TCP connection was seen with a process of this session at each of its two ends. All 2 of its TCP "
             + "records belong to 1 connection to 1 other host. A process's connections are listed on its rung.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
@@ -63,7 +63,7 @@ public sealed class OverviewCensusTests
         paired.Store.ReleaseSegmentReaders();
         (code, text, said) = await Run("overview", paired.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches(@"(?m)^  Paired TCP edges +1\r?$", text);
+        Assert.Matches(@"(?m)^  Relationships +1\r?$", text);
         Assert.DoesNotContain("No TCP connection was seen", text, Ordinal);
         Assert.DoesNotContain("Reaching other hosts", text, Ordinal);
     }

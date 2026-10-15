@@ -116,7 +116,7 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// Whether this rung offers the selector: a session's machine and group rungs, whose rows are groups and processes, and a
-    /// process's rung, whose TCP channels a byte ranking orders by the process's own bytes on each.
+    /// process's rung, whose TCP and UDP channels a byte ranking orders by the process's own bytes on each.
     /// </summary>
     public bool ShowsRankingChoice => evidenceSource is not null
         && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group or DetailLevel.ProcessInstance;
@@ -181,7 +181,7 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// Whether the chosen ranking orders this rung's rows: every ranking orders groups and processes; at a process's rung
-    /// only bytes do, since its RPC channels already list their calls and no TCP channel carries one.
+    /// only bytes do, since its RPC channels already list their calls and no TCP or UDP channel carries one.
     /// </summary>
     private bool RanksThisRung => ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group
         || (ladder.Current.Level == DetailLevel.ProcessInstance && Family == RankingFamily.Bytes);
@@ -308,7 +308,7 @@ public sealed partial class WorkspaceViewModel
             if (!RanksThisRung)
             {
                 return "RPC call rankings rank groups and processes. At a process's rung its RPC channels list their calls, "
-                    + "with each channel's median time, no TCP channel carries one, and the channels rank by records.";
+                    + "with each channel's median time, no TCP or UDP channel carries one, and the channels rank by records.";
             }
 
             string definition = ladder.Current.Level == DetailLevel.ProcessInstance

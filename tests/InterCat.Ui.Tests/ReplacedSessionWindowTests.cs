@@ -81,7 +81,7 @@ public sealed class ReplacedSessionWindowTests
             await workspace.HttpReady;
             await workspace.ConnectionsReady;
             Assert.Equal($"This process's RPC calls and connections could not be read: {Another}. No admitted paired TCP "
-                + "channel belongs to this process in this generation.", workspace.EmptyReason);
+                + "or UDP channel belongs to this process in this generation.", workspace.EmptyReason);
         }
         finally
         {

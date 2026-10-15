@@ -57,7 +57,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         this.expectedGeneration = expectedGeneration;
         this.processScope = processScope;
         this.processName = processName ?? (_ => null);
-        Title = "InterCat · Paired TCP channels";
+        Title = "InterCat · Paired channels";
         Width = 880;
         Height = 650;
         MinWidth = 650;
@@ -68,13 +68,13 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         {
             Text = (processScope is { } process
                 ? $"Channels involving process instance {process}"
-                : "All admitted paired TCP channels")
+                : "All admitted paired TCP and UDP channels")
                 + " · all session times (a time brush applies to the source records you open, not to this list)",
             TextWrapping = TextWrapping.Wrap,
             FontWeight = FontWeight.SemiBold,
         };
         status.Text = "Opening a verified channel generation…";
-        caveat.Text = "This list is paired TCP only. One-sided and ambiguous observations remain in "
+        caveat.Text = "This list is paired TCP and UDP only. One-sided and ambiguous observations remain in "
             + "whole-session source rows. Counts are observed records, not bytes or logical operations.";
         rows.SelectionChanged += (_, _) => UpdateSelection();
 
@@ -84,7 +84,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
         rows.ItemTemplate = new FuncDataTemplate<string>((row, _) => new TextBlock { Text = row, TextWrapping = TextWrapping.Wrap });
 
         // Enter opens the selected channel, as it opens a ranked row in the workspace; a double click does too.
-        AutomationProperties.SetName(rows, "Paired TCP channels. Enter shows the selected channel's source records.");
+        AutomationProperties.SetName(rows, "Paired channels. Enter shows the selected channel's source records.");
         AutomationProperties.SetName(status, "Channels status");
         AutomationProperties.SetLiveSetting(status, AutomationLiveSetting.Polite);
         rows.KeyDown += (_, key) =>
@@ -198,12 +198,12 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             rows.SelectedIndex = currentChannels.Count > 0 ? 0 : -1;
             nextCursor = page.NextCursor;
 
-            // What the capture covered of TCP is said once (R21): as the reason an empty list holds none, where it is
-            // announced, and beside the caveat under a list of channels.
-            string coverage = SessionCoverage.Sentence(page.Coverage[0], "the session");
+            // What the capture covered of TCP and of UDP is said once (R21): as the reason an empty list holds none, where
+            // it is announced, and beside the caveat under a list of channels.
+            string coverage = string.Join(" ", page.Coverage.Select(each => SessionCoverage.Sentence(each, "the session")));
             caveat.Text = page.TotalChannels == 0 ? page.Caveat : page.Caveat + " " + coverage;
             status.Text = page.TotalChannels == 0
-                ? "No admitted paired TCP channel is in this scope. " + coverage
+                ? "No admitted paired TCP or UDP channel is in this scope. " + coverage
                 : $"Generation {page.Generation:N0} · {Spoken.Count(page.TotalChannels, "channel")} in scope "
                     + $"· {currentChannels.Count:N0} on this page"
                     + (nextCursor is null ? " · end of result" : " · more pages available");
@@ -276,8 +276,8 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     {
         string first = channel.FirstHolder is { } firstHolder ? processName(firstHolder) ?? "an unlisted process" : "an unknown process";
         string second = channel.SecondHolder is { } secondHolder ? processName(secondHolder) ?? "an unlisted process" : "an unknown process";
-        return string.Create(CultureInfo.CurrentCulture,
-            $"{first} ↔ {second} · {ChannelNames.Compact(channel.Name)} · {Spoken.Count(channel.ObservationCount, "record")}");
+        return $"{first} ↔ {second} · {MechanismText.Name(channel.Mechanism)} · {ChannelNames.Compact(channel.Name)} · "
+            + Spoken.Count(channel.ObservationCount, "record");
     }
 
     /// <summary>The channel the user chose, which the workspace opens at its evidence rung.</summary>
