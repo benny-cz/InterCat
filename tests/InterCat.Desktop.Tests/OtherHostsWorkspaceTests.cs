@@ -546,14 +546,23 @@ public sealed class OtherHostsWorkspaceTests
 
         // Chosen, its card counts the records of the browser's connection to it and the updater's two, and what they
         // measured, once read; the timeline highlights the same records, and its description and card say so.
+        var said = new List<string?>();
+        workspace.PropertyChanged += (_, changed) => said.Add(changed.PropertyName);
         workspace.SelectGraphNode(host);
         Assert.Equal(("Selected host", "Reading the records of its connections…"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        Assert.Equal("Counting the selection, connections to 52.0.0.1…", workspace.TimelineSelectionCaption);
         await workspace.HostRecordsReady;
         Assert.Equal("5 records of 2 TCP connections and 1 UDP flow from 2 processes · 420 B sent, 300 B received",
             workspace.EvidenceSummary);
         await workspace.HighlightReady;
         Assert.Equal(5, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
         Assert.EndsWith(" · selection highlighted: connections to 52.0.0.1", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // The header shows the highlight apart from the rest of the caption, and says so each time either changes.
+        Assert.Equal("Selection highlighted: connections to 52.0.0.1", workspace.TimelineSelectionCaption);
+        Assert.Equal(workspace.TimelineRungCaption + " · selection highlighted: connections to 52.0.0.1", workspace.TimelineCaption);
+        Assert.Contains(nameof(WorkspaceViewModel.TimelineSelectionCaption), said);
+        Assert.Contains(nameof(WorkspaceViewModel.TimelineRungCaption), said);
         Assert.Contains("The timeline highlights the records of every connection to it, whichever process held it, and E lists "
             + "them; searching it (Ctrl+F) marks the processes that reached it.", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Contains("Click highlights the records of every connection to it, whichever process held it, and E lists them",

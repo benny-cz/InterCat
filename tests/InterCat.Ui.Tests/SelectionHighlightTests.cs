@@ -1,4 +1,5 @@
 using Avalonia;
+using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
@@ -58,6 +59,16 @@ public sealed class SelectionHighlightTests
             pair => Assert.InRange(pair.First.ObservationCount, 0, pair.Second.ObservationCount));
         Assert.Contains($"selection highlighted: {client.NameWithPid}", workspace.TimelineCaption, StringComparison.Ordinal);
 
+        // The header says what the highlight marks beside the caption, in its ink, whole even in the smallest window, where
+        // the caption's end is cut short.
+        TextBlock selection = window.GetControl<TextBlock>("TimelineSelectionText");
+        TextBlock caption = window.GetControl<TextBlock>("TimelineCaptionText");
+        Assert.True(selection.IsEffectivelyVisible);
+        Assert.Equal($"Selection highlighted: {client.NameWithPid}", selection.Text);
+        Assert.DoesNotContain(selection.TextLayout.TextLines, line => line.HasCollapsed);
+        Assert.DoesNotContain("highlighted", caption.Text, StringComparison.Ordinal);
+        Assert.Equal(workspace.TimelineCaption, AutomationProperties.GetName(caption));
+
         // The bar under the selection is drawn differently, and its card gives the selection's count in it.
         WriteableBitmap after = Settle(window);
         Save(after, "selection-highlight.png");
@@ -73,6 +84,7 @@ public sealed class SelectionHighlightTests
         Dispatch();
         Assert.Null(workspace.TimelineHighlightBuckets);
         Assert.DoesNotContain("highlighted", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.False(selection.IsVisible);
         window.MouseMove(new Point(2, 2));
         Assert.False(ColumnDiffers(before, Settle(window), column, timeline, window), "The cleared highlight is still drawn.");
         window.Close();

@@ -671,9 +671,18 @@
                          Classes="muted" FontSize="11" VerticalAlignment="Center" TextAlignment="Right"
                          TextTrimming="CharacterEllipsis"
                          ToolTip.Tip="Wheel zooms at the pointer and a double click zooms in twice as far there. A drag, left/right arrows, a horizontal wheel or Shift with the wheel pan; Shift with a left/right arrow moves one column. At the mechanism overview, up/down scroll one lane and Page Up/Down scroll a page. + and - zoom around the analysis interval. [ and ] step to the previous or next record. Home and End go to the session's edges, and 0 fits the analysis interval or the whole session. Shift+drag brushes a range; a click chooses a cell, which the inspector explains. At a group's process lanes, P pins the selected process's lane at the top, marked, or unpins it. F6 moves the keyboard to the next pane." />
-              <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding TimelineCaption}"
-                         Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
-                         ToolTip.Tip="{Binding TimelineCaption}" AutomationProperties.Name="{Binding TimelineCaption}" />
+              <!-- §6.4: what the selection's highlight marks stands beside the caption, in the highlight's own ink, rather than at
+                   its end, where a narrow pane cut it short; the caption's tooltip and name still say it all. -->
+              <Grid Grid.Row="1" Grid.ColumnSpan="2" ColumnDefinitions="*,Auto">
+                <TextBlock x:Name="TimelineCaptionText" Text="{Binding TimelineRungCaption}"
+                           Classes="muted" FontSize="11" TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding TimelineCaption}" AutomationProperties.Name="{Binding TimelineCaption}" />
+                <TextBlock x:Name="TimelineSelectionText" Grid.Column="1" Margin="12,0,0,0" MaxWidth="320"
+                           Text="{Binding TimelineSelectionCaption}" Foreground="{DynamicResource Ink.Accent}" FontSize="11"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding TimelineSelectionCaption}"
+                           IsVisible="{Binding TimelineSelectionCaption, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                           AutomationProperties.AccessibilityView="Raw" />
+              </Grid>
               <!-- §6.2: a selected process's lane can be pinned at the top of its group's lanes; P with the timeline focused. -->
               <Button x:Name="LanePinButton" Grid.Column="2" Grid.RowSpan="2" Margin="12,0,0,0"
                       FontSize="11" Padding="8,0" MinHeight="26" VerticalAlignment="Center"

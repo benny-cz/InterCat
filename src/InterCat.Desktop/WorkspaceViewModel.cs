@@ -1337,21 +1337,35 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Whether the timeline draws the rung's focus in colour over the rest of the machine in grey.</summary>
     public bool TimelineShowsFocus => timelineFocus is not null && timelineFocusProblem is null;
 
-    /// <summary>What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine.</summary>
-    public string TimelineCaption => RungCaption + LaneRecordsNote + HighlightCaption;
+    /// <summary>
+    /// What the timeline draws, stated above it: every record, or the rung's focus over the rest of the machine, and what
+    /// the selection's highlight marks. Its tooltip and a screen reader read it whole.
+    /// </summary>
+    public string TimelineCaption => TimelineRungCaption + (HighlightNote is { Length: > 0 } note ? " · " + note : string.Empty);
+
+    /// <summary>The caption but for the selection's highlight: what the timeline draws and how to read it.</summary>
+    public string TimelineRungCaption => RungCaption + LaneRecordsNote;
+
+    /// <summary>
+    /// The selection's highlight as the timeline's header shows it, apart from the rest of the caption, which a narrow pane
+    /// cuts short: "Selection highlighted: connections to 142.250.1.1". Empty without a highlight.
+    /// </summary>
+    public string TimelineSelectionCaption => HighlightNote is { Length: > 0 } note
+        ? char.ToUpperInvariant(note[0]) + note[1..]
+        : string.Empty;
 
     /// <summary>
     /// What the selection's highlight adds to the caption: what it marks, that it is still being counted, or that it could
     /// not be, and why where the caption has not said it already. Its share is a count of records, so lanes plotting bytes
     /// do not draw it on their scale.
     /// </summary>
-    private string HighlightCaption => highlight is null ? string.Empty
-        : timelineBytes is not null ? $" · {highlightName} selected, highlighted while the lanes plot records"
+    private string HighlightNote => highlight is null ? string.Empty
+        : timelineBytes is not null ? $"{highlightName} selected, highlighted while the lanes plot records"
         : highlightProblem is { } problem
-            ? $" · the selection, {highlightName}, could not be counted"
+            ? $"the selection, {highlightName}, could not be counted"
                 + (problem == timelineFocusProblem || problem == timelineDetailProblem ? string.Empty : $": {problem.TrimEnd('.')}")
-        : highlightBuckets is null ? $" · counting the selection, {highlightName}…"
-        : $" · selection highlighted: {highlightName}";
+        : highlightBuckets is null ? $"counting the selection, {highlightName}…"
+        : $"selection highlighted: {highlightName}";
 
     /// <summary>What the caption says of a view whose own count could not be read: what is drawn instead, and why.</summary>
     private string DetailProblemNote => timelineDetailProblem is { } problem
@@ -6624,7 +6638,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new(propertyName));
-        if (propertyName == nameof(GraphDisplay))
+        if (propertyName == nameof(TimelineCaption))
+        {
+            // The header shows the caption in two parts, so the selection's highlight is said whole however narrow the pane.
+            PropertyChanged?.Invoke(this, new(nameof(TimelineRungCaption)));
+            PropertyChanged?.Invoke(this, new(nameof(TimelineSelectionCaption)));
+        }
+        else if (propertyName == nameof(GraphDisplay))
         {
             // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 565 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 566 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 566 — the timeline's header keeps the selection's highlight whole (§6.4, R15):**
+  - The caption said what the highlight marks last, and the usual widths cut it short.
+  - It stands beside the caption in the highlight's ink, whole; the tooltip and screen reader read the caption whole.
+  - Debug and Release each ran 2,431 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 8 mutations was caught: the selection's highlight said beside the caption without its capital, or run
+    into the caption's end with no stop; the header not told when either part changed; the selection's part showing
+    the whole caption, or the caption still ending in the highlight; the selection's part shown with no highlight;
+    and it cut short in the smallest window. Once, run beside other window tests, the test that opens a record's
+    original and content from the main window waited past its five seconds for the keyboard to come back; it passed
+    alone, in three runs since and in both suites.
 
 - **Revision 565 — a host chosen in Other hosts' list is its records (§6.3, §6.4, I5):**
   - Only a host drawn on its own could be read; the many more Other hosts lists could only be searched.
