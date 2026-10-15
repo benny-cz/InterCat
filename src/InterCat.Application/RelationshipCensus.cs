@@ -80,14 +80,26 @@ public static class RelationshipCensusText
             sentences.Add("A process's connections are listed on its rung.");
         }
 
-        if (census.RpcRecords > 0 && !census.RpcLinked)
+        if (RpcGuidance(census) is { } guidance)
         {
-            sentences.Add("RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a "
-                + "capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile "
-                + "rpc-peers.");
+            sentences.Add(guidance);
         }
 
         return string.Join(" ", sentences);
+    }
+
+    /// <summary>
+    /// Where a capture's RPC calls are and how to draw them, for a session that holds RPC calls no record links to the
+    /// process that served them, whether or not its graph draws anything else: a capture without ALPC can link none, and
+    /// the RPC peers capture collects it. Null when the session holds no RPC call, or its calls were linked.
+    /// </summary>
+    public static string? RpcGuidance(RelationshipCensus census)
+    {
+        ArgumentNullException.ThrowIfNull(census);
+        return census.RpcRecords > 0 && !census.RpcLinked
+            ? "RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a capture "
+                + "that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers."
+            : null;
     }
 
     /// <summary>Why a transport the capture recorded joins no two of its processes, in a few words; null when it recorded none.</summary>

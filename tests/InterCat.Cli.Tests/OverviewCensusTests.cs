@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
 using static InterCat.Analysis.Tests.TestSessions;
 using static System.StringComparison;
@@ -66,6 +67,24 @@ public sealed class OverviewCensusTests
         Assert.Matches(@"(?m)^  Relationships +1\r?$", text);
         Assert.DoesNotContain("No TCP connection was seen", text, Ordinal);
         Assert.DoesNotContain("Reaching other hosts", text, Ordinal);
+        Assert.DoesNotContain("RPC peers", text, Ordinal);
+
+        // One that also holds RPC calls no capture linked says how to draw them, as the window's graph does.
+        using var calls = new TemporarySession();
+        (ObservationRowV1[] rpc, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Publish(calls.Store,
+        [
+            .. rpc,
+            Transfer(500, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 900).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(501, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 901).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        ], fields: fields, coverage: RpcLedger(alpc: false));
+        calls.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("overview", calls.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Relationships +1\r?$", text);
+        Assert.Contains("RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a "
+            + "capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
     }
 
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

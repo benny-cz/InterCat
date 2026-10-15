@@ -146,6 +146,13 @@ public sealed class RelationshipCensusTests
         Assert.Equal("no relationship drawn · 2 UDP relationships left out as candidates",
             RelationshipCensusText.Brief(Census(none, udp: withheldUdp)));
 
+        // RPC calls nothing linked are said where they are and how to draw them, whatever else the graph draws.
+        Assert.Equal("RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a "
+            + "capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.",
+            RelationshipCensusText.RpcGuidance(Census(none with { Related = 2, Relationships = 1 }, rpc: 4)));
+        Assert.Null(RelationshipCensusText.RpcGuidance(Census(none, rpc: 4, linked: true)));
+        Assert.Null(RelationshipCensusText.RpcGuidance(Census(none)));
+
         // A capture that collected ALPC can join RPC calls, so nothing is said of them.
         Assert.DoesNotContain("ALPC", RelationshipCensusText.Explain(Census(none, rpc: 4, linked: true), Culture), StringComparison.Ordinal);
         Assert.Contains("ALPC", RelationshipCensusText.Explain(Census(none, rpc: 4), Culture), StringComparison.Ordinal);

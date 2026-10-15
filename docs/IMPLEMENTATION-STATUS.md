@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 547 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 548 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -95,6 +95,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 548 — say how to draw RPC calls wherever a graph leaves them undrawn (§6.8, R18):**
+  - Only a graph that drew nothing said that RPC calls are drawn only from a capture that collects ALPC, and how to
+    record one; a busy machine's graph, relating a few processes over loopback, never pointed to RPC peers.
+  - A session holding RPC calls nothing links now says so in the graph's full scope and beneath icat overview,
+    whatever else the graph draws; linked calls, or none, say nothing of it.
+  - Debug and Release each ran 2,357 tests with revision 473's 93 failures and 4 skips; the one other failure, a
+    test of the Other hosts node expecting the graph's old words, was updated, and the Desktop tests then passed in
+    both configurations. The tests caught each of 5 mutations: the guidance said of linked calls, or of a session
+    with none; an empty graph's reasons leaving it out; and a drawn graph's scope and icat overview never saying it.
 
 - **Revision 547 — the README and icat's help say what the product is now (R18):**
   - The README described milestone M1's first slice - a synthetic graph prototype, TCP-only Explore, content

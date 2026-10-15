@@ -81,6 +81,11 @@ internal static class OverviewCommand
         {
             ConsoleUi.Note(RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture));
         }
+        else if (overview.Census is { } drawn && RelationshipCensusText.RpcGuidance(drawn) is { } guidance)
+        {
+            // A graph that draws relationships still leaves RPC calls undrawn that no capture linked, and says how to draw them.
+            ConsoleUi.Note(guidance);
+        }
 
         // Which processes collected the capture: each by the instance it is, as the window labels it, or why none is it
         // (collector-binding-v1, §19.5). A capture that names none says nothing of them, rather than that it had none.

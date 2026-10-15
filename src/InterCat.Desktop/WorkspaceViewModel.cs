@@ -1903,8 +1903,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             drawn.Add("to Other hosts each drawn process's TCP and UDP with no process of the capture at their other end");
         }
 
+        // A capture whose RPC calls nothing links says how to draw them, as an empty graph's explanation does (§6.8).
         return "The graph draws " + (drawn.Count == 1 ? drawn[0] : string.Join(", ", drawn[..^1]) + ", and " + drawn[^1])
-            + "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.";
+            + (wholeSnapshot.Census is { } census && RelationshipCensusText.RpcGuidance(census) is { } guidance
+                ? "; all other observed activity is in the timeline. " + guidance
+                : "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.");
     }
 
     private static string Counted(int count, string one, string many) =>

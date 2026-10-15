@@ -53,6 +53,24 @@ public sealed class GraphScopeTests
             Assert.DoesNotContain("paired", workspace.GraphSummary, StringComparison.Ordinal);
         }
 
+        // With a relationship drawn beside them, the same calls are still said where they are and how to draw them.
+        using var beside = new TemporarySession();
+        Publish(beside.Store,
+        [
+            .. rows,
+            Transfer(500, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 900).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(501, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 901).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        ], fields: fields, coverage: RpcLedger(alpc: false));
+        using (WorkspaceViewModel workspace = await Open(beside))
+        {
+            Assert.Equal(Mechanism.Tcp, Assert.Single(workspace.Snapshot.Edges).Mechanism);
+            Assert.EndsWith(" · paired TCP and UDP only", workspace.GraphSummary, StringComparison.Ordinal);
+            Assert.Equal(workspace.GraphSummary + ". The graph draws admitted paired TCP and UDP; all other observed activity is "
+                + "in the timeline. RPC calls are on their processes' rungs: a call is drawn to the process that served it only "
+                + "from a capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile "
+                + "rpc-peers.", workspace.GraphScope);
+        }
+
         // A workspace that is not a published session's says nothing of what a capture's graph draws.
         using var synthetic = new WorkspaceViewModel(SyntheticWorkspace.Create(), "synthetic-generation");
         await synthetic.LayoutReady;
