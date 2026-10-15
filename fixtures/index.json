@@ -2055,6 +2055,7 @@
         "R18: icat verify refuses a run it cannot verify, saying why, and writes over curated output only when asked",
         "R18: icat workspace timeline draws the merged time as the investigation window does, its lanes' records, places and coverage in its words",
         "R18: icat workspace's help names the investigation's current file, and says what a package carries as it does",
+        "R18: icat's help names every profile icat capture takes, and capture refuses any other by the same list",
         "R18: icat's overview names every command and every form of it its own help gives, and capture says what it needs",
         "R18: lanes measured together in one pass each hold what the byte measure answers over their mechanism's records",
         "R18: the headless export is the Desktop's export, byte for byte, at a ranked rung and at evidence",

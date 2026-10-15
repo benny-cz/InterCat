@@ -45,5 +45,41 @@ public sealed class RpcPeersCaptureTests
         }
     }
 
+    [Fact(DisplayName = "R18: icat's help names every profile icat capture takes, and capture refuses any other by the same list")]
+    public async Task TheHelpNamesEveryProfileCaptureTakes()
+    {
+        Assert.Equal(["explore", "focused-transport", "rpc-peers", "content"], CaptureRequests.Profiles);
+        (InterCatExitCode code, string help) = await Run("--help");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Contains("[--profile explore|focused-transport|rpc-peers|content]", help, StringComparison.Ordinal);
+
+        // Each is one it takes, whatever else a profile then asks for; any other word is refused by naming them.
+        foreach (string profile in CaptureRequests.Profiles)
+        {
+            _ = CaptureRequests.Parse(profile, null, false, null, null, null, false, Options([]), out string? problem);
+            Assert.DoesNotContain("is not one", problem ?? string.Empty, StringComparison.Ordinal);
+        }
+
+        Assert.Null(CaptureRequests.Parse("timing", null, false, null, null, null, false, Options([]), out string? refused));
+        Assert.Equal("--profile is explore, focused-transport, rpc-peers or content; 'timing' is not one. icat profiles lists "
+            + "what each collects.", refused);
+    }
+
     private static ContentRequestOptions Options(string[] words) => ContentRequestOptions.Take(new CommandLine(words));
+
+    private static async Task<(InterCatExitCode Code, string Output)> Run(params string[] args)
+    {
+        TextWriter output = Console.Out;
+        using var answered = new StringWriter();
+        Console.SetOut(answered);
+        try
+        {
+            InterCatExitCode code = await Icat.RunAsync(args, CancellationToken.None);
+            return (code, answered.ToString());
+        }
+        finally
+        {
+            Console.SetOut(output);
+        }
+    }
 }

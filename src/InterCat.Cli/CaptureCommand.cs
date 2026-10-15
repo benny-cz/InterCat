@@ -572,7 +572,7 @@ internal static class CaptureCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>]");
-        ConsoleUi.Line("               [--profile explore|focused-transport|rpc-peers|content]");
+        ConsoleUi.Line("               [--profile " + string.Join("|", CaptureRequests.Profiles) + "]");
         ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--allow-broader]");
         ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
         ConsoleUi.Line("               [--json]");

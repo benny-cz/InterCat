@@ -12,6 +12,9 @@ namespace InterCat.Cli;
 internal static class CaptureRequests
 {
     public const int DefaultSeconds = 60;
+
+    /// <summary>The profiles icat capture asks the broker for, as its help lists them and its refusal names them.</summary>
+    public static IReadOnlyList<string> Profiles { get; } = ["explore", "focused-transport", "rpc-peers", "content"];
     public const int MaximumSeconds = 86_400;
     private const long DefaultJournalMebibytes = 1_024;
     private const long DefaultFreeMebibytes = 1_024;
@@ -122,8 +125,8 @@ internal static class CaptureRequests
             }
 
             default:
-                problem = $"--profile is explore, focused-transport, rpc-peers or content; '{profile}' is not one. icat "
-                    + "profiles lists what each collects.";
+                problem = $"--profile is {string.Join(", ", Profiles.Take(Profiles.Count - 1))} or {Profiles[^1]}; "
+                    + $"'{profile}' is not one. icat profiles lists what each collects.";
                 return null;
         }
     }

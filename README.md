@@ -1,85 +1,110 @@
 # InterCat
 
-InterCat is a Windows IPC visualizer for exploring which processes communicate, through which mechanism, and with what observable evidence. The project is in milestone M1: capability claims and capture profiles are intentionally gated on measured fixtures and explicit admission policy.
+InterCat shows which processes on a Windows machine communicate, through which mechanism, and on what evidence. It
+records a capture through ETW, keeps every admitted record in a session you can reopen and share, and draws it as a
+communication graph, an activity timeline and a ranked table you can descend from the whole machine to a single source
+record. Nothing is drawn that the records do not support: a relationship is drawn only where both of its ends were
+seen, every mark says on hover what it rests on, and what a capture did not cover is stated rather than shown as quiet.
 
-## Current vertical slice
+Where the implementation stands, and what comes next, is in [the implementation status](docs/IMPLEMENTATION-STATUS.md);
+the product and engineering blueprint is [the implementation plan](docs/design/INTERCAT-IMPLEMENTATION-PLAN.md).
 
-- a pinned .NET 10 solution with enforced inward dependency boundaries;
-- a schema-driven capability inventory that keeps registration, enablement, observed health and validated semantics as four separate checks;
-- a read-only capture-profile compiler that shows requested/effective sources, actual provider scope, exact provider settings, body policy, overhead evidence and omissions before capture;
-- an owned ETW session with a unique name, an ownership token, bounded admission and an independent health ledger;
-- seeded two-process TCP and named-pipe workloads with independent truth logs, and measured coverage results whose tiers are computed from the plan's §14.2 thresholds;
-- a synthetic Avalonia graph/timeline prototype with linked selection, table equivalents for both canvases, and a palette whose contrast and colour-vision separation are measured rather than chosen;
-- a durable session store: a commit protocol that publishes an immutable generation and rolls a torn publication back, `journal-v1` admitted evidence, frozen `observation-v1` columnar segments with null bitmaps, availability counters, sorted dictionaries, a raw-record locator and time-block metadata, and evidence leases that retention cannot break;
-- retention that publishes what it released and why rather than merely deleting it, with a journal release that is measured before it is performed and refused when it would leave no admitted evidence;
-- an unelevated import that turns a standalone ETL into a session a reader can open, and a read-only `session` command that re-verifies every dependency and reports each byte domain and side separately;
-- pure viewport, tier and semantic-domain contracts with automated tests.
+## What it does
 
-A registered ETW provider is reported separately from a validated capability tier. TCP is measured `TrafficVisualization` on the supported current build; named pipes are a measured `Unsupported` result with their control intact, and RPC remains `ExperimentalEvidence`. Explore currently compiles process and TCP metadata; optional RPC, ALPC and pipe sources are visibly omitted until their capture impact and adapter guarantees are sufficient. Focused transport compiles validated TCP only. A PID selection is an initial-view focus, not a false retention guarantee: because the network provider cannot filter by PID and lifecycle context remains machine-wide, the preview blocks until the operator explicitly accepts broader metadata collection. Content can compile a complete request-only preview with exact scope, budgets, truncation, retention and separate inspection consent, but it remains blocked: no payload source has an approved body contract and payload-specific impact measurement.
+**Capture (Windows).** The window's *Start exploring* records through a capture broker that Windows asks you to approve
+once per start; InterCat itself runs unelevated and draws the capture as it records. *Keep* chooses what is kept:
+
+| Keep | What it records |
+|---|---|
+| Every record, 10 minutes | The default Explore capture: process lifecycle, TCP and UDP over IPv4 and IPv6, and RPC calls |
+| The last 10 minutes, the last hour | The same, keeping a rolling window of session time; a pin keeps a moment past it |
+| RPC peers, 10 minutes | Explore with the kernel's ALPC messages, which link each RPC call to the process that served it. Opt-in: it takes one of the eight system loggers a machine can run |
+| Your processes' messages | The HTTP messages your own processes send and receive through WinINet, with limits you review before it starts |
+
+Named pipes are measured unsupported on the builds tested and are not captured. Each mechanism's measured tier on each
+Windows build is in [the per-build coverage](docs/PER-BUILD-COVERAGE.md).
+
+**The graph** relates processes by TCP connections and UDP flows whose two ends both belong to processes of the
+capture, and by RPC calls linked to the calls that served them in an RPC peers capture. Each pair's relationships run
+side by side, a mechanism's hue each. Connections whose other end no record holds - most of a real machine's, to other
+hosts - are drawn to one **Other hosts** node; the busiest processes that only reach other hosts are drawn on their
+own and the rest counted in **Other hosts only**, processes with no relationship in **No relationships**, and large
+executable groups collapse. When it draws no relationship, the graph says why.
+
+**The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
+to rank within it, zoom into it, or read it on the capture machine's wall clock.
+
+**The ranked table and the ladder** go from the machine to an executable group, a process instance, its channels, its
+RPC calls or HTTP exchanges, and their source records (E), ranked by records, bytes, RPC calls, errors, durations or
+peers, per second if you like. Counts say what they count and over which scope, and a chosen record opens its
+original journal entry.
+
+**Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
+machine's capture can join to another's. *Investigation → Explore the demo* opens InterCat's generated demo, which
+needs no capture.
+
+**Sharing.** A view exports as JSON or CSV. A session shares as a redacted metadata report, as a redacted session package
+that reopens with pseudonymous names, addresses and ports, or byte for byte as the original evidence; a support bundle
+holds no content, name or path.
+
+F1 in the window lists every key it takes.
 
 ## Build and run
 
+Capture needs Windows. Opening, exploring and sharing sessions works wherever .NET 10 runs.
+
 ```powershell
-dotnet restore InterCat.slnx
-dotnet build InterCat.slnx --no-restore
-dotnet test InterCat.slnx --no-build
+dotnet build InterCat.slnx
+dotnet test InterCat.slnx
 
-# Read-only inventory. Starts no capture, needs no elevation.
-dotnet run --project src/InterCat.Cli -- capabilities
-
-# Read-only profile discovery and requested/effective preview. Starts no capture.
-dotnet run --project src/InterCat.Cli -- profiles
-dotnet run --project src/InterCat.Cli -- profiles explore
-dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp
-
-# A process focus previews the unavoidable wider provider scope first. Repeat with
-# --allow-broader-capture only after reviewing the per-source disclosure.
-dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242
-dotnet run --project src/InterCat.Cli -- profiles focused-transport --mechanism tcp --pid 4242 --allow-broader-capture
-
-# Review a bounded Content request. This intentionally returns a blocked plan and starts nothing.
-dotnet run --project src/InterCat.Cli -- profiles content --source etw/manifest/Microsoft-Windows-RPC `
-  --mechanism rpc --pid 4242 --channel rpc-interface:12345678-1234-1234-1234-123456789abc `
-  --max-record-bytes 4096 --max-session-bytes 67108864 --retention stop-at-limit --inspection disabled
-
-# Measured vertical paths. Each starts one owned ETW session; needs an elevated shell.
-dotnet run --project src/InterCat.Cli -- measure tcp
-dotnet run --project src/InterCat.Cli -- measure pipe
-dotnet run --project src/InterCat.Cli -- measure rpc
-
-# Import a standalone ETL into a session, then open it. Both need no elevation.
-dotnet run --project src/InterCat.Cli -- import <source.etl> --into <session directory>
-dotnet run --project src/InterCat.Cli -- session <session directory> --rows 10
-
-# Measure what releasing a prefix of the admitted journal would give up. This is a dry run;
-# it is performed only with --confirm and a stated reason (ADR-010).
-dotnet run --project src/InterCat.Cli -- retain <session directory> --release-journal-before-record 4096
-
-# Measure what releasing a finished session's oldest interval would give up - its records and their
-# rows, but for the rows later records rest on (ADR-043). Also a dry run until --confirm --reason.
-dotnet run --project src/InterCat.Cli -- retain <session directory> --release-before "312.5 s"
-
-# Offline re-evaluation into shareable, fixture-scoped evidence.
-dotnet run --project src/InterCat.Cli -- verify tcp --run <run directory> --output fixtures/FX-TCP-001/evidence
-
+# The window.
 dotnet run --project src/InterCat.Desktop
+
+# icat, the command line: every command, and each one's options with <command> --help.
+dotnet run --project src/InterCat.Cli -- --help
+```
+
+`icat` below is `dotnet run --project src/InterCat.Cli --`.
+
+```powershell
+# A tour with no capture: the demo's two hosts and the investigation that aligns them.
+icat demo <new-folder>
+icat overview <new-folder>/demo-server
+icat channels <new-folder>/demo-server
+icat workspace show <new-folder>/demo.icat-workspace
+
+# Capture through the broker (Windows asks for approval), for a minute, or with RPC peers.
+icat capture <new-session-folder> --duration 60
+icat capture <new-session-folder> --profile rpc-peers
+
+# Read a session: its graph and timeline, its paired channels and their records, its processes and RPC calls.
+icat overview <session>
+icat channels <session>
+icat evidence <session> --channel <key from icat channels>
+icat timeline <session> --interval 0:10s
+icat processes <session>
+icat operations <session>
+
+# Share it.
+icat export <session> --output view.json
+icat package <session> --redacted --output <new-folder>
+
+# Read-only: what this machine's ETW sources can do, and what a profile would collect before anything starts.
+icat capabilities
+icat profiles explore
 ```
 
 ## Where the evidence lives
 
 | Path | Contents |
 |---|---|
+| `contracts/` | The frozen artifact contracts: journal, store, segments, relations, operations, indexes, workspaces and more |
 | `capabilities/<build>/` | Machine-readable capability reports, per build and adapter |
-| `contracts/` | Frozen artifact contracts: the capability report, `journal-v1`, `import-v1`, `store-v1` and `segment-v1` |
+| `fixtures/index.json` | The fixture traceability matrix and the contract-coverage ledger |
+| `fixtures/FX-*/evidence/` | Each measured fixture's curated truth log, scoped observations and result |
 | `bench/results/` | Reproducible measurement runs; their counters are committed, their records are not |
-| `fixtures/index.json` | Fixture traceability matrix and the contract-coverage ledger |
-| `fixtures/FX-TCP-001/evidence/` | Curated truth log, scoped observations and verification result |
-| `fixtures/FX-PIPE-001/evidence/` | Curated truth logs and the measured named-pipe result |
-| `fixtures/FX-RPC-001/evidence/` | Curated truth log, scoped call records and the measured RPC result |
 | `theme/` | Theme tokens and their recorded contrast and separation measurements |
+| `docs/adr/` | Architecture decisions |
 | `docs/reviews/` | Scored interaction reviews with the screens they were taken from |
-| `docs/adr/` | Architecture decisions, including the M0 capture-session strategy |
-| `docs/IMPLEMENTATION-STATUS.md` | Where implementation stands and what comes next |
 | `docs/PER-BUILD-COVERAGE.md` | Each mechanism's measured tier on each Windows build, from the fixture evidence |
-
-The complete product and engineering blueprint is in [the implementation plan](docs/design/INTERCAT-IMPLEMENTATION-PLAN.md).
+| `docs/IMPLEMENTATION-STATUS.md` | Where implementation stands and what comes next |
