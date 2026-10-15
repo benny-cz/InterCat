@@ -474,6 +474,8 @@ public sealed class OtherHostsGraphTests
             ],
             hosts);
         Assert.NotEqual(new OtherHost("13.107.4.50", 1, 0, 1, 9), hosts[^1]);
+        Assert.Equal(new OtherHost("20.42.65.1", 3, 0, 2, 40) { Ports = [443, 8443] }.GetHashCode(), hosts[1].GetHashCode());
+        Assert.Single(new HashSet<OtherHost> { hosts[0], new OtherHost("142.250.1.1", 3, 1, 1, 47) { Ports = [443] } });
         Assert.Empty(OtherHost.Of([]));
 
         // Its ports, said: numbers alone in a table's cell, the lowest first, past three counted; never what they serve.

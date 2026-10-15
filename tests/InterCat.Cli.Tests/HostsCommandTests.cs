@@ -144,6 +144,52 @@ public sealed class HostsCommandTests
         Assert.Contains("--address takes an address, or its beginning up to a dot or colon", said + text, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat hosts says what it takes, refuses what names no session, and lists as many processes reaching an address as asked")]
+    public async Task IcatHostsSaysWhatItTakes()
+    {
+        // Asked for help, it says what it takes, ports and the rule an address is named by among them.
+        (InterCatExitCode code, string text, string said) = await Run("hosts", "--help");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.StartsWith("icat hosts <session-directory> [--address <address>] [--limit <n>] [--json]", text, Ordinal);
+        Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
+        Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
+
+        // With no session, an option it does not take, a folder that is not there or holds no session, it refuses and says
+        // why, its help beside what it cannot do.
+        (code, text, said) = await Run("hosts");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("A session directory is required: icat hosts <directory>.", said + text, Ordinal);
+        Assert.Contains("icat hosts <session-directory>", said + text, Ordinal);
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        session.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("hosts", session.Path, "--bogus");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--bogus", said + text, Ordinal);
+        string nowhere = Path.Combine(Path.GetTempPath(), "icat-hosts-" + Guid.NewGuid().ToString("N"));
+        (code, text, said) = await Run("hosts", nowhere);
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("No session directory at " + nowhere, said + text, Ordinal);
+        string empty = Directory.CreateDirectory(nowhere).FullName;
+        try
+        {
+            (code, text, said) = await Run("hosts", empty);
+            Assert.NotEqual(InterCatExitCode.Success, code);
+            Assert.Contains("No InterCat session has been published in this folder", said + text, Ordinal);
+        }
+        finally
+        {
+            Directory.Delete(empty);
+        }
+
+        // The processes that reached what an address begins are listed as many as asked, saying how many more there are.
+        (code, text, _) = await Run("hosts", session.Path, "--address", "142.250", "--limit", "1");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^ *updater\.exe · PID 310 +142\.250\.1\.1 +1 TCP connection +8443 +3\r?$", text);
+        Assert.Contains("2 more, quieter; --limit 3 lists every one.", text, Ordinal);
+        Assert.DoesNotContain("browser.exe", text, Ordinal);
+    }
+
     /// <summary>
     /// browser.exe's TCP to 142.250.1.1's port 443, two records, and to 142.250.1.10, and its UDP to a resolver; updater.exe's
     /// TCP to 142.250.1.1's port 8443, three records, and to an IPv6 host.

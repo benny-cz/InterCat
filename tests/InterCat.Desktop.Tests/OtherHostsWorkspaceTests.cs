@@ -284,9 +284,10 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal([.. Enumerable.Range(1, 8).Select(index => GraphProjection.HostKey($"52.0.0.{index}")), hub.Key],
             GraphView.Traversal(opened).Where(node => node.IsHost).Select(node => node.Key));
 
-        // A search marks the host whose address it finds, and the processes that reached it.
+        // A search marks the host whose address it finds, and the processes that reached it, and its card says so.
         workspace.SearchText = "52.0.0.1";
         Assert.Contains(shared.Key, workspace.SearchedGraphNodeKeys);
+        Assert.Equal("Found by the search: its address", workspace.DescribeGraphHover(shared.Key)!.Lines[^1]);
         Assert.DoesNotContain(hub.Key, workspace.SearchedGraphNodeKeys);
         workspace.SearchText = "52.0.0.9";
         Assert.Contains(hub.Key, workspace.SearchedGraphNodeKeys);
@@ -464,6 +465,32 @@ public sealed class OtherHostsWorkspaceTests
             line => line.Contains("address:", StringComparison.Ordinal) || line.StartsWith("A private", StringComparison.Ordinal));
     });
 
+    [Fact(DisplayName = "§6.3: a group collapsed for its size keeps its edge to Other hosts, whose card says a click chooses the group and a double click opens it, as they do")]
+    public void ACollapsedGroupsEdgeToOtherHostsChoosesAndOpensIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, GroupReachingHosts(26));
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // Past the threshold its instances are drawn as one group, edged to Other hosts once.
+        GraphDisplayNode group = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Group);
+        Assert.Equal(26, group.Members.Count);
+        GraphDisplayEdge edge = workspace.GraphDisplay.Edges.Single(drawn => drawn.ToHosts && drawn.SourceKey == group.Key);
+        Assert.Equal(26, workspace.GraphDisplay.OtherHosts!.ConnectedProcesses);
+        HoverCard card = workspace.DescribeGraphHover(edge.Key)!;
+        Assert.StartsWith("svc.exe → Other hosts", card.Title, StringComparison.Ordinal);
+        Assert.Equal("Click chooses the group; double-click opens it", card.Lines[^1]);
+
+        // A click chooses the group; a double click opens it, whose rung lists its instances.
+        Assert.True(workspace.SelectGraphEdge(edge.Key));
+        Assert.Equal(group.Key, workspace.SelectedGraphNodeKey);
+        Assert.NotNull(workspace.SelectedGroup);
+        Assert.True(workspace.OpenGraphEdge(edge.Key));
+        Assert.Equal((1, true), (workspace.Crumbs[^1].Depth, workspace.Crumbs[^1].IsCurrent));
+        Assert.Equal("Group: svc.exe", workspace.Crumbs[^1].Label);
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {
@@ -577,6 +604,16 @@ public sealed class OtherHostsWorkspaceTests
             (ulong)(20 + index)).Between("192.168.1.10:52445", "192.168.1.20:445") with { SessionRelativeTicks = 300 + index }),
         Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 30).Between("192.168.1.10:52000", "142.250.1.1:443")
             with { SessionRelativeTicks = 400 },
+    ];
+
+    /// <summary><paramref name="instances"/> instances of svc.exe, each sending one record to 52.0.0.1's port 443.</summary>
+    private static ObservationRowV1[] GroupReachingHosts(int instances) =>
+    [
+        .. Enumerable.Range(0, instances).Select(index => Lifecycle(1 + index, ObservationKind.Create, 1_000 + index, (ulong)(1 + index))
+            with { ResourceName = @"C:\Windows\svc.exe", SessionRelativeTicks = 100 + index }),
+        .. Enumerable.Range(0, instances).Select(index => Transfer(500 + index, ObservationKind.Send, AccountingSide.SendSide, 100,
+            1_000 + index, (ulong)(500 + index)).Between($"192.168.1.10:{52_000 + index}", "52.0.0.1:443")
+            with { SessionRelativeTicks = 1_000 + index }),
     ];
 
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>

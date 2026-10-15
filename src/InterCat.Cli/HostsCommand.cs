@@ -213,8 +213,7 @@ internal static class HostsCommand
         ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to. --address lists");
         ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
         ConsoleUi.Line("  2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
-        ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many, "
-            + $"{DefaultLimit} by default.");
-        ConsoleUi.Line("  Who is at an address, and what a port serves there, are not observed.");
+        ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many,");
+        ConsoleUi.Line($"  {DefaultLimit} by default. Who is at an address, and what a port serves there, are not observed.");
     }
 }

@@ -212,6 +212,7 @@ public sealed class TransportCensusTests
             ],
             reach.Addresses);
         Assert.NotEqual(new HostAddress("10.0.0.30", 2, 2) { Ports = [443] }, reach.Addresses[1]);
+        Assert.Single(new HashSet<HostAddress> { reach.Addresses[1], new HostAddress("10.0.0.30", 2, 2) { Ports = [443, 8443] } });
         Assert.Equal((7, 6, 13L), (reach.Connections, reach.Hosts, reach.Records));
 
         // As the census counts them.
