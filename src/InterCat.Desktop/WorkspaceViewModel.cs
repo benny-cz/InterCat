@@ -2277,7 +2277,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : MatchesSummary;
 
     private string MatchesSummary => searchResult.Matched == 0
-        ? "No matches · names, PIDs and channel endpoints are searched"
+        ? "No matches · names, PIDs, channel endpoints and the addresses processes reached are searched"
         : searchResult.Matched > searchResult.Hits.Count
             ? string.Create(CultureInfo.CurrentCulture,
                 $"{searchResult.Hits.Count:N0} of {searchResult.Matched:N0} matches · refine the search for the rest")

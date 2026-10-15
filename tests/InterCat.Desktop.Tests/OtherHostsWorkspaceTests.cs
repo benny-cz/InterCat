@@ -56,7 +56,7 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Matches(@"^Scope: \[.+\) \S+ · whole session$", card.Lines[7]);
         Assert.Equal(
             [
-                "Who is at these addresses is not observed; each process's rung lists its own connections",
+                "Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it",
                 "Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value",
                 "Size: fixed; a resource, not a process",
             ],
@@ -115,8 +115,9 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Where the connections of 1 drawn process ran with no process of this capture at their other end, most "
             + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Their hosts: 142.250.1.1 (1 TCP "
             + "connection, 2 records), 20.42.65.1 (1 TCP connection, 1 record) and 8.8.8.8 (1 UDP flow, 1 record). Who is at "
-            + "these addresses is not observed; each process's rung lists its own connections. Its edges are connections, not "
-            + "relationships, and carry no traffic value.", workspace.SelectionSubtitle);
+            + "these addresses is not observed. Searching one (Ctrl+F) finds the processes that reached it, and each process's "
+            + "rung lists its own connections. Its edges are connections, not relationships, and carry no traffic value.",
+            workspace.SelectionSubtitle);
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.Equal([hub.Key], workspace.SelectedGraphNodeKeys);
         Assert.Empty(workspace.PartlySelectedGraphNodeKeys);

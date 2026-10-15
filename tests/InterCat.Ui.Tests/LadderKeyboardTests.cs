@@ -72,7 +72,8 @@ public sealed class LadderKeyboardTests
         window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
         search.Text = "not-an-entity";
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
-        Assert.Equal("No matches · names, PIDs and channel endpoints are searched", viewModel.SearchSummary);
+        Assert.Equal("No matches · names, PIDs, channel endpoints and the addresses processes reached are searched",
+            viewModel.SearchSummary);
         window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         Assert.Equal(string.Empty, viewModel.SearchText);
         Assert.Equal("L3 · CHANNEL", viewModel.LevelBadge);

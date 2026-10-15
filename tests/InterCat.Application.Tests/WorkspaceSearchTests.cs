@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using Xunit;
@@ -65,18 +66,19 @@ public sealed class WorkspaceSearchTests
         {
             string[] hits = [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits
                 .Where(hit => hit.Kind == SearchHitKind.Process).Select(hit => hit.Key).Order(StringComparer.Ordinal)];
-            string[] found = [.. snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, query))
+            string[] found = [.. snapshot.Processes
+                .Where(process => WorkspaceSearch.Finds(process, snapshot.HostLinks.Where(link => link.Process == process.Id), query))
                 .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal)];
             Assert.Equal(hits, found);
         }
 
         // A number finds its PID and the PIDs it begins, and not a PID it is only inside.
         ProcessNode browser = snapshot.Processes.Single(process => process.Id == Browser);
-        Assert.True(WorkspaceSearch.Finds(browser, "8204"));
-        Assert.True(WorkspaceSearch.Finds(browser, "82"));
-        Assert.False(WorkspaceSearch.Finds(browser, "204"));
-        Assert.False(WorkspaceSearch.Finds(browser, "  "));
-        Assert.False(WorkspaceSearch.Finds(browser, null));
+        Assert.True(WorkspaceSearch.Finds(browser, [], "8204"));
+        Assert.True(WorkspaceSearch.Finds(browser, [], "82"));
+        Assert.False(WorkspaceSearch.Finds(browser, [], "204"));
+        Assert.False(WorkspaceSearch.Finds(browser, [], "  "));
+        Assert.False(WorkspaceSearch.Finds(browser, [], null));
     }
 
     [Fact(DisplayName = "§6.7: an executable is found by its image path, below a match on its name")]
@@ -116,6 +118,93 @@ public sealed class WorkspaceSearchTests
         Assert.Equal(chrome.Key, WorkspaceSearch.Find(snapshot, "CHROME.EXE").Hits[0].Key);
         Assert.Equal(helper.Key, WorkspaceSearch.Find(snapshot, "chrome-native-host").Hits[0].Key);
         Assert.Equal(chrome.Key, Assert.Single(WorkspaceSearch.Find(snapshot, "Application").Hits).Key);
+    }
+
+    [Fact(DisplayName = "§6.7: a process is found by an address its connections to other hosts ran to, whole or up to a dot or colon, its hit saying what reached it and never the address")]
+    public void AProcessIsFoundByAnAddressItReached()
+    {
+        ProcessGroup apps = new("apps", "app.exe", LaneGrouping.Executable);
+        ProcessNode browser = Process(1, 300, "browser.exe", apps.Key, (Mechanism.Tcp, 50));
+        ProcessNode updater = Process(2, 310, "updater.exe", apps.Key, (Mechanism.Tcp, 20));
+        ProcessNode resolver = Process(3, 320, "resolver.exe", apps.Key, (Mechanism.Udp, 10));
+        ProcessNode quiet = Process(4, 330, "quiet.exe", apps.Key, (Mechanism.ProcessLifecycle, 1));
+        HostLink[] links =
+        [
+            new(browser.Id, Mechanism.Tcp, [new("142.250.1.1", 2, 30), new("20.42.65.1", 1, 5)], RelationStrength.Direct),
+            new(browser.Id, Mechanism.Udp, [new("142.250.1.1", 1, 9)], RelationStrength.Direct),
+            new(updater.Id, Mechanism.Tcp, [new("142.250.1.10", 1, 4), new("::ffff:20.42.65.1", 1, 2)], RelationStrength.Direct),
+            new(resolver.Id, Mechanism.Udp, [new("2001:db8::1", 3, 3)], RelationStrength.Direct),
+        ];
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [apps], [browser, updater, resolver, quiet], [], [], [],
+            [], [])
+        {
+            HostLinks = links,
+        };
+
+        // An address whole finds the processes that reached it, its hit saying what reached it and never the address (P16),
+        // and descending to the process, whose rung lists each connection; it does not find 142.250.1.10, which it only
+        // begins.
+        SearchHit hit = Assert.Single(WorkspaceSearch.Find(snapshot, "142.250.1.1").Hits);
+        Assert.Equal((SearchHitKind.Process, browser.Id.ToString()), (hit.Kind, hit.Key));
+        Assert.Equal("Process instance of app.exe · 2 TCP connections and 1 UDP flow to 1 matching address", hit.Detail);
+        Assert.Equal([apps.Key, browser.Id.ToString()], hit.Path);
+        Assert.DoesNotContain("142.250", hit.Label + hit.Detail, StringComparison.Ordinal);
+
+        // Up to a dot it finds every address it begins, the busier process first, below a whole address; an IPv4-mapped
+        // address is found by its IPv4 address too, and IPv6 in either case.
+        SearchResult subnet = WorkspaceSearch.Find(snapshot, "142.250");
+        Assert.Equal([browser.Id.ToString(), updater.Id.ToString()], subnet.Hits.Select(found => found.Key));
+        Assert.Equal("Process instance of app.exe · 1 TCP connection to 1 matching address", subnet.Hits[1].Detail);
+        Assert.Equal([updater.Id.ToString(), browser.Id.ToString()],
+            WorkspaceSearch.Find(snapshot, "142.250.1.10").Hits.Concat(WorkspaceSearch.Find(snapshot, "142.250.1.1").Hits)
+                .Select(found => found.Key));
+        Assert.Equal([browser.Id.ToString(), updater.Id.ToString()],
+            WorkspaceSearch.Find(snapshot, "20.42.65.1").Hits.Select(found => found.Key));
+        Assert.Equal(resolver.Id.ToString(), Assert.Single(WorkspaceSearch.Find(snapshot, "2001:DB8::1").Hits).Key);
+        Assert.Equal("Process instance of app.exe · 3 UDP flows to 1 matching address",
+            Assert.Single(WorkspaceSearch.Find(snapshot, "2001:db8:").Hits).Detail);
+
+        // A process that reached two addresses a query begins says so; where one address is the query, it alone is said,
+        // though the query begins another: 2001:db8:: is an address whole and begins 2001:db8::1.
+        Assert.Equal("Process instance of app.exe · 3 TCP connections to 2 matching addresses",
+            WorkspaceSearch.Find(new("Search", new TimeRange(0, 10), [apps], [browser], [], [], [], [], [])
+            {
+                HostLinks = [new(browser.Id, Mechanism.Tcp, [new("10.0.0.1", 1, 1), new("10.0.0.2", 2, 2)], RelationStrength.Direct)],
+            }, "10.0.0").Hits[0].Detail);
+        Assert.Equal("Process instance of app.exe · 1 TCP connection to 1 matching address",
+            WorkspaceSearch.Find(new("Search", new TimeRange(0, 10), [apps], [browser], [], [], [], [], [])
+            {
+                HostLinks = [new(browser.Id, Mechanism.Tcp, [new("2001:db8::", 1, 1), new("2001:db8::1", 2, 2)], RelationStrength.Direct)],
+            }, "2001:db8::").Hits[0].Detail);
+
+        // A query with neither dot nor colon names no address, and one only inside an address finds nothing.
+        Assert.Empty(WorkspaceSearch.Find(snapshot, "142").Hits);
+        Assert.Empty(WorkspaceSearch.Find(snapshot, ".1.1").Hits);
+        Assert.Empty(WorkspaceSearch.Find(snapshot, "2001:d").Hits);
+
+        // A process is found by the rule its hit is ranked by, its connections to other hosts given.
+        foreach (string query in new[] { "142.250.1.1", "142.250", "142.250.", "20.42.65.1", "2001:DB8::1", "2001:db8:", "142", ".1.1", "e" })
+        {
+            Assert.Equal(
+                [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits.Where(found => found.Kind == SearchHitKind.Process)
+                    .Select(found => found.Key).Order(StringComparer.Ordinal)],
+                snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, links.Where(link => link.Process == process.Id), query))
+                    .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal));
+        }
+
+        Assert.Throws<ArgumentNullException>(() => WorkspaceSearch.Finds(quiet, null!, "142.250"));
+
+        // Found both by name and by an address, a process ranks by the better, and says what reached it when that is the
+        // address: the relay that reached 10.0.0.1 ranks above the busier tool whose name only begins with it.
+        ProcessNode relay = Process(5, 340, "relay-10.0.0.1.exe", apps.Key, (Mechanism.Tcp, 1));
+        ProcessNode tool = Process(6, 350, "10.0.0.1-tool.exe", apps.Key, (Mechanism.Tcp, 1_000));
+        SearchResult both = WorkspaceSearch.Find(new("Search", new TimeRange(0, 10), [apps], [relay, tool], [], [], [], [], [])
+        {
+            HostLinks = [new(relay.Id, Mechanism.Tcp, [new("10.0.0.1", 1, 1)], RelationStrength.Direct)],
+        }, "10.0.0.1");
+        Assert.Equal([relay.Id.ToString(), tool.Id.ToString()], both.Hits.Select(found => found.Key));
+        Assert.Equal(["Process instance of app.exe · 1 TCP connection to 1 matching address", "Process instance of app.exe"],
+            both.Hits.Select(found => found.Detail));
     }
 
     private static ProcessNode Process(int index, int processId, string name, string group, params (Mechanism, long)[] made) =>

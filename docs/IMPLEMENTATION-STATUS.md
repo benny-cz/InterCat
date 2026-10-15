@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 550 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 551 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -57,7 +57,7 @@ revision 546 the less busy of those that only reach other hosts in another, past
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
 processes' connections ran to. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
-channels by name, PID or endpoint; endpoint strings can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
+channels by name, PID or endpoint, and since revision 551 processes by an address they reached; endpoint strings and addresses can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
 Below the machine rung the graph draws only the rung's neighbourhood, and one **Rest of the machine** node counts every
 other process. Double-clicking a relationship's edge, or Enter on its row in the relationship table, opens its channel,
@@ -96,6 +96,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 551 — find the processes that reached an address (§6.7, §6.3):**
+  - The search found processes by name or PID only; a person holding an address had to open every process's rung.
+  - An address whole, or begun up to a dot or colon, now finds the processes whose connections reached it, IPv6 in
+    either case and a mapped address by its IPv4 one; a hit says what reached the matching addresses, never the
+    address (P16), and a group's lanes are marked by the same rule. Other hosts and the search box say so.
+  - Debug and Release each ran 2,367 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 12 mutations was caught: a number or word read as an address; an address found by any beginning rather
+    than up to a dot or colon; a mapped address not found by its IPv4 one; IPv6 found in one case only; a begun
+    address said beside the whole one; a hit not saying what reached it, its UDP flows uncounted or an address
+    counted once per transport; the hits, the rule lanes are marked by or the lanes themselves finding no process by
+    an address; and a process ranked by its name where an address it reached matched better.
 
 - **Revision 550 — name the busiest other hosts by address (§6.3, P7):**
   - The Other hosts node said how many hosts the drawn processes reached, never which; only each process's rung

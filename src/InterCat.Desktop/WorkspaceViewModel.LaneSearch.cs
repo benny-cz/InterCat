@@ -48,16 +48,18 @@ public sealed partial class WorkspaceViewModel
         if (IsSearching && ShowsProcessLanes)
         {
             Dictionary<ProcessInstanceId, ProcessNode> processes = wholeSnapshot.Processes.ToDictionary(process => process.Id);
+            ILookup<ProcessInstanceId, HostLink> reached = wholeSnapshot.HostLinks.ToLookup(link => link.Process);
             foreach (ProcessTimelineLane lane in processLaneDisplay)
             {
-                if (processes.TryGetValue(lane.ProcessId, out ProcessNode? process) && WorkspaceSearch.Finds(process, searchText))
+                if (processes.TryGetValue(lane.ProcessId, out ProcessNode? process)
+                    && WorkspaceSearch.Finds(process, reached[process.Id], searchText))
                 {
                     found.Add(lane.ProcessId);
                 }
             }
 
-            foldedFound = FoldedLane?.Processes.Count(member =>
-                processes.TryGetValue(member, out ProcessNode? process) && WorkspaceSearch.Finds(process, searchText)) ?? 0;
+            foldedFound = FoldedLane?.Processes.Count(member => processes.TryGetValue(member, out ProcessNode? process)
+                && WorkspaceSearch.Finds(process, reached[process.Id], searchText)) ?? 0;
         }
 
         ProcessInstanceId? shown = selectedSearchResult?.Hit is { Kind: SearchHitKind.Process } hit

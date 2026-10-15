@@ -90,7 +90,7 @@ public sealed partial class WorkspaceViewModel
         }
 
         lines.Add(HostScope);
-        lines.Add("Who is at these addresses is not observed; each process's rung lists its own connections");
+        lines.Add("Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it");
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
         lines.Add("Size: fixed; a resource, not a process");
         return new(hub.Label, lines);
@@ -160,8 +160,9 @@ public sealed partial class WorkspaceViewModel
                 + ".";
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + "."
-            + busiest + " Who is at these addresses is not observed; each process's rung lists its own connections. Its "
-            + "edges are connections, not relationships, and carry no traffic value.";
+            + busiest + " Who is at these addresses is not observed. Searching one (Ctrl+F) finds the processes that reached "
+            + "it, and each process's rung lists its own connections. Its edges are connections, not relationships, and "
+            + "carry no traffic value.";
     }
 
     /// <summary>

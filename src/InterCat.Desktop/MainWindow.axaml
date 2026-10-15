@@ -163,11 +163,11 @@
           </DockPanel>
           <TextBlock Text="{Binding DescendHint}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
           <!-- A narrow rail ends the placeholder in an ellipsis, so its tooltip says it whole, shortcut included. -->
-          <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names, PIDs or a time (Ctrl+F)"
+          <TextBox x:Name="SearchBox" Margin="0,6,0,0" Watermark="Search names, PIDs, addresses or a time (Ctrl+F)"
                    Text="{Binding SearchText, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                   ToolTip.Tip="Search names, PIDs or a time (Ctrl+F)"
-                   AutomationProperties.Name="Search names, PIDs or a time"
-                   AutomationProperties.HelpText="Find a group, a process instance or a channel by name, process ID or endpoint, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
+                   ToolTip.Tip="Search names, PIDs, addresses or a time (Ctrl+F)"
+                   AutomationProperties.Name="Search names, PIDs, addresses or a time"
+                   AutomationProperties.HelpText="Find a group, a process instance or a channel by name, process ID or endpoint, the processes whose connections reached an address, or type a time to go to it: 14:32:05 on the wall clock, or 312.5 s of session time"
                    AutomationProperties.AcceleratorKey="Ctrl+F" />
           <!-- What a search found, or why a time typed places nothing, is said as it changes, without taking the keyboard. -->
           <TextBlock Text="{Binding SearchSummary}" Classes="muted" FontSize="11" TextWrapping="Wrap"

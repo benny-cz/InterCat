@@ -1,4 +1,5 @@
 using System.Globalization;
+using InterCat.Analysis;
 using InterCat.Domain;
 
 namespace InterCat.Application;
@@ -31,8 +32,9 @@ public sealed record SearchResult(string Query, IReadOnlyList<SearchHit> Hits, i
 
 /// <summary>
 /// §6.7's search (Ctrl+F) over one snapshot's metadata: executable groups by name or image path, process instances by
-/// name or PID, and channels by endpoint. It reads no payload and no source field beyond what the ladder already
-/// shows (§10, P16), and it is bounded: a result states how many matched beyond the hits it lists.
+/// name, PID or an address their connections to other hosts ran to (§6.3), and channels by endpoint. It reads no
+/// payload and no source field beyond what the ladder already shows (§10, P16), and it is bounded: a result states how
+/// many matched beyond the hits it lists.
 /// </summary>
 public static class WorkspaceSearch
 {
@@ -62,6 +64,7 @@ public static class WorkspaceSearch
         }
 
         int? pid = PidIn(text);
+        ILookup<ProcessInstanceId, HostLink> reached = snapshot.HostLinks.ToLookup(link => link.Process);
         var candidates = new List<(int Rank, SearchHit Hit)>();
         foreach (ProcessGroup group in snapshot.Groups)
         {
@@ -76,11 +79,16 @@ public static class WorkspaceSearch
 
         foreach (ProcessNode process in snapshot.Processes)
         {
-            int rank = RankOf(process, text, pid);
-            if (rank < 0) continue;
+            int byName = RankOf(process, text, pid);
+            (int byAddress, string? reach) = AddressRankOf(reached[process.Id], text);
+            if (byName < 0 && byAddress < 0) continue;
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
-            candidates.Add((rank, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
-                $"Process instance of {groupName}",
+
+            // Found by an address its connections ran to, a process says what reached it, never the address (P16): the
+            // person typed it, and the process's rung lists each connection with its endpoints.
+            bool byReach = byAddress >= 0 && (byName < 0 || byAddress < byName);
+            candidates.Add((byReach ? byAddress : byName, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
+                $"Process instance of {groupName}" + (byReach ? " · " + reach : string.Empty),
                 process.Records,
                 [process.GroupKey, process.Id.ToString()])));
         }
@@ -119,14 +127,16 @@ public static class WorkspaceSearch
 
     /// <summary>
     /// Whether <paramref name="query"/> finds <paramref name="process"/>, by the rule <see cref="Find"/> ranks a process's
-    /// hit by - its PID, or a PID's first digits, or its name - with no limit on how many it finds: a group's lanes are
-    /// marked by it (§6.2: search lane names), however many of them a search's listed hits leave out.
+    /// hit by - its PID, or a PID's first digits, its name, or an address its connections to other hosts,
+    /// <paramref name="links"/>, ran to - with no limit on how many it finds: a group's lanes are marked by it (§6.2:
+    /// search lane names), however many of them a search's listed hits leave out.
     /// </summary>
-    public static bool Finds(ProcessNode process, string? query)
+    public static bool Finds(ProcessNode process, IEnumerable<HostLink> links, string? query)
     {
         ArgumentNullException.ThrowIfNull(process);
+        ArgumentNullException.ThrowIfNull(links);
         string text = query?.Trim() ?? string.Empty;
-        return text.Length > 0 && RankOf(process, text, PidIn(text)) >= 0;
+        return text.Length > 0 && (RankOf(process, text, PidIn(text)) >= 0 || AddressRankOf(links, text).Rank >= 0);
     }
 
     /// <summary>A query that is a number is also a PID.</summary>
@@ -141,6 +151,79 @@ public static class WorkspaceSearch
         pid is { } number && process.ProcessId == number ? 0
         : pid is not null && process.ProcessId.ToString(CultureInfo.InvariantCulture).StartsWith(text, StringComparison.Ordinal) ? 1
         : Rank(text, process.Name, null);
+
+    /// <summary>
+    /// How well the addresses a process's connections to other hosts ran to match the query (§6.3): 0 when one is the
+    /// query, 1 when one begins with it up to a '.' or ':' - "142.250" begins 142.250.1.1, "142.250.1.1" does not begin
+    /// 142.250.1.10 - ignoring case, as IPv6 is written either way, and an IPv4-mapped address matching as its IPv4
+    /// address too; -1 when none does, and for a query with neither '.' nor ':', which names no address: a bare number is
+    /// a PID, a word a name. With it, what reached the addresses that match best, for the hit's detail, which never repeats
+    /// an address (P16): "12 TCP connections and 1 UDP flow to 1 matching address".
+    /// </summary>
+    private static (int Rank, string? Reached) AddressRankOf(IEnumerable<HostLink> links, string text)
+    {
+        if (!text.Contains('.', StringComparison.Ordinal) && !text.Contains(':', StringComparison.Ordinal))
+        {
+            return (-1, null);
+        }
+
+        int best = -1;
+        var matched = new List<(Mechanism Mechanism, HostAddress Address)>();
+        foreach (HostLink link in links)
+        {
+            foreach (HostAddress address in link.Addresses)
+            {
+                int rank = AddressRank(address.Address, text);
+                if (rank < 0 || (best >= 0 && rank > best))
+                {
+                    continue;
+                }
+
+                if (best < 0 || rank < best)
+                {
+                    best = rank;
+                    matched.Clear();
+                }
+
+                matched.Add((link.Mechanism, address));
+            }
+        }
+
+        if (best < 0)
+        {
+            return (-1, null);
+        }
+
+        int tcp = matched.Where(match => match.Mechanism != Mechanism.Udp).Sum(match => match.Address.Connections);
+        int udp = matched.Where(match => match.Mechanism == Mechanism.Udp).Sum(match => match.Address.Connections);
+        string connections = string.Join(" and ", new[]
+        {
+            tcp > 0 ? HostLinkText.Connections(Mechanism.Tcp, tcp) : null,
+            udp > 0 ? HostLinkText.Connections(Mechanism.Udp, udp) : null,
+        }.OfType<string>());
+        int addresses = matched.Select(match => match.Address.Address).Distinct(StringComparer.Ordinal).Count();
+        return (best, connections + " to " + CountText.Of(addresses, "matching address", "matching addresses"));
+    }
+
+    /// <summary>How well one address matches the query, as <see cref="AddressRankOf"/> ranks it.</summary>
+    private static int AddressRank(string address, string text)
+    {
+        const string Mapped = "::ffff:";
+        int rank = Matches(address, text);
+        if (rank != 0 && address.StartsWith(Mapped, StringComparison.OrdinalIgnoreCase) && address.Contains('.', StringComparison.Ordinal)
+            && Matches(address[Mapped.Length..], text) is >= 0 and var ipv4 && (rank < 0 || ipv4 < rank))
+        {
+            rank = ipv4;
+        }
+
+        return rank;
+
+        static int Matches(string address, string text) =>
+            string.Equals(address, text, StringComparison.OrdinalIgnoreCase) ? 0
+            : address.Length > text.Length && address.StartsWith(text, StringComparison.OrdinalIgnoreCase)
+                && (text[^1] is '.' or ':' || address[text.Length] is '.' or ':') ? 1
+            : -1;
+    }
 
     /// <summary>What a group's members have in common, as its hit names it.</summary>
     private static string KindOf(LaneGrouping grouping) => grouping switch

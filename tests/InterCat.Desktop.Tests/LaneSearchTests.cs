@@ -92,6 +92,38 @@ public sealed class LaneSearchTests
         Assert.Equal(wanted.Id, workspace.SearchedLane);
     });
 
+    [Fact(DisplayName = "§6.2: an address typed at a group marks the lanes of the processes whose connections reached it, and lists them as hits")]
+    public void AnAddressMarksTheLanesThatReachedIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Reaching());
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RequestTimelineDetail(workspace.WholeSnapshot.Extent, 64);
+        DescendTo(workspace, Process(workspace, 5_000).GroupKey);
+        await workspace.TimelineDetailReady;
+
+        // The five that reached 10.9.8.7, not those that reached 10.9.8.70, which it only begins; each hit says what
+        // reached it and never the address.
+        workspace.SearchText = "10.9.8.7";
+        int[] marked = [.. workspace.ProcessLaneDisplay.Where(lane => workspace.IsLaneSearched(lane.ProcessId))
+            .Select(lane => workspace.Snapshot.Processes.Single(process => process.Id == lane.ProcessId).ProcessId).Order()];
+        Assert.Equal([5_000, 5_001, 5_002, 5_003, 5_004], marked);
+        Assert.Contains(" · 10 process lanes, 5 found by the search · ", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Equal(5, workspace.SearchResults.Count);
+        Assert.All(workspace.SearchResults, row => Assert.Equal(
+            "Process instance of pool.exe · 1 TCP connection to 1 matching address", row.Hit.Detail));
+
+        // Up to a dot it marks every lane whose connections reached an address it begins.
+        workspace.SearchText = "10.9.8";
+        Assert.All(workspace.ProcessLaneDisplay, lane => Assert.True(workspace.IsLaneSearched(lane.ProcessId)));
+        Assert.Equal("10 matches · Enter opens the selected one, Esc clears", workspace.SearchSummary);
+
+        // An address nothing reached says what a search reads.
+        workspace.SearchText = "192.0.2.1";
+        Assert.Equal("No matches · names, PIDs, channel endpoints and the addresses processes reached are searched",
+            workspace.SearchSummary);
+    });
+
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 
@@ -120,6 +152,20 @@ public sealed class LaneSearchTests
             Timed(Transfer(1_000 + index, ObservationKind.Send, AccountingSide.SendSide, 8, 5_000 + index, (ulong)(1_000 + index))),
         }),
         Timed(Lifecycle(100, ObservationKind.Create, 600, 100) with { ResourceName = @"C:\Tools\tool.exe" }),
+    ];
+
+    /// <summary>Ten instances of pool.exe, PIDs 5000 to 5009: the first five each sending to 10.9.8.7, the rest to 10.9.8.70.</summary>
+    private static ObservationRowV1[] Reaching() =>
+    [
+        .. Enumerable.Range(0, 10).SelectMany(index => new[]
+        {
+            Timed(Lifecycle(1 + index, ObservationKind.Create, 5_000 + index, (ulong)(1 + index)) with
+            {
+                ResourceName = @"C:\Tools\pool.exe",
+            }),
+            Timed(Transfer(1_000 + index, ObservationKind.Send, AccountingSide.SendSide, 8, 5_000 + index, (ulong)(1_000 + index))
+                .Between($"192.168.1.10:{50_000 + index}", index < 5 ? "10.9.8.7:443" : "10.9.8.70:443")),
+        }),
     ];
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
