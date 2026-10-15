@@ -49,6 +49,11 @@ public sealed partial class WorkspaceViewModel
             return "Found by the search: an address these connections reached";
         }
 
+        if (node.Kind == GraphNodeKind.Host)
+        {
+            return "Found by the search: its address";
+        }
+
         if (node.Kind == GraphNodeKind.Process)
         {
             return "Found by the search";
@@ -88,10 +93,15 @@ public sealed partial class WorkspaceViewModel
             }
         }
 
-        // The Other hosts node holds no process: it is found when an address its drawn connections ran to is.
-        if (graphDisplay.OtherHosts is { } hub && WorkspaceSearch.FindsAddress(DrawnHostLinks(graphDisplay), searchText))
+        // Other hosts and the hosts it was opened into hold no process: each is found when an address its drawn
+        // connections ran to is - Other hosts' those not drawn on their own, a host's its own.
+        foreach (GraphDisplayNode host in graphDisplay.Nodes.Where(node => node.IsHost))
         {
-            whole.Add(hub.Key);
+            HostLink[] links = host.Kind == GraphNodeKind.OtherHosts ? HubLinks(graphDisplay) : HostLinksTo(host, graphDisplay);
+            if (WorkspaceSearch.FindsAddress(links, searchText))
+            {
+                whole.Add(host.Key);
+            }
         }
 
         graphSearch = (graphDisplay, wholeSnapshot, searchText, whole, part, found.Count);

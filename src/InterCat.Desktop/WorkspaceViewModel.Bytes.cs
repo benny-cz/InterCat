@@ -41,7 +41,7 @@ public sealed partial class WorkspaceViewModel
     /// channel a channel rung is focused on, or one chosen among a process's rows.
     /// </summary>
     private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null
-        || SelectedCluster is { Kind: not GraphNodeKind.OtherHosts }
+        || SelectedCluster is { IsHost: false }
         || HasMultiSelection || showTables || FocusedRealChannel is not null || selectedRelationship is not null
         || ChosenRow is not null;
 

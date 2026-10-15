@@ -15,8 +15,8 @@ public static class OverviewWorkspace
     /// </summary>
     public const string SessionDisclosure =
         "The graph shows admitted paired TCP and UDP, and each process's connections to other hosts drawn to one Other hosts "
-        + "node; a process's rung also lists its RPC calls by interface, call by call. The timeline includes every "
-        + "observed row. TCP and UDP records are completed transfers with no operation rung.";
+        + "node, or to its busiest hosts on their own; a process's rung also lists its RPC calls by interface, call by call. "
+        + "The timeline includes every observed row. TCP and UDP records are completed transfers with no operation rung.";
 
     /// <summary>
     /// What a view of a session whose capture collected ALPC says instead of <see cref="SessionDisclosure"/>: its graph
@@ -25,8 +25,8 @@ public static class OverviewWorkspace
     /// </summary>
     public const string LinkedCallsDisclosure =
         "The graph shows admitted paired TCP and UDP, RPC calls linked through ALPC to the processes that served them, and "
-        + "each process's connections to other hosts drawn to one Other hosts node; a process's rung lists its RPC calls "
-        + "by interface, call by call, with who served each. The timeline includes every observed row. TCP and UDP "
+        + "each process's connections to other hosts drawn to one Other hosts node, or to its busiest hosts on their own; a "
+        + "process's rung lists its RPC calls by interface, call by call, with who served each. The timeline includes every observed row. TCP and UDP "
         + "records are completed transfers with no operation rung.";
 
     /// <summary>The disclosure a view of <paramref name="snapshot"/> states: which relationships its graph draws.</summary>

@@ -632,7 +632,7 @@
                          Text="Hover explains · drag to pin · P pin/unpin · L re-layout · Enter opens a node"
                          Classes="muted" FontSize="11" VerticalAlignment="Center" TextAlignment="Right"
                          TextTrimming="CharacterEllipsis"
-                         ToolTip.Tip="Hover explains a node or relationship. Click selects. Drag a node to place and pin it. P pins or unpins the selection; L lays the graph out again while keeping pins. Arrow keys move graph focus; Enter or a double click opens a group or process. T shows the equivalent table, and F6 moves the keyboard to the next pane." />
+                         ToolTip.Tip="Hover explains a node or relationship. Click selects. Drag a node to place and pin it. P pins or unpins the selection; L lays the graph out again while keeping pins. Arrow keys move graph focus; Enter or a double click opens a group or process, and on Other hosts draws its busiest hosts on their own. T shows the equivalent table, and F6 moves the keyboard to the next pane." />
               <!-- What the graph draws its relationships from is said here, where they are drawn, and in full on hover. -->
               <TextBlock x:Name="GraphSummaryText" Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding GraphSummary}" Classes="muted" FontSize="11"
                          TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding GraphScope}"

@@ -71,7 +71,7 @@ internal static class WindowKeys
         new("Ranked table", "O", "on an RPC call linked to another, open the call at its other end"),
         new("Graph", "Arrow keys", "move to the next or previous node"),
         new("Graph", "Ctrl+arrow keys", "move to the next or previous node without choosing it"),
-        new("Graph", "Enter", "open the node's group or process"),
+        new("Graph", "Enter", "open the node's group or process; on Other hosts or a host, draw its busiest hosts on their own or fold them back"),
         new("Graph", "Ctrl+Space", "add the node's processes to the multi-selection, or take them out"),
         new("Graph", "P", "pin the chosen node where it is drawn, or release it"),
         new("Timeline", "Left or Right", "pan by a tenth of the view; with Shift, by one cell"),

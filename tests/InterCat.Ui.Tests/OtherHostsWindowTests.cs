@@ -125,6 +125,78 @@ public sealed class OtherHostsWindowTests
             .Between("192.168.1.10:61000", "8.8.8.8:53") with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 300 },
     ];
 
+    [AvaloniaFact(DisplayName = "§6.3: a double click on Other hosts draws its hosts on their own, each named where it is drawn, and one on a host folds them back")]
+    public async Task ADoubleClickOpensOtherHosts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            Point hub = At(graph, window, graph.PointOf(workspace.GraphDisplay.OtherHosts!.Key)!.Value);
+
+            // A double click on Other hosts draws the browser's two hosts on their own, each named beside it.
+            window.MouseDown(hub, MouseButton.Left);
+            window.MouseUp(hub, MouseButton.Left);
+            window.MouseDown(hub, MouseButton.Left);
+            window.MouseUp(hub, MouseButton.Left);
+            Dispatch();
+            Assert.True(workspace.HostsOpened);
+            await workspace.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Assert.Null(workspace.GraphDisplay.OtherHosts);
+            GraphDisplayNode[] hosts = [.. workspace.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Host)];
+            Assert.Equal(["142.250.1.1", "8.8.8.8"], hosts.Select(node => node.Label).Order(StringComparer.Ordinal));
+            foreach (GraphDisplayNode host in hosts)
+            {
+                Point at = graph.PointOf(host.Key)!.Value;
+                Assert.Contains(graph.PlacedLabels, box => Math.Abs(box.Center.X - at.X) < 80 && Math.Abs(box.Center.Y - at.Y) < 80);
+            }
+
+            Save(window, "graph-hosts-opened.png");
+
+            // A newer publication of the session keeps them opened, drawing the host it adds on its own too.
+            Publish(session.Store, [Transfer(26, ObservationKind.Send, AccountingSide.SendSide, 40, 300, 12)
+                .Between("192.168.1.10:52001", "20.42.65.1:443") with { SessionRelativeTicks = 310 }]);
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)));
+            Dispatch();
+            var newer = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, newer);
+            Assert.True(newer.HostsOpened);
+            Assert.Equal(["142.250.1.1", "20.42.65.1", "8.8.8.8"],
+                newer.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Host).Select(node => node.Label).Order(StringComparer.Ordinal));
+            workspace = newer;
+            await workspace.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            hosts = [.. workspace.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Host)];
+
+            // One on a host folds them back into Other hosts.
+            Point first = At(graph, window, graph.PointOf(hosts[0].Key)!.Value);
+            window.MouseDown(first, MouseButton.Left);
+            window.MouseUp(first, MouseButton.Left);
+            window.MouseDown(first, MouseButton.Left);
+            window.MouseUp(first, MouseButton.Left);
+            Dispatch();
+            Assert.False(workspace.HostsOpened);
+            Assert.NotNull(workspace.GraphDisplay.OtherHosts);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static Point At(Control control, Window window, Point point) => control.TranslatePoint(point, window)!.Value;
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

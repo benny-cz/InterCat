@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 554 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 555 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -55,7 +55,7 @@ two real sessions, one sparse and one dense. Since revision 545 it relates proce
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
 revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
-processes' connections ran to. Hubs draw as stars with components apart, executable groups read as file names,
+processes' connections ran to, and since revision 555 Enter on it draws them on their own. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint, and since revision 551 processes by an address they reached, which since revision 553 the graph marks; endpoint strings and addresses can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
@@ -96,6 +96,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 555 — open Other hosts from the window (§6.3):**
+  - Enter or a double click on Other hosts draws its busiest hosts on their own, and on it or a host folds them
+    back; a newer publication keeps it opened. Hosts are named squares, reached by the keyboard after processes.
+  - A host's card and description say whose connections ran to its address and which processes they are; edge
+    and Other hosts cards count only what they stand for; a search marks a host by its address.
+  - Debug and Release each ran 2,375 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 11 mutations was caught: Enter never folding the hosts back, the drawing never opened or never
+    re-projected; Other hosts' card counting the hosts drawn on their own, an edge's card all its source's hosts, or
+    a host's card every address; the processes that reached a host named quietest first; a search finding a host by
+    Other hosts' addresses; hosts reached by the keyboard among the processes; a newer publication folding them; and
+    Other hosts' card offering to open what is opened.
 
 - **Revision 554 — the projection opens Other hosts into its busiest hosts (§6.3):**
   - Every connection to another host ran to one node, so the graph could not show two processes reaching one host.

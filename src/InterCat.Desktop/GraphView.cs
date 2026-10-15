@@ -655,8 +655,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                     CrossHatchCircle(context, StackPen, point, radius);
                 }
             }
-            else if (node.Kind == GraphNodeKind.OtherHosts)
+            else if (node.IsHost)
             {
+                // Other hosts and each host it was opened into: a resource, drawn square with a globe inside.
                 DrawOtherHosts(context, point, radius, node.Key == focused);
             }
             else if (node.Kind == GraphNodeKind.Context)
@@ -1474,7 +1475,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             return string.Equals(node.Label, line, StringComparison.Ordinal) ? string.Empty : line;
         }
 
-        if (node.Kind == GraphNodeKind.OtherHosts)
+        if (node.IsHost)
         {
             return string.Create(CultureInfo.CurrentCulture,
                 $"from {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
@@ -1489,17 +1490,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. The Other hosts node
-    /// comes after every process and aggregate, since it is a resource the processes' connections run to, and a focused
-    /// rung's context node last, however much the rest of the machine holds, so the keyboard starts on the focus itself.
+    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. The hosts Other hosts was
+    /// opened into come after every process and aggregate, the busiest first, and then Other hosts, since they are
+    /// resources the processes' connections run to; a focused rung's context node comes last, however much the rest of the
+    /// machine holds, so the keyboard starts on the focus itself.
     /// </summary>
     internal static IReadOnlyList<GraphDisplayNode> Traversal(GraphDisplay display) =>
     [
         .. display.Nodes
             .OrderBy(node => node.Kind switch
             {
-                GraphNodeKind.Context => 2,
-                GraphNodeKind.OtherHosts => 1,
+                GraphNodeKind.Context => 3,
+                GraphNodeKind.OtherHosts => 2,
+                GraphNodeKind.Host => 1,
                 _ => 0,
             })
             .ThenByDescending(node => node.Observations)
@@ -1663,7 +1666,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The graph as a screen reader meets it: its role, its keyboard path and table, and what it draws now.</summary>
     protected override AutomationPeer OnCreateAutomationPeer() => new CanvasAutomationPeer(this, "graph",
         "Arrow keys move between drawn nodes, choosing each; with Ctrl they move without choosing, and Ctrl+Space adds the "
-        + "node to the selection or takes it out. Enter opens a group or process; P pins or unpins the selected node; L "
+        + "node to the selection or takes it out. Enter opens a group or process, and on Other hosts or a host draws the "
+        + "busiest hosts on their own or folds them back; P pins or unpins the selected node; L "
         + "lays the graph out again, keeping pins. T shows the relationship table, which lists every relationship drawn here. "
         + "F6 moves to the next pane, Shift+F6 to the one before.",
         () => (DataContext as WorkspaceViewModel)?.GraphSummary);
@@ -1676,8 +1680,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
 
         // Opening a group draws its members one by one (§6.3's explicit expansion), and opening a process shows its
-        // channels: the double click is Enter on its row. A double click on an edge opens that relationship's channel
-        // view (§6.7).
+        // channels: the double click is Enter on its row. On Other hosts or a host it draws the busiest hosts on their own,
+        // or folds them back. A double click on an edge opens that relationship's channel view (§6.7).
         Point pointer = e.GetPosition(this);
         if (!clickedLast)
         {

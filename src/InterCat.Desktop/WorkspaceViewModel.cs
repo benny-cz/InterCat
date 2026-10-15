@@ -391,7 +391,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         try
         {
-            GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept, neighborhood: neighborhood);
+            GraphDisplay projected = GraphProjection.Project(wholeSnapshot, expanded, kept, neighborhood: neighborhood,
+                openHosts: hostsOpened);
             SetGraphProjectionProblem(null);
             return projected;
         }
@@ -1815,7 +1816,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (graphFocus.Neighborhood is { } drawn)
             {
                 int outside = processes - drawn.Count;
-                int nodes = graphDisplay.Nodes.Count(node => node.Kind is not (GraphNodeKind.Context or GraphNodeKind.OtherHosts));
+                int nodes = graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.Context && !node.IsHost);
                 return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
@@ -1833,7 +1834,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         : string.Empty));
             return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder or GraphNodeKind.OtherHostsOnly)
-                ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.OtherHosts), "node", "nodes")
+                ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => !node.IsHost), "node", "nodes")
                 : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote + SearchedGraphNote;
         }
     }
@@ -1856,7 +1857,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// the pane - its summary, nodes and table still say why - at a focused rung, and for a workspace not projected from a
     /// session.
     /// </summary>
-    public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && graphDisplay.OtherHosts is null
+    public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && !graphDisplay.Nodes.Any(node => node.IsHost)
         && EmptyCensus is { } census
         ? RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
         : null;
@@ -1898,7 +1899,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             drawn.Add("RPC calls linked through ALPC");
         }
 
-        if (graphDisplay.OtherHosts is not null)
+        if (graphDisplay.Nodes.Any(node => node.Kind == GraphNodeKind.Host))
+        {
+            drawn.Add("to the busiest other hosts, drawn on their own, and to Other hosts for the rest, each drawn process's TCP "
+                + "and UDP with no process of the capture at their other end");
+        }
+        else if (graphDisplay.OtherHosts is not null)
         {
             drawn.Add("to Other hosts each drawn process's TCP and UDP with no process of the capture at their other end");
         }
@@ -2373,6 +2379,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool OpenGraphNode(string key)
     {
         if (OpenGraphGroup(key)) return true;
+
+        // Other hosts, or a host it was opened into, opens or folds the busiest hosts (§6.3's explicit expansion).
+        if (graphDisplay.Node(key) is { IsHost: true })
+        {
+            HostsOpened = !HostsOpened;
+            return true;
+        }
+
         return graphDisplay.Node(key) is { } node && OpensProcess(node)
             && DescendAlong([node.GroupKey!, node.Process!.Value.ToString()], selectedInterval);
     }
@@ -2521,10 +2535,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// The graph the ladder's focus asks for (<see cref="FocusOfLadder"/>). A graph with the same nodes keeps its layout;
     /// one that changed is laid out again from where the nodes it shares already are.
     /// </summary>
-    private void RefreshGraphDisplay()
+    private void RefreshGraphDisplay(bool reproject = false)
     {
         GraphFocus focus = FocusOfLadder();
-        if (focus.Key == graphFocus.Key)
+        if (focus.Key == graphFocus.Key && !reproject)
         {
             return;
         }
@@ -2560,10 +2574,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     continue;
                 }
 
-                GraphPoint[] origins = [.. node.Members
-                    .Select(member => previous.NodeOf(member)?.Key)
-                    .Where(key => key is not null && displayPositions.ContainsKey(key))
-                    .Select(key => displayPositions[key!])];
+                // A host Other hosts opens into comes out of it, and Other hosts folds back where its hosts were.
+                GraphPoint[] origins = node.Kind == GraphNodeKind.Host
+                    ? [.. new[] { GraphProjection.OtherHostsKey }.Where(displayPositions.ContainsKey).Select(key => displayPositions[key])]
+                    : node.Kind == GraphNodeKind.OtherHosts
+                    ? [.. previous.Nodes.Where(drawn => drawn.Kind == GraphNodeKind.Host && displayPositions.ContainsKey(drawn.Key))
+                        .Select(drawn => displayPositions[drawn.Key])]
+                    : [.. node.Members
+                        .Select(member => previous.NodeOf(member)?.Key)
+                        .Where(key => key is not null && displayPositions.ContainsKey(key))
+                        .Select(key => displayPositions[key!])];
                 positions[node.Key] = origins.Length == 0
                     ? new(0.5, 0.5)
                     : new(origins.Average(point => point.X), origins.Average(point => point.Y));
@@ -3854,6 +3874,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
                 + DescribeContextRelationships(cluster) + ". Esc returns to the wider graph.",
             GraphNodeKind.OtherHosts => DescribeOtherHosts(cluster),
+            GraphNodeKind.Host => DescribeHost(cluster),
             GraphNodeKind.OtherHostsOnly => $"{members} whose only drawn activity is their connections to other hosts, the less "
                 + "busy of those that have no relationship, counted in one node rather than drawn one by one around Other "
                 + "hosts. The ranked table lists each of them, and each one's rung its connections.",
@@ -3901,6 +3922,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawnDisplay.Node(key) is { Kind: GraphNodeKind.OtherHosts } hub)
         {
             return DescribeOtherHostsHover(hub, drawnDisplay);
+        }
+
+        if (drawnDisplay.Node(key) is { Kind: GraphNodeKind.Host } host)
+        {
+            return DescribeHostHover(host, drawnDisplay);
         }
 
         if (drawnDisplay.Node(key) is { } node)
@@ -4537,7 +4563,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
-        : SelectedCluster is { Kind: not GraphNodeKind.OtherHosts } ? "Selected aggregate"
+        : SelectedCluster is { IsHost: false } ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : RungRecords is not null ? "Records E lists"
         : "Selected process";
@@ -4549,7 +4575,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// stands for no process, so it selects no records of its own and E still lists the rung's.
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
-        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts } && SelectedGroup is null
+        && selectedRelationship is null && SelectedCluster is null or { IsHost: true } && SelectedGroup is null
         && ChosenRow is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
                 ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport },

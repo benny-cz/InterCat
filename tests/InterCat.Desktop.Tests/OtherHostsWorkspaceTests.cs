@@ -59,6 +59,7 @@ public sealed class OtherHostsWorkspaceTests
                 "Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it",
                 "Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value",
                 "Size: fixed; a resource, not a process",
+                "Double-click or Enter draws its busiest hosts on their own",
             ],
             card.Lines.Skip(8));
 
@@ -116,14 +117,13 @@ public sealed class OtherHostsWorkspaceTests
             + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Their hosts: 142.250.1.1 (1 TCP "
             + "connection, 2 records), 20.42.65.1 (1 TCP connection, 1 record) and 8.8.8.8 (1 UDP flow, 1 record). Who is at "
             + "these addresses is not observed. Searching one (Ctrl+F) finds the processes that reached it, and each process's "
-            + "rung lists its own connections. Its edges are connections, not relationships, and carry no traffic value.",
-            workspace.SelectionSubtitle);
+            + "rung lists its own connections. Its edges are connections, not relationships, and carry no traffic value. Enter "
+            + "draws its busiest hosts on their own.", workspace.SelectionSubtitle);
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
         Assert.Equal([hub.Key], workspace.SelectedGraphNodeKeys);
         Assert.Empty(workspace.PartlySelectedGraphNodeKeys);
 
-        // It opens nothing, and Ctrl+click adds no process to a set.
-        Assert.False(workspace.OpenGraphNode(hub.Key));
+        // Ctrl+click adds no process to a set: it holds none.
         workspace.ToggleGraphNodeInSelection(hub.Key);
         Assert.False(workspace.HasMultiSelection);
 
@@ -211,6 +211,80 @@ public sealed class OtherHostsWorkspaceTests
             workspace.DescribeGraphHover(workspace.GraphDisplay.OtherHosts!.Key)!.Lines.Skip(3).Take(4));
     });
 
+    [Fact(DisplayName = "§6.3: Enter on Other hosts draws its busiest hosts on their own, each named and described, the rest kept in it; Enter on a host folds them back")]
+    public void OtherHostsOpensIntoItsBusiestHosts() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        string[] folded = [.. workspace.GraphDisplay.Nodes.Select(node => node.Key)];
+        string summary = workspace.GraphSummary;
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+        Assert.False(workspace.HostsOpened);
+        Assert.Equal("Double-click or Enter draws its busiest hosts on their own", workspace.DescribeGraphHover(hub.Key)!.Lines[^1]);
+
+        // Enter on Other hosts draws its eight busiest hosts on their own, by records; the two quietest stay in it.
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        Assert.True(workspace.HostsOpened);
+        GraphDisplay opened = workspace.GraphDisplay;
+        Assert.Equal([.. Enumerable.Range(1, 8).Select(index => $"52.0.0.{index}")],
+            opened.Nodes.Where(node => node.Kind == GraphNodeKind.Host).Select(node => node.Label));
+        Assert.Equal(summary, workspace.GraphSummary);
+        HoverCard rest = workspace.DescribeGraphHover(hub.Key)!;
+        Assert.Equal(["2 TCP connections from 1 process to 2 hosts · 3 records", "Hosts:", "  52.0.0.9 · 1 TCP connection · 2 records",
+                "  52.0.0.10 · 1 TCP connection · 1 record"],
+            rest.Lines.Skip(1).Take(4));
+        Assert.Equal("Double-click or Enter folds the hosts drawn on their own back into it", rest.Lines[^1]);
+
+        // A host's card says whose connections ran to it, from how many processes, and that Enter folds the hosts back.
+        GraphDisplayNode shared = opened.Node(GraphProjection.HostKey("52.0.0.1"))!;
+        HoverCard card = workspace.DescribeGraphHover(shared.Key)!;
+        Assert.Equal("52.0.0.1", card.Title);
+        Assert.Equal(
+            [
+                "Connections of 2 drawn processes to this address, with no process of this capture at their other end",
+                "2 TCP connections from 2 processes · 11 records",
+                "Reached by browser.exe · PID 300 and updater.exe · PID 310",
+            ],
+            card.Lines.Take(3));
+        Assert.Equal("Double-click or Enter folds the hosts drawn on their own back into Other hosts", card.Lines[^1]);
+
+        // An edge to a host counts its source's connections there alone.
+        GraphDisplayEdge toShared = opened.Edges.Single(edge => edge.TargetKey == shared.Key
+            && edge.SourceKey == opened.NodeOf(Process(workspace, 300).Id)!.Key);
+        Assert.Equal(["1 TCP connection to 1 host · correlated evidence", "Host: 52.0.0.1", "Records: 10"],
+            workspace.DescribeGraphHover(toShared.Key)!.Lines.Take(3));
+
+        // Chosen, a host describes itself; the keyboard reaches the hosts after the processes, the busiest first, then Other
+        // hosts.
+        workspace.SelectGraphNode(shared.Key);
+        Assert.Equal("52.0.0.1", workspace.SelectionTitle);
+        Assert.StartsWith("52.0.0.1: where the connections of 2 drawn processes ran with no process of this capture at their other "
+            + "end: 2 TCP connections from 2 processes, 11 records. Reached by browser.exe · PID 300 and updater.exe · PID 310.",
+            workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+        Assert.Equal([GraphNodeKind.Process, GraphNodeKind.Process, .. Enumerable.Repeat(GraphNodeKind.Host, 8), GraphNodeKind.OtherHosts],
+            GraphView.Traversal(opened).Select(node => node.Kind));
+        Assert.Equal([.. Enumerable.Range(1, 8).Select(index => GraphProjection.HostKey($"52.0.0.{index}")), hub.Key],
+            GraphView.Traversal(opened).Where(node => node.IsHost).Select(node => node.Key));
+
+        // A search marks the host whose address it finds, and the processes that reached it.
+        workspace.SearchText = "52.0.0.1";
+        Assert.Contains(shared.Key, workspace.SearchedGraphNodeKeys);
+        Assert.DoesNotContain(hub.Key, workspace.SearchedGraphNodeKeys);
+        workspace.SearchText = "52.0.0.9";
+        Assert.Contains(hub.Key, workspace.SearchedGraphNodeKeys);
+        workspace.SearchText = string.Empty;
+
+        // Enter on a host folds them back: the drawing is the folded one again.
+        Assert.True(workspace.OpenGraphNode(shared.Key));
+        await workspace.LayoutReady;
+        Assert.False(workspace.HostsOpened);
+        Assert.Equal(folded, workspace.GraphDisplay.Nodes.Select(node => node.Key));
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {
@@ -256,6 +330,36 @@ public sealed class OtherHostsWorkspaceTests
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
     }
+
+    /// <summary>
+    /// browser.exe's TCP to ten hosts, 52.0.0.1 to 52.0.0.10, ten records to the first down to one to the last; and
+    /// updater.exe's one record to the first.
+    /// </summary>
+    private static ObservationRowV1[] TenHosts()
+    {
+        ulong ordinal = 1;
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 300, ordinal++) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 310, ordinal++) with { ResourceName = @"C:\Apps\updater.exe", SessionRelativeTicks = 110 },
+        };
+        for (int host = 1; host <= 10; host++)
+        {
+            for (int record = 0; record <= 10 - host; record++)
+            {
+                rows.Add(Transfer(200 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 300, ordinal)
+                    .Between($"192.168.1.10:{52_000 + host}", $"52.0.0.{host}:443") with { SessionRelativeTicks = 200 + (long)ordinal });
+                ordinal++;
+            }
+        }
+
+        rows.Add(Transfer(900, ObservationKind.Send, AccountingSide.SendSide, 100, 310, ordinal)
+            .Between("192.168.1.10:53000", "52.0.0.1:443") with { SessionRelativeTicks = 900 });
+        return [.. rows];
+    }
+
+    private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
+        workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 
     /// <summary>
     /// browser.exe's TCP to four hosts, two connections to the busiest, and its QUIC to that host too; updater.exe's TCP to

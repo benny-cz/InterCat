@@ -29,7 +29,7 @@ public sealed class OverviewDisclosureTests
         Assert.All(disclosures[..2], disclosure =>
         {
             Assert.StartsWith("The graph shows admitted paired TCP", disclosure, StringComparison.Ordinal);
-            Assert.Contains("each process's connections to other hosts drawn to one Other hosts node;", disclosure,
+            Assert.Contains("each process's connections to other hosts drawn to one Other hosts node, or to its busiest hosts on their own;", disclosure,
                 StringComparison.Ordinal);
             Assert.Contains("The timeline includes every observed row.", disclosure, StringComparison.Ordinal);
             Assert.EndsWith("TCP and UDP records are completed transfers with no operation rung.", disclosure,

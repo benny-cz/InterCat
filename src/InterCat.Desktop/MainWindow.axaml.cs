@@ -4291,6 +4291,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         var replacement = new WorkspaceViewModel(shownSnapshot,
             WorkspaceCollectors.Identity(WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), collectorsAside), evidence,
             savedNavigation is null ? null : workspace.LaidOutPositions, pins);
+        // A newer publication of the session shown keeps Other hosts opened, as it keeps the graph's layout (§6.3).
+        if (savedNavigation is not null && workspace.HostsOpened)
+        {
+            replacement.HostsOpened = true;
+        }
+
         if (restored is { } settings)
         {
             replacement.RankBy = settings.RankBy;
