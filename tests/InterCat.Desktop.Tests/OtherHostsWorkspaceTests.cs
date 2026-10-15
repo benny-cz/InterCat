@@ -116,9 +116,10 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Other hosts", workspace.SelectionTitle);
         Assert.Equal("Where the connections of 1 drawn process ran with no process of this capture at their other end, most "
             + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Who is at these addresses is not "
-            + "observed. Its hosts are listed below, the busiest first; choosing one finds the processes that reached it, as "
-            + "searching its address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, "
-            + "not relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
+            + "observed. Its hosts are listed below, the busiest first: the timeline highlights the records of every connection "
+            + "to the one chosen and E lists them, and Enter on one finds the processes that reached it, as searching its "
+            + "address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, not "
+            + "relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
             workspace.SelectionSubtitle);
         Assert.Equal(["142.250.1.1 | 1 TCP connection · port 443 · 2 records", "20.42.65.1 | 1 TCP connection · port 443 · 1 record",
                 "8.8.8.8 | 1 UDP flow · port 53 · 1 record"],
@@ -197,7 +198,7 @@ public sealed class OtherHostsWorkspaceTests
         // Chosen, it lists every one of them in the inspector, beneath a description that says so, ties by address.
         workspace.SelectGraphNode(hub.Key);
         Assert.Contains("2 UDP flows from 2 processes with 2 hosts. Who is at these addresses is not observed. Its hosts are "
-            + "listed below, the busiest first;", workspace.SelectionSubtitle, StringComparison.Ordinal);
+            + "listed below, the busiest first:", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal(
             [
                 "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · port 443 · 5 records",
@@ -349,8 +350,8 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal([.. Enumerable.Range(1, 10).Select(index => $"52.0.0.{index}")], workspace.HostRows.Select(row => row.Address));
         Assert.Equal("2 TCP connections from 2 processes · port 443 · 11 records", workspace.HostRows[0].Detail);
         Assert.Equal("1 TCP connection from 1 process · port 443 · 1 record", workspace.HostRows[^1].Detail);
-        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · port 443 · 11 records. Press Enter to find the processes "
-            + "that reached it.", workspace.HostRows[0].AccessibleName);
+        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · port 443 · 11 records. Press E to list the records of its "
+            + "connections, or Enter to find the processes that reached it.", workspace.HostRows[0].AccessibleName);
         Assert.False(workspace.HasHostsNote);
         Assert.Equal(string.Empty, workspace.HostsNote);
 
@@ -396,8 +397,9 @@ public sealed class OtherHostsWorkspaceTests
 
         Assert.Equal("Its host", workspace.HostsHeading);
         Assert.Equal(["52.0.1.1 | 1 TCP connection · port 443 · 3 records"], workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
-        Assert.Contains(" Its host is listed below; choosing it finds the processes that reached it, as searching its address "
-            + "(Ctrl+F) does. ", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Contains(" Its host is listed below: chosen, the timeline highlights the records of every connection to it and E "
+            + "lists them, and Enter on it finds the processes that reached it, as searching its address (Ctrl+F) does. ",
+            workspace.SelectionSubtitle, StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "§6.3: Other hosts lists its busiest hundred hosts, and says how many more there are and how to find them")]
@@ -585,6 +587,75 @@ public sealed class OtherHostsWorkspaceTests
         await workspace.IntervalReady;
         await workspace.HostRecordsReady;
         Assert.Equal("No record of a connection to it in this interval", workspace.EvidenceSummary);
+    });
+
+    [Fact(DisplayName = "§6.4: a host chosen in Other hosts' list is the records of every connection to it, as one drawn on its own is, kept as the list restates its rows and let go by any node chosen in the graph")]
+    public void AHostChosenInOtherHostsListIsItsRecords() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+        string browser = workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key;
+
+        // None is chosen until Other hosts is, nor a host it does not list.
+        workspace.ChosenHostRow = new HostRow("52.0.0.9", string.Empty);
+        Assert.Null(workspace.ChosenHostRow);
+        workspace.SelectGraphNode(hub.Key);
+        workspace.ChosenHostRow = new HostRow("192.0.2.1", "listed nowhere");
+        Assert.Null(workspace.ChosenHostRow);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+
+        // Chosen there, a host the graph never draws on its own is its connections' records: the card counts them, and the
+        // timeline highlights them.
+        workspace.ChosenHostRow = workspace.HostRows.Single(row => row.Address == "52.0.0.9");
+        Assert.Equal("52.0.0.9", workspace.ChosenHostRow?.Address);
+        Assert.Equal(("Selected host", "Reading the records of its connections…"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await workspace.HostRecordsReady;
+        Assert.Equal("2 records of 1 TCP connection from 1 process · 200 B sent, no receive recorded", workspace.EvidenceSummary);
+        await workspace.HighlightReady;
+        Assert.Equal(2, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.EndsWith(" · selection highlighted: connections to 52.0.0.9", workspace.TimelineCaption, StringComparison.Ordinal);
+
+        // The list given new rows, as when Other hosts opens, writes back that none is chosen; the choice is kept.
+        void LetGo(object? sender, System.ComponentModel.PropertyChangedEventArgs changed)
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.HostRows))
+            {
+                workspace.ChosenHostRow = null;
+            }
+        }
+
+        workspace.PropertyChanged += LetGo;
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        workspace.PropertyChanged -= LetGo;
+        Assert.Equal("52.0.0.9", workspace.ChosenHostRow?.Address);
+
+        // E lists them.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(2, workspace.RungRows.Count);
+        Assert.StartsWith("Records of the connections to 52.0.0.9", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+
+        // Let go, the card counts the rung's records again; any node chosen in the graph, Other hosts included, lets it go.
+        workspace.SelectGraphNode(hub.Key);
+        workspace.ChosenHostRow = workspace.HostRows[0];
+        workspace.ChosenHostRow = null;
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+        workspace.ChosenHostRow = workspace.HostRows[0];
+        workspace.SelectGraphNode(hub.Key);
+        Assert.Null(workspace.ChosenHostRow);
+        workspace.ChosenHostRow = workspace.HostRows[0];
+        workspace.SelectGraphNode(browser);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        workspace.SelectGraphNode(hub.Key);
+        Assert.Null(workspace.ChosenHostRow);
+        Assert.Equal("Records E lists", workspace.EvidenceHeading);
     });
 
     [Fact(DisplayName = "§6.4: a chosen host whose records cannot be read says so, never that it holds none")]

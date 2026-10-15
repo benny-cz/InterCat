@@ -13,8 +13,9 @@ namespace InterCat.Desktop;
 /// them (P7). A click on an edge chooses its process, and a double click opens it, whose rung lists each connection.
 /// Enter or a double click on Other hosts opens it into its busiest hosts, each drawn on its own and named by its
 /// address (§6.3's explicit expansion), and on any of them folds them back. Chosen, it lists in the inspector every host it
-/// stands for, the busiest first, and a host chosen there finds the processes that reached it. A host drawn on its own,
-/// chosen, has its connections' records highlighted, counted and listed by E (WorkspaceViewModel.HostRecords.cs).
+/// stands for, the busiest first, and Enter on one there finds the processes that reached it. A host chosen there, or
+/// drawn on its own and chosen, has its connections' records highlighted, counted and listed by E
+/// (WorkspaceViewModel.HostRecords.cs).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -236,10 +237,11 @@ public sealed partial class WorkspaceViewModel
         string listed = OtherHost.Of(links).Count switch
         {
             0 => string.Empty,
-            1 => "Its host is listed below; choosing it finds the processes that reached it, as searching its address "
+            1 => "Its host is listed below: chosen, the timeline highlights the records of every connection to it and E lists "
+                + "them, and Enter on it finds the processes that reached it, as searching its address (Ctrl+F) does. ",
+            _ => "Its hosts are listed below, the busiest first: the timeline highlights the records of every connection to the "
+                + "one chosen and E lists them, and Enter on one finds the processes that reached it, as searching its address "
                 + "(Ctrl+F) does. ",
-            _ => "Its hosts are listed below, the busiest first; choosing one finds the processes that reached it, as "
-                + "searching its address (Ctrl+F) does. ",
         };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
@@ -327,10 +329,23 @@ public sealed partial class WorkspaceViewModel
         return true;
     }
 
-    /// <summary>Says the host list changed, after the choice or the drawing did.</summary>
+    /// <summary>
+    /// Says the host list changed, after the choice or the drawing did. A list given new rows lets its choice go and writes
+    /// that back as none chosen; the host chosen is kept by its address and chosen again among them.
+    /// </summary>
     private void RaiseHostListChanged()
     {
-        OnPropertyChanged(nameof(HostRows));
+        restatingHosts = true;
+        try
+        {
+            OnPropertyChanged(nameof(HostRows));
+        }
+        finally
+        {
+            restatingHosts = false;
+        }
+
+        OnPropertyChanged(nameof(ChosenHostRow));
         OnPropertyChanged(nameof(ListsHosts));
         OnPropertyChanged(nameof(HostsHeading));
         OnPropertyChanged(nameof(HostsNote));

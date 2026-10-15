@@ -86,8 +86,9 @@ public sealed record CellRecordRow(string Title, string Detail, string Glyph, st
 /// </summary>
 public sealed record HostRow(string Address, string Detail) : IAccessibleRow
 {
-    /// <summary>The host read aloud, with what Enter does on it.</summary>
-    public string AccessibleName => $"{Address}, {Detail}. Press Enter to find the processes that reached it.";
+    /// <summary>The host read aloud, with what E and Enter do on it.</summary>
+    public string AccessibleName =>
+        $"{Address}, {Detail}. Press E to list the records of its connections, or Enter to find the processes that reached it.";
 }
 
 /// <summary>

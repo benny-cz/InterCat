@@ -6,17 +6,67 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// A host Other hosts was opened into, chosen (§6.3, §6.4, I5): its records are those of every connection to its address,
-/// whichever process held it, as its scope reads them (<see cref="HostScopeKeys"/>). The timeline highlights them, the
-/// inspector's card counts them and what they measured over the scope the rows count, and E lists them. Who is at the
-/// address is not observed (P7).
+/// A host chosen (§6.3, §6.4, I5) - drawn on its own and chosen in the graph, or chosen in the list Other hosts gives the
+/// inspector, which holds the many hosts the graph does not draw on their own: its records are those of every connection
+/// to its address, whichever process held it, as its scope reads them (<see cref="HostScopeKeys"/>). The timeline
+/// highlights them, the inspector's card counts them and what they measured over the scope the rows count, and E lists
+/// them. Who is at the address is not observed (P7).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
     private HostRecordsLoad? hostRecords;
 
+    // The address of the host chosen in Other hosts' list, while Other hosts stays chosen; a node chosen in the graph, Other
+    // hosts again included, lets it go.
+    private string? chosenListedHost;
+
+    // While Other hosts' list restates its rows it lets its choice go for a moment, which is not the person's.
+    private bool restatingHosts;
+
     /// <summary>The host drawn on its own that is chosen in the graph; null for any other selection.</summary>
     private GraphDisplayNode? SelectedHost => SelectedCluster is { Kind: GraphNodeKind.Host } host ? host : null;
+
+    /// <summary>
+    /// The host chosen in the list Other hosts gives the inspector: what the card counts, the timeline highlights and E
+    /// lists, as for a host drawn on its own and chosen in the graph. Null while none is, or Other hosts is not chosen.
+    /// When the list restates its rows, the host chosen is chosen again among them by its address.
+    /// </summary>
+    public HostRow? ChosenHostRow
+    {
+        get => ListedChoice() is { } address
+            ? HostRows.FirstOrDefault(row => string.Equals(row.Address, address, StringComparison.Ordinal))
+            : null;
+        set
+        {
+            if (restatingHosts)
+            {
+                return;
+            }
+
+            string? address = value is not null && Listed(value.Address) ? value.Address : null;
+            if (address == chosenListedHost)
+            {
+                return;
+            }
+
+            chosenListedHost = address;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(EvidenceHeading));
+            OnPropertyChanged(nameof(EvidenceSummary));
+            UpdateHighlight();
+            FollowDescribedBytes();
+        }
+    }
+
+    /// <summary>The address of the host chosen, drawn on its own in the graph or in Other hosts' list; null for any other selection.</summary>
+    private string? ChosenHostAddress => SelectedHost?.Label ?? ListedChoice();
+
+    /// <summary>The host chosen in Other hosts' list while Other hosts is chosen and still lists it; null otherwise.</summary>
+    private string? ListedChoice() => chosenListedHost is { } address && Listed(address) ? address : null;
+
+    /// <summary>Whether Other hosts is chosen and its list holds the host at <paramref name="address"/>.</summary>
+    private bool Listed(string address) =>
+        ListedHosts().Take(HostsListed).Any(host => string.Equals(host.Address, address, StringComparison.Ordinal));
 
     /// <summary>Whether this workspace reads a chosen host's records: a real session with the directory to read them from.</summary>
     private bool ReadsHostRecords => realOverview && evidenceSource is not null;
@@ -32,9 +82,9 @@ public sealed partial class WorkspaceViewModel
     /// The card's count of the chosen host's records over the scope the rows count, and what they measured: "11 records of
     /// 2 TCP connections from 2 processes · 1,210 B sent, no receive recorded". Until they are read, it says so.
     /// </summary>
-    private string HostEvidence(GraphDisplayNode host)
+    private string HostEvidence(string address)
     {
-        if (hostRecords is not { } load || load.Address != host.Label || load.Scope != CountedScope || load.List is null && load.Problem is null)
+        if (hostRecords is not { } load || load.Address != address || load.Scope != CountedScope || load.List is null && load.Problem is null)
         {
             return "Reading the records of its connections…";
         }
@@ -57,19 +107,19 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private void FollowHostRecords()
     {
-        if (disposed || !ReadsHostRecords || SelectedHost is not { } host)
+        if (disposed || !ReadsHostRecords || ChosenHostAddress is not { } host)
         {
             CancelHostRecords();
             return;
         }
 
-        if (hostRecords is { } known && known.Address == host.Label && known.Scope == CountedScope)
+        if (hostRecords is { } known && known.Address == host && known.Scope == CountedScope)
         {
             return;
         }
 
         CancelHostRecords();
-        var load = new HostRecordsLoad(host.Label, CountedScope);
+        var load = new HostRecordsLoad(host, CountedScope);
         hostRecords = load;
         HostRecordsReady = LoadHostRecordsAsync(load);
     }

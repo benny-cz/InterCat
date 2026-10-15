@@ -8,6 +8,7 @@ using Avalonia.Input;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -224,8 +225,8 @@ public sealed class OtherHostsWindowTests
             Assert.Equal("Its 2 hosts, the busiest first", window.GetControl<TextBlock>("HostsHeadingText").Text);
             Assert.False(window.GetControl<TextBlock>("HostsNoteText").IsVisible);
             Assert.Equal(2, hosts.ItemCount);
-            Assert.Equal("142.250.1.1, 1 TCP connection · port 443 · 1 record. Press Enter to find the processes that reached it.",
-                AutomationProperties.GetName(hosts.ContainerFromIndex(0)!));
+            Assert.Equal("142.250.1.1, 1 TCP connection · port 443 · 1 record. Press E to list the records of its connections, or "
+                + "Enter to find the processes that reached it.", AutomationProperties.GetName(hosts.ContainerFromIndex(0)!));
             Save(window, "inspector-other-hosts.png");
 
             // Enter on one finds the processes that reached it, as a search for its address does; the keyboard stays on the
@@ -242,13 +243,23 @@ public sealed class OtherHostsWindowTests
             Assert.Equal("8.8.8.8", search.Text);
             Assert.True(hosts.IsKeyboardFocusWithin);
 
-            // E lists the level's records, which hides the list, so the keyboard goes to their table rather than nowhere.
+            // The host the keyboard moved to is chosen: the card counts its records, and E lists them, which hides the list,
+            // so the keyboard goes to their table rather than nowhere.
+            Assert.Equal("8.8.8.8", workspace.ChosenHostRow?.Address);
+            Assert.Equal("8.8.8.8", Assert.IsType<HostRow>(hosts.SelectedItem).Address);
+            await workspace.HostRecordsReady;
+            Dispatch();
+            Assert.Equal(("Selected host", "1 record of 1 UDP flow from 1 process · 40 B sent, no receive recorded"),
+                (window.GetControl<TextBlock>("EvidenceHeadingText").Text, window.GetControl<TextBlock>("EvidenceSummaryText").Text));
             workspace.SearchText = string.Empty;
             window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
             Dispatch();
             Assert.True(workspace.IsEvidenceRung);
             Assert.False(panel.IsEffectivelyVisible);
             Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+            await workspace.EvidenceReady;
+            Assert.StartsWith("Records of the connections to 8.8.8.8", workspace.EvidenceScopeText, StringComparison.Ordinal);
+            Assert.Single(workspace.RungRows);
             workspace.ReturnTo(0);
             Dispatch();
 
@@ -310,6 +321,84 @@ public sealed class OtherHostsWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.4: a host clicked in Other hosts' list stays chosen there as Other hosts opens and its list is given new rows")]
+    public async Task AListedHostStaysChosenAsTheListChanges()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+            workspace.SelectGraphNode(hub.Key);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            ListBox hosts = window.GetControl<ListBox>("HostList");
+            Assert.Equal(10, hosts.ItemCount);
+
+            // A click on the ninth host, which the graph never draws on its own, chooses it.
+            Control ninth = hosts.ContainerFromIndex(8)!;
+            ninth.BringIntoView();
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Point at = At(ninth, window, new Point(ninth.Bounds.Width / 2, ninth.Bounds.Height / 2));
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Dispatch();
+            Assert.Equal("52.0.0.9", workspace.ChosenHostRow?.Address);
+
+            // Opened, Other hosts lists the two hosts it still stands for, now one process's, so each row says less; the one
+            // chosen is still chosen there.
+            Assert.Equal("1 TCP connection from 1 process · port 443 · 2 records", workspace.ChosenHostRow?.Detail);
+            Assert.True(workspace.OpenGraphNode(hub.Key));
+            await workspace.LayoutReady;
+            Dispatch();
+            Assert.Equal(2, hosts.ItemCount);
+            Assert.Equal(new HostRow("52.0.0.9", "1 TCP connection · port 443 · 2 records"), Assert.IsType<HostRow>(hosts.SelectedItem));
+            Assert.Equal("52.0.0.9", workspace.ChosenHostRow?.Address);
+            await workspace.HostRecordsReady;
+            Dispatch();
+            Assert.Equal("2 records of 1 TCP connection from 1 process · 200 B sent, no receive recorded",
+                window.GetControl<TextBlock>("EvidenceSummaryText").Text);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// browser.exe's TCP to ten hosts, 52.0.0.1 to 52.0.0.10, ten records to the first down to one to the last; and
+    /// updater.exe's one record to the first, so Other hosts stands for two processes until it is opened and one after.
+    /// </summary>
+    private static ObservationRowV1[] TenHosts()
+    {
+        ulong ordinal = 1;
+        var rows = new List<ObservationRowV1>
+        {
+            Lifecycle(1, ObservationKind.Create, 300, ordinal++) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 310, ordinal++) with { ResourceName = @"C:\Apps\updater.exe", SessionRelativeTicks = 110 },
+        };
+        for (int host = 1; host <= 10; host++)
+        {
+            for (int record = 0; record <= 10 - host; record++)
+            {
+                rows.Add(Transfer(200 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 300, ordinal)
+                    .Between($"192.168.1.10:{52_000 + host}", $"52.0.0.{host}:443") with { SessionRelativeTicks = 200 + (long)ordinal });
+                ordinal++;
+            }
+        }
+
+        rows.Add(Transfer(900, ObservationKind.Send, AccountingSide.SendSide, 100, 310, ordinal)
+            .Between("192.168.1.10:53000", "52.0.0.1:443") with { SessionRelativeTicks = 900 });
+        return [.. rows];
     }
 
     private static Point At(Control control, Window window, Point point) => control.TranslatePoint(point, window)!.Value;

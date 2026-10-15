@@ -776,14 +776,16 @@
               <Button x:Name="ShowChosenRecordsButton" Margin="0,6,0,0" Content="Show their records (Enter)"
                       Click="ShowChosenRecords" IsVisible="{Binding HasMultiSelection}"
                       AutomationProperties.HelpText="Show the selected processes' records" />
-              <!-- §6.3: Other hosts chosen lists every host it stands for, the busiest first; Enter or a double click on one
-                   finds the processes that reached it, as a search for its address does, and the keyboard stays on the
-                   list, so the next host is a key away. -->
+              <!-- §6.3: Other hosts chosen lists every host it stands for, the busiest first. The one chosen is the records
+                   of every connection to it, which the timeline highlights, the card counts and E lists (§6.4); Enter or a
+                   double click on one finds the processes that reached it, as a search for its address does, and the
+                   keyboard stays on the list, so the next host is a key away. -->
               <StackPanel x:Name="HostsPanel" Spacing="3" Margin="0,10,0,0" IsVisible="{Binding ListsHosts}">
                 <TextBlock x:Name="HostsHeadingText" Text="{Binding HostsHeading}" Classes="muted" />
-                <ListBox x:Name="HostList" ItemsSource="{Binding HostRows}" Background="Transparent" BorderThickness="0"
+                <ListBox x:Name="HostList" ItemsSource="{Binding HostRows}" SelectedItem="{Binding ChosenHostRow, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0"
                          DoubleTapped="FindListedHost" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         AutomationProperties.Name="Hosts Other hosts stands for; Enter finds the processes that reached the selected one">
+                         AutomationProperties.Name="Hosts Other hosts stands for; E lists the records of the selected one's connections, and Enter finds the processes that reached it">
                   <!-- At most a hundred hosts, laid out whole within the inspector's own scroll, which the wheel scrolls. -->
                   <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>

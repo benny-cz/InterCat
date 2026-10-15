@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 564 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 565 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -55,7 +55,7 @@ two real sessions, one sparse and one dense. Since revision 545 it relates proce
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
 revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
-processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Hubs draw as stars with components apart, executable groups read as file names,
+processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there, and since revision 565 one chosen in the list it gives the inspector, is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint, and since revision 551 processes by an address they reached, which since revision 553 the graph marks; endpoint strings and addresses can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
@@ -96,6 +96,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 565 — a host chosen in Other hosts' list is its records (§6.3, §6.4, I5):**
+  - Only a host drawn on its own could be read; the many more Other hosts lists could only be searched.
+  - A host chosen in the list is highlighted, counted and listed by E as one drawn on its own is; Enter still
+    finds who reached it, and the choice is kept by address while the list restates its rows.
+  - Debug and Release each ran 2,431 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 10 mutations was caught: a host chosen in Other hosts' list let go while the list restates its rows, in
+    two ways, or not chosen again among them; kept while another node is chosen, or when Other hosts is chosen
+    again; never what the window reads, never highlighted, never read, or not headed so on screen; and the list's
+    choice never the window's. A list keeps its choice by equality, so choosing the host again matters only when its
+    row reads differently, as when Other hosts, opened, stands for fewer processes; the mutation dropping it was
+    first missed, and a test now opens Other hosts with a host chosen.
 
 - **Revision 564 — a host chosen in the window is its records (§6.3, §6.4, I5):**
   - A host drawn on its own, chosen, highlighted nothing, and E listed the rung's every record.
