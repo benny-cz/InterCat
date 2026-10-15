@@ -374,6 +374,59 @@ public sealed class OtherHostsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: under a byte ranking the window's Other hosts list is ranked by the bytes its hosts' connections carried once they are read")]
+    public async Task OtherHostsListFollowsAByteRanking()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, CarriedRows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+            Dispatch();
+            ListBox hosts = window.GetControl<ListBox>("HostList");
+            TextBlock heading = window.GetControl<TextBlock>("HostsHeadingText");
+            Assert.Equal("52.0.0.1", Assert.IsType<HostRow>(hosts.Items[0]).Address);
+
+            // Ranked by bytes sent, the list shows the host its process sent the most to first once their bytes are read.
+            workspace.RankBy = RankingMetric.BytesSent;
+            await workspace.HostTrafficReady;
+            Dispatch();
+            Assert.Equal("Its 3 hosts, the most bytes sent first", heading.Text);
+            Assert.Equal(["52.0.0.2", "52.0.0.1", "52.0.0.3"], hosts.Items.Cast<HostRow>().Select(row => row.Address));
+
+            // The heading is said whole at the inspector's width, on as many lines as it takes, never run past its bounds.
+            _ = window.CaptureRenderedFrame();
+            Assert.True(heading.TextLayout.Width <= heading.Bounds.Width + 0.5,
+                $"The heading's {heading.TextLayout.Width} px run past its {heading.Bounds.Width} px.");
+            Save(window, "inspector-hosts-by-bytes.png");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// browser.exe's TCP to three hosts: 52.0.0.1, three sends of 10 B; 52.0.0.2, one of 5,000 B; and 52.0.0.3, two that
+    /// stated no size.
+    /// </summary>
+    private static ObservationRowV1[] CarriedRows() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+        .. Enumerable.Range(0, 3).Select(index => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 10, 300,
+            (ulong)(10 + index)).Between("192.168.1.10:52001", "52.0.0.1:443") with { SessionRelativeTicks = (10 + index) * 100 }),
+        Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 5_000, 300, 20).Between("192.168.1.10:52002", "52.0.0.2:443")
+            with { SessionRelativeTicks = 2_000 },
+        .. Enumerable.Range(0, 2).Select(index => Transfer(30 + index, ObservationKind.Send, AccountingSide.SendSide, null, 300,
+            (ulong)(30 + index)).Between("192.168.1.10:52003", "52.0.0.3:443") with { SessionRelativeTicks = (30 + index) * 100 }),
+    ];
+
     /// <summary>
     /// browser.exe's TCP to ten hosts, 52.0.0.1 to 52.0.0.10, ten records to the first down to one to the last; and
     /// updater.exe's one record to the first, so Other hosts stands for two processes until it is opened and one after.

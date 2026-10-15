@@ -215,6 +215,15 @@ public sealed class SessionEvidenceSource(
             cancellationToken);
 
     /// <summary>
+    /// What the connections of each host <paramref name="links"/> reached carried, over the whole session, ranked by
+    /// <paramref name="metric"/>: for Other hosts' list to rank its hosts by bytes.
+    /// </summary>
+    public Task<IReadOnlyList<HostTraffic>> HostTrafficAsync(IReadOnlyCollection<HostLink> links, RankingMetric metric,
+        CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHostTraffic.Of(Store(), links, metric, policy: Policy, cancellationToken: cancellationToken),
+            cancellationToken);
+
+    /// <summary>
     /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density
     /// (<see cref="SessionHttpExchanges.Spans"/>).
     /// </summary>

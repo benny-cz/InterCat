@@ -790,7 +790,7 @@
                    double click on one finds the processes that reached it, as a search for its address does, and the
                    keyboard stays on the list, so the next host is a key away. -->
               <StackPanel x:Name="HostsPanel" Spacing="3" Margin="0,10,0,0" IsVisible="{Binding ListsHosts}">
-                <TextBlock x:Name="HostsHeadingText" Text="{Binding HostsHeading}" Classes="muted" />
+                <TextBlock x:Name="HostsHeadingText" Text="{Binding HostsHeading}" Classes="muted" TextWrapping="Wrap" />
                 <ListBox x:Name="HostList" ItemsSource="{Binding HostRows}" SelectedItem="{Binding ChosenHostRow, Mode=TwoWay}"
                          Background="Transparent" BorderThickness="0"
                          DoubleTapped="FindListedHost" ScrollViewer.VerticalScrollBarVisibility="Disabled"

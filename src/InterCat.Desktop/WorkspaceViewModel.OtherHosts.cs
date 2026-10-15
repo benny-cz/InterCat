@@ -239,9 +239,9 @@ public sealed partial class WorkspaceViewModel
             0 => string.Empty,
             1 => "Its host is listed below: chosen, the timeline highlights the records of every connection to it and E lists "
                 + "them, and Enter on it finds the processes that reached it, as searching its address (Ctrl+F) does. ",
-            _ => "Its hosts are listed below, the busiest first: the timeline highlights the records of every connection to the "
-                + "one chosen and E lists them, and Enter on one finds the processes that reached it, as searching its address "
-                + "(Ctrl+F) does. ",
+            _ => "Its hosts are listed below, ranked as their heading says: the timeline highlights the records of every "
+                + "connection to the one chosen and E lists them, and Enter on one finds the processes that reached it, as "
+                + "searching its address (Ctrl+F) does. ",
         };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
@@ -281,36 +281,45 @@ public sealed partial class WorkspaceViewModel
     {
         get
         {
-            IReadOnlyList<OtherHost> hosts = ListedHosts();
             bool several = SelectedCluster is { ConnectedProcesses: > 1 };
-            return [.. hosts.Take(HostsListed).Select(host => new HostRow(host.Address,
-                (AddressScope.Of(host.Address) is { } scope ? scope + " · " : string.Empty) + HostLinkText.Reached(host, several)
-                    + (host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(host.Ports))
-                    + " · " + CountText.Of(host.Records, "record")))];
+            return [.. RankedHosts().Take(HostsListed).Select(entry => new HostRow(entry.Host.Address,
+                (AddressScope.Of(entry.Host.Address) is { } scope ? scope + " · " : string.Empty)
+                    + HostLinkText.Reached(entry.Host, several)
+                    + (entry.Host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(entry.Host.Ports))
+                    + " · " + CountText.Of(entry.Host.Records, "record")
+                    + (entry.Traffic is { } traffic ? " · " + traffic.Transfers(CultureInfo.CurrentCulture) : string.Empty)))];
         }
     }
 
     /// <summary>Whether the inspector lists hosts: Other hosts is chosen, and stands for some.</summary>
     public bool ListsHosts => ListedHosts().Count > 0;
 
-    /// <summary>The host list's heading: "Its 12 hosts, the busiest first", or "Its busiest 100 of 1,234 hosts".</summary>
+    /// <summary>
+    /// The host list's heading: "Its 12 hosts, the busiest first", "Its busiest 100 of 1,234 hosts", or under a byte ranking
+    /// "Its 12 hosts, the most bytes sent first".
+    /// </summary>
     public string HostsHeading => ListedHosts() switch
     {
         { Count: 0 } => string.Empty,
         { Count: 1 } => "Its host",
-        { Count: var count } when count <= HostsListed =>
-            string.Create(CultureInfo.CurrentCulture, $"Its {count:N0} hosts, the busiest first"),
-        { Count: var count } => string.Create(CultureInfo.CurrentCulture, $"Its busiest {HostsListed:N0} of {count:N0} hosts"),
+        { Count: var count } => HostRankingWords(count),
     };
 
-    /// <summary>What the host list leaves out, and how to reach it; empty when it lists every host.</summary>
-    public string HostsNote => ListedHosts() is { Count: > HostsListed } hosts
-        ? string.Create(CultureInfo.CurrentCulture, $"{hosts.Count - HostsListed:N0} more, quieter. Searching an address ")
-            + "(Ctrl+F) finds the processes that reached any of them."
-        : string.Empty;
+    /// <summary>
+    /// What the host list leaves out, and how to reach it, and why its bytes could not be read where they could not; empty
+    /// when it lists every host as ranked.
+    /// </summary>
+    public string HostsNote => string.Join(" ", new[]
+    {
+        HostTrafficProblem,
+        ListedHosts() is { Count: > HostsListed } hosts
+            ? string.Create(CultureInfo.CurrentCulture, $"{hosts.Count - HostsListed:N0} more, quieter. Searching an address ")
+                + "(Ctrl+F) finds the processes that reached any of them."
+            : string.Empty,
+    }.Where(part => part.Length > 0));
 
-    /// <summary>Whether the host list says what it leaves out.</summary>
-    public bool HasHostsNote => ListedHosts().Count > HostsListed;
+    /// <summary>Whether the host list says what it leaves out, or why its bytes could not be read.</summary>
+    public bool HasHostsNote => HostsNote.Length > 0;
 
     /// <summary>
     /// Finds the processes that reached a host the inspector lists, as a search for its address does: the search box takes
@@ -335,6 +344,7 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private void RaiseHostListChanged()
     {
+        FollowHostTraffic();
         restatingHosts = true;
         try
         {

@@ -116,10 +116,10 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Other hosts", workspace.SelectionTitle);
         Assert.Equal("Where the connections of 1 drawn process ran with no process of this capture at their other end, most "
             + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Who is at these addresses is not "
-            + "observed. Its hosts are listed below, the busiest first: the timeline highlights the records of every connection "
-            + "to the one chosen and E lists them, and Enter on one finds the processes that reached it, as searching its "
-            + "address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, not "
-            + "relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
+            + "observed. Its hosts are listed below, ranked as their heading says: the timeline highlights the records of every "
+            + "connection to the one chosen and E lists them, and Enter on one finds the processes that reached it, as "
+            + "searching its address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, "
+            + "not relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
             workspace.SelectionSubtitle);
         Assert.Equal(["142.250.1.1 | 1 TCP connection · port 443 · 2 records", "20.42.65.1 | 1 TCP connection · port 443 · 1 record",
                 "8.8.8.8 | 1 UDP flow · port 53 · 1 record"],
@@ -198,7 +198,7 @@ public sealed class OtherHostsWorkspaceTests
         // Chosen, it lists every one of them in the inspector, beneath a description that says so, ties by address.
         workspace.SelectGraphNode(hub.Key);
         Assert.Contains("2 UDP flows from 2 processes with 2 hosts. Who is at these addresses is not observed. Its hosts are "
-            + "listed below, the busiest first:", workspace.SelectionSubtitle, StringComparison.Ordinal);
+            + "listed below, ranked as their heading says:", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal(
             [
                 "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · port 443 · 5 records",
@@ -667,6 +667,58 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Records E lists", workspace.EvidenceHeading);
     });
 
+    [Fact(DisplayName = "§6.3: under a byte ranking Other hosts' list ranks its hosts by what their connections carried, each saying both directions' bytes, and says so while they are read")]
+    public void OtherHostsListFollowsAByteRanking() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, CarriedRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+        Assert.Equal(["52.0.0.1", "52.0.0.3", "52.0.0.2"], workspace.HostRows.Select(row => row.Address));
+        Assert.Equal("Its 3 hosts, the busiest first", workspace.HostsHeading);
+
+        // Ranked by bytes sent, the list says so while it reads them, then ranks its hosts by them, the one whose sends stated
+        // no size after those that did; the host chosen stays chosen.
+        workspace.ChosenHostRow = workspace.HostRows[1];
+        workspace.RankBy = RankingMetric.BytesSent;
+        Assert.Equal("Its 3 hosts, the busiest first, while their bytes sent are read", workspace.HostsHeading);
+        await workspace.HostTrafficReady;
+        Assert.Equal("Its 3 hosts, the most bytes sent first", workspace.HostsHeading);
+        Assert.Equal(
+            [
+                "52.0.0.2 | 1 TCP connection · port 443 · 1 record · 5,000 B sent, no receive recorded",
+                "52.0.0.1 | 1 TCP connection · port 443 · 3 records · 30 B sent, no receive recorded",
+                "52.0.0.3 | 1 TCP connection · port 443 · 2 records · 2 sends unmeasured, no receive recorded",
+            ],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Equal("52.0.0.3", workspace.ChosenHostRow?.Address);
+        Assert.False(workspace.HasHostsNote);
+
+        // Ranked by records again, the list is the census's again, its rows with no bytes.
+        workspace.RankBy = RankingMetric.Records;
+        Assert.Equal(["52.0.0.1", "52.0.0.3", "52.0.0.2"], workspace.HostRows.Select(row => row.Address));
+        Assert.Equal("Its 3 hosts, the busiest first", workspace.HostsHeading);
+        Assert.DoesNotContain(workspace.HostRows, row => row.Detail.Contains(" sent", StringComparison.Ordinal));
+    });
+
+    [Fact(DisplayName = "§6.3: Other hosts' list whose bytes cannot be read keeps the busiest first and says why")]
+    public void OtherHostsListSaysItsBytesCouldNotBeRead() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, CarriedRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+        Directory.Delete(session.Path, recursive: true);
+        workspace.RankBy = RankingMetric.BytesReceived;
+        await workspace.HostTrafficReady;
+        Assert.Equal("Its 3 hosts, the busiest first; their bytes received could not be read", workspace.HostsHeading);
+        Assert.Equal(["52.0.0.1", "52.0.0.3", "52.0.0.2"], workspace.HostRows.Select(row => row.Address));
+        Assert.True(workspace.HasHostsNote);
+        Assert.StartsWith("Their bytes received could not be read: ", workspace.HostsNote, StringComparison.Ordinal);
+    });
+
     [Fact(DisplayName = "§6.4: a chosen host whose records cannot be read says so, never that it holds none")]
     public void AChosenHostsUnreadableRecordsAreSaidSo() => SingleThreadedContext.Run(async () =>
     {
@@ -736,6 +788,21 @@ public sealed class OtherHostsWorkspaceTests
             with { SessionRelativeTicks = 4_000 },
         Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 70, 310, 8).Between("192.168.1.10:61000", "52.0.0.1:443")
             with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 5_000 },
+    ];
+
+    /// <summary>
+    /// browser.exe's TCP to three hosts: 52.0.0.1, three sends of 10 B; 52.0.0.2, one of 5,000 B; and 52.0.0.3, two that
+    /// stated no size. Its busiest by records are the quietest by bytes.
+    /// </summary>
+    private static ObservationRowV1[] CarriedRows() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+        .. Enumerable.Range(0, 3).Select(index => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 10, 300,
+            (ulong)(10 + index)).Between("192.168.1.10:52001", "52.0.0.1:443") with { SessionRelativeTicks = (10 + index) * 100 }),
+        Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 5_000, 300, 20).Between("192.168.1.10:52002", "52.0.0.2:443")
+            with { SessionRelativeTicks = 2_000 },
+        .. Enumerable.Range(0, 2).Select(index => Transfer(30 + index, ObservationKind.Send, AccountingSide.SendSide, null, 300,
+            (ulong)(30 + index)).Between("192.168.1.10:52003", "52.0.0.3:443") with { SessionRelativeTicks = (30 + index) * 100 }),
     ];
 
     /// <summary>

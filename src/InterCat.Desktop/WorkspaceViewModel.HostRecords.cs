@@ -66,7 +66,7 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>Whether Other hosts is chosen and its list holds the host at <paramref name="address"/>.</summary>
     private bool Listed(string address) =>
-        ListedHosts().Take(HostsListed).Any(host => string.Equals(host.Address, address, StringComparison.Ordinal));
+        RankedHosts().Take(HostsListed).Any(entry => string.Equals(entry.Host.Address, address, StringComparison.Ordinal));
 
     /// <summary>Whether this workspace reads a chosen host's records: a real session with the directory to read them from.</summary>
     private bool ReadsHostRecords => realOverview && evidenceSource is not null;

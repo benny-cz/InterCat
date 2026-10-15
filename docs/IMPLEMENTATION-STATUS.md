@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 567 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 568 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 568 — Other hosts' list follows a byte ranking (§6.3, R21):**
+  - Under a byte ranking Other hosts still listed its hosts by records.
+  - The list is read for its hosts' traffic and ranked by it, each row with both directions' bytes; while read,
+    or where it cannot be, it keeps the records order and says why; its heading wraps whole.
+  - Debug and Release each ran 2,436 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 14 mutations was caught: the list following a ranking that is no byte ranking, or keeping the records
+    order once its bytes are read; its rows saying no bytes; its heading not naming the byte ranking, nor that the
+    bytes are being read or could not be; its note not saying why, in two ways; no read started as the list changes
+    or as the rail's ranking does; a read's bytes or its problem never kept; the window's list not told when they
+    are; and its heading run past the inspector's edge.
 
 - **Revision 567 — other hosts ranked by bytes (§6.3, R18, R21):**
   - Which host a machine sent the most to, or received the most from, took reading each connection in turn.
