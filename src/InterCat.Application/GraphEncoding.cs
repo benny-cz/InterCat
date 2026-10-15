@@ -13,7 +13,8 @@ public static class GraphEncoding
     /// <summary>
     /// The scale a node's size is read against: the busiest node the rung draws for itself. A focused rung's context node
     /// counts the rest of the machine, which is not what the rung measures, so it neither sets the scale nor is sized by it;
-    /// nor does the Other hosts node, a resource the drawn processes' connections run to, measured by none of them.
+    /// nor do the Other hosts node and the hosts it was opened into, resources the drawn processes' connections run to,
+    /// measured by none of them.
     /// </summary>
     public static long NodeScale(GraphDisplay display)
     {
@@ -23,7 +24,7 @@ public static class GraphEncoding
         for (int index = 0; index < display.Nodes.Count; index++)
         {
             GraphDisplayNode node = display.Nodes[index];
-            if (node.Kind is not (GraphNodeKind.Context or GraphNodeKind.OtherHosts) && node.Weight > scale)
+            if (node.Kind is not (GraphNodeKind.Context or GraphNodeKind.OtherHosts or GraphNodeKind.Host) && node.Weight > scale)
             {
                 scale = node.Weight;
             }
@@ -35,8 +36,9 @@ public static class GraphEncoding
     /// <summary>
     /// A node's radius in logical pixels: 6 + 10 × intensity of its incident metric, floor 6 so a quiet participant
     /// stays selectable, plus 3 for an aggregate, whose stack of rims needs the room. A context node is drawn at the
-    /// aggregate floor whatever it holds, since its activity is outside the scale (<see cref="NodeScale"/>), and the Other
-    /// hosts node at the largest a process can be drawn, the hub its edges meet at.
+    /// aggregate floor whatever it holds, since its activity is outside the scale (<see cref="NodeScale"/>), the Other
+    /// hosts node at the largest a process can be drawn, the hub its edges meet at, and a host it was opened into at the
+    /// aggregate floor: resources measured by none of the drawn processes.
     /// </summary>
     public static double NodeRadius(GraphDisplayNode node, long scale)
     {
@@ -46,6 +48,7 @@ public static class GraphEncoding
             GraphNodeKind.Process => 6 + (10 * Intensity(node.Weight, scale)),
             GraphNodeKind.Context => 9,
             GraphNodeKind.OtherHosts => 16,
+            GraphNodeKind.Host => 9,
             _ => 9 + (10 * Intensity(node.Weight, scale)),
         };
     }

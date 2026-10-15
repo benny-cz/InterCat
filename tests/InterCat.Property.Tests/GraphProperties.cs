@@ -45,11 +45,13 @@ public sealed class GraphProperties
                     .SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
             }
 
-            string label = Describe(seed, index, budget, opened?.Key, kept) + (neighborhood is null ? string.Empty : ", focused");
+            bool openHosts = random.Next(3) == 0;
+            string label = Describe(seed, index, budget, opened?.Key, kept) + (neighborhood is null ? string.Empty : ", focused")
+                + (openHosts ? ", Other hosts opened" : string.Empty);
             GraphDisplay display;
             try
             {
-                display = GraphProjection.Project(snapshot, opened?.Key, kept, budget, neighborhood);
+                display = GraphProjection.Project(snapshot, opened?.Key, kept, budget, neighborhood, openHosts);
             }
             catch (InvalidOperationException refused) when (refused.Message.Contains("could not fit", StringComparison.Ordinal))
             {
@@ -58,6 +60,17 @@ public sealed class GraphProperties
             }
 
             Holds(snapshot, display, budget, kept, neighborhood, label);
+
+            // Opening Other hosts folds no process: the drawing is the folded one's, with the hosts drawn on their own.
+            Assert.Equal(openHosts, display.OpenedHosts is not null);
+            if (openHosts)
+            {
+                GraphDisplay folded = GraphProjection.Project(snapshot, opened?.Key, kept, budget, neighborhood);
+                Assert.Equal(folded.Nodes.Where(node => !node.IsHost).Select(node => (node.Key, node.Members.Count)),
+                    display.Nodes.Where(node => !node.IsHost).Select(node => (node.Key, node.Members.Count)));
+                Assert.Equal(folded.Edges.Where(edge => !edge.ToHosts).Select(edge => edge.Key),
+                    display.Edges.Where(edge => !edge.ToHosts).Select(edge => edge.Key));
+            }
         }
     }
 
@@ -94,14 +107,15 @@ public sealed class GraphProperties
             Assert.Null(context);
         }
 
-        // No aggregate holds one process but the context node, and every node but Other hosts holds some.
+        // No aggregate holds one process but the context node, and every node but Other hosts and the hosts it was opened
+        // into holds some.
         foreach (GraphDisplayNode node in display.Nodes)
         {
             if (node.Kind == GraphNodeKind.Context)
             {
                 Assert.NotEmpty(node.Members);
             }
-            else if (node.Kind == GraphNodeKind.OtherHosts)
+            else if (node.IsHost)
             {
                 Assert.Empty(node.Members);
             }
@@ -144,28 +158,53 @@ public sealed class GraphProperties
             }
         }
 
-        // Every connection to other hosts is drawn once, from the node its process is drawn in, to Other hosts; a context
-        // node's processes' are left to their own rungs.
+        // Every connection to other hosts is drawn from the node its process is drawn in, once to each host Other hosts was
+        // opened into that it reached and once to Other hosts for the rest; a context node's processes' are left to their
+        // own rungs.
+        HashSet<string> opened = new(display.OpenedHosts ?? [], StringComparer.Ordinal);
+        string TargetOf(HostAddress address) =>
+            opened.Contains(address.Address) ? GraphProjection.HostKey(address.Address) : GraphProjection.OtherHostsKey;
         foreach (HostLink link in snapshot.HostLinks)
         {
+            IReadOnlyList<GraphDisplayEdge> drawnBy = display.EdgesOfHostLink(link.Key);
             if (drawnIn[link.Process].Kind == GraphNodeKind.Context)
             {
-                Assert.Null(display.EdgeOfHostLink(link.Key));
+                Assert.Empty(drawnBy);
                 continue;
             }
 
-            GraphDisplayEdge edge = Assert.IsType<GraphDisplayEdge>(display.EdgeOfHostLink(link.Key));
-            Assert.Equal((drawnIn[link.Process].Key, GraphProjection.OtherHostsKey, link.Mechanism),
-                (edge.SourceKey, edge.TargetKey, edge.Mechanism));
+            Assert.Equal(link.Addresses.Select(TargetOf).Distinct(StringComparer.Ordinal).Order(StringComparer.Ordinal),
+                drawnBy.Select(edge => edge.TargetKey).Order(StringComparer.Ordinal));
+            Assert.All(drawnBy, edge => Assert.Equal((drawnIn[link.Process].Key, link.Mechanism), (edge.SourceKey, edge.Mechanism)));
         }
 
-        Assert.Equal(snapshot.HostLinks.Any(link => drawnIn[link.Process].Kind != GraphNodeKind.Context),
+        // Each edge to a host counts the records its source's connections over its transport held at the hosts it stands for.
+        foreach (GraphDisplayEdge edge in display.Edges.Where(edge => edge.ToHosts))
+        {
+            Assert.Equal(
+                snapshot.HostLinks
+                    .Where(link => drawnIn[link.Process].Key == edge.SourceKey && link.Mechanism == edge.Mechanism)
+                    .SelectMany(link => link.Addresses)
+                    .Where(address => TargetOf(address) == edge.TargetKey)
+                    .Sum(address => address.Records),
+                edge.ObservationCount);
+        }
+
+        // The hosts drawn on their own are the busiest of the drawn connections', at most the budget's count, each with the
+        // processes that reached it; Other hosts is drawn exactly when a drawn connection ran to a host not drawn so.
+        HostLink[] drawnLinks = [.. snapshot.HostLinks.Where(link => drawnIn[link.Process].Kind != GraphNodeKind.Context)];
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(drawnLinks);
+        Assert.True(opened.Count <= budget.HostsDrawn, $"{label}: {opened.Count} hosts opened past {budget.HostsDrawn}");
+        Assert.Equal(hosts.Take(opened.Count).Select(host => host.Address), display.OpenedHosts ?? []);
+        Assert.Equal(display.OpenedHosts ?? [], display.Nodes.Where(node => node.Kind == GraphNodeKind.Host).Select(node => node.Label));
+        Assert.All(display.Nodes.Where(node => node.Kind == GraphNodeKind.Host), host => Assert.Equal(
+            drawnLinks.Where(link => link.Addresses.Any(address => address.Address == host.Label)).Select(link => link.Process).Distinct().Count(),
+            host.ConnectedProcesses));
+        Assert.Equal(drawnLinks.SelectMany(link => link.Addresses).Any(address => !opened.Contains(address.Address)),
             display.OtherHosts is not null);
 
-        // The hosts the drawn connections reached, as Other hosts names them, account for every one of their connections
-        // and records, each address once, the busiest first.
-        HostLink[] drawnLinks = [.. snapshot.HostLinks.Where(link => display.EdgeOfHostLink(link.Key) is not null)];
-        IReadOnlyList<OtherHost> hosts = OtherHost.Of(drawnLinks);
+        // The hosts the drawn connections reached account for every one of their connections and records, each address
+        // once, the busiest first.
         Assert.Equal(drawnLinks.Sum(link => link.Records), hosts.Sum(host => host.Records));
         Assert.Equal(drawnLinks.Sum(link => link.Connections), hosts.Sum(host => host.TcpConnections + host.UdpFlows));
         Assert.Equal(drawnLinks.SelectMany(link => link.Addresses).Select(address => address.Address).Distinct(StringComparer.Ordinal).Count(),
@@ -270,7 +309,7 @@ public sealed class GraphProperties
 
     private static GraphDisplayBudget Budget(Random random) => random.Next(3) == 0
         ? GraphDisplayBudget.Default
-        : new GraphDisplayBudget(random.Next(4, 60), random.Next(4, 200), random.Next(2, 30), random.Next(0, 12));
+        : new GraphDisplayBudget(random.Next(4, 60), random.Next(4, 200), random.Next(2, 30), random.Next(0, 12), random.Next(0, 10));
 
     private static string Describe(int seed, int index, GraphDisplayBudget budget, string? opened, ProcessInstanceId? kept) =>
         string.Create(CultureInfo.InvariantCulture,

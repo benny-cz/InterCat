@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using InterCat.Analysis;
 using InterCat.Domain;
 
 namespace InterCat.Application;
@@ -41,6 +42,14 @@ public enum GraphNodeKind
     /// per transport, so a busy machine's dozens do not bury the relationships between processes in a star (§6.3).
     /// </summary>
     OtherHostsOnly = 8,
+
+    /// <summary>
+    /// One other host the drawn processes' connections ran to, drawn on its own once Other hosts is opened (§6.3's explicit
+    /// expansion at high cardinality): a resource named by its address, holding no process. Its edges are those
+    /// connections, drawn with no traffic value; who is at its address is not observed (P7). The busiest hosts are drawn
+    /// so, as the budget allows, and the rest stay in Other hosts.
+    /// </summary>
+    Host = 9,
 }
 
 /// <summary>
@@ -51,9 +60,13 @@ public enum GraphNodeKind
 /// How many processes whose only drawn activity is their connections to other hosts are drawn on their own, the busiest
 /// by their connections' records; past it the rest fold into one Other hosts only node.
 /// </param>
-public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThreshold, int HostOnlyDrawn = 8)
+/// <param name="HostsDrawn">
+/// How many hosts an opened Other hosts draws on their own, the busiest by the records of the drawn connections that ran
+/// to them, as far as the node and edge budgets allow.
+/// </param>
+public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThreshold, int HostOnlyDrawn = 8, int HostsDrawn = 8)
 {
-    public static GraphDisplayBudget Default { get; } = new(200, 500, 25, 8);
+    public static GraphDisplayBudget Default { get; } = new(200, 500, 25, 8, 8);
 
     public void Validate()
     {
@@ -79,6 +92,12 @@ public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThresh
         {
             throw new ArgumentOutOfRangeException(nameof(HostOnlyDrawn),
                 "The count of processes drawn only for their connections to other hosts cannot be below zero.");
+        }
+
+        if (HostsDrawn < 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(HostsDrawn),
+                "The count of hosts an opened Other hosts draws on their own cannot be below zero.");
         }
     }
 }
@@ -119,10 +138,13 @@ public sealed record GraphDisplayNode(
     public int PidHolders { get; init; } = 1;
 
     /// <summary>
-    /// For the Other hosts node, how many drawn processes its edges come from: those whose connections to other hosts it
-    /// stands for. Zero for every other node.
+    /// For the Other hosts node, or a host Other hosts was opened into, how many drawn processes its edges come from: those
+    /// whose connections to other hosts it stands for. Zero for every other node.
     /// </summary>
     public int ConnectedProcesses { get; init; }
+
+    /// <summary>Whether the node is a resource the drawn processes' connections ran to - Other hosts or one host - holding no process.</summary>
+    public bool IsHost => Kind is GraphNodeKind.OtherHosts or GraphNodeKind.Host;
 
     /// <summary>
     /// A process node's PID as its process's <see cref="ProcessNode.PidLabel"/> reads it, a reused PID's holder numbered;
@@ -169,10 +191,10 @@ public sealed record GraphDisplayEdge(
     public long Weight => Magnitude ?? ObservationCount;
 
     /// <summary>
-    /// Whether the edge runs to the Other hosts node: its source's connections to other hosts over its mechanism, named by
-    /// their host links' keys. It is no relationship - no total counts it - and it carries no traffic value: it is drawn
-    /// in its mechanism's hue and its evidence's pattern at the thinnest constant stroke (§6.3), so neither a brush nor a
-    /// ranking's metric changes it.
+    /// Whether the edge runs to the Other hosts node, or to a host it was opened into: its source's connections over its
+    /// mechanism to those hosts, named by their host links' keys. It is no relationship - no total counts it - and it
+    /// carries no traffic value: it is drawn in its mechanism's hue and its evidence's pattern at the thinnest constant
+    /// stroke (§6.3), so neither a brush nor a ranking's metric changes it.
     /// </summary>
     public bool ToHosts { get; init; }
 
@@ -194,7 +216,7 @@ public sealed class GraphDisplay
     private readonly IReadOnlyDictionary<string, GraphDisplayNode> nodesByKey;
     private readonly IReadOnlyDictionary<ProcessInstanceId, GraphDisplayNode> nodesByProcess;
     private readonly IReadOnlyDictionary<string, GraphDisplayEdge> edgesByRelationship;
-    private readonly IReadOnlyDictionary<string, GraphDisplayEdge> edgesByHostLink;
+    private readonly IReadOnlyDictionary<string, IReadOnlyList<GraphDisplayEdge>> edgesByHostLink;
     private readonly IReadOnlyDictionary<string, GraphDisplayNode> nodesByRelationship;
 
     public GraphDisplay(
@@ -205,7 +227,8 @@ public sealed class GraphDisplay
         ProcessInstanceId? kept,
         int totalRelationships = 0,
         IReadOnlyList<string>? relationshipKeys = null,
-        IReadOnlyDictionary<string, string>? internalRelationshipNodes = null)
+        IReadOnlyDictionary<string, string>? internalRelationshipNodes = null,
+        IReadOnlyList<string>? openedHosts = null)
     {
         ArgumentNullException.ThrowIfNull(nodes);
         ArgumentNullException.ThrowIfNull(edges);
@@ -219,9 +242,9 @@ public sealed class GraphDisplay
             ArgumentException.ThrowIfNullOrWhiteSpace(node.Key);
             ArgumentException.ThrowIfNullOrWhiteSpace(node.Label);
             ArgumentNullException.ThrowIfNull(node.Members);
-            if ((node.Members.Count == 0) != (node.Kind == GraphNodeKind.OtherHosts))
+            if ((node.Members.Count == 0) != node.IsHost)
             {
-                throw new ArgumentException(node.Kind == GraphNodeKind.OtherHosts
+                throw new ArgumentException(node.IsHost
                     ? $"Graph node {node.Key} stands for other hosts and holds no process."
                     : $"Graph node {node.Key} has no process members.", nameof(nodes));
             }
@@ -252,7 +275,7 @@ public sealed class GraphDisplay
         }
 
         var byRelationship = new Dictionary<string, GraphDisplayEdge>(StringComparer.Ordinal);
-        var byHostLink = new Dictionary<string, GraphDisplayEdge>(StringComparer.Ordinal);
+        var byHostLink = new Dictionary<string, List<GraphDisplayEdge>>(StringComparer.Ordinal);
         var edgeKeys = new HashSet<string>(StringComparer.Ordinal);
         foreach (GraphDisplayEdge edge in edges)
         {
@@ -276,8 +299,9 @@ public sealed class GraphDisplay
                 throw new ArgumentException($"Graph edge {edge.Key} has no source relationships.", nameof(edges));
             }
 
-            // An edge to the other hosts names host links, which are no relationships and are kept apart from them.
-            if (edge.ToHosts != (to.Kind == GraphNodeKind.OtherHosts) || from.Kind == GraphNodeKind.OtherHosts)
+            // An edge to the other hosts names host links, which are no relationships and are kept apart from them. A link
+            // is drawn once to each host it reached that is drawn on its own, and once to Other hosts for the rest.
+            if (edge.ToHosts != to.IsHost || from.IsHost)
             {
                 throw new ArgumentException($"Graph edge {edge.Key} runs to or from the other hosts unlike a host edge.", nameof(edges));
             }
@@ -286,10 +310,23 @@ public sealed class GraphDisplay
             {
                 foreach (string link in edge.Relationships)
                 {
-                    if (!HostLink.IsKey(link) || !byHostLink.TryAdd(link, edge))
+                    if (!HostLink.IsKey(link))
                     {
-                        throw new ArgumentException($"Host link {link} is not drawn by exactly one edge.", nameof(edges));
+                        throw new ArgumentException($"Host link {link} is no host link.", nameof(edges));
                     }
+
+                    if (!byHostLink.TryGetValue(link, out List<GraphDisplayEdge>? drawnBy))
+                    {
+                        drawnBy = [];
+                        byHostLink[link] = drawnBy;
+                    }
+
+                    if (drawnBy.Any(other => string.Equals(other.TargetKey, edge.TargetKey, StringComparison.Ordinal)))
+                    {
+                        throw new ArgumentException($"Host link {link} is drawn twice to {edge.TargetKey}.", nameof(edges));
+                    }
+
+                    drawnBy.Add(edge);
                 }
 
                 continue;
@@ -344,11 +381,13 @@ public sealed class GraphDisplay
         TotalRelationships = resolvedTotalRelationships;
         ExpandedGroup = expandedGroup;
         Kept = kept;
+        OpenedHosts = openedHosts;
         RelationshipKeys = Array.AsReadOnly(allRelationshipKeys);
         nodesByKey = byKey;
         nodesByProcess = byProcess;
         edgesByRelationship = byRelationship;
-        edgesByHostLink = byHostLink;
+        edgesByHostLink = byHostLink.ToDictionary(
+            entry => entry.Key, entry => (IReadOnlyList<GraphDisplayEdge>)entry.Value.AsReadOnly(), StringComparer.Ordinal);
         nodesByRelationship = nodeByRelationship;
     }
 
@@ -358,8 +397,15 @@ public sealed class GraphDisplay
     public int TotalRelationships { get; }
     public string? ExpandedGroup { get; }
     public ProcessInstanceId? Kept { get; }
+
+    /// <summary>
+    /// The addresses Other hosts was opened into, busiest first: the hosts drawn on their own where a drawn connection ran
+    /// to one, as far as the budget allowed (§6.3). Null while Other hosts is folded; empty when opened and none fits.
+    /// </summary>
+    public IReadOnlyList<string>? OpenedHosts { get; }
+
     public IReadOnlyList<string> RelationshipKeys { get; }
-    public bool IsClustered => Nodes.Any(node => node.Kind is not (GraphNodeKind.Process or GraphNodeKind.OtherHosts));
+    public bool IsClustered => Nodes.Any(node => node.Kind is not (GraphNodeKind.Process or GraphNodeKind.OtherHosts or GraphNodeKind.Host));
 
     /// <summary>
     /// The same graph with each drawn edge and node carrying the magnitude its drawing reads in place of its records - the
@@ -371,7 +417,7 @@ public sealed class GraphDisplay
     {
         ArgumentNullException.ThrowIfNull(edge);
         ArgumentNullException.ThrowIfNull(node);
-        GraphDisplayNode[] nodes = [.. Nodes.Select(drawn => drawn.Kind == GraphNodeKind.OtherHosts ? drawn
+        GraphDisplayNode[] nodes = [.. Nodes.Select(drawn => drawn.IsHost ? drawn
             : node(drawn) is { } value
                 ? drawn with { Magnitude = value, Unmeasured = false }
                 : drawn with { Magnitude = 0, Unmeasured = true })];
@@ -380,17 +426,20 @@ public sealed class GraphDisplay
                 ? drawn with { Magnitude = value, Unmeasured = false }
                 : drawn with { Magnitude = 0, Unmeasured = true })];
         return new GraphDisplay(nodes, edges, TotalProcesses, ExpandedGroup, Kept, TotalRelationships, RelationshipKeys,
-            nodesByRelationship.ToDictionary(pair => pair.Key, pair => pair.Value.Key, StringComparer.Ordinal));
+            nodesByRelationship.ToDictionary(pair => pair.Key, pair => pair.Value.Key, StringComparer.Ordinal), OpenedHosts);
     }
 
     public GraphDisplayNode? Node(string key) => nodesByKey.GetValueOrDefault(key);
     public GraphDisplayNode? NodeOf(ProcessInstanceId process) => nodesByProcess.GetValueOrDefault(process);
     public GraphDisplayEdge? EdgeOf(string relationship) => edgesByRelationship.GetValueOrDefault(relationship);
 
-    /// <summary>The drawn edge to the other hosts that a host link is drawn in; null when it is not drawn.</summary>
-    public GraphDisplayEdge? EdgeOfHostLink(string link) => edgesByHostLink.GetValueOrDefault(link);
+    /// <summary>
+    /// The drawn edges a host link is drawn in: one to each host drawn on its own that its connections reached, and one to
+    /// Other hosts for the rest. Empty when it is not drawn.
+    /// </summary>
+    public IReadOnlyList<GraphDisplayEdge> EdgesOfHostLink(string link) => edgesByHostLink.GetValueOrDefault(link) ?? [];
 
-    /// <summary>The Other hosts node, when a process's connections to other hosts are drawn; null otherwise.</summary>
+    /// <summary>The Other hosts node, when a process's connections to hosts not drawn on their own are drawn; null otherwise.</summary>
     public GraphDisplayNode? OtherHosts => Nodes.FirstOrDefault(node => node.Kind == GraphNodeKind.OtherHosts);
     public GraphDisplayNode? NodeOfRelationship(string relationship) => nodesByRelationship.GetValueOrDefault(relationship);
 }
@@ -408,6 +457,16 @@ public static class GraphProjection
 
     /// <summary>The Other hosts node's key.</summary>
     public const string OtherHostsKey = "resource:other-hosts";
+
+    /// <summary>What every host node's key begins with.</summary>
+    public const string HostKeyPrefix = "resource:host:";
+
+    /// <summary>The key of the node a host Other hosts was opened into is drawn as.</summary>
+    public static string HostKey(string address)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        return HostKeyPrefix + address;
+    }
 
     private sealed record Descriptor(
         GraphNodeKind Kind,
@@ -450,11 +509,60 @@ public static class GraphProjection
         string? expandedGroup = null,
         ProcessInstanceId? kept = null,
         GraphDisplayBudget? budget = null,
-        IReadOnlySet<ProcessInstanceId>? neighborhood = null)
+        IReadOnlySet<ProcessInstanceId>? neighborhood = null,
+        bool openHosts = false)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
         budget ??= GraphDisplayBudget.Default;
         budget.Validate();
+        GraphDisplay folded = ProjectFolded(snapshot, expandedGroup, kept, budget, neighborhood);
+        return openHosts ? OpenHosts(folded, snapshot, budget) : folded;
+    }
+
+    /// <summary>
+    /// Other hosts opened (§6.3's explicit expansion): the busiest hosts of the drawn connections - those Other hosts stands
+    /// for, by the records of the drawn connections that ran to them - drawn on their own, each edged from the nodes whose
+    /// processes reached it, and the rest kept in Other hosts. The drawing it opens keeps every node and its membership,
+    /// so opening folds no process: of the budget's count of hosts, as many are drawn as the node and edge budgets allow.
+    /// </summary>
+    private static GraphDisplay OpenHosts(GraphDisplay folded, WorkspaceSnapshot snapshot, GraphDisplayBudget budget)
+    {
+        string[] busiest = [.. OtherHost.Of(snapshot.HostLinks.Where(link => folded.NodeOf(link.Process) is { Kind: not GraphNodeKind.Context }))
+            .Take(budget.HostsDrawn)
+            .Select(host => host.Address)];
+        (Dictionary<ProcessInstanceId, string> assignment, Dictionary<string, Descriptor> descriptors) = Drawn(folded);
+        for (int count = busiest.Length; count > 0; count--)
+        {
+            GraphDisplay opened = Materialize(snapshot, assignment, descriptors, folded.ExpandedGroup, folded.Kept, busiest[..count]);
+            if (Fits(opened, budget))
+            {
+                return opened;
+            }
+        }
+
+        return Materialize(snapshot, assignment, descriptors, folded.ExpandedGroup, folded.Kept, []);
+    }
+
+    /// <summary>A drawing's assignment of processes to nodes, and each node's descriptor, to draw it again.</summary>
+    private static (Dictionary<ProcessInstanceId, string> Assignment, Dictionary<string, Descriptor> Descriptors) Drawn(GraphDisplay display) =>
+    (
+        display.Nodes
+            .SelectMany(node => node.Members.Select(member => (member, node.Key)))
+            .ToDictionary(entry => entry.member, entry => entry.Key),
+        display.Nodes.Where(node => !node.IsHost).ToDictionary(
+            node => node.Key,
+            node => new Descriptor(node.Kind, node.Label, node.GroupKey, node.Process, node.ProcessId, node.PidHolder, node.PidHolders),
+            StringComparer.Ordinal)
+    );
+
+    /// <summary>The §6.3 compaction itself, with Other hosts folded.</summary>
+    private static GraphDisplay ProjectFolded(
+        WorkspaceSnapshot snapshot,
+        string? expandedGroup,
+        ProcessInstanceId? kept,
+        GraphDisplayBudget budget,
+        IReadOnlySet<ProcessInstanceId>? neighborhood)
+    {
 
         Dictionary<string, ProcessGroup> groups = ValidateGroups(snapshot);
         Dictionary<ProcessInstanceId, ProcessNode> processes = ValidateProcesses(snapshot, groups);
@@ -655,7 +763,7 @@ public static class GraphProjection
         // meaning, and nodes of the opened group go last; no process is lost.
         Fold[] remainder = [.. display.Nodes
             .Where(node => node.Kind is not (GraphNodeKind.Quiet or GraphNodeKind.Remainder or GraphNodeKind.Context
-                or GraphNodeKind.OtherHosts or GraphNodeKind.OtherHostsOnly))
+                or GraphNodeKind.OtherHosts or GraphNodeKind.Host or GraphNodeKind.OtherHostsOnly))
             .Where(node => kept is not { } focus || !node.Members.Contains(focus))
             .OrderBy(node => expandedGroup is not null
                 && string.Equals(node.GroupKey, expandedGroup, StringComparison.Ordinal) ? 1 : 0)
@@ -718,7 +826,7 @@ public static class GraphProjection
         GraphDisplay Attempt(int length)
         {
             Apply(length);
-            return Materialize(snapshot, assignment, descriptors, expandedGroup, kept);
+            return Materialize(snapshot, assignment, descriptors, expandedGroup, kept, null);
         }
 
         // Usually the shortest admissible prefix already fits, and one drawing settles it.
@@ -807,14 +915,8 @@ public static class GraphProjection
             }
         }
 
-        Dictionary<ProcessInstanceId, string> assignment = display.Nodes
-            .SelectMany(node => node.Members.Select(member => (member, node.Key)))
-            .ToDictionary(entry => entry.member, entry => entry.Key);
-        Dictionary<string, Descriptor> descriptors = display.Nodes.ToDictionary(
-            node => node.Key,
-            node => new Descriptor(node.Kind, node.Label, node.GroupKey, node.Process, node.ProcessId, node.PidHolder, node.PidHolders),
-            StringComparer.Ordinal);
-        GraphDisplay recounted = Materialize(scoped, assignment, descriptors, display.ExpandedGroup, display.Kept);
+        (Dictionary<ProcessInstanceId, string> assignment, Dictionary<string, Descriptor> descriptors) = Drawn(display);
+        GraphDisplay recounted = Materialize(scoped, assignment, descriptors, display.ExpandedGroup, display.Kept, display.OpenedHosts);
         if (!SameStructure(display, recounted))
         {
             throw new ArgumentException(
@@ -1033,7 +1135,8 @@ public static class GraphProjection
         Dictionary<ProcessInstanceId, string> assignment,
         Dictionary<string, Descriptor> descriptors,
         string? expandedGroup,
-        ProcessInstanceId? kept)
+        ProcessInstanceId? kept,
+        IReadOnlyList<string>? openedHosts)
     {
         if (snapshot.Processes.Count != assignment.Count)
         {
@@ -1168,10 +1271,12 @@ public static class GraphProjection
             }
         }
 
-        // Each drawn node's connections to other hosts, one edge per transport, to the one node that stands for them. A
-        // process outside a focused rung's neighbourhood is context, and its connections are left to its own rung.
-        var hostEdges = new Dictionary<(string Source, Mechanism Mechanism), EdgeAggregate>();
-        var connected = new HashSet<ProcessInstanceId>();
+        // Each drawn node's connections to other hosts, one edge per transport: to each host Other hosts was opened into
+        // that its processes reached, and to Other hosts for the rest. A process outside a focused rung's neighbourhood is
+        // context, and its connections are left to its own rung.
+        HashSet<string> opened = new(openedHosts ?? [], StringComparer.Ordinal);
+        var hostEdges = new Dictionary<(string Source, string Target, Mechanism Mechanism), EdgeAggregate>();
+        var connected = new Dictionary<string, HashSet<ProcessInstanceId>>(StringComparer.Ordinal);
         foreach (HostLink link in snapshot.HostLinks)
         {
             string source = assignment[link.Process];
@@ -1180,36 +1285,51 @@ public static class GraphProjection
                 continue;
             }
 
-            if (!hostEdges.TryGetValue((source, link.Mechanism), out EdgeAggregate? reach))
+            foreach (IGrouping<string, HostAddress> host in link.Addresses
+                .GroupBy(address => opened.Contains(address.Address) ? HostKey(address.Address) : OtherHostsKey, StringComparer.Ordinal))
             {
-                reach = new() { Source = source, Target = OtherHostsKey, Mechanism = link.Mechanism };
-                hostEdges[(source, link.Mechanism)] = reach;
-            }
+                if (!hostEdges.TryGetValue((source, host.Key, link.Mechanism), out EdgeAggregate? reach))
+                {
+                    reach = new() { Source = source, Target = host.Key, Mechanism = link.Mechanism };
+                    hostEdges[(source, host.Key, link.Mechanism)] = reach;
+                }
 
-            reach.Observations = Add(reach.Observations, link.Records);
-            if (link.Strength > reach.Strength)
-            {
-                reach.Strength = link.Strength;
-            }
+                foreach (HostAddress address in host)
+                {
+                    reach.Observations = Add(reach.Observations, address.Records);
+                }
 
-            reach.Relationships.Add(link.Key);
-            connected.Add(link.Process);
+                if (link.Strength > reach.Strength)
+                {
+                    reach.Strength = link.Strength;
+                }
+
+                reach.Relationships.Add(link.Key);
+                if (!connected.TryGetValue(host.Key, out HashSet<ProcessInstanceId>? reached))
+                {
+                    reached = [];
+                    connected[host.Key] = reached;
+                }
+
+                reached.Add(link.Process);
+            }
         }
 
-        // A node's edges over two transports run side by side, so neither is drawn over the other.
-        foreach (IGrouping<string, EdgeAggregate> bySource in hostEdges.Values
+        // A node's edges to one host over two transports run side by side, so neither is drawn over the other.
+        foreach (IGrouping<(string, string), EdgeAggregate> between in hostEdges.Values
             .OrderBy(reach => reach.Source, StringComparer.Ordinal)
+            .ThenBy(reach => reach.Target, StringComparer.Ordinal)
             .ThenBy(reach => reach.Mechanism)
-            .GroupBy(reach => reach.Source, StringComparer.Ordinal))
+            .GroupBy(reach => (reach.Source, reach.Target)))
         {
-            EdgeAggregate[] side = [.. bySource];
+            EdgeAggregate[] side = [.. between];
             for (int lane = 0; lane < side.Length; lane++)
             {
                 EdgeAggregate reach = side[lane];
                 builtEdges.Add(new(
-                    $"{OtherHostsKey}:{reach.Source}:{MechanismText.Name(reach.Mechanism).ToLowerInvariant()}",
+                    $"{reach.Target}:{reach.Source}:{MechanismText.Name(reach.Mechanism).ToLowerInvariant()}",
                     reach.Source,
-                    OtherHostsKey,
+                    reach.Target,
                     reach.Mechanism,
                     reach.Observations,
                     reach.Strength,
@@ -1221,13 +1341,30 @@ public static class GraphProjection
             }
         }
 
-        if (hostEdges.Count > 0)
+        // The hosts drawn on their own, busiest first, each where a drawn connection reached it; then Other hosts for the
+        // rest, when any is left.
+        foreach (string address in openedHosts ?? [])
+        {
+            string key = HostKey(address);
+            if (connected.TryGetValue(key, out HashSet<ProcessInstanceId>? reached))
+            {
+                nodes = [.. nodes, new GraphDisplayNode(key, address, GraphNodeKind.Host, null, null, null, [],
+                    hostEdges.Values.Where(reach => string.Equals(reach.Target, key, StringComparison.Ordinal))
+                        .Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
+                {
+                    ConnectedProcesses = reached.Count,
+                }];
+            }
+        }
+
+        if (connected.TryGetValue(OtherHostsKey, out HashSet<ProcessInstanceId>? rest))
         {
             nodes = [.. nodes, new GraphDisplayNode(
                 OtherHostsKey, "Other hosts", GraphNodeKind.OtherHosts, null, null, null, [],
-                hostEdges.Values.Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
+                hostEdges.Values.Where(reach => string.Equals(reach.Target, OtherHostsKey, StringComparison.Ordinal))
+                    .Aggregate(0L, (sum, reach) => Add(sum, reach.Observations)), 0, 0)
             {
-                ConnectedProcesses = connected.Count,
+                ConnectedProcesses = rest.Count,
             }];
         }
 
@@ -1242,7 +1379,8 @@ public static class GraphProjection
             kept,
             snapshot.Edges.Count,
             Array.AsReadOnly(relationshipKeys),
-            internalRelationshipNodes);
+            internalRelationshipNodes,
+            openedHosts is null ? null : Array.AsReadOnly([.. openedHosts]));
         if (display.Nodes.Sum(node => node.Members.Count) != snapshot.Processes.Count)
         {
             throw new InvalidOperationException("Graph compaction omitted a process instance.");

@@ -105,7 +105,7 @@ public sealed class OtherHostsGraphTests
         Assert.All(display.Edges.Where(edge => edge.ToHosts), edge => Assert.Equal(hub.Key, edge.TargetKey));
         foreach (HostLink link in links)
         {
-            GraphDisplayEdge drawn = Assert.IsType<GraphDisplayEdge>(display.EdgeOfHostLink(link.Key));
+            GraphDisplayEdge drawn = Assert.Single(display.EdgesOfHostLink(link.Key));
             Assert.Equal([link.Key], drawn.Relationships);
             Assert.Null(display.EdgeOf(link.Key));
         }
@@ -113,7 +113,7 @@ public sealed class OtherHostsGraphTests
         GraphDisplayEdge relationship = Assert.Single(display.Edges, edge => !edge.ToHosts);
         Assert.Equal((false, 0d), (relationship.ToHosts, relationship.Lane));
         Assert.Same(relationship, display.EdgeOf("pair"));
-        Assert.Null(display.EdgeOfHostLink("pair"));
+        Assert.Empty(display.EdgesOfHostLink("pair"));
         Assert.Equal(1, display.TotalRelationships);
         Assert.Equal(["pair"], display.RelationshipKeys);
 
@@ -162,7 +162,7 @@ public sealed class OtherHostsGraphTests
         Assert.Equal(1, focused.OtherHosts!.ConnectedProcesses);
         GraphDisplayEdge own = Assert.Single(focused.Edges, edge => edge.ToHosts);
         Assert.Equal((focused.NodeOf(client.Id)!.Key, Mechanism.Udp, 5L), (own.SourceKey, own.Mechanism, own.ObservationCount));
-        Assert.All(links[..30], link => Assert.Null(focused.EdgeOfHostLink(link.Key)));
+        Assert.All(links[..30], link => Assert.Empty(focused.EdgesOfHostLink(link.Key)));
 
         // A focus none of whose processes reaches another host draws no Other hosts node.
         GraphDisplay quiet = GraphProjection.Project(snapshot, kept: server.Id,
@@ -264,7 +264,7 @@ public sealed class OtherHostsGraphTests
         HostLink busy = Link(processes[2], Mechanism.Tcp, 400, 90, 1_000_000);
         WorkspaceSnapshot snapshot = Snapshot([group], processes, [pair], [busy]);
         GraphDisplay display = GraphProjection.Project(snapshot);
-        GraphDisplayEdge toHosts = display.EdgeOfHostLink(busy.Key)!;
+        GraphDisplayEdge toHosts = Assert.Single(display.EdgesOfHostLink(busy.Key));
         GraphDisplayNode hub = display.OtherHosts!;
 
         // Every process is drawn as itself: the node the connections run to is no aggregate of them.
@@ -273,17 +273,17 @@ public sealed class OtherHostsGraphTests
         // A brush re-counts the relationship and leaves the connections as the whole session counted them.
         GraphDisplay brushed = GraphProjection.Rescope(display, snapshot, snapshot with { Edges = [pair with { ObservationCount = 3 }] });
         Assert.Equal(3, brushed.EdgeOf("pair")!.ObservationCount);
-        Assert.Equal(Drawn(toHosts), Drawn(brushed.EdgeOfHostLink(busy.Key)!));
+        Assert.Equal(Drawn(toHosts), Drawn(Assert.Single(brushed.EdgesOfHostLink(busy.Key))));
         Assert.Equal(Drawn(hub), Drawn(brushed.OtherHosts!));
 
         // A byte ranking sizes the relationship and the processes, never the connections or the node they run to.
         GraphDisplay weighed = display.WithMagnitudes(_ => 5_000, _ => 7_000);
         Assert.Equal(5_000, weighed.EdgeOf("pair")!.Magnitude);
         Assert.Equal(7_000, weighed.NodeOf(processes[2].Id)!.Magnitude);
-        Assert.Same(toHosts, weighed.EdgeOfHostLink(busy.Key));
+        Assert.Same(toHosts, Assert.Single(weighed.EdgesOfHostLink(busy.Key)));
         Assert.Same(hub, weighed.OtherHosts);
         GraphDisplay unmeasured = display.WithMagnitudes(_ => null, _ => null);
-        Assert.Same(toHosts, unmeasured.EdgeOfHostLink(busy.Key));
+        Assert.Same(toHosts, Assert.Single(unmeasured.EdgesOfHostLink(busy.Key)));
         Assert.Same(hub, unmeasured.OtherHosts);
 
         // Neither sets a scale nor is read against one: the busiest edge and node are the relationship's.
@@ -318,7 +318,7 @@ public sealed class OtherHostsGraphTests
 
         GraphDisplay display = GraphProjection.Project(Of(link));
         GraphDisplayNode hub = display.OtherHosts!;
-        GraphDisplayEdge toHosts = display.EdgeOfHostLink(link.Key)!;
+        GraphDisplayEdge toHosts = Assert.Single(display.EdgesOfHostLink(link.Key));
         GraphDisplayNode[] processNodes = [.. display.Nodes.Where(node => node.Kind != GraphNodeKind.OtherHosts)];
         GraphDisplay Draw(IReadOnlyList<GraphDisplayNode> nodes, IReadOnlyList<GraphDisplayEdge> edges) =>
             new(nodes, edges, display.TotalProcesses, null, null);
@@ -335,6 +335,73 @@ public sealed class OtherHostsGraphTests
         Assert.Throws<ArgumentException>(() => Draw(display.Nodes, [toHosts with { TargetKey = processNodes[^1].Key }]));
         Assert.Throws<ArgumentException>(() => Draw(display.Nodes, [toHosts with { Relationships = ["pair"] }]));
         Assert.Throws<ArgumentException>(() => Draw(display.Nodes, [toHosts, toHosts with { Key = "again" }]));
+    }
+
+    [Fact(DisplayName = "§6.3: Other hosts opened draws its busiest hosts on their own, edged from the processes that reached them, and keeps the rest")]
+    public void OtherHostsOpenedDrawsItsBusiestHosts()
+    {
+        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
+        ProcessNode browser = Node(1, group.Key);
+        ProcessNode updater = Node(2, group.Key);
+        ProcessNode idle = Node(3, group.Key);
+        HostLink browserTcp = new(browser.Id, Mechanism.Tcp, [new("142.250.1.1", 3, 50), new("20.42.65.1", 1, 4)], RelationStrength.Direct);
+        HostLink browserUdp = new(browser.Id, Mechanism.Udp, [new("142.250.1.1", 1, 9)], RelationStrength.Correlated);
+        HostLink updaterTcp = new(updater.Id, Mechanism.Tcp, [new("20.42.65.1", 2, 30), new("13.107.4.50", 1, 2)], RelationStrength.Direct);
+        WorkspaceSnapshot snapshot = Snapshot([group], [browser, updater, idle], [], [browserTcp, browserUdp, updaterTcp]);
+        GraphDisplayBudget two = GraphDisplayBudget.Default with { HostsDrawn = 2 };
+
+        // Folded, as ever: one Other hosts node, and nothing opened.
+        GraphDisplay folded = GraphProjection.Project(snapshot, budget: two);
+        Assert.Null(folded.OpenedHosts);
+        Assert.Equal(["resource:other-hosts"], folded.Nodes.Where(node => node.IsHost).Select(node => node.Key));
+
+        // Opened, the two busiest hosts by their records - 142.250.1.1's 59 and 20.42.65.1's 34 - are drawn on their own,
+        // and 13.107.4.50 stays in Other hosts; no process moves.
+        GraphDisplay opened = GraphProjection.Project(snapshot, budget: two, openHosts: true);
+        Assert.Equal(["142.250.1.1", "20.42.65.1"], opened.OpenedHosts);
+        string first = GraphProjection.HostKey("142.250.1.1");
+        string second = GraphProjection.HostKey("20.42.65.1");
+        Assert.Equal(
+            [(first, "142.250.1.1", 1, 59L), (second, "20.42.65.1", 2, 34L), (GraphProjection.OtherHostsKey, "Other hosts", 1, 2L)],
+            opened.Nodes.Where(node => node.IsHost).Select(node => (node.Key, node.Label, node.ConnectedProcesses, node.Observations)));
+        Assert.Equal(GraphNodeKind.Host, opened.Node(first)!.Kind);
+        Assert.Equal(folded.Nodes.Where(node => !node.IsHost).Select(node => node.Key), opened.Nodes.Where(node => !node.IsHost).Select(node => node.Key));
+
+        // Each drawn node's connections run to each host they reached, a transport an edge, side by side to one host, and to
+        // Other hosts for the rest; a connection to two hosts is drawn to each.
+        string browserNode = opened.NodeOf(browser.Id)!.Key;
+        string updaterNode = opened.NodeOf(updater.Id)!.Key;
+        Assert.Equal(
+            [
+                (browserNode, first, Mechanism.Tcp, 50L, -0.5), (browserNode, first, Mechanism.Udp, 9L, 0.5),
+                (browserNode, second, Mechanism.Tcp, 4L, 0d), (updaterNode, second, Mechanism.Tcp, 30L, 0d),
+                (updaterNode, GraphProjection.OtherHostsKey, Mechanism.Tcp, 2L, 0d),
+            ],
+            opened.Edges.OrderBy(edge => edge.SourceKey, StringComparer.Ordinal).ThenBy(edge => edge.TargetKey == first ? 0
+                    : edge.TargetKey == second ? 1 : 2).ThenBy(edge => edge.Mechanism)
+                .Select(edge => (edge.SourceKey, edge.TargetKey, edge.Mechanism, edge.ObservationCount, edge.Lane)));
+        Assert.All(opened.Edges, edge => Assert.True(edge.ToHosts));
+        Assert.Equal([first, second], opened.EdgesOfHostLink(browserTcp.Key).Select(edge => edge.TargetKey).Order(StringComparer.Ordinal));
+        Assert.Equal([second, GraphProjection.OtherHostsKey], opened.EdgesOfHostLink(updaterTcp.Key).Select(edge => edge.TargetKey)
+            .Order(StringComparer.Ordinal));
+        Assert.Equal(RelationStrength.Correlated, opened.Edges.Single(edge => edge.Mechanism == Mechanism.Udp).Strength);
+
+        // Every host opened leaves Other hosts undrawn; a re-count keeps what was opened.
+        GraphDisplay all = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default, openHosts: true);
+        Assert.Equal(["142.250.1.1", "20.42.65.1", "13.107.4.50"], all.OpenedHosts);
+        Assert.Null(all.OtherHosts);
+        GraphDisplay recounted = GraphProjection.Rescope(opened, snapshot, snapshot);
+        Assert.Equal(opened.OpenedHosts, recounted.OpenedHosts);
+        Assert.Equal(opened.Edges.Select(edge => (edge.Key, edge.ObservationCount)), recounted.Edges.Select(edge => (edge.Key, edge.ObservationCount)));
+
+        // Only as many hosts are drawn as the node and edge budgets allow: opening folds no process to make room.
+        GraphDisplay tight = GraphProjection.Project(snapshot, budget: two with { Nodes = folded.Nodes.Count + 1 }, openHosts: true);
+        Assert.Equal(["142.250.1.1"], tight.OpenedHosts);
+        GraphDisplay none = GraphProjection.Project(snapshot, budget: two with { Nodes = folded.Nodes.Count, Edges = folded.Edges.Count },
+            openHosts: true);
+        Assert.Equal([], none.OpenedHosts!);
+        Assert.Equal(folded.Nodes.Select(node => node.Key), none.Nodes.Select(node => node.Key));
+        Assert.Throws<ArgumentOutOfRangeException>(() => GraphProjection.Project(snapshot, budget: two with { HostsDrawn = -1 }));
     }
 
     [Fact(DisplayName = "§19.5: a process set aside takes its connections to other hosts with it")]
