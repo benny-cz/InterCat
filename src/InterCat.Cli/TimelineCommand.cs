@@ -34,6 +34,7 @@ internal static class TimelineCommand
         string? processText = command.TakeOption("--process");
         string? directionText = command.TakeOption("--direction");
         string? channelText = command.TakeOption("--channel");
+        string? hostText = command.TakeOption("--host");
         string? endText = command.TakeOption("--end");
         bool bytes = command.TryTakeFlag("--bytes");
         bool json = command.TryTakeFlag("--json");
@@ -45,7 +46,7 @@ internal static class TimelineCommand
             && (!int.TryParse(columnsText, NumberStyles.None, CultureInfo.InvariantCulture, out columns)
                 || columns is < 1 or > SessionTimelineQuery.MaximumColumns);
         TimeRange? interval = TickInterval.Read(intervalText, out string? tooWide);
-        string? scopeProblem = TryParseScope(mechanismText, processText, directionText, channelText, endText,
+        string? scopeProblem = TryParseScope(mechanismText, processText, directionText, channelText, hostText, endText,
             out IntervalByteScope scope);
         if (directory is null || hasUnknown || invalidColumns || interval is null || scopeProblem is not null)
         {
@@ -222,10 +223,17 @@ internal static class TimelineCommand
 
     /// <summary>The scope a lane of the interval table lists, from the options that name it; a problem when they cannot.</summary>
     private static string? TryParseScope(
-        string? mechanismText, string? processText, string? directionText, string? channelText, string? endText,
-        out IntervalByteScope scope)
+        string? mechanismText, string? processText, string? directionText, string? channelText, string? hostText,
+        string? endText, out IntervalByteScope scope)
     {
         scope = IntervalByteScope.Whole;
+        if (hostText is not null && (channelText is not null || !EvidenceCommand.NamesHostAddress(hostText)))
+        {
+            return channelText is not null
+                ? "--host and --channel each name the records to count; name one."
+                : $"--host takes an address its processes' connections ran to, 142.250.1.1 or 2001:db8::1; '{hostText}' is not one.";
+        }
+
         if (!MetricCommand.TryParseOptional(mechanismText, "--mechanism", out Mechanism? mechanism, out string? problem)
             || !MetricCommand.TryParseOptional(directionText, "--direction", out Direction? direction, out problem))
         {
@@ -248,11 +256,11 @@ internal static class TimelineCommand
             Mechanism = mechanism,
             Owner = processText is null ? null : new ProcessInstanceId(Guid.Parse(processText)),
             Direction = direction,
-            ChannelKey = channelText,
+            ChannelKey = hostText is not null ? HostScopeKeys.Of(hostText) : channelText,
             End = endText is null ? null : endText == "1" ? 1 : 0,
         };
         return scope.Validate() is { } invalid
-            ? invalid + " Use --mechanism, --process (with --direction) or --channel (with --end), at most one of them."
+            ? invalid + " Use --mechanism, --process (with --direction), --channel (with --end) or --host, at most one of them."
             : null;
     }
 
@@ -265,7 +273,8 @@ internal static class TimelineCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat timeline <session-directory> --interval <start:end> [--columns <1-2000>]");
-        ConsoleUi.Line("    [--mechanism <name> | --process <instance-id> [--direction <name>] | --channel <key> [--end <0|1>]]");
+        ConsoleUi.Line("    [--mechanism <name> | --process <instance-id> [--direction <name>] | --channel <key> [--end <0|1>]");
+        ConsoleUi.Line("     | --host <address>]");
         ConsoleUi.Line("    [--bytes] [--wall-clock] [--json]");
         ConsoleUi.Line("  Read-only, leased timeline over [start,end), each bound in 100-nanosecond session ticks or a time");
         ConsoleUi.Line("  with its unit (1.5s, 250ms, 40us), taken outward to whole ticks.");
@@ -273,6 +282,7 @@ internal static class TimelineCommand
         ConsoleUi.Line("  A scope lists the records one lane of the Desktop's interval table lists; --bytes adds what");
         ConsoleUi.Line("  each interval's records sent and received, unmeasured sizes counted apart. --wall-clock states");
         ConsoleUi.Line("  the intervals on the wall clock its capture's machine read, in this computer's zone, as the");
-        ConsoleUi.Line("  window's Wall clock does; --json always states session ticks.");
+        ConsoleUi.Line("  window's Wall clock does; --json always states session ticks. --host counts the records of every");
+        ConsoleUi.Line("  connection to one other host's address, whichever process held it: when it was reached.");
     }
 }

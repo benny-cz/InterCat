@@ -36,6 +36,8 @@ public sealed record IntervalByteScope
         Owner is { } owner
             ? $"records owned by process instance {owner}"
                 + (Direction is { } direction ? $" with source direction {ObservationText.DirectionOf(direction)}" : string.Empty)
+            : ChannelKey is { } host && HostScopeKeys.IsHost(host)
+            ? $"records of the connections to {HostScopeKeys.AddressOf(host)}"
             : ChannelKey is { } key
             ? (End is { } end ? $"records made at end {end} of channel {key}" : $"records of channel {key}")
             : Mechanism is { } mechanism
@@ -52,6 +54,7 @@ public sealed record IntervalByteScope
             ? "A source direction scopes one process instance's records and names a direction §23 defines."
         : ChannelKey is { } key && string.IsNullOrWhiteSpace(key) ? "A channel scope needs a channel key."
         : End is { } end && (ChannelKey is null || end is not (0 or 1)) ? "A channel end is 0 or 1 of a named channel."
+        : End is not null && HostScopeKeys.IsHost(ChannelKey) ? "A host's connections have no two ends to choose one of."
         : null;
 }
 

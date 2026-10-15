@@ -122,10 +122,12 @@ public static class SessionEvidenceQuery
 
     private const string Caveat = "These are exact admitted observation-v1 rows with provider, descriptor, native "
         + "reading and raw-record locator, in native-reading order. They are normalized facts, not a replay of "
-        + "original payload bytes. A channel page includes only the admitted paired TCP incarnation or UDP flow; an owner-process "
-        + "page includes only rows canonically bound to those processes as owner, not possible peer rows. One-sided "
-        + "and ambiguous rows remain available in unscoped evidence. This page does not infer completeness from "
-        + "observed rows: its coverage states what the capture's sources covered over its time scope.";
+        + "original payload bytes. A paired channel's page includes only its admitted TCP incarnation or UDP flow, a "
+        + "one-sided connection's only its one process's end, and a host's every one-sided connection to its address that "
+        + "the evidence policy admits, whichever process held it; an owner-process page includes only rows canonically "
+        + "bound to those processes as owner, not possible peer rows. Ambiguous rows remain available in unscoped evidence. "
+        + "This page does not infer completeness from observed rows: its coverage states what the capture's sources "
+        + "covered over its time scope.";
 
     public static SessionEvidencePage Read(
         SessionStore store,
@@ -249,7 +251,8 @@ public static class SessionEvidenceQuery
             throw new ArgumentOutOfRangeException(nameof(narrowing), "This names no source direction.");
         if (narrowing.End is not (null or 0 or 1))
             throw new ArgumentOutOfRangeException(nameof(narrowing), "A paired channel has two ends, 0 and 1.");
-        if (narrowing.End is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
+        if (narrowing.End is not null
+            && (channelKey is null || TransportConnection.IsKey(channelKey) || HostScopeKeys.IsHost(channelKey)))
             throw new ArgumentException("An end narrows a paired channel's records to those made at one of its ends; "
                 + "name the channel by its key.", nameof(narrowing));
     }
@@ -351,10 +354,18 @@ public static class SessionEvidenceQuery
 
         TransportRelationIndex? relations = null;
         int? selectedChannel = null;
+        bool[]? hostChannels = null;
         if (channelKey is not null)
         {
             relations = generation!.Relations(cancellationToken);
-            if (TransportConnection.IsKey(channelKey))
+            if (HostScopeKeys.IsHost(channelKey))
+            {
+                // A host's records are every one-sided connection's to its address, whoever held it (HostScopeKeys).
+                hostChannels = HostScopeKeys.Channels(relations, channelKey, policy) ?? throw new InvalidOperationException(
+                    $"No connection to {HostScopeKeys.AddressOf(channelKey)} is in the current generation under the evidence "
+                    + "policy. Return to the graph and choose the host again.");
+            }
+            else if (TransportConnection.IsKey(channelKey))
             {
                 // A one-sided connection is one process's channel: its records are the ones that name its channel.
                 TransportConnection[] held = [.. relations.OneSided.Where(connection =>
@@ -470,6 +481,11 @@ public static class SessionEvidenceQuery
                 && (segment.Reader.SignedValue(SegmentColumnId.SessionRelativeTicks, row) is not { } nanoseconds
                     || !range.Contains(nanoseconds / 100))) continue;
             if (selectedChannel is { } channel && segment.ChannelOf(row, relations!) != channel) continue;
+            if (hostChannels is not null
+                && (segment.ChannelOf(row, relations!) is not (>= 0 and var held) || held >= hostChannels.Length || !hostChannels[held]))
+            {
+                continue;
+            }
             if (narrowing.End is { } end && segment.EndOf(row) != end) continue;
             if (narrowing.Mechanism is { } mechanism
                 && segment.Reader.UnsignedValue(SegmentColumnId.Mechanism, row) != (ulong)mechanism) continue;

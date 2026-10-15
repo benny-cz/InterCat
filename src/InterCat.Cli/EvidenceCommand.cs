@@ -24,6 +24,7 @@ internal static class EvidenceCommand
         // Options are taken before the positional directory, so a value such as a channel key is never mistaken
         // for the directory when options come first.
         string? channel = command.TakeOption("--channel");
+        string? host = command.TakeOption("--host");
         var ownerTexts = new List<string>();
         while (command.TakeOption("--owner-process") is { } ownerText) ownerTexts.Add(ownerText);
         string? cursor = command.TakeOption("--cursor");
@@ -55,14 +56,18 @@ internal static class EvidenceCommand
             : null;
         int? end = endText is null ? null : endText == "0" ? 0 : 1;
         bool invalidNarrowing = narrowingProblem is not null;
-        if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner || invalidNarrowing)
+        string? hostProblem = host is null ? null
+            : channel is not null ? "--host and --channel each name the records to read; name one."
+            : !NamesHostAddress(host) ? $"--host takes an address its processes' connections ran to, 142.250.1.1 or 2001:db8::1; '{host}' is not one."
+            : null;
+        if (directory is null || hasUnknown || invalidSize || invalidInterval || invalidOwner || invalidNarrowing || hostProblem is not null)
         {
             ConsoleUi.Failure(directory is null ? "A session directory is required: icat evidence <directory>."
                 : hasUnknown ? command.Refusal(unknown!)
                 : invalidSize ? "--page-size must be an integer from 1 to 200."
                 : invalidOwner ? "--owner-process must be a process-instance GUID from the overview."
                 : invalidNarrowing ? narrowingProblem!
-                : tooWide ?? "--interval must be " + TickInterval.Takes + ".");
+                : hostProblem ?? tooWide ?? "--interval must be " + TickInterval.Takes + ".");
             ConsoleUi.Explain(PrintHelp);
             return InterCatExitCode.InvalidInvocation;
         }
@@ -75,6 +80,8 @@ internal static class EvidenceCommand
         }
 
         ProcessInstanceId[] owners = [.. ownerTexts.Select(text => new ProcessInstanceId(Guid.Parse(text)))];
+        // Another host's records are every connection's to its address, whoever held it, read where a channel's are.
+        channel = host is not null ? HostScopeKeys.Of(host) : channel;
         // A relationship's evidence key opens its records at both ends (R4): a paired TCP or UDP channel's, or an RPC
         // relationship's, channel's or call's, whose records the RPC calls name.
         bool rpc = RpcChannelKeys.IsRpc(channel);
@@ -143,7 +150,8 @@ internal static class EvidenceCommand
         ConsoleUi.Field("Session ID", page.SessionId.ToString("N"));
         ConsoleUi.Field("Generation", ConsoleUi.Count(page.Generation));
         ConsoleUi.Field("Rows on page", ConsoleUi.Count(page.Records.Count));
-        if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired channel", channel);
+        if (host is not null) ConsoleUi.Field("Host", host.Trim() + ", its connections whichever process held them");
+        else if (channel is not null) ConsoleUi.Field(rpc ? "RPC key" : "Paired channel", channel);
         if (page.End is { } side) ConsoleUi.Field("Channel end", side == 0 ? "0, its first end" : "1, its second end");
         if (page.Mechanism is { } kind) ConsoleUi.Field("Mechanism", MechanismText.Name(kind));
         if (page.Direction is { } way) ConsoleUi.Field("Source direction", ObservationText.DirectionOf(way));
@@ -250,9 +258,17 @@ internal static class EvidenceCommand
     private static string Kebab(string name) => string.Concat(name.Select((character, index) =>
         char.IsUpper(character) && index > 0 ? "-" + char.ToLowerInvariant(character) : char.ToLowerInvariant(character).ToString()));
 
+    /// <summary>
+    /// Whether --host's text can be an address another host's connections ran to: IPv4 dotted, or IPv6 with its colons,
+    /// as every surface writes one; a name, which no record holds, is not.
+    /// </summary>
+    internal static bool NamesHostAddress(string text) =>
+        (text.Contains('.', StringComparison.Ordinal) || text.Contains(':', StringComparison.Ordinal))
+        && System.Net.IPAddress.TryParse(text.Trim(), out _);
+
     private static void PrintHelp()
     {
-        ConsoleUi.Line("icat evidence <session-directory> [--channel <key>] [--owner-process <instance-guid> ...]");
+        ConsoleUi.Line("icat evidence <session-directory> [--channel <key> | --host <address>] [--owner-process <instance-guid> ...]");
         ConsoleUi.Line("              [--interval <start:end>] [--from <moment>] [--mechanism <name>] [--direction <name>]");
         ConsoleUi.Line("              [--end <0|1>] [--page-size <1-200>]");
         ConsoleUi.Line("              [--cursor <token>] [--wall-clock] [--json]");
@@ -261,6 +277,8 @@ internal static class EvidenceCommand
         ConsoleUi.Line("  or derivation asks for an explicit restart. --channel takes a relationship's evidence key: a");
         ConsoleUi.Line("  paired TCP or UDP channel's, or an RPC relationship's, which opens the calls its links join at both");
         ConsoleUi.Line("  ends; an RPC channel's or call's key opens its own records, and no RPC key takes --owner-process.");
+        ConsoleUi.Line("  --host reads the records of every connection to one other host's address, whichever process held");
+        ConsoleUi.Line("  it; who is at the address is not observed.");
         ConsoleUi.Line("  --owner-process selects rows canonically owned by that instance, not possible peer rows;");
         ConsoleUi.Line("  repeat it to select a group's instances together.");
         ConsoleUi.Line("  --interval is a half-open range of session time, each bound in 100-nanosecond ticks or a time");

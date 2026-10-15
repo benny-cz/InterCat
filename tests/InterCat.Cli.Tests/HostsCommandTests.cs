@@ -190,6 +190,44 @@ public sealed class HostsCommandTests
         Assert.DoesNotContain("browser.exe", text, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat evidence and icat timeline take --host: the records of every connection to an address, whichever process held it")]
+    public async Task IcatEvidenceAndTimelineTakeAHost()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        session.Store.ReleaseSegmentReaders();
+
+        // Its records are every connection's to the address - the browser's two records and the updater's three - and
+        // none of 142.250.1.10's, which it only begins.
+        (InterCatExitCode code, string text, string said) = await Run("evidence", session.Path, "--host", "142.250.1.1", "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement page = JsonDocument.Parse(text).RootElement.GetProperty("page");
+        Assert.Equal(5, page.GetProperty("records").GetArrayLength());
+        Assert.Equal("host:142.250.1.1", page.GetProperty("channelKey").GetString());
+        (code, text, _) = await Run("evidence", session.Path, "--host", "142.250.1.1");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Host +142\.250\.1\.1, its connections whichever process held them\r?$", text);
+
+        // The timeline counts them where they fell, saying what it counts.
+        (code, text, said) = await Run("timeline", session.Path, "--interval", "0:1000", "--columns", "4", "--host", "142.250.1.1",
+            "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        JsonElement detail = JsonDocument.Parse(text).RootElement.GetProperty("detail");
+        Assert.Equal("records of the connections to 142.250.1.1", detail.GetProperty("scope").GetString());
+        Assert.Equal(5, detail.GetProperty("buckets").EnumerateArray().Sum(bucket => bucket.GetProperty("observationCount").GetInt32()));
+
+        // A host and a channel at once, or a host that is no address, is refused; an address none reached says so.
+        (code, text, said) = await Run("evidence", session.Path, "--host", "142.250.1.1", "--channel", "connection:x");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--host and --channel each name the records to read; name one.", said + text, Ordinal);
+        (code, text, said) = await Run("timeline", session.Path, "--interval", "0:1000", "--host", "browser");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--host takes an address its processes' connections ran to", said + text, Ordinal);
+        (code, text, said) = await Run("evidence", session.Path, "--host", "192.0.2.1");
+        Assert.NotEqual(InterCatExitCode.Success, code);
+        Assert.Contains("No connection to 192.0.2.1 is in", said + text, Ordinal);
+    }
+
     /// <summary>
     /// browser.exe's TCP to 142.250.1.1's port 443, two records, and to 142.250.1.10, and its UDP to a resolver; updater.exe's
     /// TCP to 142.250.1.1's port 8443, three records, and to an IPv6 host.

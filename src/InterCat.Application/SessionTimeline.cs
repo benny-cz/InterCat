@@ -136,7 +136,7 @@ public sealed class TimelineFocus
             throw new ArgumentOutOfRangeException(nameof(end), "A paired channel has two ends, 0 and 1.");
         }
 
-        if (end is not null && (channelKey is null || TransportConnection.IsKey(channelKey)))
+        if (end is not null && (channelKey is null || TransportConnection.IsKey(channelKey) || HostScopeKeys.IsHost(channelKey)))
         {
             throw new ArgumentException("An end narrows a paired channel's records; name the channel.", nameof(end));
         }
@@ -515,6 +515,7 @@ public static class SessionTimelineQuery
         CancellationToken cancellationToken)
     {
         SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        // A host's focus names neither one channel nor an owner set alone, which are all the tiles tally, so its rows are read.
         if (derivation.PersistedTiles(store.Root) is not { } tiles || (rows.Channel is null && rows.Members is null))
         {
             return null;
@@ -820,6 +821,9 @@ internal sealed class FocusRows
     private readonly int? channel;
     private readonly EvidencePolicy policy;
 
+    /// <summary>A host focus's channels by number, true for each it reads; null for any other focus.</summary>
+    private readonly bool[]? hostChannels;
+
     // What the focus narrows its rows to, as a timeline lane counts them: one mechanism, one source direction, one end.
     private readonly Mechanism? mechanism;
     private readonly Direction? direction;
@@ -833,8 +837,9 @@ internal sealed class FocusRows
 
     private FocusRows(ProcessInstanceIndex? processes, TransportRelationIndex? relations, HashSet<int> owners,
         TransportRelation? relation, int? channel, OperationRecords? operationRecords, EvidencePolicy policy,
-        TimelineFocus focus)
+        TimelineFocus focus, bool[]? hostChannels = null)
     {
+        this.hostChannels = hostChannels;
         mechanism = focus.Mechanism;
         direction = focus.Direction;
         end = focus.End;
@@ -936,7 +941,16 @@ internal sealed class FocusRows
         TransportRelationIndex? relations = null;
         TransportRelation? relation = null;
         int? channel = null;
-        if (focus.ChannelKey is { } key && TransportConnection.IsKey(key))
+        bool[]? hostChannels = null;
+        if (focus.ChannelKey is { } hostKey && HostScopeKeys.IsHost(hostKey))
+        {
+            // A host's connections are every one-sided connection to its address, whoever held it: their rows are the ones
+            // naming any of their channels.
+            relations = generation.Relations(cancellationToken);
+            hostChannels = HostScopeKeys.Channels(relations, hostKey, policy) ?? throw new InvalidOperationException(
+                $"No connection to {HostScopeKeys.AddressOf(hostKey)} is in this generation under the evidence policy.");
+        }
+        else if (focus.ChannelKey is { } key && TransportConnection.IsKey(key))
         {
             // A one-sided connection is one process's channel: its rows are the ones naming its channel, all at one end.
             relations = generation.Relations(cancellationToken);
@@ -973,7 +987,7 @@ internal sealed class FocusRows
                 : SessionRpcCalls.RecordsOf(store, manifest, generation.OnDemand, operation, policy, cancellationToken))
                 ?? throw new InvalidOperationException("The focused operation is not in this generation under the evidence policy.");
 
-        return new(processes, relations, owners, relation, channel, operationRecords, policy, focus);
+        return new(processes, relations, owners, relation, channel, operationRecords, policy, focus, hostChannels);
     }
 
     /// <summary>
@@ -993,7 +1007,7 @@ internal sealed class FocusRows
 
         return new(
             this,
-            channel is null ? null : SegmentBindings.ChannelsOf(segment, relations!),
+            channel is null && hostChannels is null ? null : SegmentBindings.ChannelsOf(segment, relations!),
             owners.Count > 0 ? SegmentBindings.OwnersOf(segment, processes!) : null,
             ends)
         {
@@ -1050,7 +1064,9 @@ internal sealed class FocusRows
 
         public bool Includes(int row)
         {
-            if (hasChannels && channels[row].Channel != scope.channel)
+            if (hasChannels && (scope.hostChannels is { } host
+                    ? channels[row].Channel is not (>= 0 and var number) || number >= host.Length || !host[number]
+                    : channels[row].Channel != scope.channel))
             {
                 return false;
             }

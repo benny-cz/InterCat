@@ -235,7 +235,8 @@ public static class EvidenceScopes
             return scope;
         }
 
-        if (end is not null && (scope.ChannelKey is null || TransportConnection.IsKey(scope.ChannelKey)))
+        if (end is not null
+            && (scope.ChannelKey is null || TransportConnection.IsKey(scope.ChannelKey) || HostScopeKeys.IsHost(scope.ChannelKey)))
         {
             return Unreadable("An end filter names one end of a paired channel, and this scope reads none. Remove it to "
                 + "read the scope's records.", scope.Interval);
