@@ -25,15 +25,15 @@ public sealed class HostsCommandTests
         (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Hosts +4 hosts, reached by 2 processes\r?$", text);
-        Assert.Matches(@"(?m)^  Host +Connections +Ports +Records\r?$", text);
-        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\d.*?(?:process|processes)) +(\d.*?) +(\d+)\r?$").Select(match =>
-            $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value.TrimEnd()} | {match.Groups[4].Value}")];
+        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records\r?$", text);
+        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\S+) +(\d.*?(?:process|processes)) +(\d.*?) +(\d+)\r?$").Select(match =>
+            $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value.TrimEnd()} | {match.Groups[5].Value}")];
         Assert.Equal(
             [
-                "142.250.1.1 | 2 TCP connections from 2 processes | 443 and 8443 | 5",
-                "142.250.1.10 | 1 TCP connection from 1 process | 443 | 1",
-                "2001:db8::1 | 1 TCP connection from 1 process | 443 | 1",
-                "8.8.8.8 | 1 UDP flow from 1 process | 53 | 1",
+                "142.250.1.1 | - | 2 TCP connections from 2 processes | 443 and 8443 | 5",
+                "142.250.1.10 | - | 1 TCP connection from 1 process | 443 | 1",
+                "2001:db8::1 | - | 1 TCP connection from 1 process | 443 | 1",
+                "8.8.8.8 | - | 1 UDP flow from 1 process | 53 | 1",
             ],
             rows);
         Assert.Contains("who is at it is not observed", text, Ordinal);
@@ -48,17 +48,32 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v2", 4, 2), (root.GetProperty("contract").GetString(), root.GetProperty("hosts").GetInt32(),
+        Assert.Equal(("other-hosts-v3", 4, 2), (root.GetProperty("contract").GetString(), root.GetProperty("hosts").GetInt32(),
             root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
             busiest.GetProperty("udpFlows").GetInt32(), busiest.GetProperty("processes").GetInt32(), busiest.GetProperty("records").GetInt64()));
         Assert.Equal([443, 8443], busiest.GetProperty("ports").EnumerateArray().Select(port => port.GetInt32()));
+        Assert.Equal(JsonValueKind.Null, busiest.GetProperty("scope").ValueKind);
 
         // A limit that is no count of hosts is refused.
         (code, _, said) = await Run("hosts", session.Path, "--limit", "0");
         Assert.Equal(InterCatExitCode.InvalidInvocation, code);
         Assert.Contains("--limit expects a number of hosts of 1 or more", said + text, Ordinal);
+
+        // A scoped address says its scope: a multicast group's, here.
+        using var scoped = new TemporarySession();
+        Publish(scoped.Store,
+        [
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 320, 1).Between("192.168.1.10:61900", "239.255.255.250:1900")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+        ]);
+        scoped.Store.ReleaseSegmentReaders();
+        (code, text, _) = await Run("hosts", scoped.Path);
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  239\.255\.255\.250 +multicast +1 UDP flow from 1 process +1900 +1\r?$", text);
+        (code, text, _) = await Run("hosts", scoped.Path, "--json");
+        Assert.Equal("multicast", JsonDocument.Parse(text).RootElement.GetProperty("listed")[0].GetProperty("scope").GetString());
 
         // A session none of whose processes reached another host says so.
         using var local = new TemporarySession();

@@ -1477,7 +1477,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         if (node.IsHost)
         {
-            return string.Create(CultureInfo.CurrentCulture,
+            // A host drawn on its own says its address's scope, a multicast group's say, before what reached it.
+            string scope = node.Kind == GraphNodeKind.Host && AddressScope.Of(node.Label) is { } named ? named + " · " : string.Empty;
+            return scope + string.Create(CultureInfo.CurrentCulture,
                 $"from {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
         }
 

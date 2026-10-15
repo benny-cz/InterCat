@@ -156,7 +156,8 @@ public sealed partial class WorkspaceViewModel
             lines.Add(hosts.Count <= HostsOnCard
                 ? CountText.Agree(hosts.Count, "Host:", "Hosts:")
                 : string.Create(CultureInfo.CurrentCulture, $"Busiest {HostsOnCard} of {hosts.Count:N0} hosts:"));
-            lines.AddRange(hosts.Take(HostsOnCard).Select(host => "  " + host.Address + " · "
+            lines.AddRange(hosts.Take(HostsOnCard).Select(host => "  " + host.Address
+                + (AddressScope.Of(host.Address) is { } scope ? " (" + scope + ")" : string.Empty) + " · "
                 + HostLinkText.Reached(host, hub.ConnectedProcesses > 1) + " · " + CountText.Of(host.Records, "record")));
         }
 
@@ -280,7 +281,8 @@ public sealed partial class WorkspaceViewModel
             IReadOnlyList<OtherHost> hosts = ListedHosts();
             bool several = SelectedCluster is { ConnectedProcesses: > 1 };
             return [.. hosts.Take(HostsListed).Select(host => new HostRow(host.Address,
-                HostLinkText.Reached(host, several) + (host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(host.Ports))
+                (AddressScope.Of(host.Address) is { } scope ? scope + " · " : string.Empty) + HostLinkText.Reached(host, several)
+                    + (host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(host.Ports))
                     + " · " + CountText.Of(host.Records, "record")))];
         }
     }
@@ -360,6 +362,11 @@ public sealed partial class WorkspaceViewModel
             lines.Add(char.ToUpperInvariant(ports[0]) + ports[1..]);
         }
 
+        if (AddressScope.Meaning(host.Label) is { } meaning)
+        {
+            lines.Add(meaning);
+        }
+
         lines.Add("Reached by " + ReachedBy(links));
         lines.Add(HostScope);
         lines.Add("Who is at this address is not observed; searching it (Ctrl+F) marks the processes that reached it");
@@ -385,6 +392,7 @@ public sealed partial class WorkspaceViewModel
             + (reached is null ? string.Empty
                 : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
                     + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
+            + (AddressScope.Meaning(host.Label) is { } meaning ? ". " + meaning : string.Empty)
             + ". Reached by " + ReachedBy(links) + ". Who is at this address is not observed; searching it (Ctrl+F) marks the "
             + "processes that reached it, and each process's rung lists its own connections. Enter folds the hosts drawn on "
             + "their own back into Other hosts.";

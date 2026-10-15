@@ -427,6 +427,43 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Contains(workspace.GraphDisplay.OtherHosts!.Key, workspace.SearchedGraphNodeKeys);
     });
 
+    [Fact(DisplayName = "§6.3: an other host's address scope is said where it is listed and drawn, a multicast group's as whoever joined it")]
+    public void AnOtherHostsScopeIsSaid() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ScopedRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+
+        // Listed, each scoped host says its scope first; a public address says none.
+        workspace.SelectGraphNode(hub.Key);
+        Assert.Equal(
+            [
+                "239.255.255.250 | multicast · 1 UDP flow from 1 process · port 1900 · 3 records",
+                "192.168.1.20 | private · 1 TCP connection from 1 process · port 445 · 2 records",
+                "142.250.1.1 | 1 TCP connection from 1 process · port 443 · 1 record",
+            ],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+
+        // Other hosts' card says it beside the address of each host it names.
+        Assert.Contains("  239.255.255.250 (multicast) · 1 UDP flow from 1 process · 3 records", workspace.DescribeGraphHover(hub.Key)!.Lines);
+        Assert.Contains("  142.250.1.1 · 1 TCP connection from 1 process · 1 record", workspace.DescribeGraphHover(hub.Key)!.Lines);
+
+        // Drawn on its own, a multicast group says so beneath its address, and its card and description what it means.
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        GraphDisplayNode group = workspace.GraphDisplay.Node(GraphProjection.HostKey("239.255.255.250"))!;
+        Assert.Equal("multicast · from 1 process", GraphView.Detail(group));
+        Assert.Equal("from 1 process", GraphView.Detail(workspace.GraphDisplay.Node(GraphProjection.HostKey("142.250.1.1"))!));
+        const string Meaning = "A multicast group's address: whoever joined the group receives what is sent to it";
+        Assert.Contains(Meaning, workspace.DescribeGraphHover(group.Key)!.Lines);
+        workspace.SelectGraphNode(group.Key);
+        Assert.Contains(Meaning + ". Reached by ", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.DoesNotContain(workspace.DescribeGraphHover(GraphProjection.HostKey("142.250.1.1"))!.Lines,
+            line => line.Contains("address:", StringComparison.Ordinal) || line.StartsWith("A private", StringComparison.Ordinal));
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {
@@ -523,6 +560,24 @@ public sealed class OtherHostsWorkspaceTests
 
         return [.. rows];
     }
+
+    /// <summary>
+    /// svchost.exe's SSDP to its multicast group, three records; a file share's TCP to a private network's address, two;
+    /// and the browser's one record to a public address.
+    /// </summary>
+    private static ObservationRowV1[] ScopedRows() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+        Lifecycle(2, ObservationKind.Create, 320, 2) with { ResourceName = @"C:\Windows\svchost.exe", SessionRelativeTicks = 110 },
+        Lifecycle(3, ObservationKind.Create, 330, 3) with { ResourceName = @"C:\Tools\share.exe", SessionRelativeTicks = 120 },
+        .. Enumerable.Range(0, 3).Select(index => Transfer(20 + index, ObservationKind.Send, AccountingSide.SendSide, 100, 320,
+            (ulong)(10 + index)).Between("192.168.1.10:61900", "239.255.255.250:1900")
+            with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 200 + index }),
+        .. Enumerable.Range(0, 2).Select(index => Transfer(30 + index, ObservationKind.Send, AccountingSide.SendSide, 100, 330,
+            (ulong)(20 + index)).Between("192.168.1.10:52445", "192.168.1.20:445") with { SessionRelativeTicks = 300 + index }),
+        Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 30).Between("192.168.1.10:52000", "142.250.1.1:443")
+            with { SessionRelativeTicks = 400 },
+    ];
 
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);

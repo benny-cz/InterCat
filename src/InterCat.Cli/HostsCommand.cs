@@ -17,9 +17,10 @@ internal static class HostsCommand
 {
     /// <summary>
     /// The document --json writes: every host's count and the listed hosts, or the processes that reached an address, each
-    /// address with the ports at it the connections ran to since its second version.
+    /// address with the ports at it the connections ran to since its second version, and each listed host with its
+    /// address's scope since its third.
     /// </summary>
-    internal const string Contract = "other-hosts-v2";
+    internal const string Contract = "other-hosts-v3";
 
     private const int DefaultLimit = 50;
 
@@ -99,7 +100,16 @@ internal static class HostsCommand
                 SessionPath = path,
                 Hosts = hosts.Count,
                 Processes = processes,
-                Listed = hosts.Take(limit),
+                Listed = hosts.Take(limit).Select(host => new
+                {
+                    host.Address,
+                    Scope = AddressScope.Of(host.Address),
+                    host.TcpConnections,
+                    host.UdpFlows,
+                    host.Processes,
+                    host.Records,
+                    host.Ports,
+                }),
             }, JsonContracts.Indented));
             return InterCatExitCode.Success;
         }
@@ -115,9 +125,10 @@ internal static class HostsCommand
 
         ConsoleUi.Field("Hosts", CountText.Of(hosts.Count, "host") + ", reached by " + CountText.Of(processes, "process", "processes"));
         ConsoleUi.Table(
-            ["Host", "Connections", "Ports", "Records"],
+            ["Host", "Scope", "Connections", "Ports", "Records"],
             [.. hosts.Take(limit).Select(host => (IReadOnlyList<string>)
-                [host.Address, HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports), ConsoleUi.Count(host.Records)])]);
+                [host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports),
+                    ConsoleUi.Count(host.Records)])]);
         if (hosts.Count > limit)
         {
             ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture,
