@@ -169,6 +169,25 @@ public sealed class GraphProjectionTests
             process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
     }
 
+    [Fact(DisplayName = "§6.3: a group opened with none of its processes left draws every other process, over budget too")]
+    public void AnOpenedGroupWithNoProcessesDrawsTheRest()
+    {
+        // A snapshot may name a group none of whose processes it holds. Opened while the drawing is over budget, the
+        // projection reaches for the group's low end, which holds nothing.
+        ProcessGroup gone = new("gone", "intercat.exe", LaneGrouping.Executable);
+        ProcessGroup[] singles = [.. Enumerable.Range(0, 12).Select(index => new ProcessGroup($"single{index}", $"single{index}.exe",
+            LaneGrouping.Executable))];
+        ProcessNode[] processes = [.. singles.Select((group, index) => Node(index + 1, group.Key))];
+        CommunicationEdge[] edges = [.. Enumerable.Range(0, 6).Select(index =>
+            Edge($"pair-{index}", processes[2 * index], processes[(2 * index) + 1], 10 + index))];
+
+        GraphDisplay display = GraphProjection.Project(Snapshot([gone, .. singles], processes, edges), expandedGroup: gone.Key,
+            budget: new GraphDisplayBudget(6, 20, 5));
+        Assert.True(display.Nodes.Count <= 6);
+        Assert.Equal(processes.Length, display.Nodes.Sum(node => node.Members.Count));
+        Assert.DoesNotContain(display.Nodes, node => node.Kind == GraphNodeKind.OtherMembers);
+    }
+
     [Fact(DisplayName = "§6.3: an oversized opened group keeps busy members and folds the low end explicitly")]
     public void ExpandedGroupStaysBoundedWithoutTruncation()
     {

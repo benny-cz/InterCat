@@ -631,7 +631,8 @@ public static class GraphProjection
         {
             string other = OtherMembersKey(expandedGroup);
             bool exists = display.Node(other) is not null;
-            Fold[] lowEnd = [.. Individually(membersByGroup[expandedGroup], kept, assignment)
+            // A group the snapshot names with no process of its own has no low end: nothing of it is drawn to fold.
+            Fold[] lowEnd = [.. Individually(membersByGroup.GetValueOrDefault(expandedGroup) ?? [], kept, assignment)
                 .OrderBy(id => processMetric.GetValueOrDefault(id))
                 .ThenBy(id => id.ToString(), StringComparer.Ordinal)
                 .Select(id => new Fold(other, [id]))];
