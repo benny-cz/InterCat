@@ -153,6 +153,17 @@ public static class WorkspaceSearch
         : Rank(text, process.Name, null);
 
     /// <summary>
+    /// Whether <paramref name="query"/> names an address <paramref name="links"/>, connections to other hosts, ran to, by
+    /// the rule a process is found by one (<see cref="Find"/>): the Other hosts node that stands for them is found too.
+    /// </summary>
+    public static bool FindsAddress(IEnumerable<HostLink> links, string? query)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        string text = query?.Trim() ?? string.Empty;
+        return text.Length > 0 && AddressRankOf(links, text).Rank >= 0;
+    }
+
+    /// <summary>
     /// How well the addresses a process's connections to other hosts ran to match the query (§6.3): 0 when one is the
     /// query, 1 when one begins with it up to a '.' or ':' - "142.250" begins 142.250.1.1, "142.250.1.1" does not begin
     /// 142.250.1.10 - ignoring case, as IPv6 is written either way, and an IPv4-mapped address matching as its IPv4

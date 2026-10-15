@@ -1819,7 +1819,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
-                    + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote;
+                    + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote + SearchedGraphNote;
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -1834,7 +1834,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder or GraphNodeKind.OtherHostsOnly)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.OtherHosts), "node", "nodes")
-                : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote;
+                : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote + SearchedGraphNote;
         }
     }
 
@@ -2240,6 +2240,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             OnPropertyChanged(nameof(SearchResults));
             OnPropertyChanged(nameof(SelectedSearchResult));
             OnPropertyChanged(nameof(SearchSummary));
+
+            // The graph marks what the search finds and its summary counts them (§6.7).
+            OnPropertyChanged(nameof(SearchedGraphNodeKeys));
+            OnPropertyChanged(nameof(PartlySearchedGraphNodeKeys));
+            OnPropertyChanged(nameof(GraphSummary));
+            OnPropertyChanged(nameof(GraphScope));
             OnPropertyChanged(nameof(ShowsRankedTable));
             OnPropertyChanged(nameof(ShowsEmptyReason));
             OnPropertyChanged(nameof(ShowsLoadMoreEvidence));
@@ -3948,6 +3954,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (HostReachLine(node) is { } reach)
             {
                 nodeLines.Insert(1, reach);
+            }
+
+            if (SearchedLine(node) is { } searched)
+            {
+                nodeLines.Add(searched);
             }
 
             if (graphPins.ContainsKey(node.Key))

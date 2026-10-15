@@ -93,6 +93,11 @@ public sealed partial class WorkspaceViewModel
         lines.Add("Who is at these addresses is not observed; searching one (Ctrl+F) finds the processes that reached it");
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
         lines.Add("Size: fixed; a resource, not a process");
+        if (SearchedLine(hub) is { } searched)
+        {
+            lines.Add(searched);
+        }
+
         return new(hub.Label, lines);
     }
 

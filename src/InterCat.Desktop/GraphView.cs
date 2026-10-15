@@ -67,6 +67,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static Pen HoverPen => Current.HoverPen;
     private static Pen HoverHaloPen => Current.HoverHaloPen;
     private static Pen PinHeadPen => Current.PinHeadPen;
+    private static Pen MatchPen => Current.MatchPen;
+    private static Pen MatchHaloPen => Current.MatchHaloPen;
     private static Dashes ContextDashes => Current.ContextDashes;
     private static Pen ContextRimPen => Current.ContextRimPen;
 
@@ -160,6 +162,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             HoverPen = new(TextBrush, 1.5);
             HoverHaloPen = new(TextBrush, 7) { LineCap = PenLineCap.Round };
             PinHeadPen = new(PlotBrush, 1.5);
+            MatchPen = new(TextBrush, 1.5);
+            MatchHaloPen = new(PlotBrush, 1.5);
             ContextDashes = new(MutedPen, 7, 4);
             ContextRimPen = new(MutedTextBrush, 1);
             SampleRingPen = new(TextBrush, 2);
@@ -183,6 +187,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         public Pen HoverPen { get; }
         public Pen HoverHaloPen { get; }
         public Pen PinHeadPen { get; }
+        public Pen MatchPen { get; }
+        public Pen MatchHaloPen { get; }
         public Dashes ContextDashes { get; }
         public Pen ContextRimPen { get; }
 
@@ -593,6 +599,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         IReadOnlySet<string> selected = viewModel.SelectedGraphNodeKeys;
         IReadOnlySet<string> partlySelected = viewModel.PartlySelectedGraphNodeKeys;
+        IReadOnlySet<string> searched = viewModel.SearchedGraphNodeKeys;
+        IReadOnlySet<string> partlySearched = viewModel.PartlySearchedGraphNodeKeys;
         FollowSelection(selected, now);
         IReadOnlyList<GraphDisplayNode> order = TraversalOf(display);
         string? focused = IsFocused && order.Count > 0 ? order[KeyboardIndex(order, viewModel)].Key : null;
@@ -702,6 +710,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 context.DrawEllipse(SelectedBrush, PinHeadPen,
                     new Point(point.X - (radius * 0.75), point.Y - (radius * 0.75)), 3.5, 3.5);
             }
+
+            if (searched.Contains(node.Key))
+            {
+                // A node the search typed finds carries a mark at its upper right, in the ink a found lane is barred in
+                // (§6.7), ringed in the pane's colour so it reads over an edge: filled where every process it holds is
+                // found, and the Other hosts node where an address its connections ran to is.
+                context.DrawEllipse(TextBrush, MatchHaloPen, SearchMarkAt(point, radius), SearchMarkRadius, SearchMarkRadius);
+            }
+            else if (partlySearched.Contains(node.Key))
+            {
+                // Open where some of the processes it holds are found, so an aggregate is not read as wholly found.
+                context.DrawEllipse(PlotBrush, MatchPen, SearchMarkAt(point, radius), SearchMarkRadius, SearchMarkRadius);
+            }
         }
 
         DrawLabels(context, display, order, points, radii, selected, partlySelected, focused);
@@ -718,6 +739,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         KeepMoving(now);
     }
+
+    /// <summary>The radius of the mark a node the search finds carries.</summary>
+    internal const double SearchMarkRadius = 3.5;
+
+    /// <summary>Where the mark a node the search finds carries is drawn: at its upper right, opposite a pin's head.</summary>
+    internal static Point SearchMarkAt(Point center, double radius) =>
+        new(center.X + (radius * 0.75), center.Y - (radius * 0.75));
 
     /// <summary>
     /// §6.3's Other hosts node: a resource, not a process, so it is drawn square rather than round, with a globe's lines
@@ -1093,9 +1121,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>
     /// Names the graph by the node its keyboard is on while it has the keyboard, in the words its card titles and describes
     /// the node with, as a screen reader names a list's focused row (R15), and says a node in the multi-selection is in it,
-    /// as its ranked row does. The arrows move the selection from node to node, Ctrl+arrows the keyboard alone, and the
-    /// canvas has no item for each node to take the focus, so neither said anything. Elsewhere the graph keeps its own
-    /// name, and describes no node it is not on.
+    /// as its ranked row does, and a node the search typed finds is found, as its mark shows (§6.7). The arrows move the
+    /// selection from node to node, Ctrl+arrows the keyboard alone, and the canvas has no item for each node to take the
+    /// focus, so neither said anything. Elsewhere the graph keeps its own name, and describes no node it is not on.
     /// </summary>
     private void SayNode()
     {
@@ -1110,7 +1138,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                     : viewModel.SelectedGraphNodeKeys.Contains(key) ? ", in the selection"
                     : viewModel.PartlySelectedGraphNodeKeys.Contains(key) ? ", partly in the selection"
                     : string.Empty;
-                name = $"{SpokenName}: {card.Title}, {card.Lines[0]}{share}";
+                string found = viewModel.SearchedGraphNodeKeys.Contains(key) ? ", found by the search"
+                    : viewModel.PartlySearchedGraphNodeKeys.Contains(key) ? ", partly found by the search"
+                    : string.Empty;
+                name = $"{SpokenName}: {card.Title}, {card.Lines[0]}{share}{found}";
             }
         }
 
