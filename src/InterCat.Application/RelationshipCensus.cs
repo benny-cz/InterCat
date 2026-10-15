@@ -17,12 +17,20 @@ public static class RelationshipCensusText
 {
     /// <summary>
     /// The reason in a few words, for the graph's one-line summary: "no relationship drawn · 37 TCP connections ran to
-    /// other hosts", TCP's when the capture recorded any, else UDP's.
+    /// other hosts", TCP's when the capture recorded any, else UDP's; both where both transports' ran to other hosts, so a
+    /// summary naming TCP's never hides UDP's: "2 TCP connections and 1 UDP flow ran to other hosts".
     /// </summary>
     public static string Brief(RelationshipCensus census)
     {
         ArgumentNullException.ThrowIfNull(census);
-        return "no relationship drawn · " + (Reason(census.Tcp) ?? Reason(census.Udp) ?? "no TCP or UDP recorded");
+        return "no relationship drawn · " + (census is
+            {
+                Tcp: { Records: > 0, WithheldRelationships: 0, OtherHostConnections: > 0 } tcp,
+                Udp: { Records: > 0, WithheldRelationships: 0, OtherHostConnections: > 0 } udp,
+            }
+            ? CountText.Of(tcp.OtherHostConnections, "TCP connection") + " and " + CountText.Of(udp.OtherHostConnections, "UDP flow")
+                + " ran to other hosts"
+            : Reason(census.Tcp) ?? Reason(census.Udp) ?? "no TCP or UDP recorded");
     }
 
     /// <summary>

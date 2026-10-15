@@ -237,16 +237,13 @@ public sealed partial class WorkspaceViewModel
         string listed = OtherHost.Of(links).Count switch
         {
             0 => string.Empty,
-            1 => "Its host is listed below: chosen, the timeline highlights the records of every connection to it and E lists "
-                + "them, and Enter on it finds the processes that reached it, as searching its address (Ctrl+F) does. ",
-            _ => "Its hosts are listed below, ranked as their heading says: the timeline highlights the records of every "
-                + "connection to the one chosen and E lists them, and Enter on one finds the processes that reached it, as "
-                + "searching its address (Ctrl+F) does. ",
+            1 => "Chosen, its host below has its records highlighted and listed by E; Enter on it finds who reached it. ",
+            _ => "A host chosen below has its records highlighted and listed by E; Enter on one finds who reached it. ",
         };
         return "Where the connections of " + Counted(hub.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end, most often another machine" + reach + ". Who is at "
-            + "these addresses is not observed. " + listed + "Each process's rung lists its own connections. Its edges are "
-            + "connections, not relationships, and carry no traffic value. " + (graphDisplay.OpenedHosts is { Count: > 0 }
+            + "these addresses is not observed. " + listed + "Its edges are connections, with no traffic value. "
+            + (graphDisplay.OpenedHosts is { Count: > 0 }
                 ? "Enter folds the hosts drawn on their own back into it."
                 : "Enter draws its busiest hosts on their own.");
     }
@@ -417,15 +414,15 @@ public sealed partial class WorkspaceViewModel
         HostLink[] links = HostLinksTo(host, graphDisplay);
         IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
         OtherHost? reached = hosts.Count > 0 ? hosts[0] : null;
-        return host.Label + ": where the connections of " + Counted(host.ConnectedProcesses, "drawn process", "drawn processes")
+        return "Where the connections of " + Counted(host.ConnectedProcesses, "drawn process", "drawn processes")
             + " ran with no process of this capture at their other end"
             + (reached is null ? string.Empty
                 : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
                     + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
             + (AddressScope.Meaning(host.Label) is { } meaning ? ". " + meaning : string.Empty)
-            + ". Reached by " + ReachedBy(links) + ". Who is at this address is not observed. The timeline highlights the "
-            + "records of every connection to it, whichever process held it, and E lists them; searching it (Ctrl+F) marks the "
-            + "processes that reached it. Enter folds the hosts drawn on their own back into Other hosts.";
+            + ". Reached by " + ReachedBy(links) + ". Who is at it is not observed. Its records, whichever process held them, are "
+            + "highlighted and listed by E; searching its address (Ctrl+F) marks who reached it. Enter folds the hosts back "
+            + "into Other hosts.";
     }
 
     /// <summary>The processes whose connections are <paramref name="links"/>, the busiest first: "browser.exe · PID 300 and 2 more".</summary>

@@ -44,7 +44,7 @@ public sealed class RelationshipCensusTests
         Assert.Equal((1L, false), (census.RpcRecords, census.RpcLinked));
         Assert.Same(census, OverviewWorkspace.From(overview).Census);
 
-        Assert.Equal("no relationship drawn · 2 TCP connections ran to other hosts", RelationshipCensusText.Brief(census));
+        Assert.Equal("no relationship drawn · 2 TCP connections and 1 UDP flow ran to other hosts", RelationshipCensusText.Brief(census));
         Assert.Equal(
             "No TCP connection or UDP flow was seen with a process of this session at each of its two ends. All 3 of its TCP "
             + "records belong to 2 connections to 2 other hosts. Its 1 UDP record belongs to 1 flow with 1 other host. A "
@@ -133,6 +133,19 @@ public sealed class RelationshipCensusTests
             RelationshipCensusText.Brief(Census(none, udp: noUdp with { ToUnseenLocalEnds = 2, UnseenLocalConnections = 1 })));
         Assert.Equal("no relationship drawn · UDP ends could not be paired",
             RelationshipCensusText.Brief(Census(none, udp: noUdp with { Unpaired = 3 })));
+
+        // Both transports' connections to other hosts are said together where both ran there; where UDP's went elsewhere,
+        // TCP's reason leads.
+        Assert.Equal("no relationship drawn · 37 TCP connections and 2 UDP flows ran to other hosts",
+            RelationshipCensusText.Brief(Census(mixed, udp: datagrams)));
+        Assert.Equal("no relationship drawn · 37 TCP connections ran to other hosts",
+            RelationshipCensusText.Brief(Census(mixed, udp: noUdp with { ToUnseenLocalEnds = 2, UnseenLocalConnections = 1 })));
+
+        // A transport whose relationships were left out says that first, whatever else ran to other hosts.
+        Assert.Equal("no relationship drawn · 1 TCP relationship left out as a candidate", RelationshipCensusText.Brief(
+            Census(withheld with { ToOtherHosts = 3, OtherHostConnections = 1, OtherHosts = 1 }, udp: datagrams)));
+        Assert.Equal("no relationship drawn · 37 TCP connections ran to other hosts", RelationshipCensusText.Brief(
+            Census(mixed, udp: noUdp with { Withheld = 3, WithheldRelationships = 2, ToOtherHosts = 1, OtherHostConnections = 1, OtherHosts = 1 })));
 
         // Both transports' relationships left out are said together; TCP's reason leads the summary.
         TransportCensus withheldUdp = noUdp with { Withheld = 3, WithheldRelationships = 2 };

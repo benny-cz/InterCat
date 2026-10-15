@@ -116,10 +116,8 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Other hosts", workspace.SelectionTitle);
         Assert.Equal("Where the connections of 1 drawn process ran with no process of this capture at their other end, most "
             + "often another machine: 2 TCP connections to 2 hosts and 1 UDP flow with 1 host. Who is at these addresses is not "
-            + "observed. Its hosts are listed below, ranked as their heading says: the timeline highlights the records of every "
-            + "connection to the one chosen and E lists them, and Enter on one finds the processes that reached it, as "
-            + "searching its address (Ctrl+F) does. Each process's rung lists its own connections. Its edges are connections, "
-            + "not relationships, and carry no traffic value. Enter draws its busiest hosts on their own.",
+            + "observed. A host chosen below has its records highlighted and listed by E; Enter on one finds who reached it. Its "
+            + "edges are connections, with no traffic value. Enter draws its busiest hosts on their own.",
             workspace.SelectionSubtitle);
         Assert.Equal(["142.250.1.1 | 1 TCP connection · port 443 · 2 records", "20.42.65.1 | 1 TCP connection · port 443 · 1 record",
                 "8.8.8.8 | 1 UDP flow · port 53 · 1 record"],
@@ -197,8 +195,8 @@ public sealed class OtherHostsWorkspaceTests
 
         // Chosen, it lists every one of them in the inspector, beneath a description that says so, ties by address.
         workspace.SelectGraphNode(hub.Key);
-        Assert.Contains("2 UDP flows from 2 processes with 2 hosts. Who is at these addresses is not observed. Its hosts are "
-            + "listed below, ranked as their heading says:", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Contains("2 UDP flows from 2 processes with 2 hosts. Who is at these addresses is not observed. A host chosen "
+            + "below has its records highlighted", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal(
             [
                 "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · port 443 · 5 records",
@@ -275,7 +273,7 @@ public sealed class OtherHostsWorkspaceTests
         // hosts.
         workspace.SelectGraphNode(shared.Key);
         Assert.Equal("52.0.0.1", workspace.SelectionTitle);
-        Assert.StartsWith("52.0.0.1: where the connections of 2 drawn processes ran with no process of this capture at their other "
+        Assert.StartsWith("Where the connections of 2 drawn processes ran with no process of this capture at their other "
             + "end: 2 TCP connections from 2 processes, 11 records, at port 443. Reached by browser.exe · PID 300 and updater.exe · "
             + "PID 310.",
             workspace.SelectionSubtitle, StringComparison.Ordinal);
@@ -397,8 +395,7 @@ public sealed class OtherHostsWorkspaceTests
 
         Assert.Equal("Its host", workspace.HostsHeading);
         Assert.Equal(["52.0.1.1 | 1 TCP connection · port 443 · 3 records"], workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
-        Assert.Contains(" Its host is listed below: chosen, the timeline highlights the records of every connection to it and E "
-            + "lists them, and Enter on it finds the processes that reached it, as searching its address (Ctrl+F) does. ",
+        Assert.Contains(" Chosen, its host below has its records highlighted and listed by E; Enter on it finds who reached it. ",
             workspace.SelectionSubtitle, StringComparison.Ordinal);
     });
 
@@ -563,8 +560,8 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal(workspace.TimelineRungCaption + " · selection highlighted: connections to 52.0.0.1", workspace.TimelineCaption);
         Assert.Contains(nameof(WorkspaceViewModel.TimelineSelectionCaption), said);
         Assert.Contains(nameof(WorkspaceViewModel.TimelineRungCaption), said);
-        Assert.Contains("The timeline highlights the records of every connection to it, whichever process held it, and E lists "
-            + "them; searching it (Ctrl+F) marks the processes that reached it.", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Contains("Its records, whichever process held them, are highlighted and listed by E; searching its address (Ctrl+F) "
+            + "marks who reached it.", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Contains("Click highlights the records of every connection to it, whichever process held it, and E lists them",
             workspace.DescribeGraphHover(host)!.Lines);
 
