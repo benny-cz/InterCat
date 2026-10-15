@@ -383,12 +383,14 @@ public static class BrokerPrepareCompiler
             return Refused(BrokerPrepareRefusalCode.UnsupportedAdmissionPolicy, exception.Message);
         }
 
+        // A kernel flag group is enabled by its flags, the session's first enablement, never by a provider request (ADR-035).
         if (plan.Sources.Count is < 1 or > MaximumSources
-            || plan.Providers.Count != plan.Sources.Count)
+            || plan.Providers.Count != plan.Sources.Count(source => !IsKernelFlagGroup(source?.SourceId)))
         {
             return Refused(
                 BrokerPrepareRefusalCode.InvalidCapturePlan,
-                $"A prepared capture requires 1-{MaximumSources} sources and exactly one provider request per source.");
+                $"A prepared capture requires 1-{MaximumSources} sources and exactly one provider request per source a "
+                    + "provider is enabled for.");
         }
 
         string? sourceProblem = ValidateSources(plan.Sources, plan.BodyPolicy);
@@ -708,8 +710,30 @@ public static class BrokerPrepareCompiler
             return "Provider source IDs must be unique.";
         }
 
+        // A kernel flag group is enabled by its flags, the session's first enablement, never by a provider request, so no
+        // request may name one, whatever the order of the plan's sources (ADR-035).
+        if (providers.Keys.FirstOrDefault(IsKernelFlagGroup) is { } requested)
+        {
+            return $"Source '{requested}' is a kernel flag group, which no provider request enables or filters.";
+        }
+
         foreach (ProviderScopeDecision sourceScope in scope.Sources)
         {
+            // A kernel flag group has no provider request to filter: its flags reach the whole machine (ADR-035).
+            if (IsKernelFlagGroup(sourceScope.SourceId))
+            {
+                if (!Enum.IsDefined(sourceScope.ProcessScope)
+                    || sourceScope.ProcessScope == ProviderProcessScope.ProcessFiltered
+                    || sourceScope.AppliedProcessIds is not { Count: 0 }
+                    || sourceScope.CapturesOutsideRequestedProcesses != scope.RequestedProcessIds.Count > 0)
+                {
+                    return $"Source '{sourceScope.SourceId}' is a kernel flag group, which no provider request enables or "
+                        + "filters.";
+                }
+
+                continue;
+            }
+
             if (!providers.TryGetValue(sourceScope.SourceId, out ProviderEnablementRequest? provider)
                 || !ValidProcessIds(sourceScope.AppliedProcessIds)
                 || !sourceScope.AppliedProcessIds.Order().SequenceEqual(provider.ProcessIdsToInclude.Order()))
@@ -750,6 +774,10 @@ public static class BrokerPrepareCompiler
             ? null
             : "Included source decisions and admitted source plans do not identify the same sources.";
     }
+
+    /// <summary>Whether a source is a kernel flag group, which a private system logger receives by its flags (ADR-035).</summary>
+    private static bool IsKernelFlagGroup(string? sourceId) =>
+        sourceId is not null && WindowsSourceCatalog.Find(sourceId) is { Kind: SourceKind.KernelFlagGroup };
 
     private static string? ValidateProviders(EffectiveCapturePlan plan)
     {

@@ -49,8 +49,8 @@ public sealed class RelationshipCensusTests
             "No TCP connection was seen with a process of this session at each of its two ends. All 3 of its TCP records "
             + "belong to 2 connections to 2 other hosts. A process's connections are listed on its rung. UDP datagrams are "
             + "not drawn as relationships; they are in the timeline and on their processes' rungs. RPC calls are on their "
-            + "processes' rungs: a call is drawn to the process that served it only from a capture that collects ALPC, as "
-            + "icat record --profile rpc-peers does.",
+            + "processes' rungs: a call is drawn to the process that served it only from a capture that collects ALPC - "
+            + "choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.",
             RelationshipCensusText.Explain(census, Culture));
     }
 

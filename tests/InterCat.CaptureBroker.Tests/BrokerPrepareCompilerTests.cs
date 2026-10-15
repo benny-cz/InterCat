@@ -232,6 +232,86 @@ public sealed class BrokerPrepareCompilerTests
         Assert.Equal(limits, result.PreparedPlan!.Quota);
     }
 
+    [Fact(DisplayName = "§9.4: the broker prepares RPC peers as the catalog states it, ALPC enabled as kernel flags rather than a provider request")]
+    public void RpcPeersIsPrepared()
+    {
+        BrokerPrepareResult result = Prepare(CompileRpcPeers());
+        Assert.True(result.IsPrepared, result.Refusal?.Message);
+        PreparedCapturePlan prepared = result.PreparedPlan!;
+        Assert.Equal(("rpc-peers", "rpc-peers"), (prepared.RequestedProfileId, prepared.EffectiveProfileId));
+        Assert.Equal([WindowsSourceCatalog.KernelProcessSourceId, WindowsSourceCatalog.RpcSourceId],
+            prepared.Providers.Select(provider => provider.SourceId));
+        Assert.Contains(prepared.Sources, source => source.SourceId == WindowsSourceCatalog.KernelAlpcSourceId);
+
+        // The one session it starts is a private system logger: ALPC's kernel flags, its first enablement (ADR-035).
+        var session = new OwnedSessionPlan
+        {
+            Identity = CaptureSessionIdentity.Create("rpc-peers", 4242),
+            Providers = prepared.Providers,
+            Sources = prepared.Sources,
+        };
+        Assert.NotEqual(0UL, session.KernelFlags);
+        Assert.Equal(WindowsSourceCatalog.KernelAlpcSourceId, session.KernelFlagSources);
+    }
+
+    [Fact(DisplayName = "§9.4: the broker refuses an RPC peers plan that asks a provider request for ALPC, or filters ALPC by process")]
+    public void AKernelFlagGroupTakesNoProviderRequestOrFilter()
+    {
+        EffectiveCapturePlan plan = CompileRpcPeers();
+        ProviderEnablementRequest lifecycle = plan.Providers[0];
+        const string KernelFlagGroup = "is a kernel flag group, which no provider request enables or filters";
+
+        // A provider request for ALPC is no allowlisted enablement of it: its flags enable it, first, and nothing else does.
+        // Beside the requests the plan has, it is one request too many; in place of RPC's, it is still refused as itself.
+        BrokerPrepareResult requested = Prepare(plan with
+        {
+            Providers = [.. plan.Providers, lifecycle with { SourceId = WindowsSourceCatalog.KernelAlpcSourceId }],
+        });
+        Assert.False(requested.IsPrepared);
+        Assert.Contains("exactly one provider request per source a provider is enabled for", requested.Refusal!.Message,
+            StringComparison.Ordinal);
+        BrokerPrepareResult replaced = Prepare(plan with
+        {
+            Providers =
+            [
+                .. plan.Providers.Select(provider => provider.SourceId == WindowsSourceCatalog.RpcSourceId
+                    ? lifecycle with { SourceId = WindowsSourceCatalog.KernelAlpcSourceId }
+                    : provider),
+            ],
+        });
+        Assert.False(replaced.IsPrepared);
+        Assert.Equal($"Source '{WindowsSourceCatalog.KernelAlpcSourceId}' {KernelFlagGroup}.", replaced.Refusal!.Message);
+
+        // Nor can ALPC be filtered to processes, or said to be scoped as no machine-wide source is: no provider request
+        // carries a filter to it, and its flags reach the whole machine.
+        foreach ((string name, Func<ProviderScopeDecision, ProviderScopeDecision> alter, bool outside) in
+            new (string, Func<ProviderScopeDecision, ProviderScopeDecision>, bool)[]
+            {
+                ("filtered", source => source with { ProcessScope = ProviderProcessScope.ProcessFiltered }, false),
+                ("an undefined scope", source => source with { ProcessScope = (ProviderProcessScope)99 }, false),
+                ("process IDs applied", source => source with { AppliedProcessIds = [4242] }, false),
+                ("outside processes no one asked for", source => source with { CapturesOutsideRequestedProcesses = true },
+                    true),
+            })
+        {
+            BrokerPrepareResult refused = Prepare(plan with
+            {
+                Scope = plan.Scope with
+                {
+                    CapturesOutsideRequestedProcesses = outside,
+                    Sources =
+                    [
+                        .. plan.Scope.Sources.Select(source => source.SourceId == WindowsSourceCatalog.KernelAlpcSourceId
+                            ? alter(source)
+                            : source),
+                    ],
+                },
+            });
+            Assert.False(refused.IsPrepared, name);
+            Assert.Equal($"Source '{WindowsSourceCatalog.KernelAlpcSourceId}' {KernelFlagGroup}.", refused.Refusal!.Message);
+        }
+    }
+
     private static BrokerPrepareResult Prepare(
         EffectiveCapturePlan plan,
         BrokerRuntimeIdentity? runtime = null) =>

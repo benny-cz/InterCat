@@ -70,6 +70,40 @@ internal static class BrokerPlanFixture
             new FixedTimeProvider(new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero)));
     }
 
+    /// <summary>
+    /// The RPC peers profile as the broker compiles it (ADR-035): lifecycle and RPC calls from their providers, and ALPC's
+    /// send and receive, classic descriptors of one kernel class told apart by opcode, beside them.
+    /// </summary>
+    public static EffectiveCapturePlan CompileRpcPeers()
+    {
+        SourceAdmissionPlan process = BuildPlan(
+            WindowsSourceCatalog.KernelProcessSourceId,
+            Guid.Parse("22fb2cd6-0e7b-422b-a0c7-2fad1fd0e716"),
+            0,
+            1);
+        SourceAdmissionPlan rpc = BuildPlan(
+            WindowsSourceCatalog.RpcSourceId,
+            Guid.Parse("6ad52b32-d609-4be9-ae07-ce8dae937e39"),
+            1,
+            5,
+            6);
+        Guid alpcClass = Guid.Parse("45d8cccd-539f-4b72-a8b7-5c683142609a");
+        SourceAdmissionPlan classic = BuildPlan(WindowsSourceCatalog.KernelAlpcSourceId, alpcClass, 2, 0);
+        SourceAdmissionPlan alpc = classic with
+        {
+            Events =
+            [
+                classic.Events[0] with { Opcode = 33, Version = 2 },
+                classic.Events[0] with { Opcode = 34, Version = 2 },
+            ],
+        };
+        return CaptureProfileCompiler.Compile(
+            new(CaptureProfileKind.RpcPeers),
+            new SourcePlanCompilation([process, rpc, alpc], []),
+            Environment,
+            new FixedTimeProvider(new(2026, 9, 22, 12, 0, 0, TimeSpan.Zero)));
+    }
+
     /// <summary>A content request for WinINet's HTTP messages of the named processes, within 4 KiB a record and 16 MiB in all.</summary>
     public static ContentCaptureRequest ContentRequest(IReadOnlyList<int>? processIds = null) => new()
     {

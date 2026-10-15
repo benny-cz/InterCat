@@ -404,7 +404,7 @@ internal static class OperationsCommand
             "Other ends",
             document.AlpcRecords == 0
                 ? $"{document.PeerRule}: none resolved, " + (alpc.State == CoverageState.NotCollected
-                    ? "the capture did not collect ALPC (icat record --profile rpc-peers does)"
+                    ? "the capture did not collect ALPC (icat capture --profile rpc-peers does)"
                     : $"the generation holds no ALPC record (ALPC coverage: {CoverageStateText.Value(alpc.State)})")
                 : string.Create(CultureInfo.CurrentCulture,
                     $"{document.PeerRule}, through {document.AlpcRecords:N0} ALPC sends and receives: {Linked(document.Groups)}"));

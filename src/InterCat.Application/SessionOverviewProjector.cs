@@ -257,7 +257,8 @@ public static class SessionOverviewProjector
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
         // §5c): from the links a persisted overview kept, or followed here when it kept none. A session without ALPC
         // reads nothing for them, so its first view opens no segment on their account.
-        RpcPeerEdge[] rpc = !RpcPeerEdges.Collected(coverage) ? []
+        bool alpc = RpcPeerEdges.Collected(store.Root, manifest, coverage);
+        RpcPeerEdge[] rpc = !alpc ? []
             : counted.RpcLinks is { } kept ? [.. RpcPeerEdges.Of(kept, policy)]
             : [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
@@ -274,7 +275,7 @@ public static class SessionOverviewProjector
             relations.Census(Mechanism.Tcp, policy),
             relations.Census(Mechanism.Udp, policy),
             nodes.Sum(node => node.Activity.Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records)),
-            RpcPeerEdges.Collected(coverage));
+            alpc);
 
         // Each process's connections to other hosts, which the graph draws to one node of its own as resources are drawn:
         // with no traffic value and never naming who is at their other ends (§6.3, P7).

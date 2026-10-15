@@ -571,7 +571,8 @@ internal static class CaptureCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>] [--profile explore|focused-transport|content]");
+        ConsoleUi.Line("  icat capture <new-session-dir> [--duration <seconds>]");
+        ConsoleUi.Line("               [--profile explore|focused-transport|rpc-peers|content]");
         ConsoleUi.Line("               [--mechanism tcp|http] [--pid <id,...>] [--allow-broader]");
         ConsoleUi.Line("               [--max-journal-mib <n>] [--min-free-mib <n>] [--keep-last <seconds>] [--broker <exe>]");
         ConsoleUi.Line("               [--json]");
@@ -588,6 +589,10 @@ internal static class CaptureCommand
         ConsoleUi.Line("      it holds rather than all it recorded. A pin (icat pin) keeps the records read from its");
         ConsoleUi.Line("      moment; once the session holds more than the pin allows, the capture stops rather than");
         ConsoleUi.Line("      release them.");
+        ConsoleUi.Line("      --profile rpc-peers records lifecycle, RPC calls and TCP and UDP with the kernel's ALPC");
+        ConsoleUi.Line("      messages, which link each RPC call to the process that served it, drawn in the graph as it");
+        ConsoleUi.Line("      records. Its private system logger takes one of the eight a machine can run, and a machine");
+        ConsoleUi.Line("      running all eight refuses it; icat profiles rpc-peers states its cost.");
         ConsoleUi.Line("      --profile content keeps the messages of the processes --pid names - WinINet's HTTP");
         ConsoleUi.Line("      exchanges, etw/manifest/Microsoft-Windows-WinINet-Capture - as icat record does, through");
         ConsoleUi.Line("      the broker: only your own processes, in this sign-in and at no higher integrity, which it");

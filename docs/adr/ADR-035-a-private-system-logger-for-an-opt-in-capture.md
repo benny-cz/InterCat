@@ -126,6 +126,17 @@ opt-in added a median 0.1 to 0.2 points to Explore, and its process 0.04. So:
 - ALPC's own class stays the collection measurement's. The product runs suggest that measurement's machine was noisy
   too, and a quiet-machine series would decide whether ALPC alone is Low.
 
+## Addendum: through the broker, from the window (revision 543)
+
+The profile recorded only through `icat record`, elevated in the operator's own process. The window and `icat capture`
+now ask the broker for it, which refused it: preparation required a provider request per source, and a kernel flag
+group has none, since decision 1 makes its flags the session's first enablement. Preparation now counts a request
+per source a provider is enabled for, and refuses a request for a kernel flag group, or a process scope on one, since
+its flags reach the whole machine (`broker-v1` §2). The window offers the profile as a Keep choice of its own, every
+record of ten minutes, never the default: decision 5's opt-in, with what it takes said beside it. It is bounded as
+Explore's default is because the system logger is held for as long as the capture records; a longer capture is
+`icat capture --profile rpc-peers` with `--keep-last`.
+
 ## Alternatives considered
 
 - **A second session, a system logger beside the capture's.** Rejected. Ownership, recovery and cleanup would track two

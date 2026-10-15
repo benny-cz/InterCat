@@ -157,7 +157,9 @@ Revision 227: the overview's graph joins two process instances by an RPC edge wh
 evidence policy admits both calls' bindings. The edge is correlated at best, as weak as the weaker binding, and counts
 the call records at its two ends - a client call's start and stop, and the server call's start and stop when it has
 one - never the ALPC records that link them. Under an interval it counts those its readings fall in. A generation
-whose coverage ledger names no collected ALPC descriptor draws none and reads nothing for them.
+whose coverage ledger names no collected ALPC descriptor draws none and reads nothing for them. Since revision 543
+a generation that has no ledger yet - its capture still recording, or never finished - is judged by the normalizer
+plan it retains instead (`normalizer-plan-v1`): it draws them when the plan admits an ALPC descriptor.
 
 Revision 373: `icat operations` states beside the calls it lists what the capture covered of RPC and of ALPC over the
 session, from its coverage ledger (`coverage-v2` §4). Its JSON's `coverage` lists the two in that order, each with its

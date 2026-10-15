@@ -1333,6 +1333,52 @@ public static class SessionSegments
         return bytes;
     }
 
+    /// <summary>The largest retained normalizer plan a generation publishes or a reader accepts (`normalizer-plan-v1`).</summary>
+    public const int MaximumNormalizerPlanBytes = 1_048_576;
+
+    /// <summary>
+    /// The bytes of the normalizer plan a generation retains beside its journal - the descriptors its capture admitted
+    /// (`contracts/normalizer-plan-v1.md`) - or null for a generation that names none, as a legacy session does. Its
+    /// contract is read by the application layer, because this layer does not interpret it. Two plans are a refusal: a
+    /// reader could not say which one the journal was admitted under.
+    /// </summary>
+    public static byte[]? NormalizerPlan(IOwnedDirectory directory, SessionManifestV1 manifest)
+    {
+        ArgumentNullException.ThrowIfNull(directory);
+        ArgumentNullException.ThrowIfNull(manifest);
+        StoreDependency[] plans =
+        [
+            .. manifest.Dependencies.Where(dependency => dependency.Kind == StoreDependencyKind.DerivationPlan),
+        ];
+        if (plans.Length > 1)
+        {
+            throw new InvalidDataException(
+                $"Generation {manifest.Generation} names {plans.Length} normalizer plans; one journal has one.");
+        }
+
+        if (plans.Length == 0)
+        {
+            return null;
+        }
+
+        if (plans[0].LengthBytes is < 1 or > MaximumNormalizerPlanBytes)
+        {
+            throw new InvalidDataException("The normalizer plan is outside its 1 MiB bound.");
+        }
+
+        byte[] bytes = new byte[checked((int)plans[0].LengthBytes)];
+        using FileStream stream = directory.OpenOwnedFile(
+            plans[0].Name, FileMode.Open, FileAccess.Read, FileShare.Read, FileOptions.SequentialScan);
+        if (stream.Length != bytes.Length)
+        {
+            throw new InvalidDataException(
+                $"The normalizer plan '{plans[0].Name}' is not the length its generation recorded.");
+        }
+
+        stream.ReadExactly(bytes);
+        return bytes;
+    }
+
     /// <summary>
     /// The source clock a generation's native readings are on, read from the journal its committed boundary
     /// names, or null when the generation names no journal. A reader needs it to turn native ticks into seconds,

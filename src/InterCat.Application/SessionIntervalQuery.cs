@@ -136,7 +136,7 @@ public static class SessionIntervalQuery
 
         // An RPC edge counts its links' call records the interval holds, as the overview draws it (operations-v1 §5c).
         long rpcRecords = 0;
-        if (native is { } range && RpcPeerEdges.Collected(ledger))
+        if (native is { } range && RpcPeerEdges.Collected(store.Root, manifest, ledger))
         {
             foreach (RpcPeerEdge edge in RpcPeerEdges.Of(generation.RpcPeers(cancellationToken), policy, range))
             {

@@ -3423,7 +3423,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         evidencePolicy = EvidencePolicy.IncludeCorrelated;
         laneGrouping = LaneGrouping.Executable;
         collectorsAside = false;
-        ApplyCaptureUpdate(new(CaptureUiPhase.Starting, content is null ? "Preparing Explore" : "Preparing the content capture",
+        ApplyCaptureUpdate(new(CaptureUiPhase.Starting,
+            "Preparing " + DesktopCaptureRunner.Called(content is not null, LinksRpcCalls),
             "Windows may ask for administrator approval to record system-wide events."));
         try
         {
@@ -3511,8 +3512,15 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         NameStart(unavailable: phase == CaptureUiPhase.Unavailable);
     }
 
+    /// <summary>
+    /// Whether the next capture links RPC calls to the processes serving them, so the graph draws them: RPC peers in place
+    /// of Explore, as the Keep choice asks (ADR-035).
+    /// </summary>
+    internal bool LinksRpcCalls => KeepChoice.LinksRpcCalls;
+
     /// <summary>Whether the card says beneath the Keep choice what it does: every choice but the default does.</summary>
-    private static bool Explained(CaptureKeepChoice choice) => choice.Keep is not null || choice.Content;
+    private static bool Explained(CaptureKeepChoice choice) =>
+        choice.Keep is not null || choice.Content || choice.LinksRpcCalls;
 
     /// <summary>
     /// Names the card's start action for the Keep choice: starting Explore, retrying it once it could not run, or choosing
@@ -3525,6 +3533,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             : unavailable && StartedWith?.Content is null ? "Retry exploring (Ctrl+R)" : "Start exploring (Ctrl+R)";
         startDoes = content
             ? "Choose your own processes whose HTTP messages a capture keeps (Ctrl+R); you review it before anything is recorded"
+            : LinksRpcCalls ? "Start the RPC peers capture, which draws each RPC call to the process that served it"
             : "Start the default Explore capture";
         OfferCardActions();
     }

@@ -96,6 +96,13 @@ public sealed record CaptureRunOptions
     public ContentCaptureChoice? Content { get; init; }
 
     /// <summary>
+    /// Whether the capture also collects the kernel's ALPC messages, which link each RPC call to the process that served
+    /// it: the opt-in RPC peers profile in place of Explore (ADR-035), whose private system logger takes one of the eight
+    /// a machine can run. A content capture records its own profile, and never does.
+    /// </summary>
+    public bool LinksRpcCalls { get; init; }
+
+    /// <summary>
     /// Shows a content capture's review as the broker prepared it, and answers whether to start it. Nothing is recorded
     /// before a person has seen what would be kept (§11.1); without a review a content capture starts unreviewed, which
     /// only a test asks for.
@@ -161,8 +168,13 @@ public static class DesktopCaptureRunner
     /// the evidence holds rather than everything it recorded, and publish as often as that window needs rather than its
     /// day-long limit (`contracts/broker-v1.md` §5.1).
     /// </param>
-    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, TimeSpan? keepWindow = null) => new(
-        "explore", null, [], false, false, Quota(maximumDurationSeconds),
+    /// <param name="linksRpcCalls">
+    /// Whether it records RPC peers, Explore's metadata with ALPC beside it, which links each RPC call to the process that
+    /// served it (ADR-035).
+    /// </param>
+    public static BrokerPrepareCaptureRequest ExploreRequest(int maximumDurationSeconds = 600, TimeSpan? keepWindow = null,
+        bool linksRpcCalls = false) => new(
+        linksRpcCalls ? "rpc-peers" : "explore", null, [], false, false, Quota(maximumDurationSeconds),
         keepWindow is null ? BrokerRetentionPolicy.StopAtLimit : BrokerRetentionPolicy.ReleaseFollowed,
         null, BrokerJournalPublication.Live,
         keepWindow is { } keep ? (int)Math.Ceiling(keep.TotalSeconds) : null);
@@ -176,6 +188,30 @@ public static class DesktopCaptureRunner
         ArgumentNullException.ThrowIfNull(choice);
         return new("content", null, [], false, false, Quota(choice.MaximumDurationSeconds), BrokerRetentionPolicy.StopAtLimit,
             choice.Request, BrokerJournalPublication.Live);
+    }
+
+    /// <summary>The request a run of <paramref name="options"/> prepares: its content capture, or Explore or RPC peers.</summary>
+    public static BrokerPrepareCaptureRequest RequestFor(CaptureRunOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        return options.Content is { } content
+            ? ContentRequest(content)
+            : ExploreRequest(options.MaximumDurationSeconds, options.Rolling?.Keep, options.LinksRpcCalls);
+    }
+
+    /// <summary>
+    /// How a capture is named within a sentence - "the content capture", "the RPC peers capture" or "Explore" - so a content
+    /// capture or one of RPC peers is named as itself wherever Explore would be.
+    /// </summary>
+    public static string Called(bool content, bool linksRpcCalls) =>
+        content ? "the content capture" : linksRpcCalls ? "the RPC peers capture" : "Explore";
+
+    /// <summary>How the capture a run of <paramref name="options"/> starts is named where a sentence begins with it.</summary>
+    public static string NameOf(CaptureRunOptions options)
+    {
+        ArgumentNullException.ThrowIfNull(options);
+        string called = Called(options.Content is not null, options.LinksRpcCalls);
+        return char.ToUpperInvariant(called[0]) + called[1..];
     }
 
     private static BrokerCaptureQuota Quota(int maximumDurationSeconds) =>
@@ -264,9 +300,8 @@ public static class DesktopCaptureRunner
             return;
         }
 
-        // A content capture is named as itself wherever Explore would be.
-        string name = options.Content is null ? "Explore" : "The content capture";
-        report(new(CaptureUiPhase.Starting, options.Content is null ? "Starting Explore" : "Starting the content capture",
+        string name = NameOf(options);
+        report(new(CaptureUiPhase.Starting, "Starting " + Called(options.Content is not null, options.LinksRpcCalls),
             "Windows will ask once to approve the broker recording system-wide events. The viewer stays unprivileged."));
         BrokerConnection? connection = null;
         CaptureId? captureId = null;
@@ -285,9 +320,7 @@ public static class DesktopCaptureRunner
                 throw new InvalidDataException("The capture broker protocol is incompatible. Reinstall InterCat.");
             }
 
-            BrokerPrepareCaptureRequest request = options.Content is { } content
-                ? ContentRequest(content)
-                : ExploreRequest(options.MaximumDurationSeconds, options.Rolling?.Keep);
+            BrokerPrepareCaptureRequest request = RequestFor(options);
             BrokerPrepareCaptureResponse prepared = await PrepareAsync(client, request, stop).ConfigureAwait(false);
             if (!prepared.Prepared || prepared.Grant is null)
             {

@@ -297,7 +297,9 @@ public sealed class OperationMetricsTests
         {
             (DurationRequest(DurationInterval.IoCompletion), "No IoCompletion operation is derived"),
             (Request(Metric.ActiveChannels), "connection incarnations"),
-            (Request(Metric.ActivePeers) with { Owner = client }, "this generation holds no ALPC record"),
+            (Request(Metric.ActivePeers) with { Owner = client }, "this generation holds no ALPC record to link a call to "
+                + "the call that served it (operations-v1 §5c). A capture with the RPC peers profile collects ALPC: choose RPC "
+                + "peers in the window's Keep, or run icat capture --profile rpc-peers."),
             (Request(Metric.Errors) with { AccountingSide = AccountingSide.SendSide }, "no call is accounted to a side"),
             (Request(Metric.OperationsStarted) with { Participant = client }, "participant(P) needs the process at a call's other end"),
             (Request(Metric.OperationsStarted) with { Sender = client }, "sender(P) selects data that flowed one way"),

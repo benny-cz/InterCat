@@ -532,7 +532,8 @@ internal static class TestSessions
         (ContentChunkHeaderV1 Header, IReadOnlyList<(ContentFragmentV1 Fragment, ReadOnlyMemory<byte> Bytes)> Fragments)? content = null,
         ClockCalibrationV1? calibration = null,
         bool finished = false,
-        CollectorIdentitiesV1? collectors = null)
+        CollectorIdentitiesV1? collectors = null,
+        byte[]? plan = null)
     {
         SourceClockDescriptor sourceClock = clock ?? TestClock;
         CaptureId captureId = capture ?? Capture;
@@ -596,6 +597,12 @@ internal static class TestSessions
         if (collectors is not null)
         {
             builder.StageCollectorIdentities(collectors);
+        }
+
+        // The normalizer plan the capture admitted its records under, as a recorder retains it beside its journal.
+        if (plan is not null)
+        {
+            builder.StageNormalizerPlan(plan);
         }
 
         // A capture that reached its last publication says so, as a recorder's final generation does.

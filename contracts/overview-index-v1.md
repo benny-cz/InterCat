@@ -42,7 +42,8 @@ at each strength a link between them has, the call records at both ends of those
 and as weak as the weaker binding of its two calls, and a link one of whose calls binds to no instance joins no pair.
 They are held before any evidence policy, which the projection applies to them as it does to relations, so the graph's
 RPC edges come from them and no call is paired or followed before the first view. A generation whose ledger names no
-collected ALPC holds none.
+collected ALPC holds none. Since plan revision 543 a generation with no ledger - its capture never finished - holds
+them when the normalizer plan it retains admits an ALPC descriptor (`normalizer-plan-v1`).
 
 Since minor 2 (plan revision 289) it also holds the **lane bytes**: for each main column and each mechanism it counts
 records of there, what those records' transport-observed measurements sent under sender accounting, received under

@@ -27,11 +27,22 @@ internal static class RpcPeerEdges
     public const string KeyPrefix = "rpc:";
 
     /// <summary>
-    /// Whether a generation's capture collected ALPC, the only evidence an RPC edge rests on. A capture that did not reads
-    /// nothing for them, so its first view opens no segment on their account.
+    /// Whether a generation's capture collected ALPC, the only evidence an RPC edge rests on, by its coverage ledger. A
+    /// capture that did not reads nothing for them, so its first view opens no segment on their account.
     /// </summary>
     public static bool Collected(CoverageLedgerV1? ledger) =>
         ledger is not null && ledger.Epochs.Any(epoch => epoch.Collected.Any(descriptor => descriptor.Mechanism == Mechanism.Alpc));
+
+    /// <summary>
+    /// Whether a generation's capture collects ALPC: by its coverage ledger once one is published, with a capture's last
+    /// chunk; before then - while the capture records, or when it never finished - by the plan it admitted its records
+    /// under, published with its first (<see cref="CaptureAdmissions"/>). A live RPC peers capture's graph draws its calls'
+    /// other ends as they arrive, rather than only once it is saved.
+    /// </summary>
+    public static bool Collected(IOwnedDirectory directory, SessionManifestV1 manifest, CoverageLedgerV1? ledger) =>
+        ledger is not null
+            ? Collected(ledger)
+            : CaptureAdmissions.Of(directory, manifest)?.Contains(Mechanism.Alpc) == true;
 
     /// <summary>
     /// The edges between process instances whose two bindings <paramref name="policy"/> admits, each keyed by its instance

@@ -38,6 +38,17 @@ stages no files and publishes no generation. Passing means this evidence can be 
 the current implementation; it does not guarantee a later segment write or commit will succeed. Plain
 `icat rederive` uses the same replay path before publishing a replacement generation.
 
+## What a capture admits (revision 543)
+
+A capture publishes its plan with its first chunk and its coverage ledger (`coverage-v2`) with its last. Until a
+generation's ledger is published - while its capture records, or when it never finished - a reader takes what the
+capture collects from the plan: the mechanisms of its descriptors. The window draws an RPC call to the process that
+served it, counts the links under a brush and keeps them in a checkpoint when they include ALPC (`operations-v1`
+§5c). Once a ledger is published it decides, whatever the plan admitted. A plan that names another contract, as a
+later writer's may, says nothing of what it admitted, so its RPC edges wait for the ledger; one that is not JSON,
+names no contract or, naming this one, lacks its descriptors' mechanisms is refused rather than read as admitting
+nothing. A generation that names no plan says nothing of what it admitted, and one that names two is refused.
+
 ## Classic kernel descriptors (revision 221)
 
 A classic kernel event, such as ALPC's send and receive (ADR-035), has no manifest. Its descriptor's `providerGuid`

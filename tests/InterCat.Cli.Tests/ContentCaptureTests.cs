@@ -69,7 +69,7 @@ public sealed class ContentCaptureTests
             ("explore", null, ["--retention", "stop-at-limit"], false, "--source, --channel, the byte limits, --inspection"),
             ("explore", null, ["--pid", "4242"], false, "focused-transport takes --mechanism tcp"),
             ("focused-transport", "http", [], false, "focused-transport takes --mechanism tcp"),
-            ("rpc-peers", null, [], false, "--profile is explore, focused-transport or content; 'rpc-peers' is not one."),
+            ("timing", null, [], false, "--profile is explore, focused-transport, rpc-peers or content; 'timing' is not one."),
         })
         {
             bool broader = given.Contains("--allow");

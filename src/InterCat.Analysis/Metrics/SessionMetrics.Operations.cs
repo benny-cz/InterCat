@@ -146,7 +146,8 @@ public static partial class SessionMetrics
                 return Unavailable(request, context.Generation, MetricUnavailableReason.NoLogicalOperations,
                     $"{OtherEndsAskedFor(request)} needs the process at a call's other end, and this generation holds no "
                     + "ALPC record to link a call to the call that served it (operations-v1 §5c). A capture with the RPC "
-                    + "peers profile collects ALPC: icat record --profile rpc-peers.");
+                    + "peers profile collects ALPC: choose RPC peers in the window's Keep, or run icat capture --profile "
+                    + "rpc-peers.");
             }
 
             ends = CallEnds.Of(calls, peers, request, processes);

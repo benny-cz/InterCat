@@ -2023,6 +2023,7 @@
         "R18: every command's --json answer is one JSON object on stdout naming its contract, whatever its exit code",
         "R18: grouped by terminal session, the window's export of the machine rung, a session's rung and its records is icat export --group-by session's",
         "R18: icat capture projects a capture's stop from the limits the window does - the effective quota, and the window the broker releases for",
+        "R18: icat capture records RPC peers through the broker as it records Explore, live, and refuses a focus or content it does not take",
         "R18: icat capture takes a content request in icat record's words, and refuses what a content capture does not take",
         "R18: icat channels says how each channel was paired - its rule, strength, lifetime and coverage - in the inspector's words",
         "R18: icat checkpoint says what came of it in its report alone, and that it publishes one only when the generation names none",

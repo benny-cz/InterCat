@@ -64,7 +64,8 @@ internal static class CaptureRequests
         var quota = new BrokerCaptureQuota(seconds, journal * 1024 * 1024, free * 1024 * 1024);
         switch (profile)
         {
-            case "explore" or "focused-transport":
+            // RPC peers records what Explore does and ALPC beside it (ADR-035): it takes no focus either.
+            case "explore" or "focused-transport" or "rpc-peers":
             {
                 bool focused = profile == "focused-transport";
                 if (content.AnyBesideProcesses)
@@ -82,7 +83,7 @@ internal static class CaptureRequests
                 if (focused ? mechanism != Mechanism.Tcp : mechanism is not null || processIds.Count > 0 || broader)
                 {
                     problem = "focused-transport takes --mechanism tcp and optionally --pid <id,...> and --allow-broader; "
-                        + "explore takes neither.";
+                        + "explore and rpc-peers take neither.";
                     return null;
                 }
 
@@ -121,8 +122,8 @@ internal static class CaptureRequests
             }
 
             default:
-                problem = $"--profile is explore, focused-transport or content; '{profile}' is not one. icat profiles lists "
-                    + "what each collects.";
+                problem = $"--profile is explore, focused-transport, rpc-peers or content; '{profile}' is not one. icat "
+                    + "profiles lists what each collects.";
                 return null;
         }
     }

@@ -337,7 +337,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Equal(InterCatExitCode.Success, listed);
         Assert.Contains("RPC" + NotCollected, calls, StringComparison.Ordinal);
         Assert.Contains("This session holds no RPC call record.", calls, StringComparison.Ordinal);
-        Assert.Contains("none resolved, the capture did not collect ALPC (icat record --profile rpc-peers does)", calls,
+        Assert.Contains("none resolved, the capture did not collect ALPC (icat capture --profile rpc-peers does)", calls,
             StringComparison.Ordinal);
         Assert.Contains("HTTP" + NotCollected, (await Run("exchanges", tcp.Path)).Output, StringComparison.Ordinal);
 

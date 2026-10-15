@@ -87,7 +87,8 @@ public static class RelationshipCensusText
         if (census.RpcRecords > 0 && !census.RpcLinked)
         {
             sentences.Add("RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a "
-                + "capture that collects ALPC, as icat record --profile rpc-peers does.");
+                + "capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile "
+                + "rpc-peers.");
         }
 
         return string.Join(" ", sentences);

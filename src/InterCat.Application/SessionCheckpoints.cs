@@ -110,7 +110,7 @@ public static class SessionCheckpoints
             // (overview-index-v1 §3); one that did not keeps none.
             RpcPeerIndex peers = derivation.RpcPeers(store.Root, segments, clock, fields, cancellationToken);
             HttpExchangeIndex exchanges = derivation.HttpExchanges(store.Root, segments, clock, fields, cancellationToken);
-            if (RpcPeerEdges.Collected(SessionSegments.CoverageLedger(store.Root, manifest)))
+            if (RpcPeerEdges.Collected(store.Root, manifest, SessionSegments.CoverageLedger(store.Root, manifest)))
             {
                 counts = counts with { RpcLinks = RpcPeerEdges.Totals(peers) };
             }

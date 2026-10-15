@@ -40,7 +40,7 @@ public sealed class EmptyGraphExplanationTests
         string why = "No TCP connection was seen with a process of this session at each of its two ends. All 3 of its TCP "
             + "records belong to 2 connections to 2 other hosts. A process's connections are listed on its rung. RPC calls are "
             + "on their processes' rungs: a call is drawn to the process that served it only from a capture that collects "
-            + "ALPC, as icat record --profile rpc-peers does.";
+            + "ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.";
         Assert.Equal("3 processes · no relationship drawn · 2 TCP connections ran to other hosts · 1 connects to other hosts",
             workspace.GraphSummary);
         Assert.Equal(workspace.GraphSummary + ". " + why, workspace.GraphScope);
@@ -79,7 +79,8 @@ public sealed class EmptyGraphExplanationTests
         string why = "No TCP connection was seen with a process of this session at each of its two ends. Its 1 TCP record "
             + "belongs to 1 connection on this machine whose other end no record holds. A process's connections are listed "
             + "on its rung. RPC calls are on their processes' rungs: a call is drawn to the process that served it only from "
-            + "a capture that collects ALPC, as icat record --profile rpc-peers does.";
+            + "a capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile "
+            + "rpc-peers.";
         Assert.Equal("2 processes · no relationship drawn · 1 TCP connection with an unseen other end", workspace.GraphSummary);
         Assert.Equal(why, workspace.GraphEmptyExplanation);
         Assert.True(workspace.ShowsGraphEmptyExplanation);

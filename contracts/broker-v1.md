@@ -42,6 +42,10 @@ The broker refuses preparation when any of these conditions holds:
 - a required source is missing, an unlisted source appears, descriptor/body-policy structure is invalid,
   or the provider request differs from the adapter allowlist;
 - source-level process scope, aggregate wider-capture state and recorded consent disagree;
+- a provider request names a kernel flag group, or a kernel flag group's scope decision filters by process, applies
+  process IDs, is undefined or misstates whether it captures outside the requested processes: the session's kernel
+  flags, its first enablement, enable such a group for the whole machine (ADR-035), so every other source has exactly
+  one provider request and a kernel flag group none (revision 543);
 - separately governed original evidence is requested;
 - a content request names a process that is not its client's own, or names it other than by its ID and its start
   (section 2.1); or
