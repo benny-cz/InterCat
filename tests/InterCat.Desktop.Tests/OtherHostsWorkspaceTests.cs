@@ -285,6 +285,32 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal(folded, workspace.GraphDisplay.Nodes.Select(node => node.Key));
     });
 
+    [Fact(DisplayName = "§26.3: a workspace made with Other hosts opened, as its investigation or an earlier publication left it, draws its first graph so and lays it out once, and the rail names it until it is folded")]
+    public void AWorkspaceMadeWithOtherHostsOpenedDrawsItSo() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation), hostsOpened: true);
+
+        // Its first drawing is the opened one, and the layout begun for it is the one that arrives.
+        Assert.True(workspace.HostsOpened);
+        Assert.Equal(8, workspace.GraphDisplay.OpenedHosts!.Count);
+        Task first = workspace.LayoutReady;
+        await first;
+        Assert.Same(first, workspace.LayoutReady);
+        Assert.Equal(["its busiest other hosts drawn on their own"], workspace.ChangedSettings);
+
+        // Folded by its node, the setting is at its default again, and the rail is told so.
+        var changed = new List<string?>();
+        workspace.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
+        Assert.True(workspace.OpenGraphNode(GraphProjection.OtherHostsKey));
+        Assert.False(workspace.DiffersFromDefaults);
+        Assert.Contains(nameof(WorkspaceViewModel.ChangedSettingsSummary), changed);
+        Assert.Null(workspace.GraphDisplay.OpenedHosts);
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {

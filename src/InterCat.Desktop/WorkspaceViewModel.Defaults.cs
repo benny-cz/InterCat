@@ -6,9 +6,10 @@ namespace InterCat.Desktop;
 
 /// <summary>
 /// §6.8's defaults: every first-run default is correct without a choice, and a setting a person changed is shown as
-/// changed, with one command that restores them all. The settings are those that change what a number counts or how it
-/// reads - the ranking and whether per second, the lanes' scale, the grouping and the evidence policy - in the words an
-/// investigation uses when it keeps them (R5).
+/// changed, with one command that restores them all. The settings are those that change what a number counts, how it
+/// reads or what is drawn - the ranking and whether per second, the lanes' scale, the grouping, the evidence policy,
+/// InterCat's own processes set aside, the time base and Other hosts opened - in the words an investigation uses when it
+/// keeps them (R5).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -20,7 +21,7 @@ public sealed partial class WorkspaceViewModel
     public IReadOnlyList<string> ChangedSettings => !realOverview
         ? []
         : WorkspaceLayout.Parts(0, 0, Grouping, rankBy, perSecond && RankingMetrics.IsAdditive(rankBy), EvidencePolicy,
-            scalesEachLane, CultureInfo.CurrentCulture, CollectorsSetAside, ReadsWallClock);
+            scalesEachLane, CultureInfo.CurrentCulture, CollectorsSetAside, ReadsWallClock, ShowsHostsOpened);
 
     /// <summary>Whether any setting differs from its default, so the rail names it and offers the default view back.</summary>
     public bool DiffersFromDefaults => ChangedSettings.Count > 0;
@@ -42,7 +43,7 @@ public sealed partial class WorkspaceViewModel
         ? "Not the default view: " + WorkspaceLayout.Series(ChangedSettings) + "."
         : string.Empty;
 
-    /// <summary>Says the settings changed, after the ranking, its rate or the lanes' scale did.</summary>
+    /// <summary>Says the settings changed, after the ranking, its rate, the lanes' scale or Other hosts opened did.</summary>
     private void RaiseSettingsChanged()
     {
         OnPropertyChanged(nameof(ChangedSettings));

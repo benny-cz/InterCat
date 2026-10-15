@@ -1,7 +1,7 @@
-# Workspace contract, version 20
+# Workspace contract, version 21
 
-Status: M4, revision 470 (ADR-038 to ADR-042); versions 1 to 19 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
-270, 271, 280, 301, 339, 343, 360, 388, 406, 419 and 422's, and packages revision 263's
+Status: M4, revision 557 (ADR-038 to ADR-042); versions 1 to 20 were revisions 253, 254, 256, 260, 264, 265, 266, 269,
+270, 271, 280, 301, 339, 343, 360, 388, 406, 419, 422 and 470's, and packages revision 263's
 Owner: `InterCat.Application` (`InvestigationWorkspace`)
 Produced by: `icat workspace new | add | relink | alias | align | join | same-host | translate | note | view | package`
 Read by: `icat workspace show | compare | correlate`
@@ -19,11 +19,12 @@ own there (§7), version 14 whether each of its timeline lanes is read against i
 left the window's two main panes (§7), version 16 which process lanes they pinned at the top of each session's
 timeline (§7), version 17 whether they grouped each session's processes by terminal session (§7), version 18
 whether they set InterCat's own processes aside from each session's view (§7), version 19 whether they read each
-session's times on the wall clock its capture's machine read (§7), and version 20 the widths they gave the ranked table
-and the inspector by their edges (§7). An earlier
+session's times on the wall clock its capture's machine read (§7), version 20 the widths they gave the ranked table
+and the inspector by their edges (§7), and version 21 whether they opened each session's Other hosts into its busiest
+hosts (§7). An earlier
 version's file is read as one without what later versions added - a `workspace-v1` file holds members and host names
 and no time, a `workspace-v2` file manual alignments only, and a `workspace-v5` file members each aligned to the
-reference itself - and each is written as version 20. A kind of fact is
+reference itself - and each is written as version 21. A kind of fact is
 refused only in a file of a version before the one that added it; until revision 279 each was refused in any version
 before the newest, so a file an earlier version wrote with what that version had added stopped reading once a later
 version appeared.
@@ -32,7 +33,7 @@ version appeared.
 
 | Field | Meaning |
 |---|---|
-| `contract` | `"workspace-v20"` (`"workspace-v1"` to `"workspace-v19"` are read) |
+| `contract` | `"workspace-v21"` (`"workspace-v1"` to `"workspace-v20"` are read) |
 | `workspaceId` | A random identity of this workspace |
 | `createdUtc`, `updatedUtc` | When it was made and last written |
 | `members` | Its sessions, in the order they were added (§2) |
@@ -44,7 +45,7 @@ version appeared.
 | `addressTranslations` | Every revision of a person's statement of a known address translation, in the order recorded (§6) |
 | `notes` | Every revision of a person's notes, in the order written (§7) |
 | `views` | Every revision of a person's saved views of the investigation's time, in the order saved (§7) |
-| `layouts` | How a person laid out each member's graph and timeline, ranked its rows and counted its records: at most one per member, replaced as it changes (§7) |
+| `layouts` | How a person laid out each member's graph and timeline, ranked its rows, counted its records and opened its Other hosts: at most one per member, replaced as it changes (§7) |
 | `panes` | How a person left the window's panes while showing its sessions: the graph's share of the main panes' height, the pane filling the column, and the widths they gave the ranked table and the inspector; null when it keeps none (§7) |
 
 A workspace is written whole to a temporary file beside it and moved into place, so a reader sees the old file or the
@@ -93,7 +94,7 @@ is selected only by a relink. `relink` points a member at a path only when the s
 `sessionId` and `captureId`, and selects the generation found there; relinking to the member's own path selects what is
 there. A member is named by its `sessionId` or a unique leading part of it.
 
-`icat workspace show --json` prints `workspace-resolution-v23`: the file's identity and times, each member's fields with
+`icat workspace show --json` prints `workspace-resolution-v24`: the file's identity and times, each member's fields with
 its `fullPath`, `state`, `currentGeneration` (null when no session is there), `reason` (null when present), `host` (its
 name, when given), `alignment` (the revision in force, or null), `through` (the members it is aligned through to the
 reference, nearest first) and, since revision 395, `demo` (whether the session found for it is InterCat's generated demo,
@@ -101,7 +102,8 @@ reference, nearest first) and, since revision 395, `demo` (whether the session f
 `timeReference`, every alignment, join decision, host confirmation, address translation, note and view revision, the
 overlaps of captures of one host (§5) with, since revision 278, the snapshot vector they answer (I16) - each capture
 read to place them, with its session, the one generation read and its manifest's digest - the layouts, each with its
-`grouping` since revision 406, its `collectorsAside` since revision 419 and its `wallClock` since revision 422, and the
+`grouping` since revision 406, its `collectorsAside` since revision 419, its `wallClock` since revision 422 and its
+`hostsOpened` since revision 557, and the
 panes (§7), with their `railWidth` and `inspectorWidth` since revision 470, and caveats. It exits 0 when every member is
 present and 1 otherwise.
 
@@ -337,13 +339,14 @@ show no interval, are in the clock of no member, or appear in a file before vers
 A layout is how a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its
 graph, where, the process lanes they pinned on its timeline, how its processes are grouped, what its rows are ranked by,
 the evidence policy its records are counted under, the scale its timeline lanes are read against, whether InterCat's
-own processes are set aside from it, and whether its times are read on the wall clock. It is a preference rather than a finding, so a member has one at most, replaced as it changes,
-and none is kept as a revision:
+own processes are set aside from it, whether its times are read on the wall clock, and whether its graph draws its
+busiest other hosts on their own. It is a preference rather than a finding, so a member has one at most, replaced as it
+changes, and none is kept as a revision:
 
 | Layout field | Meaning |
 |---|---|
 | `sessionId` | The member whose graph it lays out |
-| `pins` | The pinned nodes, by key: `{ key, x, y }`, the node's stable graph key - a process instance, a group or an aggregate - at most 256 characters, and where it was put, each of `x` and `y` from 0 to 1 across and down the graph; at most 1,024, each key once |
+| `pins` | The pinned nodes, by key: `{ key, x, y }`, the node's stable graph key - a process instance, a group, an aggregate, Other hosts or a host drawn on its own - at most 256 characters, and where it was put, each of `x` and `y` from 0 to 1 across and down the graph; at most 1,024, each key once |
 | `pinnedLanes` | The process instances whose lanes are pinned at the top of their group's lanes on the session's timeline (§6.2), by identity, in the order they were pinned, which is the order they are drawn in; at most 1,024, each once, none the empty identity. Empty when none is. Since version 16 |
 | `grouping` | How the session's processes are grouped (§6.3), when not by executable, the default: `UserSession`, by the terminal session their lifecycle records name; null groups them by executable. No other grouping is kept, since no view offers one to put back. Since version 17 |
 | `rankBy` | What the session's rows are ranked by (§6.1), when not by their own records: `BytesSent`, `BytesReceived`, `EndpointBytes`, `RpcCallsMade`, `RpcCallsServed`, `RpcErrors`, `RpcCallTime`, `RpcServeTime` or `ActivePeers`; null ranks by records. Since version 12 |
@@ -352,22 +355,26 @@ and none is kept as a revision:
 | `scalesEachLane` | Whether each of the session's timeline lanes is read against its own busiest bar rather than one scale every lane shares, the default (§6.2's normalization scope). Since version 14 |
 | `collectorsAside` | Whether InterCat's own processes - the instances the capture's collectors are (`collector-binding-v1`) - are set aside from the session's ranked rows, graph and channels (plan §19.5's view filter), rather than shown, the default. No record is set aside with them. Since version 18 |
 | `wallClock` | Whether the session's instants are read on the wall clock its capture's machine read, placed through its clock calibration (`clock-calibration-v1`, plan §6.2's time base), rather than in session time, the default. A session whose capture recorded none reads session time whatever it says. Since version 19 |
+| `hostsOpened` | Whether the session's graph has Other hosts opened (plan §6.3's explicit expansion): the busiest of the addresses its processes' connections ran to with no process of the capture at their other end, each drawn on its own as far as the graph's budget allows, and the rest kept in Other hosts, rather than all folded into it, the default. Which hosts are busiest is worked out from the session as it is shown, so none is named here. A session none of whose processes shown reached another host draws no Other hosts whatever it says. Since version 21 |
 | `updatedUtc` | When it last changed |
 
 The Desktop keeps a session's pins, its pinned lanes, its grouping, its ranking, its evidence policy, its lanes' scale,
-whether InterCat's own processes are set aside and whether its times are read on the wall clock in the investigation it
-was opened from, and puts them back when it is opened from it again, its records counted
+whether InterCat's own processes are set aside, whether its times are read on the wall clock and whether its Other hosts
+is opened in the investigation it was opened from, and puts them back when it is opened from it again, its records counted
 under the policy kept before its first view, its processes grouped as kept from that view on where they name a terminal
-session, and its lanes pinned before any group's are drawn; a session opened on its own keeps them only while it is
-open. A pinned lane of an instance a later generation does not draw stays pinned, for when it is drawn. A layout that
+session, its lanes pinned before any group's are drawn, and its Other hosts opened from its first drawing, so a host
+pinned on its graph is drawn where it was pinned; a session opened on its own keeps them only while it is open. A pinned
+lane of an instance a later generation does not draw stays pinned, for when it is drawn, and so does a pinned host no
+longer among the busiest. A layout that
 pins nothing, groups by executable, ranks by records, not per second, counts correlated evidence, reads every lane on
-one scale, shows InterCat's own processes and reads session time keeps nothing and is removed. A file whose layouts are of no member, keep nothing, pin a node twice, outside
+one scale, shows InterCat's own processes, reads session time and keeps Other hosts folded keeps nothing and is removed. A file whose layouts are of no member, keep nothing, pin a node twice, outside
 the graph or by no key, pin a lane twice, by the empty identity or more than 1,024 of them, rank by `Records` by name or
 by no metric §6.1 offers, count under `IncludeCorrelated` by name or under any policy but `IncludeCandidates`, group by
 `Executable` by name or by anything but `UserSession`, appear in a file before version 11, rank in a file before version
 12, name a policy in a file before version 13, read each lane on its own scale in a file before version 14, pin a lane
 in a file before version 16, group in a file before version 17, set InterCat's own processes aside in a file before
-version 18, or read its times on the wall clock in a file before version 19, is refused.
+version 18, read its times on the wall clock in a file before version 19, or open Other hosts in a file before version 21,
+is refused.
 
 The panes are how a person left the window's two main panes - the graph above the timeline - and the columns beside
 them while showing the investigation's sessions (§6.1's persistence): the graph's share of the height the two share, the
@@ -414,7 +421,7 @@ investigation with its sessions as one folder (§8.4, ADR-042):
   `Missing`, to relink.
 - Everything else is kept: `workspaceId`, `createdUtc`, `updatedUtc`, `hostAliases`, `timeReference`, `alignments`,
   `joins`, `hostEquivalences`, `addressTranslations`, `notes`, `views`, `layouts` and `panes`. The file is written as
-  the current version, `workspace-v20`.
+  the current version, `workspace-v21`.
 - The folder must not exist and must lie inside no session. It is built in a private folder beside it,
   `<new-folder>.partial-<32 hex>`, and moved into place only after every copy verified and the file, reopened, found each
   copy as the session it is at the generation copied, with nothing else under `sessions/`. A package that is refused or

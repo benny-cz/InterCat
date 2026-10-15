@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 556 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 557 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 557 — Other hosts opened kept in the investigation (§26.3, §6.3):**
+  - Opening Other hosts lasted only while the window showed the session, and a host pinned on the opened graph
+    came back pinned to a node not drawn.
+  - A member's layout keeps hostsOpened (workspace-v21). Opened from its investigation, a session draws its first
+    graph opened and says so with what else was put back; the investigation's window and icat workspace show say
+    it too (workspace-resolution-v24), and the rail names it as a changed setting the default view folds.
+  - Debug and Release each ran 2,380 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 19 mutations was caught: a layout keeping only Other hosts opened said to keep nothing, its words or its
+    description dropped, SetLayout not storing it, a version 20 file opening Other hosts accepted, a version 20 file
+    refused, the unknown version's message naming the wrong last version, the window neither writing nor reading it
+    back, a session from its investigation or a newer publication drawn folded, the notice and the rail naming hosts
+    a session has none of, the rail never naming it or never told, the default view leaving it opened, a change of
+    it not written, the first graph not drawn opened, and icat workspace show not saying it.
 
 - **Revision 556 — icat hosts (R18, §6.3):**
   - Nothing headless listed every other host a session reached, or which processes reached one.
@@ -1159,7 +1173,8 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
      --group-by session` since revision 407 as the window exports it. §19.5's view filter, InterCat's own processes
      set aside, is kept since revision 419 (`workspace-v18`), and the time base since revision 422 (`workspace-v19`).
      §6.1's column widths: the rail's edge resizes it, since revision 469 the inspector's edge resizes the inspector,
-     and since revision 470 both widths are kept with the split, once for every session (`workspace-v20`).
+     and since revision 470 both widths are kept with the split, once for every session (`workspace-v20`). Other
+     hosts opened into its busiest hosts, a control since revision 555, is kept since revision 557 (`workspace-v21`).
    - §6.7's table is complete since revision 160's multi-selection. What it leaves open:
      - a set of channels, which a timeline focus cannot name;
      - a lane view of an arbitrary set, which would need the graph to expand several groups at once;
@@ -1373,4 +1388,4 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 ## Key reference contracts
 
 `contracts/journal-v1.md`, `store-v1.md`, `segment-v1.md`, `metrics-v1.md`, `entities-v1.md`, `operations-v1.md`, `derivation-checkpoint-v1.md`, `overview-index-v1.md`, `operation-index-v1.md`, `tile-index-v1.md`,
-`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v20.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.
+`query-identity-v1.md`, `live-follow-v1.md`, `app-settings-v1.md`, `workspace-v21.md`, `support-bundle-v1.md`, `demo-investigation-v1.md`, `clock-calibration-v1.md`, `coverage-v2.md`; ADR-008, ADR-010, ADR-012, ADR-013, ADR-023–031, ADR-038–041; the complete historical ledger linked above.

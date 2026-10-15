@@ -771,6 +771,98 @@ public sealed class InvestigationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§26.3: a session opened from an investigation keeps its Other hosts opened there, drawn so from its first graph with a host pinned where it was put")]
+    public async Task AnInvestigationKeepsOtherHostsOpened()
+    {
+        using var root = new TemporaryDirectory();
+        string reaching = HostsSession(root.Path, "reaching");
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, reaching, Committed).SessionId;
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            ListBox list = Named<ListBox>(window, "Sessions of this investigation; press Enter to open the selected one");
+            list.SelectedIndex = 0;
+            Button open = Named<Button>(window, "Open in InterCat");
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == reaching);
+
+            // Opened by its node, Other hosts is kept opened in the investigation, whose window says so, and the rail names
+            // it among the settings changed from their defaults.
+            var shown = (WorkspaceViewModel)main.DataContext!;
+            await shown.LayoutReady;
+            Assert.True(shown.OpenGraphNode(GraphProjection.OtherHostsKey));
+            await shown.LayoutReady;
+            await main.InvestigationWritten;
+            Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.HostsOpened);
+            const string Kept = "Opens with its busiest other hosts drawn on their own, as it was left here.";
+            WaitFor(() => window.View!.Members[0].Kept == Kept);
+            Assert.Equal(Kept, KeptLine(list).Text);
+            Assert.Equal("Not the default view: its busiest other hosts drawn on their own.", shown.ChangedSettingsText);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Assert.True(main.GetControl<Control>("DefaultsPanel").IsVisible);
+            Assert.Equal("1 setting changed", main.GetControl<TextBlock>("ChangedSettingsLine").Text);
+
+            // A host drawn on its own is pinned where it was put, as any node is.
+            string host = GraphProjection.HostKey("142.250.1.1");
+            var place = new GraphPoint(0.85, 0.2);
+            Assert.True(shown.PinGraphNode(host, place));
+            await main.InvestigationWritten;
+            Assert.Equal(host, Assert.Single(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins).Key);
+
+            // Opened on its own, the session's Other hosts is folded.
+            Assert.True(await main.OpenSessionAsync(reaching));
+            var alone = (WorkspaceViewModel)main.DataContext!;
+            Assert.False(alone.HostsOpened);
+            Assert.DoesNotContain(alone.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Host);
+
+            // Opened from the investigation again, its first graph draws the hosts on their own, the pinned one where it was
+            // put before any layout arrives and after, and its status says so.
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.DataContext is WorkspaceViewModel { HostsOpened: true });
+            var again = (WorkspaceViewModel)main.DataContext!;
+            Assert.Equal("142.250.1.1, 8.8.8.8", string.Join(", ", again.GraphDisplay.OpenedHosts!));
+            Assert.Equal(place, again.DisplayPositions[host]);
+            Assert.Contains("which put back 1 node pinned on its graph and its busiest other hosts drawn on their own.",
+                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            await again.LayoutReady;
+            Assert.Equal(place, again.DisplayPositions[host]);
+
+            // The default view folds it again and keeps the pin, which the investigation then keeps alone.
+            Assert.True(await main.RestoreDefaultViewAsync());
+            Assert.False(again.HostsOpened);
+            Assert.False(again.DiffersFromDefaults);
+            await main.InvestigationWritten;
+            WorkspaceLayout folded = InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!;
+            Assert.Equal((false, host), (folded.HostsOpened, Assert.Single(folded.Pins).Key));
+            WaitFor(() => window.View!.Members[0].Kept == "Opens with 1 node pinned on its graph, as it was left here.");
+
+            // A session none of whose processes reached another host opens with what else its layout keeps, and its notice
+            // and rail say nothing of hosts it has none of.
+            string paired = PairedSession(root.Path, "paired");
+            Guid b = InvestigationWorkspace.Add(workspace, paired, Committed).SessionId;
+            InvestigationWorkspace.SetLayout(workspace, b, [], Committed, scalesEachLane: true, hostsOpened: true);
+            await window.RefreshAsync();
+            WaitFor(() => window.View!.Members.Count == 2);
+            list.SelectedIndex = 1;
+            open.RaiseEvent(new RoutedEventArgs(Button.ClickEvent));
+            WaitFor(() => main.GetControl<TextBlock>("CaptureSessionPath").Text == paired);
+            WaitFor(() => main.DataContext is WorkspaceViewModel { ScalesEachLane: true });
+            Assert.Contains("which put back each of its timeline lanes on its own scale.",
+                main.GetControl<TextBlock>("CaptureDetail").Text, StringComparison.Ordinal);
+            Assert.Equal("Not the default view: each of its timeline lanes on its own scale.",
+                ((WorkspaceViewModel)main.DataContext!).ChangedSettingsText);
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     /// <summary>Opens pool.exe's group in <paramref name="workspace"/>, its lanes counted.</summary>
     private static async Task OpenPoolGroupAsync(WorkspaceViewModel workspace)
     {
@@ -2965,6 +3057,37 @@ public sealed class InvestigationWindowTests
                     .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
                 Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 11)
                     .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+            ],
+            capture: CaptureId.New(),
+            clock: ClockFor(ClockId.New(), "lab-" + name));
+        store.ReleaseSegmentReaders();
+        return directory;
+    }
+
+    /// <summary>
+    /// client.exe and server.exe related over loopback, and browser.exe's TCP to two other hosts, 142.250.1.1 the busier, in
+    /// a folder of its own beneath <paramref name="root"/>.
+    /// </summary>
+    private static string HostsSession(string root, string name)
+    {
+        string directory = Directory.CreateDirectory(Path.Combine(root, name)).FullName;
+        SessionStore store = SessionStore.Open(LocalOwnedDirectory.Open(directory), Guid.NewGuid(), "investigation-window-tests");
+        _ = Publish(
+            store,
+            [
+                Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+                Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+                Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 300 },
+                Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 100, 100, 10)
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+                Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 11)
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_100 },
+                Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 12)
+                    .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 1_200 },
+                Transfer(13, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 13)
+                    .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 1_300 },
+                Transfer(14, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 14)
+                    .Between("192.168.1.10:52001", "8.8.8.8:443") with { SessionRelativeTicks = 1_400 },
             ],
             capture: CaptureId.New(),
             clock: ClockFor(ClockId.New(), "lab-" + name));

@@ -298,6 +298,11 @@ public sealed class InvestigationWorkspaceTests : IDisposable
             Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace));
         }
 
+        // A version this one does not read is named, with the versions it does.
+        File.WriteAllText(workspace, refused[0]);
+        Assert.Contains("it is 'workspace-v999', not one of workspace-v1 to workspace-v21, the versions this InterCat reads",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+
         // Two members of one capture, however written, are refused whole.
         WorkspaceMember member = read.Members[0];
         InvestigationWorkspace.Save(workspace, read with { Members = [member, member with { SessionId = Guid.NewGuid() }] }, readText: File.ReadAllText(workspace));
@@ -1032,7 +1037,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"collectorsAside\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v20", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v21", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1068,7 +1073,7 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         string written = File.ReadAllText(workspace);
         Assert.Contains("\"wallClock\": true", written, StringComparison.Ordinal);
         Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
-        Assert.Equal("workspace-v20", InvestigationWorkspace.Contract);
+        Assert.Equal("workspace-v21", InvestigationWorkspace.Contract);
         Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: false));
         Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
 
@@ -1087,6 +1092,49 @@ public sealed class InvestigationWorkspaceTests : IDisposable
         InvestigationWorkspace.SetLayout(workspace, a, [], Now, collectorsAside: true, wallClock: true);
         InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
         Assert.Equal((InvestigationWorkspace.Contract, true), (rewritten.Contract, rewritten.Layouts.Single().WallClock));
+    }
+
+    [Fact(DisplayName = "§26.3: a member's Other hosts opened is kept in its layout with a host pinned on its graph, and an earlier version opens none")]
+    public void AMembersOpenedHostsAreKept()
+    {
+        string workspace = NewWorkspace();
+        Guid a = InvestigationWorkspace.Add(workspace, NewSession(Path.Combine(root, "alpha"), "lab-1").Root.Path, Now).SessionId;
+
+        // Kept, it is a layout of its own, said in the rail's words; folded again, it keeps nothing and goes.
+        WorkspaceLayout kept = InvestigationWorkspace.SetLayout(workspace, a, [], Now, hostsOpened: true)!;
+        Assert.True(kept.HostsOpened);
+        Assert.True(kept.KeepsAnything);
+        Assert.True(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.HostsOpened);
+        Assert.Equal("its busiest other hosts drawn on their own", kept.Describe(CultureInfo.InvariantCulture));
+        Assert.Null(InvestigationWorkspace.SetLayout(workspace, a, [], Now, hostsOpened: false));
+        Assert.Null(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a));
+
+        // A host drawn on its own is pinned by its key, as any node is, beside Other hosts opened, and said last of the two.
+        string host = GraphProjection.HostKey("142.250.1.1");
+        kept = InvestigationWorkspace.SetLayout(workspace, a, [new WorkspacePin { Key = host, X = 0.75, Y = 0.25 }], Now,
+            hostsOpened: true)!;
+        Assert.Equal(host, InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.Pins.Single().Key);
+        Assert.Equal("1 node pinned on its graph and its busiest other hosts drawn on their own",
+            kept.Describe(CultureInfo.InvariantCulture));
+        string written = File.ReadAllText(workspace);
+        Assert.Contains("\"hostsOpened\": true", written, StringComparison.Ordinal);
+        Assert.Contains($"\"{InvestigationWorkspace.Contract}\"", written, StringComparison.Ordinal);
+
+        // A file of the version before opens none, and one that says otherwise is refused.
+        File.WriteAllText(workspace, written.Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TwentiethContract}\"", StringComparison.Ordinal));
+        Assert.Contains("file opens no session's Other hosts",
+            Assert.Throws<InvalidDataException>(() => InvestigationWorkspace.Read(workspace)).Message, StringComparison.Ordinal);
+
+        // A file of the version before, opening none, reads so, and is written as the current one.
+        File.WriteAllText(workspace, written);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: true);
+        File.WriteAllText(workspace, File.ReadAllText(workspace).Replace($"\"{InvestigationWorkspace.Contract}\"",
+            $"\"{InvestigationWorkspace.TwentiethContract}\"", StringComparison.Ordinal));
+        Assert.False(InvestigationWorkspace.LayoutOf(InvestigationWorkspace.Read(workspace), a)!.HostsOpened);
+        InvestigationWorkspace.SetLayout(workspace, a, [], Now, wallClock: true, hostsOpened: true);
+        InvestigationWorkspaceFile rewritten = InvestigationWorkspace.Read(workspace);
+        Assert.Equal((InvestigationWorkspace.Contract, true), (rewritten.Contract, rewritten.Layouts.Single().HostsOpened));
     }
 
     [Fact(DisplayName = "§26.3: the widths a person gave the ranked table and the inspector are kept with the panes, in whole pixels, and an earlier version keeps none")]

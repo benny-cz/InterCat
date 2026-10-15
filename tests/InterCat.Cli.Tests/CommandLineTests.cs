@@ -1487,7 +1487,7 @@ public sealed class CommandLineTests : IDisposable
         return directory;
     }
 
-    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy and lane scale, and the window's panes")]
+    [Fact(DisplayName = "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy, lane scale and Other hosts opened, and the window's panes")]
     public async Task WorkspaceShowStatesEachLayout()
     {
         string workspace = Path.Combine(Path.GetDirectoryName(session.Path)!, Guid.NewGuid().ToString("N") + ".icat-workspace");
@@ -1506,9 +1506,10 @@ public sealed class CommandLineTests : IDisposable
                 + "when it is opened from this investigation.", text, StringComparison.Ordinal);
             string json = (await Run("workspace", "show", workspace, "--json")).Output;
             Assert.Contains($"\"contract\": \"{WorkspaceCommand.ResolutionContract}\"", json, StringComparison.Ordinal);
-            Assert.Equal("workspace-resolution-v23", WorkspaceCommand.ResolutionContract);
+            Assert.Equal("workspace-resolution-v24", WorkspaceCommand.ResolutionContract);
             Assert.Contains("\"collectorsAside\": false", json, StringComparison.Ordinal);
             Assert.Contains("\"wallClock\": false", json, StringComparison.Ordinal);
+            Assert.Contains("\"hostsOpened\": false", json, StringComparison.Ordinal);
             Assert.Matches(new Regex($"\"pinnedLanes\": \\[\\s*\"{lane}\"\\s*\\]"), json);
             Assert.Contains("\"grouping\": \"UserSession\"", json, StringComparison.Ordinal);
             Assert.Contains("\"rankBy\": \"BytesSent\"", json, StringComparison.Ordinal);
@@ -1527,6 +1528,16 @@ public sealed class CommandLineTests : IDisposable
                 StringComparison.Ordinal);
             Assert.Contains("\"evidencePolicy\": \"IncludeCandidates\"", (await Run("workspace", "show", workspace, "--json")).Output,
                 StringComparison.Ordinal);
+
+            // A layout whose graph has Other hosts opened says so, and keeps it in its document.
+            InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [], DateTimeOffset.UtcNow, hostsOpened: true);
+            Assert.Contains("Session " + TestSessions.Session.ToString("N")[..8] + ": its busiest other hosts drawn on their own, put "
+                + "back when it is opened from this investigation.", (await Run("workspace", "show", workspace)).Output,
+                StringComparison.Ordinal);
+            Assert.Contains("\"hostsOpened\": true", (await Run("workspace", "show", workspace, "--json")).Output,
+                StringComparison.Ordinal);
+            InvestigationWorkspace.SetLayout(workspace, TestSessions.Session, [], DateTimeOffset.UtcNow,
+                evidencePolicy: EvidencePolicy.IncludeCandidates, scalesEachLane: true);
 
             // The window's panes, kept once for every session, are said before any session's layout, and kept in the document.
             InvestigationWorkspace.SetPanes(workspace, 0.3712, WorkspacePane.Timeline, DateTimeOffset.UtcNow);

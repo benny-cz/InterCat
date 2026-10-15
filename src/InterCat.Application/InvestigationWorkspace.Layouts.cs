@@ -19,8 +19,9 @@ public sealed record WorkspacePin
 /// <summary>
 /// How a person laid out a member session's view (§26.3's workspace scope): the nodes they pinned on its graph, where, the
 /// process lanes they pinned on its timeline, how its processes are grouped, what its rows are ranked by, the evidence
-/// policy its records are counted under, and the scale its timeline lanes are read against. It is a preference, not a
-/// finding, so a member has one, replaced as it changes rather than kept as revisions.
+/// policy its records are counted under, the scale its timeline lanes are read against, and whether its graph draws its
+/// busiest other hosts on their own. It is a preference, not a finding, so a member has one, replaced as it changes
+/// rather than kept as revisions.
 /// </summary>
 public sealed record WorkspaceLayout
 {
@@ -72,16 +73,22 @@ public sealed record WorkspaceLayout
     /// </summary>
     public bool WallClock { get; init; }
 
+    /// <summary>
+    /// Whether the session's graph has Other hosts opened, its busiest other hosts drawn on their own (§6.3's explicit
+    /// expansion), rather than folded into it, the default. A file of a version before 21 opens none.
+    /// </summary>
+    public bool HostsOpened { get; init; }
+
     public required DateTimeOffset UpdatedUtc { get; init; }
 
     /// <summary>
     /// Whether it keeps anything: a pinned node or lane, a grouping by terminal session, a ranking other than records counted
-    /// whole, another evidence policy, each lane on its own scale, InterCat's own processes set aside, or times read on the
-    /// wall clock.
+    /// whole, another evidence policy, each lane on its own scale, InterCat's own processes set aside, times read on the
+    /// wall clock, or Other hosts opened.
     /// </summary>
     [JsonIgnore]
     public bool KeepsAnything => Pins.Count > 0 || PinnedLanes.Count > 0 || Grouping is not null || RankBy is not null
-        || PerSecond || EvidencePolicy is not null || ScalesEachLane || CollectorsAside || WallClock;
+        || PerSecond || EvidencePolicy is not null || ScalesEachLane || CollectorsAside || WallClock || HostsOpened;
 
     /// <summary>
     /// What it keeps, in the words every place that says so uses - `icat workspace show`, the notice of a session opened
@@ -90,29 +97,30 @@ public sealed record WorkspaceLayout
     /// </summary>
     public string Describe(IFormatProvider culture) => Describe(Pins.Count, PinnedLanes.Count,
         Grouping ?? LaneGrouping.Executable, RankBy ?? RankingMetric.Records, PerSecond,
-        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture, CollectorsAside, WallClock);
+        EvidencePolicy ?? Domain.EvidencePolicy.IncludeCorrelated, ScalesEachLane, culture, CollectorsAside, WallClock,
+        HostsOpened);
 
     /// <summary>
     /// What a layout that pins <paramref name="pins"/> nodes and <paramref name="lanes"/> process lanes, groups by
     /// <paramref name="grouping"/>, ranks by <paramref name="rankBy"/>, counts under <paramref name="evidencePolicy"/>, reads
-    /// each lane on its own scale or not, sets InterCat's own processes aside or not and reads its times on the wall clock or
-    /// not keeps, in
+    /// each lane on its own scale or not, sets InterCat's own processes aside or not, reads its times on the wall clock or
+    /// not and opens Other hosts or not keeps, in
     /// <see cref="Describe(IFormatProvider)"/>'s words: nothing of a default, so what is said is only what differs from a
     /// session opened on its own.
     /// </summary>
     public static string Describe(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
         EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false,
-        bool wallClock = false) =>
+        bool wallClock = false, bool hostsOpened = false) =>
         Series(Parts(pins, lanes, grouping, rankBy, perSecond, evidencePolicy, scalesEachLane, culture, collectorsAside,
-            wallClock));
+            wallClock, hostsOpened));
 
     /// <summary>
-    /// Each thing <see cref="Describe(int, int, LaneGrouping, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider, bool, bool)"/>
+    /// Each thing <see cref="Describe(int, int, LaneGrouping, RankingMetric, bool, EvidencePolicy, bool, IFormatProvider, bool, bool, bool)"/>
     /// says such a layout keeps, in its order, so a notice can list it in one series with what else was put back.
     /// </summary>
     public static IReadOnlyList<string> Parts(int pins, int lanes, LaneGrouping grouping, RankingMetric rankBy, bool perSecond,
         EvidencePolicy evidencePolicy, bool scalesEachLane, IFormatProvider culture, bool collectorsAside = false,
-        bool wallClock = false) =>
+        bool wallClock = false, bool hostsOpened = false) =>
     [
         .. new[]
         {
@@ -128,6 +136,7 @@ public sealed record WorkspaceLayout
             scalesEachLane ? "each of its timeline lanes on its own scale" : null,
             collectorsAside ? "InterCat's own processes set aside" : null,
             wallClock ? "its times read on the wall clock" : null,
+            hostsOpened ? "its busiest other hosts drawn on their own" : null,
         }.OfType<string>(),
     ];
 
@@ -155,11 +164,11 @@ public static partial class InvestigationWorkspace
     /// <paramref name="perSecond"/> says so, the records counted under <paramref name="evidencePolicy"/>, each timeline
     /// lane read against its own peak when <paramref name="scalesEachLane"/> says so, the process lanes
     /// <paramref name="pinnedLanes"/> pinned in their order, the processes grouped by <paramref name="grouping"/>,
-    /// InterCat's own processes set aside when <paramref name="collectorsAside"/> says so, and its times read on the wall
-    /// clock when <paramref name="wallClock"/> says so, as how member <paramref name="sessionId"/>'s view is laid out,
-    /// replacing its earlier layout; one that pins nothing, groups by executable, ranks by records counted whole, counts
-    /// correlated evidence, reads every lane on one scale, shows InterCat's own processes and reads session time removes
-    /// it. Null when it is removed.
+    /// InterCat's own processes set aside when <paramref name="collectorsAside"/> says so, its times read on the wall
+    /// clock when <paramref name="wallClock"/> says so, and Other hosts opened when <paramref name="hostsOpened"/> says so,
+    /// as how member <paramref name="sessionId"/>'s view is laid out, replacing its earlier layout; one that pins nothing,
+    /// groups by executable, ranks by records counted whole, counts correlated evidence, reads every lane on one scale,
+    /// shows InterCat's own processes, reads session time and keeps Other hosts folded removes it. Null when it is removed.
     /// </summary>
     public static WorkspaceLayout? SetLayout(
         string workspacePath,
@@ -173,7 +182,8 @@ public static partial class InvestigationWorkspace
         IReadOnlyList<Guid>? pinnedLanes = null,
         LaneGrouping grouping = LaneGrouping.Executable,
         bool collectorsAside = false,
-        bool wallClock = false)
+        bool wallClock = false,
+        bool hostsOpened = false)
     {
         ArgumentNullException.ThrowIfNull(pins);
         pinnedLanes ??= [];
@@ -219,6 +229,7 @@ public static partial class InvestigationWorkspace
             ScalesEachLane = scalesEachLane,
             CollectorsAside = collectorsAside,
             WallClock = wallClock,
+            HostsOpened = hostsOpened,
             UpdatedUtc = now,
         };
         WorkspaceLayout? layout = kept.KeepsAnything ? kept : null;
@@ -252,7 +263,7 @@ public static partial class InvestigationWorkspace
         : lanes.Distinct().Count() != lanes.Count ? "a lane is pinned twice"
         : null;
 
-    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v20.md` §7).</summary>
+    /// <summary>What makes a file's layouts contradict themselves, or null (`contracts/workspace-v21.md` §7).</summary>
     private static string? LayoutProblem(InvestigationWorkspaceFile workspace)
     {
         // Layouts arrived with the eleventh version (revision 280).
@@ -306,6 +317,12 @@ public static partial class InvestigationWorkspace
         if (VersionOf(workspace) < 19 && workspace.Layouts.Any(layout => layout.WallClock))
         {
             return $"a {workspace.Contract} file reads no session's times on the wall clock";
+        }
+
+        // Other hosts opened arrived with the twenty-first version (revision 557).
+        if (VersionOf(workspace) < 21 && workspace.Layouts.Any(layout => layout.HostsOpened))
+        {
+            return $"a {workspace.Contract} file opens no session's Other hosts";
         }
 
         HashSet<Guid> members = [.. workspace.Members.Select(member => member.SessionId)];

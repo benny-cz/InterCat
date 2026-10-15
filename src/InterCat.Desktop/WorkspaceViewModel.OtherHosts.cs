@@ -19,7 +19,8 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// Whether Other hosts is opened: its busiest hosts drawn on their own, as the graph's budget allows, and the rest kept
-    /// in it. A newer publication of the session keeps it.
+    /// in it. A newer publication of the session keeps it, and the investigation a session was opened from keeps it as a
+    /// view setting (§26.3), which the rail names while the session's processes reached another host.
     /// </summary>
     public bool HostsOpened
     {
@@ -34,8 +35,15 @@ public sealed partial class WorkspaceViewModel
             hostsOpened = value;
             RefreshGraphDisplay(reproject: true);
             OnPropertyChanged();
+            RaiseSettingsChanged();
         }
     }
+
+    /// <summary>
+    /// Whether Other hosts opened is a setting the view shows: it is, and the session's processes shown reached another
+    /// host, so its graph draws Other hosts to open. Kept while none did, it stays kept, for a view that shows one again.
+    /// </summary>
+    private bool ShowsHostsOpened => hostsOpened && wholeSnapshot.HostLinks.Count > 0;
 
     /// <summary>
     /// The connections a drawn edge to the other hosts stands for, each with only the addresses it is drawn to: one host's

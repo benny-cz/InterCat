@@ -130,11 +130,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// <summary>
     /// What a member keeps in its investigation beside its pins (§26.3): what its rows are ranked by and whether per
     /// second, the evidence policy its records are counted under, whether each timeline lane has its own scale, how its
-    /// processes are grouped, whether InterCat's own processes are set aside (§19.5), and whether its times are read on the
-    /// wall clock (§6.2).
+    /// processes are grouped, whether InterCat's own processes are set aside (§19.5), whether its times are read on the
+    /// wall clock (§6.2), and whether its graph has Other hosts opened (§6.3).
     /// </summary>
     private readonly record struct ViewSettings(RankingMetric RankBy, bool PerSecond, EvidencePolicy Policy, bool ScalesEachLane,
-        LaneGrouping Grouping, bool CollectorsAside = false, bool WallClock = false)
+        LaneGrouping Grouping, bool CollectorsAside = false, bool WallClock = false, bool HostsOpened = false)
     {
         /// <summary>What a session opened on its own starts with, and an investigation that keeps nothing of it puts back.</summary>
         public static ViewSettings Default =>
@@ -146,7 +146,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         /// </summary>
         public static ViewSettings Of(WorkspaceViewModel workspace, LaneGrouping grouping, bool collectorsAside) =>
             new(workspace.RankBy, workspace.PerSecond, workspace.EvidencePolicy, workspace.ScalesEachLane, grouping, collectorsAside,
-                workspace.ReadsWallClock);
+                workspace.ReadsWallClock, workspace.HostsOpened);
     }
 
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
@@ -1844,7 +1844,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 [.. (layout?.PinnedLanes ?? []).Select(lane => new ProcessInstanceId(lane))],
                 layout is null ? ViewSettings.Default : new(layout.RankBy ?? RankingMetric.Records, layout.PerSecond,
                     layout.EvidencePolicy ?? EvidencePolicy.IncludeCorrelated, layout.ScalesEachLane,
-                    layout.Grouping ?? LaneGrouping.Executable, layout.CollectorsAside, layout.WallClock),
+                    layout.Grouping ?? LaneGrouping.Executable, layout.CollectorsAside, layout.WallClock, layout.HostsOpened),
                 file.Panes);
         }
         catch (Exception exception) when (exception is IOException or InvalidDataException or UnauthorizedAccessException)
@@ -1862,7 +1862,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         WorkspaceLayout.Series(
         [
             .. WorkspaceLayout.Parts(pins, lanes, settings.Grouping, settings.RankBy, settings.PerSecond, settings.Policy,
-                settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside, settings.WallClock),
+                settings.ScalesEachLane, CultureInfo.CurrentCulture, settings.CollectorsAside, settings.WallClock,
+                settings.HostsOpened),
             .. panes is null ? [] : WorkspacePanes.Parts(panes.GraphShare, panes.Expanded, CultureInfo.CurrentCulture,
                 panes.RailWidth, panes.InspectorWidth),
         ]) is { Length: > 0 } restored
@@ -1894,7 +1895,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         Guid[] pinnedLanes = [.. lanes.Select(lane => lane.Value)];
         Task<WorkspaceLayout?> written = WriteToInvestigation(() => InvestigationWorkspace.SetLayout(home.Workspace, home.Session,
             layout, DateTimeOffset.UtcNow, settings.RankBy, settings.PerSecond, settings.Policy, settings.ScalesEachLane,
-            pinnedLanes, settings.Grouping, settings.CollectorsAside, settings.WallClock));
+            pinnedLanes, settings.Grouping, settings.CollectorsAside, settings.WallClock, settings.HostsOpened));
         _ = SayWhatIsKeptAsync(written, home);
     }
 
@@ -4033,10 +4034,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     /// <summary>
     /// §6.8's one command back to the defaults: the shown session's rows ranked by records, not per second, every timeline
-    /// lane on one scale, its processes grouped by executable and its records counted with correlated evidence only, each
-    /// put back as its own control would, so the time, selection and pins stay, and a regrouped view returns to the machine
-    /// rung. A session opened from an investigation keeps the defaults there, which is then to keep nothing of them. False
-    /// when nothing is shown or every setting is at its default already.
+    /// lane on one scale, its processes grouped by executable, InterCat's own shown, its times read in session time, Other
+    /// hosts folded and its records counted with correlated evidence only, each put back as its own control would, so the
+    /// time, selection and pins stay, and a regrouped view returns to the machine rung. A session opened from an
+    /// investigation keeps the defaults there, which is then to keep nothing of them. False when nothing is shown or every
+    /// setting is at its default already.
     /// </summary>
     internal async Task<bool> RestoreDefaultViewAsync()
     {
@@ -4051,6 +4053,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         workspace.PerSecond = defaults.PerSecond;
         workspace.ScalesEachLane = defaults.ScalesEachLane;
         workspace.ReadsWallClock = false;
+        workspace.HostsOpened = defaults.HostsOpened;
 
         // Regrouped first, from the overview already projected, so a policy projected again afterwards is grouped by
         // executable too.
@@ -4227,6 +4230,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         IReadOnlyList<ProcessInstanceId> lanes = [];
         string? pinsNotice = null;
         ViewSettings? restored = null;
+        WorkspacePanes? panesRestored = null;
         // Each publication is grouped as its person chose, where its processes offer that grouping.
         WorkspaceSnapshot projected = OverviewWorkspace.From(overview);
         if (savedNavigation is null)
@@ -4258,18 +4262,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     PutBackPanes(put);
                 }
 
-                pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(investigation)}"
-                    + PutBack(kept.Pins.Count, kept.Lanes.Count,
-                        kept.Settings with
-                        {
-                            Policy = overview.Policy,
-                            Grouping = GroupingShown(projected, laneGrouping),
-                            // Said put back only where the session names some of InterCat's own to set aside.
-                            CollectorsAside = collectorsAside && projected.Processes.Any(process => process.Collector is not null),
-                            // Said put back only where the session's capture recorded a wall clock to read it on.
-                            WallClock = kept.Settings.WallClock && projected.WallClock is not null,
-                        },
-                        kept.Panes);
+                panesRestored = kept.Panes;
             }
 
             keptPins = pins;
@@ -4280,6 +4273,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         LaneGrouping grouping = GroupingShown(projected, laneGrouping);
         WorkspaceSnapshot grouped = WorkspaceGrouping.Regroup(projected, grouping);
         WorkspaceSnapshot shownSnapshot = collectorsAside ? WorkspaceCollectors.SetAside(grouped) : grouped;
+        if (restored is { } keptSettingsShown && layoutHome is { } keptIn)
+        {
+            // What was put back is said as the view shows it, so a setting the session gives no way to show is not named.
+            pinsNotice = $"Its pins and view settings are kept in the investigation {Path.GetFileName(keptIn.Workspace)}"
+                + PutBack(pins?.Count ?? 0, lanes.Count,
+                    keptSettingsShown with
+                    {
+                        Policy = overview.Policy,
+                        Grouping = grouping,
+                        // Said put back only where the session names some of InterCat's own to set aside.
+                        CollectorsAside = collectorsAside && projected.Processes.Any(process => process.Collector is not null),
+                        // Said put back only where the session's capture recorded a wall clock to read it on.
+                        WallClock = keptSettingsShown.WallClock && projected.WallClock is not null,
+                        // Said put back only where the processes shown reached another host, so the graph draws Other hosts.
+                        HostsOpened = keptSettingsShown.HostsOpened && shownSnapshot.HostLinks.Count > 0,
+                    },
+                    panesRestored);
+        }
+
         // Every read of the workspace binds records as the overview it shows was projected: under its policy, with what the
         // view set aside left out of the totals its rankings state over the rows shown.
         SessionEvidenceSource? evidence = currentSessionPath is { } path
@@ -4288,14 +4300,12 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 SetAside = WorkspaceCollectors.Instances(shownSnapshot),
             }
             : null;
+        // A newer publication of the session shown keeps Other hosts opened, as it keeps the graph's layout (§6.3), and a
+        // session opened from its investigation opens them as it was left there; either is drawn so from its first graph.
         var replacement = new WorkspaceViewModel(shownSnapshot,
             WorkspaceCollectors.Identity(WorkspaceGrouping.Identity(overview.GraphIdentity, grouping), collectorsAside), evidence,
-            savedNavigation is null ? null : workspace.LaidOutPositions, pins);
-        // A newer publication of the session shown keeps Other hosts opened, as it keeps the graph's layout (§6.3).
-        if (savedNavigation is not null && workspace.HostsOpened)
-        {
-            replacement.HostsOpened = true;
-        }
+            savedNavigation is null ? null : workspace.LaidOutPositions, pins,
+            hostsOpened: savedNavigation is not null ? workspace.HostsOpened : restored?.HostsOpened ?? false);
 
         if (restored is { } settings)
         {
@@ -4635,7 +4645,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.PinnedGraphNodeKeys) or nameof(WorkspaceViewModel.PinnedLanes)
                 or nameof(WorkspaceViewModel.RankBy) or nameof(WorkspaceViewModel.PerSecond) or nameof(WorkspaceViewModel.ScalesEachLane)
-                or nameof(WorkspaceViewModel.ReadsWallClock)
+                or nameof(WorkspaceViewModel.ReadsWallClock) or nameof(WorkspaceViewModel.HostsOpened)
             && layoutHome is { } home)
         {
             KeepLayout(home);

@@ -1811,7 +1811,7 @@
         "R22: candidate relations enter the overview only under an explicit candidate policy",
         "R22: every capture on this machine records its installation's host, each on a clock of its own",
         "R22: hosts are one only by identity, and a name never makes two of them one",
-        "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy and lane scale, and the window's panes",
+        "R22: icat workspace show states what each session's layout keeps, its pins, pinned lanes, grouping, ranking, evidence policy, lane scale and Other hosts opened, and the window's panes",
         "R22: in the saved views Enter in the name saves the view shown, and Enter on a view shows it as a double click does",
         "R22: loopback joins two identities' captures only while a person confirms they are one host, and says so",
         "R22: owner filters use the instance binding, not a reused PID or a nearby lifetime",

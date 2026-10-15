@@ -277,15 +277,18 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// Presents one immutable workspace. The graph identity must name the same data revision as the snapshot,
     /// so an off-thread layout from an older revision can never replace its coordinates. <paramref name="carriedLayout"/>
     /// holds the drawn positions of an earlier publication of the same session: a node still drawn keeps its place, so a
-    /// live refresh does not rearrange the graph under the user (§6.3).
+    /// live refresh does not rearrange the graph under the user (§6.3). <paramref name="hostsOpened"/> draws its first
+    /// graph with Other hosts opened, as an earlier publication or the session's investigation left it, so it is laid out
+    /// once rather than folded first.
     /// </summary>
     public WorkspaceViewModel(
         WorkspaceSnapshot snapshot,
         string graphIdentity,
         SessionEvidenceSource? evidenceSource = null,
         IReadOnlyDictionary<string, GraphPoint>? carriedLayout = null,
-        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null)
-        : this(snapshot, graphIdentity, evidenceSource, carriedLayout, new GraphLayoutScheduler(), carriedPins)
+        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null,
+        bool hostsOpened = false)
+        : this(snapshot, graphIdentity, evidenceSource, carriedLayout, new GraphLayoutScheduler(), carriedPins, hostsOpened)
     {
     }
 
@@ -296,7 +299,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         SessionEvidenceSource? evidenceSource,
         IReadOnlyDictionary<string, GraphPoint>? carriedLayout,
         GraphLayoutScheduler layoutScheduler,
-        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null)
+        IReadOnlyDictionary<string, GraphPoint>? carriedPins = null,
+        bool hostsOpened = false)
     {
         graphLayout = layoutScheduler ?? throw new ArgumentNullException(nameof(layoutScheduler));
         wholeSnapshot = snapshot ?? throw new ArgumentNullException(nameof(snapshot));
@@ -318,6 +322,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // The drawn graph is projected from the whole session, so a brush re-counts it without re-clustering it (§6.4).
         this.graphIdentity = graphIdentity;
         relatedProcesses = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
+        this.hostsOpened = hostsOpened;
         wholeDisplay = ProjectGraph(null, null);
         graphDisplay = wholeDisplay;
 
