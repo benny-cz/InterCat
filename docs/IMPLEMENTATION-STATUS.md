@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-15 · Plan revision: 563 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 564 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -55,7 +55,7 @@ two real sessions, one sparse and one dense. Since revision 545 it relates proce
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
 revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
-processes' connections ran to, and since revision 555 Enter on it draws them on their own. Hubs draw as stars with components apart, executable groups read as file names,
+processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
 channels by name, PID or endpoint, and since revision 551 processes by an address they reached, which since revision 553 the graph marks; endpoint strings and addresses can match but are omitted from result snippets. Graph marks now explain their scope and evidence on hover; nodes
 can be dragged into pinned positions or pinned from the keyboard, and an explicit re-layout preserves those user constraints.
@@ -96,6 +96,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 564 — a host chosen in the window is its records (§6.3, §6.4, I5):**
+  - A host drawn on its own, chosen, highlighted nothing, and E listed the rung's every record.
+  - Chosen, it highlights the records of every connection to it; its card counts them, their connections,
+    processes and bytes over the scope the rows count, from the same test of which are its; E lists them.
+  - Debug and Release each ran 2,429 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 24 mutations was caught: a host's address matched by case, or its scope's channels taken whatever their
+    other end; its connections read with its address untrimmed, any connection taken for one of its, or an interval
+    left unread there or by the window; its TCP connections counted as every connection, its processes as its
+    connections, or its bytes received as those sent; a connection's unmeasured receives said as its sends'; an
+    evidence rung reached from a host read as a paired channel's, or its interval unsaid; and in the window a chosen
+    host highlighting nothing, its heading or E the rung's, its card counting none of it, its records never read, in
+    two ways, or not read again for a brushed interval, an interval with none unsaid, records that cannot be read
+    said still to be read, their count never applied or never shown, and its card's line of what a click does gone.
 
 - **Revision 563 — a host's records as a scope (§6.3, §6.4, R18):**
   - Nothing read a host's records: when it was reached took opening each process and connection in turn.

@@ -13,7 +13,8 @@ namespace InterCat.Desktop;
 /// them (P7). A click on an edge chooses its process, and a double click opens it, whose rung lists each connection.
 /// Enter or a double click on Other hosts opens it into its busiest hosts, each drawn on its own and named by its
 /// address (§6.3's explicit expansion), and on any of them folds them back. Chosen, it lists in the inspector every host it
-/// stands for, the busiest first, and a host chosen there finds the processes that reached it.
+/// stands for, the busiest first, and a host chosen there finds the processes that reached it. A host drawn on its own,
+/// chosen, has its connections' records highlighted, counted and listed by E (WorkspaceViewModel.HostRecords.cs).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -372,6 +373,7 @@ public sealed partial class WorkspaceViewModel
         lines.Add("Who is at this address is not observed; searching it (Ctrl+F) marks the processes that reached it");
         lines.Add("Edges: connections, not relationships, and counted in no total; drawn at one thickness, with no traffic value");
         lines.Add("Size: fixed; a resource, not a process");
+        lines.Add("Click highlights the records of every connection to it, whichever process held it, and E lists them");
         lines.Add("Double-click or Enter folds the hosts drawn on their own back into Other hosts");
         if (SearchedLine(host) is { } searched)
         {
@@ -381,7 +383,10 @@ public sealed partial class WorkspaceViewModel
         return new(host.Label, lines);
     }
 
-    /// <summary>A host Other hosts was opened into, selected: whose connections ran to its address and what is not observed.</summary>
+    /// <summary>
+    /// A host Other hosts was opened into, selected: whose connections ran to its address, what is not observed, and where
+    /// its records are read.
+    /// </summary>
     private string DescribeHost(GraphDisplayNode host)
     {
         HostLink[] links = HostLinksTo(host, graphDisplay);
@@ -393,9 +398,9 @@ public sealed partial class WorkspaceViewModel
                 : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
                     + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
             + (AddressScope.Meaning(host.Label) is { } meaning ? ". " + meaning : string.Empty)
-            + ". Reached by " + ReachedBy(links) + ". Who is at this address is not observed; searching it (Ctrl+F) marks the "
-            + "processes that reached it, and each process's rung lists its own connections. Enter folds the hosts drawn on "
-            + "their own back into Other hosts.";
+            + ". Reached by " + ReachedBy(links) + ". Who is at this address is not observed. The timeline highlights the "
+            + "records of every connection to it, whichever process held it, and E lists them; searching it (Ctrl+F) marks the "
+            + "processes that reached it. Enter folds the hosts drawn on their own back into Other hosts.";
     }
 
     /// <summary>The processes whose connections are <paramref name="links"/>, the busiest first: "browser.exe · PID 300 and 2 more".</summary>

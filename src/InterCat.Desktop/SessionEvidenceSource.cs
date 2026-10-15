@@ -207,6 +207,14 @@ public sealed class SessionEvidenceSource(
             cancellationToken);
 
     /// <summary>
+    /// One other host's connections in the current generation, whoever held them, with their records and bytes, in the
+    /// whole session or <paramref name="interval"/>: what its scope reads.
+    /// </summary>
+    public Task<HostConnectionList> HostConnectionsAsync(string address, TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionConnections.ToHost(Store(), address, interval, policy: Policy, cancellationToken: cancellationToken),
+            cancellationToken);
+
+    /// <summary>
     /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density
     /// (<see cref="SessionHttpExchanges.Spans"/>).
     /// </summary>

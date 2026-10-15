@@ -264,6 +264,54 @@ public sealed class OtherHostsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.4: a host clicked in the graph heads the inspector's card, which counts its connections' records, and E lists them")]
+    public async Task EListsAClickedHostsRecords()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.OtherHosts!.Key));
+            await workspace.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            string host = GraphProjection.HostKey("142.250.1.1");
+
+            // A click chooses it: the card is headed by it, and counts its records once they are read.
+            Point at = At(graph, window, graph.PointOf(host)!.Value);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Dispatch();
+            Assert.Equal(host, workspace.SelectedGraphNodeKey);
+            await workspace.HostRecordsReady;
+            Dispatch();
+            Assert.Equal("Selected host", window.GetControl<TextBlock>("EvidenceHeadingText").Text);
+            Assert.Equal("1 record of 1 TCP connection from 1 process · 500 B sent, no receive recorded",
+                window.GetControl<TextBlock>("EvidenceSummaryText").Text);
+            Save(window, "inspector-host-chosen.png");
+
+            // E lists them.
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(workspace.IsEvidenceRung);
+            await workspace.EvidenceReady;
+            Dispatch();
+            Assert.Single(workspace.RungRows);
+            Assert.StartsWith("Records of the connections to 142.250.1.1", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     private static Point At(Control control, Window window, Point point) => control.TranslatePoint(point, window)!.Value;
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();

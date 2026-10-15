@@ -6,9 +6,10 @@ namespace InterCat.Application;
 
 /// <summary>
 /// What an evidence rung reads from a published session: one paired channel, the rows canonically owned by a set of
-/// process instances, an RPC channel's or one call's records, or every admitted row, optionally within a deliberate
-/// time range, and narrowed to one mechanism's records, one source direction's or one channel end's as a timeline lane
-/// counts them (§6.4). A scope that cannot be read states its problem rather than widening itself to the whole session.
+/// process instances, an RPC channel's or one call's records, one other host's connections' records, or every admitted
+/// row, optionally within a deliberate time range, and narrowed to one mechanism's records, one source direction's or one
+/// channel end's as a timeline lane counts them (§6.4). A scope that cannot be read states its problem rather than
+/// widening itself to the whole session.
 /// </summary>
 public sealed record EvidenceScope(
     string Description,
@@ -165,6 +166,10 @@ public static class EvidenceScopes
                 case DetailLevel.Operation when RpcChannelKeys.IsRpc(filter.Key) || HttpExchangeKeys.IsHttp(filter.Key):
                     // A call or an exchange is one entity: its records are all of its own wherever the view is zoomed.
                     return new($"Records of {filter.Value}", null, [], null, null) { OperationKey = filter.Key };
+                case DetailLevel.Channel when HostScopeKeys.IsHost(filter.Key):
+                    // A host's connections are read by its own key, whichever process held them (HostScopeKeys).
+                    return new($"Records of the connections to {HostScopeKeys.AddressOf(filter.Key!)}{time}", filter.Key, [],
+                        interval, null);
                 case DetailLevel.Channel when TransportConnection.IsKey(filter.Key):
                     // A one-sided connection is no paired channel of the overview: it is read by its own key.
                     return new($"Records of {filter.Value}{time}", filter.Key, [], interval, null);

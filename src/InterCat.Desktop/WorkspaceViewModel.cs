@@ -852,6 +852,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return (ChosenRowFocus(row.Row), row.Records.Label);
         }
 
+        // A host's records are every connection's to its address, whichever process held it, read by its scope's key.
+        if (SelectedHost is { } host)
+        {
+            return (new(HostScopeKeys.Of(host.Label), []), "connections to " + host.Label);
+        }
+
         if (SelectedCluster is { } cluster)
         {
             return cluster.Members.Count == 0 ? (null, null) : (new(null, cluster.Members), cluster.Label);
@@ -2836,6 +2842,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         CancelRpc();
         CancelHttp();
         CancelConnections();
+        CancelHostRecords();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
         intervalQuery = null;
@@ -4570,6 +4577,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
         : SelectedCluster is { IsHost: false } ? "Selected aggregate"
+        : SelectedHost is not null ? "Selected host"
         : SelectedGroup is not null ? "Selected group"
         : RungRecords is not null ? "Records E lists"
         : "Selected process";
@@ -4578,10 +4586,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// With nothing selected in a published session, the rung's own records, as E reads them over the scope the rows count
     /// (§6.4, I5): "Every admitted record in this session", "Records owned by the 2 instances of client.exe". Null with a
     /// selection, in the tour, and at the evidence rung, whose records are listed already. The Other hosts node chosen
-    /// stands for no process, so it selects no records of its own and E still lists the rung's.
+    /// stands for no process and no one host, so it selects no records of its own and E still lists the rung's; a host
+    /// drawn on its own selects its connections'.
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
-        && selectedRelationship is null && SelectedCluster is null or { IsHost: true } && SelectedGroup is null
+        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts } && SelectedGroup is null
         && ChosenRow is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
                 ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport },
@@ -4635,6 +4644,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (OpenedChannel is { } opened)
             {
                 return opened.Summary;
+            }
+
+            // A host drawn on its own: its connections' records, whichever process held them, as E lists them.
+            if (SelectedHost is { } host && ReadsHostRecords)
+            {
+                return HostEvidence(host);
             }
 
             // An aggregate drawn in the graph stands for its processes, as a set of them chosen together does: the card
@@ -4893,9 +4908,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). It lists what the inspector's
     /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen,
-    /// or an aggregate of them drawn in the graph; a row chosen among a process's rows; a process selected at the machine
-    /// rung or among a group's members; a group selected at the machine rung; and otherwise the rung's own - named in the
-    /// filter bar, where it can be removed.
+    /// or an aggregate of them drawn in the graph; a row chosen among a process's rows; a host drawn on its own, whose
+    /// connections' records they are, whichever process held them; a process selected at the machine rung or among a
+    /// group's members; a group selected at the machine rung; and otherwise the rung's own - named in the filter bar, where
+    /// it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
@@ -4927,9 +4943,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// E's step from what is selected, before a chosen cell's or the rung's own records: a chosen relationship's records,
-    /// a chosen row's, an aggregate's processes, or the process or group selected at the machine or a group's rung, where
-    /// choosing one is a choice made there. Null where E lists the chosen cell's records or the rung's own - at a
-    /// process's or a channel's rung the process it was reached with is its context, not such a choice.
+    /// a chosen row's, a host's connections', an aggregate's processes, or the process or group selected at the machine or
+    /// a group's rung, where choosing one is a choice made there. Null where E lists the chosen cell's records or the
+    /// rung's own - at a process's or a channel's rung the process it was reached with is its context, not such a choice.
     /// </summary>
     private LadderDescent? SelectionEvidenceDescent(TimeRange viewport)
     {
@@ -4941,6 +4957,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : ChosenRow is { } row
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, row.Records,
                 $"Evidence was reached from the {rung} rung with {(HttpExchangeKeys.IsHttp(row.Row.Key) ? "its" : "this")} {ChosenRowNoun(row.Row)} chosen.")
+            : realOverview && SelectedHost is { } host
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, HostRecordsTarget(host.Label),
+                $"Evidence was reached from the {rung} rung with the host {host.Label} chosen: every connection to it, whichever "
+                + "process held it.")
             : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), aggregate.Label),

@@ -54,9 +54,13 @@ public sealed partial class WorkspaceViewModel
         : selectionBytes.Reads(CountedScope) || byteReads.Reads(CountedScope) ? "reading bytes…"
         : "bytes not read";
 
-    /// <summary>Reads the bytes of the scope the rows count when a description needs them and none are known.</summary>
+    /// <summary>
+    /// Reads the bytes of the scope the rows count when a description needs them and none are known; a chosen host's
+    /// card reads its own connections' records and bytes, and follows the selection and the scope as these do.
+    /// </summary>
     private void FollowDescribedBytes()
     {
+        FollowHostRecords();
         if (!ReadsBytes || disposed || !DescribesBytes || DescribedBytes is not null)
         {
             return;

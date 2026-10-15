@@ -278,7 +278,7 @@ public sealed class OtherHostsWorkspaceTests
             + "end: 2 TCP connections from 2 processes, 11 records, at port 443. Reached by browser.exe · PID 300 and updater.exe · "
             + "PID 310.",
             workspace.SelectionSubtitle, StringComparison.Ordinal);
-        Assert.Equal("Records E lists", workspace.EvidenceHeading);
+        Assert.Equal("Selected host", workspace.EvidenceHeading);
         Assert.Equal([GraphNodeKind.Process, GraphNodeKind.Process, .. Enumerable.Repeat(GraphNodeKind.Host, 8), GraphNodeKind.OtherHosts],
             GraphView.Traversal(opened).Select(node => node.Kind));
         Assert.Equal([.. Enumerable.Range(1, 8).Select(index => GraphProjection.HostKey($"52.0.0.{index}")), hub.Key],
@@ -530,6 +530,78 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal([relationship.Key], workspace.CellGraphEdges);
     });
 
+    [Fact(DisplayName = "§6.4: a host drawn on its own, chosen, is the records of every connection to it, whichever process held it: the card counts them over the scope the rows count, the timeline highlights them and E lists them")]
+    public void AChosenHostIsItsConnectionsRecords() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, HostOverTime());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.OtherHosts!.Key));
+        await workspace.LayoutReady;
+        string host = GraphProjection.HostKey("52.0.0.1");
+
+        // Chosen, its card counts the records of the browser's connection to it and the updater's two, and what they
+        // measured, once read; the timeline highlights the same records, and its description and card say so.
+        workspace.SelectGraphNode(host);
+        Assert.Equal(("Selected host", "Reading the records of its connections…"), (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await workspace.HostRecordsReady;
+        Assert.Equal("5 records of 2 TCP connections and 1 UDP flow from 2 processes · 420 B sent, 300 B received",
+            workspace.EvidenceSummary);
+        await workspace.HighlightReady;
+        Assert.Equal(5, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.EndsWith(" · selection highlighted: connections to 52.0.0.1", workspace.TimelineCaption, StringComparison.Ordinal);
+        Assert.Contains("The timeline highlights the records of every connection to it, whichever process held it, and E lists "
+            + "them; searching it (Ctrl+F) marks the processes that reached it.", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        Assert.Contains("Click highlights the records of every connection to it, whichever process held it, and E lists them",
+            workspace.DescribeGraphHover(host)!.Lines);
+
+        // E lists exactly them, its filter naming the host and why.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(5, workspace.RungRows.Count);
+        Assert.StartsWith("Records of the connections to 52.0.0.1", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        FilterRow scope = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.Equal("Records of: Connections to 52.0.0.1", scope.Chip);
+        Assert.EndsWith("with the host 52.0.0.1 chosen: every connection to it, whichever process held it.", scope.Reason,
+            StringComparison.Ordinal);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+
+        // Brushed, the card counts the records in the interval, and E lists those; where none was made, the card says so.
+        workspace.SelectGraphNode(host);
+        workspace.SelectInterval(new TimeRange(25, 45));
+        await workspace.IntervalReady;
+        await workspace.HostRecordsReady;
+        Assert.Equal("2 records of 2 TCP connections from 2 processes · 50 B sent, 300 B received", workspace.EvidenceSummary);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(2, workspace.RungRows.Count);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        workspace.SelectGraphNode(host);
+        workspace.SelectInterval(new TimeRange(12, 18));
+        await workspace.IntervalReady;
+        await workspace.HostRecordsReady;
+        Assert.Equal("No record of a connection to it in this interval", workspace.EvidenceSummary);
+    });
+
+    [Fact(DisplayName = "§6.4: a chosen host whose records cannot be read says so, never that it holds none")]
+    public void AChosenHostsUnreadableRecordsAreSaidSo() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, HostOverTime());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.OtherHosts!.Key));
+        await workspace.LayoutReady;
+        Directory.Delete(session.Path, recursive: true);
+        workspace.SelectGraphNode(GraphProjection.HostKey("52.0.0.1"));
+        await workspace.HostRecordsReady;
+        Assert.StartsWith("Its records could not be read: ", workspace.EvidenceSummary, StringComparison.Ordinal);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
@@ -563,6 +635,28 @@ public sealed class OtherHostsWorkspaceTests
             .Between("192.168.1.10:53000", "52.0.0.1:443") with { SessionRelativeTicks = 900 });
         return [.. rows];
     }
+
+    /// <summary>
+    /// browser.exe's TCP to 52.0.0.1, two sends and a receive at 1, 2 and 3 µs, and its send to 52.0.0.2 at 1.5 µs; and
+    /// updater.exe's TCP send to 52.0.0.1 at 4 µs and its UDP send there at 5 µs.
+    /// </summary>
+    private static ObservationRowV1[] HostOverTime() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+        Lifecycle(2, ObservationKind.Create, 310, 2) with { ResourceName = @"C:\Apps\updater.exe", SessionRelativeTicks = 200 },
+        Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 3).Between("192.168.1.10:52000", "52.0.0.1:443")
+            with { SessionRelativeTicks = 1_000 },
+        Transfer(15, ObservationKind.Send, AccountingSide.SendSide, 10, 300, 4).Between("192.168.1.10:52001", "52.0.0.2:443")
+            with { SessionRelativeTicks = 1_500 },
+        Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 200, 300, 5).Between("192.168.1.10:52000", "52.0.0.1:443")
+            with { SessionRelativeTicks = 2_000 },
+        Transfer(30, ObservationKind.Receive, AccountingSide.ReceiveSide, 300, 300, 6).Between("192.168.1.10:52000", "52.0.0.1:443")
+            with { SessionRelativeTicks = 3_000 },
+        Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 50, 310, 7).Between("192.168.1.10:53000", "52.0.0.1:443")
+            with { SessionRelativeTicks = 4_000 },
+        Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 70, 310, 8).Between("192.168.1.10:61000", "52.0.0.1:443")
+            with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 5_000 },
+    ];
 
     /// <summary>
     /// browser.exe's TCP to <paramref name="hosts"/> hosts, 52.0.1.1 upwards, a record each but for the last, which holds

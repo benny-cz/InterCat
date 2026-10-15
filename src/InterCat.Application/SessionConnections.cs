@@ -47,11 +47,19 @@ public sealed record ConnectionSummary(
     /// bytes its measured transfers carried, with how many stated no size; only how many stated none, where none measured
     /// one; or that it recorded none that way. None of them is a zero its records did not measure.
     /// </summary>
-    public string Transfers(IFormatProvider? culture = null)
+    public string Transfers(IFormatProvider? culture = null) =>
+        TransfersOf(Sends, SentBytes, UnmeasuredSends, Receives, ReceivedBytes, UnmeasuredReceives, culture);
+
+    /// <summary>
+    /// What transfers measured, in <see cref="Transfers"/>'s words: one connection's, or several connections' summed, each
+    /// direction's sends or receives, the bytes the measured ones carried and how many stated no size.
+    /// </summary>
+    public static string TransfersOf(long sends, long sentBytes, long unmeasuredSends, long receives, long receivedBytes,
+        long unmeasuredReceives, IFormatProvider? culture = null)
     {
         IFormatProvider format = culture ?? CultureInfo.CurrentCulture;
-        return Direction(SentBytes, Sends, UnmeasuredSends, "sent", "send") + ", "
-            + Direction(ReceivedBytes, Receives, UnmeasuredReceives, "received", "receive");
+        return Direction(sentBytes, sends, unmeasuredSends, "sent", "send") + ", "
+            + Direction(receivedBytes, receives, unmeasuredReceives, "received", "receive");
 
         string Direction(long bytes, long transfers, long unmeasured, string verb, string noun) =>
             transfers > unmeasured
@@ -82,6 +90,41 @@ public sealed record ConnectionSummary(
 
 /// <summary>A process instance's one-sided connections in one generation, the most records first.</summary>
 public sealed record ConnectionList(Guid SessionId, long Generation, IReadOnlyList<ConnectionSummary> Connections);
+
+/// <summary>One connection to another host and the process instance that held it.</summary>
+public sealed record HostConnection(ConnectionSummary Summary, ProcessInstanceId Holder);
+
+/// <summary>
+/// One other host's connections in one generation, whoever held them, the most records first (§6.3): exactly those its
+/// scope reads (<see cref="HostScopeKeys"/>), so what they count is what its records list. Who is at the address is not
+/// observed (P7).
+/// </summary>
+public sealed record HostConnectionList(Guid SessionId, long Generation, string Address, IReadOnlyList<HostConnection> Connections)
+{
+    /// <summary>The records the connections hold.</summary>
+    public long Records => Connections.Sum(connection => connection.Summary.Records);
+
+    /// <summary>
+    /// The host as these connections reached it: how many TCP connections and UDP flows, from how many processes, holding
+    /// how many records, for <see cref="HostLinkText.Reached"/> to say.
+    /// </summary>
+    public OtherHost Host => new(
+        Address,
+        Connections.Count(connection => connection.Summary.Mechanism == Mechanism.Tcp),
+        Connections.Count(connection => connection.Summary.Mechanism == Mechanism.Udp),
+        Connections.Select(connection => connection.Holder).Distinct().Count(),
+        Records);
+
+    /// <summary>What the connections' transfers measured, both directions summed, in the words one connection's are said in.</summary>
+    public string Transfers(IFormatProvider? culture = null) => ConnectionSummary.TransfersOf(
+        Connections.Sum(connection => connection.Summary.Sends),
+        Connections.Sum(connection => connection.Summary.SentBytes),
+        Connections.Sum(connection => connection.Summary.UnmeasuredSends),
+        Connections.Sum(connection => connection.Summary.Receives),
+        Connections.Sum(connection => connection.Summary.ReceivedBytes),
+        Connections.Sum(connection => connection.Summary.UnmeasuredReceives),
+        culture);
+}
 
 /// <summary>
 /// A one-sided connection with the process that held it and its lifetime in session time: the span from its first record
@@ -128,6 +171,25 @@ public static class SessionConnections
         (Guid session, long generation, _, _, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
             Read(store, connection => connection.Holder.Id == instance, interval, policy, ledger: false, cancellationToken);
         return new(session, generation, [.. held.Select(pair => pair.Summary)]);
+    }
+
+    /// <summary>
+    /// The one-sided connections to <paramref name="address"/>, whoever held them, with the records each holds and the
+    /// transport bytes they measured - within <paramref name="interval"/> (workspace ticks) when one is given, where a
+    /// connection with no record in it is not listed: exactly the connections the host's scope reads.
+    /// </summary>
+    public static HostConnectionList ToHost(
+        SessionStore store,
+        string address,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(address);
+        string named = address.Trim();
+        (Guid session, long generation, _, _, _, IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> held) =
+            Read(store, connection => HostScopeKeys.Reaches(connection, named), interval, policy, ledger: false, cancellationToken);
+        return new(session, generation, named, [.. held.Select(pair => new HostConnection(pair.Summary, pair.Connection.Holder.Id))]);
     }
 
     /// <summary>

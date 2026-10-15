@@ -40,8 +40,7 @@ public static class HostScopeKeys
         ArgumentNullException.ThrowIfNull(relations);
         string address = AddressOf(key);
         int[] channels = [.. relations.OneSided
-            .Where(connection => SessionOverviewProjector.Admitted(connection.Strength, policy)
-                && string.Equals(EndpointAddress(connection.RemoteEndpoint), address, StringComparison.OrdinalIgnoreCase))
+            .Where(connection => SessionOverviewProjector.Admitted(connection.Strength, policy) && Reaches(connection, address))
             .Select(connection => connection.Channel)];
         if (channels.Length == 0)
         {
@@ -56,6 +55,13 @@ public static class HostScopeKeys
 
         return members;
     }
+
+    /// <summary>
+    /// Whether a one-sided connection's other end is <paramref name="address"/>, written as every surface writes one and
+    /// compared ignoring case: the one test of which connections a host's scope holds, wherever they are read.
+    /// </summary>
+    internal static bool Reaches(TransportConnection connection, string address) =>
+        string.Equals(EndpointAddress(connection.RemoteEndpoint), address, StringComparison.OrdinalIgnoreCase);
 
     /// <summary>An endpoint's address: inside the brackets of "[2001:db8::1]:443", before the last colon of "142.250.1.1:443".</summary>
     internal static string EndpointAddress(string endpoint)

@@ -58,6 +58,32 @@ public sealed class HostScopeTests
         Assert.Equal("records of the connections to 142.250.1.1", new IntervalByteScope { ChannelKey = key }.Description);
     }
 
+    [Fact(DisplayName = "§6.4: a host's connections are listed with the processes that held them, their records and their bytes: exactly those its scope reads")]
+    public void AHostsConnectionsAreListedWithTheirHolders()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+        ProcessInstanceId browser = whole.Processes.Single(node => node.ProcessId == 300).Id;
+        ProcessInstanceId updater = whole.Processes.Single(node => node.ProcessId == 310).Id;
+
+        // Its four connections, the most records first: the updater's three sends, then the browser's two at 443, its one at
+        // 8443 and its QUIC flow, holding the very records its scope lists.
+        HostConnectionList listed = SessionConnections.ToHost(session.Store, " " + Host + " ");
+        Assert.Equal(Host, listed.Address);
+        Assert.Equal([3L, 2L, 1L, 1L], listed.Connections.Select(connection => connection.Summary.Records));
+        Assert.Equal([updater, browser, browser, browser], listed.Connections.Select(connection => connection.Holder));
+        Assert.Equal(Read(session.Store, HostScopeKeys.Of(Host)).Length, listed.Records);
+        Assert.Equal(new OtherHost(Host, 3, 1, 2, 7), listed.Host);
+        Assert.Equal("1,210 B sent, no receive recorded", listed.Transfers(System.Globalization.CultureInfo.InvariantCulture));
+
+        // An IPv6 host is named in either case; an address no connection reached lists none, and a blank one is no address.
+        Assert.Equal("[2001:db8::1]:443", Assert.Single(SessionConnections.ToHost(session.Store, "2001:DB8::1").Connections)
+            .Summary.RemoteEndpoint);
+        Assert.Empty(SessionConnections.ToHost(session.Store, "192.0.2.1").Connections);
+        Assert.Throws<ArgumentException>(() => SessionConnections.ToHost(session.Store, " "));
+    }
+
     [Fact(DisplayName = "§6.4: a host's scope has an identity of its own, refuses an end, and says so where no connection reaches its address")]
     public void AHostsScopeHasAnIdentityAndRefusesWhatItCannotRead()
     {

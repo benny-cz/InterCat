@@ -131,6 +131,29 @@ public sealed class EvidenceScopeTests
         Assert.True(EvidenceScopes.Resolve(Snapshot, Rung(new ImpliedFilter("note", "x", "y"))).IsWholeSession);
     }
 
+    [Fact(DisplayName = "§6.4: an evidence rung reached from a host reads the records of its connections, named by its address, narrowed as a lane is and never by an end")]
+    public void AHostsFilterReadsItsConnectionsRecords()
+    {
+        string key = HostScopeKeys.Of("142.250.1.1");
+        ImpliedFilter host = Filter("scope", "Connections to 142.250.1.1", DetailLevel.Channel, key);
+        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot, Rung(host));
+        Assert.Equal(("Records of the connections to 142.250.1.1", key), (scope.Description, scope.ChannelKey));
+        Assert.Empty(scope.OwnerProcesses);
+        Assert.Null(scope.ContributingEdgeKey);
+        Assert.Null(scope.Problem);
+
+        // Within an interval it says so; a lane's mechanism narrows it; an end names one end of a paired channel, and a host's
+        // connections have none to choose.
+        EvidenceScope within = EvidenceScopes.Resolve(Snapshot, Rung(host) with { Viewport = new TimeRange(10, 20) });
+        Assert.StartsWith("Records of the connections to 142.250.1.1 · ", within.Description, StringComparison.Ordinal);
+        Assert.Equal(new TimeRange(10, 20), within.Interval);
+        EvidenceScope udp = EvidenceScopes.Resolve(Snapshot, Rung(host, EvidenceScopes.MechanismFilter(Mechanism.Udp, "lane")));
+        Assert.Equal((key, Mechanism.Udp), (udp.ChannelKey, udp.Mechanism));
+        Assert.StartsWith("An end filter names one end of a paired channel",
+            EvidenceScopes.Resolve(Snapshot, Rung(host, EvidenceScopes.EndFilter(0, "192.168.1.10:52000", "lane"))).Problem,
+            StringComparison.Ordinal);
+    }
+
     [Fact]
     public void AnExplicitScopeStepCarriesItsKeyAndLevelIntoTheFilterBar()
     {

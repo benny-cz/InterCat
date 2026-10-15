@@ -28,10 +28,11 @@ Windows build is in [the per-build coverage](docs/PER-BUILD-COVERAGE.md).
 capture, and by RPC calls linked to the calls that served them in an RPC peers capture. Each pair's relationships run
 side by side, a mechanism's hue each. Connections whose other end no record holds - most of a real machine's, to other
 hosts - are drawn to one **Other hosts** node, which names the busiest addresses they ran to, lists them all with the
-ports reached at each and, opened, draws them on their own; the busiest processes that only reach other hosts are drawn on their own and the rest counted in **Other
-hosts only**, processes with no relationship in **No relationships**, and large executable groups collapse. When it
-draws no relationship, the graph says why. A search marks the processes it finds, by name, PID or an address they
-reached.
+ports reached at each and, opened, draws them on their own, each of which, chosen, highlights the records of every
+connection to it for E to list. The busiest processes that only reach other hosts are drawn on their own and the rest
+counted in **Other hosts only**, processes with no relationship in **No relationships**, and large executable groups
+collapse. When it draws no relationship, the graph says why. A search marks the processes it finds, by name, PID or an
+address they reached.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.
