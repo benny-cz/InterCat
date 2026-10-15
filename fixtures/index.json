@@ -2036,7 +2036,7 @@
         "R18: icat operations needs a session's folder, and says so of none and of one that is not there",
         "R18: icat operations refuses an option it cannot read, saying what it expects",
         "R18: icat overview says what the capture covered over the session in the words the window's inspector uses",
-        "R18: icat overview says why the graph draws no relationship, as the window does beneath it, and its JSON carries the census",
+        "R18: icat overview says why the graph draws no relationship, as the window does, lists the processes reaching other hosts, and its JSON carries both",
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
         "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect",

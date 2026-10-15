@@ -166,6 +166,30 @@ public sealed record ProcessNode(
 public sealed record MechanismCount(Mechanism Mechanism, long Records);
 
 /// <summary>
+/// A process's connections to other hosts over one transport (§6.3's unresolved resources): connections whose other end no
+/// record of the capture holds, at an address neither loopback nor the connection's own (`relations-v1` §5c). The graph
+/// draws them to one Other hosts node, as a resource is drawn - with no traffic value - and never names who is at their
+/// other ends (P7). Its counts are the whole session's.
+/// </summary>
+public sealed record HostLink(
+    ProcessInstanceId Process,
+    Mechanism Mechanism,
+    int Connections,
+    int Hosts,
+    long Records,
+    RelationStrength Strength)
+{
+    /// <summary>What every host link's key begins with.</summary>
+    public const string KeyPrefix = "hosts:";
+
+    /// <summary>Its key, by its mechanism and process: one link per process and transport.</summary>
+    public string Key => $"{KeyPrefix}{MechanismText.Name(Mechanism).ToLowerInvariant()}:{Process}";
+
+    /// <summary>Whether a key names a host link.</summary>
+    public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
+}
+
+/// <summary>
 /// A relationship between two processes, as strong as its weakest evidence, carrying the rule that derived it and what it
 /// rests on (R4), so the edge it draws can always be explained.
 /// </summary>
@@ -491,6 +515,13 @@ public sealed record WorkspaceSnapshot(
     /// can say why (§6.8); null for a snapshot not projected from a session.
     /// </summary>
     public RelationshipCensus? Census { get; init; }
+
+    /// <summary>
+    /// Each process's connections to other hosts, by transport, over the whole session, under the policy the snapshot was
+    /// projected under: what the graph draws to its Other hosts node (§6.3). Empty for a snapshot not projected from a
+    /// session.
+    /// </summary>
+    public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
 
     /// <summary>
     /// The interval the session's capture recorded, which its whole-session rates divide by (<see cref="SessionRecording"/>);

@@ -103,6 +103,70 @@ public sealed class TransportCensusTests
         Assert.Throws<ArgumentOutOfRangeException>(() => relations.Census(Mechanism.Tcp, (EvidencePolicy)0));
     }
 
+    [Fact(DisplayName = "§6.3: each process's connections to other hosts are those the census counts, by transport, with their hosts, records and weakest binding")]
+    public void EachProcessReachesTheOtherHostsTheCensusCounts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            // A PID reused: its later instance's connection binds to it only as a candidate.
+            Lifecycle(10, ObservationKind.Create, 210, 1),
+            Lifecycle(20, ObservationKind.Exit, 210, 2),
+            Lifecycle(30, ObservationKind.Create, 210, 3),
+
+            // 300's three connections to two hosts, 4 records, and the reused PID's one.
+            Transfer(120, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 10).Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(121, ObservationKind.Receive, AccountingSide.ReceiveSide, 900, 300, 11).Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(122, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 12).Between("192.168.1.10:52001", "142.250.1.1:443"),
+            Transfer(123, ObservationKind.Send, AccountingSide.SendSide, 500, 300, 13).Between("192.168.1.10:52002", "142.250.1.2:443"),
+            Transfer(124, ObservationKind.Send, AccountingSide.SendSide, 1, 210, 14).Between("192.168.1.10:52003", "142.250.1.3:443"),
+
+            // None of these reaches another host: a relationship over loopback, and one between two of this machine's own
+            // addresses - a container network's, say - which pairs, so its other end is a process of the capture; an end
+            // on this machine whose other end no record holds, an end two processes hold, and one no process holds.
+            Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 15).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(101, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 16).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(102, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 24).Between("192.168.1.10:50020", "172.17.0.1:8443"),
+            Transfer(103, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 25).Between("172.17.0.1:8443", "192.168.1.10:50020"),
+            Transfer(130, ObservationKind.Send, AccountingSide.SendSide, 2, 400, 17).Between("127.0.0.1:50005", "127.0.0.1:9999"),
+            Transfer(140, ObservationKind.Send, AccountingSide.SendSide, 1, 500, 18).Between("192.168.1.10:50010", "10.0.0.9:80"),
+            Transfer(141, ObservationKind.Send, AccountingSide.SendSide, 1, 501, 19).Between("192.168.1.10:50010", "10.0.0.9:80"),
+            Transfer(142, ObservationKind.Send, AccountingSide.SendSide, 1, null, 20).Between("192.168.1.10:50011", "10.0.0.9:80"),
+
+            // 700's UDP: two datagrams to a multicast group and one to a resolver, two flows to two hosts.
+            Transfer(160, ObservationKind.Send, AccountingSide.SendSide, 1, 700, 21).Between("192.168.1.10:5353", "224.0.0.251:5353")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+            Transfer(161, ObservationKind.Send, AccountingSide.SendSide, 1, 700, 22).Between("192.168.1.10:5353", "224.0.0.251:5353")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+            Transfer(162, ObservationKind.Send, AccountingSide.SendSide, 1, 700, 23).Between("192.168.1.10:61000", "8.8.8.8:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+        ]);
+        (ProcessInstanceIndex processes, TransportRelationIndex relations) = Derive(session.Store);
+        int Pid(HostReach reach) => processes.Instances[reach.Holder].ProcessId;
+
+        // In holder order, each holder once.
+        IReadOnlyList<HostReach> tcp = relations.ReachOfOtherHosts(Mechanism.Tcp);
+        Assert.Equal(tcp.Select(reach => reach.Holder).Order(), tcp.Select(reach => reach.Holder));
+        Assert.Equal([210, 300], tcp.Select(Pid).Order());
+        // A transfer binds to its PID's first instance as correlated (entities-v1), and to a later one only as a candidate.
+        HostReach browser = tcp.Single(reach => Pid(reach) == 300);
+        Assert.Equal(new HostReach(Mechanism.Tcp, browser.Holder, 3, 2, 4, RelationStrength.Correlated), browser);
+        HostReach reused = tcp.Single(reach => Pid(reach) == 210);
+        Assert.Equal((1, 1, 1L, RelationStrength.Candidate), (reused.Connections, reused.Hosts, reused.Records, reused.Strength));
+        Assert.Equal(2u, processes.Instances[reused.Holder].LifecycleEpoch);
+
+        // They are exactly the connections and records the census counts as to other hosts, under any policy; the two
+        // relationships are relationships.
+        TransportCensus census = relations.Census(Mechanism.Tcp, EvidencePolicy.IncludeCorrelated);
+        Assert.Equal((census.OtherHostConnections, census.ToOtherHosts),
+            (tcp.Sum(reach => reach.Connections), tcp.Sum(reach => reach.Records)));
+        Assert.Equal(2, census.Relationships);
+
+        HostReach udp = Assert.Single(relations.ReachOfOtherHosts(Mechanism.Udp));
+        Assert.Equal((700, Mechanism.Udp, 2, 2, 3L), (Pid(udp), udp.Mechanism, udp.Connections, udp.Hosts, udp.Records));
+        Assert.Throws<ArgumentOutOfRangeException>(() => relations.ReachOfOtherHosts(Mechanism.Rpc));
+    }
+
     private static (ProcessInstanceIndex Processes, TransportRelationIndex Relations) Derive(SessionStore store)
     {
         IReadOnlyList<SegmentReaderV1> segments = Segments(store);

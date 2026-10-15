@@ -180,7 +180,7 @@ public sealed class MultiSelectionTests
         // A publication restates the choice in a view of its own, and the keyboard stays on the node it was moved to.
         Publish(session.Store, [.. Enumerable.Range(0, 5).Select(index =>
             Transfer(60 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 32, 300, (ulong)(6_000 + index))
-                .Between("127.0.0.1:51000", "10.0.0.7:443") with { SessionRelativeTicks = (60 + (2 * index)) * 100L })]);
+                .Between("127.0.0.1:51000", ThirdsUnseenEnd) with { SessionRelativeTicks = (60 + (2 * index)) * 100L })]);
         window.ApplyCaptureUpdate(Update(session));
         Dispatch();
         workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
@@ -419,13 +419,19 @@ public sealed class MultiSelectionTests
         }),
     ];
 
-    /// <summary>A third process sending to a remote endpoint the capture holds nothing of.</summary>
+    /// <summary>
+    /// A third process sending to an endpoint on this machine the capture holds nothing of: it relates to no process and
+    /// reaches no other host, so the graph draws no edge of it.
+    /// </summary>
     private static ObservationRowV1[] Third(int count) =>
     [
         .. Enumerable.Range(0, count).Select(index =>
             Transfer(12 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 32, 300, (ulong)(5_000 + index))
-                .Between("127.0.0.1:51000", "10.0.0.7:443") with { SessionRelativeTicks = (12 + (2 * index)) * 100L }),
+                .Between("127.0.0.1:51000", ThirdsUnseenEnd) with { SessionRelativeTicks = (12 + (2 * index)) * 100L }),
     ];
+
+    /// <summary>Where the third process sends: a port on this machine no record of the capture holds.</summary>
+    private const string ThirdsUnseenEnd = "127.0.0.1:7443";
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 }

@@ -50,8 +50,62 @@ public sealed record TransportCensus(
     public static TransportCensus None(Mechanism mechanism) => new(mechanism, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 }
 
+/// <summary>
+/// One process instance's connections to other hosts over one mechanism (§6.3's unresolved resources): the one-sided
+/// connections a census counts as to another host, held by that instance. Who is at their other ends is not observed (P7).
+/// </summary>
+/// <param name="Mechanism">The transport the connections ran over.</param>
+/// <param name="Holder">The instance's position in the process index the relations were derived with.</param>
+/// <param name="Connections">Its connections to other hosts.</param>
+/// <param name="Hosts">The distinct addresses they ran to.</param>
+/// <param name="Records">The records they hold.</param>
+/// <param name="Strength">How strongly their records bind to the instance: the weakest of them.</param>
+public sealed record HostReach(Mechanism Mechanism, int Holder, int Connections, int Hosts, long Records, RelationStrength Strength);
+
 public sealed partial class TransportRelationIndex
 {
+    /// <summary>
+    /// Each instance's connections to other hosts over <paramref name="mechanism"/>, in holder order: exactly the
+    /// connections <see cref="Census"/> counts as to another host, before any evidence policy. It reads no row.
+    /// </summary>
+    public IReadOnlyList<HostReach> ReachOfOtherHosts(Mechanism mechanism)
+    {
+        if (!Relates(mechanism))
+        {
+            throw new ArgumentOutOfRangeException(nameof(mechanism), mechanism,
+                "This rule relates no record of that mechanism, so it reaches no host.");
+        }
+
+        var reach = new SortedDictionary<int, (int Connections, HashSet<(byte, UInt128)> Hosts, long Records, RelationStrength Weakest)>();
+        foreach ((EndKey key, EndTimeline timeline) in ends)
+        {
+            if (key.Protocol != (byte)mechanism || OnThisMachine(key))
+            {
+                continue;
+            }
+
+            foreach (Incarnation incarnation in timeline.Incarnations)
+            {
+                if (incarnation is not { Records: > 0, Pairing: Pairing.NotObserved, Channel: >= 0, Holder: >= 0, Ambiguous: false })
+                {
+                    continue;
+                }
+
+                if (!reach.TryGetValue(incarnation.Holder, out var held))
+                {
+                    held = (0, [], 0, RelationStrength.Direct);
+                }
+
+                _ = held.Hosts.Add((key.Family, key.RemoteAddress));
+                reach[incarnation.Holder] = (held.Connections + 1, held.Hosts, held.Records + incarnation.Records,
+                    Weaker(held.Weakest, incarnation.Weakest));
+            }
+        }
+
+        return [.. reach.Select(entry => new HostReach(
+            mechanism, entry.Key, entry.Value.Connections, entry.Value.Hosts.Count, entry.Value.Records, entry.Value.Weakest))];
+    }
+
     /// <summary>
     /// What became of <paramref name="mechanism"/>'s records under <paramref name="policy"/>. It reads no row: every record
     /// is in exactly one incarnation of one end, or among the records that name no end, and each incarnation knows how it

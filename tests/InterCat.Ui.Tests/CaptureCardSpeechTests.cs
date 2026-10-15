@@ -252,8 +252,9 @@ public sealed class CaptureCardSpeechTests
 
     /// <summary>What a rolling capture's detail says it keeps, at more length than the card's detail has lines for.</summary>
     private const string Keeps = "The session keeps the newest ten minutes of session time and releases what is older "
-        + "between publications, unless a pin keeps it. Graph edges are paired TCP only; other observations remain in the "
-        + "timeline. Unobserved activity is not zero, and a gap in coverage is stated where it falls.";
+        + "between publications, unless a pin keeps it. The graph relates processes by paired TCP only and draws their "
+        + "connections to other hosts; other observations remain in the timeline. Unobserved activity is not zero, and a "
+        + "gap in coverage is stated where it falls.";
 
     /// <summary>A recording's newer generation, which restates its count and chunks.</summary>
     private static CaptureUiUpdate Generation(TemporarySession session, CaptureUiPhase phase, int generation,

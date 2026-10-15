@@ -170,6 +170,19 @@ A census is no rule of its own: it reads the incarnations, pairing and holders o
 they stand, and changes with them. It is what lets a view say why it draws no relationship, rather than leave an empty
 graph to be read as a failure (§6.8 of the plan): most of a real machine's TCP runs to other hosts.
 
+## 5d. Each process's connections to other hosts (revision 542)
+
+The connections a census counts as **to another host** (§5c) are also given by holder: for each process instance
+and transport, how many such connections it holds, how many distinct remote addresses they ran to, how many records
+they hold, and the weakest binding of those records to it (§4). It is no rule of its own either: it reads the same
+incarnations, pairing and holders, and no record.
+
+A view admits them by that binding, as it admits relationships: under the default policy a connection held only by
+a reused PID's later instance, a candidate, is left out. The overview carries them as **host links**, keyed
+`hosts:{transport}:{instance}`, one per instance and transport, over the whole session: a brushed interval does not
+re-count them. The window's graph draws them to one **Other hosts** node (§6.3 of the plan), and `icat overview`
+lists the processes that hold them; nothing names who is at their other ends (P7).
+
 ## 6. What is not inferred
 
 - **Time proximity.** Two records are never paired because they are close in time, and an undecided incarnation is
@@ -177,8 +190,10 @@ graph to be read as a failure (§6.8 of the plan): most of a real machine's TCP 
   lifecycle records that bound them.
 - **Connection identifiers.** The provider's `connid` is admitted as a source field and never used: it was zero on
   the measured build and is reusable (R22).
-- **Addresses alone.** An endpoint pair with no local holder at its other end is not attributed to anything; an
-  address class does not make a peer local or remote.
+- **Addresses alone.** An endpoint pair with no local holder at its other end is not attributed to anything, and an
+  address class pairs nothing. A census (§5c) and the host links (§5d) read a one-sided end's remote address only to
+  say where it ran: on this machine at a loopback address or the end's own, at another host's otherwise - most often
+  true, and never used to name a peer.
 - **Per-transfer association.** A relation says which process is at a record's other end, not which of that
   process's records is the same transfer. The canonical owner of §5.3 needs that association and stays unavailable.
 

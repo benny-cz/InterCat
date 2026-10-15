@@ -14,9 +14,9 @@ public static class OverviewWorkspace
     /// no keys.
     /// </summary>
     public const string SessionDisclosure =
-        "The graph shows admitted paired TCP; a process's rung also lists its RPC calls by interface, call by call. "
-        + "The timeline includes every observed row. TCP and UDP records are completed transfers with no operation "
-        + "rung.";
+        "The graph shows admitted paired TCP, and each process's connections to other hosts drawn to one Other hosts "
+        + "node; a process's rung also lists its RPC calls by interface, call by call. The timeline includes every "
+        + "observed row. TCP and UDP records are completed transfers with no operation rung.";
 
     /// <summary>
     /// What a view of a session whose capture collected ALPC says instead of <see cref="SessionDisclosure"/>: its graph
@@ -24,9 +24,10 @@ public static class OverviewWorkspace
     /// §5c).
     /// </summary>
     public const string LinkedCallsDisclosure =
-        "The graph shows admitted paired TCP and RPC calls linked through ALPC to the processes that served them; a "
-        + "process's rung lists its RPC calls by interface, call by call, with who served each. The timeline includes "
-        + "every observed row. TCP and UDP records are completed transfers with no operation rung.";
+        "The graph shows admitted paired TCP and RPC calls linked through ALPC to the processes that served them, and "
+        + "each process's connections to other hosts drawn to one Other hosts node; a process's rung lists its RPC calls "
+        + "by interface, call by call, with who served each. The timeline includes every observed row. TCP and UDP "
+        + "records are completed transfers with no operation rung.";
 
     /// <summary>The disclosure a view of <paramref name="snapshot"/> states: which relationships its graph draws.</summary>
     public static string DisclosureFor(WorkspaceSnapshot snapshot)
@@ -61,6 +62,7 @@ public static class OverviewWorkspace
             MechanismCoverage = overview.MechanismCoverage,
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Census = overview.Census,
+            HostLinks = overview.HostLinks,
             Recording = overview.Recording,
             Began = overview.Began,
             WallClock = overview.WallClock,

@@ -1815,11 +1815,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (graphFocus.Neighborhood is { } drawn)
             {
                 int outside = processes - drawn.Count;
-                int nodes = graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.Context);
+                int nodes = graphDisplay.Nodes.Count(node => node.Kind is not (GraphNodeKind.Context or GraphNodeKind.OtherHosts));
                 return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
-                    + GraphScopeNote(brief: true) + CellGraphNote;
+                    + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote;
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -1833,8 +1833,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         : string.Empty));
             return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder)
-                ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count, "node", "nodes")
-                : text) + GraphScopeNote(brief: true) + CellGraphNote;
+                ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.OtherHosts), "node", "nodes")
+                : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote;
         }
     }
 
@@ -1852,10 +1852,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Why the machine's graph draws no relationship, said beneath it where the empty pane would otherwise be read as a
     /// failure (§6.8): whether any TCP connection had a process of the session at each end, where its TCP records went, and
-    /// what the graph does not draw at all. Null while the graph draws a relationship, at a focused rung, and for a
-    /// workspace not projected from a session.
+    /// what the graph does not draw at all. Null while the graph draws a relationship, or connections to other hosts across
+    /// the pane - its summary, nodes and table still say why - at a focused rung, and for a workspace not projected from a
+    /// session.
     /// </summary>
-    public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && EmptyCensus is { } census
+    public string? GraphEmptyExplanation => graphFocus.Neighborhood is null && graphDisplay.OtherHosts is null
+        && EmptyCensus is { } census
         ? RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture)
         : null;
 
@@ -1890,6 +1892,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : (calls
                 ? "The graph draws admitted paired TCP and RPC calls linked through ALPC"
                 : "The graph draws admitted paired TCP")
+                + (graphDisplay.OtherHosts is null ? string.Empty
+                    : ", and to Other hosts each drawn process's TCP and UDP with no process of the capture at their other end")
                 + "; a process's RPC calls are on its rung, and all other observed activity is in the timeline.";
     }
 
@@ -2060,13 +2064,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// §6.7's double-click on an edge: opens the one relationship it stands for, as <see cref="OpenRelationship"/> does. An
-    /// aggregate edge stands for several relationships and opens nothing.
+    /// aggregate edge stands for several relationships and opens nothing. An edge to the other hosts opens the node its
+    /// connections come from, as Enter on it does: a process's rung lists each of its connections.
     /// </summary>
     public bool OpenGraphEdge(string edgeKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
-        return graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is { Relationships.Count: 1 } drawn
-            && OpenRelationship(drawn.Relationships[0]);
+        GraphDisplayEdge? drawn = graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey);
+        return drawn is { ToHosts: true } ? OpenGraphNode(drawn.SourceKey)
+            : drawn is { Relationships.Count: 1 } && OpenRelationship(drawn.Relationships[0]);
     }
 
     /// <summary>
@@ -3549,11 +3555,18 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// §6.7's click on an edge: chooses the one relationship it stands for, as choosing its row in the table does. An
-    /// aggregate edge stands for several and chooses none.
+    /// aggregate edge stands for several and chooses none. An edge to the other hosts stands for no relationship: it
+    /// chooses the node its connections come from.
     /// </summary>
     public bool SelectGraphEdge(string edgeKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
+        if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is { ToHosts: true } toHosts)
+        {
+            SelectGraphNode(toHosts.SourceKey);
+            return true;
+        }
+
         if (graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey) is not { Relationships.Count: 1 } drawn
             || relationships.FirstOrDefault(row => row.Key == drawn.Relationships[0]) is not { } row)
         {
@@ -3806,8 +3819,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         int quiet = cluster.Members.Count(member => !relatedProcesses.Contains(member));
         return cluster.Kind switch
         {
-            GraphNodeKind.Quiet => $"{members} with no admitted relationship in this session, counted in one node rather "
-                + "than drawn one by one. The ranked table lists each of them."
+            GraphNodeKind.Quiet => $"{members} with no admitted relationship{NoHostConnection} in this session, counted in one "
+                + "node rather than drawn one by one. The ranked table lists each of them."
                 + (EmptyCensus is { } census ? " " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) : string.Empty),
             GraphNodeKind.OtherMembers => $"{members} of this group not drawn on their own"
                 + (quiet == cluster.Members.Count ? ", none with a relationship"
@@ -3818,6 +3831,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 + (ladder.Current.Level == DetailLevel.Machine ? "Enter opens the group." : "Return to the machine rung to open it."),
             GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
                 + DescribeContextRelationships(cluster) + ". Esc returns to the wider graph.",
+            GraphNodeKind.OtherHosts => DescribeOtherHosts(cluster),
             _ => $"{members} folded together to keep the graph readable · {relationships}. The ranked table lists each of them.",
         };
     }
@@ -3859,6 +3873,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : "Scope: " + TimeBase.HalfOpenRange(Snapshot.Extent, CultureInfo.CurrentCulture) + " · whole session";
         GraphDisplay drawnDisplay = GraphDisplay;
         string magnitude = drawnDisplay.Edges.Any(edge => edge.Magnitude is not null) ? "bytes sent across its relationships" : "records";
+        if (drawnDisplay.Node(key) is { Kind: GraphNodeKind.OtherHosts } hub)
+        {
+            return DescribeOtherHostsHover(hub, drawnDisplay);
+        }
+
         if (drawnDisplay.Node(key) is { } node)
         {
             long scale = GraphEncoding.NodeScale(drawnDisplay);
@@ -3878,7 +3897,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
                 GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
                 GraphNodeKind.Context => Counted(node.Members.Count, "process", "processes") + " outside this focus, counted rather than drawn",
-                _ => Counted(node.Members.Count, "process", "processes") + " with no admitted relationship",
+                _ => Counted(node.Members.Count, "process", "processes") + " with no admitted relationship" + NoHostConnection,
             };
             HashSet<ProcessInstanceId> members = [.. node.Members];
             CoverageState coverage = Worst(Snapshot.Processes.Where(process => members.Contains(process.Id))
@@ -3905,6 +3924,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         ? string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}")
                         : $"Size: {magnitude}, log scale against the busiest drawn node, {WorkspaceRowBuilder.DescribeSize(scale)}",
             };
+            if (HostReachLine(node) is { } reach)
+            {
+                nodeLines.Insert(1, reach);
+            }
+
             if (graphPins.ContainsKey(node.Key))
             {
                 nodeLines.Add("Pinned where it was placed · P releases it");
@@ -3926,6 +3950,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (drawnDisplay.Edges.FirstOrDefault(edge => edge.Key == key) is not { } drawn)
         {
             return null;
+        }
+
+        if (drawn.ToHosts)
+        {
+            return DescribeHostEdgeHover(drawn, drawnDisplay);
         }
 
         long edgeScale = GraphEncoding.EdgeScale(drawnDisplay);
@@ -4468,7 +4497,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
-        : SelectedCluster is not null ? "Selected aggregate"
+        : SelectedCluster is { Kind: not GraphNodeKind.OtherHosts } ? "Selected aggregate"
         : SelectedGroup is not null ? "Selected group"
         : RungRecords is not null ? "Records E lists"
         : "Selected process";
@@ -4476,10 +4505,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// With nothing selected in a published session, the rung's own records, as E reads them over the scope the rows count
     /// (§6.4, I5): "Every admitted record in this session", "Records owned by the 2 instances of client.exe". Null with a
-    /// selection, in the tour, and at the evidence rung, whose records are listed already.
+    /// selection, in the tour, and at the evidence rung, whose records are listed already. The Other hosts node chosen
+    /// stands for no process, so it selects no records of its own and E still lists the rung's.
     /// </summary>
     private string? RungRecords => realOverview && !IsEvidenceRung && selectedProcess is null && !HasMultiSelection
-        && selectedRelationship is null && SelectedCluster is null && SelectedGroup is null && ChosenRow is null
+        && selectedRelationship is null && SelectedCluster is null or { Kind: GraphNodeKind.OtherHosts } && SelectedGroup is null
+        && ChosenRow is null
             ? CellRecords(ScopeInterval ?? ladder.Current.Viewport)
                 ?? EvidenceScopes.Resolve(Snapshot, ladder.Current with { Viewport = ScopeInterval ?? ladder.Current.Viewport },
                     TimeBase).Description

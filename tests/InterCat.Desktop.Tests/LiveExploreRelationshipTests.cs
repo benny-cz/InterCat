@@ -218,11 +218,18 @@ public sealed class LiveExploreRelationshipTests
         Assert.Equal([100, 200, 200, 300], ends);
         Assert.Equal((2, 1, 1), (final.Census!.Tcp.Relationships, final.Census.Tcp.OtherHostConnections, final.Census.Tcp.OtherHosts));
 
-        // The window draws them, and says so in its graph's summary.
+        // The browser's connection to another host, whose receive the System process's context raised, is its one host link.
+        HostLink reach = Assert.Single(final.HostLinks);
+        Assert.Equal((300, Mechanism.Tcp, 1, 1), (final.Nodes.Single(node => node.Id == reach.Process).ProcessId, reach.Mechanism,
+            reach.Connections, reach.Hosts));
+
+        // The window draws them, and the browser's connection to Other hosts, and says so in its graph's summary.
         using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(final), final.GraphIdentity);
         await workspace.LayoutReady;
         Assert.StartsWith(running.Length.ToString(System.Globalization.CultureInfo.CurrentCulture) + " processes · 2 relationships",
             workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.EndsWith(" · 1 connects to other hosts", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.Equal(1, workspace.GraphDisplay.OtherHosts?.ConnectedProcesses);
         Assert.Null(workspace.GraphEmptyExplanation);
         derivation.Store!.ReleaseSegmentReaders();
     });

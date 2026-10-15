@@ -40,7 +40,8 @@ public sealed partial class WorkspaceViewModel
     /// Whether a description on screen needs bytes: a selected process, group, aggregate or set, the relationship table, the
     /// channel a channel rung is focused on, or one chosen among a process's rows.
     /// </summary>
-    private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null || SelectedCluster is not null
+    private bool DescribesBytes => selectedProcess is not null || SelectedGroup is not null
+        || SelectedCluster is { Kind: not GraphNodeKind.OtherHosts }
         || HasMultiSelection || showTables || FocusedRealChannel is not null || selectedRelationship is not null
         || ChosenRow is not null;
 

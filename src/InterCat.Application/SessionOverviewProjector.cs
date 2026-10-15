@@ -130,6 +130,12 @@ public sealed record SessionOverviewBundle(
     /// relationship can say why (§6.8); null for an overview no session was projected for.
     /// </summary>
     public RelationshipCensus? Census { get; init; }
+
+    /// <summary>
+    /// Each process's connections to other hosts, by transport, whose binding <see cref="Policy"/> admits: what the graph
+    /// draws to its Other hosts node (§6.3). Empty for an overview no session was projected for.
+    /// </summary>
+    public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
 }
 
 /// <summary>
@@ -269,6 +275,15 @@ public static class SessionOverviewProjector
             relations.Census(Mechanism.Udp, policy),
             nodes.Sum(node => node.Activity.Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records)),
             RpcPeerEdges.Collected(coverage));
+
+        // Each process's connections to other hosts, which the graph draws to one node of its own as resources are drawn:
+        // with no traffic value and never naming who is at their other ends (§6.3, P7).
+        HostLink[] hostLinks = [.. new[] { Mechanism.Tcp, Mechanism.Udp }
+            .SelectMany(mechanism => relations.ReachOfOtherHosts(mechanism))
+            .Where(reach => Admitted(reach.Strength, policy))
+            .Select(reach => new HostLink(processes.Instances[reach.Holder].Id, reach.Mechanism, reach.Connections, reach.Hosts,
+                reach.Records, reach.Strength))
+            .OrderBy(link => link.Key, StringComparer.Ordinal)];
 
         string? channelProblem = admitted.Length > maximumChannels
             ? $"This generation has {admitted.Length:N0} admitted paired TCP channels, above the "
@@ -410,6 +425,7 @@ public static class SessionOverviewProjector
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
             Census = census,
+            HostLinks = hostLinks,
             Collectors = collectors,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])

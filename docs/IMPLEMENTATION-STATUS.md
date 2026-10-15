@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-14 · Plan revision: 541 · Branch: `main`
+Updated: 2026-10-15 · Plan revision: 542 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -92,6 +92,31 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 542 — draw processes' connections to other hosts (§6.3):**
+  - The relation index gives each process's connections to other hosts by transport (`relations-v1` §5d); the
+    overview carries them as host links under the evidence policy, and icat overview lists who reaches other hosts.
+  - The graph draws such a process on its own, edged to one square Other hosts node: a transport an edge, side by
+    side, in its hue and evidence pattern at a constant thin stroke, with no traffic value and in no total; its
+    summary, cards and selection say what they are, and a click or double click on an edge reaches the process.
+  - The line beneath an empty graph shows only while its pane draws nothing; two keyboard tests' third process now
+    sends to an unseen port on this machine, so their graphs stay as they were.
+  - Debug and Release each ran 2,328 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    tests caught each of 64 mutations: a reach of other hosts counting an end on this machine, another transport's,
+    a paired one - between two of this machine's own addresses too - or one two processes hold, a host per
+    connection, a record per connection, or not the weakest binding; host links admitted past the evidence policy,
+    without UDP, at the wrong strength, lost to the workspace, kept for a process set aside, or keyed by anything; a
+    process reaching other hosts folded as quiet, a context process's connections drawn, two transports drawn over
+    each other, the node's processes or records miscounted, an edge's binding not its weakest, the drawing called
+    clustered, the node or its edges weighed by bytes, a second node, one holding a process, an edge into it that is
+    no host edge, a host link drawn twice or a relationship drawn as one, a link naming no process, records below
+    zero, no host or more hosts than connections, the links left unchecked, or an edge's link lost; the node or its
+    edges setting a scale, the node drawn smaller, or its edges thickened; a UDP flow called a TCP connection, its
+    hosts not "with", one process's hosts unsaid, or UDP said first; the keyboard reaching the node first, its edges
+    drawn on one line, or its label's "from"; the window's summary note, a process's or a context's line, the quiet
+    node's words, the brush's caveat, an edge's gestures, the node's or an edge's card, a click or a double click on
+    an edge, the node's description, its evidence heading or records, the line beneath the graph, the scope's words,
+    the summary's node counts, or a cell highlighting an edge to the other hosts; and icat overview's list.
 
 - **Revision 541 — say why the graph draws no relationship (§6.3, §6.8; reported from a live capture):**
   - A live Explore capture shaped as Windows delivers it - manifest-compiled plans, bodies read as the admitter

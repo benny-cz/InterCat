@@ -118,6 +118,22 @@ internal static class OverviewCommand
                     [CollectorText.Named(node), ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
         }
 
+        // The processes whose connections ran to other hosts, as the window's graph draws them to its Other hosts node: the
+        // most connected first, each by its connections over each transport (relations-v1 section 5c).
+        if (overview.HostLinks.Count > 0)
+        {
+            ConsoleUi.Field("Reaching other hosts", HostLinkText.Line(overview.HostLinks));
+            Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
+            ConsoleUi.Table(
+                ["Reaching other hosts", "Connections"],
+                [.. overview.HostLinks
+                    .GroupBy(link => link.Process)
+                    .OrderByDescending(links => links.Sum(link => (long)link.Connections))
+                    .ThenBy(links => links.Key.ToString(), StringComparer.Ordinal)
+                    .Take(5)
+                    .Select(links => (IReadOnlyList<string>)[CollectorText.Named(nodes[links.Key]), HostLinkText.Line(links)])]);
+        }
+
         foreach (string caveat in overview.Caveats) ConsoleUi.Note(caveat);
         ConsoleUi.Note("icat overview <directory> --json returns the exact bundle the Desktop projects.");
         return InterCatExitCode.Success;

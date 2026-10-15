@@ -10,11 +10,12 @@ namespace InterCat.Cli.Tests;
 
 /// <summary>
 /// icat overview says why a session's graph draws no relationship in the words the window says beneath its empty graph
-/// (§6.8, R18), and its JSON carries the census those words are made from.
+/// (§6.8, R18), lists the processes whose connections the window draws to Other hosts (§6.3), and its JSON carries the
+/// census and the host links those words are made from.
 /// </summary>
 public sealed class OverviewCensusTests
 {
-    [Fact(DisplayName = "R18: icat overview says why the graph draws no relationship, as the window does beneath it, and its JSON carries the census")]
+    [Fact(DisplayName = "R18: icat overview says why the graph draws no relationship, as the window does, lists the processes reaching other hosts, and its JSON carries both")]
     public async Task IcatOverviewSaysWhyTheGraphDrawsNone()
     {
         using var remote = new TemporarySession();
@@ -35,11 +36,20 @@ public sealed class OverviewCensusTests
             + "records belong to 1 connection to 1 other host. A process's connections are listed on its rung.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
 
+        // The processes reaching other hosts, as the window draws them to Other hosts: the browser's one connection.
+        Assert.Matches(@"(?m)^  Reaching other hosts +1 TCP connection to 1 host\r?$", text);
+        Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +1 TCP connection to 1 host\r?$", text);
+
         (code, text, said) = await Run("overview", remote.Path, "--json");
         Assert.True(code == InterCatExitCode.Success, said);
-        JsonElement tcp = JsonDocument.Parse(text).RootElement.GetProperty("bundle").GetProperty("census").GetProperty("tcp");
+        JsonElement bundle = JsonDocument.Parse(text).RootElement.GetProperty("bundle");
+        JsonElement tcp = bundle.GetProperty("census").GetProperty("tcp");
         Assert.Equal((2, 1, 1, 0), (tcp.GetProperty("toOtherHosts").GetInt64(), tcp.GetProperty("otherHostConnections").GetInt32(),
             tcp.GetProperty("otherHosts").GetInt32(), tcp.GetProperty("relationships").GetInt32()));
+        JsonElement link = Assert.Single(bundle.GetProperty("hostLinks").EnumerateArray());
+        Assert.Equal((1, 1, 2), (link.GetProperty("connections").GetInt32(), link.GetProperty("hosts").GetInt32(),
+            link.GetProperty("records").GetInt64()));
+        Assert.StartsWith("hosts:tcp:", link.GetProperty("key").GetString(), Ordinal);
 
         // A session whose graph draws a relationship says nothing of why it would draw none.
         using var paired = new TemporarySession();
@@ -55,6 +65,7 @@ public sealed class OverviewCensusTests
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Paired TCP edges +1\r?$", text);
         Assert.DoesNotContain("No TCP connection was seen", text, Ordinal);
+        Assert.DoesNotContain("Reaching other hosts", text, Ordinal);
     }
 
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

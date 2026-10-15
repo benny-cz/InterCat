@@ -271,10 +271,6 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// A stroke from <paramref name="source"/> to <paramref name="target"/>: solid, or in <paramref name="pattern"/>'s
-    /// dashes from a strip cached under <paramref name="key"/> and rebuilt only when its length or pattern changes.
-    /// </summary>
-    /// <summary>
     /// An edge as its magnitude says: a stroke of its thickness in the evidence pattern, or, when what it carried was not
     /// measured, §6.6's unmeasured band in the same hue and pattern.
     /// </summary>
@@ -361,6 +357,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             null, "legend-unmeasured");
     }
 
+    /// <summary>
+    /// A stroke from <paramref name="source"/> to <paramref name="target"/>: solid, or in <paramref name="pattern"/>'s
+    /// dashes from a strip cached under <paramref name="key"/> and rebuilt only when its length or pattern changes.
+    /// </summary>
     private static void DrawStroke(DrawingContext context, Pen pen, Point source, Point target, (double On, double Off)? pattern,
         string key)
     {
@@ -533,11 +533,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         for (int edgeIndex = 0; edgeIndex < display.Edges.Count; edgeIndex++)
         {
             GraphDisplayEdge edge = display.Edges[edgeIndex];
-            if (!points.TryGetValue(edge.SourceKey, out Point source) || !points.TryGetValue(edge.TargetKey, out Point target))
+            if (!points.TryGetValue(edge.SourceKey, out Point from) || !points.TryGetValue(edge.TargetKey, out Point to))
             {
                 continue;
             }
 
+            (Point source, Point target) = InLane(from, to, edge.Lane);
             if (edge.Key == highlighted)
             {
                 // The edge that contributes to the rung is haloed in the accent under its own stroke, so its hue,
@@ -646,6 +647,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                     CrossHatchCircle(context, StackPen, point, radius);
                 }
             }
+            else if (node.Kind == GraphNodeKind.OtherHosts)
+            {
+                DrawOtherHosts(context, point, radius, node.Key == focused);
+            }
             else if (node.Kind == GraphNodeKind.Context)
             {
                 // §6.3's context node stands for what this rung does not draw and adds to no total, so its face is the
@@ -707,6 +712,20 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
 
         KeepMoving(now);
+    }
+
+    /// <summary>
+    /// §6.3's Other hosts node: a resource, not a process, so it is drawn square rather than round, with a globe's lines
+    /// inside, and outlined as a process is. Its size is fixed, since its edges carry no traffic value.
+    /// </summary>
+    private static void DrawOtherHosts(DrawingContext context, Point point, double radius, bool focused)
+    {
+        Rect face = new(point.X - radius, point.Y - radius, 2 * radius, 2 * radius);
+        context.DrawRectangle(NodeBrush, focused ? FocusPen : NodePen, face, radius / 4, radius / 4);
+        double globe = radius * 0.55;
+        context.DrawEllipse(null, StackPen, point, globe, globe);
+        context.DrawEllipse(null, StackPen, point, globe * 0.45, globe);
+        context.DrawLine(StackPen, new Point(point.X - globe, point.Y), new Point(point.X + globe, point.Y));
     }
 
     /// <summary>The node or edge under the pointer, if any; hover never changes selection (§6.4).</summary>
@@ -1103,11 +1122,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         for (int index = 0; index < display.Edges.Count; index++)
         {
             GraphDisplayEdge edge = display.Edges[index];
-            if (Position(edge.SourceKey, now) is not { } source || Position(edge.TargetKey, now) is not { } target)
+            if (Position(edge.SourceKey, now) is not { } from || Position(edge.TargetKey, now) is not { } to)
             {
                 continue;
             }
 
+            (Point source, Point target) = InLane(from, to, edge.Lane);
             double distance = DistanceToSegment(pointer, source, target);
             if (distance <= (ThicknessOf(edge, scale) / 2) + HitSlop && distance < bestDistance)
             {
@@ -1117,6 +1137,28 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
 
         return best;
+    }
+
+    /// <summary>How far apart, in logical pixels, a node's edges to the other hosts run side by side.</summary>
+    private const double HostLaneSpacing = 4;
+
+    /// <summary>
+    /// The line an edge is drawn and hit along: between its nodes, or beside that line by its lane, so a node's TCP and UDP
+    /// to the other hosts run side by side rather than one over the other.
+    /// </summary>
+    private static (Point Source, Point Target) InLane(Point source, Point target, double lane)
+    {
+        double dx = target.X - source.X;
+        double dy = target.Y - source.Y;
+        double length = Math.Sqrt((dx * dx) + (dy * dy));
+        if (lane == 0 || length < 1)
+        {
+            return (source, target);
+        }
+
+        double offset = lane * HostLaneSpacing / length;
+        Vector across = new(-dy * offset, dx * offset);
+        return (source + across, target + across);
     }
 
     private static double DistanceToSegment(Point point, Point start, Point end)
@@ -1372,9 +1414,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         box.Inflate(radius).Contains(centre);
 
     /// <summary>
-    /// The secondary line: a process's PID, a reused PID's holder numbered ("PID 100 #2"), or how many processes and
-    /// relationships an aggregate stands for. A process no executable names is labelled by its PID already, and has none
-    /// unless its PID was reused: its node read "PID 100" over "PID 100".
+    /// The secondary line: a process's PID, a reused PID's holder numbered ("PID 100 #2"), how many processes and
+    /// relationships an aggregate stands for, or how many processes' connections run to the Other hosts node. A process no
+    /// executable names is labelled by its PID already, and has none unless its PID was reused: its node read "PID 100"
+    /// over "PID 100".
     /// </summary>
     internal static string Detail(GraphDisplayNode node)
     {
@@ -1382,6 +1425,12 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         if (node.PidLabel is { } line)
         {
             return string.Equals(node.Label, line, StringComparison.Ordinal) ? string.Empty : line;
+        }
+
+        if (node.Kind == GraphNodeKind.OtherHosts)
+        {
+            return string.Create(CultureInfo.CurrentCulture,
+                $"from {node.ConnectedProcesses:N0} {(node.ConnectedProcesses == 1 ? "process" : "processes")}");
         }
 
         string members = string.Create(CultureInfo.CurrentCulture,
@@ -1393,13 +1442,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. A focused rung's context
-    /// node comes last, however much the rest of the machine holds, so the keyboard starts on the focus itself.
+    /// The keyboard's order: busiest first, then by name, so arrows walk from what matters most. The Other hosts node
+    /// comes after every process and aggregate, since it is a resource the processes' connections run to, and a focused
+    /// rung's context node last, however much the rest of the machine holds, so the keyboard starts on the focus itself.
     /// </summary>
     internal static IReadOnlyList<GraphDisplayNode> Traversal(GraphDisplay display) =>
     [
         .. display.Nodes
-            .OrderBy(node => node.Kind == GraphNodeKind.Context)
+            .OrderBy(node => node.Kind switch
+            {
+                GraphNodeKind.Context => 2,
+                GraphNodeKind.OtherHosts => 1,
+                _ => 0,
+            })
             .ThenByDescending(node => node.Observations)
             .ThenByDescending(node => node.Members.Count)
             .ThenBy(node => node.Label, StringComparer.CurrentCulture)

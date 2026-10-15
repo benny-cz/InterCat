@@ -133,15 +133,40 @@ public sealed class RelationshipExplanationWindowTests
             Assert.Equal("No relationship here. " + reason, why.Text);
             Assert.Equal("Why the relationship table lists none", Avalonia.Automation.AutomationProperties.GetName(why));
 
-            // The graph says the same beneath its one process, where its empty pane would otherwise read as a failure.
-            TextBlock beneath = window.GetControl<TextBlock>("GraphEmptyText");
-            Assert.True(beneath.IsEffectivelyVisible);
-            Assert.Equal(reason, beneath.Text);
-            Assert.False(beneath.IsHitTestVisible);
+            // The graph draws that connection to Other hosts across its pane, so it says nothing beneath it; its header
+            // says why it draws no relationship.
+            Assert.False(window.GetControl<TextBlock>("GraphEmptyText").IsVisible);
+            Assert.NotNull(((WorkspaceViewModel)window.DataContext!).GraphDisplay.OtherHosts);
         }
         finally
         {
             window.Close();
+        }
+
+        // A connection to a port on this machine whose other end no record holds is drawn nowhere: the graph says why
+        // beneath its one process, where its empty pane would otherwise read as a failure.
+        using var unseen = new TemporarySession();
+        Publish(unseen.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 900 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 100)
+                .Between("127.0.0.1:50100", "127.0.0.1:9443") with { SessionRelativeTicks = 1_000 },
+        ]);
+        var alone = new MainWindow { Width = 1456, Height = 939 };
+        alone.Show();
+        try
+        {
+            await ShowTables(alone, unseen);
+            TextBlock beneath = alone.GetControl<TextBlock>("GraphEmptyText");
+            Assert.True(beneath.IsEffectivelyVisible);
+            Assert.Equal("No TCP connection was seen with a process of this session at each of its two ends. Its 1 TCP record "
+                + "belongs to 1 connection on this machine whose other end no record holds. A process's connections are "
+                + "listed on its rung.", beneath.Text);
+            Assert.False(beneath.IsHitTestVisible);
+        }
+        finally
+        {
+            alone.Close();
         }
 
         // A table listing relationships says nothing in their place; at the rung of a process with none it says why, and

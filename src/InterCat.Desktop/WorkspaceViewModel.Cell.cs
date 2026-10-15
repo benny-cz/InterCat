@@ -622,7 +622,8 @@ public sealed partial class WorkspaceViewModel
         HashSet<string> relationships = new(StringComparer.Ordinal);
         foreach (GraphDisplayEdge edge in graphDisplay.Edges)
         {
-            if (edge.ObservationCount > 0
+            // An edge to the other hosts counts the whole session's connections, never a cell's records.
+            if (!edge.ToHosts && edge.ObservationCount > 0
                 && (lane.Mechanism is { } mechanism ? edge.Mechanism == mechanism
                     : lane.End is not null ? channel is not null && edge.Relationships.Contains(channel)
                     : true))

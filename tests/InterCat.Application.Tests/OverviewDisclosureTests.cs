@@ -25,10 +25,12 @@ public sealed class OverviewDisclosureTests
             Assert.DoesNotContain("until requested", disclosure, StringComparison.Ordinal);
         });
 
-        // Each still says what the graph draws and what the timeline holds.
+        // Each still says what the graph draws, its connections to other hosts too, and what the timeline holds.
         Assert.All(disclosures[..2], disclosure =>
         {
             Assert.StartsWith("The graph shows admitted paired TCP", disclosure, StringComparison.Ordinal);
+            Assert.Contains("each process's connections to other hosts drawn to one Other hosts node;", disclosure,
+                StringComparison.Ordinal);
             Assert.Contains("The timeline includes every observed row.", disclosure, StringComparison.Ordinal);
             Assert.EndsWith("TCP and UDP records are completed transfers with no operation rung.", disclosure,
                 StringComparison.Ordinal);

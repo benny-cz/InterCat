@@ -548,7 +548,8 @@ public static class DesktopCaptureRunner
                         $"{follow.DerivedRecords.ToString("N0", CultureInfo.CurrentCulture)} observed records",
                         Published(generation, follow.DerivedChunks) + " "
                         + (Keeps(derivation.Rolling) is { } kept ? kept + " " : string.Empty)
-                        + "Graph edges are paired TCP only; other observations remain in the timeline.",
+                        + "The graph relates processes by paired TCP only and draws their connections to other hosts; other "
+                        + "observations remain in the timeline.",
                         summary, sessionPath, overview,
                         Visibility: new(generation, follow.DerivedRecords, Stopwatch.GetTimestamp(),
                             step.Derivation, step.Projection),

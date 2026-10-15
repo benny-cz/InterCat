@@ -43,6 +43,7 @@ public static class WorkspaceCollectors
             Channels = channels,
             Operations = operations,
             Evidence = [.. snapshot.Evidence.Where(mark => keptOperations.Contains(mark.OperationKey))],
+            HostLinks = [.. snapshot.HostLinks.Where(link => !aside.Contains(link.Process))],
             SetAside = own,
         };
     }
