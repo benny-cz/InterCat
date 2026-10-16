@@ -167,7 +167,7 @@ public sealed class HostsCommandTests
         Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Accepted here +Records\r?$", text);
         Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +1 TCP connection from 1 process +- +1 at 3389 +2\r?$", text);
         Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +1 TCP connection from 1 process +443 +- +2\r?$", text);
-        Assert.DoesNotContain("50000", text, Ordinal);
+        Assert.DoesNotMatch(@"\b50000\b", text);
         Assert.Contains("Accepted here counts the TCP connections a process of this session accepted from the host", text, Ordinal);
 
         // As JSON, how many each process connected and accepted, and its own ports the accepted ones arrived at.

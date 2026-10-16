@@ -748,8 +748,11 @@
                          AutomationProperties.Name="What these records are" />
               <!-- R15: a list the keyboard reads a fact at a time, F6 reaching it as the inspector, each fact said as its
                    name and value; read-only, so choosing a fact does nothing but say it. -->
+              <!-- The lists the inspector scrolls leave a row the keyboard reaches to the inspector's own scroll: their own
+                   bringing it into view as well moved the inspector twice for one row (§6.7, R15). -->
               <ListBox x:Name="EvidenceFieldList" ItemsSource="{Binding SelectedEvidenceFields}" Background="Transparent"
                        BorderThickness="0" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                       ScrollViewer.BringIntoViewOnFocusChange="False"
                        AutomationProperties.Name="Facts of the selected record; Up and Down read them one at a time">
                 <!-- A handful of facts, laid out whole within the inspector's own scroll, so a screen reader finds every
                      one, not only those the inspector shows, and the wheel scrolls the inspector over them. -->
@@ -799,6 +802,7 @@
                 <ListBox x:Name="HostList" ItemsSource="{Binding HostRows}" SelectedItem="{Binding ChosenHostRow, Mode=TwoWay}"
                          Background="Transparent" BorderThickness="0"
                          DoubleTapped="FindListedHost" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         ScrollViewer.BringIntoViewOnFocusChange="False"
                          AutomationProperties.Name="Hosts Other hosts stands for; E lists the records of the selected one's connections, and Enter finds the processes that reached it">
                   <!-- At most a hundred hosts, laid out whole within the inspector's own scroll, which the wheel scrolls. -->
                   <ListBox.ItemsPanel>
@@ -833,6 +837,7 @@
                 <ListBox x:Name="MemberList" ItemsSource="{Binding MemberRows}" SelectedItem="{Binding ChosenMemberRow, Mode=TwoWay}"
                          Background="Transparent" BorderThickness="0"
                          DoubleTapped="OpenListedMember" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         ScrollViewer.BringIntoViewOnFocusChange="False"
                          AutomationProperties.Name="Processes the selected aggregate counts; E lists the records of the selected one, and Enter opens it">
                   <!-- At most a hundred processes, laid out whole within the inspector's own scroll, which the wheel scrolls. -->
                   <ListBox.ItemsPanel>
@@ -879,7 +884,7 @@
                   <TextBlock x:Name="CellRecordsHeadingText" Text="{Binding CellRecordsHeading}" Classes="muted" />
                   <!-- A listed record opens in E, selected there, as a ranked row opens its rung: Enter or a double click. -->
                   <ListBox x:Name="CellRecordsList" ItemsSource="{Binding CellRecordRows}" Background="Transparent"
-                           BorderThickness="0" DoubleTapped="OpenCellRecord"
+                           BorderThickness="0" DoubleTapped="OpenCellRecord" ScrollViewer.BringIntoViewOnFocusChange="False"
                            AutomationProperties.Name="The chosen cell's first records; Enter opens the selected one in E">
                     <!-- Rows as tight as the evidence they preview, so five fit beneath the time scope at the default size. -->
                     <ListBox.Styles>

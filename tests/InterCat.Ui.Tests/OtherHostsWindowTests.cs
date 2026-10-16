@@ -5,6 +5,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -412,6 +413,93 @@ public sealed class OtherHostsWindowTests
             window.Close();
         }
     }
+
+    [AvaloniaFact(DisplayName = "R15: the inspector scrolls a row the keyboard keeps or reaches into view no further than it must, through a newer generation and step by step")]
+    public async Task TheInspectorScrollsNoFurtherThanItMust()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ManyHosts(40, 1, 100));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            ListBox hosts = window.GetControl<ListBox>("HostList");
+            ScrollViewer inspector = window.GetControl<Border>("Inspector").GetVisualDescendants().OfType<ScrollViewer>().First();
+            Assert.True(hosts.ContainerFromIndex(1)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("52.0.1.3", workspace.ChosenHostRow?.Address);
+            Assert.Equal(0, inspector.Offset.Y);
+            (double Top, double Bottom) Shown() => window.FocusManager?.GetFocusedElement() is Control row
+                && row.TranslatePoint(default, inspector) is { } top
+                ? (top.Y, top.Y + row.Bounds.Height)
+                : (double.NaN, double.NaN);
+
+            // Three busier hosts arrive with the next generation and rank above it: the row moves below the inspector's
+            // foot, which scrolls only until it shows the row whole.
+            Publish(session.Store, ManyHosts(3, 2, 1_000, ordinalBase: 50_000));
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await next.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Assert.Equal("52.0.1.3", next.ChosenHostRow?.Address);
+            Assert.InRange(inspector.Offset.Y, 1, double.MaxValue);
+            Assert.Equal(inspector.Viewport.Height, Shown().Bottom, 1);
+
+            // Down from there scrolls one row at a time.
+            double rowHeight = Shown().Bottom - Shown().Top;
+            for (int step = 0; step < 3; step++)
+            {
+                double offset = inspector.Offset.Y;
+                window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+                Dispatch();
+                _ = window.CaptureRenderedFrame();
+                Assert.Equal(offset + rowHeight, inspector.Offset.Y, 1);
+                Assert.Equal(inspector.Viewport.Height, Shown().Bottom, 1);
+            }
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>
+    /// browser.exe (PID 300) connected to <paramref name="count"/> hosts, 52.0.<paramref name="subnet"/>.1 and on, sending
+    /// to the first <paramref name="most"/> times and to each next one fewer.
+    /// </summary>
+    private static ObservationRowV1[] ManyHosts(int count, int subnet, int most, ulong ordinalBase = 1)
+    {
+        ulong ordinal = ordinalBase;
+        var rows = new List<ObservationRowV1>();
+        if (ordinalBase == 1)
+        {
+            rows.Add(Lifecycle(1, ObservationKind.Create, 300, ordinal++) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 });
+        }
+
+        for (int host = 1; host <= count; host++)
+        {
+            for (int send = 0; send < most - host; send++)
+            {
+                rows.Add(Transfer((long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 300, ordinal)
+                    .Between($"192.168.{subnet}.10:{50_000 + host}", $"52.0.{subnet}.{host}:443") with { SessionRelativeTicks = 100 * (long)ordinal });
+                ordinal++;
+            }
+        }
+
+        return [.. rows];
+    }
+
+    /// <summary>A recording's publication of the session's newest generation.</summary>
+    private static CaptureUiUpdate Recording(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
+        "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
 
     [AvaloniaFact(DisplayName = "§6.3: under a byte ranking the window's Other hosts list is ranked by the bytes its hosts' connections carried once they are read")]
     public async Task OtherHostsListFollowsAByteRanking()

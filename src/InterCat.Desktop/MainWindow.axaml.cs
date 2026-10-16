@@ -841,7 +841,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return false;
         }
 
+        // Laid out where the scroll put it before it takes the keyboard: the focus brings the row into view again, and
+        // read from where the row was, it scrolled the pane as far again - a row of a list rebuilt under a newer
+        // generation went from the inspector's foot to near its top, taking the list's heading out of sight.
         list.ScrollIntoView(chosen);
+        list.UpdateLayout();
         return list.ContainerFromItem(chosen) is Control container && container.Focus(NavigationMethod.Tab);
     }
 

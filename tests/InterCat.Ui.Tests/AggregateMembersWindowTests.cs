@@ -4,6 +4,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -190,6 +191,67 @@ public sealed class AggregateMembersWindowTests
             Dispatch();
             Assert.Equal("program0.exe · PID 100", next.ChosenMemberRow?.Name);
             Assert.Same(members.ContainerFromItem(next.ChosenMemberRow!), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: down an aggregate's list past the inspector's foot, the inspector scrolls one row at a time")]
+    public async Task AnAggregatesListScrollsOneRowAtATime()
+    {
+        // Thirty processes that only start, beside a pair that talk: No relationships lists the thirty.
+        using var session = new TemporarySession();
+        ulong ordinal = 1;
+        var rows = new List<ObservationRowV1>();
+        for (int index = 0; index < 32; index++)
+        {
+            rows.Add(Lifecycle(1 + index, ObservationKind.Create, 400 + index, ordinal++)
+                with { ResourceName = $@"C:\Apps\quiet{index:D2}.exe", SessionRelativeTicks = 100 * (1 + index) });
+        }
+
+        rows.Add(Transfer(100, ObservationKind.Send, AccountingSide.SendSide, 64, 430, ordinal++)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 10_000 });
+        rows.Add(Transfer(101, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 431, ordinal++)
+            .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 10_100 });
+        Publish(session.Store, [.. rows]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Quiet).Key);
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            ListBox members = window.GetControl<ListBox>("MemberList");
+            Assert.Equal(30, members.ItemCount);
+            ScrollViewer inspector = window.GetControl<Border>("Inspector").GetVisualDescendants().OfType<ScrollViewer>().First();
+            Assert.True(members.ContainerFromIndex(0)!.Focus());
+            Dispatch();
+            double? Bottom() => window.FocusManager?.GetFocusedElement() is Control row && row.TranslatePoint(default, inspector) is { } top
+                ? top.Y + row.Bounds.Height
+                : null;
+
+            // Down to the inspector's foot, then past it: each step from there scrolls by the row it reaches, no further.
+            int steps = 0;
+            while (inspector.Offset.Y == 0 && steps++ < 30)
+            {
+                window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+                Dispatch();
+                _ = window.CaptureRenderedFrame();
+            }
+
+            Assert.Equal(inspector.Viewport.Height, Bottom()!.Value, 1);
+            for (int step = 0; step < 4; step++)
+            {
+                window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+                Dispatch();
+                _ = window.CaptureRenderedFrame();
+                Assert.Equal(inspector.Viewport.Height, Bottom()!.Value, 1);
+            }
         }
         finally
         {

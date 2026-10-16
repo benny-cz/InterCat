@@ -136,8 +136,9 @@ public sealed class CollectorSetAsideTests
                 json.RootElement.GetProperty("setAside").GetProperty("records").GetInt64()));
         }
 
+        // The broker's PID is looked for as a number of its own: a run's random identities, in hex, can hold its digits.
         Assert.DoesNotContain("broker", redacted.Content, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("4120", redacted.Content, StringComparison.Ordinal);
+        Assert.DoesNotMatch(@"\b4120\b", redacted.Content);
         string[] shared = SessionExport.Build(session.Store,
             new([], null, false, ExportFormat.Csv, Redacted: true, SetAsideCollectors: true), DateTimeOffset.UnixEpoch).Content
             .Split('\n', StringSplitOptions.RemoveEmptyEntries);

@@ -12,7 +12,8 @@ the product and engineering blueprint is [the implementation plan](docs/design/I
 ## What it does
 
 **Capture (Windows).** The window's *Start exploring* records through a capture broker that Windows asks you to approve
-once per start; InterCat itself runs unelevated and draws the capture as it records. *Keep* chooses what is kept:
+once per start; InterCat itself runs unelevated and draws the capture as it records: the graph grows in place, and what
+you chose stays chosen as each newer view arrives. *Keep* chooses what is kept:
 
 | Keep | What it records |
 |---|---|
