@@ -646,10 +646,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 {
                     // Enter on a relationship opens it as a double click on its edge does (R15): the row with the keyboard
                     // is the one opened when none is chosen yet, as on the ranked table.
-                    if (viewModel.SelectedRelationship is null
+                    if (viewModel.SelectedTableRow is null
                         && FocusManager?.GetFocusedElement() is ListBoxItem { DataContext: RelationshipRow focused })
                     {
-                        viewModel.SelectedRelationship = focused;
+                        viewModel.SelectedTableRow = focused;
                     }
 
                     e.Handled = OpenSelectedRelationship();
@@ -1024,12 +1024,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     private void OpenRelationshipRow(object? sender, TappedEventArgs eventArgs) => eventArgs.Handled = OpenSelectedRelationship();
 
     /// <summary>
-    /// Opens the relationship chosen in the table as a double click on its edge does, and gives the keyboard to the rung it
-    /// opened: its rows, or the step that lists its records when it has none.
+    /// Opens the row chosen in the table as a double click on its edge does, and gives the keyboard to the rung it opened:
+    /// its rows, or the step that lists its records when it has none. An edge to other hosts from an aggregate opens its
+    /// processes' list in the inspector, whose request for the keyboard, made first, the rail's yields to.
     /// </summary>
     private bool OpenSelectedRelationship()
     {
-        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSelectedRelationship()) return false;
+        if (DataContext is not WorkspaceViewModel viewModel || !viewModel.OpenSelectedTableRow()) return false;
         FocusRail();
         return true;
     }

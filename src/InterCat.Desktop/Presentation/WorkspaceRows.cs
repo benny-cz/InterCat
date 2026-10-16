@@ -81,13 +81,26 @@ public sealed record RelationshipRow(
     public string? SpokenDirection { get; init; }
 
     /// <summary>
-    /// The row read aloud: its ends joined by "and", since which is the source is display order only, then who connected
-    /// where the capture saw it, its counts, evidence and rule, and what Enter opens.
+    /// Whether the row is one of the graph's edges to other hosts rather than a relationship: a drawn node's connections
+    /// over one transport to the hosts its target stands for, which no rule derives and no total counts (R15).
     /// </summary>
-    public string AccessibleName =>
-        $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } spoken ? spoken + ", " : string.Empty)
-        + $"{Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, evidence {Evidence}, derived by {Rule}. "
-        + $"Press Enter to open {Opens}.";
+    public bool ToHosts { get; init; }
+
+    /// <summary>For an edge to other hosts, the key of the drawn node its connections come from; empty for a relationship.</summary>
+    public string SourceNode { get; init; } = string.Empty;
+
+    /// <summary>
+    /// The row read aloud: its ends joined by "and", since which is the source is display order only, then who connected
+    /// where the capture saw it, its counts, evidence and rule, and what Enter opens. An edge to other hosts says what
+    /// its explanation says in the place of a rule and bytes, which it has none of.
+    /// </summary>
+    public string AccessibleName => ToHosts
+        ? $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } toward ? toward + ", " : string.Empty)
+            + $"{Spoken.Count(ObservationCount, "observation")}, evidence {Evidence}. {Explanation} "
+            + (Opens.Length > 0 ? $"Press Enter to open {Opens}." : "Each process's rung lists its connections.")
+        : $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } spoken ? spoken + ", " : string.Empty)
+            + $"{Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, evidence {Evidence}, derived by {Rule}. "
+            + $"Press Enter to open {Opens}.";
 }
 
 /// <summary>

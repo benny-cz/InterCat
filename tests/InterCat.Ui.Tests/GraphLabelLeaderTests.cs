@@ -312,6 +312,45 @@ public sealed class GraphLabelLeaderTests
             }
 
             Assert.InRange(crossed, 3, names.Count);
+
+            // svchost.exe's endpoint mapper is its one process drawn on its own, which its group says of one.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");
+            Assert.StartsWith("30 processes · 9 drawn as one node; Enter opens the group · 1 drawn on its own · 20 without a "
+                + "relationship", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: an aggregate's edge to other hosts chosen in the table, Enter gives the keyboard to its processes in the inspector, as a double click on the edge does")]
+    public async Task AnAggregatesEdgeToOtherHostsOpensItsList()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.ShowTables = true;
+            Dispatch();
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            InterCat.Desktop.Presentation.RelationshipRow edge = workspace.TableRows.Single(row => row.Source == "Other hosts only");
+            Assert.Equal("its processes in the inspector", edge.Opens);
+            workspace.SelectedTableRow = edge;
+            Dispatch();
+            table.ScrollIntoView(table.SelectedItem!);
+            Dispatch();
+            Assert.True(table.ContainerFromItem(table.SelectedItem!)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(window.GetControl<ListBox>("MemberList").IsKeyboardFocusWithin);
+            Assert.Equal("Other hosts only", workspace.SelectedCluster?.Label);
         }
         finally
         {

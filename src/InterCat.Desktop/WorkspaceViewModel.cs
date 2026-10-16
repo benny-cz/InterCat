@@ -2550,6 +2550,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     private void RaiseGraphSelectionChanged()
     {
+        // A row of the table's edges to other hosts stands for its source only while the table chose it.
+        chosenHostEdge = null;
         OnPropertyChanged(nameof(SelectedGraphNodeKey));
         OnPropertyChanged(nameof(SelectedGraphNodeKeys));
         OnPropertyChanged(nameof(PartlySelectedGraphNodeKeys));
@@ -2568,6 +2570,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         RaiseLineageChanged();
         RaiseHostListChanged();
         RaiseMemberListChanged();
+        RaiseTableChoice();
         UpdateHighlight();
         FollowDescribedBytes();
     }
@@ -3028,12 +3031,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ? Snapshot
         : Snapshot with { Edges = [.. Snapshot.Edges.Where(edge => drawn.Contains(edge.SourceId) || drawn.Contains(edge.TargetId))] };
 
-    /// <summary>What the relationship table lists, as the graph's caption names it, and how many relationships it leaves out.</summary>
+    /// <summary>
+    /// What the relationship table lists, as the graph's caption names it - its relationships and edges to other hosts - and
+    /// how many relationships it leaves out.
+    /// </summary>
     public string RelationshipTableScope
     {
         get
         {
-            string listed = Counted(relationships.Count, "relationship", "relationships");
+            int toHosts = TableRows.Count - relationships.Count;
+            string listed = Counted(relationships.Count, "relationship", "relationships")
+                + (toHosts > 0 ? " · " + Counted(toHosts, "edge to other hosts", "edges to other hosts") : string.Empty);
             int elsewhere = Snapshot.Edges.Count - relationships.Count;
             return graphFocus.Neighborhood is null
                 ? $"Whole machine · {listed}"
@@ -4687,8 +4695,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         if (own > 0)
         {
-            parts.Add(own == members.Length && members.Length == 1
-                ? "drawn on its own"
+            parts.Add(own == members.Length && members.Length == 1 ? "drawn on its own"
+                : own == 1 ? "1 drawn on its own"
                 : string.Create(CultureInfo.CurrentCulture, $"{own:N0} drawn on their own"));
         }
 
@@ -5418,8 +5426,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         graphSelection = null;
         RefreshGraphDisplay();
 
-        // The relationship table lists what the rung's graph draws; a relationship chosen at the rung left goes with it.
+        // The relationship table lists what the rung's graph draws; a relationship chosen at the rung left goes with it,
+        // and an edge to other hosts chosen in its table.
         ForgetRelationship();
+        chosenHostEdge = null;
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
         OnPropertyChanged(nameof(RelationshipTableScope));
@@ -6882,6 +6892,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // The legend keys the unmeasured value only while a pane draws one (§6.6).
             PropertyChanged?.Invoke(this, new(nameof(GraphDrawsUnmeasured)));
             PropertyChanged?.Invoke(this, new(nameof(DrawsUnmeasured)));
+
+            // The table lists the drawing's edges to other hosts.
+            RestateTableRows();
+        }
+        else if (propertyName == nameof(Relationships))
+        {
+            RestateTableRows();
+        }
+        else if (propertyName == nameof(SelectedRelationship))
+        {
+            RaiseTableChoice();
         }
         else if (propertyName == nameof(HasSelectedProcessLane))
         {

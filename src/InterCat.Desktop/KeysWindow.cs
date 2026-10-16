@@ -89,7 +89,7 @@ internal static class WindowKeys
         {
             SpokenKeys = "Left, Right, Home, End, plus, minus or zero",
         },
-        new("Relationship table", "Enter", "open the chosen relationship, as a double click on its edge does"),
+        new("Relationship table", "Enter", "open the chosen relationship, or edge to other hosts, as a double click on its edge does"),
         new("Interval table", "Up, Down, Home or End", "choose a moment, which becomes the analysis interval"),
         new("Interval table", "Enter", "list the moment's records"),
         new("Search box", "Enter", "open the chosen hit, or search the port a number offers"),

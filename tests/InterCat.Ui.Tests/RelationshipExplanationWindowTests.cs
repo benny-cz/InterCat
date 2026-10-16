@@ -210,11 +210,62 @@ public sealed class RelationshipExplanationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R15: the table lists the graph's edges to other hosts; one chosen by keyboard chooses its source and is explained beneath, and Enter opens what a double click on its edge does")]
+    public async Task AnEdgeToOtherHostsIsATableRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Makers(),
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 400 },
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 20)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_000 },
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 64, 400, 21)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_100 }]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await ShowTables(window, session);
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Assert.Equal(3, table.ItemCount);
+            RelationshipRow edge = Assert.IsType<RelationshipRow>(table.Items[2]);
+            Assert.Equal("browser.exe · PID 400 → 142.250.1.1:443", edge.Name);
+
+            // Down from the relationships onto it chooses its process, as a click on its edge does, and the line beneath
+            // the table says where it ran, who connected and what Enter opens.
+            Assert.True(table.ContainerFromIndex(1)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(edge.Key, Assert.IsType<RelationshipRow>(table.SelectedItem).Key);
+            Assert.Equal("browser.exe · PID 400", workspace.SelectedProcess?.NameWithPid);
+
+            // The table's rows restated as the bytes of what is chosen are read, the edge stays chosen in it.
+            await workspace.SelectionBytesReady;
+            Dispatch();
+            Assert.Equal(edge.Key, Assert.IsType<RelationshipRow>(table.SelectedItem).Key);
+            Assert.Equal(edge.Key, workspace.SelectedTableRow?.Key);
+            TextBlock line = window.GetControl<TextBlock>("SelectedRelationshipText");
+            Assert.True(line.IsEffectivelyVisible);
+            Assert.Equal("1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not observed. Direction: browser.exe · "
+                + "PID 400 connected to 142.250.1.1:443. Enter opens its process's rung, which lists each connection.", line.Text);
+
+            // Enter opens its process's rung, whose rows take the keyboard.
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("Process: browser.exe · PID 400", workspace.Crumbs[^1].Label);
+            Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>Two clients that each exchange records with one server, each over a connection of its own: two relationships.</summary>
     [AvaloniaFact(DisplayName = "R15: a relationship table that lists none says why in its place, and says nothing while it lists any")]
     public async Task AnEmptyRelationshipTableSaysWhy()
     {
-        // One process's connection to another host relates no two of the session's processes.
+        // One process's connection to another host relates no two of the session's processes: the table lists it as the
+        // graph draws it, an edge to other hosts, and says nothing in its place.
         using var session = new TemporarySession();
         Publish(session.Store,
         [
@@ -226,14 +277,16 @@ public sealed class RelationshipExplanationWindowTests
         window.Show();
         try
         {
-            await ShowTables(window, session);
+            WorkspaceViewModel workspace = await ShowTables(window, session);
             TextBlock why = window.GetControl<TextBlock>("RelationshipsAbsentText");
-            Assert.Equal(0, window.GetControl<ListBox>("RelationshipList").ItemCount);
-            Assert.True(why.IsEffectivelyVisible);
-            string reason = "No TCP connection was seen with a process of this session at each of its two ends. Its 1 TCP "
-                + "record belongs to 1 connection to 1 other host. A process's connections are listed on its rung.";
-            Assert.Equal("No relationship here. " + reason, why.Text);
+            RelationshipRow edge = Assert.IsType<RelationshipRow>(Assert.Single(window.GetControl<ListBox>("RelationshipList").Items));
+            Assert.Equal(("client.exe · PID 100 ↔ 10.0.0.20:443", true), (edge.Name, edge.ToHosts));
+            Assert.False(why.IsVisible);
             Assert.Equal("Why the relationship table lists none", Avalonia.Automation.AutomationProperties.GetName(why));
+            Assert.Equal("Whole machine · 0 relationships · 1 edge to other hosts",
+                window.GetControl<TextBlock>("RelationshipTableScopeText").Text);
+            Assert.StartsWith("No relationship here. No TCP connection was seen with a process of this session at each of its "
+                + "two ends.", workspace.RelationshipsAbsent, StringComparison.Ordinal);
 
             // The graph draws that connection to Other hosts across its pane, so it says nothing beneath it; its header
             // says why it draws no relationship.

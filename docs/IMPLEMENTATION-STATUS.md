@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 612 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 613 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 613 — the relationship table lists the graph's edges to other hosts (R15):**
+  - The table, the graph's table equivalent, listed none of the edges to other hosts the graph draws since revision
+    542 - most of a busy rung. Each is now a row after the relationships, naming where it ran, who opened it and what
+    Enter opens; chosen, it chooses its source as a click on the edge does, and Enter opens what a double click does.
+  - Debug and Release each ran 2,548 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    twenty-four mutations were caught: no edge to other hosts listed, edges before the relationships, the quietest
+    first; a host's port unsaid, the hosts uncounted, a sentence reading the count; who connected reversed; the
+    hosts unnamed; a process's rung, or an aggregate's list, not said as what Enter opens, or the rung's own process
+    said to open; a row chosen without its source, or not remembered, or taken for another edge's, or kept through a
+    choice made in the graph or through another rung; Enter opening a relationship in an edge's place; the reason
+    shown beside rows; the caption uncounting; a row read aloud as a relationship, or offering Enter where it opens
+    nothing; the line beneath saying a relationship's; the window listing relationships alone; and one process said
+    "on their own".
 
 - **Revision 612 — a group's instances say what each did; the graph's names stand apart (§6.1, §6.3):**
   - From a live pass over the busy machine's svchost.exe and chrome.exe rungs: one program's instances were rows of
