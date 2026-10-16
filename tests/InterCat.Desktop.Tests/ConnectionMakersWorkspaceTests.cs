@@ -39,6 +39,35 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal("Direction: display order only, not who initiated or sent", await DirectionAsync(Unseen(), clientFirst: true));
     });
 
+    [Fact(DisplayName = "§6.3: a process's card counts the connections it made and accepted as the capture saw them open, and the rest of the machine's leaves theirs to their own rungs")]
+    public void AProcesssCardCountsTheConnectionsItMadeAndAccepted() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Mixed(), .. Updater()]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        string Key(int pid) => workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(process => process.ProcessId == pid).Id)!.Key;
+        IReadOnlyList<string> Card(int pid) => workspace.DescribeGraphHover(Key(pid))!.Lines;
+
+        // The client made two of its connections to the server and accepted the one the server made, and the capture saw one
+        // open neither way, which counts for neither end; the updater connected out to another host.
+        const string ClientMade = "Connections: 2 made · 1 accepted, as the capture saw them open";
+        Assert.Equal(ClientMade, Card(100)[1]);
+        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open", Card(200)[1]);
+        Assert.Equal(["Other hosts: 1 TCP connection to 1 host", "Connections: 1 made · 0 accepted, as the capture saw them open"],
+            Card(300).Skip(1).Take(2));
+
+        // At the client's rung the updater is the rest of the machine, whose connections are left to its own rung.
+        Assert.True(workspace.OpenGraphNode(Key(100)));
+        await workspace.LayoutReady;
+        GraphDisplayNode rest = Assert.Single(workspace.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context);
+        Assert.Single(rest.Members);
+        Assert.DoesNotContain(workspace.DescribeGraphHover(rest.Key)!.Lines, line => line.StartsWith("Connections:", StringComparison.Ordinal));
+        Assert.Equal(ClientMade, Card(100)[1]);
+    });
+
     [Fact(DisplayName = "§7.4: a process's channels lead with an arrow toward a peer it connected to, or from one that connected to it, and both ways where the capture cannot say")]
     public void AProcesssChannelsLeadWithWhoConnected() => SingleThreadedContext.Run(async () =>
     {
@@ -224,6 +253,14 @@ public sealed class ConnectionMakersWorkspaceTests
         Transfer(20, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 6).Between("127.0.0.1:8080", "127.0.0.1:50001"),
         Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 7).Between("127.0.0.1:50001", "127.0.0.1:8080"),
         Transfer(22, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 8).Between("127.0.0.1:8080", "127.0.0.1:50001"),
+    ];
+
+    /// <summary>An updater that connects out to another host's 443, seen at its end, and sends there.</summary>
+    private static ObservationRowV1[] Updater() =>
+    [
+        Lifecycle(45, ObservationKind.Create, 300, 14) with { ResourceName = @"C:\Tools\updater.exe" },
+        Transfer(50, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 15).Between("192.168.1.10:52000", "10.0.0.5:443"),
+        Transfer(51, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 16).Between("192.168.1.10:52000", "10.0.0.5:443"),
     ];
 
     /// <summary>A TCP connection between them, seen opening at neither end.</summary>

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 583 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 584 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 584 — a process's card counts the connections it made and accepted (§6.3, §6.8):**
+  - "Connections: 3 made · 12 accepted, as the capture saw them open", beneath where its connections ran: its
+    relationships by the end that connected, its connections to other hosts by its own connect or accept; a group's
+    members' together, one between two of them made and accepted alike. None seen opening says nothing; the rest of
+    the machine's card leaves its processes' to their own rungs.
+  - Both that line and the one saying where the connections ran count the whole session, and under a brush now say so.
+    The ranking counts a process's own connect and accept records, so the two differ where only one end of a paired
+    connection was seen opening.
+  - Debug and Release each ran 2,479 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 16 mutations was caught: a relationship's connections counted from the wrong end, made or accepted by
+    its source alone, or once where both its ends are members; a host's accepts counted as connects, or left out, or
+    every process's hosts counted for one; the line left out where only accepts were seen, or its two counts
+    swapped; the rest of the machine's card counting its processes', the card counting none, or setting the line
+    above where the connections ran; and a brushed card not saying either line is the whole session's.
 
 - **Revision 583 — rank by connections made or accepted (§5.2, §6.1, R18):**
   - Rank by offers Connections made and Connections accepted: each process's own TCP connects or accepts in scope, a

@@ -4011,9 +4011,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                         ? string.Create(CultureInfo.CurrentCulture, $"Size: log scale against the busiest drawn node, {scale:N0}")
                         : $"Size: {magnitude}, log scale against the busiest drawn node, {WorkspaceRowBuilder.DescribeSize(scale)}",
             };
+            // Where its processes' connections ran, and who opened them as their edges' arrowheads say one by one, are counted
+            // over the whole session, which a brush does not re-count: under one, each line says so. A context node's are
+            // left to their own rungs.
+            string wholeOnly = appliedInterval is null ? string.Empty : " · whole session";
+            int reachAt = 1;
             if (HostReachLine(node) is { } reach)
             {
-                nodeLines.Insert(1, reach);
+                nodeLines.Insert(reachAt++, reach + wholeOnly);
+            }
+
+            if (node.Kind != GraphNodeKind.Context
+                && DirectionText.Opened(wholeSnapshot, members) is var (madeBy, acceptedBy)
+                && DirectionText.OpenedLine(madeBy, acceptedBy) is { } opened)
+            {
+                nodeLines.Insert(reachAt, opened + wholeOnly);
             }
 
             if (SearchedLine(node) is { } searched)

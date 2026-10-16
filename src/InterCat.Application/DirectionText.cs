@@ -67,6 +67,42 @@ public static class DirectionText
     };
 
     /// <summary>
+    /// How many TCP connections a set of processes made and accepted over the session, as the capture saw them open: at their
+    /// relationships, where the end that connected made one and the other end accepted it - one between two of them made
+    /// and accepted by the set alike - and to other hosts, by a connect or an accept at their end (`relations-v1` §5, §5d).
+    /// </summary>
+    public static (int Made, int Accepted) Opened(WorkspaceSnapshot snapshot, IReadOnlySet<ProcessInstanceId> members)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(members);
+        int made = 0;
+        int accepted = 0;
+        foreach (CommunicationEdge edge in snapshot.Edges)
+        {
+            bool source = members.Contains(edge.SourceId);
+            bool target = members.Contains(edge.TargetId);
+            made += (source ? edge.SourceConnected : 0) + (target ? edge.TargetConnected : 0);
+            accepted += (source ? edge.TargetConnected : 0) + (target ? edge.SourceConnected : 0);
+        }
+
+        foreach (HostLink link in snapshot.HostLinks.Where(link => members.Contains(link.Process)))
+        {
+            made += link.Addresses.Sum(address => address.Connected);
+            accepted += link.Addresses.Sum(address => address.Accepted);
+        }
+
+        return (made, accepted);
+    }
+
+    /// <summary>
+    /// What a node's card says of them: "Connections: 3 made · 12 accepted, as the capture saw them open"; null where it saw
+    /// none of theirs open.
+    /// </summary>
+    public static string? OpenedLine(int made, int accepted) => made + accepted == 0
+        ? null
+        : string.Create(CultureInfo.CurrentCulture, $"Connections: {made:N0} made · {accepted:N0} accepted, as the capture saw them open");
+
+    /// <summary>
     /// The same as a screen reader says it within a row's name: "client.exe · PID 100 connected to server.exe · PID 200",
     /// or "each connected to the other"; null where none was seen to open, so the name says nothing of it.
     /// </summary>

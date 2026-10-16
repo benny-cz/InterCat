@@ -80,9 +80,12 @@ public sealed class OtherHostsWorkspaceTests
             ],
             edgeCard.Lines.Skip(4));
 
-        // The process's own card says where its connections ran; one that reaches no other host says nothing of them.
+        // The process's own card says where its connections ran; one that reaches no other host says nothing of them, and
+        // none whose capture saw no connection of theirs open says who opened them.
         Assert.Equal("Other hosts: 2 TCP connections to 2 hosts · 1 UDP flow with 1 host",
             workspace.DescribeGraphHover(browser.Key)!.Lines[1]);
+        Assert.DoesNotContain(workspace.DescribeGraphHover(browser.Key)!.Lines,
+            line => line.StartsWith("Connections:", StringComparison.Ordinal));
         GraphDisplayNode client = drawn.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100).Id)!;
         Assert.DoesNotContain(workspace.DescribeGraphHover(client.Key)!.Lines,
             line => line.StartsWith("Other hosts", StringComparison.Ordinal));
@@ -784,7 +787,13 @@ public sealed class OtherHostsWorkspaceTests
         await workspace.LayoutReady;
         const string Service = "svchost.exe · PID 300";
 
-        // svchost.exe connected to one host and accepted from two: its edge to Other hosts says so.
+        // svchost.exe connected to one host and accepted from two: its own card counts them, beneath its other hosts.
+        HoverCard card = workspace.DescribeGraphHover(workspace.GraphDisplay.NodeOf(
+            workspace.Snapshot.Processes.Single(process => process.ProcessId == 300).Id)!.Key)!;
+        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open", card.Lines[2]);
+        Assert.StartsWith("Other hosts: ", card.Lines[1], StringComparison.Ordinal);
+
+        // And its edge to Other hosts says so.
         GraphDisplayEdge edge = Assert.Single(workspace.GraphDisplay.Edges);
         Assert.Equal((1, 2, 3), (edge.MadeFromSource, edge.MadeFromTarget, edge.Connections));
         Assert.Contains($"Direction: {Service} connected to Other hosts in 1 connection, Other hosts connected to {Service} in 2 "
@@ -799,6 +808,14 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal($"Direction: {Service} connected to 10.0.0.5 in 1 connection, 10.0.0.5 connected to {Service} in 1 connection",
             Direction("10.0.0.5"));
         Assert.Equal($"Direction: 10.0.0.6 connected to {Service}", Direction("10.0.0.6"));
+
+        // Under a brush its card still counts the whole session's connections, and says so where it counts them.
+        workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 150));
+        await workspace.IntervalReady;
+        IReadOnlyList<string> brushed = workspace.DescribeGraphHover(workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key)!.Lines;
+        Assert.Equal("Other hosts: 3 TCP connections to 2 hosts · whole session", brushed[1]);
+        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open · whole session", brushed[2]);
+        Assert.EndsWith(" · brushed interval", brushed[3], StringComparison.Ordinal);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)
