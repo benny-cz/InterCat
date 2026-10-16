@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using InterCat.Analysis;
 using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -123,28 +124,56 @@ internal static class OverviewCommand
                     [CollectorText.Named(node), ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
         }
 
+        // The window's relationship table in brief: the busiest relationships, each arrow pointing at the process its
+        // connections were made to where the capture saw them open, never at display order (relations-v1 section 5).
+        Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
+        if (overview.Edges.Count > 0)
+        {
+            ConsoleUi.Table(
+                ["Busiest relationship", "Over", "Records"],
+                [.. overview.Edges
+                    .OrderByDescending(edge => edge.ObservationCount)
+                    .ThenBy(edge => edge.Key, StringComparer.Ordinal)
+                    .Take(5)
+                    .Select(edge => (IReadOnlyList<string>)
+                        [Joined(edge, nodes), MechanismText.Name(edge.Mechanism), ConsoleUi.Count(edge.ObservationCount)])]);
+            ConsoleUi.Note(CountText.Of(overview.Edges.Count, "relationship") + " in all. An arrow points at the process "
+                + "connected to, where the capture saw the connections open, and ⇄ joins two that each connected to the other; "
+                + "two joined by \"and\" were seen opening none. Records are both ends'.");
+        }
+
         // The processes whose connections ran to other hosts, as the window's graph draws them to its Other hosts node: the
-        // most connected first, each by its connections over each transport (relations-v1 section 5c).
+        // most connected first, each by its connections over each transport and those it accepted from the hosts, whichever
+        // end opened them (relations-v1 section 5c and 5d).
         if (overview.HostLinks.Count > 0)
         {
-            ConsoleUi.Field("Reaching other hosts", HostLinkText.Line(overview.HostLinks));
-            Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
+            ConsoleUi.Field("Other hosts", HostLinkText.Line(overview.HostLinks));
+            IGrouping<ProcessInstanceId, HostLink>[] holders = [.. overview.HostLinks
+                .GroupBy(link => link.Process)
+                .OrderByDescending(links => links.Sum(link => (long)link.Connections))
+                .ThenBy(links => links.Key.ToString(), StringComparer.Ordinal)
+                .Take(5)];
+            bool accepted = holders.Any(links => links.Any(link => link.Addresses.Any(address => address.Accepted > 0)));
             ConsoleUi.Table(
-                ["Reaching other hosts", "Connections"],
-                [.. overview.HostLinks
-                    .GroupBy(link => link.Process)
-                    .OrderByDescending(links => links.Sum(link => (long)link.Connections))
-                    .ThenBy(links => links.Key.ToString(), StringComparer.Ordinal)
-                    .Take(5)
-                    .Select(links => (IReadOnlyList<string>)[CollectorText.Named(nodes[links.Key]), HostLinkText.Line(links)])]);
+                ["Process", "Connections to other hosts", .. accepted ? ["Accepted here"] : Array.Empty<string>()],
+                [.. holders.Select(links => (IReadOnlyList<string>)
+                [
+                    CollectorText.Named(nodes[links.Key]), HostLinkText.Line(links),
+                    .. accepted ? [Accepted(links)] : Array.Empty<string>(),
+                ])]);
 
             // The hosts they ran to, the busiest first by the records their connections hold, as the Other hosts node names
             // them: where the connections ran, each process's rung listing its own, and never who is at them (P7).
             IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
+            bool accepting = hosts.Take(5).Any(host => host.Accepted > 0);
             ConsoleUi.Table(
-                ["Busiest other host", "Connections", "Ports", "Records"],
+                ["Busiest other host", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(), "Records"],
                 [.. hosts.Take(5).Select(host => (IReadOnlyList<string>)
-                    [host.Address, HostLinkText.Reached(host), HostLinkText.PortNumbers(host.Ports), ConsoleUi.Count(host.Records)])]);
+                [
+                    host.Address, HostLinkText.Reached(host), host.Ports.Count == 0 ? "-" : HostLinkText.PortNumbers(host.Ports),
+                    .. accepting ? [HostLinkText.AcceptedCell(host.Accepted, host.AcceptedPorts)] : Array.Empty<string>(),
+                    ConsoleUi.Count(host.Records),
+                ])]);
             ConsoleUi.Note(CountText.Of(hosts.Count, "other host") + " in all, counted by address; who is at them is not "
                 + "observed. icat channels <directory> --process <instance-guid> --one-sided lists a process's connections.");
         }
@@ -154,6 +183,32 @@ internal static class OverviewCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// A relationship's two processes as the overview lists it, the one that made its connections first: "browser.exe · PID
+    /// 100 → server.exe · PID 200"; "a ⇄ b" where each connected to the other; and "a and b" where the capture saw none
+    /// open, as for a UDP flow or RPC calls (relations-v1 section 5).
+    /// </summary>
+    internal static string Joined(CommunicationEdge edge, IReadOnlyDictionary<ProcessInstanceId, ProcessNode> nodes)
+    {
+        string source = CollectorText.Named(nodes[edge.SourceId]);
+        string target = CollectorText.Named(nodes[edge.TargetId]);
+        return (edge.SourceConnected > 0, edge.TargetConnected > 0) switch
+        {
+            (true, false) => $"{source} → {target}",
+            (false, true) => $"{target} → {source}",
+            (true, true) => $"{source} ⇄ {target}",
+            _ => $"{source} and {target}",
+        };
+    }
+
+    /// <summary>The connections a process accepted from other hosts, with its own ports they arrived at: "2 at 443 and 8443", "-".</summary>
+    private static string Accepted(IEnumerable<HostLink> links)
+    {
+        HostAddress[] addresses = [.. links.SelectMany(link => link.Addresses)];
+        return HostLinkText.AcceptedCell(addresses.Sum(address => address.Accepted),
+            [.. addresses.SelectMany(address => address.AcceptedPorts).Distinct().Order()]);
+    }
+
     private static void PrintHelp()
     {
         ConsoleUi.Line("icat overview <session-directory> [--json]");
@@ -161,6 +216,7 @@ internal static class OverviewCommand
         ConsoleUi.Line("  timeline.");
         ConsoleUi.Line("  The graph is narrower than the session. --json returns the Desktop's exact numeric bundle.");
         ConsoleUi.Line("  It says what the capture covered, mechanism by mechanism, in the words the window's inspector");
-        ConsoleUi.Line("  uses beneath its time scope.");
+        ConsoleUi.Line("  uses beneath its time scope, and lists the busiest relationships, each arrow pointing at the");
+        ConsoleUi.Line("  process connected to where the capture saw the connections open.");
     }
 }

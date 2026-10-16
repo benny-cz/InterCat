@@ -1,6 +1,7 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using InterCat.Analysis.Tests;
+using InterCat.Application;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -37,8 +38,10 @@ public sealed class OverviewCensusTests
             + "records belong to 1 connection to 1 other host. A process's connections are listed on its rung.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
 
-        // The processes reaching other hosts, as the window draws them to Other hosts: the browser's one connection.
-        Assert.Matches(@"(?m)^  Reaching other hosts +1 TCP connection to 1 host\r?$", text);
+        // The processes with connections to other hosts, as the window draws them to Other hosts: the browser's one
+        // connection, none of them accepted, so no column says so.
+        Assert.Matches(@"(?m)^  Other hosts +1 TCP connection to 1 host\r?$", text);
+        Assert.Matches(@"(?m)^  Process +Connections to other hosts\r?$", text);
         Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +1 TCP connection to 1 host\r?$", text);
 
         // And the hosts they ran to, the busiest first, by address, with what reached each, the ports at it and its records.
@@ -76,7 +79,7 @@ public sealed class OverviewCensusTests
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Relationships +1\r?$", text);
         Assert.DoesNotContain("No TCP connection was seen", text, Ordinal);
-        Assert.DoesNotContain("Reaching other hosts", text, Ordinal);
+        Assert.DoesNotContain("Connections to other hosts", text, Ordinal);
         Assert.DoesNotContain("RPC peers", text, Ordinal);
 
         // One that also holds RPC calls no capture linked says how to draw them, as the window's graph does.
@@ -95,6 +98,102 @@ public sealed class OverviewCensusTests
         Assert.Contains("RPC calls are on their processes' rungs: a call is drawn to the process that served it only from a "
             + "capture that collects ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.8: icat overview lists the busiest relationships, each arrow pointing at the process connected to, and the connections each process accepted from other hosts")]
+    public async Task IcatOverviewSaysWhoConnected()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\helper.exe", SessionRelativeTicks = 120 },
+
+            // The client connects to the server's 8080 and sends three times.
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 200 },
+            .. Enumerable.Range(0, 3).SelectMany(index => new[]
+            {
+                Transfer(11 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 8, 100, (ulong)(11 + (2 * index)))
+                    .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 210 + index },
+                Transfer(12 + (2 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, (ulong)(12 + (2 * index)))
+                    .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 220 + index },
+            }),
+
+            // The helper connects to the server's 8080, and the server to the helper's 9000.
+            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 30)
+                .Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 300 },
+            Transfer(31, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 31)
+                .Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 310 },
+            Transfer(32, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 32)
+                .Between("127.0.0.1:8080", "127.0.0.1:50001") with { SessionRelativeTicks = 320 },
+            Transfer(33, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 200, 33)
+                .Between("127.0.0.1:50002", "127.0.0.1:9000") with { SessionRelativeTicks = 330 },
+            Transfer(34, ObservationKind.Send, AccountingSide.SendSide, 8, 200, 34)
+                .Between("127.0.0.1:50002", "127.0.0.1:9000") with { SessionRelativeTicks = 340 },
+            Transfer(35, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 300, 35)
+                .Between("127.0.0.1:9000", "127.0.0.1:50002") with { SessionRelativeTicks = 350 },
+
+            // The client and the helper, seen opening nothing.
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 40)
+                .Between("127.0.0.1:50003", "127.0.0.1:7070") with { SessionRelativeTicks = 400 },
+            Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 300, 41)
+                .Between("127.0.0.1:7070", "127.0.0.1:50003") with { SessionRelativeTicks = 410 },
+
+            // The server accepts a connection from another host at its 445.
+            Transfer(50, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 50)
+                .Between("192.168.1.10:445", "10.0.0.6:50001") with { SessionRelativeTicks = 500 },
+            Transfer(51, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 51)
+                .Between("192.168.1.10:445", "10.0.0.6:50001") with { SessionRelativeTicks = 510 },
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+
+        // The busiest first, each arrow pointing at the process connected to whichever end the graph draws first, both
+        // ways where each connected, and "and" where neither was seen to.
+        Assert.Matches(@"(?m)^  Busiest relationship +Over +Records\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe · PID 100 → server\.exe · PID 200 +TCP +7\r?$", text);
+        Assert.Matches(@"(?m)^  (helper\.exe · PID 300 ⇄ server\.exe · PID 200|server\.exe · PID 200 ⇄ helper\.exe · PID 300) +TCP +6\r?$", text);
+        Assert.Matches(@"(?m)^  (client\.exe · PID 100 and helper\.exe · PID 300|helper\.exe · PID 300 and client\.exe · PID 100) +TCP +2\r?$", text);
+        Assert.Contains("3 relationships in all. An arrow points at the process connected to, where the capture saw the "
+            + "connections open, and ⇄ joins two that each connected to the other; two joined by \"and\" were seen opening "
+            + "none. Records are both ends'.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.True(text.IndexOf("client.exe · PID 100 → server.exe", Ordinal) < text.IndexOf(" ⇄ ", Ordinal));
+
+        // The server accepted its connection from another host, at its own 445, which its row and the host's say.
+        Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection to 1 host +1 at 445\r?$", text);
+        Assert.Matches(@"(?m)^  Busiest other host +Connections +Ports +Accepted here +Records\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +1 TCP connection from 1 process +- +1 at 445 +2\r?$", text);
+
+        // The caveat says what the order of an edge's ends is, and where who connected is said.
+        Assert.Contains("An edge's source and target are a stable display order, not a claim about direction: which process "
+            + "made its connections is said only where the capture saw them open", Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.8: a relationship the overview lists names first the process that made its connections, whichever end it is drawn from")]
+    public void ARelationshipNamesItsMakerFirst()
+    {
+        ProcessNode Node(int index, int pid, string name) => new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")),
+            pid, name, "test", name, 0.5, 0.5, CoverageState.Covered);
+        ProcessNode a = Node(1, 100, "a.exe");
+        ProcessNode b = Node(2, 200, "b.exe");
+        var nodes = new Dictionary<ProcessInstanceId, ProcessNode> { [a.Id] = a, [b.Id] = b };
+        CommunicationEdge Edge(int fromSource, int fromTarget) =>
+            new("tcp:a:b", a.Id, b.Id, Mechanism.Tcp, 10, null, RelationStrength.Correlated)
+            {
+                Rule = RelationRule.TransportEndpoint,
+                Evidence = ["tcp:a:b:0", "tcp:a:b:1"],
+                SourceConnected = fromSource,
+                TargetConnected = fromTarget,
+            };
+        Assert.Equal(
+            ["a.exe · PID 100 → b.exe · PID 200", "b.exe · PID 200 → a.exe · PID 100", "a.exe · PID 100 ⇄ b.exe · PID 200",
+                "a.exe · PID 100 and b.exe · PID 200"],
+            new[] { Edge(2, 0), Edge(0, 1), Edge(1, 1), Edge(0, 0) }.Select(edge => OverviewCommand.Joined(edge, nodes)));
     }
 
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

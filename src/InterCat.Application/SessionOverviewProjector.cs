@@ -330,8 +330,9 @@ public static class SessionOverviewProjector
                     + "message (rpc-call-peer-v1). An edge counts the call records at its two ends; the ALPC records that "
                     + "link them are its evidence, not a second count.",
             }),
-            "Edge direction is a stable display order, not a claim about which process initiated or sent data. "
-                + "Edge record counts include observations from both ends and are not whole-session totals.",
+            "An edge's source and target are a stable display order, not a claim about direction: which process made its "
+                + "connections is said only where the capture saw them open (relations-v1 section 5), and nothing says "
+                + "which sent data. Edge record counts include observations from both ends and are not whole-session totals.",
             coverage is null
                 ? "The timeline counts observed rows only. This legacy generation publishes no coverage ledger, "
                     + "so its coverage is unknown; an empty interval is not proof of inactivity."
