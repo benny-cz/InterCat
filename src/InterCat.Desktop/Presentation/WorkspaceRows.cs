@@ -62,9 +62,26 @@ public sealed record RelationshipRow(
     /// <summary>What opening the relationship shows, as its edge's card says a double click does: "its channel", say.</summary>
     public string Opens { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The mark between its ends: "→" where the source made its connections, "←" where the target did, "⇄" where each did,
+    /// and none where the capture saw none open (<see cref="DirectionText.Glyph"/>), as the graph's arrowheads say.
+    /// </summary>
+    public string Direction { get; init; } = string.Empty;
+
+    /// <summary>Who made its connections in words, as its edge's card says it: the mark's tooltip (<see cref="DirectionText.Line"/>).</summary>
+    public string DirectionLine { get; init; } = string.Empty;
+
+    /// <summary>The same as its name reads it aloud; null where the capture saw none of its connections open.</summary>
+    public string? SpokenDirection { get; init; }
+
+    /// <summary>
+    /// The row read aloud: its ends joined by "and", since which is the source is display order only, then who connected
+    /// where the capture saw it, its counts, evidence and rule, and what Enter opens.
+    /// </summary>
     public string AccessibleName =>
-        $"{Source} to {Target} over {Mechanism}, {Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, "
-        + $"evidence {Evidence}, derived by {Rule}. Press Enter to open {Opens}.";
+        $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } spoken ? spoken + ", " : string.Empty)
+        + $"{Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, evidence {Evidence}, derived by {Rule}. "
+        + $"Press Enter to open {Opens}.";
 }
 
 /// <summary>
@@ -198,10 +215,12 @@ public static class WorkspaceRowBuilder
         foreach (CommunicationEdge edge in snapshot.Edges)
         {
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(edge.Mechanism));
+            string source = names.GetValueOrDefault(edge.SourceId, "unknown process");
+            string target = names.GetValueOrDefault(edge.TargetId, "unknown process");
             rows.Add(new(
                 edge.SourceId,
-                names.GetValueOrDefault(edge.SourceId, "unknown process"),
-                names.GetValueOrDefault(edge.TargetId, "unknown process"),
+                source,
+                target,
                 tokens.Label,
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
@@ -213,6 +232,12 @@ public static class WorkspaceRowBuilder
                 Explanation = Explain(edge),
                 Key = edge.Key,
                 Opens = Opens(snapshot, edge),
+
+                // Who made its connections, as its edge's arrowheads and card say: each of its channels is one.
+                Direction = DirectionText.Glyph(edge.SourceConnected, edge.TargetConnected),
+                DirectionLine = DirectionText.Line(edge.Mechanism, edge.SourceConnected, edge.TargetConnected,
+                    edge.Evidence.Count, source, target),
+                SpokenDirection = DirectionText.Spoken(edge.SourceConnected, edge.TargetConnected, source, target),
             });
         }
 

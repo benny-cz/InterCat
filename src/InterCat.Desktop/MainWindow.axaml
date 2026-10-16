@@ -1023,13 +1023,14 @@
                      Classes="muted" FontSize="11" VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                      ToolTip.Tip="{Binding RelationshipTableScope}" />
         </Grid>
-        <!-- Each end is named with its PID, so one executable's instances are told apart. -->
-        <Grid Grid.Row="1" ColumnDefinitions="18,200,200,90,150,100" Margin="2,8,0,2">
+        <!-- Each end is named with its PID, so one executable's instances are told apart; between them, who connected to
+             whom where the capture saw it, as the graph's arrowheads say (relations-v1 §5). -->
+        <Grid Grid.Row="1" ColumnDefinitions="18,190,20,190,90,150,100" Margin="2,8,0,2">
           <TextBlock Grid.Column="1" Text="Source" Classes="columnHeader" />
-          <TextBlock Grid.Column="2" Text="Target" Classes="columnHeader" />
-          <TextBlock Grid.Column="3" Text="Mechanism" Classes="columnHeader" />
-          <TextBlock Grid.Column="4" Text="Bytes" Classes="columnHeader" />
-          <TextBlock Grid.Column="5" Text="Evidence" Classes="columnHeader" />
+          <TextBlock Grid.Column="3" Text="Target" Classes="columnHeader" />
+          <TextBlock Grid.Column="4" Text="Mechanism" Classes="columnHeader" />
+          <TextBlock Grid.Column="5" Text="Bytes" Classes="columnHeader" />
+          <TextBlock Grid.Column="6" Text="Evidence" Classes="columnHeader" />
         </Grid>
         <ListBox x:Name="RelationshipList" Grid.Row="2" Margin="0,4,0,0"
                  ItemsSource="{Binding Relationships}"
@@ -1049,15 +1050,17 @@
           </ListBox.Styles>
           <ListBox.ItemTemplate>
             <DataTemplate x:DataType="pres:RelationshipRow">
-              <Grid ColumnDefinitions="18,200,200,90,150,100" Margin="2,4">
+              <Grid ColumnDefinitions="18,190,20,190,90,150,100" Margin="2,4">
                 <TextBlock Text="{Binding Glyph}" />
                 <TextBlock Grid.Column="1" Margin="0,0,8,0" Text="{Binding Source}" FontWeight="SemiBold"
                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Source}" />
-                <TextBlock Grid.Column="2" Margin="0,0,8,0" Text="{Binding Target}"
+                <TextBlock x:Name="RelationshipDirection" Grid.Column="2" Text="{Binding Direction}"
+                           HorizontalAlignment="Center" ToolTip.Tip="{Binding DirectionLine}" />
+                <TextBlock Grid.Column="3" Margin="0,0,8,0" Text="{Binding Target}"
                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Target}" />
-                <TextBlock Grid.Column="3" Text="{Binding Mechanism}" Classes="muted" />
-                <TextBlock Grid.Column="4" Text="{Binding KnownBytes}" />
-                <TextBlock Grid.Column="5" Text="{Binding Evidence}" Classes="muted" ToolTip.Tip="{Binding Explanation}" />
+                <TextBlock Grid.Column="4" Text="{Binding Mechanism}" Classes="muted" />
+                <TextBlock Grid.Column="5" Text="{Binding KnownBytes}" />
+                <TextBlock Grid.Column="6" Text="{Binding Evidence}" Classes="muted" ToolTip.Tip="{Binding Explanation}" />
               </Grid>
             </DataTemplate>
           </ListBox.ItemTemplate>

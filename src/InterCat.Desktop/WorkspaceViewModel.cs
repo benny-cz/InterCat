@@ -3755,11 +3755,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// The selected relationship in words, beneath the table: what its evidence's tooltip says - the rule that derived it
-    /// and what it rests on - for a person who chose it by keyboard as for one who points at it (R4, §6.2), and what Enter
-    /// opens, as its edge's card says of a double click (R15).
+    /// and what it rests on - for a person who chose it by keyboard as for one who points at it (R4, §6.2), who made its
+    /// connections, as its direction mark's tooltip says, and what Enter opens, as its edge's card says of a double click
+    /// (R15).
     /// </summary>
     public string SelectedRelationshipExplanation => selectedRelationship is { } row
-        ? $"{row.Explanation} Enter opens {row.Opens}."
+        ? $"{row.Explanation} {row.DirectionLine}. Enter opens {row.Opens}."
         : string.Empty;
 
     public bool HasSelectedRelationship => selectedRelationship is not null;
@@ -4104,9 +4105,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string target = graphDisplay.Node(drawn.TargetKey)?.Title ?? drawn.TargetKey;
         if (realOverview)
         {
-            lines.Add(drawn.Mechanism == Mechanism.Rpc
-                ? "Direction: display order only; each end's RPC rows say which calls and which served"
-                : DirectionLine(drawn, source, target));
+            lines.Add(DirectionLine(drawn, source, target));
         }
 
         lines.Add("Coverage: " + CoverageStateText.Value(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
@@ -4127,40 +4126,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// Who made a drawn transport edge's connections, as the capture saw their ends open: "Direction: client.exe · PID 100
-    /// connected to server.exe · PID 200", counted where some went the other way or the capture saw some open neither way;
-    /// display order only where it saw none open, as for a UDP flow, which nothing opens. The graph draws the same as the
-    /// edge's arrowheads.
+    /// Who made a drawn edge's connections, as the capture saw their ends open (<see cref="DirectionText.Line"/>): "Direction:
+    /// client.exe · PID 100 connected to server.exe · PID 200", counted where some went the other way or the capture saw
+    /// some open neither way; display order only where it saw none open, as for a UDP flow, which nothing opens, and an RPC
+    /// edge's calls. The graph draws the same as the edge's arrowheads.
     /// </summary>
-    internal static string DirectionLine(GraphDisplayEdge drawn, string source, string target)
-    {
-        int fromSource = drawn.MadeFromSource;
-        int fromTarget = drawn.MadeFromTarget;
-        int connections = drawn.Connections;
-        if (fromSource + fromTarget == 0)
-        {
-            return "Direction: display order only, not who initiated or sent";
-        }
-
-        string all = connections > 1 ? string.Create(CultureInfo.CurrentCulture, $", in all {connections:N0} of its connections") : string.Empty;
-        if (fromSource == connections)
-        {
-            return $"Direction: {source} connected to {target}{all}";
-        }
-
-        if (fromTarget == connections)
-        {
-            return $"Direction: {target} connected to {source}{all}";
-        }
-
-        int unseen = connections - fromSource - fromTarget;
-        return "Direction: " + string.Join(", ", new[]
-            {
-                fromSource > 0 ? $"{source} connected to {target} in " + CountText.Of(fromSource, "connection") : null,
-                fromTarget > 0 ? $"{target} connected to {source} in " + CountText.Of(fromTarget, "connection") : null,
-            }.OfType<string>())
-            + (unseen > 0 ? "; the capture saw " + CountText.Of(unseen, "connection") + " open neither way" : string.Empty);
-    }
+    internal static string DirectionLine(GraphDisplayEdge drawn, string source, string target) =>
+        DirectionText.Line(drawn.Mechanism, drawn.MadeFromSource, drawn.MadeFromTarget, drawn.Connections, source, target);
 
     /// <summary>
     /// An RPC edge's coverage: the worst of the RPC and ALPC lanes over the drawn session, since a link needs both; unknown

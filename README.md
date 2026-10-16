@@ -34,7 +34,8 @@ accepted from each, and, opened, draws them on their own; a host chosen, drawn o
 every connection to it for E to list. The busiest processes that only reach other hosts are drawn on their own and the
 rest counted in **Other hosts only**, processes with no relationship in **No relationships**, and large executable
 groups collapse. When it draws no relationship, the graph says why. A search marks the processes it finds, by name, PID,
-an address they reached or a port they accepted connections at.
+an address they reached or a port they accepted connections at. The relationship table (T) lists each relationship it
+draws, who connected included, for a keyboard or a screen reader.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

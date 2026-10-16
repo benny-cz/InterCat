@@ -3,6 +3,7 @@ using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
 using Avalonia.Input;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -43,13 +44,56 @@ public sealed class RelationshipExplanationWindowTests
             Assert.Equal(1, table.SelectedIndex);
             RelationshipRow chosen = Assert.IsType<RelationshipRow>(table.SelectedItem);
             Assert.True(line.IsEffectivelyVisible);
-            Assert.Equal($"{chosen.Explanation} Enter opens its channel.", line.Text);
+            Assert.Equal($"{chosen.Explanation} {chosen.DirectionLine}. Enter opens its channel.", line.Text);
+            Assert.Contains(". Direction: display order only, not who initiated or sent. Enter opens its channel.", line.Text,
+                StringComparison.Ordinal);
             Assert.Contains("derived by transport-endpoint-relation, version 4, from 1 channel: transport:", line.Text,
                 StringComparison.Ordinal);
 
             table.SelectedIndex = -1;
             Dispatch();
             Assert.False(line.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.8: the relationship table marks who connected between a relationship's ends, says it in the mark's tooltip and beneath the table, and marks none where none was seen")]
+    public async Task TheTableMarksWhoConnected()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Makers());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            await ShowTables(window, session);
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Assert.Equal(2, table.ItemCount);
+
+            // Each row's mark is drawn between its ends, its tooltip the words.
+            for (int index = 0; index < table.ItemCount; index++)
+            {
+                RelationshipRow row = Assert.IsType<RelationshipRow>(table.Items[index]);
+                TextBlock mark = table.ContainerFromIndex(index)!.GetVisualDescendants().OfType<TextBlock>()
+                    .Single(text => text.Name == "RelationshipDirection");
+                Assert.Equal(row.Direction, mark.Text);
+                Assert.Equal(row.DirectionLine, ToolTip.GetTip(mark));
+            }
+
+            // The client's connect points at the server, whichever end the row names first; the other client's was not seen.
+            RelationshipRow made = table.Items.OfType<RelationshipRow>().Single(row => row.Direction.Length > 0);
+            Assert.Equal(made.Source.StartsWith("client", StringComparison.Ordinal) ? "→" : "←", made.Direction);
+            Assert.Equal("Direction: client.exe · PID 100 connected to server.exe · PID 200", made.DirectionLine);
+            Assert.Equal(string.Empty, table.Items.OfType<RelationshipRow>().Single(row => row != made).Direction);
+
+            // Chosen, the line beneath the table says it as well.
+            table.SelectedItem = made;
+            Dispatch();
+            Assert.Contains(". Direction: client.exe · PID 100 connected to server.exe · PID 200. Enter opens ",
+                window.GetControl<TextBlock>("SelectedRelationshipText").Text, StringComparison.Ordinal);
         }
         finally
         {
@@ -216,6 +260,27 @@ public sealed class RelationshipExplanationWindowTests
             .Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 1_200 },
         Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 200, 103)
             .Between("127.0.0.1:8080", "127.0.0.1:50001") with { SessionRelativeTicks = 1_300 },
+    ];
+
+    /// <summary>
+    /// client.exe connects to server.exe's 8080, the connect seen at its end, and other.exe's connection to it is seen
+    /// opening at neither end.
+    /// </summary>
+    private static ObservationRowV1[] Makers() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+        Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+        Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\other.exe", SessionRelativeTicks = 300 },
+        Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
+        Transfer(11, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 11)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_100 },
+        Transfer(12, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 12)
+            .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 1_200 },
+        Transfer(13, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 13)
+            .Between("127.0.0.1:50001", "127.0.0.1:8080") with { SessionRelativeTicks = 1_300 },
+        Transfer(14, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 200, 14)
+            .Between("127.0.0.1:8080", "127.0.0.1:50001") with { SessionRelativeTicks = 1_400 },
     ];
 
     /// <summary>Opens the session in the window with its tables shown, once its timeline has been read and drawn.</summary>
