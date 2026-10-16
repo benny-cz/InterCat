@@ -229,6 +229,49 @@ public sealed class GraphLayoutIntegrationTests
             Assert.InRange(Distance(seen[key], second.DisplayPositions[key]), 0, 0.2));
     });
 
+    [Fact(DisplayName = "§6.3: a newer generation's layouts hold the nodes the person saw within a nudge, however many join them, until the person moves to another drawing")]
+    public void ANewerGenerationHoldsTheGraphItRedraws() => SingleThreadedContext.Run(async () =>
+    {
+        // A hub related to four processes, then twelve more related to them: three times as many nodes as were drawn.
+        ProcessGroup tools = new("tools", "tool.exe", LaneGrouping.Executable, @"C:\Tools\tool.exe");
+        ProcessNode[] processes = [.. Enumerable.Range(1, 17).Select(index => Process(index, tools.Key)
+            with { Activity = [new(Mechanism.Tcp, 5)] })];
+        CommunicationEdge[] first = [.. Enumerable.Range(1, 4).Select(index => Edge($"hub-{index}", processes[0], processes[index]))];
+        CommunicationEdge[] grown = [.. first,
+            .. Enumerable.Range(5, 12).Select(index => Edge($"more-{index}", processes[index % 5], processes[index]))];
+        using var one = new WorkspaceViewModel(Snapshot([tools], processes[..5], first), "session:test:generation:1");
+        await one.LayoutReady;
+
+        var settled = new List<bool>();
+        var scheduler = new GraphLayoutScheduler(
+            (request, token) => Task.Run(() => GraphLayout.Compute(request.GraphIdentity, request.Groups, request.Nodes,
+                request.Edges, request.Previous, request.Pins, token), token),
+            (request, token) =>
+            {
+                settled.Add(request.Settled);
+                return Task.Run(() => GraphLayout.ComputeDisplay(request.GraphIdentity, request.Display, request.Previous,
+                    request.Pins, request.Settled, token), token);
+            });
+        using var two = new WorkspaceViewModel(
+            Snapshot([tools], processes, grown), "session:test:generation:2", null, one.LaidOutPositions, scheduler);
+        Assert.Null(two.RestoreNavigation(one.CaptureNavigation()));
+        await two.LayoutReady;
+        Assert.Equal(17, two.GraphDisplay.Nodes.Count);
+        Assert.All(one.DisplayPositions.Keys, key =>
+            Assert.InRange(Distance(one.DisplayPositions[key], two.DisplayPositions[key]), 0, 0.1));
+        Assert.NotEmpty(settled);
+        Assert.All(settled, Assert.True);
+
+        // The hub's rung, opened, is another drawing - the hub and its peers, the rest of the machine counted - laid out as
+        // one.
+        int asked = settled.Count;
+        Assert.True(two.OpenGraphNode(processes[0].Id.ToString()));
+        await two.LayoutReady;
+        Assert.Contains(two.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Context);
+        Assert.True(settled.Count > asked);
+        Assert.False(settled[^1]);
+    });
+
     [Fact(DisplayName = "§6.3: on the way back up, nodes on screen stay put and a group that reappears returns to its place")]
     public void AscendingKeepsNodesOnScreenAndReturnsAReappearingGroup() => SingleThreadedContext.Run(async () =>
     {
@@ -391,7 +434,8 @@ public sealed class GraphLayoutIntegrationTests
                     await open.Task.WaitAsync(token);
                 }
 
-                return GraphLayout.ComputeDisplay(request.GraphIdentity, request.Display, request.Previous, request.Pins, token);
+                return GraphLayout.ComputeDisplay(request.GraphIdentity, request.Display, request.Previous, request.Pins,
+                    request.Settled, token);
             });
 
         public GraphLayoutScheduler Scheduler { get; }

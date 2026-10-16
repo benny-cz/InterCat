@@ -114,6 +114,35 @@ public sealed class GraphLayoutTests
             .All(node => Distance(after.Positions[newcomer.Id], after.Positions[node.Id]) > beside));
     }
 
+    [Fact(DisplayName = "§6.3: a settled refresh moves the nodes drawn before no further than a nudge however many join them, where a new drawing of the same graph moves them further")]
+    public void ASettledRefreshHoldsTheNodesDrawnBefore()
+    {
+        // A hub related to four processes; then twelve more related to them, three times as many nodes as were drawn.
+        ProcessGroup tools = new("tools", "tool.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [.. Enumerable.Range(1, 17).Select(index => new ProcessNode(
+            new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), 2_000 + index, $"Process {index}", "test",
+            tools.Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new(Mechanism.Tcp, 5)] })];
+        CommunicationEdge[] first = [.. Enumerable.Range(1, 4).Select(index => Related($"hub-{index}", processes[0], processes[index]))];
+        CommunicationEdge[] grown = [.. first,
+            .. Enumerable.Range(5, 12).Select(index => Related($"more-{index}", processes[index % 5], processes[index]))];
+        GraphDisplayLayout seen = GraphLayout.ComputeDisplay("generation-1", GraphProjection.Project(Workspace([tools], processes[..5], first)));
+        GraphDisplay larger = GraphProjection.Project(Workspace([tools], processes, grown));
+
+        GraphDisplayLayout held = GraphLayout.ComputeDisplay("generation-2", larger, seen.Positions, settled: true);
+        GraphDisplayLayout redrawn = GraphLayout.ComputeDisplay("generation-2", larger, seen.Positions);
+        double Farthest(GraphDisplayLayout layout) => seen.Positions.Keys.Max(key => Math.Sqrt(
+            Math.Pow(seen.Positions[key].X - layout.Positions[key].X, 2) + Math.Pow(seen.Positions[key].Y - layout.Positions[key].Y, 2)));
+        Assert.InRange(Farthest(held), 0, 0.1);
+        Assert.True(Farthest(redrawn) > 0.1, $"A new drawing moved the nodes drawn before at most {Farthest(redrawn):F3}.");
+    }
+
+    private static CommunicationEdge Related(string key, ProcessNode source, ProcessNode target) =>
+        new(key, source.Id, target.Id, Mechanism.Tcp, 10, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
+
+    private static WorkspaceSnapshot Workspace(
+        IReadOnlyList<ProcessGroup> groups, IReadOnlyList<ProcessNode> processes, IReadOnlyList<CommunicationEdge> edges) =>
+        new("Session", new TimeRange(0, 10), groups, processes, edges, [], [], [], []);
+
     [Fact(DisplayName = "R8: malformed layout input or a graph over budget is refused, never partly drawn")]
     public void InvalidInputIsRefused()
     {

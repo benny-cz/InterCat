@@ -156,19 +156,22 @@ public static class GraphLayout
 
     /// <summary>
     /// Lays out a drawn graph. A process node is seeded by its process identity exactly as <see cref="Compute"/> seeds
-    /// it, so a graph drawn without clustering is placed exactly as the process graph it is.
+    /// it, so a graph drawn without clustering is placed exactly as the process graph it is. <paramref name="settled"/>
+    /// says the drawing is the one shown before, refreshed - a newer generation of the same rung - rather than another
+    /// drawing the person moved to: its nodes drawn before stay anchored however many join it.
     /// </summary>
     public static GraphDisplayLayout ComputeDisplay(
         string graphIdentity,
         GraphDisplay display,
         IReadOnlyDictionary<string, GraphPoint>? previous = null,
         IReadOnlyDictionary<string, GraphPoint>? pins = null,
+        bool settled = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
         ArgumentNullException.ThrowIfNull(display);
         (IReadOnlyDictionary<string, GraphPoint> positions, double energy) = Core(
-            graphIdentity, DisplayNodes(display), DisplayLinks(display), previous, pins, cancellationToken);
+            graphIdentity, DisplayNodes(display), DisplayLinks(display), previous, pins, cancellationToken, settled: settled);
         return new(graphIdentity, positions, display.Nodes.Count == 0 ? 0 : RelaxationIterations, energy);
     }
 
@@ -223,7 +226,8 @@ public static class GraphLayout
         IReadOnlyDictionary<string, GraphPoint>? previous,
         IReadOnlyDictionary<string, GraphPoint>? pins,
         CancellationToken cancellationToken,
-        int iterations = RelaxationIterations)
+        int iterations = RelaxationIterations,
+        bool settled = false)
     {
         if (nodes.Count > MaximumNodes || edges.Count > MaximumEdges)
         {
@@ -352,9 +356,11 @@ public static class GraphLayout
 
         // A refresh that adds a few nodes keeps the rest anchored. Opening a group or focusing a process restructures the
         // drawing - many new nodes, a large share of it - and anchored neighbours would leave them no room, so anchoring
-        // eases off smoothly as both the number and the share of new nodes grow. They still start where they were.
+        // eases off smoothly as both the number and the share of new nodes grow. They still start where they were. A
+        // settled drawing - the one shown, refreshed by a newer generation - is no restructuring, however many join it:
+        // a node the person has seen moves no more than a nudge while they watch a recording grow (§6.3, §6.8).
         int fresh = moving.Count(i => !anchored[i]);
-        double freedom = Math.Clamp((fresh - 4) / 12d, 0, 1)
+        double freedom = settled ? 0 : Math.Clamp((fresh - 4) / 12d, 0, 1)
             * Math.Clamp((((double)fresh / Math.Max(1, related)) - 0.1) / 0.3, 0, 1);
         int[] repelling = [.. Enumerable.Range(0, count).Where(i => linked[i])];
         var dx = new double[count];

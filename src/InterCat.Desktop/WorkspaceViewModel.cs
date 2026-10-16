@@ -263,6 +263,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     // §6.7's multi-selection: the processes Ctrl+click added, an explicit predicate. A plain selection or a navigation
     // lets it go; Enter turns it into a filter.
     private readonly HashSet<ProcessInstanceId> chosenProcesses = [];
+
+    // Whether a layout asked for now refreshes the drawing the person was shown - a newer generation's, while it puts the
+    // view back - which holds the nodes they saw, rather than one they moved to (§6.3).
+    private bool settledLayout;
     private CancellationTokenSource? highlightQuery;
     private (TimeRange Viewport, int Columns, string Focus)? requestedHighlight;
     private IReadOnlyList<TimelineBucket>? highlightBuckets;
@@ -343,6 +347,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             if (point.IsValid) layoutMemory[key] = point;
         }
+
+        // A newer generation redraws the graph the person was shown: its layouts hold what they saw, until they move on.
+        settledLayout = carriedLayout is not null;
 
         // A pin is where the user put a node; a later publication keeps it, and the first frame already shows it there.
         foreach ((string key, GraphPoint point) in carriedPins ?? new Dictionary<string, GraphPoint>())
@@ -1781,6 +1788,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             SelectedSearchResult = hit;
         }
 
+        // The view is back where it was; from here a drawing the person moves to is laid out as a new one.
+        settledLayout = false;
         return notices.Count == 0 ? null : string.Join(" ", notices);
     }
 
@@ -2883,7 +2892,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
                 pins: graphPins
                     .Where(entry => display.Node(entry.Key) is not null)
-                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal));
+                    .ToDictionary(entry => entry.Key, entry => entry.Value, StringComparer.Ordinal),
+                settled: settledLayout);
             if (disposed || result is null || result.GraphIdentity != identity || !ReferenceEquals(display, wholeDisplay))
             {
                 return;

@@ -11,12 +11,16 @@ public sealed record GraphLayoutRequest(
     IReadOnlyDictionary<ProcessInstanceId, GraphPoint>? Previous,
     IReadOnlyDictionary<ProcessInstanceId, GraphPoint>? Pins);
 
-/// <summary>A frozen drawn graph and constraint set submitted for an off-thread layout.</summary>
+/// <summary>
+/// A frozen drawn graph and constraint set submitted for an off-thread layout; <paramref name="Settled"/> when it refreshes
+/// the drawing shown rather than replacing it (<see cref="GraphLayout.ComputeDisplay"/>).
+/// </summary>
 public sealed record GraphDisplayLayoutRequest(
     string GraphIdentity,
     GraphDisplay Display,
     IReadOnlyDictionary<string, GraphPoint>? Previous,
-    IReadOnlyDictionary<string, GraphPoint>? Pins);
+    IReadOnlyDictionary<string, GraphPoint>? Pins,
+    bool Settled = false);
 
 /// <summary>
 /// Runs layout outside the UI thread. A later request cancels the preceding one and invalidates its result even
@@ -41,7 +45,7 @@ public sealed class GraphLayoutScheduler : IDisposable
     /// <summary>Injectable worker for deterministic scheduler tests; production uses the bounded layout core.</summary>
     public GraphLayoutScheduler(Func<GraphLayoutRequest, CancellationToken, Task<GraphLayoutResult>> compute)
         : this(compute, (request, token) => Task.Run(() => GraphLayout.ComputeDisplay(
-            request.GraphIdentity, request.Display, request.Previous, request.Pins, token), token))
+            request.GraphIdentity, request.Display, request.Previous, request.Pins, request.Settled, token), token))
     {
     }
 
@@ -85,6 +89,7 @@ public sealed class GraphLayoutScheduler : IDisposable
         GraphDisplay display,
         IReadOnlyDictionary<string, GraphPoint>? previous = null,
         IReadOnlyDictionary<string, GraphPoint>? pins = null,
+        bool settled = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(graphIdentity);
@@ -92,7 +97,7 @@ public sealed class GraphLayoutScheduler : IDisposable
         cancellationToken.ThrowIfCancellationRequested();
         var request = new GraphDisplayLayoutRequest(graphIdentity, display,
             previous is null ? null : new Dictionary<string, GraphPoint>(previous, StringComparer.Ordinal),
-            pins is null ? null : new Dictionary<string, GraphPoint>(pins, StringComparer.Ordinal));
+            pins is null ? null : new Dictionary<string, GraphPoint>(pins, StringComparer.Ordinal), settled);
         return Submit(graphIdentity, token => computeDisplay(request, token), result => result.GraphIdentity, cancellationToken);
     }
 
