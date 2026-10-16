@@ -32,7 +32,7 @@ reached at each and the connections a process accepted from each, and, opened, d
 drawn or listed, highlights the records of every connection to it for E to list. The busiest processes that only reach
 other hosts are drawn on their own and the rest counted in **Other hosts only**, processes with no relationship in
 **No relationships**, and large executable groups collapse. When it draws no relationship, the graph says why. A search
-marks the processes it finds, by name, PID or an address they reached.
+marks the processes it finds, by name, PID, an address they reached or a port they accepted connections at.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

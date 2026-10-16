@@ -156,8 +156,9 @@ public static class WorkspaceSearch
     /// Whether <paramref name="query"/> names <paramref name="address"/>, an address connections ran to with the ports
     /// they ran to there, by the rule a process is found by an address it reached (<see cref="Find"/>): the address whole,
     /// or begun up to a dot or colon, ignoring case, and an IPv4-mapped address by its IPv4 address too; the address whole
-    /// with a port it was reached at, "142.250.1.1:443" or "[2001:db8::1]:443"; or a port alone, ":443". Never a query
-    /// with neither dot nor colon, which names no address.
+    /// with a port it was reached at, "142.250.1.1:443" or "[2001:db8::1]:443"; or a port alone, ":443", which also names
+    /// the address where connections the process accepted from it arrived at that port of its own. Never a query with
+    /// neither dot nor colon, which names no address.
     /// </summary>
     public static bool NamesHost(HostAddress address, string? query)
     {
@@ -170,8 +171,8 @@ public static class WorkspaceSearch
 
     /// <summary>
     /// What a query asks of the addresses connections to other hosts ran to: <see cref="Address"/>, the address or its
-    /// beginning, null for any; and <see cref="Port"/>, a port it was reached at, null for any. An endpoint names its
-    /// address whole.
+    /// beginning, null for any; and <see cref="Port"/>, a port it was reached at, or alone also one connections accepted
+    /// from it arrived at, null for any. An endpoint names its address whole.
     /// </summary>
     private readonly record struct HostQuery(string? Address, ushort? Port);
 
@@ -213,11 +214,12 @@ public static class WorkspaceSearch
     /// <summary>
     /// How well an address connections ran to matches a query, as <see cref="AddressRankOf"/> ranks it: an address or its
     /// beginning by <see cref="AddressRank"/>; an endpoint 0 where it names the address whole and one of its ports; a port
-    /// alone 1, as broad as an address's beginning, where it is one of the address's ports; -1 otherwise.
+    /// alone 1, as broad as an address's beginning, where it is one of the address's ports or one of the process's own
+    /// that connections it accepted from the address arrived at; -1 otherwise.
     /// </summary>
     private static int HostRank(HostAddress address, HostQuery query) => query switch
     {
-        { Address: null, Port: { } port } => address.Ports.Contains(port) ? 1 : -1,
+        { Address: null, Port: { } port } => address.Ports.Contains(port) || address.AcceptedPorts.Contains(port) ? 1 : -1,
         { Address: { } whole, Port: { } port } => AddressRank(address.Address, whole) == 0 && address.Ports.Contains(port) ? 0 : -1,
         { Address: { } text } => AddressRank(address.Address, text),
         _ => -1,
@@ -281,17 +283,27 @@ public static class WorkspaceSearch
         int tcp = matched.Where(match => match.Mechanism != Mechanism.Udp).Sum(match => match.Address.Connections);
         int udp = matched.Where(match => match.Mechanism == Mechanism.Udp).Sum(match => match.Address.Connections);
         int addresses = matched.Select(match => match.Address.Address).Distinct(StringComparer.Ordinal).Count();
-        if (query.Port is not null)
+        if (query.Port is { } port)
         {
             // An address's connections are counted whatever port each ran to, so those at the port searched are not
-            // counted: the hit says over which transports, and to how many addresses.
+            // counted: the hit says over which transports, and to how many addresses - or from how many, where the
+            // process accepted them at that port of its own.
             string transports = string.Join(" and ", new[]
             {
                 tcp > 0 ? "TCP connections" : null,
                 udp > 0 ? "UDP flows" : null,
             }.OfType<string>());
-            return (best, transports + (query.Address is not null ? " to the endpoint searched"
-                : " to " + CountText.Of(addresses, "address", "addresses") + " at the port searched"));
+            if (query.Address is not null)
+            {
+                return (best, transports + " to the endpoint searched");
+            }
+
+            string counted = CountText.Of(addresses, "address", "addresses");
+            bool ranTo = matched.Any(match => match.Address.Ports.Contains(port));
+            bool accepted = matched.Any(match => match.Address.AcceptedPorts.Contains(port));
+            return (best, transports + (ranTo && accepted ? " at the port searched, to or from " + counted
+                : accepted ? " accepted at the port searched, from " + counted
+                : " to " + counted + " at the port searched"));
         }
 
         string connections = string.Join(" and ", new[]

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 574 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 575 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 575 — a port search finds who accepted connections at it (§6.7, R18):**
+  - A port alone, ":3389", also finds the processes that accepted connections at that port of their own, each
+    hit saying whether its connections ran to the port, arrived at it or both; an endpoint names the host's port.
+  - Debug and Release each ran 2,450 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 8 mutations was caught: a port alone not finding a process at a port it accepted connections at, caught
+    in the search, in the window's marks and by icat hosts --address; its hit saying accepted connections ran to the
+    port, never saying to or from where both did, or taking what ran to the port for what arrived at it or the other
+    way; and icat hosts --help not saying a port alone finds them.
 
 - **Revision 574 — the window says a host's accepted connections (§6.3, §6.7, §7.1):**
   - Other hosts' list and cards, and a drawn host's card and description, say what was accepted at which port.

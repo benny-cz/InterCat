@@ -311,7 +311,8 @@ internal static class HostsCommand
         {
             ConsoleUi.Note(WorkspaceSearch.NamesPort(query)
                 ? $"No process of this session reached {query.Trim()}: an address whole at that port, or any address at a port "
-                    + "alone. icat hosts <directory> lists every host they reached, with its ports."
+                    + "alone, nor accepted connections at a port alone of its own. icat hosts <directory> lists every host they "
+                    + "reached, with its ports."
                 : $"No process of this session reached an address {query.Trim()} names: the address whole, or begun up to a dot "
                     + "or colon. icat hosts <directory> lists every host they reached.");
             return InterCatExitCode.Success;
@@ -364,10 +365,11 @@ internal static class HostsCommand
         ConsoleUi.Line("  process accepted connections from a host, how many and at which of its own ports. --address lists");
         ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
         ConsoleUi.Line("  2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
-        ConsoleUi.Line("  address, as :443 - as the window's search finds them. --limit lists at most that many,");
-        ConsoleUi.Line($"  {DefaultLimit} by default. --rank-by lists the hosts by the bytes their connections sent there,");
-        ConsoleUi.Line("  received from there or both, as this machine's end of them measured, with both directions' bytes;");
-        ConsoleUi.Line("  a host whose transfers recorded no size comes after those that did, never as a zero.");
+        ConsoleUi.Line("  address, as :443, or which accepted connections at that port of their own - as the window's");
+        ConsoleUi.Line($"  search finds them. --limit lists at most that many, {DefaultLimit} by default. --rank-by lists the");
+        ConsoleUi.Line("  hosts by the bytes their connections sent there, received from there or both, as this machine's");
+        ConsoleUi.Line("  end of them measured, with both directions' bytes; a host whose transfers recorded no size comes");
+        ConsoleUi.Line("  after those that did, never as a zero.");
         ConsoleUi.Line("  --investigation names, for a session that is one of its members, each host's candidate other");
         ConsoleUi.Line("  ends: the processes of its other members' captures whose connections mirror one to the host, never");
         ConsoleUi.Line("  an established join. Who is at an address, and what a port serves there, are not observed.");

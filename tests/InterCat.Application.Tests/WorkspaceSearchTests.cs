@@ -274,6 +274,60 @@ public sealed class WorkspaceSearchTests
         Assert.False(WorkspaceSearch.NamesPort("142.250.1.1"));
     }
 
+    [Fact(DisplayName = "§6.7: a port alone also finds the processes that accepted connections at that port of their own, the hit saying from how many addresses, and an endpoint never does")]
+    public void APortAloneFindsTheProcessesThatAcceptedAtIt()
+    {
+        ProcessGroup apps = new("apps", "app.exe", LaneGrouping.Executable);
+        ProcessNode service = Process(1, 300, "service.exe", apps.Key, (Mechanism.Tcp, 50));
+        ProcessNode browser = Process(2, 310, "browser.exe", apps.Key, (Mechanism.Tcp, 20));
+        ProcessNode both = Process(3, 320, "both.exe", apps.Key, (Mechanism.Tcp, 10));
+        HostLink[] links =
+        [
+            // service.exe accepted connections from two hosts at its own port 3389, each from a port the host chose.
+            new(service.Id, Mechanism.Tcp,
+                [new("10.0.0.5", 1, 2) { Accepted = 1, AcceptedPorts = [3389] }, new("10.0.0.6", 1, 2) { Accepted = 1, AcceptedPorts = [3389] }],
+                RelationStrength.Direct),
+            // browser.exe reached another host's 3389.
+            new(browser.Id, Mechanism.Tcp, [new("10.0.0.7", 1, 2) { Ports = [3389], Connected = 1 }], RelationStrength.Direct),
+            // both.exe reached one host's 3389 and accepted another's connection at its own.
+            new(both.Id, Mechanism.Tcp,
+                [new("10.0.0.8", 1, 2) { Ports = [3389], Connected = 1 }, new("10.0.0.9", 1, 2) { Accepted = 1, AcceptedPorts = [3389] }],
+                RelationStrength.Direct),
+        ];
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [apps], [service, browser, both], [], [], [], [], [])
+        {
+            HostLinks = links,
+        };
+
+        // Each is found, its hit saying whether its connections ran to the port, arrived at its own or both.
+        SearchResult result = WorkspaceSearch.Find(snapshot, ":3389");
+        Assert.Equal(
+            [
+                (service.Id.ToString(), "Process instance of app.exe · TCP connections accepted at the port searched, from 2 addresses"),
+                (browser.Id.ToString(), "Process instance of app.exe · TCP connections to 1 address at the port searched"),
+                (both.Id.ToString(), "Process instance of app.exe · TCP connections at the port searched, to or from 2 addresses"),
+            ],
+            result.Hits.Select(hit => (hit.Key, hit.Detail)));
+        Assert.True(WorkspaceSearch.FindsAddress(links, ":3389"));
+
+        // An endpoint names the port at the host, which an accepted connection's was not.
+        Assert.Empty(WorkspaceSearch.Find(snapshot, "10.0.0.5:3389").Hits);
+        Assert.Equal([both.Id.ToString()], WorkspaceSearch.Find(snapshot, "10.0.0.8:3389").Hits.Select(hit => hit.Key));
+        var accepted = new HostAddress("10.0.0.5", 1, 2) { Accepted = 1, AcceptedPorts = [3389] };
+        Assert.True(WorkspaceSearch.NamesHost(accepted, ":3389"));
+        Assert.False(WorkspaceSearch.NamesHost(accepted, "10.0.0.5:3389"));
+        Assert.False(WorkspaceSearch.NamesHost(accepted, ":50000"));
+
+        // The rule a process is found by is the one its hit is ranked by.
+        foreach (string query in new[] { ":3389", "10.0.0.5:3389", "10.0.0.8:3389" })
+        {
+            Assert.Equal(
+                [.. WorkspaceSearch.Find(snapshot, query, limit: 1_000).Hits.Select(found => found.Key).Order(StringComparer.Ordinal)],
+                snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, links.Where(link => link.Process == process.Id), query))
+                    .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal));
+        }
+    }
+
     private static ProcessNode Process(int index, int processId, string name, string group, params (Mechanism, long)[] made) =>
         new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), processId, name, "test", group, 0.5, 0.5,
             CoverageState.Covered)

@@ -190,6 +190,13 @@ public sealed class HostsCommandTests
         Assert.Equal((0, 1, "3389"), (reached.GetProperty("connected").GetInt32(), reached.GetProperty("accepted").GetInt32(),
             Ports(reached.GetProperty("acceptedPorts"))));
 
+        // A port alone finds the process that accepted connections at that port of its own, and never at the host's.
+        (code, text, _) = await Run("hosts", session.Path, "--address", ":3389");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^ *svchost\.exe · PID 300 +10\.0\.0\.5 +1 TCP connection +- +1 at 3389 +2\r?$", text);
+        (_, text, _) = await Run("hosts", session.Path, "--address", ":50000");
+        Assert.Contains("No process of this session reached :50000", text, Ordinal);
+
         // Where no listed host had a connection accepted, there is no such column.
         (_, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.6");
         Assert.Matches(@"(?m)^  Process +Address +Connections +Ports +Records\r?$", text);
@@ -225,6 +232,7 @@ public sealed class HostsCommandTests
         Assert.Contains("[--investigation <file>] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
         Assert.Contains("process accepted connections from a host, how many and at which of its own ports.", text, Ordinal);
+        Assert.Contains("or which accepted connections at that port of their own", text, Ordinal);
         Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
 
         // With no session, an option it does not take, a folder that is not there or holds no session, it refuses and says

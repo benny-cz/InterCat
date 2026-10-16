@@ -765,6 +765,13 @@ public sealed class OtherHostsWorkspaceTests
         workspace.SelectGraphNode(GraphProjection.HostKey("10.0.0.5"));
         Assert.Contains(": 2 TCP connections, 4 records, at port 443, 1 accepted here at port 3389. ", workspace.SelectionSubtitle,
             StringComparison.Ordinal);
+
+        // Searching the port it accepted at marks it, as searching a port it reached does.
+        string service = workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key;
+        workspace.SearchText = ":3389";
+        Assert.Contains(service, workspace.SearchedGraphNodeKeys);
+        workspace.SearchText = ":50000";
+        Assert.DoesNotContain(service, workspace.SearchedGraphNodeKeys);
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)
