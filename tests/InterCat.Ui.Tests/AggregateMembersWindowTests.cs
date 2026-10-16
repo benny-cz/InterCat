@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -92,6 +93,49 @@ public sealed class AggregateMembersWindowTests
             Assert.Equal(3, workspace.Crumbs.Count);
             Assert.EndsWith("program0.exe · PID 100", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
             Assert.False(panel.IsVisible);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: a double click or Enter on an aggregate in the graph gives the keyboard to its processes in the inspector")]
+    public async Task OpeningAnAggregateGivesItsListTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            ListBox members = window.GetControl<ListBox>("MemberList");
+            string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+
+            // A double click on Other hosts only chooses it and gives the keyboard to its list's first process.
+            Point at = graph.TranslatePoint(graph.PointOf(hostOnly)!.Value, window)!.Value;
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            window.MouseDown(at, MouseButton.Left);
+            window.MouseUp(at, MouseButton.Left);
+            Dispatch();
+            Assert.Equal(hostOnly, workspace.SelectedCluster?.Key);
+            Assert.Same(members.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
+
+            // Back on the graph, on the same node, Enter does the same.
+            Assert.True(graph.Focus());
+            Dispatch();
+            Assert.False(members.IsKeyboardFocusWithin);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Same(members.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
         }
         finally
         {

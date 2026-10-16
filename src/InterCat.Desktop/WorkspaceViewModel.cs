@@ -2410,8 +2410,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Opens a drawn node as Enter on its row would (§6.3, §6.7): a group at the machine rung, and a process at any rung,
     /// through the ladder path a search hit takes - its group, then itself - so the breadcrumb states every rung and Esc
-    /// climbs each. A peer drawn beside the rung's own process opens its own rung this way. A node standing for many
-    /// processes, and the rung's own process, open nothing.
+    /// climbs each. A peer drawn beside the rung's own process opens its own rung this way. An aggregate of processes is
+    /// chosen and its processes' list given the keyboard. A focus's context node, and the rung's own process, open nothing.
     /// </summary>
     public bool OpenGraphNode(string key)
     {
@@ -2423,6 +2423,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             HostsOpened = !HostsOpened;
             return true;
         }
+
+        if (OpenAggregate(key)) return true;
 
         return graphDisplay.Node(key) is { } node && OpensProcess(node)
             && DescendAlong([node.GroupKey!, node.Process!.Value.ToString()], selectedInterval);
@@ -4057,6 +4059,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             else if (OpensProcess(node))
             {
                 nodeLines.Add("Double-click or Enter opens this process");
+            }
+            else if (ListsProcesses(node))
+            {
+                nodeLines.Add("Double-click or Enter takes the keyboard to its processes in the inspector");
             }
 
             return new(title, nodeLines);

@@ -2543,6 +2543,15 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         return row is not null && viewModel.FindHost(row);
     }
 
+    /// <summary>
+    /// Gives the chosen aggregate's process list the keyboard, on its chosen row or its first, once its rows are laid out:
+    /// Enter or a double click on the aggregate in the graph asks for it (§6.3, R15).
+    /// </summary>
+    private void FocusMemberList() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!closed) _ = FocusRow(MemberList);
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     private void OpenListedMember(object? sender, TappedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)
@@ -4702,6 +4711,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (eventArgs.PropertyName is nameof(WorkspaceViewModel.RungRows) or nameof(WorkspaceViewModel.Crumbs))
         {
             KeepRailKeyboard();
+        }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.MembersAsked))
+        {
+            FocusMemberList();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ReadsWallClock))

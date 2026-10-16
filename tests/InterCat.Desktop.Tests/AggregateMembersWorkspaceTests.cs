@@ -106,6 +106,45 @@ public sealed class AggregateMembersWorkspaceTests
             StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.3: Enter or a double click on an aggregate chooses it and asks the keyboard to its processes' list, keeping a process chosen there; a focus's context node opens nothing")]
+    public void OpeningAnAggregateAsksForItsList() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        var asked = new List<int>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.MembersAsked)) asked.Add(workspace.MembersAsked);
+        };
+
+        // Its card says what the gesture does.
+        string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+        Assert.Equal("Double-click or Enter takes the keyboard to its processes in the inspector",
+            workspace.DescribeGraphHover(hostOnly)!.Lines[^1]);
+
+        // Opened unchosen, Other hosts only is chosen and its list asked for the keyboard.
+        Assert.True(workspace.OpenGraphNode(hostOnly));
+        Assert.Equal((hostOnly, true), (workspace.SelectedCluster?.Key, workspace.ListsMembers));
+        Assert.Equal([1], asked);
+
+        // Opened again, chosen already, a process chosen in its list stays chosen.
+        workspace.ChosenMemberRow = workspace.MemberRows[1];
+        Assert.True(workspace.OpenGraphNode(hostOnly));
+        Assert.Equal([1, 2], asked);
+        Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+
+        // No relationships the same; a process's rung's context node opens nothing.
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Quiet).Key));
+        Assert.Equal(GraphNodeKind.Quiet, workspace.SelectedCluster?.Kind);
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.NodeOf(Process(workspace, 109).Id)!.Key));
+        await workspace.LayoutReady;
+        GraphDisplayNode context = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Context);
+        Assert.False(workspace.OpenGraphNode(context.Key));
+        Assert.Equal(3, asked.Count);
+    });
+
     [Fact(DisplayName = "§6.3: under a brush an aggregate's processes are listed by their records in it, their connections to other hosts the whole session's, as said")]
     public void UnderABrushTheListCountsTheInterval() => SingleThreadedContext.Run(async () =>
     {

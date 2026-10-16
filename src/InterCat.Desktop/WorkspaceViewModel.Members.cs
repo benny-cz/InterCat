@@ -66,10 +66,39 @@ public sealed partial class WorkspaceViewModel
         : null;
 
     /// <summary>The chosen aggregate whose processes the inspector lists; null for any other selection.</summary>
-    private GraphDisplayNode? ListingAggregate => SelectedCluster is
+    private GraphDisplayNode? ListingAggregate => SelectedCluster is { } aggregate && ListsProcesses(aggregate) ? aggregate : null;
+
+    /// <summary>Whether a drawn node is an aggregate whose processes the inspector lists once it is chosen.</summary>
+    private static bool ListsProcesses(GraphDisplayNode node) =>
+        node.Kind is GraphNodeKind.Quiet or GraphNodeKind.OtherHostsOnly or GraphNodeKind.Remainder or GraphNodeKind.OtherMembers;
+
+    /// <summary>
+    /// How many times Enter or a double click on such an aggregate in the graph has asked for the keyboard to go to its
+    /// processes' list (§6.3, R15); the window gives it there each time this changes.
+    /// </summary>
+    public int MembersAsked { get; private set; }
+
+    /// <summary>
+    /// An aggregate of processes opened, as Enter or a double click opens a node: it opens nothing of its own, so it is
+    /// chosen, if it is not, and the keyboard is asked to its processes' list, where Enter opens one. False for any other
+    /// node.
+    /// </summary>
+    private bool OpenAggregate(string key)
     {
-        Kind: GraphNodeKind.Quiet or GraphNodeKind.OtherHostsOnly or GraphNodeKind.Remainder or GraphNodeKind.OtherMembers,
-    } aggregate ? aggregate : null;
+        if (graphDisplay.Node(key) is not { } node || !ListsProcesses(node))
+        {
+            return false;
+        }
+
+        if (!string.Equals(SelectedCluster?.Key, key, StringComparison.Ordinal))
+        {
+            SelectGraphNode(key);
+        }
+
+        MembersAsked++;
+        OnPropertyChanged(nameof(MembersAsked));
+        return true;
+    }
 
     /// <summary>
     /// The processes the inspector lists while an aggregate is chosen (§6.3), the busiest over the scope shown first and at

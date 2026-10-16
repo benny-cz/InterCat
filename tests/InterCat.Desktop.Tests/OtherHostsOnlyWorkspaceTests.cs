@@ -38,7 +38,7 @@ public sealed class OtherHostsOnlyWorkspaceTests
             card.Lines[0]);
         Assert.Equal("Other hosts: 4 TCP connections from 4 processes to 4 hosts", card.Lines[1]);
         GraphDisplayEdge toHosts = Assert.Single(drawn.Edges, edge => edge.SourceKey == folded.Key);
-        Assert.Equal("Click chooses its processes, which the inspector lists; Enter on one there opens it",
+        Assert.Equal("Click chooses its processes, which the inspector lists; double-click takes the keyboard there",
             workspace.DescribeGraphHover(toHosts.Key)!.Lines[^1]);
 
         // Chosen, by a click on it or its edge, it says what it holds, and the card counts its processes' own records.
