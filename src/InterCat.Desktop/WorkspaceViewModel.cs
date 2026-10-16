@@ -4106,7 +4106,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             lines.Add(drawn.Mechanism == Mechanism.Rpc
                 ? "Direction: display order only; each end's RPC rows say which calls and which served"
-                : DirectionLine(drawn, made, drawnDisplay, source, target));
+                : DirectionLine(drawn, source, target));
         }
 
         lines.Add("Coverage: " + CoverageStateText.Value(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
@@ -4129,22 +4129,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Who made a drawn transport edge's connections, as the capture saw their ends open: "Direction: client.exe · PID 100
     /// connected to server.exe · PID 200", counted where some went the other way or the capture saw some open neither way;
-    /// display order only where it saw none open, for a UDP flow, which nothing opens, and within one drawn node.
+    /// display order only where it saw none open, as for a UDP flow, which nothing opens. The graph draws the same as the
+    /// edge's arrowheads.
     /// </summary>
-    internal static string DirectionLine(GraphDisplayEdge drawn, IReadOnlyList<CommunicationEdge> made, GraphDisplay display,
-        string source, string target)
+    internal static string DirectionLine(GraphDisplayEdge drawn, string source, string target)
     {
-        int fromSource = 0;
-        int fromTarget = 0;
-        foreach (CommunicationEdge edge in made)
-        {
-            bool forward = display.NodeOf(edge.SourceId)?.Key == drawn.SourceKey;
-            fromSource += forward ? edge.SourceConnected : edge.TargetConnected;
-            fromTarget += forward ? edge.TargetConnected : edge.SourceConnected;
-        }
-
-        int connections = made.Sum(edge => edge.Evidence.Count);
-        if (fromSource + fromTarget == 0 || drawn.SourceKey == drawn.TargetKey)
+        int fromSource = drawn.MadeFromSource;
+        int fromTarget = drawn.MadeFromTarget;
+        int connections = drawn.Connections;
+        if (fromSource + fromTarget == 0)
         {
             return "Direction: display order only, not who initiated or sent";
         }

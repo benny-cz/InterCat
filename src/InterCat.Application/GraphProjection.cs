@@ -199,6 +199,22 @@ public sealed record GraphDisplayEdge(
     public bool ToHosts { get; init; }
 
     /// <summary>
+    /// How many of the connections drawn here the source's processes made to the target's, as the capture saw them open
+    /// (`contracts/relations-v1.md` §5): summed over the relationships drawn here, each oriented as the edge is.
+    /// </summary>
+    public int MadeFromSource { get; init; }
+
+    /// <summary>How many of the connections drawn here the target's processes made to the source's.</summary>
+    public int MadeFromTarget { get; init; }
+
+    /// <summary>
+    /// How many connections the relationships drawn here hold, TCP connections and UDP flows alike, of which
+    /// <see cref="MadeFromSource"/> and <see cref="MadeFromTarget"/> say who made those the capture saw open; none for an
+    /// RPC edge, whose calls are no connections.
+    /// </summary>
+    public int Connections { get; init; }
+
+    /// <summary>
     /// Where an edge runs beside the others between the same two nodes, in lanes from the line between them: 0 alone,
     /// -0.5 and 0.5 for two - a node's TCP and UDP to the other hosts, or two processes' TCP and UDP - and -1, 0 and 1 for
     /// three, so none is drawn over another. A lane is taken across the line from the ordinally first of the two nodes,
@@ -490,6 +506,9 @@ public static class GraphProjection
         public long Observations { get; set; }
         public RelationStrength Strength { get; set; } = RelationStrength.Direct;
         public List<string> Relationships { get; } = [];
+        public int MadeFromSource { get; set; }
+        public int MadeFromTarget { get; set; }
+        public int Connections { get; set; }
     }
 
     private sealed class NodeTotals
@@ -1203,6 +1222,11 @@ public static class GraphProjection
                 aggregate.Strength = edge.Strength;
             }
             aggregate.Relationships.Add(edge.Key);
+
+            // Who made its connections, each relationship oriented as the drawn edge is, since its source is the edge's.
+            aggregate.MadeFromSource += edge.SourceConnected;
+            aggregate.MadeFromTarget += edge.TargetConnected;
+            aggregate.Connections += edge.Mechanism == Mechanism.Rpc ? 0 : edge.Evidence.Count;
         }
 
         GraphDisplayNode[] nodes = [.. members
@@ -1251,7 +1275,12 @@ public static class GraphProjection
                 aggregate.Mechanism,
                 aggregate.Observations,
                 aggregate.Strength,
-                Array.AsReadOnly(relationships)));
+                Array.AsReadOnly(relationships))
+            {
+                MadeFromSource = aggregate.MadeFromSource,
+                MadeFromTarget = aggregate.MadeFromTarget,
+                Connections = aggregate.Connections,
+            });
         }
 
         // The relationships between the same two drawn nodes - over two transports, an RPC link beside them, or two whose

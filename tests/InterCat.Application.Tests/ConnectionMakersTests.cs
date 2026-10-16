@@ -59,7 +59,58 @@ public sealed class ConnectionMakersTests
                 "TCP · paired endpoints; direction varies by observation · made from 127.0.0.1:50002",
             ],
             LadderProjection.Project(snapshot, ladder.Current).Rows.Select(row => row.Detail).Order(StringComparer.Ordinal));
+
+        // The graph's edge between them carries the same, oriented as it is drawn.
+        GraphDisplay display = GraphProjection.Project(snapshot);
+        GraphDisplayEdge drawn = Assert.Single(display.Edges, candidate => !candidate.ToHosts);
+        bool fromClient = drawn.SourceKey == display.NodeOf(client)!.Key;
+        Assert.Equal((2, 1, 4), fromClient
+            ? (drawn.MadeFromSource, drawn.MadeFromTarget, drawn.Connections)
+            : (drawn.MadeFromTarget, drawn.MadeFromSource, drawn.Connections));
     }
+
+    [Fact(DisplayName = "§6.3: a drawn edge sums who made its connections over the relationships it draws, each oriented as it is, and an RPC edge holds no connection")]
+    public void ADrawnEdgeSumsWhoMadeItsConnections()
+    {
+        ProcessGroup group = new("tools", "tool.exe", LaneGrouping.Executable);
+        ProcessNode client = Node(1, 100, group.Key);
+        ProcessNode server = Node(2, 200, group.Key);
+        ProcessNode helper = Node(3, 300, group.Key);
+        CommunicationEdge Edge(string key, ProcessNode source, ProcessNode target, Mechanism mechanism, int fromSource,
+            int fromTarget, int connections) => new(key, source.Id, target.Id, mechanism, 10, null, RelationStrength.Correlated)
+        {
+            Rule = RelationRule.TransportEndpoint,
+            Evidence = [.. Enumerable.Range(0, connections).Select(index => $"{key}:{index}")],
+            SourceConnected = fromSource,
+            TargetConnected = fromTarget,
+        };
+
+        WorkspaceSnapshot snapshot = new("Makers", new TimeRange(0, 10), [group], [client, server, helper],
+            [
+                Edge("tcp:a", client, server, Mechanism.Tcp, 2, 1, 4),
+                Edge("udp:a", client, server, Mechanism.Udp, 0, 0, 1),
+                Edge("tcp:b", server, helper, Mechanism.Tcp, 0, 3, 3),
+                Edge("tcp:c", client, helper, Mechanism.Tcp, 1, 0, 2),
+                Edge("rpc:a", client, server, Mechanism.Rpc, 0, 0, 3),
+            ], [], [], [], []);
+        GraphDisplay display = GraphProjection.Project(snapshot);
+        Assert.Equal(
+            [("rpc:a", 0, 0, 0), ("tcp:a", 2, 1, 4), ("tcp:b", 0, 3, 3), ("tcp:c", 1, 0, 2), ("udp:a", 0, 0, 1)],
+            display.Edges.Select(edge => (edge.Key, edge.MadeFromSource, edge.MadeFromTarget, edge.Connections)).Order());
+
+        // Focused on the client, the server and the helper are the rest of the machine, one node: its TCP edge to them sums
+        // the two relationships it draws.
+        GraphDisplay focused = GraphProjection.Project(snapshot, neighborhood: new HashSet<ProcessInstanceId> { client.Id });
+        GraphDisplayEdge rest = Assert.Single(focused.Edges, edge => edge.Mechanism == Mechanism.Tcp);
+        Assert.Equal((2, 3, 1, 6), (rest.Relationships.Count, rest.MadeFromSource, rest.MadeFromTarget, rest.Connections));
+    }
+
+    private static ProcessNode Node(int index, int processId, string group) =>
+        new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), processId, $"p{index}.exe", "test", group, 0.5,
+            0.5, CoverageState.Covered)
+        {
+            Activity = [new MechanismCount(Mechanism.Tcp, 10)],
+        };
 
     /// <summary>
     /// client.exe (100) and server.exe (200) over loopback: the client connects to the server's 8080 twice - the first

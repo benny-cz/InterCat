@@ -43,8 +43,9 @@ public sealed class PaintAllocationTests
         await Settle(window, workspace);
         var report = new List<string>();
 
-        // The machine rung, with its mechanism lanes, on one scale and each on its own (§6.2); then with a bar and its card
-        // under the pointer.
+        // The machine rung, with its mechanism lanes, on one scale and each on its own (§6.2), and its edge's arrowhead at
+        // the end the client connected to; then with a bar and its card under the pointer.
+        Assert.Contains(workspace.GraphDisplay.Edges, edge => edge.MadeFromSource + edge.MadeFromTarget > 0);
         Measure(window, "machine", report);
         await MeasureEachLaneOnItsOwn(window, workspace, "machine", report);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
@@ -383,9 +384,14 @@ public sealed class PaintAllocationTests
         ];
     }
 
-    /// <summary>A client sending and a server receiving, <paramref name="count"/> times, then sending once with no size.</summary>
+    /// <summary>
+    /// A client connecting to a server, sending and the server receiving <paramref name="count"/> times, then sending once
+    /// with no size.
+    /// </summary>
     private static ObservationRowV1[] Exchange(int count) =>
     [
+        Transfer(9, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 99)
+            .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 900 },
         .. Enumerable.Range(0, count).SelectMany(index => new[]
         {
             Transfer(10 + (2 * index), ObservationKind.Send, AccountingSide.SendSide, 64, 100, (ulong)(100 + (2 * index)))

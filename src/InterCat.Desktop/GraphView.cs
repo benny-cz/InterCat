@@ -278,18 +278,144 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>
     /// An edge as its magnitude says: a stroke of its thickness in the evidence pattern, or, when what it carried was not
-    /// measured, §6.6's unmeasured band in the same hue and pattern.
+    /// measured, §6.6's unmeasured band in the same hue and pattern; and an arrowhead at the end its connections ran to
+    /// where the capture saw them open - at both ends where they ran both ways, at neither where it saw none open
+    /// (`contracts/relations-v1.md` §5). <paramref name="sourceReach"/> and <paramref name="targetReach"/> are how far the
+    /// discs at its ends reach along it, which an arrowhead stands just off.
     /// </summary>
-    private static void DrawEdgeMark(DrawingContext context, GraphDisplayEdge edge, Pen pen, Point source, Point target,
-        (double On, double Off)? pattern)
+    internal static void DrawEdgeMark(DrawingContext context, GraphDisplayEdge edge, Pen pen, Point source, Point target,
+        (double On, double Off)? pattern, double sourceReach, double targetReach)
     {
+        double width = edge.Unmeasured ? GraphEncoding.UnmeasuredBand : pen.Thickness;
+        (Point Tip, Point Left, Point Right)? toward = edge.MadeFromSource > 0
+            ? Arrowhead(source, target, sourceReach + ArrowGap, targetReach + ArrowGap, width)
+            : null;
+        (Point Tip, Point Left, Point Right)? back = edge.MadeFromTarget > 0
+            ? Arrowhead(target, source, targetReach + ArrowGap, sourceReach + ArrowGap, width)
+            : null;
+
+        // The stroke stops under an arrowhead's base, so the head reads as one against its disc, not as barbs on a line.
+        Point start = back is { } tail ? StrokeEnd(tail) : source;
+        Point end = toward is { } head ? StrokeEnd(head) : target;
         if (edge.Unmeasured)
         {
-            DrawUnmeasuredBand(context, EdgePen(edge.Mechanism, 1), source, target, pattern, edge.Key);
+            DrawUnmeasuredBand(context, EdgePen(edge.Mechanism, 1), start, end, pattern, edge.Key);
         }
         else
         {
-            DrawStroke(context, pen, source, target, pattern, edge.Key);
+            DrawStroke(context, pen, start, end, pattern, edge.Key);
+        }
+
+        if (toward is { } towardHead)
+        {
+            DrawArrowhead(context, MechanismBrush(edge.Mechanism), towardHead);
+        }
+
+        if (back is { } backHead)
+        {
+            DrawArrowhead(context, MechanismBrush(edge.Mechanism), backHead);
+        }
+    }
+
+    /// <summary>How far an arrowhead's tip stands off the disc it points at: clear of the disc's rim.</summary>
+    private const double ArrowGap = 1;
+
+    /// <summary>How far an arrowhead's base shows beyond its stroke at either side, so a thick stroke never hides it.</summary>
+    private const double ArrowMargin = 3;
+
+    /// <summary>An arrowhead's length for its base's width.</summary>
+    private const double ArrowAspect = 1.2;
+
+    /// <summary>The least stroke an edge shows between its arrowheads, were it to carry one at each end.</summary>
+    private const double ArrowShaft = 6;
+
+    /// <summary>
+    /// An arrowhead along the line from <paramref name="from"/> to <paramref name="to"/>, pointing at <paramref name="to"/>:
+    /// its tip <paramref name="toStandOff"/> short of it, and its base's corners, as wide as a stroke of
+    /// <paramref name="width"/> and a margin either side. Null where the line, less both stand-offs, is too short to hold
+    /// one at each end with a stroke between them, so the heads of an edge's two ends never meet.
+    /// </summary>
+    internal static (Point Tip, Point Left, Point Right)? Arrowhead(Point from, Point to, double fromStandOff, double toStandOff,
+        double width)
+    {
+        double dx = to.X - from.X;
+        double dy = to.Y - from.Y;
+        double length = Math.Sqrt((dx * dx) + (dy * dy));
+        double across = width + (2 * ArrowMargin);
+        double along = across * ArrowAspect;
+        if (length - fromStandOff - toStandOff < (2 * along) + ArrowShaft)
+        {
+            return null;
+        }
+
+        double ux = dx / length;
+        double uy = dy / length;
+        Point tip = new(to.X - (ux * toStandOff), to.Y - (uy * toStandOff));
+        Point root = new(tip.X - (ux * along), tip.Y - (uy * along));
+        double half = across / 2;
+        return (tip, new Point(root.X - (uy * half), root.Y + (ux * half)), new Point(root.X + (uy * half), root.Y - (ux * half)));
+    }
+
+    /// <summary>
+    /// Where a stroke under <paramref name="head"/> ends: a little past the middle of its base, so no seam shows between
+    /// them, and well short of its tip, where the head is narrower than the stroke.
+    /// </summary>
+    private static Point StrokeEnd((Point Tip, Point Left, Point Right) head)
+    {
+        Point root = new((head.Left.X + head.Right.X) / 2, (head.Left.Y + head.Right.Y) / 2);
+        return root + ((head.Tip - root) * 0.15);
+    }
+
+    /// <summary>
+    /// A filled arrowhead: one cached unit triangle placed by the transform that takes its tip and base corners to
+    /// <paramref name="head"/>'s, so a frame allocates nothing for it (R11).
+    /// </summary>
+    private static void DrawArrowhead(DrawingContext context, IBrush fill, (Point Tip, Point Left, Point Right) head)
+    {
+        Point root = new((head.Left.X + head.Right.X) / 2, (head.Left.Y + head.Right.Y) / 2);
+        Vector along = head.Tip - root;
+        Vector across = head.Left - head.Right;
+        using (context.PushTransform(new Matrix(along.X, along.Y, across.X, across.Y, head.Tip.X, head.Tip.Y)))
+        {
+            context.DrawGeometry(fill, null, UnitArrowhead);
+        }
+    }
+
+    /// <summary>The unit triangle every arrowhead is placed from: its tip at the origin, its base a unit back, a unit wide.</summary>
+    private static StreamGeometry UnitArrowhead => unitArrowhead ??= ArrowheadGeometry();
+
+    private static StreamGeometry? unitArrowhead;
+
+    private static StreamGeometry ArrowheadGeometry()
+    {
+        var geometry = new StreamGeometry();
+        using StreamGeometryContext figures = geometry.Open();
+        figures.BeginFigure(new Point(0, 0), isFilled: true);
+        figures.LineTo(new Point(-1, 0.5));
+        figures.LineTo(new Point(-1, -0.5));
+        figures.EndFigure(isClosed: true);
+        return geometry;
+    }
+
+    /// <summary>
+    /// How far a disc of <paramref name="radius"/> at <paramref name="center"/> reaches along an edge whose lane ends at
+    /// <paramref name="end"/>, beside the centre when the edge is drawn in a lane of its own.
+    /// </summary>
+    internal static double DiscReach(double radius, Point center, Point end)
+    {
+        Vector aside = end - center;
+        return Math.Sqrt(Math.Max((radius * radius) - aside.SquaredLength, 0));
+    }
+
+    /// <summary>The direction key's sample: an edge in body ink with an arrowhead at its end, as the graph draws one.</summary>
+    internal static void DrawDirectionSample(DrawingContext context, Rect bounds)
+    {
+        Point start = new(bounds.Left + 1, bounds.Center.Y);
+        Point end = new(bounds.Right - 1, bounds.Center.Y);
+        if (Arrowhead(start, end, 0, 0, Current.SamplePen.Thickness) is { } head)
+        {
+            context.DrawLine(Current.SamplePen, start, StrokeEnd(head));
+            DrawArrowhead(context, Current.TextBrush, head);
         }
     }
 
@@ -578,16 +704,22 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             bool leadsOut = display.Node(edge.SourceKey)?.Kind == GraphNodeKind.Context
                 || display.Node(edge.TargetKey)?.Kind == GraphNodeKind.Context;
             double opacity = (viewModel.IsRankedWithinInterval && edge.ObservationCount == 0 ? 0.3 : 1) * (leadsOut ? 0.45 : 1);
+            double sourceReach = display.Node(edge.SourceKey) is { } sourceNode
+                ? DiscReach(RadiusOf(sourceNode, nodeScale), from, source)
+                : 0;
+            double targetReach = display.Node(edge.TargetKey) is { } targetNode
+                ? DiscReach(RadiusOf(targetNode, nodeScale), to, target)
+                : 0;
             if (opacity < 1)
             {
                 using (context.PushOpacity(opacity))
                 {
-                    DrawEdgeMark(context, edge, pen, source, target, pattern);
+                    DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach);
                 }
             }
             else
             {
-                DrawEdgeMark(context, edge, pen, source, target, pattern);
+                DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach);
             }
 
             if (RingsMiddle(edge.Strength))

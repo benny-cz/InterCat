@@ -1,3 +1,4 @@
+using Avalonia;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
@@ -63,6 +64,40 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.RungRows.Select(row => (row.Label, row.SpokenLabel!)).Order());
     });
 
+    [Fact(DisplayName = "§6.3: an arrowhead points at the disc its connections ran to, standing just off it, wider than its stroke by a margin either side, and is left out where the edge cannot hold one at each end")]
+    public void AnArrowheadPointsAtTheDiscItsConnectionsRanTo()
+    {
+        // Along a level edge whose discs reach 10 px along it, under a 2 px stroke: its tip a pixel off the disc at 100, its
+        // base 9.6 px back and 4 px aside - the stroke's half and 3 px more.
+        (Point Tip, Point Left, Point Right) toward = GraphView.Arrowhead(new Point(0, 0), new Point(100, 0), 11, 11, 2)!.Value;
+        Assert.Equal((89d, 0d), (toward.Tip.X, toward.Tip.Y));
+        Assert.Equal((79.4, 4d, 79.4, -4d), (Math.Round(toward.Left.X, 6), Math.Round(toward.Left.Y, 6),
+            Math.Round(toward.Right.X, 6), Math.Round(toward.Right.Y, 6)));
+
+        // Under a 6 px stroke it is wider and longer, still 3 px beyond the stroke either side.
+        (Point Tip, Point Left, Point Right) thick = GraphView.Arrowhead(new Point(0, 0), new Point(100, 0), 11, 11, 6)!.Value;
+        Assert.Equal((89d, 74.6, 6d), (thick.Tip.X, Math.Round(thick.Left.X, 6), Math.Round(thick.Left.Y, 6)));
+
+        // The other way, and down a vertical edge, it points as the edge runs, standing off its own end's disc.
+        (Point Tip, Point Left, Point Right) back = GraphView.Arrowhead(new Point(100, 0), new Point(0, 0), 11, 5, 2)!.Value;
+        Assert.Equal((5d, 0d, 14.6, -4d), (back.Tip.X, back.Tip.Y, Math.Round(back.Left.X, 6), Math.Round(back.Left.Y, 6)));
+        (Point Tip, Point Left, Point Right) down = GraphView.Arrowhead(new Point(0, 0), new Point(0, 100), 11, 11, 2)!.Value;
+        Assert.Equal((0d, 89d, -4d, 79.4), (Math.Round(down.Tip.X, 6), Math.Round(down.Tip.Y, 6), Math.Round(down.Left.X, 6),
+            Math.Round(down.Left.Y, 6)));
+
+        // An edge that cannot hold a head at each end, with 6 px of stroke between them, past both stand-offs draws none.
+        Assert.Null(GraphView.Arrowhead(new Point(0, 0), new Point(47, 0), 11, 11, 2));
+        Assert.NotNull(GraphView.Arrowhead(new Point(0, 0), new Point(48, 0), 11, 11, 2));
+        Assert.Null(GraphView.Arrowhead(new Point(0, 0), new Point(48, 0), 11, 12, 2));
+
+        // A disc reaches its radius along an edge through its centre, less along one drawn in a lane beside it, and nothing
+        // along one that passes outside it.
+        Assert.Equal(10, GraphView.DiscReach(10, new Point(5, 5), new Point(5, 5)));
+        Assert.Equal(6, GraphView.DiscReach(10, new Point(0, 0), new Point(0, 8)), 9);
+        Assert.Equal(8, GraphView.DiscReach(10, new Point(0, 0), new Point(-6, 0)), 9);
+        Assert.Equal(0, GraphView.DiscReach(10, new Point(0, 0), new Point(0, 12)));
+    }
+
     /// <summary>
     /// The direction line of the card of the one relationship drawn between client.exe and server.exe, as the edge is drawn
     /// from the client's node, or from the server's when <paramref name="clientFirst"/> is false: the card's own where the
@@ -84,11 +119,15 @@ public sealed class ConnectionMakersWorkspaceTests
             return card;
         }
 
-        HashSet<string> relationships = [.. edge.Relationships];
         string source = workspace.GraphDisplay.Node(edge.SourceKey)!.Title;
         string target = workspace.GraphDisplay.Node(edge.TargetKey)!.Title;
-        return WorkspaceViewModel.DirectionLine(edge with { SourceKey = edge.TargetKey, TargetKey = edge.SourceKey },
-            [.. overview.Edges.Where(made => relationships.Contains(made.Key))], workspace.GraphDisplay, target, source);
+        return WorkspaceViewModel.DirectionLine(edge with
+        {
+            SourceKey = edge.TargetKey,
+            TargetKey = edge.SourceKey,
+            MadeFromSource = edge.MadeFromTarget,
+            MadeFromTarget = edge.MadeFromSource,
+        }, target, source);
     }
 
     /// <summary>

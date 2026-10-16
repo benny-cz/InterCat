@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 576 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 577 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,26 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 577 — who connected to whom, drawn (§6.3, §6.6):**
+  - The graph draws a filled arrowhead at the process a relationship's connections were made to, at both ends where
+    they went both ways, and none where the capture saw none open; the card's direction line reads the same counts
+    from the drawn edge.
+  - A head is 3 px wider than its stroke either side and the stroke stops under it, so a thick edge never hides it;
+    the inspector's key shows it, and a frame still allocates nothing.
+  - Debug and Release each ran 2,459 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 32 mutations was caught: a drawn edge counting only its last relationship's connections made from its
+    source, its source's as its target's, or an RPC call as a connection, or leaving out who made its connections or
+    how many it holds; the card saying display order only where only the target connected, "in all" of a single
+    connection, or display order only always; the graph drawing no head at either end, a head where none was seen
+    opening, or one pointing back at the process that connected; the stroke running on past a head at either end or
+    under nearly all of it, an unmeasured band running on under its head, or its head as narrow as the pen it was
+    given; a head narrower or squatter than its margins, kept where the edge less the disc at its near end is too
+    short or with no stroke between two heads, its tip off the wrong end's disc, or its sides swapped; a disc's
+    reach along a lane taken from its offset rather than the offset's square, or not a number along an edge that
+    passes outside it; the triangle built again on every frame, narrower on one side, or placed narrower; the key's
+    sample drawing no head; and the graph setting a head inside the disc it points at. One of them, the triangle
+    built on every frame, did not build as first written and was caught as rewritten to build.
 
 - **Revision 576 — who connected to whom (§6.3, §6.8, §7.4):**
   - A relationship's card said its direction was display order only; the capture's connects and accepts now say

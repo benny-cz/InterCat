@@ -30,6 +30,17 @@ public sealed class EvidenceKeySample : ThemedSample
 }
 
 /// <summary>
+/// The direction key's sample, drawn by the graph's own routine in body ink: an edge with an arrowhead at the end its
+/// connections ran to, as the graph draws one where the capture saw them open.
+/// </summary>
+public sealed class DirectionKeySample : ThemedSample
+{
+    protected override Size MeasureOverride(Size availableSize) => new(36, 14);
+
+    public override void Render(DrawingContext context) => GraphView.DrawDirectionSample(context, new Rect(Bounds.Size));
+}
+
+/// <summary>
 /// The legend's key of §6.6's unmeasured value, drawn by the graph's own routine: an open band, cross-hatched, never
 /// filled. It is shown only while the graph draws such a mark.
 /// </summary>
