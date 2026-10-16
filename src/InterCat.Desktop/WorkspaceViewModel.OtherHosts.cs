@@ -160,7 +160,9 @@ public sealed partial class WorkspaceViewModel
                 : string.Create(CultureInfo.CurrentCulture, $"Busiest {HostsOnCard} of {hosts.Count:N0} hosts:"));
             lines.AddRange(hosts.Take(HostsOnCard).Select(host => "  " + host.Address
                 + (AddressScope.Of(host.Address) is { } scope ? " (" + scope + ")" : string.Empty) + " · "
-                + HostLinkText.Reached(host, hub.ConnectedProcesses > 1) + " · " + CountText.Of(host.Records, "record")));
+                + HostLinkText.Reached(host, hub.ConnectedProcesses > 1)
+                + (HostLinkText.Accepted(host) is { Length: > 0 } accepted ? " · " + accepted : string.Empty)
+                + " · " + CountText.Of(host.Records, "record")));
         }
 
         lines.Add(HostScope);
@@ -303,6 +305,7 @@ public sealed partial class WorkspaceViewModel
                 (AddressScope.Of(entry.Host.Address) is { } scope ? scope + " · " : string.Empty)
                     + HostLinkText.Reached(entry.Host, several)
                     + (entry.Host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(entry.Host.Ports))
+                    + (HostLinkText.Accepted(entry.Host) is { Length: > 0 } accepted ? " · " + accepted : string.Empty)
                     + " · " + CountText.Of(entry.Host.Records, "record")
                     + (entry.Traffic is { } traffic ? " · " + traffic.Transfers(CultureInfo.CurrentCulture) : string.Empty)
                     + (CandidatesAt(entry.Host.Address) is { } candidates
@@ -413,6 +416,12 @@ public sealed partial class WorkspaceViewModel
             lines.Add(char.ToUpperInvariant(ports[0]) + ports[1..]);
         }
 
+        // Those the processes accepted from it, at their own ports, where the address's port was the other end's own.
+        if (OtherHost.Of(links) is [{ } from] && HostLinkText.Accepted(from) is { Length: > 0 } accepted)
+        {
+            lines.Add(char.ToUpperInvariant(accepted[0]) + accepted[1..]);
+        }
+
         if (AddressScope.Meaning(host.Label) is { } meaning)
         {
             lines.Add(meaning);
@@ -451,7 +460,8 @@ public sealed partial class WorkspaceViewModel
             + " ran with no process of this capture at their other end"
             + (reached is null ? string.Empty
                 : ": " + HostLinkText.Reached(reached, host.ConnectedProcesses > 1) + ", " + CountText.Of(reached.Records, "record")
-                    + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports)))
+                    + (reached.Ports.Count == 0 ? string.Empty : ", at " + HostLinkText.Ports(reached.Ports))
+                    + (HostLinkText.Accepted(reached) is { Length: > 0 } accepted ? ", " + accepted : string.Empty))
             + (AddressScope.Meaning(host.Label) is { } meaning ? ". " + meaning : string.Empty)
             + ". Reached by " + ReachedBy(links) + "."
             + (CandidatesAt(host.Label) is { } candidates

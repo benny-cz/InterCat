@@ -731,12 +731,69 @@ public sealed class OtherHostsWorkspaceTests
         Assert.StartsWith("Its records could not be read: ", workspace.EvidenceSummary, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.3: a host whose connections a process accepted from it says so where it is listed, carded and described, at the process's own ports")]
+    public void AHostsAcceptedConnectionsAreSaid() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, AcceptingRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplayNode hub = workspace.GraphDisplay.OtherHosts!;
+
+        // Listed, each host says how many connections the process accepted from it and at which of its own ports; the port
+        // the host chose for one is not among the ports its connections ran to.
+        workspace.SelectGraphNode(hub.Key);
+        Assert.Equal(
+            [
+                "10.0.0.5 | private · 2 TCP connections · port 443 · 1 accepted here at port 3389 · 4 records",
+                "10.0.0.6 | private · 1 TCP connection · accepted here at port 445 · 2 records",
+            ],
+            workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
+        Assert.Contains("  10.0.0.6 (private) · 1 TCP connection · accepted here at port 445 · 2 records",
+            workspace.DescribeGraphHover(hub.Key)!.Lines);
+
+        // Drawn on its own, its card and its description say the same.
+        Assert.True(workspace.OpenGraphNode(hub.Key));
+        await workspace.LayoutReady;
+        string inbound = GraphProjection.HostKey("10.0.0.6");
+        IReadOnlyList<string> card = workspace.DescribeGraphHover(inbound)!.Lines;
+        Assert.Contains("Accepted here at port 445", card);
+        Assert.DoesNotContain(card, line => line.StartsWith("Port", StringComparison.Ordinal));
+        Assert.Contains("1 accepted here at port 3389", workspace.DescribeGraphHover(GraphProjection.HostKey("10.0.0.5"))!.Lines);
+        workspace.SelectGraphNode(inbound);
+        Assert.Contains(": 1 TCP connection, 2 records, accepted here at port 445. ", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        workspace.SelectGraphNode(GraphProjection.HostKey("10.0.0.5"));
+        Assert.Contains(": 2 TCP connections, 4 records, at port 443, 1 accepted here at port 3389. ", workspace.SelectionSubtitle,
+            StringComparison.Ordinal);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
     }
+
+    /// <summary>
+    /// svchost.exe's connection to 10.0.0.5's port 443, and one it accepted from there at its own port 3389, the host's port
+    /// 50000; and one it accepted from 10.0.0.6 at its own port 445. Each holds its open and a transfer.
+    /// </summary>
+    private static ObservationRowV1[] AcceptingRows() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe", SessionRelativeTicks = 100 },
+        Transfer(200, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 2).Between("192.168.1.10:52000", "10.0.0.5:443")
+            with { SessionRelativeTicks = 200 },
+        Transfer(210, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 3).Between("192.168.1.10:52000", "10.0.0.5:443")
+            with { SessionRelativeTicks = 210 },
+        Transfer(300, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 4).Between("192.168.1.10:3389", "10.0.0.5:50000")
+            with { SessionRelativeTicks = 300 },
+        Transfer(310, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 5).Between("192.168.1.10:3389", "10.0.0.5:50000")
+            with { SessionRelativeTicks = 310 },
+        Transfer(400, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 6).Between("192.168.1.10:445", "10.0.0.6:50001")
+            with { SessionRelativeTicks = 400 },
+        Transfer(410, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 7).Between("192.168.1.10:445", "10.0.0.6:50001")
+            with { SessionRelativeTicks = 410 },
+    ];
 
     /// <summary>
     /// browser.exe's TCP to ten hosts, 52.0.0.1 to 52.0.0.10, ten records to the first down to one to the last; and

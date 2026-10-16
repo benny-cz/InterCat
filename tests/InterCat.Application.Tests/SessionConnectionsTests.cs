@@ -34,7 +34,8 @@ public sealed class SessionConnectionsTests
         Assert.Equal(("192.168.1.5:52000", 5L), (tcp.LocalEndpoint, tcp.Records));
         Assert.Equal((1L, 100L, 0L, 2L, 200L, 1L),
             (tcp.Sends, tcp.SentBytes, tcp.UnmeasuredSends, tcp.Receives, tcp.ReceivedBytes, tcp.UnmeasuredReceives));
-        Assert.Equal("opened and closed in the capture", tcp.Lifetime);
+        Assert.Equal((ConnectionOpening.Connected, "connected and closed in the capture"), (tcp.Opening, tcp.Lifetime));
+        Assert.Equal("from 192.168.1.5:52000", tcp.OwnEnd);
         Assert.Equal("100 B sent, 200 B received (1 receive unmeasured)", tcp.Transfers(CultureInfo.InvariantCulture));
         Assert.Equal("40 B sent, no receive recorded", list.Connections[1].Transfers(CultureInfo.InvariantCulture));
         Assert.Equal(new RankedValue(RankingMetric.BytesReceived, 200, 1, 1), tcp.RankedBy(RankingMetric.BytesReceived));
@@ -73,13 +74,28 @@ public sealed class SessionConnectionsTests
             });
     }
 
-    [Fact(DisplayName = "§7.1: a TCP connection's lifetime says whether the capture saw it open and close")]
-    public void AConnectionsLifetimeSaysWhatTheCaptureSaw() =>
+    [Fact(DisplayName = "§7.1: a TCP connection's lifetime says whether the capture saw it open and close, and whether its process connected or accepted it")]
+    public void AConnectionsLifetimeSaysWhatTheCaptureSaw()
+    {
         Assert.Equal(
             ["opened and closed in the capture", "opened in the capture, still open at its end",
                 "open before the capture, closed in it", "open before the capture and after it"],
             new[] { (true, true), (true, false), (false, true), (false, false) }
                 .Select(seen => ConnectionSummary.LifetimeWords(seen.Item1, seen.Item2)));
+        Assert.Equal(
+            ["connected and closed in the capture", "accepted in the capture, still open at its end"],
+            new[] { (true, ConnectionOpening.Connected), (false, ConnectionOpening.Accepted) }
+                .Select(seen => ConnectionSummary.LifetimeWords(true, seen.Item1, seen.Item2)));
+
+        // A connection its process accepted is named from the other end, which chose that port, and at its own.
+        var accepted = new ConnectionSummary("k", Mechanism.Tcp, "192.168.1.10:3389", "10.0.0.5:50000", 2, 0, 0, 0, 1, 100, 0, true,
+            false) { Opening = ConnectionOpening.Accepted };
+        Assert.Equal(("TCP from 10.0.0.5:50000", "at 192.168.1.10:3389", "accepted in the capture, still open at its end"),
+            (accepted.Name, accepted.OwnEnd, accepted.Lifetime));
+        Assert.Equal(("TCP to 10.0.0.5:50000", "from 192.168.1.10:3389"),
+            ((accepted with { Opening = ConnectionOpening.NotWitnessed }).Name, (accepted with { Opening = ConnectionOpening.Connected }).OwnEnd));
+        Assert.Equal("a datagram flow", (accepted with { Mechanism = Mechanism.Udp }).Lifetime);
+    }
 
     [Fact(DisplayName = "R21: the timeline counts a connection's records apart, the same records its evidence reads")]
     public void TheTimelineCountsAConnectionApart()

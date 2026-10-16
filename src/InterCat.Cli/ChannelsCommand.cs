@@ -147,7 +147,8 @@ internal static class ChannelsCommand
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
             {
-                Contract = "connection-list-v1", SessionPath = path, ProcessInstance = instance.ToString(), List = list,
+                // Since its second version each connection says how the capture saw it open: connected, accepted or neither.
+                Contract = "connection-list-v2", SessionPath = path, ProcessInstance = instance.ToString(), List = list,
             }, JsonContracts.Indented));
             return InterCatExitCode.Success;
         }
@@ -160,7 +161,7 @@ internal static class ChannelsCommand
         foreach (ConnectionSummary connection in list.Connections)
         {
             ConsoleUi.Line(string.Create(CultureInfo.CurrentCulture,
-                $"  {connection.Name} from {connection.LocalEndpoint} · {CountText.Of(connection.Records, "record")} · {connection.Transfers(CultureInfo.CurrentCulture)} · {connection.Lifetime}"));
+                $"  {connection.Name} {connection.OwnEnd} · {CountText.Of(connection.Records, "record")} · {connection.Transfers(CultureInfo.CurrentCulture)} · {connection.Lifetime}"));
             ConsoleUi.Line("    " + connection.Key);
         }
 

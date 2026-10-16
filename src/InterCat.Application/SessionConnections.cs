@@ -39,8 +39,24 @@ public sealed record ConnectionSummary(
             UnmeasuredReceives),
         _ => null,
     };
-    /// <summary>The connection in words: "TCP to 142.250.186.36:443".</summary>
-    public string Name => (Mechanism == Mechanism.Udp ? "UDP to " : "TCP to ") + RemoteEndpoint;
+    /// <summary>
+    /// Whether its process connected to the other end or accepted the other end's connection, as the capture saw it open;
+    /// <see cref="ConnectionOpening.NotWitnessed"/> when it saw neither.
+    /// </summary>
+    public ConnectionOpening Opening { get; init; }
+
+    /// <summary>
+    /// The connection in words, by its other end: "TCP to 142.250.186.36:443", or for one its process accepted, "TCP from
+    /// 10.0.0.5:50000", a port the other end chose.
+    /// </summary>
+    public string Name => (Mechanism == Mechanism.Udp ? "UDP" : "TCP") + (Opening == ConnectionOpening.Accepted ? " from " : " to ")
+        + RemoteEndpoint;
+
+    /// <summary>
+    /// Its process's own end, in the words that follow its name: "from 192.168.1.10:52000", or where the process accepted
+    /// the connection, "at 192.168.1.10:3389".
+    /// </summary>
+    public string OwnEnd => (Opening == ConnectionOpening.Accepted ? "at " : "from ") + LocalEndpoint;
 
     /// <summary>
     /// What its records measured, in one line, each direction in the words an interval's row says it in (R5, R21): the
@@ -71,21 +87,32 @@ public sealed record ConnectionSummary(
             string.Create(format, $"{count:N0} {noun}{(count == 1 ? string.Empty : "s")} unmeasured");
     }
 
-    /// <summary>Whether the capture saw it open and close, in words.</summary>
-    public string Lifetime => Mechanism == Mechanism.Udp ? "a datagram flow" : LifetimeWords(OpenWitnessed, CloseWitnessed);
+    /// <summary>Whether the capture saw it open and close, and how it opened, in words.</summary>
+    public string Lifetime => Mechanism == Mechanism.Udp ? "a datagram flow" : LifetimeWords(OpenWitnessed, CloseWitnessed, Opening);
 
     /// <summary>
     /// A TCP connection's lifetime as the capture saw it, in words: whether a connect or an accept opened it in the
-    /// capture, and a disconnect closed it there. A connection the capture did not see open was open before the capture
-    /// began, and one it did not see close was still open when the capture ended.
+    /// capture - "connected" or "accepted" where <paramref name="opening"/> says which, else "opened" - and a disconnect
+    /// closed it there. A connection the capture did not see open was open before the capture began, and one it did not
+    /// see close was still open when the capture ended.
     /// </summary>
-    public static string LifetimeWords(bool openWitnessed, bool closeWitnessed) => (openWitnessed, closeWitnessed) switch
+    public static string LifetimeWords(bool openWitnessed, bool closeWitnessed,
+        ConnectionOpening opening = ConnectionOpening.NotWitnessed)
     {
-        (true, true) => "opened and closed in the capture",
-        (true, false) => "opened in the capture, still open at its end",
-        (false, true) => "open before the capture, closed in it",
-        _ => "open before the capture and after it",
-    };
+        string opened = opening switch
+        {
+            ConnectionOpening.Connected => "connected",
+            ConnectionOpening.Accepted => "accepted",
+            _ => "opened",
+        };
+        return (openWitnessed, closeWitnessed) switch
+        {
+            (true, true) => opened + " and closed in the capture",
+            (true, false) => opened + " in the capture, still open at its end",
+            (false, true) => "open before the capture, closed in it",
+            _ => "open before the capture and after it",
+        };
+    }
 }
 
 /// <summary>A process instance's one-sided connections in one generation, the most records first.</summary>
@@ -351,7 +378,10 @@ public static class SessionConnections
                     received[index],
                     unsizedReceives[index],
                     held[index].OpenWitnessed,
-                    held[index].CloseWitnessed)))
+                    held[index].CloseWitnessed)
+                {
+                    Opening = held[index].Opening,
+                }))
                 .OrderByDescending(pair => pair.Item2.Records)
                 .ThenBy(pair => pair.Item2.Key, StringComparer.Ordinal),
         ]);

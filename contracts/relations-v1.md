@@ -146,12 +146,14 @@ another host's - is a row of that process's rung beside its paired channels, as 
   channel's key does;
 - it is named by its two endpoints as the source names them - "TCP to 142.250.186.36:443", from its holder's own - and
   by whether the capture saw it open and close, and since revision 573 whether its holder connected or accepted it
-  (§3); nothing is said of who is at its other end (P7);
+  (§3). Since revision 574 one its holder accepted is named from where it came, "TCP from 10.0.0.5:50000", at its
+  holder's own endpoint, and said accepted in the capture; nothing is said of who is at its other end (P7);
 - its records are its holder's transfer and lifecycle records that name its channel, and its bytes are what the
   holder's own sends and receives measured, `TransportObserved` like a paired channel's, so it ranks beside them under
   a byte ranking, and a transfer of no stated size is counted as such (R3);
 - Enter opens its records: a transfer has no operation rung. `icat channels --process <instance> --one-sided` lists the
-  same (`connection-list-v1`), and `icat evidence --channel <key>` reads a connection's records.
+  same (`connection-list-v2` since revision 574, each connection's `opening` beside it), and `icat evidence --channel
+  <key>` reads a connection's records.
 
 A one-sided channel with an undecided or unbound holder is not listed; nor is an undecided incarnation's. Since
 revision 249 a connection's evidence rung focuses the timeline on its records, as a paired channel's does - by its

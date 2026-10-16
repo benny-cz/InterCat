@@ -762,6 +762,10 @@ public sealed class EvidenceRungTests
             Timed(Transfer(5_001, ObservationKind.Send, AccountingSide.SendSide, 1_500, 100, 70_001).Between(local, remote)),
             Timed(Transfer(5_002, ObservationKind.Receive, AccountingSide.ReceiveSide, 90_000, 100, 70_002).Between(local, remote)),
             Timed(Transfer(5_003, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 100, 70_003).Between(local, remote)),
+
+            // And one it accepted, at its own port 3389, from the other host's 50000.
+            Timed(Transfer(5_010, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 100, 70_010).Between("192.168.1.5:3389", "10.0.0.5:50000")),
+            Timed(Transfer(5_011, ObservationKind.Receive, AccountingSide.ReceiveSide, 10, 100, 70_011).Between("192.168.1.5:3389", "10.0.0.5:50000")),
         ]);
         using WorkspaceViewModel workspace = Open(session);
         ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
@@ -774,7 +778,13 @@ public sealed class EvidenceRungTests
         Assert.Equal("TCP to " + remote, row.Source.Label);
         Assert.Equal("4", row.Observations);
         Assert.Equal(string.Create(System.Globalization.CultureInfo.CurrentCulture,
-            $"TCP from {local} · opened and closed in the capture · {1_500:N0} B sent, {90_000:N0} B received"), row.Detail);
+            $"TCP from {local} · connected and closed in the capture · {1_500:N0} B sent, {90_000:N0} B received"), row.Detail);
+
+        // The one it accepted leads with where it came from, and says it arrived at the process's own port.
+        RungRow inbound = workspace.RungRows.Single(candidate => candidate.Label == "← 10.0.0.5:50000");
+        Assert.Equal(("TCP from 10.0.0.5:50000", "TCP at 192.168.1.5:3389 · accepted in the capture, still open at its end · no send recorded, 10 B received"),
+            (inbound.Source.Label, inbound.Detail));
+        Assert.StartsWith("TCP from 10.0.0.5:50000, TCP at 192.168.1.5:3389", inbound.SpokenName, StringComparison.Ordinal);
         Assert.Contains(workspace.RungRows, candidate => candidate.Label.StartsWith('↔'));
         Assert.EndsWith(" · admitted paired TCP and UDP, and its connections whose other end no record holds; not all session observations",
             workspace.LevelSummary, StringComparison.Ordinal);

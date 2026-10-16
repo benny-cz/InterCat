@@ -194,6 +194,22 @@ public sealed class HostsCommandTests
         (_, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.6");
         Assert.Matches(@"(?m)^  Process +Address +Connections +Ports +Records\r?$", text);
         Assert.DoesNotContain("Accepted here", text, Ordinal);
+
+        // Its process's connections name the accepted one from where it came, at the process's own end.
+        string service = InterCat.Application.SessionOverviewProjector.Project(session.Store).Nodes.Single().Id.ToString();
+        session.Store.ReleaseSegmentReaders();
+        (code, text, _) = await Run("channels", session.Path, "--process", service, "--one-sided");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  TCP from 10\.0\.0\.5:50000 at 192\.168\.1\.10:3389 · 2 records · .* · accepted in the capture, still open at its end\r?$",
+            text);
+        Assert.Matches(@"(?m)^  TCP to 10\.0\.0\.6:443 from 192\.168\.1\.10:52000 · 2 records · .* · connected in the capture, still open at its end\r?$",
+            text);
+        (code, text, _) = await Run("channels", session.Path, "--process", service, "--one-sided", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement document = JsonDocument.Parse(text).RootElement;
+        Assert.Equal("connection-list-v2", document.GetProperty("contract").GetString());
+        Assert.Equal(["Accepted", "Connected"], document.GetProperty("list").GetProperty("connections").EnumerateArray()
+            .Select(connection => connection.GetProperty("opening").GetString()).Order(StringComparer.Ordinal));
     }
 
     private static string Ports(JsonElement ports) => string.Join(",", ports.EnumerateArray().Select(port => port.GetInt32()));

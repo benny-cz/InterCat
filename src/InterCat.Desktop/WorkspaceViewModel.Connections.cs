@@ -117,14 +117,15 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// One connection's row. The rail is narrow, so it leads with the other end's endpoint; the source's own endpoint, how
-    /// the capture saw it open and close, and its bytes follow. Enter opens its records: a transfer has no operation rung.
+    /// One connection's row. The rail is narrow, so it leads with the other end's endpoint - "→" where it ran to, "←" where
+    /// the process accepted it from there; the source's own endpoint, how the capture saw it open and close, and its bytes
+    /// follow. Enter opens its records: a transfer has no operation rung.
     /// </summary>
     private RungRow ConnectionRungRow(ConnectionSummary connection, ThemeMode mode)
     {
         FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(connection.Mechanism));
         string protocol = connection.Mechanism == Mechanism.Udp ? "UDP" : "TCP";
-        string detail = $"{protocol} from {connection.LocalEndpoint} · {connection.Lifetime} · {connection.Transfers(CultureInfo.CurrentCulture)}";
+        string detail = $"{protocol} {connection.OwnEnd} · {connection.Lifetime} · {connection.Transfers(CultureInfo.CurrentCulture)}";
         RankedValue? ranked = ShownMeasures is SessionByteMeasures ? connection.RankedBy(rankBy) : null;
         var source = new LadderRow(connection.Key, connection.Name, detail, connection.Records, null, connection.Mechanism,
             CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner)
@@ -132,7 +133,8 @@ public sealed partial class WorkspaceViewModel
             Ranked = ranked,
         };
         bool perSecond = RateSeconds is > 0 && ranked is not null;
-        return new(connection.Key, "→ " + connection.RemoteEndpoint, detail, connection.Records.ToString("N0", CultureInfo.CurrentCulture),
+        string toward = connection.Opening == ConnectionOpening.Accepted ? "← " : "→ ";
+        return new(connection.Key, toward + connection.RemoteEndpoint, detail, connection.Records.ToString("N0", CultureInfo.CurrentCulture),
             connection.Transfers(CultureInfo.CurrentCulture), tokens.Label, tokens.Glyph, string.Empty,
             NavigationState.Name(DetailLevel.Evidence), source)
         {

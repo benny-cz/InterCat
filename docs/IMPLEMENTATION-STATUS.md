@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 573 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 574 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 574 — the window says a host's accepted connections (§6.3, §6.7, §7.1):**
+  - Other hosts' list and cards, and a drawn host's card and description, say what was accepted at which port.
+  - An accepted connection is named from where it came on its process's rung ("← 10.0.0.5:50000"), and each
+    lifetime says connected or accepted; `icat channels --one-sided` too (`connection-list-v2`).
+  - Debug and Release each ran 2,449 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    Release run was repeated alone after the session's worker restarted during the first. Each of 14 mutations was
+    caught: an accepted connection named toward where it came from, or its own end said as the one it ran from; a
+    lifetime not saying how a connection opened, or saying connected or accepted as opened; a connection's opening
+    lost as its process's connections were listed; its rung row led by the wrong arrow, or its own end said as where
+    it ran from; Other hosts' list, its card, a drawn host's card or its description not saying what was accepted
+    from the host; and icat channels --one-sided saying an accepted connection's own end as where it ran from, or
+    giving its earlier contract.
 
 - **Revision 573 — a host's connections accepted from it (§6.3, §7.4, R18, R21):**
   - A server's accepted connections listed the other host's own ports, chosen for each, as ports it ran to.
