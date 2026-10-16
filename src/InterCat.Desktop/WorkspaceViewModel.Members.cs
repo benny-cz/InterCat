@@ -6,6 +6,12 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
+/// Where a way down from an aggregate's list began (§3.2): the rung - its depth, level and focus - the aggregate, by its
+/// stable key, and the process chosen in its list.
+/// </summary>
+public sealed record MemberListOrigin(int Depth, DetailLevel Level, string? Focus, string Aggregate, ProcessInstanceId Member);
+
+/// <summary>
 /// The processes an aggregate counts (§6.3): No relationships, Other hosts only, Other processes and an opened group's
 /// Other members fold processes the graph does not draw on their own. Chosen, one lists them in the inspector beneath its
 /// description, the busiest first, each with what it did, so every process it counts is read where it is counted. One
@@ -128,19 +134,44 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the process list says what it leaves out.</summary>
     public bool HasMembersNote => MembersNote.Length > 0;
 
-    /// <summary>Where a way down from an aggregate's list began: the rung, the aggregate and the process chosen in its list.</summary>
-    private readonly record struct MemberOrigin(
-        int Depth, DetailLevel Level, string? Focus, string Aggregate, ProcessInstanceId Member);
-
     // Where the latest way down from an aggregate's list began, Enter or E on a process chosen there, so each way back to
     // that rung - forward and back again included - chooses them there again (§3.2). A way down that begins at that rung
-    // or above it is a way of its own, and replaces it.
-    private MemberOrigin? memberOrigin;
+    // or above it is a way of its own, and replaces it. A newer generation keeps it.
+    private MemberListOrigin? memberOrigin;
 
     /// <summary>A way down beginning here from the chosen aggregate's list, <paramref name="member"/> chosen in it.</summary>
-    private MemberOrigin? MemberOriginHere(ProcessInstanceId member) => ListingAggregate is { } aggregate
+    private MemberListOrigin? MemberOriginHere(ProcessInstanceId member) => ListingAggregate is { } aggregate
         ? new(ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key, aggregate.Key, member)
         : null;
+
+    /// <summary>
+    /// A newer generation's restoring: the process chosen in <paramref name="aggregate"/>'s list, or the host chosen in Other
+    /// hosts', is chosen there again while the list holds it; one it no longer holds is said once, the aggregate chosen
+    /// alone (R7).
+    /// </summary>
+    private void RestoreListChoice(WorkspaceNavigationMemento saved, GraphDisplayNode aggregate, List<string> notices)
+    {
+        if (saved.ChosenListedMember is { } member)
+        {
+            ChosenMemberRow = MemberRows.FirstOrDefault(row => row.Process == member);
+            if (ChosenMemberRow is null)
+            {
+                string named = Snapshot.Processes.FirstOrDefault(process => process.Id == member)?.NameWithPid
+                    ?? "The process chosen there";
+                notices.Add($"{named} is no longer among the processes {aggregate.Label} lists, so {aggregate.Label} "
+                    + "alone is chosen.");
+            }
+        }
+
+        if (saved.ChosenListedHost is { } host)
+        {
+            ChosenHostRow = HostRows.FirstOrDefault(row => string.Equals(row.Address, host, StringComparison.Ordinal));
+            if (ChosenHostRow is null)
+            {
+                notices.Add($"{host} is no longer among the hosts {aggregate.Label} lists, so {aggregate.Label} alone is chosen.");
+            }
+        }
+    }
 
     /// <summary>
     /// Opens the rung of a process the chosen aggregate lists, as Enter on a process drawn on its own does: through its
@@ -156,7 +187,7 @@ public sealed partial class WorkspaceViewModel
             return false;
         }
 
-        MemberOrigin? origin = MemberOriginHere(process.Id);
+        MemberListOrigin? origin = MemberOriginHere(process.Id);
         if (!DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval))
         {
             return false;

@@ -624,6 +624,31 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("No record of a connection to it in this interval", workspace.EvidenceSummary);
     });
 
+    [Fact(DisplayName = "R7: a newer generation keeps the host chosen in Other hosts' list, and says once when the list no longer holds it")]
+    public void ANewerGenerationKeepsTheHostChosen() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        using WorkspaceViewModel first = Open(session);
+        await first.LayoutReady;
+        string hub = first.GraphDisplay.OtherHosts!.Key;
+        first.SelectGraphNode(hub);
+        first.ChosenHostRow = first.HostRows.Single(row => row.Address == "52.0.0.9");
+        WorkspaceNavigationMemento chosen = first.CaptureNavigation();
+
+        using WorkspaceViewModel second = Open(session);
+        await second.LayoutReady;
+        Assert.Null(second.RestoreNavigation(chosen));
+        Assert.Equal((hub, "52.0.0.9"), (second.SelectedCluster?.Key, second.ChosenHostRow?.Address));
+
+        using WorkspaceViewModel third = Open(session);
+        await third.LayoutReady;
+        Assert.Equal("192.0.2.1 is no longer among the hosts Other hosts lists, so Other hosts alone is chosen.",
+            third.RestoreNavigation(chosen with { ChosenListedHost = "192.0.2.1" }));
+        Assert.Equal(hub, third.SelectedCluster?.Key);
+        Assert.Null(third.ChosenHostRow);
+    });
+
     [Fact(DisplayName = "§6.4: a host chosen in Other hosts' list is the records of every connection to it, as one drawn on its own is, kept as the list restates its rows and let go by any node chosen in the graph")]
     public void AHostChosenInOtherHostsListIsItsRecords() => SingleThreadedContext.Run(async () =>
     {

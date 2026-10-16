@@ -157,6 +157,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
 
     // The control of the window that last had the keyboard, which gets it back once it can take it again (KeepKeyboard).
     private InputElement? lastKeyboard;
+
+    // The list whose row that was, if it was a row: a newer generation's rows take the old row out of the window, so the row
+    // alone no longer says which list to give the keyboard back to.
+    private ListBox? lastKeyboardList;
     private bool closingPrompt;
 
     /// <summary>
@@ -933,11 +937,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// Gives the control that last had the keyboard it back, where it can take it again. A row of a list gives it to its
     /// list's chosen row, or its first, rather than to its own container: a list whose rows are restated - the interval
     /// table counting a lane chosen, the inspector's records as a newer generation arrives - hides each row's container and
-    /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one.
+    /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one. A list given a
+    /// newer generation's rows takes the row out of the window, which then finds no list of its own: the list it was in
+    /// gets the keyboard back, on the process or host still chosen in it, not the ranked table.
     /// </summary>
     private bool GiveBackLastKeyboard()
     {
-        if (lastKeyboard is ListBoxItem row && row.FindAncestorOfType<ListBox>() is { } list)
+        if (lastKeyboard is ListBoxItem row && (row.FindAncestorOfType<ListBox>() ?? lastKeyboardList) is { } list)
         {
             return this.IsVisualAncestorOf(list) && FocusRow(list);
         }
@@ -955,6 +961,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     {
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
         lastKeyboard = target as InputElement;
+        lastKeyboardList = target is ListBoxItem ? target.FindAncestorOfType<ListBox>() : null;
         railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
             || ReferenceEquals(target, EmptyEvidenceButton) || ReferenceEquals(target, EmptyReasonCard);
 

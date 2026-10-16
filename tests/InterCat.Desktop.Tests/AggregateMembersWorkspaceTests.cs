@@ -383,6 +383,47 @@ public sealed class AggregateMembersWorkspaceTests
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
     });
 
+    [Fact(DisplayName = "R7: a newer generation keeps the process chosen in an aggregate's list and the way back to it, and says once when the list no longer holds it")]
+    public void ANewerGenerationKeepsTheListsChoice() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel first = Open(session);
+        await first.LayoutReady;
+        string hostOnly = first.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+        first.SelectGraphNode(hostOnly);
+        first.ChosenMemberRow = first.MemberRows[1];
+        WorkspaceNavigationMemento chosen = first.CaptureNavigation();
+
+        using WorkspaceViewModel second = Open(session);
+        await second.LayoutReady;
+        Assert.Null(second.RestoreNavigation(chosen));
+        Assert.Equal((hostOnly, "program0.exe · PID 100"), (second.SelectedCluster?.Key, second.ChosenMemberRow?.Name));
+
+        // Opened from the list, its rung comes back to the list's row in the next generation too.
+        Assert.True(second.OpenMember(second.MemberRows[1]));
+        using WorkspaceViewModel third = Open(session);
+        await third.LayoutReady;
+        Assert.Null(third.RestoreNavigation(second.CaptureNavigation()));
+        Assert.Equal(3, third.Crumbs.Count);
+        Assert.True(third.Ascend());
+        Assert.True(third.Ascend());
+        await third.LayoutReady;
+        Assert.Equal((hostOnly, "program0.exe · PID 100"), (third.SelectedCluster?.Key, third.ChosenMemberRow?.Name));
+
+        // program0.exe, busier in a later generation, is drawn on its own: its list no longer holds it, which is said once.
+        ulong ordinal = 1_000;
+        Publish(session.Store, [.. Enumerable.Range(0, 20).Select(send => Transfer(1_000 + send, ObservationKind.Send,
+                AccountingSide.SendSide, 100, 100, ordinal++).Between("192.168.1.10:445", "52.0.0.1:51000")
+            with { SessionRelativeTicks = 100 * (1_000L + send) })]);
+        using WorkspaceViewModel fourth = Open(session);
+        await fourth.LayoutReady;
+        Assert.Equal("program0.exe · PID 100 is no longer among the processes Other hosts only lists, so Other hosts only "
+            + "alone is chosen.", fourth.RestoreNavigation(chosen));
+        Assert.Equal(hostOnly, fourth.SelectedCluster?.Key);
+        Assert.Null(fourth.ChosenMemberRow);
+    });
+
     [Theory(DisplayName = "§6.3: a group too large to draw whole folds its least active members into Other members, which says so, and its relationships, beside any that have none")]
     [InlineData(0, "221 processes of this group not drawn on their own, its least active · 111 relationships, 110 among themselves. They are listed below.")]
     [InlineData(2, "223 processes of this group not drawn on their own: 2 without a relationship, the rest its least active · 111 relationships, 110 among themselves. They are listed below.")]

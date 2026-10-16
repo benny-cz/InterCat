@@ -374,6 +374,45 @@ public sealed class OtherHostsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the host chosen in Other hosts' list, with the keyboard on its row")]
+    public async Task ANewerGenerationKeepsTheHostListsKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.",
+                SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            workspace.SelectGraphNode(workspace.GraphDisplay.OtherHosts!.Key);
+            Dispatch();
+            ListBox hosts = window.GetControl<ListBox>("HostList");
+            Assert.True(hosts.ContainerFromIndex(7)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("52.0.0.9", workspace.ChosenHostRow?.Address);
+
+            // The next generation replaces the workspace: the list keeps 52.0.0.9 chosen, and the keyboard its row.
+            Publish(session.Store, [Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 100, 310, 1_000)
+                .Between("192.168.1.10:53000", "52.0.0.1:443") with { SessionRelativeTicks = 1_000 }]);
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.",
+                SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, next);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.Equal("52.0.0.9", next.ChosenHostRow?.Address);
+            Assert.Same(hosts.ContainerFromItem(next.ChosenHostRow!), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3: under a byte ranking the window's Other hosts list is ranked by the bytes its hosts' connections carried once they are read")]
     public async Task OtherHostsListFollowsAByteRanking()
     {

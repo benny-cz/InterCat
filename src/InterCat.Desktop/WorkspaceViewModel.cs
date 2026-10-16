@@ -66,6 +66,9 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ReachedWith">The process selected when the current rung was reached, which a channel it opened is described over.</param>
 /// <param name="ExplainedCell">The lane a click chose the analysis interval's cell in, which the inspector explains it as (§6.8).</param>
 /// <param name="ReadsWallClock">Whether the view read its instants on the wall clock its capture's machine read (§6.2).</param>
+/// <param name="ChosenListedMember">The process chosen in the selected aggregate's list (§6.3).</param>
+/// <param name="ChosenListedHost">The host chosen in Other hosts' list, by its address (§6.3).</param>
+/// <param name="ListOrigin">Where the latest way down from an aggregate's list began, which the way back comes to (§3.2).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -84,7 +87,10 @@ public sealed record WorkspaceNavigationMemento(
     bool ScalesEachLane = false,
     ProcessInstanceId? ReachedWith = null,
     TimelineCellLane? ExplainedCell = null,
-    bool ReadsWallClock = false);
+    bool ReadsWallClock = false,
+    ProcessInstanceId? ChosenListedMember = null,
+    string? ChosenListedHost = null,
+    MemberListOrigin? ListOrigin = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1563,7 +1569,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
-        scalesEachLane, reachedWith, chosenCell, ReadsWallClock);
+        scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1695,10 +1701,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // An aggregate's key names its role (no relationships, other processes, an opened group's other members), so it
         // survives a publication whose aggregate has other members; one this generation no longer draws is not revived.
         if (saved.SelectedGraphAggregate is { } aggregate
-            && graphDisplay.Node(aggregate) is { Kind: not (GraphNodeKind.Process or GraphNodeKind.Group) })
+            && graphDisplay.Node(aggregate) is { Kind: not (GraphNodeKind.Process or GraphNodeKind.Group) } drawn)
         {
             SelectGraphNode(aggregate);
+            RestoreListChoice(saved, drawn, notices);
         }
+
+        // The way back to a list keeps to the rungs it was kept for; the list is checked when the way back arrives there.
+        memberOrigin = saved.ListOrigin;
 
         if (saved.SelectedInterval is { } interval)
         {
@@ -5005,7 +5015,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5): the button
         // that takes it stands beneath the card that counts the selection. On a process chosen in an aggregate's list it
         // is a way down from that list, as Enter on it is, and the way back comes to its row again (§3.2).
-        MemberOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
+        MemberListOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
             ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);

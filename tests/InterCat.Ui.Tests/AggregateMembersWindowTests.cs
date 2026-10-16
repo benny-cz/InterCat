@@ -159,6 +159,48 @@ public sealed class AggregateMembersWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the process chosen in an aggregate's list, with the keyboard on its row")]
+    public async Task ANewerGenerationKeepsTheListsKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox members = window.GetControl<ListBox>("MemberList");
+            workspace.SelectGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key);
+            Dispatch();
+            Assert.True(members.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+
+            // The next generation replaces the workspace: the list keeps program0.exe chosen, and the keyboard its row.
+            Publish(session.Store, [Transfer(5_000, ObservationKind.Send, AccountingSide.SendSide, 100, 109, 5_000)
+                .Between("192.168.1.10:52009", "52.0.0.10:443") with { SessionRelativeTicks = 500_000 }]);
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, next);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.Equal("program0.exe · PID 100", next.ChosenMemberRow?.Name);
+            Assert.Same(members.ContainerFromItem(next.ChosenMemberRow!), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A recording's publication of the session's newest generation.</summary>
+    private static CaptureUiUpdate Recording(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
+        "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
+
     /// <summary>
     /// Ten programs of one process each, program0.exe (PID 100) to program9.exe (PID 109), each connecting to a host of its
     /// own and sending to it once more than the one before: the two quietest are counted in Other hosts only.
