@@ -128,16 +128,57 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the process list says what it leaves out.</summary>
     public bool HasMembersNote => MembersNote.Length > 0;
 
+    // Where a process opened from an aggregate's list was opened from - the rung, the aggregate and the process - so the
+    // way back chooses them there again (§3.2).
+    private (int Depth, DetailLevel Level, string? Focus, string Aggregate, ProcessInstanceId Member)? memberOrigin;
+
     /// <summary>
     /// Opens the rung of a process the chosen aggregate lists, as Enter on a process drawn on its own does: through its
-    /// group, so the breadcrumb states every rung and Esc climbs each. False for a process the list does not hold.
+    /// group, so the breadcrumb states every rung and Esc climbs each, back to the aggregate and the process chosen in its
+    /// list. False for a process the list does not hold.
     /// </summary>
     public bool OpenMember(MemberRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        return MemberRows.Any(listed => listed.Process == row.Process)
-            && Snapshot.Processes.FirstOrDefault(process => process.Id == row.Process) is { } process
-            && DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval);
+        if (ListingAggregate is not { } aggregate || !MemberRows.Any(listed => listed.Process == row.Process)
+            || Snapshot.Processes.FirstOrDefault(process => process.Id == row.Process) is not { } process)
+        {
+            return false;
+        }
+
+        var origin = (ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key, aggregate.Key, process.Id);
+        if (!DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval))
+        {
+            return false;
+        }
+
+        memberOrigin = origin;
+        return true;
+    }
+
+    /// <summary>
+    /// Back at the rung a process was opened from in an aggregate's list, chooses the aggregate and that process in its list
+    /// again and asks the keyboard to its row, where the way down began (§3.2); once, and never above that rung.
+    /// </summary>
+    private void ResumeMemberOrigin()
+    {
+        if (memberOrigin is not { } origin || ladder.Depth > origin.Depth)
+        {
+            return;
+        }
+
+        memberOrigin = null;
+        if (ladder.Depth < origin.Depth || ladder.Current.Level != origin.Level
+            || !string.Equals(ladder.Current.Focus?.Key, origin.Focus, StringComparison.Ordinal)
+            || graphDisplay.Node(origin.Aggregate) is not { } aggregate || !aggregate.Members.Contains(origin.Member))
+        {
+            return;
+        }
+
+        SelectGraphNode(origin.Aggregate);
+        ChosenMemberRow = MemberRows.FirstOrDefault(listed => listed.Process == origin.Member);
+        MembersAsked++;
+        OnPropertyChanged(nameof(MembersAsked));
     }
 
     /// <summary>

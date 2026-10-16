@@ -38,6 +38,14 @@ public sealed class LivePreviewExactnessTests
         var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
         TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
         TimeRange extent = workspace.Snapshot.Extent;
+
+        // The view as applied is read once the timeline's own count of it has arrived, which restates the interval table
+        // in its columns: read before, the table compared is the overview's, and the count arriving with the preview
+        // would change it for a reason that is not the preview.
+        _ = window.CaptureRenderedFrame();
+        timeline.RequestDetailNow();
+        await workspace.TimelineDetailReady;
+        Dispatch();
         var exportedAt = new DateTimeOffset(2026, 9, 26, 12, 0, 0, TimeSpan.Zero);
         string csv = (await workspace.ExportAsync(ExportFormat.Csv, exportedAt)).Content;
         string json = (await workspace.ExportAsync(ExportFormat.Json, exportedAt)).Content;

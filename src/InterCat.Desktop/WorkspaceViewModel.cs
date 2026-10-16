@@ -2215,6 +2215,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private bool DescendAlong(IReadOnlyList<string> path, TimeRange? leftWith)
     {
         if (!TryBuildDescents(path, Snapshot, out List<LadderDescent> descents)) return false;
+        memberOrigin = null;
         ladder.RecordInterval(leftWith);
         if (!ladder.TryReturnTo(0, out _)) return false;
         foreach (LadderDescent descent in descents) _ = TryDescend(descent);
@@ -5082,13 +5083,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ArriveFrom(left);
 
         // The row the rung was opened from is selected again, so the way back lands where the way down began and the
-        // keyboard can take the next row from there (§3.2).
+        // keyboard can take the next row from there (§3.2) - or, where the way down began in an aggregate's list, the
+        // aggregate and the process chosen there.
         if (!IsEvidenceRung && left.Focus is { } opened
             && RungRows.FirstOrDefault(row => string.Equals(row.Key, opened.Key, StringComparison.Ordinal)) is { } row)
         {
             SelectedRung = row;
         }
 
+        ResumeMemberOrigin();
         return true;
     }
 
@@ -5101,6 +5104,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             ResumeIntervalOf(restored);
             ArriveFrom(left);
+            ResumeMemberOrigin();
         }
     }
 

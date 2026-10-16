@@ -93,6 +93,15 @@ public sealed class AggregateMembersWindowTests
             Assert.Equal(3, workspace.Crumbs.Count);
             Assert.EndsWith("program0.exe · PID 100", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
             Assert.False(panel.IsVisible);
+
+            // Esc twice climbs back to where the way down began: the list, program0.exe chosen in it with the keyboard.
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await workspace.LayoutReady;
+            Dispatch();
+            Assert.True(panel.IsVisible);
+            Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+            Assert.Same(members.ContainerFromItem(workspace.ChosenMemberRow!), window.FocusManager?.GetFocusedElement());
         }
         finally
         {

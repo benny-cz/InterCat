@@ -148,6 +148,65 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Equal(3, asked.Count);
     });
 
+    [Fact(DisplayName = "§3.2: the way back from a process opened in an aggregate's list chooses the aggregate and that process there again, its row asked for the keyboard")]
+    public void TheWayBackFromAListedProcessChoosesItAgain() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        var asked = new List<int>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.MembersAsked)) asked.Add(workspace.MembersAsked);
+        };
+        string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+        workspace.SelectGraphNode(hostOnly);
+
+        // program0.exe opened from the list: one rung up is its group, it chosen there; the next is where the way down began.
+        Assert.True(workspace.OpenMember(workspace.MemberRows[1]));
+        Assert.Equal(3, workspace.Crumbs.Count);
+        Assert.True(workspace.Ascend());
+        Assert.Equal("program0.exe · PID 100", workspace.SelectedProcess?.NameWithPid);
+        Assert.Empty(asked);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((hostOnly, "program0.exe · PID 100"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
+        Assert.Equal([1], asked);
+
+        // The breadcrumb's way back does the same, once.
+        Assert.True(workspace.OpenMember(workspace.MemberRows[0]));
+        workspace.ReturnTo(0);
+        await workspace.LayoutReady;
+        Assert.Equal((hostOnly, "program1.exe · PID 101"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
+        Assert.Equal([1, 2], asked);
+
+        // Down again by the ranked table and back, the group's row is chosen, as ever: the way back was taken once.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "program9.exe");
+        Assert.True(workspace.Descend());
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((null, "program9.exe"), (workspace.SelectedCluster?.Key, workspace.SelectedRung?.Label));
+
+        // A process opened from the list and then another found by a search: the way back is the search's.
+        workspace.SelectGraphNode(hostOnly);
+        Assert.True(workspace.OpenMember(workspace.MemberRows[0]));
+        workspace.SearchText = "program9";
+        Assert.True(workspace.OpenSearchResult(workspace.SearchResults.First(hit => hit.Label.StartsWith("program9.exe · PID", StringComparison.Ordinal))));
+        workspace.ReturnTo(0);
+        await workspace.LayoutReady;
+        Assert.Null(workspace.SelectedCluster);
+
+        // A process opened from the graph comes back to its group's row, as ever.
+        string drawn = workspace.GraphDisplay.NodeOf(Process(workspace, 109).Id)!.Key;
+        workspace.SelectGraphNode(drawn);
+        Assert.True(workspace.OpenGraphNode(drawn));
+        workspace.ReturnTo(0);
+        await workspace.LayoutReady;
+        Assert.Null(workspace.SelectedCluster);
+        Assert.Equal([1, 2], asked);
+    });
+
     [Fact(DisplayName = "§6.3: under a brush an aggregate's processes are listed by their records in it, their connections to other hosts the whole session's, as said")]
     public void UnderABrushTheListCountsTheInterval() => SingleThreadedContext.Run(async () =>
     {
