@@ -1421,6 +1421,7 @@
         "R15: a rung with no rows gives the reason it has none the keyboard, which F6 reaches as the rail",
         "R15: a saved session opened gives its ranked table the keyboard; one that does not open gives it back to Open saved session",
         "R15: a scope no listing names, or one this generation cannot resolve, is refused rather than measured as nothing",
+        "R15: a search typed letter by letter keeps its first hit chosen at every letter, so Enter opens it and Down reaches it",
         "R15: a selected group highlights its members' records; the rung's own focus is not highlighted again",
         "R15: a selected process highlights exactly its own records in the timeline, until cleared",
         "R15: a session is walked by keyboard alone: a process opened, a moment stepped to, its records read and one opened in E, and back",

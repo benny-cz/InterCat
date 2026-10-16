@@ -735,8 +735,15 @@ public sealed class TimelineView : Control, IHoverCardSource
     {
         base.OnSizeChanged(e);
         DrawingMovedUnderPointer();
-        detailTimer.Stop();
-        detailTimer.Start();
+
+        // The columns a view is counted in follow its width alone. Rows arriving beneath, or a pane given more height,
+        // leave the count as it is, as a gutter widened for the rows' names does until the view next moves: counted
+        // again, a cell chosen in the meantime would be a column the view no longer has.
+        if (e.WidthChanged)
+        {
+            detailTimer.Stop();
+            detailTimer.Start();
+        }
     }
 
     /// <summary>

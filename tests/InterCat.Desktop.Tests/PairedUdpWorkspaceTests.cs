@@ -99,7 +99,7 @@ public sealed class PairedUdpWorkspaceTests
             workspace.ChooseTimelineCell(cell, mechanism);
             await workspace.IntervalReady;
             Assert.Equal([workspace.GraphDisplay.EdgeOf(expected.Key)!.Key], workspace.CellGraphEdges);
-            Assert.EndsWith(" · the chosen cell's relationship highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+            Assert.StartsWith("The chosen cell's relationship highlighted · ", workspace.GraphSummary, StringComparison.Ordinal);
         }
     });
 

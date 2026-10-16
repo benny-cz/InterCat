@@ -1883,6 +1883,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// The graph's scope in one short line for the pane header: how many processes, how many relationships and among how
     /// many of them, and how many nodes they are drawn as when groups are collapsed. Compaction is never called omission.
+    /// What the graph marks for what the person is doing - a search typed, a cell chosen - is said first, where a busy
+    /// machine's long line ends in an ellipsis before it reaches it.
     /// </summary>
     public string GraphSummary
     {
@@ -1905,10 +1907,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             {
                 int outside = processes - drawn.Count;
                 int nodes = graphDisplay.Nodes.Count(node => node.Kind != GraphNodeKind.Context && !node.IsHost);
-                return $"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
+                return Leading($"{graphFocus.Description}: " + Counted(drawn.Count, "process", "processes") + " drawn"
                     + (nodes == drawn.Count ? string.Empty : " as " + Counted(nodes, "node", "nodes"))
                     + (outside > 0 ? string.Create(CultureInfo.CurrentCulture, $" · {outside:N0} more in Rest of the machine") : string.Empty)
-                    + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote + SearchedGraphNote;
+                    + GraphScopeNote(brief: true) + OtherHostsNote, NowMarked);
             }
 
             int relationships = wholeSnapshot.Edges.Count;
@@ -1920,12 +1922,23 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     + (relatedProcesses.Count < processes
                         ? string.Create(CultureInfo.CurrentCulture, $" among {relatedProcesses.Count:N0} of them")
                         : string.Empty));
-            return (graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
+            return Leading((graphDisplay.Nodes.Any(node => node.Kind is GraphNodeKind.Group or GraphNodeKind.OtherMembers
                     or GraphNodeKind.Remainder or GraphNodeKind.OtherHostsOnly)
                 ? text + " · drawn as " + Counted(graphDisplay.Nodes.Count(node => !node.IsHost), "node", "nodes")
-                : text) + GraphScopeNote(brief: true) + OtherHostsNote + CellGraphNote + SearchedGraphNote;
+                : text) + GraphScopeNote(brief: true) + OtherHostsNote, NowMarked);
         }
     }
+
+    /// <summary>
+    /// What the graph marks for what the person is doing now: the nodes a search typed finds, then what a chosen cell's
+    /// records belong to, each " · " and a clause, or empty while neither is.
+    /// </summary>
+    private string NowMarked => SearchedGraphNote + CellGraphNote;
+
+    /// <summary>A summary with <paramref name="now"/>'s clauses first, the first of them capitalized, and its census after.</summary>
+    private static string Leading(string census, string now) => now.Length == 0
+        ? census
+        : string.Concat(now[3..4].ToUpper(CultureInfo.CurrentCulture), now[4..], " · ", census);
 
     /// <summary>
     /// The graph's summary with what its relationships are drawn from in full, for its hover and a screen reader's help
@@ -2305,6 +2318,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<SearchRow> searchRows = [];
     private SearchRow? selectedSearchResult;
 
+    // Whether the hits list is being given new hits.
+    private bool restatingSearch;
+
     /// <summary>
     /// §6.7's search (Ctrl+F): names, PIDs and channel endpoints of the published session, never payloads. While it has
     /// text the rail lists its hits instead of the rung's ranked table; opening a hit goes there and clears it.
@@ -2337,7 +2353,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsSearching));
-            OnPropertyChanged(nameof(SearchResults));
+
+            // A list given new hits lets the one it held go and writes that back as none chosen, which would leave every
+            // other letter typed with no hit for Enter to open or Down to reach (R15); the first is chosen once they are in.
+            restatingSearch = true;
+            try
+            {
+                OnPropertyChanged(nameof(SearchResults));
+            }
+            finally
+            {
+                restatingSearch = false;
+            }
+
             OnPropertyChanged(nameof(SelectedSearchResult));
             OnPropertyChanged(nameof(SearchSummary));
 
@@ -2359,10 +2387,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public SearchRow? SelectedSearchResult
     {
-        get => selectedSearchResult;
+        // While the hits are restated a binding that reads the choice back finds none, as the list then holds none; read
+        // back as the hit chosen, the list took it as already shown, and showed none chosen once its new hits were in.
+        get => restatingSearch ? null : selectedSearchResult;
         set
         {
-            if (ReferenceEquals(selectedSearchResult, value)) return;
+            // While the hits are restated the list lets its choice go for a moment, which is not the person's.
+            if (restatingSearch || ReferenceEquals(selectedSearchResult, value)) return;
             selectedSearchResult = value;
             OnPropertyChanged();
 

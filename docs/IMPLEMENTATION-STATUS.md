@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 606 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 607 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 607 — a typed search keeps its first hit chosen; a cell outlasts a taller timeline (§6.2, §6.7):**
+  - From a live pass searching the busy machine: typed letter by letter, a search left no hit chosen at every second
+    letter, so Enter opened nothing and Down reached no hit. The first hit now stays chosen at every letter.
+  - The graph's summary said what a search found, or what a chosen cell highlights, at the end of a line a busy
+    machine's census fills, past its ellipsis; it now says it first.
+  - A process lane's cell chosen as a group's rung opened lost its explanation and highlight once the lanes' rows made
+    the timeline taller and the view was counted again; a view is now counted again only when its width changes. A
+    window test had failed on this about one run in eight under load, before this revision too.
+  - §19.4 now says a newer generation's layout keeps every node seen anchored, as revision 605 built it.
+  - Debug and Release each ran 2,526 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    ten mutations were caught: the hits list's letting go of its hit taken as the person's, the list marked as
+    restating its hits never, or its choice read back as kept while they were restated; a view counted again for its
+    height alone, or not for its width alone; the graph's summary saying its marks last, in either of its two forms
+    or in both, uncapitalized, or a chosen cell's before a search's. A view not counted again for its width alone
+    went unseen at first, since the test's wider window also wrapped the timeline's header and made it taller; the
+    test now widens a window wide enough already, its height checked unchanged. The cell tests then passed 30 runs
+    in a row in Release with three of four cores busy, where they had failed 4 of 30 before the fix.
 
 - **Revision 606 — the inspector scrolls no further than a row needs (R15):**
   - The whole window suite ran five times in Release with three of four cores busy, and nothing failed.

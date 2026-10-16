@@ -158,7 +158,7 @@ public sealed class TimelineCellTests
         Assert.Equal(cell.Interval, workspace.SelectedInterval);
         await workspace.IntervalReady;
         Assert.Equal([workspace.GraphDisplay.Nodes.Single(node => node.Members.Contains(owner.Id)).Key], workspace.CellGraphNodes);
-        Assert.EndsWith(" · the node holding the chosen cell's process highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.StartsWith("The node holding the chosen cell's process highlighted · ", workspace.GraphSummary, StringComparison.Ordinal);
         Assert.Equal([owner.Id.ToString()], workspace.RungRows.Where(workspace.HighlightsForCell).Select(row => row.Key));
         Assert.Equal("This cell is the analysis interval", workspace.DescribeTimelineHover(cell, 1, ownerLane: owner).Lines[^1]);
         string cells = 20_000.ToString("N0", CultureInfo.CurrentCulture);
@@ -543,7 +543,14 @@ public sealed class TimelineCellTests
         await workspace.IntervalReady;
         Assert.Equal(tcp.Order(StringComparer.Ordinal), workspace.CellGraphEdges.Order(StringComparer.Ordinal));
         Assert.Empty(workspace.CellGraphNodes);
-        Assert.EndsWith(" · the chosen cell's 2 relationships highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.StartsWith("The chosen cell's 2 relationships highlighted · ", workspace.GraphSummary, StringComparison.Ordinal);
+
+        // A search typed meanwhile is said first, and the cell's highlight after it, both ahead of the census (§6.7).
+        string census = workspace.GraphSummary["The chosen cell's 2 relationships highlighted · ".Length..];
+        workspace.SearchText = "peer";
+        Assert.Equal("1 found by the search · the chosen cell's 2 relationships highlighted · " + census, workspace.GraphSummary);
+        workspace.SearchText = string.Empty;
+        Assert.Equal("The chosen cell's 2 relationships highlighted · " + census, workspace.GraphSummary);
 
         // The relationship table marks the rows of the relationships highlighted, its equivalent of the edges' halo (R15).
         Assert.Equal(workspace.GraphDisplay.Edges.Where(edge => edge.Mechanism == Mechanism.Tcp).SelectMany(edge => edge.Relationships)
@@ -601,7 +608,7 @@ public sealed class TimelineCellTests
         workspace.SelectedProcess = workspace.Snapshot.Processes.Single(node => node.ProcessId == 200);
         Assert.Equal([clientNode], workspace.CellGraphNodes);
         Assert.Empty(workspace.CellGraphEdges);
-        Assert.EndsWith(" · the chosen cell's process highlighted", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.StartsWith("The chosen cell's process highlighted · ", workspace.GraphSummary, StringComparison.Ordinal);
 
         // An empty cell holds no record to belong anywhere, so it highlights nothing.
         workspace.ChooseTimelineCell(workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets

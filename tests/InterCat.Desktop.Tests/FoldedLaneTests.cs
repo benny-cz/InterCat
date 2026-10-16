@@ -111,7 +111,7 @@ public sealed class FoldedLaneTests
         GraphDisplayNode holding = Assert.Single(workspace.GraphDisplay.Nodes,
             node => node.Members.Intersect(folded.Processes).Any());
         Assert.Equal([holding.Key], workspace.CellGraphNodes);
-        Assert.EndsWith(" · the node holding the chosen cell's processes highlighted", workspace.GraphSummary,
+        Assert.StartsWith("The node holding the chosen cell's processes highlighted · ", workspace.GraphSummary,
             StringComparison.Ordinal);
 
         // The ranked table marks the folded members' rows, its equivalent of the node's ring (R15).

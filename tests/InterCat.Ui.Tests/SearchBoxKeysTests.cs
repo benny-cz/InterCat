@@ -148,6 +148,60 @@ public sealed class SearchBoxKeysTests
         CaptureUiPhase.Recording, "Recording", "A published generation.", SessionPath: session.Path,
         Overview: SessionOverviewProjector.Project(session.Store));
 
+    [AvaloniaFact(DisplayName = "R15: a search typed letter by letter keeps its first hit chosen at every letter, so Enter opens it and Down reaches it")]
+    public async Task EveryLetterTypedKeepsTheFirstHitChosen()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+            .. Exchange(0, 2),
+        ]);
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(session.Path));
+            Dispatch();
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            TextBox search = window.GetControl<TextBox>("SearchBox");
+            ListBox hits = window.GetControl<ListBox>("SearchResultsList");
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+            Assert.True(search.IsFocused);
+
+            // Each letter gives the list new hits, and the first of them is chosen there as in the view at every letter:
+            // the second, fourth and sixth too, whose new hits the list once let its choice go for, and left none chosen.
+            foreach (char letter in "server")
+            {
+                Type(window, letter.ToString());
+                Dispatch();
+                Assert.NotEmpty(workspace.SearchResults);
+                Assert.Same(workspace.SearchResults[0], workspace.SelectedSearchResult);
+                Assert.Same(workspace.SearchResults[0], hits.SelectedItem);
+            }
+
+            // Down reaches it, and Up gives the box back; Enter there opens it.
+            Assert.Equal("server", search.Text);
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(hits.ContainerFromIndex(0)!.IsFocused);
+            window.KeyPressQwerty(PhysicalKey.ArrowUp, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(search.IsFocused);
+            int depth = workspace.Crumbs.Count;
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(string.Empty, workspace.SearchText);
+            Assert.Equal(depth + 1, workspace.Crumbs.Count);
+            Assert.Equal("Group: server.exe", workspace.Crumbs[^1].Label);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     /// <summary>
     /// <paramref name="count"/> exchanges from the <paramref name="first"/>: a client's send and the server's receipt.
     /// </summary>

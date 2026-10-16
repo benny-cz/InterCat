@@ -34,11 +34,12 @@ public sealed class GraphSearchMarkTests
         Assert.Empty(workspace.SearchedGraphNodeKeys);
         Assert.Empty(workspace.PartlySearchedGraphNodeKeys);
 
-        // A name finds its process, and the graph's summary counts it and its card says so.
+        // A name finds its process, and the graph's summary counts it first, where a long line's ellipsis cannot hide it,
+        // and its card says so.
         workspace.SearchText = "browser";
         Assert.Equal([browser.Key], workspace.SearchedGraphNodeKeys);
         Assert.Empty(workspace.PartlySearchedGraphNodeKeys);
-        Assert.Equal(summary + " · 1 found by the search", workspace.GraphSummary);
+        Assert.Equal("1 found by the search · " + summary, workspace.GraphSummary);
         Assert.Contains("Found by the search", workspace.DescribeGraphHover(browser.Key)!.Lines);
 
         // An aggregate every process of which is found is marked wholly; one some of which are, in part.
@@ -49,7 +50,7 @@ public sealed class GraphSearchMarkTests
         Assert.Empty(workspace.SearchedGraphNodeKeys);
         Assert.Equal([tools.Key], workspace.PartlySearchedGraphNodeKeys);
         Assert.Contains("Found by the search: 1 of its 3 processes", workspace.DescribeGraphHover(tools.Key)!.Lines);
-        Assert.Equal(summary + " · 1 found by the search", workspace.GraphSummary);
+        Assert.Equal("1 found by the search · " + summary, workspace.GraphSummary);
 
         // An address finds the process that reached it, and the Other hosts node its connections stand for.
         workspace.SearchText = "142.250.1.1";
@@ -74,7 +75,7 @@ public sealed class GraphSearchMarkTests
         // A search that finds nothing says so; cleared, the graph is as it was.
         workspace.SearchText = "no such name";
         Assert.Empty(workspace.SearchedGraphNodeKeys);
-        Assert.Equal(summary + " · none found by the search", workspace.GraphSummary);
+        Assert.Equal("None found by the search · " + summary, workspace.GraphSummary);
         workspace.SearchText = string.Empty;
         Assert.Empty(workspace.SearchedGraphNodeKeys);
         Assert.Equal(summary, workspace.GraphSummary);

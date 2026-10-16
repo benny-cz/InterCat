@@ -183,7 +183,7 @@ public sealed class CellEvidenceWindowTests
         await workspace.IntervalReady;
         Color highlighted = At(Settle(window), beside);
         Assert.Equal([tcp.Key], workspace.CellGraphEdges);
-        Assert.EndsWith(" · the chosen cell's relationship highlighted", summary.Text, StringComparison.Ordinal);
+        Assert.StartsWith("The chosen cell's relationship highlighted · ", summary.Text, StringComparison.Ordinal);
 
         // The relationship table marks its row as the graph haloes the edge: a bar at the halo's strength along its edge,
         // and an item status a screen reader announces with the row (R15).
@@ -233,7 +233,7 @@ public sealed class CellEvidenceWindowTests
         WriteableBitmap frame = Settle(window);
         Point ring = graph.TranslatePoint(RingPoint(graph, workspace.GraphDisplay, node), window)!.Value;
         Assert.Equal([node.Key], workspace.CellGraphNodes);
-        Assert.EndsWith(" · the chosen cell's process highlighted", summary.Text, StringComparison.Ordinal);
+        Assert.StartsWith("The chosen cell's process highlighted · ", summary.Text, StringComparison.Ordinal);
         highlighted = At(frame, ring);
         workspace.SelectedRelationship = workspace.Relationships[0];
         plain = At(Settle(window), ring);
@@ -288,6 +288,53 @@ public sealed class CellEvidenceWindowTests
         Assert.Empty(workspace.CellGraphNodes);
         Assert.DoesNotContain("highlighted", marked.Classes);
         Assert.Null(AutomationProperties.GetItemStatus(marked));
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "§6.2: a taller timeline keeps the count it draws, so a cell chosen there stays explained and highlighted; a wider one is counted again")]
+    public async Task ATallerTimelineKeepsItsCount()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Pool(3));
+        var window = new MainWindow { Width = 1280, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        TimelineView timeline = window.GetControl<TimelineView>("TimelineSurface");
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label.StartsWith("pool.exe", StringComparison.Ordinal));
+        Assert.True(workspace.Descend());
+        await workspace.TimelineDetailReady;
+        await PastTheSettle(window, workspace);
+
+        // The group's lanes were counted as its rung opened, before their names widened the gutter, so a little more
+        // finely than the plot now has pixels until the view next moves; their rows, arriving, made the plot taller and
+        // left the count as it was.
+        int counted = workspace.ProcessLaneDisplay[0].Buckets.Count;
+        Assert.True(counted > timeline.DeviceColumns, $"{counted} columns counted, {timeline.DeviceColumns} drawn");
+
+        // A cell chosen in it stays chosen, explained and highlighted, as the window, and the timeline with it, grows taller.
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        ProcessNode owner = workspace.Snapshot.Processes.Single(process => process.Id == lane.ProcessId);
+        workspace.ChooseTimelineCell(lane.Buckets.First(bucket => bucket.ObservationCount > 0), ownerLane: owner);
+        await workspace.IntervalReady;
+        await workspace.TimelineDetailReady;
+        Assert.Single(workspace.CellGraphNodes);
+        Assert.True(workspace.HasCellExplanation);
+        window.Height = 860;
+        await PastTheSettle(window, workspace);
+        Assert.Equal(counted, workspace.ProcessLaneDisplay[0].Buckets.Count);
+        Assert.Single(workspace.CellGraphNodes);
+        Assert.True(workspace.HasCellExplanation);
+
+        // Given more width and no more height, the view is counted again, a column for each pixel across it.
+        double height = timeline.Bounds.Height;
+        window.Width = 1480;
+        await PastTheSettle(window, workspace);
+        Assert.Equal(height, timeline.Bounds.Height);
+        Assert.Equal(timeline.DeviceColumns, workspace.ProcessLaneDisplay[0].Buckets.Count);
+        Assert.True(timeline.DeviceColumns > counted);
         window.Close();
     }
 
@@ -370,6 +417,24 @@ public sealed class CellEvidenceWindowTests
     ];
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
+
+    /// <summary>
+    /// Lays the window out and waits past the time a view's count settles for, so a recount its size asked for has been
+    /// asked for and has arrived.
+    /// </summary>
+    private static async Task PastTheSettle(Window window, WorkspaceViewModel workspace)
+    {
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        for (int wait = 0; wait < 16; wait++)
+        {
+            await Task.Delay(25);
+            Dispatch();
+        }
+
+        await workspace.TimelineDetailReady;
+        Dispatch();
+    }
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
 }
