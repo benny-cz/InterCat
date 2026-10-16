@@ -235,6 +235,11 @@
                  one, drawn inside the row as its selection ring is, so neither moves the row's content; the selected
                  row of either keeps its ring. The code-behind sets the classes and the item status a screen reader hears. -->
             <ListBox.Styles>
+              <!-- A row is its two lines and the 44 px touch target about them, not the theme's 21 px of padding besides: at
+                   the smallest window, 1080 × 700, a shown session's rail then holds three rows whole rather than two. -->
+              <Style Selector="ListBoxItem">
+                <Setter Property="Padding" Value="12,4" />
+              </Style>
               <Style Selector="ListBoxItem.chosen /template/ ContentPresenter#PART_ContentPresenter">
                 <Setter Property="BoxShadow" Value="{DynamicResource ListItem.ChosenBar}" />
               </Style>
