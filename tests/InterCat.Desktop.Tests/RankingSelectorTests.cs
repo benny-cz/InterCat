@@ -265,9 +265,10 @@ public sealed class RankingSelectorTests
         await workspace.RankingReady;
         Assert.Equal(RankingMetric.ConnectionsAccepted, workspace.AppliedRanking);
 
-        // The service accepted two connections, the client none; the resolver's UDP holds no TCP record.
+        // The service accepted two connections, the client none; the resolver's UDP holds no TCP record. A row's figure
+        // names the side ranked, which is shorter than "connections" and leaves the name its room.
         Assert.Equal(["service.exe", "client.exe", "resolver.exe"], workspace.RungRows.Select(row => row.Label));
-        Assert.Equal(["2 connections", "0 connections", "no TCP"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Equal(["2 accepted", "0 accepted", "no TCP"], workspace.RungRows.Select(row => row.Figure));
         Assert.Contains("2 connections accepted, on 4 TCP records", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
         Assert.Contains("no TCP records", workspace.RungRows[2].AccessibleName, StringComparison.Ordinal);
         Assert.Equal("2 accepted on 8 TCP records", workspace.RankingNote);
@@ -279,7 +280,7 @@ public sealed class RankingSelectorTests
         workspace.RankBy = RankingMetric.ConnectionsMade;
         await workspace.RankingReady;
         Assert.Equal(["client.exe", "service.exe", "resolver.exe"], workspace.RungRows.Select(row => row.Label));
-        Assert.Equal(["2 connections", "0 connections", "no TCP"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Equal(["2 made", "0 made", "no TCP"], workspace.RungRows.Select(row => row.Figure));
         Assert.Equal("2 made on 8 TCP records", workspace.RankingNote);
 
         // The export is icat export --rank-by connections-made's (R18).

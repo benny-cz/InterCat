@@ -249,9 +249,12 @@ public static class LadderRowBuilder
 
         if (RankingMetrics.FamilyOf(ranked.Metric) == RankingFamily.Connections)
         {
-            // A row in a session that records no open says nothing of its connections' makers, which is not none.
+            // "13 made", "8 accepted": the side the ranking reads, shorter than "connections", so a row's name keeps its
+            // room in the rail; its spoken name and the note beneath the selector say connections. A row in a session that
+            // records no open says nothing of its connections' makers, which is not none.
             return ranked.Value is { } connections
-                ? string.Create(CultureInfo.CurrentCulture, $"{connections:N0} {(connections == 1 ? "connection" : "connections")}")
+                ? string.Create(CultureInfo.CurrentCulture,
+                    $"{connections:N0} {(ranked.Metric == RankingMetric.ConnectionsMade ? "made" : "accepted")}")
                 : ranked.Holds ? "not recorded" : "no TCP";
         }
 

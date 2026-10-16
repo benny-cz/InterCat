@@ -206,6 +206,45 @@ public sealed class RankingSelectorWindowTests
         window.Close();
     }
 
+    [AvaloniaFact(DisplayName = "§6.1: under a connection ranking a row's figure names the side it ranks, and the row's name keeps the rail's room at the smallest window")]
+    public async Task AConnectionRankingLeavesTheNameItsRoom()
+    {
+        // svchost.exe accepted thirteen connections from other hosts.
+        using var session = new TemporarySession();
+        var rows = new List<ObservationRowV1>
+        {
+            Timed(Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe" }),
+        };
+        for (int index = 0; index < 13; index++)
+        {
+            rows.Add(Timed(Transfer(10 + index, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 2 + (ulong)index)
+                .Between("192.168.1.10:445", $"10.0.0.{index + 2}:50000")));
+        }
+
+        Publish(session.Store, [.. rows]);
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        workspace.SelectedRanking = workspace.RankingOptions.Single(option => option.Metric == RankingMetric.ConnectionsAccepted);
+        await workspace.RankingReady;
+        Dispatch();
+        _ = window.CaptureRenderedFrame();
+        Dispatch();
+
+        // "13 accepted" rather than "13 connections": the name is shown whole beside it, not cut short.
+        ListBox rail = window.GetControl<ListBox>("RungList");
+        Assert.Equal(("svchost.exe", "13 accepted"), (workspace.RungRows[0].Label, workspace.RungRows[0].Figure));
+        Control row = Assert.IsAssignableFrom<Control>(rail.ContainerFromIndex(0));
+        TextBlock name = row.GetVisualDescendants().OfType<TextBlock>().First(text => text.Text == "svchost.exe");
+        var whole = new Avalonia.Media.TextFormatting.TextLayout(name.Text, new Avalonia.Media.Typeface(name.FontFamily, name.FontStyle,
+            name.FontWeight), name.FontSize, null);
+        Assert.True(name.Bounds.Width >= whole.Width, $"The name has {name.Bounds.Width:F0} px of the {whole.Width:F0} it needs.");
+        window.Close();
+    }
+
     private static string? FirstLabel(ListBox rail) =>
         rail.GetVisualDescendants().OfType<ListBoxItem>().Select(item => (item.DataContext as RungRow)?.Label).FirstOrDefault();
 
