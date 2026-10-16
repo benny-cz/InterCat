@@ -163,9 +163,14 @@ public sealed class AggregateMembersWorkspaceTests
         string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
         workspace.SelectGraphNode(hostOnly);
 
-        // program0.exe opened from the list: one rung up is its group, it chosen there; the next is where the way down began.
+        // program0.exe opened from the list, and its records listed from its rung, a way further down: up from them is its
+        // rung, the next its group, it chosen there, and the next where the way down began.
         Assert.True(workspace.OpenMember(workspace.MemberRows[1]));
         Assert.Equal(3, workspace.Crumbs.Count);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.Crumbs.Count);
+        Assert.True(workspace.Ascend());
         Assert.True(workspace.Ascend());
         Assert.Equal("program0.exe · PID 100", workspace.SelectedProcess?.NameWithPid);
         Assert.Empty(asked);
@@ -174,14 +179,32 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Equal((hostOnly, "program0.exe · PID 100"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
         Assert.Equal([1], asked);
 
-        // The breadcrumb's way back does the same, once.
+        // The breadcrumb's way back does the same.
         Assert.True(workspace.OpenMember(workspace.MemberRows[0]));
         workspace.ReturnTo(0);
         await workspace.LayoutReady;
         Assert.Equal((hostOnly, "program1.exe · PID 101"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
         Assert.Equal([1, 2], asked);
 
-        // Down again by the ranked table and back, the group's row is chosen, as ever: the way back was taken once.
+        // Forward to the process again and back, it is chosen there again, as back and forward retrace one way.
+        Assert.True(workspace.GoForward());
+        Assert.True(workspace.GoForward());
+        Assert.Equal(3, workspace.Crumbs.Count);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((hostOnly, "program1.exe · PID 101"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
+        Assert.Equal([1, 2, 3], asked);
+
+        // The crumb of the rung shown, chosen again, is no way back: what was chosen there since stays chosen.
+        string quiet = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Quiet).Key;
+        workspace.SelectGraphNode(quiet);
+        workspace.ReturnTo(0);
+        Assert.Equal(quiet, workspace.SelectedCluster?.Key);
+        Assert.Equal([1, 2, 3], asked);
+
+        // Down again by the ranked table and back, the group's row is chosen, as ever: a way down of its own replaces the
+        // list's.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "program9.exe");
         Assert.True(workspace.Descend());
         Assert.True(workspace.Ascend());
@@ -204,6 +227,82 @@ public sealed class AggregateMembersWorkspaceTests
         workspace.ReturnTo(0);
         await workspace.LayoutReady;
         Assert.Null(workspace.SelectedCluster);
+        Assert.Equal([1, 2, 3], asked);
+    });
+
+    [Fact(DisplayName = "§3.2: E on a process chosen in an aggregate's list is a way down from the list too: back from its records, the aggregate and the process are chosen there again, its row asked for the keyboard")]
+    public void TheWayBackFromTheRecordsOfAListedProcessChoosesItAgain() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        var asked = new List<int>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.MembersAsked)) asked.Add(workspace.MembersAsked);
+        };
+        string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+        workspace.SelectGraphNode(hostOnly);
+        workspace.ChosenMemberRow = workspace.MemberRows[1];
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+
+        // Its choice let go beside its records, the aggregate chosen again in the graph, Esc still comes back to it.
+        workspace.SelectGraphNode(hostOnly);
+        Assert.Null(workspace.ChosenMemberRow);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((hostOnly, "program0.exe · PID 100"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
+        Assert.Equal([1], asked);
+
+        // E on the aggregate itself is a way down of its own: back from its records, nothing of the list is chosen again.
+        workspace.SelectGraphNode(hostOnly);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        Assert.Null(workspace.ChosenMemberRow);
+        Assert.Equal([1], asked);
+    });
+
+    [Fact(DisplayName = "§3.2: a process opened from an opened group's Other members comes back to that list at the group's rung, and forward and back again")]
+    public void TheWayBackToAGroupsOtherMembersChoosesItAgain() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, GroupRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        var asked = new List<int>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.MembersAsked)) asked.Add(workspace.MembersAsked);
+        };
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svc.exe");
+        Assert.True(workspace.Descend());
+        await workspace.LayoutReady;
+        string others = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherMembers).Key;
+        workspace.SelectGraphNode(others);
+        Assert.Equal("2 processes of this group not drawn on their own, none with a relationship. They are listed below.",
+            workspace.SelectionSubtitle);
+        Assert.Equal(["svc.exe · PID 302", "svc.exe · PID 303"], workspace.MemberRows.Select(row => row.Name));
+
+        // Opened from the list, svc.exe 303's rung is a rung below the group's, where Esc chooses it in the list again.
+        Assert.True(workspace.OpenMember(workspace.MemberRows[1]));
+        Assert.Equal(3, workspace.Crumbs.Count);
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((others, "svc.exe · PID 303"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
+        Assert.Equal([1], asked);
+
+        // Climbed past to the machine and forward down again, the way back comes to the list once more.
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal([1], asked);
+        Assert.True(workspace.GoForward());
+        Assert.True(workspace.GoForward());
+        Assert.True(workspace.Ascend());
+        await workspace.LayoutReady;
+        Assert.Equal((others, "svc.exe · PID 303"), (workspace.SelectedCluster?.Key, workspace.ChosenMemberRow?.Name));
         Assert.Equal([1, 2], asked);
     });
 
@@ -284,6 +383,35 @@ public sealed class AggregateMembersWorkspaceTests
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
     });
 
+    [Theory(DisplayName = "§6.3: a group too large to draw whole folds its least active members into Other members, which says so, and its relationships, beside any that have none")]
+    [InlineData(0, "221 processes of this group not drawn on their own, its least active · 111 relationships, 110 among themselves. They are listed below.")]
+    [InlineData(2, "223 processes of this group not drawn on their own: 2 without a relationship, the rest its least active · 111 relationships, 110 among themselves. They are listed below.")]
+    public void OtherMembersSaysWhatItFolds(int quiet, string described) => SingleThreadedContext.Run(async () =>
+    {
+        // big.exe's 420 processes related in pairs, the later the busier, and any that relate to nothing: opened, its 199
+        // busiest are drawn, to the graph's budget of 200 nodes, and the rest folded - 110 pairs whole and one member of the
+        // 111th, whose other is drawn.
+        ProcessGroup big = new("big", "big.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [.. Enumerable.Range(0, 420 + quiet).Select(index => new ProcessNode(
+            new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), 1_000 + index, "big.exe", "test",
+            big.Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new MechanismCount(Mechanism.Tcp, 2 + index)] })];
+        CommunicationEdge[] pairs = [.. Enumerable.Range(0, 210).Select(pair => new CommunicationEdge($"pair-{pair}",
+            processes[2 * pair].Id, processes[(2 * pair) + 1].Id, Mechanism.Tcp, 1 + pair, null, RelationStrength.Direct)
+        {
+            Rule = RelationRule.TransportEndpoint,
+            Evidence = [],
+        })];
+        using var workspace = new WorkspaceViewModel(
+            new WorkspaceSnapshot("Big", new TimeRange(0, 10), [big], processes, pairs, [], [], [], []), "big-group");
+        await workspace.LayoutReady;
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        await workspace.LayoutReady;
+
+        workspace.SelectGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherMembers).Key);
+        Assert.Equal(described, workspace.SelectionSubtitle);
+    });
+
     private static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
@@ -293,6 +421,33 @@ public sealed class AggregateMembersWorkspaceTests
 
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
+
+    /// <summary>
+    /// svc.exe's four processes, PIDs 300 to 303: 300 connects to 301 over loopback and sends to it, and 302 and 303 only
+    /// start.
+    /// </summary>
+    private static ObservationRowV1[] GroupRows()
+    {
+        const string Client = "127.0.0.1:50000";
+        const string Server = "127.0.0.1:8080";
+        ulong ordinal = 1;
+        var rows = new List<ObservationRowV1>();
+        for (int index = 0; index < 4; index++)
+        {
+            rows.Add(Lifecycle(1 + index, ObservationKind.Create, 300 + index, ordinal++)
+                with { ResourceName = @"C:\Apps\svc.exe", SessionRelativeTicks = 100 * (1 + index) });
+        }
+
+        rows.Add(Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, ordinal++).Between(Client, Server)
+            with { SessionRelativeTicks = 1_000 });
+        rows.Add(Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 301, ordinal++).Between(Server, Client)
+            with { SessionRelativeTicks = 1_100 });
+        rows.Add(Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 64, 300, ordinal++).Between(Client, Server)
+            with { SessionRelativeTicks = 1_200 });
+        rows.Add(Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 301, ordinal++).Between(Server, Client)
+            with { SessionRelativeTicks = 1_300 });
+        return [.. rows];
+    }
 
     /// <summary>
     /// Ten programs of one process each, program0.exe (PID 100) to program9.exe (PID 109), each connecting to a host of its

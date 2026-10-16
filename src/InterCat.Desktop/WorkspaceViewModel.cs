@@ -2215,7 +2215,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private bool DescendAlong(IReadOnlyList<string> path, TimeRange? leftWith)
     {
         if (!TryBuildDescents(path, Snapshot, out List<LadderDescent> descents)) return false;
-        memberOrigin = null;
         ladder.RecordInterval(leftWith);
         if (!ladder.TryReturnTo(0, out _)) return false;
         foreach (LadderDescent descent in descents) _ = TryDescend(descent);
@@ -3913,11 +3912,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             GraphNodeKind.Quiet => $"{members} with no admitted relationship{NoHostConnection} in this session, counted in one "
                 + "node rather than drawn one by one, and listed below."
                 + (EmptyCensus is { } census ? " " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) : string.Empty),
+            // Members none of which has a relationship are said to have none once, not again as a count of none.
             GraphNodeKind.OtherMembers => $"{members} of this group not drawn on their own"
                 + (quiet == cluster.Members.Count ? ", none with a relationship"
-                    : quiet > 0 ? string.Create(CultureInfo.CurrentCulture,
+                    : (quiet > 0 ? string.Create(CultureInfo.CurrentCulture,
                         $": {quiet:N0} without a relationship, the rest its least active") : ", its least active")
-                + $" · {relationships}. They are listed below.",
+                    + $" · {relationships}")
+                + ". They are listed below.",
             GraphNodeKind.Group => $"{members} · {relationships}. "
                 + (ladder.Current.Level == DetailLevel.Machine ? "Enter opens the group." : "Return to the machine rung to open it."),
             GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
@@ -4962,8 +4963,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>Descends one rung, first recording on the rung being left the interval the user had there (§6.7).</summary>
     private bool TryDescend(LadderDescent descent)
     {
+        int from = ladder.Depth;
         ladder.RecordInterval(selectedInterval);
-        return ladder.TryDescend(descent, out _);
+        if (!ladder.TryDescend(descent, out _))
+        {
+            return false;
+        }
+
+        // A way down from the rung where one from an aggregate's list began, or from above it, is a way of its own: the
+        // way back follows it, not the list's (§3.2).
+        if (memberOrigin is { } origin && from <= origin.Depth)
+        {
+            memberOrigin = null;
+        }
+
+        return true;
     }
 
     /// <summary>
@@ -4989,7 +5003,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         // E lists the records behind the counts on screen, so it reads the same scope they answer (§6.4, I5): the button
-        // that takes it stands beneath the card that counts the selection.
+        // that takes it stands beneath the card that counts the selection. On a process chosen in an aggregate's list it
+        // is a way down from that list, as Enter on it is, and the way back comes to its row again (§3.2).
+        MemberOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
             ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
@@ -4998,6 +5014,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
+        memberOrigin = listed ?? memberOrigin;
         AfterNavigation();
         return true;
     }
@@ -5100,11 +5117,17 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         ladder.RecordInterval(selectedInterval);
         NavigationState left = ladder.Current;
+        int from = ladder.Depth;
         if (ladder.TryReturnTo(depth, out NavigationState restored))
         {
             ResumeIntervalOf(restored);
             ArriveFrom(left);
-            ResumeMemberOrigin();
+
+            // The rung shown now, its crumb chosen again, is no way back: what has been chosen there since stays chosen.
+            if (ladder.Depth < from)
+            {
+                ResumeMemberOrigin();
+            }
         }
     }
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 601 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 602 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 602 — every way back to an aggregate's list comes to its row (§3.2, §6.3):**
+  - From a live pass over the busy machine: E on a process chosen in an aggregate's list, then Esc, comes back to its
+    row, and so does forward and back again; a way down from that rung or above it is a way of its own, and the crumb
+    of the rung shown chooses nothing. An opened group's Other members comes back the same way.
+  - Other members whose processes have no relationship says so once, not again as "no relationship".
+  - Debug and Release each ran 2,513 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    eleven mutations were caught: E on a listed process recording no way back, in the workspace and in the window; a
+    way down from the list's rung keeping it; a way down below it letting it go, and E there dropping it; the way
+    back taken once; a climb past it letting it go; the crumb of the rung shown choosing it again; Other members
+    with no relationship saying so twice; its least active said without their relationships; and some without a
+    relationship said as only its least active.
 
 - **Revision 601 — the way back from a listed process returns to its list (§3.2, R15):**
   - Esc or the breadcrumb back to the rung a process was opened from in an aggregate's list chooses the aggregate, the

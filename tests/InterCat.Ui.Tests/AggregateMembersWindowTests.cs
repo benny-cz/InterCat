@@ -79,8 +79,15 @@ public sealed class AggregateMembersWindowTests
             Dispatch();
             Assert.Single(workspace.RungRows);
             Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
-            workspace.ReturnTo(0);
+
+            // Esc comes back to the list, the process chosen in it with the keyboard, not to the ranked table E's records
+            // were listed in.
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await workspace.LayoutReady;
             Dispatch();
+            Assert.True(panel.IsVisible);
+            Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+            Assert.Same(members.ContainerFromItem(workspace.ChosenMemberRow!), window.FocusManager?.GetFocusedElement());
 
             // Enter on the first, still in the brush's order, opens its rung, through its group, and the list goes with the
             // aggregate's choice.

@@ -128,9 +128,19 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the process list says what it leaves out.</summary>
     public bool HasMembersNote => MembersNote.Length > 0;
 
-    // Where a process opened from an aggregate's list was opened from - the rung, the aggregate and the process - so the
-    // way back chooses them there again (§3.2).
-    private (int Depth, DetailLevel Level, string? Focus, string Aggregate, ProcessInstanceId Member)? memberOrigin;
+    /// <summary>Where a way down from an aggregate's list began: the rung, the aggregate and the process chosen in its list.</summary>
+    private readonly record struct MemberOrigin(
+        int Depth, DetailLevel Level, string? Focus, string Aggregate, ProcessInstanceId Member);
+
+    // Where the latest way down from an aggregate's list began, Enter or E on a process chosen there, so each way back to
+    // that rung - forward and back again included - chooses them there again (§3.2). A way down that begins at that rung
+    // or above it is a way of its own, and replaces it.
+    private MemberOrigin? memberOrigin;
+
+    /// <summary>A way down beginning here from the chosen aggregate's list, <paramref name="member"/> chosen in it.</summary>
+    private MemberOrigin? MemberOriginHere(ProcessInstanceId member) => ListingAggregate is { } aggregate
+        ? new(ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key, aggregate.Key, member)
+        : null;
 
     /// <summary>
     /// Opens the rung of a process the chosen aggregate lists, as Enter on a process drawn on its own does: through its
@@ -140,13 +150,13 @@ public sealed partial class WorkspaceViewModel
     public bool OpenMember(MemberRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        if (ListingAggregate is not { } aggregate || !MemberRows.Any(listed => listed.Process == row.Process)
+        if (!MemberRows.Any(listed => listed.Process == row.Process)
             || Snapshot.Processes.FirstOrDefault(process => process.Id == row.Process) is not { } process)
         {
             return false;
         }
 
-        var origin = (ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key, aggregate.Key, process.Id);
+        MemberOrigin? origin = MemberOriginHere(process.Id);
         if (!DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval))
         {
             return false;
@@ -157,21 +167,23 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// Back at the rung a process was opened from in an aggregate's list, chooses the aggregate and that process in its list
-    /// again and asks the keyboard to its row, where the way down began (§3.2); once, and never above that rung.
+    /// Back at the rung where a way down from an aggregate's list began, chooses the aggregate and the process in its list
+    /// again and asks the keyboard to its row (§3.2), each time a way back arrives there; a climb past it keeps it for the
+    /// way forward. That rung no longer drawing the aggregate, or the aggregate the process, lets it go.
     /// </summary>
     private void ResumeMemberOrigin()
     {
-        if (memberOrigin is not { } origin || ladder.Depth > origin.Depth)
+        if (memberOrigin is not { } origin || ladder.Depth != origin.Depth)
         {
             return;
         }
 
-        memberOrigin = null;
-        if (ladder.Depth < origin.Depth || ladder.Current.Level != origin.Level
+        // Only a way down that replaced it could stand another rung at its depth; the rung is checked all the same.
+        if (ladder.Current.Level != origin.Level
             || !string.Equals(ladder.Current.Focus?.Key, origin.Focus, StringComparison.Ordinal)
             || graphDisplay.Node(origin.Aggregate) is not { } aggregate || !aggregate.Members.Contains(origin.Member))
         {
+            memberOrigin = null;
             return;
         }
 
