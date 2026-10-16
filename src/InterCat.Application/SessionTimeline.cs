@@ -948,7 +948,7 @@ internal sealed class FocusRows
             // naming any of their channels.
             relations = generation.Relations(cancellationToken);
             hostChannels = HostScopeKeys.Channels(relations, hostKey, policy) ?? throw new InvalidOperationException(
-                $"No connection to {HostScopeKeys.AddressOf(hostKey)} is in this generation under the evidence policy.");
+                $"No connection to {HostScopeKeys.Named(hostKey)} is in this generation under the evidence policy.");
         }
         else if (focus.ChannelKey is { } key && TransportConnection.IsKey(key))
         {

@@ -132,6 +132,38 @@ public sealed class RpcScopeTests
         Assert.Equal(first.OtherEndKey, workspace.SelectedRung?.Key);
     });
 
+    [Fact(DisplayName = "§6.4: a call's records at the evidence rung widen to its channel's calls once the call's filter is removed")]
+    public void ACallsFilterRemovedWidensToItsChannel() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedCalls();
+        Publish(session.Store, rows, fields: fields);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 400);
+        foreach (string key in new[] { client.GroupKey, client.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        await workspace.RpcReady;
+        workspace.SelectedRung = Scm(workspace);
+        Assert.True(workspace.Descend());
+        await workspace.RpcReady;
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        await workspace.EvidenceReady;
+        Assert.Equal(["RPC request start", "RPC request end"], workspace.RungRows.Select(row => row.Label));
+
+        // The call's filter removed, the channel's filter decides: every call's records on it.
+        workspace.SelectedFilter = workspace.Filters.Single(filter => filter.Field == "scope");
+        Assert.True(workspace.RemoveSelectedFilter());
+        await workspace.EvidenceReady;
+        Assert.Equal(6, workspace.RungRows.Count);
+    });
+
     [Fact(DisplayName = "§6.7: the inspector describes a chosen RPC channel or call in full, with what its keys do, until a process is chosen")]
     public void TheInspectorDescribesAChosenCall() => SingleThreadedContext.Run(async () =>
     {

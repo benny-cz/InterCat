@@ -870,6 +870,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : (null, null);
         }
 
+        // An edge to other hosts chosen in the table: its processes' connections over its transport to the hosts it draws.
+        if (ChosenHostEdgeRecords() is { } toHosts)
+        {
+            return (new(HostScopeKeys.HostsOf(toHosts.Key), toHosts.Holders, null, toHosts.Mechanism), toHosts.Name);
+        }
+
         if (ChosenRow is { } row)
         {
             return (ChosenRowFocus(row.Row), row.Records.Label);
@@ -4801,6 +4807,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// then lists, the rung's own.
     /// </summary>
     public string EvidenceHeading => selectedRelationship is not null ? "Selected relationship"
+        : ChosenHostEdgeRow() is not null ? "Selected edge to other hosts"
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
@@ -4862,6 +4869,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     : realOverview ? "paired observations" : "observations";
                 return string.Create(CultureInfo.CurrentCulture, $"{chosen.ObservationCount:N0} {counted} · ")
                     + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
+            }
+
+            // An edge to other hosts chosen in the table: its connections' records, as its row counts them and E lists
+            // them, and what crossed them.
+            if (ChosenHostEdgeRow() is { } toHosts)
+            {
+                return string.Create(CultureInfo.CurrentCulture, $"{toHosts.ObservationCount:N0} records of its connections · ")
+                    + toHosts.KnownBytes;
             }
 
             // A row chosen among a process's rows: its records, as E lists them; and on its own rung once opened.
@@ -5218,6 +5233,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return realOverview && ChosenRelationshipRecords() is { } relationship
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, relationship,
                 $"Evidence was reached from the {rung} rung with this relationship chosen.")
+            : realOverview && HostEdgeEvidenceDescent(viewport, rung) is { } toHosts
+            ? toHosts
             : ChosenRow is { } row
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, row.Records,
                 $"Evidence was reached from the {rung} rung with {(HttpExchangeKeys.IsHttp(row.Row.Key) ? "its" : "this")} {ChosenRowNoun(row.Row)} chosen.")
@@ -5899,8 +5916,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         $"{record.ObservationId.RawRecordId.StreamId}/{record.ObservationId.RawRecordId.SourceEpoch}/"
         + $"{record.ObservationId.RawRecordId.RecordOrdinal}/{record.ObservationId.FactKey}");
 
+    /// <summary>
+    /// Whether two scopes read the same records: the same channel, operation, owners and interval, narrowed alike - a lane's
+    /// mechanism, direction or end filter removed widens the list - and stating the same problem.
+    /// </summary>
     private static bool SameScope(EvidenceScope left, EvidenceScope right) =>
         left.ChannelKey == right.ChannelKey
+        && left.OperationKey == right.OperationKey
+        && left.Mechanism == right.Mechanism
+        && left.Direction == right.Direction
+        && left.End == right.End
         && left.Interval == right.Interval
         && left.Problem == right.Problem
         && left.OwnerProcesses.SequenceEqual(right.OwnerProcesses);

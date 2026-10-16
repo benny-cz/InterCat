@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 615 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 616 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 616 — an edge to other hosts chosen in the table is its own records (§6.4, I5, R15):**
+  - E on such a row listed its source's every record. A host's scope now names several addresses and the processes
+    whose connections ran to them; E lists exactly the row's connections over its transport, a filter the breadcrumb
+    can remove, the timeline highlights them and the card counts them.
+  - Found on the way: removing a lane's mechanism, direction or end filter, or an RPC call's, at the evidence rung
+    left the narrower list, since the rung compared scopes without their narrowing; it compares them whole.
+  - Debug and Release each ran 2,563 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    twenty-eight mutations were caught: an edge's key unsorted, with an address twice or untrimmed, allowed no
+    address or one holding its separator, or naming no processes; its addresses read with its processes, its
+    processes read as none, several hosts named by the first, or read by the first alone; a scope ignoring its
+    processes, keeping them in its channel key, or reading processes gone without a word; several hosts named by
+    their addresses in an interval's bytes, an evidence page's error or the timeline's; E listing the source's
+    records, any transport's or any process's; the highlight the source's, any transport's, or not updated as the
+    row is chosen; the card's heading or count the source's; and an evidence rung keeping a list narrowed by a
+    mechanism, direction, end or call its filters no longer name.
 
 - **Revision 615 — the relationship table says what each edge to other hosts carried (R15, R21):**
   - Its rows said their bytes were "not counted", though their connections' records measured them. Once the table

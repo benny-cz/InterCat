@@ -802,6 +802,50 @@ public sealed class TimelineCellTests
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
     }
 
+    [Fact(DisplayName = "§6.4: a lane's direction or end filter removed at the evidence rung widens what E lists to the scope's every record")]
+    public void ALanesFilterRemovedWidensTheEvidence() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TwoWay());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        Channel channel = workspace.Snapshot.Channels.Single();
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 1);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        // The client's outbound cell lists its send; its direction filter removed, its receive too.
+        TimelineBucket sent = workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets
+            .Single(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(sent, directionLane: Direction.Outbound);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Single(workspace.RungRows);
+        Remove(EvidenceScopes.DirectionField);
+        await workspace.EvidenceReady;
+        Assert.Equal(2, workspace.RungRows.Count(row => row.Label.StartsWith("TCP ", StringComparison.Ordinal)));
+        workspace.ReturnTo(2);
+
+        // The client's end of the channel lists what was made there; its end filter removed, the server's end's too.
+        DescendTo(workspace, channel.Key);
+        await workspace.TimelineDetailReady;
+        ChannelEndTimelineLane end = workspace.TimelineChannelEndLanes!.Single(candidate => candidate.Endpoint == ClientEnd);
+        workspace.ChooseTimelineCell(end.Buckets.Single(bucket => bucket.ObservationCount > 0), endLane: end);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(2, workspace.RungRows.Count);
+        Remove(EvidenceScopes.EndField);
+        await workspace.EvidenceReady;
+        Assert.Equal(4, workspace.RungRows.Count);
+
+        void Remove(string field)
+        {
+            workspace.SelectedFilter = workspace.Filters.Single(filter => filter.Field == field);
+            Assert.True(workspace.RemoveSelectedFilter());
+        }
+    });
+
     private static void DescendTo(WorkspaceViewModel workspace, string key)
     {
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
@@ -820,6 +864,20 @@ public sealed class TimelineCellTests
             Timed(Transfer(11 + (5 * index), ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200,
                 (ulong)(101 + (2 * index))).Between(ServerEnd, ClientEnd)),
         }),
+    ];
+
+    /// <summary>
+    /// client.exe and server.exe each sending the other one message over their connection, each received, all in one
+    /// reading: one cell of each lane holds them.
+    /// </summary>
+    private static ObservationRowV1[] TwoWay() =>
+    [
+        Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
+        Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),
+        Timed(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 100).Between(ClientEnd, ServerEnd)),
+        Timed(Transfer(10, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 101).Between(ServerEnd, ClientEnd)),
+        Timed(Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 32, 200, 102).Between(ServerEnd, ClientEnd)),
+        Timed(Transfer(10, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 100, 103).Between(ClientEnd, ServerEnd)),
     ];
 
     /// <summary>peer.exe, receiving from client.exe over a second connection as each exchange with the server is made.</summary>

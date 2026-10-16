@@ -86,7 +86,7 @@ public sealed class HostEdgeRowsTests
         workspace.SelectedTableRow = browser;
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
-        Assert.Equal("Records owned by browser.exe · PID 300", workspace.EvidenceScopeText);
+        Assert.Equal("Records of browser.exe · PID 300 → 142.250.1.1:443 · TCP records only", workspace.EvidenceScopeText);
         Assert.Contains(workspace.TableRows, row => row.Key == browser.Key);
         Assert.Null(workspace.SelectedTableRow);
         Assert.True(workspace.Ascend());
@@ -163,6 +163,64 @@ public sealed class HostEdgeRowsTests
         using var unread = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
         unread.ShowTables = true;
         Assert.All(unread.TableRows.Where(row => row.ToHosts), row => Assert.Equal("bytes unknown", row.KnownBytes));
+    });
+
+    [Fact(DisplayName = "§6.4/I5: an edge to other hosts chosen in the table is its connections' records over its transport: the card counts them, the timeline highlights them and E lists exactly them")]
+    public void AChosenEdgeIsItsConnectionsRecords() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows(), .. Fleet(), .. Dual()]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 100);
+        RelationshipRow Row(string name, string mechanism = "TCP") =>
+            workspace.TableRows.Single(row => row.Name == name && row.Mechanism == mechanism);
+
+        // browser.exe's edge stands for its three TCP records to its host, never its start.
+        RelationshipRow browser = Row("browser.exe · PID 300 → 142.250.1.1:443");
+        workspace.SelectedTableRow = browser;
+        Assert.Equal(("Selected edge to other hosts", "3 records of its connections · bytes not read"),
+            (workspace.EvidenceHeading, workspace.EvidenceSummary));
+        await workspace.HighlightReady;
+        Assert.Equal(browser.Name, workspace.TimelineHighlightName);
+        Assert.Equal(3, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal("Records of browser.exe · PID 300 → 142.250.1.1:443 · TCP records only", workspace.EvidenceScopeText);
+        Assert.Equal(3, workspace.RungRows.Count);
+        Assert.Equal("Records of: " + browser.Name, Assert.Single(workspace.Filters, filter => filter.Field == "scope").Chip);
+        Assert.True(workspace.Ascend());
+
+        // dual.exe's TCP edge is its TCP records alone, though its UDP flow ran to the same host; its transport's filter
+        // removed, it is both.
+        RelationshipRow dual = Row("dual.exe · PID 800 → 9.9.9.9:53");
+        workspace.SelectedTableRow = dual;
+        await workspace.HighlightReady;
+        Assert.Equal(2, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(2, workspace.RungRows.Count);
+        workspace.SelectedFilter = workspace.Filters.Single(filter => filter.Field == EvidenceScopes.MechanismField);
+        Assert.True(workspace.RemoveSelectedFilter());
+        await workspace.EvidenceReady;
+        Assert.Equal("Records of dual.exe · PID 800 → 9.9.9.9:53", workspace.EvidenceScopeText);
+        Assert.Equal(3, workspace.RungRows.Count);
+        workspace.ReturnTo(0);
+
+        // worker.exe's edge is its three processes' connections to its three hosts, not their starts.
+        RelationshipRow workers = workspace.TableRows.Single(row => row.Source == "worker.exe");
+        workspace.SelectedTableRow = workers;
+        Assert.Equal("3 records of its connections · bytes not read", workspace.EvidenceSummary);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(3, workspace.RungRows.Count);
+        Assert.True(workspace.Ascend());
+
+        // Another node chosen, the card and the highlight are that node's again.
+        workspace.SelectGraphNode(workspace.GraphDisplay.NodeOf(Process(workspace, 100).Id)!.Key);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        await workspace.HighlightReady;
+        Assert.Equal("client.exe · PID 100", workspace.TimelineHighlightName);
     });
 
     [Fact(DisplayName = "R15: a table first shown at a deeper rung says its edges' bytes are being read until they are")]
@@ -397,6 +455,16 @@ public sealed class HostEdgeRowsTests
         .. Enumerable.Range(0, 10).SelectMany(index => Enumerable.Range(0, 10 - index).Select(record => Tcp(300 + (index * 10) + record,
             record == 0 ? ObservationKind.Connect : ObservationKind.Send, 700 + index, (ulong)(300 + (index * 10) + record),
             $"192.168.1.10:{54000 + index}", $"30.0.0.{1 + index}:443"))),
+    ];
+
+    /// <summary>dual.exe connecting to 9.9.9.9 at 53 and sending there, and sending it a datagram at 53 as well.</summary>
+    private static ObservationRowV1[] Dual() =>
+    [
+        Lifecycle(30, ObservationKind.Create, 800, 30) with { ResourceName = @"C:\Tools\dual.exe", SessionRelativeTicks = 90 },
+        Tcp(400, ObservationKind.Connect, 800, 400, "192.168.1.10:55000", "9.9.9.9:53"),
+        Tcp(401, ObservationKind.Send, 800, 401, "192.168.1.10:55000", "9.9.9.9:53"),
+        Transfer(402, ObservationKind.Send, AccountingSide.SendSide, 40, 800, 402).Between("192.168.1.10:55001", "9.9.9.9:53")
+            with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 1_402 },
     ];
 
     /// <summary>worker.exe's three processes, each connecting to a host of its own.</summary>

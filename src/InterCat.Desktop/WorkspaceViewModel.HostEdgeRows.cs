@@ -89,9 +89,7 @@ public sealed partial class WorkspaceViewModel
 
             SelectGraphNode(host.SourceNode);
             chosenHostEdge = host.Key;
-            OnPropertyChanged();
-            OnPropertyChanged(nameof(SelectedTableRowExplanation));
-            OnPropertyChanged(nameof(HasSelectedTableRow));
+            RaiseTableChoice();
         }
     }
 
@@ -170,12 +168,55 @@ public sealed partial class WorkspaceViewModel
         RaiseTableChoice();
     }
 
-    /// <summary>Says the table's choice may have changed: the row chosen, and the line beneath the table.</summary>
+    /// <summary>
+    /// Says the table's choice may have changed: the row chosen, the line beneath the table, and the records an edge to
+    /// other hosts chosen there stands for - the inspector's count of them and the timeline's highlight.
+    /// </summary>
     private void RaiseTableChoice()
     {
         OnPropertyChanged(nameof(SelectedTableRow));
         OnPropertyChanged(nameof(SelectedTableRowExplanation));
         OnPropertyChanged(nameof(HasSelectedTableRow));
+        OnPropertyChanged(nameof(EvidenceHeading));
+        OnPropertyChanged(nameof(EvidenceSummary));
+        UpdateHighlight();
+    }
+
+    /// <summary>
+    /// The records the edge to other hosts chosen in the table stands for (§6.4, I5): its processes' connections over its
+    /// transport to the hosts it draws, as E lists them, the timeline highlights them and the inspector counts them; null
+    /// while none is chosen.
+    /// </summary>
+    private (string Key, Mechanism Mechanism, IReadOnlyList<ProcessInstanceId> Holders, string Name)? ChosenHostEdgeRecords()
+    {
+        if (ChosenHostEdgeRow() is not { } row || graphDisplay.Edges.FirstOrDefault(edge => edge.Key == row.Key) is not { } edge)
+        {
+            return null;
+        }
+
+        HostLink[] links = LinksOn(edge, graphDisplay);
+        ProcessInstanceId[] holders = [.. links.Select(link => link.Process).Distinct()];
+        return (HostScopeKeys.Of(links.SelectMany(link => link.Addresses.Select(address => address.Address)), holders),
+            edge.Mechanism, holders, row.Name);
+    }
+
+    /// <summary>E's step from an edge to other hosts chosen in the table: its records alone, its transport's a filter of its own.</summary>
+    private LadderDescent? HostEdgeEvidenceDescent(TimeRange viewport, string rung)
+    {
+        if (ChosenHostEdgeRecords() is not { } toHosts)
+        {
+            return null;
+        }
+
+        LadderDescent descent = LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+            new(DetailLevel.Channel, toHosts.Key, toHosts.Name),
+            $"Evidence was reached from the {rung} rung with this edge to other hosts chosen: its processes' connections "
+            + "to the hosts it draws.");
+        return descent with
+        {
+            AddedFilters = [.. descent.AddedFilters, EvidenceScopes.MechanismFilter(toHosts.Mechanism,
+                "An edge to other hosts draws one transport's connections.")],
+        };
     }
 
     /// <summary>The graph's edges to other hosts at this rung as the table's rows, the busiest first.</summary>

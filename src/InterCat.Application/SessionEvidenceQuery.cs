@@ -362,7 +362,7 @@ public static class SessionEvidenceQuery
             {
                 // A host's records are every one-sided connection's to its address, whoever held it (HostScopeKeys).
                 hostChannels = HostScopeKeys.Channels(relations, channelKey, policy) ?? throw new InvalidOperationException(
-                    $"No connection to {HostScopeKeys.AddressOf(channelKey)} is in the current generation under the evidence "
+                    $"No connection to {HostScopeKeys.Named(channelKey)} is in the current generation under the evidence "
                     + "policy. Return to the graph and choose the host again.");
             }
             else if (TransportConnection.IsKey(channelKey))

@@ -37,7 +37,7 @@ public sealed record IntervalByteScope
             ? $"records owned by process instance {owner}"
                 + (Direction is { } direction ? $" with source direction {ObservationText.DirectionOf(direction)}" : string.Empty)
             : ChannelKey is { } host && HostScopeKeys.IsHost(host)
-            ? $"records of the connections to {HostScopeKeys.AddressOf(host)}"
+            ? $"records of the connections to {HostScopeKeys.Named(host)}"
             : ChannelKey is { } key
             ? (End is { } end ? $"records made at end {end} of channel {key}" : $"records of channel {key}")
             : Mechanism is { } mechanism

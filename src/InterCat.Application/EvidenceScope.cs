@@ -167,9 +167,19 @@ public static class EvidenceScopes
                     // A call or an exchange is one entity: its records are all of its own wherever the view is zoomed.
                     return new($"Records of {filter.Value}", null, [], null, null) { OperationKey = filter.Key };
                 case DetailLevel.Channel when HostScopeKeys.IsHost(filter.Key):
-                    // A host's connections are read by its own key, whichever process held them (HostScopeKeys).
-                    return new($"Records of the connections to {HostScopeKeys.AddressOf(filter.Key!)}{time}", filter.Key, [],
-                        interval, null);
+                    // A host's connections are read by its own key, whichever process held them (HostScopeKeys); an edge's to
+                    // other hosts by its hosts' key, its processes the owners.
+                    IReadOnlyList<ProcessInstanceId> holders = HostScopeKeys.HoldersOf(filter.Key!);
+                    if (holders.Count == 0)
+                    {
+                        return new($"Records of the connections to {HostScopeKeys.Named(filter.Key!)}{time}", filter.Key, [],
+                            interval, null);
+                    }
+
+                    ProcessInstanceId[] held = [.. snapshot.Processes.Where(node => holders.Contains(node.Id)).Select(node => node.Id)];
+                    return held.Length == 0
+                        ? Unreadable("None of the processes whose connections ran to these hosts is in this generation.", interval)
+                        : new($"Records of {filter.Value}{time}", HostScopeKeys.HostsOf(filter.Key!), held, interval, null);
                 case DetailLevel.Channel when TransportConnection.IsKey(filter.Key):
                     // A one-sided connection is no paired channel of the overview: it is read by its own key.
                     return new($"Records of {filter.Value}{time}", filter.Key, [], interval, null);

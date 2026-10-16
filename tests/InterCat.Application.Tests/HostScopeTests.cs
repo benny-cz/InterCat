@@ -115,6 +115,48 @@ public sealed class HostScopeTests
         Assert.Throws<ArgumentException>(() => HostScopeKeys.AddressOf("connection:other"));
     }
 
+    [Fact(DisplayName = "§6.4: an edge to other hosts' scope names its hosts and the processes whose connections ran to them, and reads theirs to any of its hosts")]
+    public void AnEdgesScopeReadsItsProcessesConnectionsToItsHosts()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+        ProcessInstanceId browser = whole.Processes.Single(node => node.ProcessId == 300).Id;
+
+        // Its key names its hosts, each once, the lowest first, then its processes; with one host and none it is a host's.
+        string key = HostScopeKeys.Of(["20.42.65.1", " 142.250.1.1", "142.250.1.1"], [browser]);
+        Assert.Equal("host:142.250.1.1,20.42.65.1@" + ProcessSetFilter.KeyOf([browser]), key);
+        Assert.True(HostScopeKeys.IsHost(key));
+        Assert.Equal(["142.250.1.1", "20.42.65.1"], HostScopeKeys.AddressesOf(key));
+        Assert.Equal("142.250.1.1,20.42.65.1", HostScopeKeys.AddressOf(key));
+        Assert.Equal([browser], HostScopeKeys.HoldersOf(key));
+        Assert.Equal("host:142.250.1.1,20.42.65.1", HostScopeKeys.HostsOf(key));
+        Assert.Equal("2 hosts", HostScopeKeys.Named(key));
+        Assert.Equal(HostScopeKeys.Of(Host), HostScopeKeys.Of([Host]));
+        Assert.Equal(Host, HostScopeKeys.Named(HostScopeKeys.Of(Host)));
+        Assert.Empty(HostScopeKeys.HoldersOf(HostScopeKeys.Of(Host)));
+        Assert.Throws<ArgumentException>(() => HostScopeKeys.Of(Array.Empty<string>()));
+        Assert.Throws<ArgumentException>(() => HostScopeKeys.Of(["192.0.2.1,192.0.2.2"]));
+
+        // Its hosts' records are any of theirs; its process's alone are its own connections', over TCP its TCP's.
+        string hosts = HostScopeKeys.HostsOf(key);
+        Assert.Equal(8, Read(session.Store, hosts).Length);
+        Assert.Equal(5, Read(session.Store, hosts, owners: [browser]).Length);
+        Assert.Equal(4, Read(session.Store, hosts, owners: [browser], mechanism: Mechanism.Tcp).Length);
+        Assert.Equal(4, SessionTimelineQuery.Focused(session.Store, whole.Extent, 64,
+            new TimelineFocus(hosts, [browser], mechanism: Mechanism.Tcp)).Focus.Sum(bucket => bucket.ObservationCount));
+        Assert.Equal("records of the connections to 2 hosts", new IntervalByteScope { ChannelKey = hosts }.Description);
+
+        // Hosts no connection reached are said so, by how many.
+        string unreached = HostScopeKeys.Of(["192.0.2.1", "192.0.2.2"]);
+        Assert.Contains("No connection to 2 hosts is in",
+            Assert.Throws<InvalidOperationException>(() => SessionEvidenceQuery.Read(session.Store, unreached)).Message,
+            StringComparison.Ordinal);
+        Assert.Contains("No connection to 2 hosts is in",
+            Assert.Throws<InvalidOperationException>(() => SessionTimelineQuery.Focused(session.Store, whole.Extent, 8,
+                new TimelineFocus(unreached, []))).Message, StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "§6.4: a reopened session's host focus counts its rows, never the persisted tiles' tallies of its processes' every record")]
     public void AReopenedSessionsHostFocusCountsItsRows()
     {

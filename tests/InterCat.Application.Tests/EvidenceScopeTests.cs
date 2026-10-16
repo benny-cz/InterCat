@@ -154,6 +154,25 @@ public sealed class EvidenceScopeTests
             StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§6.4: an evidence rung reached from an edge to other hosts reads its processes' connections to its hosts, named as the edge is")]
+    public void AnEdgesFilterReadsItsProcessesConnections()
+    {
+        string key = HostScopeKeys.Of(["20.42.65.1", "142.250.1.1"], [Other, Client]);
+        EvidenceScope scope = EvidenceScopes.Resolve(Snapshot,
+            Rung(Filter("scope", "app.exe → Other hosts · 2 hosts", DetailLevel.Channel, key)));
+        Assert.Equal(("Records of app.exe → Other hosts · 2 hosts", "host:142.250.1.1,20.42.65.1"), (scope.Description, scope.ChannelKey));
+        Assert.Equal(new[] { Client, Other }.OrderBy(id => id.Value), scope.OwnerProcesses.OrderBy(id => id.Value));
+        Assert.Null(scope.Problem);
+
+        // A transport's filter narrows it; processes this generation no longer holds read nothing, and say so.
+        EvidenceScope tcp = EvidenceScopes.Resolve(Snapshot, Rung(Filter("scope", "edge", DetailLevel.Channel, key),
+            EvidenceScopes.MechanismFilter(Mechanism.Tcp, "lane")));
+        Assert.Equal(("Records of edge · TCP records only", Mechanism.Tcp), (tcp.Description, tcp.Mechanism));
+        Assert.Equal("None of the processes whose connections ran to these hosts is in this generation.",
+            EvidenceScopes.Resolve(Snapshot, Rung(Filter("scope", "edge", DetailLevel.Channel,
+                HostScopeKeys.Of(["142.250.1.1"], [new ProcessInstanceId(Guid.Parse("99999999-9999-9999-9999-999999999999"))])))).Problem);
+    }
+
     [Fact]
     public void AnExplicitScopeStepCarriesItsKeyAndLevelIntoTheFilterBar()
     {
