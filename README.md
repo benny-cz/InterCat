@@ -41,9 +41,9 @@ draws, who connected included, for a keyboard or a screen reader.
 to rank within it, zoom into it, or read it on the capture machine's wall clock.
 
 **The ranked table and the ladder** go from the machine to an executable group, a process instance, its channels, its
-RPC calls or HTTP exchanges, and their source records (E), ranked by records, bytes, RPC calls, errors, durations or
-peers, per second if you like. Counts say what they count and over which scope, and a chosen record opens its
-original journal entry.
+RPC calls or HTTP exchanges, and their source records (E), ranked by records, bytes, RPC calls, errors, durations, peers
+or the connections a process made or accepted, per second if you like. Counts say what they count and over which scope,
+and a chosen record opens its original journal entry.
 
 **Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
 machine's capture can join to another's; a session opened from its investigation names, beside each other host it

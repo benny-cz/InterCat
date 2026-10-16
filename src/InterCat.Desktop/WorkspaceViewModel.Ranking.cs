@@ -36,6 +36,9 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.RpcCallTime => "RPC call time: rank by the median time each process's completed client calls took, slowest first",
         RankingMetric.RpcServeTime => "RPC serve time: rank by the median time each process took to serve its completed calls, slowest first",
         RankingMetric.ActivePeers => "Peers: rank by the distinct processes at the other end of each process's records",
+        RankingMetric.ConnectionsMade => "Connections made: rank by the TCP connections each process made, each a connect the capture saw at its end",
+        RankingMetric.ConnectionsAccepted =>
+            "Connections accepted: rank by the TCP connections each process accepted, each an accept the capture saw at its end",
         _ => "Records: rank by each process's own records",
     } + (RankingMetrics.BasisOf(Metric) == AnalysisBasis.LogicalOperations
         ? ", on logical operations" : ", on source observations");
@@ -58,6 +61,8 @@ public sealed partial class WorkspaceViewModel
         new RankingOption(RankingMetric.BytesReceived, "Bytes received"),
         new RankingOption(RankingMetric.EndpointBytes, "Bytes sent and received"),
         new RankingOption(RankingMetric.ActivePeers, "Peers"),
+        new RankingOption(RankingMetric.ConnectionsMade, "Connections made"),
+        new RankingOption(RankingMetric.ConnectionsAccepted, "Connections accepted"),
         new RankingOption(RankingMetric.RpcCallsMade, "RPC calls made") { OpensBasis = true },
         new RankingOption(RankingMetric.RpcCallsServed, "RPC calls served"),
         new RankingOption(RankingMetric.RpcErrors, "RPC errors"),
@@ -73,6 +78,8 @@ public sealed partial class WorkspaceViewModel
         source.CallMeasuresAsync(scope, cancellation));
     private readonly RankingReads<SessionPeerMeasures> peerReads = new((source, scope, cancellation) =>
         source.PeerMeasuresAsync(scope, cancellation));
+    private readonly RankingReads<SessionConnectionMeasures> connectionReads = new((source, scope, cancellation) =>
+        source.ConnectionMeasuresAsync(scope, cancellation));
 
     /// <summary>What the machine and group rungs can rank by: records alone without a session to read measures from.</summary>
     public IReadOnlyList<RankingOption> RankingOptions => evidenceSource is null ? [RankingChoices[0]] : RankingChoices;
@@ -102,6 +109,7 @@ public sealed partial class WorkspaceViewModel
             if (Family != RankingFamily.Bytes) byteReads.Cancel();
             if (Family != RankingFamily.Calls) callReads.Cancel();
             if (Family != RankingFamily.Peers) peerReads.Cancel();
+            if (Family != RankingFamily.Connections) connectionReads.Cancel();
             Rerank();
 
             // Other hosts' list follows a byte ranking too, read for its hosts' traffic.
@@ -244,6 +252,15 @@ public sealed partial class WorkspaceViewModel
                     note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} {(unmeasured == 1 ? "record" : "records")} unresolved");
                 }
             }
+            else if (Family == RankingFamily.Connections)
+            {
+                // Each connection is one open at one end, so the rows' counts add up; a session that records no open
+                // ranks nothing by them.
+                string side = rankBy == RankingMetric.ConnectionsMade ? "made" : "accepted";
+                note = measured > 0
+                    ? string.Create(CultureInfo.CurrentCulture, $"{value:N0} {side} on {Spoken.Count(measured, "TCP record")}")
+                    : unmeasured > 0 ? "No connection's open recorded" : "No TCP in scope";
+            }
             else if (RankingMetrics.IsDuration(rankBy))
             {
                 note = ShownMedian() is { } median
@@ -350,6 +367,16 @@ public sealed partial class WorkspaceViewModel
                         $" {Spoken.Count(peerMeasures.Unattributed, "record")} {(peerMeasures.Unattributed == 1 ? "belongs" : "belong")} to no process the evidence policy admits at either end.");
                 }
             }
+            else if (shown is SessionConnectionMeasures)
+            {
+                string side = rankBy == RankingMetric.ConnectionsMade ? "made" : "accepted";
+                detail = measured > 0
+                    ? string.Create(CultureInfo.CurrentCulture,
+                        $"{definition} The rows shown {side} {Spoken.Count(value, "connection")}, on {Spoken.Count(measured, "TCP record")}. A row with no TCP record ranks after every row with one.")
+                    : unmeasured > 0
+                        ? $"{definition} This session records no connection's open, so the rows' {Spoken.Count(unmeasured, "TCP record")} say nothing of who made or accepted their connections, and each row is unmeasured, never zero."
+                        : $"{definition} The rows shown hold no TCP record in this scope.";
+            }
             else if (shown is SessionCallMeasures timed && RankingMetrics.IsDuration(rankBy))
             {
                 detail = ShownMedian() is { } median
@@ -447,7 +474,8 @@ public sealed partial class WorkspaceViewModel
         + "or server calls each process completed, counted by their stop; a local call is made by one process and served by "
         + "another. RPC call and serve time: the median time those calls took, slowest first; a stop paired with no start is "
         + "never timed, and a group's median is its members' calls together. Peers: the distinct processes at the other end "
-        + "of each process's records; two processes are each other's peer, so the rows overlap.";
+        + "of each process's records; two processes are each other's peer, so the rows overlap. Connections made and "
+        + "accepted: the TCP connections each process made by a connect or accepted, as the capture saw them open at its end.";
 
     private RankingFamily Family => RankingMetrics.FamilyOf(rankBy);
 
@@ -460,6 +488,7 @@ public sealed partial class WorkspaceViewModel
         RankingFamily.Bytes => byteReads.For(CountedScope),
         RankingFamily.Calls => callReads.For(CountedScope),
         RankingFamily.Peers => peerReads.For(CountedScope),
+        RankingFamily.Connections => connectionReads.For(CountedScope),
         _ => null,
     };
 
@@ -472,6 +501,7 @@ public sealed partial class WorkspaceViewModel
         SessionByteMeasures bytes => byteReads.IsCarried(bytes),
         SessionCallMeasures calls => callReads.IsCarried(calls),
         SessionPeerMeasures peers => peerReads.IsCarried(peers),
+        SessionConnectionMeasures connections => connectionReads.IsCarried(connections),
         _ => false,
     };
 
@@ -481,6 +511,7 @@ public sealed partial class WorkspaceViewModel
         RankingFamily.Bytes => byteReads.Problem,
         RankingFamily.Calls => callReads.Problem,
         RankingFamily.Peers => peerReads.Problem,
+        RankingFamily.Connections => connectionReads.Problem,
         _ => null,
     };
 
@@ -490,6 +521,8 @@ public sealed partial class WorkspaceViewModel
         SessionByteMeasures bytes => LadderProjection.Project(OverviewWorkspace.WithBytes(Snapshot, bytes), ladder.Current, rankBy),
         SessionCallMeasures calls => LadderProjection.Project(OverviewWorkspace.WithCalls(Snapshot, calls), ladder.Current, rankBy),
         SessionPeerMeasures peers => LadderProjection.Project(OverviewWorkspace.WithPeers(Snapshot, peers), ladder.Current, rankBy),
+        SessionConnectionMeasures connections =>
+            LadderProjection.Project(OverviewWorkspace.WithConnections(Snapshot, connections), ladder.Current, rankBy),
         _ => LadderProjection.Project(Snapshot, ladder.Current),
     };
 
@@ -575,6 +608,11 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.ActivePeers => "Peers are the distinct process instances at the other end of each process's records, "
             + "under relations-v1 (metrics-v1 §6.1); a process connected to itself is its own peer, and a group's peers are its "
             + "members' together. A record whose other end is unresolved names no peer, so each count is a lower bound.",
+        RankingMetric.ConnectionsMade => "Connections made are the TCP connections each process made, each a connect record "
+            + "at its own end, as the capture saw it open (relations-v1 sections 3 and 5); a group's are its members'.",
+        RankingMetric.ConnectionsAccepted => "Connections accepted are the TCP connections each process accepted, each an "
+            + "accept record at its own end, as the capture saw it open (relations-v1 sections 3 and 5); a group's are its "
+            + "members'.",
         RankingMetric.RpcServeTime => "RPC serve time is how long each process took to serve its completed server calls, from "
             + "a served call's start to its stop (metrics-v1 §8a, ServerExecution); a row ranks by the median of its calls, "
             + "slowest first, and a group's median is its members' calls together, never a sum of medians.",
@@ -625,6 +663,7 @@ public sealed partial class WorkspaceViewModel
         RankingFamily.Bytes => FollowAsync(byteReads),
         RankingFamily.Calls => FollowAsync(callReads),
         RankingFamily.Peers => FollowAsync(peerReads),
+        RankingFamily.Connections => FollowAsync(connectionReads),
         _ => Task.CompletedTask,
     };
 
@@ -715,6 +754,7 @@ public sealed partial class WorkspaceViewModel
             RankingFamily.Bytes => await BesideCountsAsync(byteReads, source, interval),
             RankingFamily.Calls => await BesideCountsAsync(callReads, source, interval),
             RankingFamily.Peers => await BesideCountsAsync(peerReads, source, interval),
+            RankingFamily.Connections => await BesideCountsAsync(connectionReads, source, interval),
             _ => null,
         };
 
@@ -756,6 +796,9 @@ public sealed partial class WorkspaceViewModel
                 break;
             case RankingFamily.Peers:
                 peerReads.KeepInterval(measured as SessionPeerMeasures);
+                break;
+            case RankingFamily.Connections:
+                connectionReads.KeepInterval(measured as SessionConnectionMeasures);
                 break;
         }
     }

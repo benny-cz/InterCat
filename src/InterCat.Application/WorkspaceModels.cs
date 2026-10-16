@@ -160,6 +160,12 @@ public sealed record ProcessNode(
     /// null until one has.
     /// </summary>
     public PeerCount? Peers { get; init; }
+
+    /// <summary>
+    /// The TCP connections the process made and accepted over the ranked scope, when a connection ranking read them
+    /// (<see cref="SessionConnectionRanking"/>); null until one has.
+    /// </summary>
+    public ConnectionCount? Connections { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

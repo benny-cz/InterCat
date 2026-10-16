@@ -134,6 +134,12 @@ public static class SessionExport
                 SameSession(peers, overview);
                 snapshot = OverviewWorkspace.WithPeers(snapshot, peers);
                 break;
+            case RankingFamily.Connections:
+                SessionConnectionMeasures connections = SessionConnectionRanking.Measure(store, request.Interval,
+                    cancellationToken: cancellationToken);
+                SameSession(connections, overview);
+                snapshot = OverviewWorkspace.WithConnections(snapshot, connections);
+                break;
         }
 
         var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));

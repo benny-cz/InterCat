@@ -241,8 +241,8 @@ public static class LadderProjection
     }
 
     /// <summary>
-    /// A row's value under a byte or call ranking: the sum of its processes' bytes or calls, which partition it, as a
-    /// group sums its members' records. A time ranking's median does not add, so it reads the row's own call times,
+    /// A row's value under a byte, call or connection ranking: the sum of its processes' bytes, calls or connections,
+    /// which partition it, as a group sums its members' records. A time ranking's median does not add, so it reads the row's own call times,
     /// <paramref name="times"/>, its members' calls together, and a distinct peer count overlaps, so it reads the row's own
     /// <paramref name="peers"/>. Null when ranking by records, or when the measures have not been read.
     /// </summary>
@@ -259,6 +259,8 @@ public static class LadderProjection
                     : null,
             RankingFamily.Calls when members.All(member => member.Calls is not null) =>
                 members.Aggregate(ProcessCalls.None, (sum, member) => sum.Plus(member.Calls!)).Of(ranking),
+            RankingFamily.Connections when members.All(member => member.Connections is not null) =>
+                members.Aggregate(ConnectionCount.None, (sum, member) => sum.Plus(member.Connections!)).Of(ranking),
             _ => null,
         };
 

@@ -143,11 +143,6 @@ public static class OverviewWorkspace
     }
 
     /// <summary>
-    /// The same workspace with each process's RPC calls over the measured scope, for a ranking by calls
-    /// (<see cref="SessionCallRanking"/>); a process with no RPC stop in scope holds none. Measures that could not count
-    /// a call, because the capture did not collect RPC, give no process a value.
-    /// </summary>
-    /// <summary>
     /// The same workspace with each process's and group's distinct peers over the measured scope, for a ranking by peers
     /// (<see cref="SessionPeerRanking"/>); one with no record that has another end holds none.
     /// </summary>
@@ -168,6 +163,11 @@ public static class OverviewWorkspace
         };
     }
 
+    /// <summary>
+    /// The same workspace with each process's RPC calls over the measured scope, for a ranking by calls
+    /// (<see cref="SessionCallRanking"/>); a process with no RPC stop in scope holds none. Measures that could not count
+    /// a call, because the capture did not collect RPC, give no process a value.
+    /// </summary>
     public static WorkspaceSnapshot WithCalls(WorkspaceSnapshot snapshot, SessionCallMeasures measures)
     {
         ArgumentNullException.ThrowIfNull(snapshot);
@@ -183,6 +183,20 @@ public static class OverviewWorkspace
             {
                 CallTimes = measures.TimesByGroup.GetValueOrDefault(group.Key) ?? CallTimes.None,
             })],
+        };
+    }
+
+    /// <summary>
+    /// The same workspace with each process's TCP connections made and accepted over the measured scope, for a ranking by
+    /// connections (<see cref="SessionConnectionRanking"/>); one with no TCP record in scope holds none.
+    /// </summary>
+    public static WorkspaceSnapshot WithConnections(WorkspaceSnapshot snapshot, SessionConnectionMeasures measures)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(measures);
+        return snapshot with
+        {
+            Processes = [.. snapshot.Processes.Select(process => process with { Connections = measures.Of(process.Id) })],
         };
     }
 }

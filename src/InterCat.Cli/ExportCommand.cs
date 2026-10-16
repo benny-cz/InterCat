@@ -57,6 +57,8 @@ internal static class ExportCommand
             "rpc-call-time-median" => RankingMetric.RpcCallTime,
             "rpc-serve-time-median" => RankingMetric.RpcServeTime,
             "active-peers" => RankingMetric.ActivePeers,
+            "connections-made" => RankingMetric.ConnectionsMade,
+            "connections-accepted" => RankingMetric.ConnectionsAccepted,
             _ => null,
         };
         LaneGrouping? groupBy = groupText switch
@@ -79,7 +81,8 @@ internal static class ExportCommand
             : invalidLimit ? $"--limit applies to --evidence and must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}."
             : rankBy is null
                 ? "--rank-by must be records, bytes-sent, bytes-received, bytes-sent-and-received, rpc-calls-made, rpc-calls-served, "
-                    + "rpc-errors, rpc-call-time-median, rpc-serve-time-median or active-peers."
+                    + "rpc-errors, rpc-call-time-median, rpc-serve-time-median, active-peers, connections-made or "
+                    + "connections-accepted."
             : evidence && rankBy != RankingMetric.Records
                 ? "--rank-by ranks rows; an --evidence export lists its records in reading order."
             : groupBy is null ? "--group-by must be executable or session."
@@ -177,7 +180,8 @@ internal static class ExportCommand
         ConsoleUi.Line("icat export <session-directory> --output <path> [--at <row-key>]... [--interval <start:end>]");
         ConsoleUi.Line("            [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received|rpc-calls-made|");
         ConsoleUi.Line("                       rpc-calls-served|rpc-errors|rpc-call-time-median|rpc-serve-time-median|");
-        ConsoleUi.Line("                       active-peers] [--group-by executable|session] [--set-aside-collectors]");
+        ConsoleUi.Line("                       active-peers|connections-made|connections-accepted]");
+        ConsoleUi.Line("            [--group-by executable|session] [--set-aside-collectors]");
         ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
@@ -190,6 +194,8 @@ internal static class ExportCommand
         ConsoleUi.Line("  or by the median time those calls took, slowest first (call time as a client, serve time as a");
         ConsoleUi.Line("  server); a stop paired with no start is never timed. active-peers ranks by the distinct processes");
         ConsoleUi.Line("  at the other end of each process's records, a lower bound beside those left unresolved.");
+        ConsoleUi.Line("  connections-made and connections-accepted rank by the TCP connections each process made by a");
+        ConsoleUi.Line("  connect or accepted, as the capture saw them open at its end: servers first by the latter.");
         ConsoleUi.Line("  --group-by session groups the machine rung's rows by the terminal session each process's");
         ConsoleUi.Line("  lifecycle records name, as the window's Group by does, so --at reaches a session by its key");
         ConsoleUi.Line("  (session:1, or session:unknown for the processes naming none); executable is the default.");

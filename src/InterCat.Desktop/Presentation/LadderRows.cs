@@ -247,6 +247,14 @@ public static class LadderRowBuilder
                 : ranked.Holds ? "unresolved" : "no peers";
         }
 
+        if (RankingMetrics.FamilyOf(ranked.Metric) == RankingFamily.Connections)
+        {
+            // A row in a session that records no open says nothing of its connections' makers, which is not none.
+            return ranked.Value is { } connections
+                ? string.Create(CultureInfo.CurrentCulture, $"{connections:N0} {(connections == 1 ? "connection" : "connections")}")
+                : ranked.Holds ? "not recorded" : "no TCP";
+        }
+
         if (RankingMetrics.IsDuration(ranked.Metric))
         {
             // A row whose only calls began before the capture was never timed, which is not a fast row.
@@ -295,6 +303,16 @@ public static class LadderRowBuilder
                 ? string.Create(CultureInfo.CurrentCulture,
                     $"{peers:N0} {(peers == 1 ? "peer" : "peers")} on {ranked.Measured:N0} {(ranked.Measured == 1 ? "record" : "records")}{unresolved}")
                 : ranked.Holds ? $"no peer resolved{unresolved}" : "no record with another end";
+        }
+
+        if (RankingMetrics.FamilyOf(ranked.Metric) == RankingFamily.Connections)
+        {
+            string side = ranked.Metric == RankingMetric.ConnectionsMade ? "made" : "accepted";
+            return ranked.Value is { } connections
+                ? $"{Spoken.Count(connections, "connection")} {side}, on {Spoken.Count(ranked.Measured, "TCP record")}"
+                : ranked.Holds
+                    ? $"no connection's open recorded, on {Spoken.Count(ranked.Unmeasured, "TCP record")}"
+                    : "no TCP records";
         }
 
         if (RankingMetrics.IsDuration(ranked.Metric))

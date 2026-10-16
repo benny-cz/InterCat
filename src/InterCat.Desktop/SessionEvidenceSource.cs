@@ -79,6 +79,17 @@ public sealed class SessionEvidenceSource(
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
+    /// Each process's TCP connections made and accepted over the whole session, or over <paramref name="interval"/>, for the
+    /// ranked table's connection rankings (<see cref="SessionConnectionRanking"/>).
+    /// </summary>
+    public Task<SessionConnectionMeasures> ConnectionMeasuresAsync(TimeRange? interval, CancellationToken cancellationToken) =>
+        Task.Run(() => SessionConnectionRanking.Measure(
+            Store(),
+            interval,
+            policy: Policy,
+            cancellationToken: cancellationToken), cancellationToken);
+
+    /// <summary>
     /// What each column of an interval's records sent and received, over the records one listing of the interval table
     /// counts (<see cref="SessionIntervalByteQuery"/>).
     /// </summary>

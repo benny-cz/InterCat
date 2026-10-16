@@ -231,8 +231,9 @@ public sealed class RankingSelectorTests
         Assert.Equal(
             [
                 RankingMetric.Records, RankingMetric.BytesSent, RankingMetric.BytesReceived, RankingMetric.EndpointBytes,
-                RankingMetric.ActivePeers, RankingMetric.RpcCallsMade, RankingMetric.RpcCallsServed, RankingMetric.RpcErrors,
-                RankingMetric.RpcCallTime, RankingMetric.RpcServeTime,
+                RankingMetric.ActivePeers, RankingMetric.ConnectionsMade, RankingMetric.ConnectionsAccepted,
+                RankingMetric.RpcCallsMade, RankingMetric.RpcCallsServed, RankingMetric.RpcErrors, RankingMetric.RpcCallTime,
+                RankingMetric.RpcServeTime,
             ],
             workspace.RankingOptions.Select(option => option.Metric));
         Assert.Equal(
@@ -251,6 +252,81 @@ public sealed class RankingSelectorTests
         Assert.Equal("observations", workspace.RankingBasis);
         return Task.CompletedTask;
     });
+
+    [Fact(DisplayName = "§5.2: connections accepted rank the processes that served others first, and connections made those that reached out, each said beside its TCP records, and the export is icat's")]
+    public void ConnectionsRankTheRail() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Servers());
+        using WorkspaceViewModel workspace = Open(session);
+
+        workspace.SelectedRanking = workspace.RankingOptions.Single(option => option.Metric == RankingMetric.ConnectionsAccepted);
+        Assert.Equal("Reading connections accepted…", workspace.RankingNote);
+        await workspace.RankingReady;
+        Assert.Equal(RankingMetric.ConnectionsAccepted, workspace.AppliedRanking);
+
+        // The service accepted two connections, the client none; the resolver's UDP holds no TCP record.
+        Assert.Equal(["service.exe", "client.exe", "resolver.exe"], workspace.RungRows.Select(row => row.Label));
+        Assert.Equal(["2 connections", "0 connections", "no TCP"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Contains("2 connections accepted, on 4 TCP records", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Contains("no TCP records", workspace.RungRows[2].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("2 accepted on 8 TCP records", workspace.RankingNote);
+        Assert.StartsWith("Connections accepted are the TCP connections each process accepted, each an accept record at its own end",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+        Assert.Contains("The rows shown accepted 2 connections, on 8 TCP records.", workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // Made, the client ranks first.
+        workspace.RankBy = RankingMetric.ConnectionsMade;
+        await workspace.RankingReady;
+        Assert.Equal(["client.exe", "service.exe", "resolver.exe"], workspace.RungRows.Select(row => row.Label));
+        Assert.Equal(["2 connections", "0 connections", "no TCP"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Equal("2 made on 8 TCP records", workspace.RankingNote);
+
+        // The export is icat export --rank-by connections-made's (R18).
+        SessionExportResult desktop = await workspace.ExportAsync(ExportFormat.Json, Exported);
+        Assert.Equal(desktop.Content, SessionExport.Build(session.Store,
+            new([], null, false, ExportFormat.Json, RankBy: RankingMetric.ConnectionsMade), Exported).Content);
+        Assert.Contains("\"rankedBy\": \"connections-made\"", desktop.Content, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "R21: a session that records no connection's open says so beneath the connection rankings, and ranks no process by them")]
+    public void ConnectionsUnrecordedRankNone() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 2).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        ]);
+        using WorkspaceViewModel workspace = Open(session);
+        workspace.RankBy = RankingMetric.ConnectionsAccepted;
+        await workspace.RankingReady;
+        Assert.Equal(["not recorded"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Contains("no connection's open recorded, on 1 TCP record", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("No connection's open recorded", workspace.RankingNote);
+        Assert.Contains("This session records no connection's open, so the rows' 1 TCP record say nothing of who made or accepted",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+    });
+
+    /// <summary>
+    /// client.exe connects twice to service.exe over loopback, each accepted there; resolver.exe sends UDP.
+    /// </summary>
+    private static ObservationRowV1[] Servers() =>
+    [
+        Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+        Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\service.exe" },
+        Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe" },
+        Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+        Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between("127.0.0.1:50001", "127.0.0.1:8080"),
+        Transfer(21, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 21).Between("127.0.0.1:8080", "127.0.0.1:50001"),
+        Transfer(22, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 22).Between("127.0.0.1:50001", "127.0.0.1:8080"),
+        Transfer(23, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 23).Between("127.0.0.1:8080", "127.0.0.1:50001"),
+        Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 30).Between("192.168.1.10:53000", "10.0.0.53:53")
+            with { Mechanism = Mechanism.Udp },
+    ];
 
     [Fact(DisplayName = "§8a: RPC calls made and served rank the rail by each side's completed calls, with failures and unpaired stops said")]
     public void CallsMadeAndServedRankTheRail() => SingleThreadedContext.Run(async () =>

@@ -54,6 +54,15 @@ public enum RankingMetric
     /// §6.1): a lower bound beside the records whose other end is unresolved, and unmeasured, never zero, when none resolved.
     /// </summary>
     ActivePeers = 10,
+
+    /// <summary>
+    /// The TCP connections each process made, as the capture saw them open (`relations-v1` §3, §5): its own connect records
+    /// in scope, one a connection. Unmeasured, never zero, in a session that records no connection's open.
+    /// </summary>
+    ConnectionsMade = 11,
+
+    /// <summary>The TCP connections each process accepted: its own accept records in scope, one a connection.</summary>
+    ConnectionsAccepted = 12,
 }
 
 /// <summary>Which kind of measure a ranking reads, and so which read answers it.</summary>
@@ -70,6 +79,9 @@ public enum RankingFamily
 
     /// <summary>Distinct peers, read by <see cref="SessionPeerRanking"/>.</summary>
     Peers = 4,
+
+    /// <summary>TCP connections opened, made or accepted, read by <see cref="SessionConnectionRanking"/>.</summary>
+    Connections = 5,
 }
 
 /// <summary>A ranking's family and names.</summary>
@@ -83,6 +95,7 @@ public static class RankingMetrics
         RankingMetric.RpcCallsMade or RankingMetric.RpcCallsServed or RankingMetric.RpcErrors
             or RankingMetric.RpcCallTime or RankingMetric.RpcServeTime => RankingFamily.Calls,
         RankingMetric.ActivePeers => RankingFamily.Peers,
+        RankingMetric.ConnectionsMade or RankingMetric.ConnectionsAccepted => RankingFamily.Connections,
         _ => throw new ArgumentOutOfRangeException(nameof(metric)),
     };
 
@@ -118,6 +131,8 @@ public static class RankingMetrics
         RankingMetric.RpcCallTime => "RPC call times",
         RankingMetric.RpcServeTime => "RPC serve times",
         RankingMetric.ActivePeers => "peers",
+        RankingMetric.ConnectionsMade => "connections made",
+        RankingMetric.ConnectionsAccepted => "connections accepted",
         _ => "records",
     };
 }

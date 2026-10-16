@@ -49,9 +49,11 @@ public sealed class RankingSelectorWindowTests
         Dispatch();
         static string[] Shown(Control item) => [.. item.GetVisualDescendants().OfType<TextBlock>()
             .Where(text => text.IsEffectivelyVisible).Select(text => text.Text ?? string.Empty)];
+        Assert.Equal(["Connections made"], Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(5))));
+        Assert.Equal(["Connections accepted"], Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(6))));
         Assert.Equal(["LOGICAL OPERATIONS · RPC CALLS", "RPC calls made"],
-            Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(5))));
-        Assert.Equal(["RPC calls served"], Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(6))));
+            Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(7))));
+        Assert.Equal(["RPC calls served"], Shown(Assert.IsAssignableFrom<Control>(selector.ContainerFromIndex(8))));
         Save(window.CaptureRenderedFrame()!, "l0-rank-by-list-1080x700.png");
         selector.IsDropDownOpen = false;
         Dispatch();

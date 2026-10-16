@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 582 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 583 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,24 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 583 — rank by connections made or accepted (§5.2, §6.1, R18):**
+  - Rank by offers Connections made and Connections accepted: each process's own TCP connects or accepts in scope, a
+    group's its members' together, so the processes that serve others rank first; unmeasured, never zero, where the
+    session records no open.
+  - icat export --rank-by connections-made and connections-accepted export the same rows; icat metric names neither
+    yet.
+  - Debug and Release each ran 2,477 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 29 mutations was caught: the reader counting no connect, no accept or no TCP record, every mechanism's
+    records but lifecycle's, or the whole session under a brush; taking a session whose opens are all paired, or all
+    to other hosts, for one that records none; a ranking of connections made reading the accepts, a session without
+    opens measured rather than unmeasured, a process with no TCP record counted as none, or one in such a session as
+    known; a group's count recorded where a member's is not, or holding only its last member's accepts; the ladder
+    or the workspace leaving the counts out; the family taken for peers, connections accepted called made, or the
+    export naming one ranking for the other or ranking by records; the selector without Connections accepted, or its
+    measures never found, read or applied to the rows; the note saying the other side, or no TCP where no open is
+    recorded, and the detail leaving the side out; a row's figure saying no TCP where no open is recorded, or read
+    aloud with the other side; and icat export taking connections-accepted for connections-made.
 
 - **Revision 582 — a lone arrowhead holds on a shorter edge (§6.3):**
   - An edge carrying one head needs room for it alone, not for a head at each end: a dense graph of 450 edges drew 205
