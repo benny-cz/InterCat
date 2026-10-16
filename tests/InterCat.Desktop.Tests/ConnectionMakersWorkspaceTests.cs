@@ -85,10 +85,15 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal((0d, 89d, -4d, 79.4), (Math.Round(down.Tip.X, 6), Math.Round(down.Tip.Y, 6), Math.Round(down.Left.X, 6),
             Math.Round(down.Left.Y, 6)));
 
-        // An edge that cannot hold a head at each end, with 6 px of stroke between them, past both stand-offs draws none.
+        // An edge that carries a head at each end and cannot hold both, with 6 px of stroke between them, past both
+        // stand-offs draws neither.
         Assert.Null(GraphView.Arrowhead(new Point(0, 0), new Point(47, 0), 11, 11, 2));
         Assert.NotNull(GraphView.Arrowhead(new Point(0, 0), new Point(48, 0), 11, 11, 2));
         Assert.Null(GraphView.Arrowhead(new Point(0, 0), new Point(48, 0), 11, 12, 2));
+
+        // One that carries a lone head needs room for it and 6 px of stroke behind it alone.
+        Assert.Null(GraphView.Arrowhead(new Point(0, 0), new Point(37, 0), 11, 11, 2, both: false));
+        Assert.NotNull(GraphView.Arrowhead(new Point(0, 0), new Point(38, 0), 11, 11, 2, both: false));
 
         // A disc reaches its radius along an edge through its centre, less along one drawn in a lane beside it, and nothing
         // along one that passes outside it.

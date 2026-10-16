@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 581 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 582 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,13 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 582 — a lone arrowhead holds on a shorter edge (§6.3):**
+  - An edge carrying one head needs room for it alone, not for a head at each end: a dense graph of 450 edges drew 205
+    of its 375 heads rather than 153, repainting in about 6 to 7 ms with them, under a frame's 16.7 ms.
+  - Debug and Release each ran 2,471 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 4 mutations was caught: a lone head still needing room for a head at each end, or no stroke behind it;
+    and the graph taking every edge for one that carries a lone head, or for one that carries two.
 
 - **Revision 581 — icat overview says who connected (§6.8, R18):**
   - It lists the five busiest relationships, maker first - "client.exe · PID 100 → server.exe · PID 200", ⇄ both ways,

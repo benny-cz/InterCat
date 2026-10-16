@@ -54,6 +54,14 @@ public sealed class GraphArrowheadTests
         Assert.Equal(Colors.Red, Opaque(At(unseen, new Point(166, 22))));
         Assert.Equal(Colors.Red, Opaque(At(unseen, new Point(34, 22))));
 
+        // A short edge, 50 px between discs that reach 10 px along it, holds a lone head - its tip at 59, its base at 44.6 -
+        // but not one at each end with a stroke between them, so where each end connected it draws neither.
+        WriteableBitmap shortOneWay = Drawn(fromSource: 1, fromTarget: 0, to: 70);
+        Assert.Equal(hue, Opaque(At(shortOneWay, new Point(46, 24))));
+        WriteableBitmap shortBoth = Drawn(fromSource: 1, fromTarget: 1, to: 70);
+        Assert.Equal(0, At(shortBoth, new Point(46, 24)).A);
+        Assert.Equal(Colors.Red, Opaque(At(shortBoth, new Point(56, 22))));
+
         // An unmeasured edge's band is as wide as the widest stroke, whatever pen it is given, so its head is as wide as
         // that stroke's; and the band stops under the head too, its side lines with it.
         WriteableBitmap band = Drawn(fromSource: 1, fromTarget: 0, unmeasured: true, thickness: 2);
@@ -279,7 +287,7 @@ public sealed class GraphArrowheadTests
     }
 
     /// <summary>An edge whose source made <paramref name="fromSource"/> of its connections and its target the rest seen.</summary>
-    private static WriteableBitmap Drawn(int fromSource, int fromTarget, bool unmeasured = false, double thickness = 6)
+    private static WriteableBitmap Drawn(int fromSource, int fromTarget, bool unmeasured = false, double thickness = 6, double to = 180)
     {
         GraphDisplayEdge edge = new("tcp:a", "a", "b", Mechanism.Tcp, 10, RelationStrength.Direct, ["tcp:a"])
         {
@@ -290,7 +298,7 @@ public sealed class GraphArrowheadTests
         var target = new RenderTargetBitmap(new PixelSize(200, 40));
         using (DrawingContext context = target.CreateDrawingContext())
         {
-            GraphView.DrawEdgeMark(context, edge, new Pen(Brushes.Red, thickness), new Point(20, 20), new Point(180, 20), null,
+            GraphView.DrawEdgeMark(context, edge, new Pen(Brushes.Red, thickness), new Point(20, 20), new Point(to, 20), null,
                 10, 10);
         }
 

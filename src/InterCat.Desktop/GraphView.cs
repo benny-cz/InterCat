@@ -289,12 +289,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     internal static void DrawEdgeMark(DrawingContext context, GraphDisplayEdge edge, Pen pen, Point source, Point target,
         (double On, double Off)? pattern, double sourceReach, double targetReach, List<Rect>? heads = null)
     {
+        // An edge that carries one head needs room for it alone; one that carries two, for both and a stroke between.
         double width = edge.Unmeasured ? GraphEncoding.UnmeasuredBand : pen.Thickness;
+        bool both = edge.MadeFromSource > 0 && edge.MadeFromTarget > 0;
         (Point Tip, Point Left, Point Right)? toward = edge.MadeFromSource > 0
-            ? Arrowhead(source, target, sourceReach + ArrowGap, targetReach + ArrowGap, width)
+            ? Arrowhead(source, target, sourceReach + ArrowGap, targetReach + ArrowGap, width, both)
             : null;
         (Point Tip, Point Left, Point Right)? back = edge.MadeFromTarget > 0
-            ? Arrowhead(target, source, targetReach + ArrowGap, sourceReach + ArrowGap, width)
+            ? Arrowhead(target, source, targetReach + ArrowGap, sourceReach + ArrowGap, width, both)
             : null;
 
         // The stroke stops under an arrowhead's base, so the head reads as one against its disc, not as barbs on a line.
@@ -343,17 +345,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// An arrowhead along the line from <paramref name="from"/> to <paramref name="to"/>, pointing at <paramref name="to"/>:
     /// its tip <paramref name="toStandOff"/> short of it, and its base's corners, as wide as a stroke of
     /// <paramref name="width"/> and a margin either side. Null where the line, less both stand-offs, is too short to hold
-    /// one at each end with a stroke between them, so the heads of an edge's two ends never meet.
+    /// it with a stroke behind it - and where the edge carries a head at each end (<paramref name="both"/>), to hold both
+    /// with a stroke between them, so the heads of an edge's two ends never meet.
     /// </summary>
     internal static (Point Tip, Point Left, Point Right)? Arrowhead(Point from, Point to, double fromStandOff, double toStandOff,
-        double width)
+        double width, bool both = true)
     {
         double dx = to.X - from.X;
         double dy = to.Y - from.Y;
         double length = Math.Sqrt((dx * dx) + (dy * dy));
         double across = width + (2 * ArrowMargin);
         double along = across * ArrowAspect;
-        if (length - fromStandOff - toStandOff < (2 * along) + ArrowShaft)
+        if (length - fromStandOff - toStandOff < ((both ? 2 : 1) * along) + ArrowShaft)
         {
             return null;
         }
@@ -455,7 +458,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         Point start = new(bounds.Left + 1, bounds.Center.Y);
         Point end = new(bounds.Right - 1, bounds.Center.Y);
-        if (Arrowhead(start, end, 0, 0, Current.SamplePen.Thickness) is { } head)
+        if (Arrowhead(start, end, 0, 0, Current.SamplePen.Thickness, both: false) is { } head)
         {
             context.DrawLine(Current.SamplePen, start, StrokeEnd(head));
             DrawArrowhead(context, Current.TextBrush, head);
