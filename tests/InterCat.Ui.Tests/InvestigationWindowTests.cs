@@ -1788,6 +1788,40 @@ public sealed class InvestigationWindowTests
         Assert.Empty(main.Investigations);
     }
 
+    [AvaloniaFact(DisplayName = "R13: a zoom of the merged time asked for and left before it was read is never drawn, so a key pressed meanwhile acts on the view asked for")]
+    public void AZoomLeftBeforeItIsReadIsNeverDrawn()
+    {
+        using var root = new TemporaryDirectory();
+        string workspace = Path.Combine(root.Path, "case" + InvestigationWorkspace.Extension);
+        InvestigationWorkspace.Create(workspace, Committed);
+        Guid a = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "alpha", 4), Committed).SessionId;
+        Guid b = InvestigationWorkspace.Add(workspace, Datagrams(root.Path, "beta", 6), Committed).SessionId;
+        InvestigationWorkspace.Align(workspace, b, 0, a, 1_000_000_000, 1_000, 0, null, Committed);
+        var main = new MainWindow { Width = 1080, Height = 700 };
+        main.Show();
+        try
+        {
+            InvestigationWindow window = main.ShowInvestigation(workspace);
+            WaitFor(() => window.View is not null);
+            window.ShowTab(2);
+            WaitFor(() => window.Timeline is not null);
+            TimeRange whole = window.Timeline!.Interval!.Value;
+            int drawn = window.TimelinesDrawn;
+
+            // A quarter asked for, and the whole again before the quarter was read: the quarter is never drawn, only the whole.
+            Task quarter = window.ZoomToAsync(new TimeRange(whole.StartTicks, whole.StartTicks + ((whole.EndTicks - whole.StartTicks) / 4)));
+            Task again = window.ZoomToAsync(null);
+            WaitFor(() => quarter.IsCompleted && again.IsCompleted);
+            Assert.Equal((drawn + 1, whole), (window.TimelinesDrawn, window.Timeline!.Interval!.Value));
+            Assert.Null(window.Zoom);
+            window.Close();
+        }
+        finally
+        {
+            main.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R13: the merged time chooses the column under a click, zooms around the pointer under the wheel, and opens a column double-clicked in InterCat's window, in front")]
     public void TheMergedTimeAnswersThePointer()
     {

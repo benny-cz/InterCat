@@ -562,12 +562,17 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     /// <summary>The timeline as last drawn; null before it was first shown.</summary>
     internal InvestigationTimelineView? Timeline { get; private set; }
 
+    /// <summary>How many times the timeline has been drawn; a test uses it.</summary>
+    internal int TimelinesDrawn { get; private set; }
+
     /// <summary>Each lane of the timeline in words, as last drawn.</summary>
     internal IReadOnlyList<string> TimelineSentences { get; private set; } = [];
 
     /// <summary>
     /// Draws the investigation's timeline, off the window's thread for its reading of every session. A request made while
-    /// one is drawing waits for it and then draws again, so the timeline shows the latest zoom and notes asked for.
+    /// one is drawing waits for it and then draws again, so the timeline shows the latest zoom and notes asked for; a
+    /// drawing for a zoom asked for and then left before it was read is not shown, since the cursor keeps its column's
+    /// place on whatever the chart shows, and a key pressed meanwhile would act on a view no longer asked for.
     /// </summary>
     internal async Task ShowTimelineAsync()
     {
@@ -588,9 +593,13 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         try
         {
             CancellationToken token = lifetime.Token;
+            TimeRange? asked = zoom;
             (InvestigationTimelineView view, IReadOnlyList<string> labels, IReadOnlyList<string> sentences) =
-                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, zoom, token), token);
+                await Task.Run(() => InvestigationRows.Timeline(path, CultureInfo.CurrentCulture, 160, asked, token), token);
             if (closed) return;
+
+            // Another zoom asked for while this one was read waits to be read next: this one is not shown.
+            if (zoom != asked) return;
 
             // A zoom is a range of the investigation's time, which is one session's clock (§8.2): once another session's
             // clock is that time, or none is, the range is another time, and once no session placed meets it, it holds
@@ -614,6 +623,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             }
 
             Timeline = view;
+            TimelinesDrawn++;
             TimelineSentences = sentences;
             whole = view.Whole;
 
