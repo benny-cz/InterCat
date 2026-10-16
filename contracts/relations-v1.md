@@ -58,6 +58,12 @@ from the open that began it, or from the preceding boundary, to the disconnect t
 with no boundary on a side it is unbounded on that side. An incarnation with no records - the gap between a disconnect
 and the next open - takes no part in anything below.
 
+Since revision 573 an incarnation also says how the capture saw it **open**: **connected**, when a `Connect` began it -
+its holder made the connection - **accepted**, when an `Accept` began it - its holder accepted one the other end made -
+and **not witnessed** otherwise: the first incarnation of an end, one after a disconnect that no open followed, and
+every UDP flow. A connection opened before the capture began, or whose open record was lost, is not witnessed, never
+guessed either way.
+
 Each incarnation has a **holder** when every record of it that binds to a process instance, at any strength, binds to
 the same instance, and every record of it that names a PID names that instance's PID. One whose records bind to two
 instances, or name two PIDs, is **ambiguous**; one whose records bind to no instance is **unbound**. A record whose PID
@@ -139,7 +145,8 @@ another host's - is a row of that process's rung beside its paired channels, as 
   generation that still holds it finds it and one that moved its first fact drops a stale selection, as a paired
   channel's key does;
 - it is named by its two endpoints as the source names them - "TCP to 142.250.186.36:443", from its holder's own - and
-  by whether the capture saw it open and close; nothing is said of who is at its other end (P7);
+  by whether the capture saw it open and close, and since revision 573 whether its holder connected or accepted it
+  (§3); nothing is said of who is at its other end (P7);
 - its records are its holder's transfer and lifecycle records that name its channel, and its bytes are what the
   holder's own sends and receives measured, `TransportObserved` like a paired channel's, so it ranks beside them under
   a byte ranking, and a transfer of no stated size is counted as such (R3);
@@ -193,8 +200,15 @@ is where the connections ran: who is at it is not observed (P7), and it pairs no
 
 Since revision 559 each address also gives the remote ports its connections ran to there, each once, the lowest first
 (`hostLinks[].addresses[].ports`); a host's ports are those any connection to it ran to. A port is the other end's as
-the source named it - for a connection this machine opened, most often the service it reached, and for one it
-accepted, the other host's own - and what is served at it is not observed either.
+the source named it - for a connection this machine opened, most often the service it reached - and what is served at
+it is not observed either.
+
+Since revision 573 each address also counts how many of its connections the instance **connected** and how many it
+**accepted** (§3), and gives the instance's own ports the accepted ones arrived at, each once, the lowest first
+(`connected`, `accepted` and `acceptedPorts` beside `ports`). An accepted connection's port at the address is the other
+host's own, chosen by it for that connection, so it is not among the address's ports: they are the ports its
+connections that were not accepted ran to. A connection the capture saw open neither way is counted in neither, its
+port at the address among the ports, as before.
 
 ## 5e. What the overview draws (revision 545)
 

@@ -2042,6 +2042,7 @@
         "R18: icat hosts --investigation names each host's candidate other ends in the investigation's other captures, and refuses an investigation it cannot use",
         "R18: icat hosts --rank-by lists the hosts by the bytes their connections sent or received there, with both directions', and refuses a ranking hosts hold nothing of",
         "R18: icat hosts lists the other hosts the session's processes reached, the busiest first, and as many as asked",
+        "R18: icat hosts says how many of a host's connections a process accepted from it, at its own ports, apart from the ports it ran to",
         "R18: icat hosts says what it takes, refuses what names no session, and lists as many processes reaching an address as asked",
         "R18: icat metric names a process focus by its role, and refuses an other end with no focus to be relative to",
         "R18: icat metric prints its matrix and a request's canonical form as a person reads them",

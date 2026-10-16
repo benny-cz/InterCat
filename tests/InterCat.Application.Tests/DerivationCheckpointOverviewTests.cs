@@ -191,9 +191,12 @@ public sealed class DerivationCheckpointOverviewTests
     {
         SessionDerivationCache.Clear();
         using var session = new TemporarySession();
+
+        // Its connections' opens are left out: a checkpoint before format 1.3 says of a cut only whether it closed a
+        // connection, so one holding a connect or an accept is derived again (derivation-checkpoint-v1 §4).
         foreach (ObservationRowV1[] chunk in IncrementalOverviewTests.LiveChunks())
         {
-            Publish(session.Store, chunk);
+            Publish(session.Store, [.. chunk.Where(row => row.Kind is not (ObservationKind.Connect or ObservationKind.Accept))]);
         }
 
         SessionOverviewBundle full = SessionOverviewProjector.Project(session.Store);

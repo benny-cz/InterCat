@@ -114,9 +114,13 @@ public sealed class DerivationCheckpointTests
             Transfer(1_000, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 10_001).Between("127.0.0.1:50100", "127.0.0.1:8100"),
             Transfer(1_001, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 800, 10_002).Between("127.0.0.1:8100", "127.0.0.1:50100"),
         ];
+        // An earlier format said of a cut only whether it closed an incarnation, so it holds what 1.3 does where no connect
+        // or accept opened one.
         Publish(
             session.Store,
-            [.. chunks.SelectMany(chunk => chunk.Rows).Where(row => row.EndpointAddressFamily != 6), .. related],
+            [.. chunks.SelectMany(chunk => chunk.Rows)
+                .Where(row => row.EndpointAddressFamily != 6 && row.Kind is not (ObservationKind.Connect or ObservationKind.Accept)),
+                .. related],
             fields: [.. chunks.SelectMany(chunk => chunk.Fields)]);
         (SegmentReaderV1[] observations, SegmentReaderV1[] fields) = SegmentsOf(session.Store);
         ProcessInstanceIndex processes = ProcessInstanceIndex.Derive(observations, TestClock, fields);
@@ -148,6 +152,41 @@ public sealed class DerivationCheckpointTests
         // record named its owner, so it is derived again.
         Assert.Contains("derived under process-binding-v2 in format 1.0, which holds no counts", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(
             EarlierCheckpoints.UnderEarlierBindingRule(older), Session, TestClock)).Message, StringComparison.Ordinal);
+
+        // A connection a connect opened is one a checkpoint before 1.3 cannot say how it opened, so one holding it is
+        // refused and derived again; 1.3 says it, an accept too.
+        using var opened = new TemporarySession();
+        Publish(opened.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 700, 1).Between("192.168.1.10:52000", "142.250.1.1:443"),
+            Transfer(11, ObservationKind.Send, AccountingSide.SendSide, 8, 700, 2).Between("192.168.1.10:52000", "142.250.1.1:443"),
+            // Its end sorts after the connect's, so the earlier format below meets the connect first, as 1.2 wrote it.
+            Transfer(12, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 700, 3).Between("192.168.1.10:60000", "10.0.0.5:50000"),
+        ]);
+        (SegmentReaderV1[] openedRows, SegmentReaderV1[] openedFields) = SegmentsOf(opened.Store);
+        ProcessInstanceIndex openedProcesses = ProcessInstanceIndex.Derive(openedRows, TestClock, openedFields);
+        TransportRelationIndex openedRelations = TransportRelationIndex.Derive(openedRows, openedProcesses);
+        byte[] current = Checkpoint(openedProcesses, openedRelations, ProcessActivityIndex.Derive(openedRows, openedProcesses));
+        Assert.Equal([ConnectionOpening.Connected, ConnectionOpening.Accepted],
+            DerivationCheckpoint.Read(current, Session, TestClock).Relations.OneSided
+                .OrderBy(connection => connection.FirstNativeTicks).Select(connection => connection.Opening));
+        byte[] minorTwo = [.. current];
+        minorTwo[10] = 2;
+        Assert.Contains("before 1.3, does not say whether a connect or an accept opened a connection",
+            Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(minorTwo, Session, TestClock)).Message,
+            StringComparison.Ordinal);
+
+        // Before 1.3 a cut said only whether it closed a connection, so one of an accept's kind is no earlier checkpoint's.
+        using var accepted = new TemporarySession();
+        Publish(accepted.Store,
+            [Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 700, 1).Between("192.168.1.10:3389", "10.0.0.5:50000")]);
+        (SegmentReaderV1[] acceptedRows, SegmentReaderV1[] acceptedFields) = SegmentsOf(accepted.Store);
+        ProcessInstanceIndex acceptedProcesses = ProcessInstanceIndex.Derive(acceptedRows, TestClock, acceptedFields);
+        byte[] acceptedBytes = Checkpoint(acceptedProcesses, TransportRelationIndex.Derive(acceptedRows, acceptedProcesses),
+            ProcessActivityIndex.Derive(acceptedRows, acceptedProcesses));
+        acceptedBytes[10] = 2;
+        Assert.Contains("an end's cut has kind 2", Assert.Throws<InvalidDataException>(
+            () => DerivationCheckpoint.Read(acceptedBytes, Session, TestClock)).Message, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "I14: instances of the binding rule before this one are read as this rule's only when every record named its owner")]
@@ -259,9 +298,15 @@ public sealed class DerivationCheckpointTests
         byte[] bytes = Checkpoint(processes, relations, activity);
         _ = DerivationCheckpoint.Read(bytes, Session, TestClock);
 
-        // Only format 1.2 holds an IPv6 end. An earlier format that claims one is refused, not read as IPv4 bytes.
+        // Only format 1.2 holds an IPv6 end. An earlier format that claims one is refused, not read as IPv4 bytes; the
+        // claim is made by a checkpoint of the IPv6 connection alone, as no connect or accept opened it.
         Assert.Contains(relations.Relations, relation => relation.FirstEndpoint.StartsWith('['));
-        byte[] claimed = [.. bytes];
+        using var onlyIpv6 = new TemporarySession();
+        Publish(onlyIpv6.Store, ipv6);
+        (SegmentReaderV1[] ipv6Rows, SegmentReaderV1[] ipv6Fields) = SegmentsOf(onlyIpv6.Store);
+        ProcessInstanceIndex ipv6Processes = ProcessInstanceIndex.Derive(ipv6Rows, TestClock, ipv6Fields);
+        byte[] claimed = Checkpoint(ipv6Processes, TransportRelationIndex.Derive(ipv6Rows, ipv6Processes),
+            ProcessActivityIndex.Derive(ipv6Rows, ipv6Processes));
         claimed[10] = 1;
         Assert.Contains("address family", Assert.Throws<InvalidDataException>(
             () => DerivationCheckpoint.Read(claimed, Session, TestClock)).Message, StringComparison.Ordinal);
@@ -293,8 +338,8 @@ public sealed class DerivationCheckpointTests
         Assert.InRange(refused, 1, bytes.Length);
 
         byte[] newer = [.. bytes];
-        newer[10] = 3;
-        Assert.Contains("format 1.3", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
+        newer[10] = 4;
+        Assert.Contains("format 1.4", Assert.Throws<InvalidDataException>(() => DerivationCheckpoint.Read(newer, Session, TestClock)).Message,
             StringComparison.Ordinal);
         byte[] rule = [.. bytes];
         int at = bytes.AsSpan().IndexOf(Encoding.ASCII.GetBytes(ProcessInstanceIndex.BindingRule));

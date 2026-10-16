@@ -220,6 +220,62 @@ public sealed class TransportCensusTests
         Assert.Equal((census.OtherHostConnections, census.OtherHosts, census.ToOtherHosts), (reach.Connections, reach.Hosts, reach.Records));
     }
 
+    [Fact(DisplayName = "§6.3: a process's connections to other hosts say how the capture saw them open: by a connect it made, at the host's port, or by an accept of the host's, at its own")]
+    public void AHostsConnectionsSayHowTheyOpened()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            // 10.0.0.5: two connections server.exe accepted from the host, at its own ports 3389 and 445; one it made, to the
+            // host's 443; and one the capture saw open neither way, to its 8080.
+            Transfer(100, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 1).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(101, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 2).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(102, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 3).Between("192.168.1.10:445", "10.0.0.5:50001"),
+            Transfer(103, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between("192.168.1.10:52000", "10.0.0.5:443"),
+            Transfer(104, ObservationKind.Send, AccountingSide.SendSide, 10, 300, 5).Between("192.168.1.10:52000", "10.0.0.5:443"),
+            Transfer(105, ObservationKind.Send, AccountingSide.SendSide, 10, 300, 6).Between("192.168.1.10:52001", "10.0.0.5:8080"),
+
+            // 10.0.0.6, at ports used again: a connection the process made and closed, then one the host made to it, accepted.
+            Transfer(110, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 7).Between("192.168.1.10:52002", "10.0.0.6:80"),
+            Transfer(111, ObservationKind.Disconnect, AccountingSide.EndpointActivity, 0, 300, 8).Between("192.168.1.10:52002", "10.0.0.6:80"),
+            Transfer(112, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 9).Between("192.168.1.10:52002", "10.0.0.6:80"),
+            Transfer(113, ObservationKind.Send, AccountingSide.SendSide, 10, 300, 10).Between("192.168.1.10:52002", "10.0.0.6:80"),
+
+            // A UDP flow, which no connect or accept opens.
+            Transfer(120, ObservationKind.Send, AccountingSide.SendSide, 1, 300, 11).Between("192.168.1.10:53000", "10.0.0.53:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+        ]);
+        (_, TransportRelationIndex relations) = Derive(session.Store);
+
+        // An accepted connection's port at the host is the host's own, chosen for it: its ports are the process's own it
+        // arrived at, kept apart.
+        HostReach tcp = Assert.Single(relations.ReachOfOtherHosts(Mechanism.Tcp));
+        Assert.Equal(
+            [
+                new HostAddress("10.0.0.5", 4, 6) { Ports = [443, 8080], Connected = 1, Accepted = 2, AcceptedPorts = [445, 3389] },
+                new HostAddress("10.0.0.6", 2, 4) { Ports = [80], Connected = 1, Accepted = 1, AcceptedPorts = [52002] },
+            ],
+            tcp.Addresses);
+        Assert.NotEqual(tcp.Addresses[1] with { Accepted = 0 }, tcp.Addresses[1]);
+        Assert.NotEqual(tcp.Addresses[1] with { Connected = 0 }, tcp.Addresses[1]);
+        Assert.NotEqual(tcp.Addresses[1] with { AcceptedPorts = [80] }, tcp.Addresses[1]);
+
+        // Each connection says how it opened; the flow, neither way.
+        Assert.Equal(
+            [
+                ("192.168.1.10:3389", ConnectionOpening.Accepted), ("192.168.1.10:445", ConnectionOpening.Accepted),
+                ("192.168.1.10:52000", ConnectionOpening.Connected), ("192.168.1.10:52001", ConnectionOpening.NotWitnessed),
+                ("192.168.1.10:52002", ConnectionOpening.Connected), ("192.168.1.10:52002", ConnectionOpening.Accepted),
+                ("192.168.1.10:53000", ConnectionOpening.NotWitnessed),
+            ],
+            relations.OneSided
+                .OrderBy(connection => connection.Mechanism)
+                .ThenBy(connection => connection.FirstNativeTicks)
+                .Select(connection => (connection.LocalEndpoint, connection.Opening)));
+        Assert.Equal(new HostAddress("10.0.0.53", 1, 1) { Ports = [53] },
+            Assert.Single(Assert.Single(relations.ReachOfOtherHosts(Mechanism.Udp)).Addresses));
+    }
+
     private static (ProcessInstanceIndex Processes, TransportRelationIndex Relations) Derive(SessionStore store)
     {
         IReadOnlyList<SegmentReaderV1> segments = Segments(store);

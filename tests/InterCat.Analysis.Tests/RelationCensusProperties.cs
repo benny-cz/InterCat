@@ -101,9 +101,16 @@ public sealed class RelationCensusProperties
                     (census.Related + census.Withheld, census.Relationships + census.WithheldRelationships));
             }
 
+            // A connection the capture saw open was opened by a connect or an accept, and one it did not by neither; a flow
+            // never was.
+            Assert.All(toOtherHosts, connection => Assert.Equal(
+                connection.OpenWitnessed, connection.Opening != ConnectionOpening.NotWitnessed));
+            Assert.All(toOtherHosts.Where(connection => connection.Mechanism == Mechanism.Udp),
+                connection => Assert.Equal(ConnectionOpening.NotWitnessed, connection.Opening));
+
             // Each process's reach of other hosts is its one-sided connections to other hosts, address by address, with the
-            // ports at each they ran to: the most records first, then the most connections, then by address; as weak as the
-            // weakest of them.
+            // ports at each they ran to and, apart, how many it connected and accepted and its own ports the accepted ones
+            // arrived at: the most records first, then the most connections, then by address; as weak as the weakest of them.
             IReadOnlyList<HostReach> reach = relations.ReachOfOtherHosts(mechanism);
             Assert.Equal(reach.Select(entry => entry.Holder).Order(), reach.Select(entry => entry.Holder));
             Assert.Equal(reach.Count, reach.Select(entry => entry.Holder).Distinct().Count());
@@ -116,7 +123,12 @@ public sealed class RelationCensusProperties
                         .GroupBy(connection => Address(connection.RemoteEndpoint), StringComparer.Ordinal)
                         .Select(address => new HostAddress(address.Key, address.Count(), address.Sum(connection => connection.Records))
                         {
-                            Ports = [.. address.Select(connection => Port(connection.RemoteEndpoint)).Distinct().Order()],
+                            Ports = [.. address.Where(connection => connection.Opening != ConnectionOpening.Accepted)
+                                .Select(connection => Port(connection.RemoteEndpoint)).Distinct().Order()],
+                            Connected = address.Count(connection => connection.Opening == ConnectionOpening.Connected),
+                            Accepted = address.Count(connection => connection.Opening == ConnectionOpening.Accepted),
+                            AcceptedPorts = [.. address.Where(connection => connection.Opening == ConnectionOpening.Accepted)
+                                .Select(connection => Port(connection.LocalEndpoint)).Distinct().Order()],
                         })
                         .OrderByDescending(address => address.Records)
                         .ThenByDescending(address => address.Connections)
@@ -156,7 +168,8 @@ public sealed class RelationCensusProperties
 
     private static string Addresses(IEnumerable<HostAddress> addresses) =>
         string.Join(" ", addresses.Select(address => string.Create(CultureInfo.InvariantCulture,
-            $"{address.Address}={address.Connections}/{address.Records}@{string.Join(',', address.Ports)}")));
+            $"{address.Address}={address.Connections}/{address.Records}@{string.Join(',', address.Ports)}"
+            + $"+{address.Connected}/{address.Accepted}@{string.Join(',', address.AcceptedPorts)}")));
 
     /// <summary>A census with its relationships left out: what no evidence policy may change.</summary>
     private static TransportCensus Unrelated(TransportCensus census) =>

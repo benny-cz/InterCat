@@ -52,23 +52,38 @@ public sealed record TransportCensus(
 
 /// <summary>
 /// One address a process instance's connections to other hosts ran to, over one mechanism: how many of its connections,
-/// how many of their records, and the ports at that address they ran to. The address and its ports are where they ran, as
-/// the source named them; who is at them, and what a port serves there, are not observed (P7).
+/// how many of their records, how many of them the capture saw the instance open by a connect or by an accept, and the
+/// ports the connections ran between. The address and its ports are where they ran, as the source named them; who is at
+/// them, and what a port serves there, are not observed (P7).
 /// </summary>
 /// <param name="Address">The address: IPv4 in dotted-decimal form, IPv6 in RFC 5952's text, with no port.</param>
 /// <param name="Connections">The instance's connections to it.</param>
 /// <param name="Records">The records those connections hold, at least one each.</param>
 public sealed record HostAddress(string Address, int Connections, long Records)
 {
-    /// <summary>The ports at the address its connections ran to, each once, the lowest first.</summary>
+    /// <summary>
+    /// The ports at the address its connections ran to, each once, the lowest first: every connection's but those the
+    /// instance accepted, whose port there was the other host's own, chosen by it for that connection.
+    /// </summary>
     public IReadOnlyList<ushort> Ports { get; init; } = [];
+
+    /// <summary>How many of its connections the instance opened by a connect, as the capture saw them open.</summary>
+    public int Connected { get; init; }
+
+    /// <summary>How many of its connections the instance accepted from the address, as the capture saw them open.</summary>
+    public int Accepted { get; init; }
+
+    /// <summary>The instance's own ports the accepted connections arrived at, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
 
     /// <summary>Whether it is the same address, with the same counts and the same ports.</summary>
     public bool Equals(HostAddress? other) => other is not null
         && string.Equals(Address, other.Address, StringComparison.Ordinal) && Connections == other.Connections
-        && Records == other.Records && Ports.SequenceEqual(other.Ports);
+        && Records == other.Records && Connected == other.Connected && Accepted == other.Accepted
+        && Ports.SequenceEqual(other.Ports) && AcceptedPorts.SequenceEqual(other.AcceptedPorts);
 
-    public override int GetHashCode() => HashCode.Combine(Address, Connections, Records, Ports.Count);
+    public override int GetHashCode() => HashCode.Combine(Address, Connections, Records, Connected, Accepted, Ports.Count,
+        AcceptedPorts.Count);
 }
 
 /// <summary>
@@ -109,8 +124,7 @@ public sealed partial class TransportRelationIndex
                 "This rule relates no record of that mechanism, so it reaches no host.");
         }
 
-        var reach = new SortedDictionary<int, (Dictionary<(byte Family, UInt128 Address), (int Connections, long Records,
-            SortedSet<ushort> Ports)> Hosts, RelationStrength Weakest)>();
+        var reach = new SortedDictionary<int, (Dictionary<(byte Family, UInt128 Address), HostTally> Hosts, RelationStrength Weakest)>();
         foreach ((EndKey key, EndTimeline timeline) in ends)
         {
             if (key.Protocol != (byte)mechanism || OnThisMachine(key))
@@ -130,10 +144,13 @@ public sealed partial class TransportRelationIndex
                     held = ([], RelationStrength.Direct);
                 }
 
-                (int connections, long records, SortedSet<ushort>? ports) = held.Hosts.GetValueOrDefault((key.Family, key.RemoteAddress));
-                ports ??= [];
-                _ = ports.Add(key.RemotePort);
-                held.Hosts[(key.Family, key.RemoteAddress)] = (connections + 1, records + incarnation.Records, ports);
+                if (!held.Hosts.TryGetValue((key.Family, key.RemoteAddress), out HostTally? tally))
+                {
+                    tally = new();
+                    held.Hosts[(key.Family, key.RemoteAddress)] = tally;
+                }
+
+                tally.Add(key, incarnation);
                 reach[incarnation.Holder] = (held.Hosts, Weaker(held.Weakest, incarnation.Weakest));
             }
         }
@@ -142,12 +159,49 @@ public sealed partial class TransportRelationIndex
             mechanism,
             entry.Key,
             [.. entry.Value.Hosts
-                .Select(host => new HostAddress(AddressText(host.Key.Family, host.Key.Address), host.Value.Connections,
-                    host.Value.Records) { Ports = [.. host.Value.Ports] })
+                .Select(host => host.Value.Address(AddressText(host.Key.Family, host.Key.Address)))
                 .OrderByDescending(address => address.Records)
                 .ThenByDescending(address => address.Connections)
                 .ThenBy(address => address.Address, StringComparer.Ordinal)],
             entry.Value.Weakest))];
+    }
+
+    /// <summary>One instance's connections to one address as a census adds them up, connection by connection.</summary>
+    private sealed class HostTally
+    {
+        private readonly SortedSet<ushort> ports = [];
+        private readonly SortedSet<ushort> acceptedPorts = [];
+        private int connections;
+        private long records;
+        private int connected;
+        private int accepted;
+
+        /// <summary>
+        /// Adds one connection: an accepted one at the instance's own port, which it listened at, and any other at the
+        /// address's port, where it ran to.
+        /// </summary>
+        public void Add(EndKey key, Incarnation incarnation)
+        {
+            connections++;
+            records += incarnation.Records;
+            if (incarnation.Opening == ConnectionOpening.Accepted)
+            {
+                accepted++;
+                _ = acceptedPorts.Add(key.LocalPort);
+                return;
+            }
+
+            connected += incarnation.Opening == ConnectionOpening.Connected ? 1 : 0;
+            _ = ports.Add(key.RemotePort);
+        }
+
+        public HostAddress Address(string address) => new(address, connections, records)
+        {
+            Ports = [.. ports],
+            Connected = connected,
+            Accepted = accepted,
+            AcceptedPorts = [.. acceptedPorts],
+        };
     }
 
     /// <summary>A remote address as every surface writes one, with no port: IPv4 dotted, IPv6 in RFC 5952's text.</summary>

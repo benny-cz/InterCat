@@ -202,22 +202,36 @@ public sealed record HostLink(
 
 /// <summary>
 /// One other host as a set of processes' connections reached it, over both transports (§6.3): how many TCP connections and
-/// UDP flows ran to its address, from how many of the processes, holding how many records, and the ports at the address
-/// they ran to. Its address and ports are where they ran; who is at it, and what a port serves there, are not observed
-/// (P7).
+/// UDP flows ran to its address, from how many of the processes, holding how many records, how many of the TCP
+/// connections the capture saw the processes open by a connect or accept from it, and the ports the connections ran
+/// between. Its address and ports are where they ran; who is at it, and what a port serves there, are not observed (P7).
 /// </summary>
 public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows, int Processes, long Records)
 {
-    /// <summary>The ports at the address any of the connections ran to, each once, the lowest first.</summary>
+    /// <summary>
+    /// The ports at the address any of the connections ran to, each once, the lowest first: never the other host's own
+    /// port of a connection one of the processes accepted from it.
+    /// </summary>
     public IReadOnlyList<ushort> Ports { get; init; } = [];
 
-    /// <summary>Whether it is the same host, reached as often and at the same ports.</summary>
+    /// <summary>How many of its TCP connections the processes opened by a connect, as the capture saw them open.</summary>
+    public int Connected { get; init; }
+
+    /// <summary>How many of its TCP connections the processes accepted from it, as the capture saw them open.</summary>
+    public int Accepted { get; init; }
+
+    /// <summary>The processes' own ports its accepted connections arrived at, each once, the lowest first.</summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+
+    /// <summary>Whether it is the same host, reached as often, opened alike and at the same ports.</summary>
     public bool Equals(OtherHost? other) => other is not null
         && string.Equals(Address, other.Address, StringComparison.Ordinal) && TcpConnections == other.TcpConnections
         && UdpFlows == other.UdpFlows && Processes == other.Processes && Records == other.Records
-        && Ports.SequenceEqual(other.Ports);
+        && Connected == other.Connected && Accepted == other.Accepted
+        && Ports.SequenceEqual(other.Ports) && AcceptedPorts.SequenceEqual(other.AcceptedPorts);
 
-    public override int GetHashCode() => HashCode.Combine(Address, TcpConnections, UdpFlows, Processes, Records, Ports.Count);
+    public override int GetHashCode() => HashCode.Combine(Address, TcpConnections, UdpFlows, Processes, Records, Connected,
+        Accepted, Ports.Count);
 
     /// <summary>
     /// The hosts <paramref name="links"/> ran to, each once whichever processes and transports reached it, the busiest first:
@@ -226,33 +240,65 @@ public sealed record OtherHost(string Address, int TcpConnections, int UdpFlows,
     public static IReadOnlyList<OtherHost> Of(IEnumerable<HostLink> links)
     {
         ArgumentNullException.ThrowIfNull(links);
-        var hosts = new Dictionary<string, (int Tcp, int Udp, HashSet<ProcessInstanceId> Processes, long Records,
-            SortedSet<ushort> Ports)>(StringComparer.Ordinal);
+        var hosts = new Dictionary<string, HostTally>(StringComparer.Ordinal);
         foreach (HostLink link in links)
         {
             foreach (HostAddress address in link.Addresses)
             {
-                if (!hosts.TryGetValue(address.Address, out var host))
+                if (!hosts.TryGetValue(address.Address, out HostTally? host))
                 {
-                    host = (0, 0, [], 0, []);
+                    host = new();
+                    hosts[address.Address] = host;
                 }
 
-                _ = host.Processes.Add(link.Process);
-                host.Ports.UnionWith(address.Ports);
-                hosts[address.Address] = link.Mechanism == Mechanism.Udp
-                    ? (host.Tcp, host.Udp + address.Connections, host.Processes, host.Records + address.Records, host.Ports)
-                    : (host.Tcp + address.Connections, host.Udp, host.Processes, host.Records + address.Records, host.Ports);
+                host.Add(link, address);
             }
         }
 
         return [.. hosts
-            .Select(host => new OtherHost(host.Key, host.Value.Tcp, host.Value.Udp, host.Value.Processes.Count, host.Value.Records)
-            {
-                Ports = [.. host.Value.Ports],
-            })
+            .Select(host => host.Value.Host(host.Key))
             .OrderByDescending(host => host.Records)
             .ThenByDescending(host => (long)host.TcpConnections + host.UdpFlows)
             .ThenBy(host => host.Address, StringComparer.Ordinal)];
+    }
+
+    /// <summary>One host's connections as <see cref="Of"/> adds them up, address by address of each link.</summary>
+    private sealed class HostTally
+    {
+        private readonly HashSet<ProcessInstanceId> processes = [];
+        private readonly SortedSet<ushort> ports = [];
+        private readonly SortedSet<ushort> acceptedPorts = [];
+        private int tcp;
+        private int udp;
+        private long records;
+        private int connected;
+        private int accepted;
+
+        public void Add(HostLink link, HostAddress address)
+        {
+            _ = processes.Add(link.Process);
+            ports.UnionWith(address.Ports);
+            acceptedPorts.UnionWith(address.AcceptedPorts);
+            records += address.Records;
+            connected += address.Connected;
+            accepted += address.Accepted;
+            if (link.Mechanism == Mechanism.Udp)
+            {
+                udp += address.Connections;
+            }
+            else
+            {
+                tcp += address.Connections;
+            }
+        }
+
+        public OtherHost Host(string address) => new(address, tcp, udp, processes.Count, records)
+        {
+            Ports = [.. ports],
+            Connected = connected,
+            Accepted = accepted,
+            AcceptedPorts = [.. acceptedPorts],
+        };
     }
 }
 

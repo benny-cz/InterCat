@@ -443,6 +443,45 @@ public sealed class OtherHostsGraphTests
         Assert.Equal(string.Empty, HostLinkText.Line([]));
     }
 
+    [Fact(DisplayName = "§6.3: a host's connections the processes accepted from it are counted apart, at the processes' own ports, and said so")]
+    public void AHostsAcceptedConnectionsAreCountedApart()
+    {
+        ProcessInstanceId server = Node(1, "g").Id;
+        ProcessInstanceId files = Node(2, "g").Id;
+        HostLink[] links =
+        [
+            // The server accepted two of the host's connections, at its own 3389 and 445, and made one, to the host's 443.
+            new(server, Mechanism.Tcp,
+                [new("10.0.0.5", 3, 6) { Ports = [443], Connected = 1, Accepted = 2, AcceptedPorts = [445, 3389] }],
+                RelationStrength.Direct),
+            // Another accepted one at its own 3389 too, and the capture saw one of its connections open neither way.
+            new(files, Mechanism.Tcp,
+                [new("10.0.0.5", 2, 3) { Ports = [8080], Accepted = 1, AcceptedPorts = [3389] },
+                    new("10.0.0.9", 1, 1) { Ports = [443], Connected = 1 }],
+                RelationStrength.Direct),
+        ];
+
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        Assert.Equal(
+            [
+                new OtherHost("10.0.0.5", 5, 0, 2, 9) { Ports = [443, 8080], Connected = 1, Accepted = 3, AcceptedPorts = [445, 3389] },
+                new OtherHost("10.0.0.9", 1, 0, 1, 1) { Ports = [443], Connected = 1 },
+            ],
+            hosts);
+        Assert.NotEqual(hosts[0] with { Accepted = 2 }, hosts[0]);
+        Assert.NotEqual(hosts[0] with { Connected = 0 }, hosts[0]);
+        Assert.NotEqual(hosts[0] with { AcceptedPorts = [3389] }, hosts[0]);
+        Assert.NotEqual((hosts[0] with { Accepted = 2 }).GetHashCode(), hosts[0].GetHashCode());
+
+        // Said: how many the processes accepted, at which of their own ports, and only that they did where every one was.
+        Assert.Equal("3 accepted here at ports 445 and 3389", HostLinkText.Accepted(hosts[0]));
+        Assert.Equal("accepted here at port 3389",
+            HostLinkText.Accepted(new OtherHost("10.0.0.7", 1, 0, 1, 2) { Accepted = 1, AcceptedPorts = [3389] }));
+        Assert.Equal(string.Empty, HostLinkText.Accepted(hosts[1]));
+        Assert.Equal("3 at 445 and 3389", HostLinkText.AcceptedCell(hosts[0].Accepted, hosts[0].AcceptedPorts));
+        Assert.Equal("-", HostLinkText.AcceptedCell(hosts[1].Accepted, hosts[1].AcceptedPorts));
+    }
+
     [Fact(DisplayName = "§6.3: the hosts a set of processes reached are each counted once over both transports, the busiest first, and named so")]
     public void TheHostsProcessesReachedAreCountedOnceTheBusiestFirst()
     {

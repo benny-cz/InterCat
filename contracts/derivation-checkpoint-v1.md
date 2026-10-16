@@ -12,7 +12,10 @@ Format 1.1 (plan revision 166) adds each instance's own records under `process-a
 table's groups and processes. A checkpoint of format 1.0 holds none. Every one was written under
 `process-binding-v2`, which revision 177 accepts only where counts show every record named its owner, so it is
 derived again (§4). Format 1.2 (plan revision 173) lets an end be IPv6, its addresses in 16 bytes; a checkpoint of
-format 1.0 or 1.1 holds IPv4 ends only and is still read (§4).
+format 1.0 or 1.1 holds IPv4 ends only and is still read (§4). Format 1.3 (plan revision 573) says which record made
+each cut - a connect, an accept or a disconnect - so the relations say how each connection opened (relations-v1 §3); an
+earlier format said only whether a cut closed an incarnation, and one holding a cut that opened one is derived again
+(§4).
 
 A checkpoint is a derived index. It holds no evidence and changes no observation (R1). It can always be rebuilt from
 the segments it covers (R20). A missing, stale or unreadable checkpoint costs time and never changes an answer.
@@ -107,7 +110,7 @@ most 512 MiB.
 
 ```text
 checkpoint  = header covered instances relations activity   ; activity from minor 1: a minor-0 one ends at relations
-header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 2,
+header      = "ICATDCKP" (8 ASCII bytes), major u16 = 1, minor u16 = 3,
               bindingRule str8, relationRule str8,
               session guid, derivedGeneration i64 (>= 1),
               clock guid, host guid,
@@ -136,7 +139,8 @@ end         = protocol u8 (3, 4), family u8 (4; 6 from minor 2), localAddress ip
               hasLast u8 (0, 1), [record]           ; the latest record's position
               incarnation * (cut count + 1)
 ip          = u32 for family 4, as every minor writes it; 16 bytes in network order for family 6
-cut         = record, afterClose u8 (0, 1)
+cut         = record, kind u8 (0 connect, 1 disconnect, 2 accept)
+                                                    ; before 1.3: afterClose u8 (1 disconnect, 0 connect or accept)
 incarnation = flags u8 (1 has records, 2 names one PID, 4 names two PIDs, 8 binds to two instances)
               when it has records: [pid i32 when 2], holder i32 (-1 when unbound or 8), weakest u8 (EN-RelationStrength),
               first i64, last i64, firstPosition record, records i64 (> 0), untimed i64 (0..records)
@@ -161,7 +165,7 @@ A reader refuses a checkpoint whose bytes do not hash to the digest its generati
 `Index` before a viewer's first view, because this reader checks what it interprets (store-v1 §6). It then refuses the
 checkpoint when:
 
-- the magic is wrong, the major version is not 1, or the minor is above 2: a checkpoint is rebuildable, so there is no
+- the magic is wrong, the major version is not 1, or the minor is above 3: a checkpoint is rebuildable, so there is no
   partial read of a newer one. A minor-0 checkpoint of this build's rules would be read without counts: a reader
   counts them from every segment, and a writer that finds one replaces it (§2's publishers, `icat checkpoint`), since a
   reopen would otherwise read every segment. Every one revisions 162 to 165 wrote is under `process-binding-v2`,
@@ -178,6 +182,9 @@ checkpoint when:
   record without an owner is refused and derived again, because the count does not say whether one was such a
   record. A checkpoint of format 1.0 holds no counts and was written only under `v2`, so it is refused;
 - a checkpoint before format 1.2 claims an IPv6 end, which it cannot hold;
+- a checkpoint before format 1.3 holds a cut that opened an incarnation: it cannot say whether a connect or an accept
+  opened that connection, which the relations say, so it is derived again, and `icat checkpoint` writes one that says
+  it. One whose cuts all closed incarnations holds what 1.3 would, and is read;
 - its session, clock or host is not the generation's;
 - a count exceeds what the remaining bytes can hold, a string is not valid UTF-8, a code is outside its set, an order
   above is broken, or bytes remain after the last end;

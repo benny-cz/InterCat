@@ -48,7 +48,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v5", "records", 4, 2), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v6", "records", 4, 2), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString(), root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
@@ -145,6 +145,59 @@ public sealed class HostsCommandTests
         Assert.Contains("--address takes an address, or its beginning up to a dot or colon", said + text, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat hosts says how many of a host's connections a process accepted from it, at its own ports, apart from the ports it ran to")]
+    public async Task IcatHostsSaysWhatWasAccepted()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe", SessionRelativeTicks = 1 },
+            // 10.0.0.5 connected to the service at its own port 3389, from the host's 50000; the service connected to
+            // 10.0.0.6's 443.
+            Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 2).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 3).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(12, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between("192.168.1.10:52000", "10.0.0.6:443"),
+            Transfer(13, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 5).Between("192.168.1.10:52000", "10.0.0.6:443"),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        // The accepted connection is said at the service's own port, never at the host's port 50000, which the host chose.
+        (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Accepted here +Records\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +1 TCP connection from 1 process +- +1 at 3389 +2\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +1 TCP connection from 1 process +443 +- +2\r?$", text);
+        Assert.DoesNotContain("50000", text, Ordinal);
+        Assert.Contains("Accepted here counts the TCP connections a process of this session accepted from the host", text, Ordinal);
+
+        // As JSON, how many each process connected and accepted, and its own ports the accepted ones arrived at.
+        (code, text, _) = await Run("hosts", session.Path, "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement[] listed = [.. JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()];
+        Assert.Equal(
+            [("10.0.0.5", 0, 1, "3389", ""), ("10.0.0.6", 1, 0, "", "443")],
+            listed.Select(host => (host.GetProperty("address").GetString(), host.GetProperty("connected").GetInt32(),
+                host.GetProperty("accepted").GetInt32(), Ports(host.GetProperty("acceptedPorts")), Ports(host.GetProperty("ports")))));
+
+        // Who reached an address says the same, process by process.
+        (code, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.5");
+        Assert.Equal(InterCatExitCode.Success, code);
+        Assert.Matches(@"(?m)^  Process +Address +Connections +Ports +Accepted here +Records\r?$", text);
+        Assert.Matches(@"(?m)^ *svchost\.exe · PID 300 +10\.0\.0\.5 +1 TCP connection +- +1 at 3389 +2\r?$", text);
+        (code, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.5", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement reached = JsonDocument.Parse(text).RootElement.GetProperty("reached")[0];
+        Assert.Equal((0, 1, "3389"), (reached.GetProperty("connected").GetInt32(), reached.GetProperty("accepted").GetInt32(),
+            Ports(reached.GetProperty("acceptedPorts"))));
+
+        // Where no listed host had a connection accepted, there is no such column.
+        (_, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.6");
+        Assert.Matches(@"(?m)^  Process +Address +Connections +Ports +Records\r?$", text);
+        Assert.DoesNotContain("Accepted here", text, Ordinal);
+    }
+
+    private static string Ports(JsonElement ports) => string.Join(",", ports.EnumerateArray().Select(port => port.GetInt32()));
+
     [Fact(DisplayName = "R18: icat hosts says what it takes, refuses what names no session, and lists as many processes reaching an address as asked")]
     public async Task IcatHostsSaysWhatItTakes()
     {
@@ -155,6 +208,7 @@ public sealed class HostsCommandTests
         Assert.Contains("[--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received]", text, Ordinal);
         Assert.Contains("[--investigation <file>] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
+        Assert.Contains("process accepted connections from a host, how many and at which of its own ports.", text, Ordinal);
         Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
 
         // With no session, an option it does not take, a folder that is not there or holds no session, it refuses and says
@@ -222,7 +276,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--rank-by", "bytes-sent-and-received", "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v5", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v6", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString()));
         JsonElement transfers = root.GetProperty("listed")[0].GetProperty("transfers");
         Assert.Equal((5L, 500L, 0L, 0L), (transfers.GetProperty("sends").GetInt64(), transfers.GetProperty("sentBytes").GetInt64(),

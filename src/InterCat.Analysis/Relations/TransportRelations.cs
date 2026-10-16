@@ -7,6 +7,18 @@ using InterCat.Storage;
 namespace InterCat.Analysis;
 
 /// <summary>
+/// How the capture saw one end of a connection open (`contracts/relations-v1.md` §3): by a connect its holder made, or by
+/// an accept of a connection the other end made. Neither when no connect or accept opened it in the capture - one opened
+/// before the capture began, or whose opening record was lost - and for a UDP flow, which has no lifecycle.
+/// </summary>
+public enum ConnectionOpening
+{
+    NotWitnessed = 0,
+    Connected = 1,
+    Accepted = 2,
+}
+
+/// <summary>
 /// One connection incarnation whose two ends are each held by exactly one process instance: the relation §7.4's
 /// network correlator proves between them (`contracts/relations-v1.md`). Endpoints are as the source names them, never
 /// normalized into an identity of their own (R22).
@@ -102,6 +114,12 @@ public sealed record TransportConnection
     public required bool OpenWitnessed { get; init; }
 
     public required bool CloseWitnessed { get; init; }
+
+    /// <summary>
+    /// Whether its holder connected to the other end or accepted the other end's connection, as the capture saw it open;
+    /// <see cref="ConnectionOpening.NotWitnessed"/> when it saw neither.
+    /// </summary>
+    public required ConnectionOpening Opening { get; init; }
 
     /// <summary>Whether a key names a one-sided connection.</summary>
     public static bool IsKey(string? key) => key is not null && key.StartsWith(KeyPrefix, StringComparison.Ordinal);
@@ -232,7 +250,8 @@ public sealed partial class TransportRelationIndex
                     ends[key] = timeline;
                 }
 
-                timeline.Cut(columns.PositionAt(row), afterClose: kind == ObservationKind.Disconnect);
+                timeline.Cut(columns.PositionAt(row), afterClose: kind == ObservationKind.Disconnect,
+                    accepted: kind == ObservationKind.Accept);
             }
         }
 
@@ -338,7 +357,7 @@ public sealed partial class TransportRelationIndex
                     cuts[key] = list;
                 }
 
-                list.Add(new(position, AfterClose: kind == ObservationKind.Disconnect));
+                list.Add(new(position, AfterClose: kind == ObservationKind.Disconnect, Accepted: kind == ObservationKind.Accept));
             }
         }
 
@@ -353,7 +372,7 @@ public sealed partial class TransportRelationIndex
             var timeline = new EndTimeline();
             foreach (Cut cut in list)
             {
-                timeline.Cut(cut.At, cut.AfterClose);
+                timeline.Cut(cut.At, cut.AfterClose, cut.Accepted);
             }
 
             timeline.Seal();
@@ -871,6 +890,7 @@ public sealed partial class TransportRelationIndex
                     RecordsWithoutSessionTime = incarnation.Untimed,
                     OpenWitnessed = incarnation.OpenWitnessed,
                     CloseWitnessed = incarnation.CloseWitnessed,
+                    Opening = incarnation.Opening,
                 });
             }
         }
@@ -926,7 +946,11 @@ public sealed partial class TransportRelationIndex
     /// Where one incarnation ends and the next begins: at an open, which starts the next one with itself, or just after
     /// a disconnect, which is the last record of the one it closes.
     /// </summary>
-    private readonly record struct Cut(Position At, bool AfterClose)
+    /// <summary>
+    /// A lifecycle record dividing an end: a disconnect closes the incarnation it falls in (<paramref name="AfterClose"/>),
+    /// and a connect or an accept opens the next - an accept when <paramref name="Accepted"/>.
+    /// </summary>
+    private readonly record struct Cut(Position At, bool AfterClose, bool Accepted = false)
     {
         /// <summary>Whether a row at this position belongs to the incarnation after the cut.</summary>
         public bool IsAtOrBefore(Position row)
@@ -980,7 +1004,7 @@ public sealed partial class TransportRelationIndex
         /// <summary>The canonical position of the latest record placed at this end, or null before the first.</summary>
         public Position? LastPosition { get; private set; }
 
-        public void Cut(Position at, bool afterClose) => cuts.Add(new(at, afterClose));
+        public void Cut(Position at, bool afterClose, bool accepted) => cuts.Add(new(at, afterClose, accepted));
 
         public void Seal()
         {
@@ -1060,7 +1084,10 @@ public sealed partial class TransportRelationIndex
                 Start: opening?.At.Ticks ?? long.MinValue,
                 End: closing is { } close ? (close.AfterClose ? close.At.Ticks + 1 : close.At.Ticks) : long.MaxValue,
                 OpenWitnessed: opening is { AfterClose: false },
-                CloseWitnessed: closing is { AfterClose: true });
+                CloseWitnessed: closing is { AfterClose: true },
+                Opening: opening is { AfterClose: false } open
+                    ? open.Accepted ? ConnectionOpening.Accepted : ConnectionOpening.Connected
+                    : ConnectionOpening.NotWitnessed);
         }
 
         /// <summary>The one incarnation of an end no cut divides, which every row of it belongs to; null when one does.</summary>
@@ -1136,7 +1163,7 @@ public sealed partial class TransportRelationIndex
     /// appear. A record whose PID binds to no instance still names its PID, so a second process is noticed even when it
     /// cannot be bound.
     /// </summary>
-    private sealed partial class Incarnation(long Start, long End, bool OpenWitnessed, bool CloseWitnessed)
+    private sealed partial class Incarnation(long Start, long End, bool OpenWitnessed, bool CloseWitnessed, ConnectionOpening Opening)
     {
         private int? processId;
 
@@ -1158,6 +1185,9 @@ public sealed partial class TransportRelationIndex
         public bool OpenWitnessed { get; } = OpenWitnessed;
 
         public bool CloseWitnessed { get; } = CloseWitnessed;
+
+        /// <summary>Whether a connect or an accept opened it, from the cut before it; neither when no cut opened it.</summary>
+        public ConnectionOpening Opening { get; } = Opening;
 
         public int Holder { get; private set; } = -1;
 
@@ -1218,7 +1248,7 @@ public sealed partial class TransportRelationIndex
                 }
             }
 
-            return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed)
+            return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed, bounds.Opening)
             {
                 processId = processId,
                 PidsDisagree = PidsDisagree,

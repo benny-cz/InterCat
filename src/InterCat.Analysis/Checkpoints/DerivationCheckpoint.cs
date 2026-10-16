@@ -22,9 +22,11 @@ public sealed class DerivationCheckpoint
 
     /// <summary>
     /// Minor 1 adds each instance's activity (revision 166); a minor-0 checkpoint is read without it. Minor 2 lets an end
-    /// be IPv6, its addresses in 16 bytes (revision 173); an earlier checkpoint holds only IPv4 ends.
+    /// be IPv6, its addresses in 16 bytes (revision 173); an earlier checkpoint holds only IPv4 ends. Minor 3 says which
+    /// record made each cut, a connect, an accept or a disconnect (revision 573); an earlier checkpoint that holds a cut
+    /// opening an incarnation is refused, and one that holds none is read as it is.
     /// </summary>
-    private const ushort Minor = 2;
+    private const ushort Minor = 3;
     private const byte ObservationRole = 1;
     private const byte FieldRole = 2;
     private const string What = "derivation checkpoint";
@@ -343,7 +345,7 @@ public sealed class DerivationCheckpoint
 
         ProcessInstanceIndex processes = ProcessInstanceIndex.ReadState(reader, clock, capture, derivation, [.. segments, .. fields]);
         TransportRelationIndex relations = TransportRelationIndex.ReadState(
-            reader, processes, [.. segments], ipv6Ends: minor >= 2, earlierRule: earlierRule);
+            reader, processes, [.. segments], ipv6Ends: minor >= 2, earlierRule: earlierRule, cutKinds: minor >= 3);
         ProcessActivityIndex? activity = minor >= 1
             ? ProcessActivityIndex.ReadState(reader, processes, [.. segments], earlierRule: earlierBinding)
             : null;

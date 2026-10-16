@@ -66,14 +66,17 @@ public sealed partial class TransportRelationIndex
     /// checkpoint, whose positions its holders name. <paramref name="ipv6Ends"/> says whether the checkpoint's format can
     /// hold an IPv6 end, which format 1.2 added; an earlier one that claims one is refused. <paramref name="earlierRule"/>
     /// says the relations were derived under <see cref="EarlierRelationRule"/>, which are this rule's only when no related
-    /// record was left without an end: that rule left every IPv6 record without one.
+    /// record was left without an end: that rule left every IPv6 record without one. <paramref name="cutKinds"/> says
+    /// whether the format says which record opened an incarnation, a connect or an accept, which format 1.3 added; an
+    /// earlier one that holds an opening cut is refused, since its relations could not say how a connection opened.
     /// </summary>
     internal static TransportRelationIndex ReadState(
         IndexFileReader reader,
         ProcessInstanceIndex processes,
         HashSet<StoreDependency> read,
         bool ipv6Ends,
-        bool earlierRule)
+        bool earlierRule,
+        bool cutKinds)
     {
         int count = reader.Count(2 + 8);
         var withoutEnd = new Dictionary<Mechanism, long>(count);
@@ -131,7 +134,7 @@ public sealed partial class TransportRelationIndex
                 throw reader.Invalid("its ends are not in canonical order.");
             }
 
-            ends.Add(key, EndTimeline.Read(reader, processes.Instances.Count));
+            ends.Add(key, EndTimeline.Read(reader, processes.Instances.Count, cutKinds));
             last = key;
         }
 
@@ -154,6 +157,11 @@ public sealed partial class TransportRelationIndex
     private static Position ReadPosition(IndexFileReader reader) =>
         new(reader.I64(), reader.U32(), reader.U32(), reader.U64(), reader.U64(), reader.U64());
 
+    // What made a cut, as format 1.3 writes it; before 1.3 a cut said only whether it closed (1) or opened (0).
+    private const byte ConnectCut = 0;
+    private const byte DisconnectCut = 1;
+    private const byte AcceptCut = 2;
+
     private sealed partial class EndTimeline
     {
         public void Write(IndexFileWriter writer)
@@ -167,7 +175,7 @@ public sealed partial class TransportRelationIndex
             foreach (Cut cut in cuts)
             {
                 WritePosition(writer, cut.At);
-                writer.Flag(cut.AfterClose);
+                writer.U8(cut.AfterClose ? DisconnectCut : cut.Accepted ? AcceptCut : ConnectCut);
             }
 
             writer.Flag(LastPosition is not null);
@@ -182,13 +190,31 @@ public sealed partial class TransportRelationIndex
             }
         }
 
-        public static EndTimeline Read(IndexFileReader reader, int instances)
+        /// <summary>
+        /// Reads an end's cuts, latest position and incarnations. A cut says whether a connect, an accept or a disconnect
+        /// made it where <paramref name="cutKinds"/> says the format holds that (1.3); an earlier one says only whether it
+        /// closed, so one that opened an incarnation is refused: the relations could not say how that connection opened.
+        /// </summary>
+        public static EndTimeline Read(IndexFileReader reader, int instances, bool cutKinds)
         {
             int count = reader.Count(PositionBytes + 1);
             var timeline = new EndTimeline();
             for (int index = 0; index < count; index++)
             {
-                var cut = new Cut(ReadPosition(reader), reader.Flag());
+                Position at = ReadPosition(reader);
+                byte kind = reader.U8();
+                if (kind > (cutKinds ? AcceptCut : DisconnectCut))
+                {
+                    throw reader.Invalid($"an end's cut has kind {kind}.");
+                }
+
+                if (!cutKinds && kind == ConnectCut)
+                {
+                    throw reader.Invalid("its format, before 1.3, does not say whether a connect or an accept opened a "
+                        + "connection, which this build's relations say; icat checkpoint writes one that does.");
+                }
+
+                var cut = new Cut(at, AfterClose: kind == DisconnectCut, Accepted: kind == AcceptCut);
                 if (index > 0 && timeline.cuts[^1].At.CompareTo(cut.At) > 0)
                 {
                     throw reader.Invalid("an end's cuts are not in canonical order.");
@@ -289,7 +315,7 @@ public sealed partial class TransportRelationIndex
                 throw reader.Invalid("an incarnation's records, readings or holder contradict each other.");
             }
 
-            return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed)
+            return new(bounds.Start, bounds.End, bounds.OpenWitnessed, bounds.CloseWitnessed, bounds.Opening)
             {
                 processId = named,
                 PidsDisagree = disagree,

@@ -52,6 +52,34 @@ public static class HostLinkText
             + (countsProcesses ? " from " + CountText.Of(host.Processes, "process", "processes") : string.Empty);
     }
 
+    /// <summary>
+    /// The connections to a host the processes accepted from it, with their own ports the connections arrived at:
+    /// "accepted here at ports 443 and 8443" where every connection to it was, else "1 accepted here at port 3389". Empty
+    /// where the capture saw none accepted.
+    /// </summary>
+    public static string Accepted(OtherHost host)
+    {
+        ArgumentNullException.ThrowIfNull(host);
+        if (host.Accepted == 0)
+        {
+            return string.Empty;
+        }
+
+        string at = " here at " + Ports(host.AcceptedPorts);
+        return host.Accepted == host.TcpConnections + host.UdpFlows
+            ? "accepted" + at
+            : string.Create(CultureInfo.CurrentCulture, $"{host.Accepted:N0} accepted{at}");
+    }
+
+    /// <summary>
+    /// The same as a table's cell states it, the ports as numbers: "2 at 443 and 8443"; "-" where none was accepted.
+    /// </summary>
+    public static string AcceptedCell(int accepted, IReadOnlyList<ushort> ports)
+    {
+        ArgumentNullException.ThrowIfNull(ports);
+        return accepted == 0 ? "-" : string.Create(CultureInfo.CurrentCulture, $"{accepted:N0} at ") + PortNumbers(ports);
+    }
+
     /// <summary>The most ports <see cref="Ports"/> names before it counts the rest.</summary>
     public const int PortsNamed = 3;
 
