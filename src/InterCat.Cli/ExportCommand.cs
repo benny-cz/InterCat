@@ -194,8 +194,8 @@ internal static class ExportCommand
         ConsoleUi.Line("  or by the median time those calls took, slowest first (call time as a client, serve time as a");
         ConsoleUi.Line("  server); a stop paired with no start is never timed. active-peers ranks by the distinct processes");
         ConsoleUi.Line("  at the other end of each process's records, a lower bound beside those left unresolved.");
-        ConsoleUi.Line("  connections-made and connections-accepted rank by the TCP connections each process made by a");
-        ConsoleUi.Line("  connect or accepted, as the capture saw them open at its end: servers first by the latter.");
+        ConsoleUi.Line("  connections-made and connections-accepted rank by the TCP connections each process made or");
+        ConsoleUi.Line("  accepted, as the capture saw each open at either end: servers first by the latter.");
         ConsoleUi.Line("  --group-by session groups the machine rung's rows by the terminal session each process's");
         ConsoleUi.Line("  lifecycle records name, as the window's Group by does, so --at reaches a session by its key");
         ConsoleUi.Line("  (session:1, or session:unknown for the processes naming none); executable is the default.");

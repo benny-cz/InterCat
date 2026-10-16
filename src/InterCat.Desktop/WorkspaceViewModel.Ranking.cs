@@ -36,9 +36,9 @@ public sealed record RankingOption(RankingMetric Metric, string Label) : IAccess
         RankingMetric.RpcCallTime => "RPC call time: rank by the median time each process's completed client calls took, slowest first",
         RankingMetric.RpcServeTime => "RPC serve time: rank by the median time each process took to serve its completed calls, slowest first",
         RankingMetric.ActivePeers => "Peers: rank by the distinct processes at the other end of each process's records",
-        RankingMetric.ConnectionsMade => "Connections made: rank by the TCP connections each process made, each a connect the capture saw at its end",
+        RankingMetric.ConnectionsMade => "Connections made: rank by the TCP connections each process made, as the capture saw each open at either end",
         RankingMetric.ConnectionsAccepted =>
-            "Connections accepted: rank by the TCP connections each process accepted, each an accept the capture saw at its end",
+            "Connections accepted: rank by the TCP connections each process accepted, as the capture saw each open at either end",
         _ => "Records: rank by each process's own records",
     } + (RankingMetrics.BasisOf(Metric) == AnalysisBasis.LogicalOperations
         ? ", on logical operations" : ", on source observations");
@@ -475,7 +475,7 @@ public sealed partial class WorkspaceViewModel
         + "another. RPC call and serve time: the median time those calls took, slowest first; a stop paired with no start is "
         + "never timed, and a group's median is its members' calls together. Peers: the distinct processes at the other end "
         + "of each process's records; two processes are each other's peer, so the rows overlap. Connections made and "
-        + "accepted: the TCP connections each process made by a connect or accepted, as the capture saw them open at its end.";
+        + "accepted: the TCP connections each process made or accepted, as the capture saw each open at either end.";
 
     private RankingFamily Family => RankingMetrics.FamilyOf(rankBy);
 
@@ -608,11 +608,12 @@ public sealed partial class WorkspaceViewModel
         RankingMetric.ActivePeers => "Peers are the distinct process instances at the other end of each process's records, "
             + "under relations-v1 (metrics-v1 §6.1); a process connected to itself is its own peer, and a group's peers are its "
             + "members' together. A record whose other end is unresolved names no peer, so each count is a lower bound.",
-        RankingMetric.ConnectionsMade => "Connections made are the TCP connections each process made, each a connect record "
-            + "at its own end, as the capture saw it open (relations-v1 sections 3 and 5); a group's are its members'.",
-        RankingMetric.ConnectionsAccepted => "Connections accepted are the TCP connections each process accepted, each an "
-            + "accept record at its own end, as the capture saw it open (relations-v1 sections 3 and 5); a group's are its "
-            + "members'.",
+        RankingMetric.ConnectionsMade => "Connections made are the TCP connections each process made, as the capture saw each "
+            + "open: by a connect at its own end or an accept at the other (relations-v1 sections 3 and 5). A connection is in "
+            + "scope where its first record is, and a group's are its members'.",
+        RankingMetric.ConnectionsAccepted => "Connections accepted are the TCP connections each process accepted, as the "
+            + "capture saw each open: by an accept at its own end or a connect at the other (relations-v1 sections 3 and 5). A "
+            + "connection is in scope where its first record is, and a group's are its members'.",
         RankingMetric.RpcServeTime => "RPC serve time is how long each process took to serve its completed server calls, from "
             + "a served call's start to its stop (metrics-v1 §8a, ServerExecution); a row ranks by the median of its calls, "
             + "slowest first, and a group's median is its members' calls together, never a sum of medians.",

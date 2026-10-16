@@ -166,6 +166,16 @@ public sealed record ProcessNode(
     /// (<see cref="SessionConnectionRanking"/>); null until one has.
     /// </summary>
     public ConnectionCount? Connections { get; init; }
+
+    /// <summary>
+    /// The TCP connections the process made over the whole session, as the capture saw each open at either end, under the
+    /// evidence policy it was projected with (<see cref="ConnectionOpens"/>), as a connection ranking of the whole session
+    /// counts them; none for a node not projected from a session.
+    /// </summary>
+    public long ConnectionsMade { get; init; }
+
+    /// <summary>The TCP connections the process accepted over the whole session, counted as <see cref="ConnectionsMade"/> are.</summary>
+    public long ConnectionsAccepted { get; init; }
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

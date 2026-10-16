@@ -271,8 +271,8 @@ public sealed class RankingSelectorTests
         Assert.Contains("2 connections accepted, on 4 TCP records", workspace.RungRows[0].AccessibleName, StringComparison.Ordinal);
         Assert.Contains("no TCP records", workspace.RungRows[2].AccessibleName, StringComparison.Ordinal);
         Assert.Equal("2 accepted on 8 TCP records", workspace.RankingNote);
-        Assert.StartsWith("Connections accepted are the TCP connections each process accepted, each an accept record at its own end",
-            workspace.RankingNoteDetail, StringComparison.Ordinal);
+        Assert.StartsWith("Connections accepted are the TCP connections each process accepted, as the capture saw each open: by an "
+            + "accept at its own end or a connect at the other", workspace.RankingNoteDetail, StringComparison.Ordinal);
         Assert.Contains("The rows shown accepted 2 connections, on 8 TCP records.", workspace.RankingNoteDetail, StringComparison.Ordinal);
 
         // Made, the client ranks first.

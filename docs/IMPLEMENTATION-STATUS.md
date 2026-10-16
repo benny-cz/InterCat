@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 584 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 585 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 585 — one count of connections made and accepted (§5.2, §6.3, §6.8, R18):**
+  - A process's card, the ranking by connections made or accepted and its export read one count from the relation
+    index: a paired connection made by its connecting end and accepted by the other, as the capture saw it open at
+    either end, a process connected to itself both; a one-sided one by its holder's own open. The ranking counted only
+    a process's own connect and accept records, so a server whose accepts were lost ranked as accepting none.
+  - A card now also counts a process's connections to itself and to local ports no process of the capture holds, which
+    the graph does not draw; a brush takes a connection whose first record is within it.
+  - Debug ran 2,481 tests with revision 473's 93 failures and 4 skips, and nothing else failed. Release failed one
+    more, an HTTP exchange lane's pixel check, which passed in each of 6 reruns and draws nothing this change
+    touches. Each of 22 mutations was caught: a connection seen open neither way, or bound as the evidence policy
+    withholds, counted for an end, paired or one-sided; one taken under a brush that it opened outside, at either
+    bound; the ends' parts swapped, or the maker or the accepter left out; a one-sided open read the other way; a
+    process's later connection replacing its earlier; the card without what each process made or accepted, or
+    counting what every policy admits; the ranking counting the whole session under a brush, or under the default
+    policy only, or its TCP records not counted, or counted for every mechanism but lifecycle; and a set counting
+    every process, or its accepts from what they made.
 
 - **Revision 584 — a process's card counts the connections it made and accepted (§6.3, §6.8):**
   - "Connections: 3 made · 12 accepted, as the capture saw them open", beneath where its connections ran: its

@@ -120,6 +120,13 @@ overview counts, for each relationship, how many of its connections its source m
 (`sourceConnected`, `targetConnected`), and names each channel's maker and the endpoint it connected from
 (`connectedBy`, `connectedFrom`); a UDP flow, which nothing opens, and a process connected to itself have none.
 
+Since revision 585 each process's TCP connections **made** and **accepted** are counted from the same openings, for
+its card and the ranking by them: a relation is one connection its maker made and its other end accepted - a process
+connected to itself both - and a one-sided connection (§5b) one its holder made or accepted, as its own open says
+(§3). One the capture saw open neither way, or whose strength the evidence policy does not admit, counts for neither,
+as does an incarnation that is neither a relation nor one-sided. A scope takes a connection whose first record, at
+either end, is within it.
+
 Every record of an incarnation has that incarnation's other end (§4), so a count of records by their other end is a
 sum over incarnations, plus the records with no end, and needs no second read of any record: how many records of a
 mechanism have no other end a policy admits is exactly how many of them a per-record read would find unadmitted.

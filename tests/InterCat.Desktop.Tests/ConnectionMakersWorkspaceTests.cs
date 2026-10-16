@@ -52,11 +52,13 @@ public sealed class ConnectionMakersWorkspaceTests
         IReadOnlyList<string> Card(int pid) => workspace.DescribeGraphHover(Key(pid))!.Lines;
 
         // The client made two of its connections to the server and accepted the one the server made, and the capture saw one
-        // open neither way, which counts for neither end; the updater connected out to another host.
+        // open neither way, which counts for neither end. The updater connected out to another host, to a port of this
+        // machine no process of the capture held, and to itself, which it accepted too: its card counts every one, though
+        // the graph draws only the first.
         const string ClientMade = "Connections: 2 made · 1 accepted, as the capture saw them open";
         Assert.Equal(ClientMade, Card(100)[1]);
         Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open", Card(200)[1]);
-        Assert.Equal(["Other hosts: 1 TCP connection to 1 host", "Connections: 1 made · 0 accepted, as the capture saw them open"],
+        Assert.Equal(["Other hosts: 1 TCP connection to 1 host", "Connections: 3 made · 1 accepted, as the capture saw them open"],
             Card(300).Skip(1).Take(2));
 
         // At the client's rung the updater is the rest of the machine, whose connections are left to its own rung.
@@ -255,12 +257,18 @@ public sealed class ConnectionMakersWorkspaceTests
         Transfer(22, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 8).Between("127.0.0.1:8080", "127.0.0.1:50001"),
     ];
 
-    /// <summary>An updater that connects out to another host's 443, seen at its end, and sends there.</summary>
+    /// <summary>
+    /// An updater that connects out to another host's 443 and sends there, connects to this machine's 9999, whose other end
+    /// no record holds, and connects to itself, each seen at its end.
+    /// </summary>
     private static ObservationRowV1[] Updater() =>
     [
         Lifecycle(45, ObservationKind.Create, 300, 14) with { ResourceName = @"C:\Tools\updater.exe" },
         Transfer(50, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 15).Between("192.168.1.10:52000", "10.0.0.5:443"),
         Transfer(51, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 16).Between("192.168.1.10:52000", "10.0.0.5:443"),
+        Transfer(52, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 17).Between("127.0.0.1:53000", "127.0.0.1:9999"),
+        Transfer(53, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 18).Between("127.0.0.1:53001", "127.0.0.1:53002"),
+        Transfer(54, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 19).Between("127.0.0.1:53002", "127.0.0.1:53001"),
     ];
 
     /// <summary>A TCP connection between them, seen opening at neither end.</summary>

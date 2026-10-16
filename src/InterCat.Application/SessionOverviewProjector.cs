@@ -206,6 +206,10 @@ public static class SessionOverviewProjector
         CollectorMatch collectors = CollectorBinding.Match(processes.Instances, CollectorIdentitiesV1.Read(store.Root, manifest));
         CoverageState tcpCoverage = SessionCoverage.Of(coverage, Mechanism.Tcp).State;
         CoverageState udpCoverage = SessionCoverage.Of(coverage, Mechanism.Udp).State;
+
+        // Each process's TCP connections made and accepted, as the capture saw each open at either end: what its card says,
+        // and what a connection ranking of the whole session reads.
+        Dictionary<ProcessInstanceId, (long Made, long Accepted)> opens = ConnectionOpens.Count(relations, policy, null);
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
@@ -226,6 +230,8 @@ public static class SessionOverviewProjector
             Parent = instance.Parent,
             ParentBinding = instance.ParentBinding,
             Collector = collectors.RoleOf(instance.Id),
+            ConnectionsMade = opens.GetValueOrDefault(instance.Id).Made,
+            ConnectionsAccepted = opens.GetValueOrDefault(instance.Id).Accepted,
         })];
 
         // Every row is held by at most one instance, so what no instance holds is the rest: rows naming no owner, naming

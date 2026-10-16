@@ -5,14 +5,14 @@ using InterCat.Storage;
 namespace InterCat.Application;
 
 /// <summary>
-/// A process's, or a group's, TCP connections the capture saw it open over one scope (`relations-v1` §3, §5): those it made
-/// by a connect and those it accepted, each one record at its own end, beside the TCP records it holds in scope. Where the
-/// session records no connection's open at all - a capture that collected no connect or accept, or an import whose source
-/// recorded none - how many it made or accepted is unknown, never zero (R21).
+/// A process's, or a group's, TCP connections made and accepted over one scope, as the capture saw each open at either end
+/// (`relations-v1` §3, §5, <see cref="ConnectionOpens"/>), beside the TCP records it holds in scope. Where the session
+/// records no connection's open at all - a capture that collected no connect or accept, or an import whose source recorded
+/// none - how many it made or accepted is unknown, never zero (R21).
 /// </summary>
-/// <param name="Made">The connects in scope at its end: the connections it made.</param>
-/// <param name="Accepted">The accepts in scope at its end: the connections it accepted.</param>
-/// <param name="TcpRecords">Its own TCP records in scope, opens among them.</param>
+/// <param name="Made">The connections it made: by its own connect, or one the other end accepted.</param>
+/// <param name="Accepted">The connections it accepted: by its own accept, or one the other end made.</param>
+/// <param name="TcpRecords">Its own TCP records in scope.</param>
 /// <param name="OpensRecorded">Whether the session records any connection's open, so a count of none is none.</param>
 public sealed record ConnectionCount(long Made, long Accepted, long TcpRecords, bool OpensRecorded)
 {
@@ -64,15 +64,17 @@ public sealed record SessionConnectionMeasures(
 }
 
 /// <summary>
-/// Reads each process's TCP connections made and accepted for the ranked table (§5.2, `relations-v1` §5): its own connect
-/// and accept records in scope, each the open of one connection as the capture saw it at that process's end, from the
-/// derivation the overview already holds. A record counts for the process instance it binds to under the evidence policy.
+/// Reads each process's TCP connections made and accepted for the ranked table (§5.2, `relations-v1` §5): each connection
+/// counts for the process that made it and the one that accepted it, as the capture saw it open at either end, from the
+/// derivation the overview already holds (<see cref="ConnectionOpens"/>), so a ranking of the whole session reads what each
+/// process's card says. Its TCP records are its own records in scope that bind to it under the evidence policy.
 /// </summary>
 public static class SessionConnectionRanking
 {
     /// <summary>
     /// Counts the whole retained capture, or <paramref name="interval"/> in 100-nanosecond presentation ticks, whose bounds
-    /// are placed on the source clock as the command line places a time. A record is in scope when its reading is.
+    /// are placed on the source clock as the command line places a time. A record is in scope when its reading is, and a
+    /// connection when its first record, at either end, is: its open, where the capture saw one.
     /// </summary>
     public static SessionConnectionMeasures Measure(
         SessionStore store,
@@ -113,20 +115,27 @@ public static class SessionConnectionRanking
         }
 
         cancellationToken.ThrowIfCancellationRequested();
+
+        // A process with no TCP record in scope holds no count there, as a ranked row with none ranks after every one with
+        // some; over the whole session every process a connection counts for holds that connection's records.
+        Dictionary<ProcessInstanceId, (long Made, long Accepted)> opens = interval is null || native is not null
+            ? ConnectionOpens.Count(relations, policy, native)
+            : [];
         var byProcess = new Dictionary<ProcessInstanceId, ConnectionCount>();
         for (int instance = 0; instance < instances; instance++)
         {
             if (total.Tcp[instance] > 0)
             {
-                byProcess[processes.Instances[instance].Id] =
-                    new(total.Made[instance], total.Accepted[instance], total.Tcp[instance], opensRecorded);
+                ProcessInstanceId id = processes.Instances[instance].Id;
+                (long made, long accepted) = opens.GetValueOrDefault(id);
+                byProcess[id] = new(made, accepted, total.Tcp[instance], opensRecorded);
             }
         }
 
         return new(manifest.SessionId, manifest.Generation, interval, byProcess) { OpensRecorded = opensRecorded };
     }
 
-    /// <summary>Counts one segment's TCP records in scope by the process each binds to, and its connects and accepts apart.</summary>
+    /// <summary>Counts one segment's TCP records in scope by the process each binds to.</summary>
     private static void MeasureSegment(
         SegmentReaderV1 segment,
         TimeRange? native,
@@ -136,7 +145,6 @@ public static class SessionConnectionRanking
     {
         bool[] inScope = SegmentMeasurement.RowsInScope(segment, null, null, native);
         SegmentColumnSlice mechanisms = segment.Slice(SegmentColumnId.Mechanism);
-        SegmentColumnSlice kinds = segment.Slice(SegmentColumnId.ObservationKind);
         PackedOwners owners = SegmentBindings.OwnersOf(segment, processes);
         for (int row = 0; row < inScope.Length; row++)
         {
@@ -151,36 +159,20 @@ public static class SessionConnectionRanking
                 continue;
             }
 
-            int instance = owner.Instance;
-            tally.Tcp[instance]++;
-            switch ((ObservationKind)kinds.UnsignedAt(row)!.Value)
-            {
-                case ObservationKind.Connect:
-                    tally.Made[instance]++;
-                    break;
-                case ObservationKind.Accept:
-                    tally.Accepted[instance]++;
-                    break;
-            }
+            tally.Tcp[owner.Instance]++;
         }
     }
 
-    /// <summary>One worker's counts by process, merged once it has no segment left.</summary>
+    /// <summary>One worker's TCP records by process, merged once it has no segment left.</summary>
     private sealed class ConnectionTally(int instances)
     {
         public long[] Tcp { get; } = new long[instances];
-
-        public long[] Made { get; } = new long[instances];
-
-        public long[] Accepted { get; } = new long[instances];
 
         public void Add(ConnectionTally other)
         {
             for (int instance = 0; instance < Tcp.Length; instance++)
             {
                 Tcp[instance] += other.Tcp[instance];
-                Made[instance] += other.Made[instance];
-                Accepted[instance] += other.Accepted[instance];
             }
         }
     }

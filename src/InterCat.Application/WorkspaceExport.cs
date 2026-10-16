@@ -190,14 +190,14 @@ public static class WorkspaceExport
             + "whose other end is unresolved names no peer, and the count is a lower bound beside it; a row none of whose "
             + "records resolved a peer is unmeasured and ranks after every row with one. Two processes are each other's peer, "
             + "so the rows overlap and do not add up to a total.",
-        RankingMetric.ConnectionsMade => "Rows are ranked by connections made: the TCP connections each process made, each a "
-            + "connect record at its own end, as the capture saw it open (relations-v1 sections 3 and 5). A row with no TCP "
-            + "record in scope ranks after every row with one; where the session records no connection's open, every row is "
-            + "unmeasured, never zero.",
+        RankingMetric.ConnectionsMade => "Rows are ranked by connections made: the TCP connections each process made, as the "
+            + "capture saw each open, by a connect at its own end or an accept at the other (relations-v1 sections 3 and 5), "
+            + "each in scope where its first record is. A row with no TCP record in scope ranks after every row with one; "
+            + "where the session records no connection's open, every row is unmeasured, never zero.",
         RankingMetric.ConnectionsAccepted => "Rows are ranked by connections accepted: the TCP connections each process "
-            + "accepted, each an accept record at its own end, as the capture saw it open (relations-v1 sections 3 and 5). A "
-            + "row with no TCP record in scope ranks after every row with one; where the session records no connection's open, "
-            + "every row is unmeasured, never zero.",
+            + "accepted, as the capture saw each open, by an accept at its own end or a connect at the other (relations-v1 "
+            + "sections 3 and 5), each in scope where its first record is. A row with no TCP record in scope ranks after "
+            + "every row with one; where the session records no connection's open, every row is unmeasured, never zero.",
         RankingMetric.RpcServeTime => "Rows are ranked by RPC serve time, slowest first: the median time each process took to "
             + "serve the server calls it completed, from a served call's start to its stop (metrics-v1 §8a, ServerExecution), in "
             + "session nanoseconds. " + TimeCaveat,

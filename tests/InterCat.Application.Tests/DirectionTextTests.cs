@@ -1,4 +1,4 @@
-using InterCat.Analysis;
+using System.Globalization;
 using InterCat.Domain;
 using Xunit;
 
@@ -36,42 +36,40 @@ public sealed class DirectionTextTests
             DirectionText.Line(Mechanism.Rpc, 0, 0, 0, "a", "b"));
     }
 
-    [Fact(DisplayName = "§6.8: a set of processes made the connections their ends connected by and accepted those the other ends did, one between two of them both, and their hosts' as the capture saw them open")]
-    public void ASetsConnectionsAreCountedByWhoOpenedThem()
+    [Fact(DisplayName = "§6.8: a set of processes made and accepted its members' connections together, as each member's whole session counts them, and a card says nothing where the capture saw none of theirs open")]
+    public void ASetsConnectionsAreItsMembers()
     {
-        ProcessInstanceId a = new(Guid.Parse("00000000-0000-0000-0000-000000000001"));
-        ProcessInstanceId b = new(Guid.Parse("00000000-0000-0000-0000-000000000002"));
-        ProcessInstanceId c = new(Guid.Parse("00000000-0000-0000-0000-000000000003"));
-        CommunicationEdge Edge(string key, ProcessInstanceId source, ProcessInstanceId target, int fromSource, int fromTarget) =>
-            new(key, source, target, Mechanism.Tcp, 10, null, RelationStrength.Correlated)
-            {
-                Rule = RelationRule.TransportEndpoint,
-                Evidence = [key],
-                SourceConnected = fromSource,
-                TargetConnected = fromTarget,
-            };
-        WorkspaceSnapshot snapshot = new("Opened", new TimeRange(0, 10), [], [], [Edge("ab", a, b, 3, 1), Edge("cb", c, b, 0, 2)],
-            [], [], [], [])
-        {
-            HostLinks =
-            [
-                new HostLink(b, Mechanism.Tcp, [new HostAddress("203.0.113.1", 5, 9) { Connected = 1, Accepted = 4 }],
-                    RelationStrength.Correlated),
-            ],
-        };
+        ProcessNode Node(int pid, long made, long accepted) => new(
+            new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{pid:D12}")), pid, $"p{pid}.exe", "Created", $"p{pid}", 0, 0,
+            CoverageState.Covered) { ConnectionsMade = made, ConnectionsAccepted = accepted };
+        ProcessNode a = Node(1, 3, 1);
+        ProcessNode b = Node(2, 4, 7);
+        ProcessNode c = Node(3, 0, 2);
+        WorkspaceSnapshot snapshot = new("Opened", new TimeRange(0, 10), [], [a, b, c], [], [], [], [], []);
 
-        // a made three and accepted one of b's; b accepted those three and c's none but made two to c and one to a, and
-        // connected to one host and accepted four from it; c accepted b's two.
-        Assert.Equal((3, 1), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { a }));
-        Assert.Equal((1 + 2 + 1, 3 + 0 + 4), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { b }));
-        Assert.Equal((0, 2), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { c }));
+        Assert.Equal((3L, 1L), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { a.Id }));
+        Assert.Equal((0L, 2L), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { c.Id }));
 
-        // Drawn together, a connection between two of them is one they made and one they accepted.
-        Assert.Equal((3 + 1 + 2 + 1, 1 + 3 + 4), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { a, b }));
-        Assert.Equal((0, 0), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId>()));
+        // A connection between two of them is already one each member counts, the one that made it and the one that
+        // accepted it, so the set's are its members' added.
+        Assert.Equal((7L, 8L), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { a.Id, b.Id }));
+        Assert.Equal((0L, 0L), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId>()));
+        Assert.Equal((0L, 0L), DirectionText.Opened(snapshot, new HashSet<ProcessInstanceId> { Node(4, 9, 9).Id }));
 
         Assert.Equal("Connections: 3 made · 1 accepted, as the capture saw them open", DirectionText.OpenedLine(3, 1));
         Assert.Equal("Connections: 0 made · 2 accepted, as the capture saw them open", DirectionText.OpenedLine(0, 2));
+        CultureInfo shown = CultureInfo.CurrentCulture;
+        try
+        {
+            // A large count is grouped as the reader's culture groups digits.
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            Assert.Equal("Connections: 1,200 made · 0 accepted, as the capture saw them open", DirectionText.OpenedLine(1200, 0));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = shown;
+        }
+
         Assert.Null(DirectionText.OpenedLine(0, 0));
     }
 
