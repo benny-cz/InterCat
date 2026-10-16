@@ -92,12 +92,12 @@ internal static class WindowKeys
         new("Relationship table", "Enter", "open the chosen relationship, as a double click on its edge does"),
         new("Interval table", "Up, Down, Home or End", "choose a moment, which becomes the analysis interval"),
         new("Interval table", "Enter", "list the moment's records"),
-        new("Search box", "Enter", "open the chosen hit"),
+        new("Search box", "Enter", "open the chosen hit, or search the port a number offers"),
         new("Search box", "Down", "move to the hits"),
         new("Search box", "Esc", "clear the search, and give the keyboard back to the ranked table"),
         new("Search hits", "Up or Down", "choose the previous or next hit; Up on the first gives the keyboard back to the "
             + "search box, its words kept"),
-        new("Search hits", "Enter", "open the chosen hit"),
+        new("Search hits", "Enter", "open the chosen hit, or search the port a number offers"),
         new("Search hits", "Esc", "clear the search, and give the keyboard back to the search box"),
         new("Inspector", "Enter", "on one of a chosen cell's records, open it among the level's records, chosen there"),
         new("Inspector", "Enter", "on a host Other hosts lists, find the processes that reached it, as searching its address "

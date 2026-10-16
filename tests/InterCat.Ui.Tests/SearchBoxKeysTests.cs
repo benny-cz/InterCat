@@ -5,6 +5,7 @@ using Avalonia.Input;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -195,6 +196,55 @@ public sealed class SearchBoxKeysTests
             Assert.Equal(string.Empty, workspace.SearchText);
             Assert.Equal(depth + 1, workspace.Crumbs.Count);
             Assert.Equal("Group: server.exe", workspace.Crumbs[^1].Label);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: Enter on the port a number offers searches it in the box, which keeps the keyboard, and Enter again opens its first hit")]
+    public async Task EnterOnAnOfferedPortSearchesIt()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 500, 1) with { ResourceName = @"C:\Windows\System32\mstsc.exe", SessionRelativeTicks = 100 },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 500, 2)
+                .Between("192.168.1.10:52002", "10.0.0.7:3389") with { SessionRelativeTicks = 200 },
+            Transfer(11, ObservationKind.Send, AccountingSide.SendSide, 40, 500, 3)
+                .Between("192.168.1.10:52002", "10.0.0.7:3389") with { SessionRelativeTicks = 210 },
+        ]);
+        var window = new MainWindow { Width = 1_080, Height = 700 };
+        window.Show();
+        try
+        {
+            Assert.True(await window.OpenSessionAsync(session.Path));
+            Dispatch();
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            TextBox search = window.GetControl<TextBox>("SearchBox");
+            ListBox hits = window.GetControl<ListBox>("SearchResultsList");
+            window.KeyPressQwerty(PhysicalKey.F, RawInputModifiers.Control);
+            search.Text = "3389";
+            Dispatch();
+            Assert.Equal(SearchHitKind.Port, Assert.IsType<SearchRow>(hits.SelectedItem).Hit.Kind);
+
+            // Enter searches the port in the box, which keeps the keyboard with the caret after its words, and opens no rung;
+            // the port's first hit is chosen.
+            int depth = workspace.Crumbs.Count;
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(":3389", search.Text);
+            Assert.True(search.IsFocused);
+            Assert.Equal(5, search.CaretIndex);
+            Assert.Equal(depth, workspace.Crumbs.Count);
+            Assert.Equal("mstsc.exe · PID 500", Assert.IsType<SearchRow>(hits.SelectedItem).Label);
+
+            // Enter again opens it, as on any hit: its group, then itself.
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(string.Empty, workspace.SearchText);
+            Assert.Equal(depth + 2, workspace.Crumbs.Count);
         }
         finally
         {

@@ -328,6 +328,20 @@ public sealed class WorkspaceSearchTests
         }
     }
 
+    [Fact(DisplayName = "§6.7: a bare number of at most five digits up to 65535 names the port it would be typed after a colon, and nothing else does")]
+    public void ABareNumberNamesAPort()
+    {
+        Assert.Equal((ushort)5353, WorkspaceSearch.BarePort("5353"));
+        Assert.Equal((ushort)443, WorkspaceSearch.BarePort(" 443 "));
+        Assert.Equal((ushort)443, WorkspaceSearch.BarePort("00443"));
+        Assert.Equal((ushort)0, WorkspaceSearch.BarePort("0"));
+        Assert.Equal(ushort.MaxValue, WorkspaceSearch.BarePort("65535"));
+        foreach (string? text in new[] { null, "", " ", "65536", "123456", "000443", "443a", "a443", ":443", "-443", "+443", "4 43", "142.250" })
+        {
+            Assert.Null(WorkspaceSearch.BarePort(text));
+        }
+    }
+
     private static ProcessNode Process(int index, int processId, string name, string group, params (Mechanism, long)[] made) =>
         new(new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), processId, name, "test", group, 0.5, 0.5,
             CoverageState.Covered)

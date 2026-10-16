@@ -13,6 +13,9 @@ public enum SearchHitKind
 
     /// <summary>A moment of the session the search's text names, which going to chooses the cell of (§6.2, §6.7).</summary>
     Moment = 4,
+
+    /// <summary>The port a bare number names, which going to searches as a port, ":5353", in the number's place (§6.7).</summary>
+    Port = 5,
 }
 
 /// <summary>
@@ -165,6 +168,12 @@ public static class WorkspaceSearch
         ArgumentNullException.ThrowIfNull(address);
         return HostQueryOf(query?.Trim() ?? string.Empty) is { } host && HostRank(address, host) >= 0;
     }
+
+    /// <summary>
+    /// The port a bare number names: "5353", which a search reads as a PID or a PID's first digits, as ":5353" names a port.
+    /// Null for any text but a number from 0 to 65535 of at most five digits.
+    /// </summary>
+    public static ushort? BarePort(string? query) => PortOf(query?.Trim() ?? string.Empty);
 
     /// <summary>Whether <paramref name="query"/> asks for a port: an endpoint or a port alone, rather than an address.</summary>
     public static bool NamesPort(string? query) => HostQueryOf(query?.Trim() ?? string.Empty) is { Port: not null };

@@ -1039,10 +1039,16 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (DataContext is not WorkspaceViewModel viewModel) return false;
 
         // A moment gone to gives the keyboard to the timeline, where it is: [ and ] step on from the cell it chose, the
-        // arrows pan around it, and the timeline says where it is (§6.7, R15). Any other hit gives it to the rung opened.
-        bool moment = viewModel.SelectedSearchResult?.Hit.Kind == SearchHitKind.Moment;
+        // arrows pan around it, and the timeline says where it is (§6.7, R15). A port a number offered is searched in the
+        // box, which keeps the keyboard, its words after the colon. Any other hit gives it to the rung opened.
+        SearchHitKind? kind = viewModel.SelectedSearchResult?.Hit.Kind;
         if (!viewModel.OpenSearchResult()) return false;
-        if (moment) TimelineSurface.Focus(NavigationMethod.Directional);
+        if (kind == SearchHitKind.Moment) TimelineSurface.Focus(NavigationMethod.Directional);
+        else if (kind == SearchHitKind.Port)
+        {
+            SearchBox.Focus();
+            SearchBox.CaretIndex = SearchBox.Text?.Length ?? 0;
+        }
         else FocusRail();
         return true;
     }
