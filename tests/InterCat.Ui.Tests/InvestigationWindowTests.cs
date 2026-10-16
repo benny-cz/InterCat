@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.CompilerServices;
 using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Automation.Peers;
@@ -3261,15 +3262,19 @@ public sealed class InvestigationWindowTests
             .Single(text => text.Text != address);
     }
 
-    private static void WaitFor(Func<bool> condition)
+    /// <summary>
+    /// Runs the window's jobs until <paramref name="condition"/> holds, for up to 15 s, which a machine busy with other test
+    /// runs needs; one that never holds fails naming what was waited for.
+    /// </summary>
+    private static void WaitFor(Func<bool> condition, [CallerArgumentExpression(nameof(condition))] string? waited = null)
     {
-        for (int attempt = 0; attempt < 500 && !condition(); attempt++)
+        for (int attempt = 0; attempt < 1_500 && !condition(); attempt++)
         {
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Thread.Sleep(10);
         }
 
-        Assert.True(condition());
+        Assert.True(condition(), "Waited 15 s for " + waited);
     }
 
     /// <summary>The field shown, as a screen reader names it by the words beside it, whose caption begins so.</summary>

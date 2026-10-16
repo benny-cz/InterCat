@@ -109,8 +109,18 @@ public sealed class HttpExchangeLaneTests
             Assert.Contains(density.Incomplete, share => share > 0);
 
             // A column of exchanges recorded whole is the HTTP hue; one whose every exchange was not recorded whole is the
-            // same hue, faint over the plot, never hidden beneath the solid fill.
-            WriteableBitmap frame = Settle(window);
+            // same hue, faint over the plot, never hidden beneath the solid fill. The lane is counted again as the window
+            // settles at another width, so the columns read are those of the count the frame drew, once no other follows.
+            WriteableBitmap frame;
+            int counts = 0;
+            do
+            {
+                density = Assert.IsType<HttpExchangeDensity>(workspace.HttpExchangeDensity);
+                frame = Settle(window);
+            }
+            while (!ReferenceEquals(density, workspace.HttpExchangeDensity) && ++counts < 20);
+            Assert.Same(density, workspace.HttpExchangeDensity);
+
             Color hue = ThemeResources.FillOf(Mechanism.Http, ThemeMode.Dark);
             Color plot = ThemeResources.ToColor(ThemePalette.Surfaces(ThemeMode.Dark).Plot);
             Point Column(int index) => timeline.TranslatePoint(timeline.PointOfDensityColumn(index)!.Value, window)!.Value;
