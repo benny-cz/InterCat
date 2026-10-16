@@ -250,6 +250,47 @@ public sealed class RelationshipExplanationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the relationship chosen in the table, with the keyboard on its row")]
+    public async Task ANewerGenerationKeepsTheRelationshipChosen()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TwoClients());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            workspace.ShowTables = true;
+            await workspace.TimelineDetailReady;
+            Dispatch();
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Assert.True(table.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            string chosen = Assert.IsType<RelationshipRow>(table.SelectedItem).Key;
+
+            // The next generation replaces the workspace: the table keeps the relationship chosen, and the keyboard its row.
+            Publish(session.Store, [Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 16, 100, 200)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 2_000 }]);
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            Assert.NotSame(workspace, next);
+            Dispatch();
+            Assert.Equal(chosen, next.SelectedRelationship?.Key);
+            Assert.Equal(chosen, Assert.IsType<RelationshipRow>(table.SelectedItem).Key);
+            Assert.Same(table.ContainerFromItem(table.SelectedItem!), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A recording's publication of the session's newest generation.</summary>
+    private static CaptureUiUpdate Recording(TemporarySession session) => new(CaptureUiPhase.Recording, "Recording",
+        "A published generation.", SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store));
+
     private static ObservationRowV1[] TwoClients() =>
     [
         Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 100)

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 603 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 604 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 604 — a newer generation keeps a chosen relationship and a set chosen together (R7, §6.7):**
+  - While recording, each publication let go a relationship chosen in the graph or its table, and processes chosen
+    with Ctrl+click or Ctrl+Space. Both are now chosen again, what the generation no longer holds said once, and the
+    keyboard returns to the relationship's row.
+  - Debug and Release each ran 2,520 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    ten mutations were caught: the relationship, or the set, not carried; the relationship not chosen again, in the
+    workspace and in the window; a relationship gone not said; the set not chosen again, or chosen beside the ranked
+    group's row it began from; one process gone said as several; all gone said as some; and one gone not said. The
+    set beside a ranked row went unseen at first, and a test of a set begun from one now holds it.
 
 - **Revision 603 — a newer generation keeps a list's choice, and the keyboard on it (R7, §6.3):**
   - While recording, each publication kept the aggregate or Other hosts chosen but let the process or host chosen in

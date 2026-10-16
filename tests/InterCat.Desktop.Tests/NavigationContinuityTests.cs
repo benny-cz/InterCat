@@ -30,6 +30,82 @@ public sealed class NavigationContinuityTests
         Assert.False(workspace.IsSearching);
     }
 
+    [Fact(DisplayName = "R7: a newer generation keeps the relationship chosen, and says once when the session no longer holds it")]
+    public void ANewerGenerationKeepsTheRelationshipChosen()
+    {
+        WorkspaceSnapshot source = SyntheticWorkspace.Create();
+        using var old = new WorkspaceViewModel(source, "session:one:generation:1");
+        old.SelectedRelationship = old.Relationships.Single(row => row.Key == "edge.api-indexer");
+        WorkspaceNavigationMemento saved = old.CaptureNavigation();
+
+        using var refreshed = new WorkspaceViewModel(source, "session:one:generation:2");
+        Assert.Null(refreshed.RestoreNavigation(saved));
+        Assert.Equal("edge.api-indexer", refreshed.SelectedRelationship?.Key);
+
+        using var changed = new WorkspaceViewModel(
+            source with { Edges = [.. source.Edges.Where(edge => edge.Key != "edge.api-indexer")] }, "session:one:generation:3");
+        Assert.Equal("The relationship chosen is no longer in the session, so nothing is selected.", changed.RestoreNavigation(saved));
+        Assert.Null(changed.SelectedRelationship);
+    }
+
+    [Fact(DisplayName = "R7: a newer generation keeps the processes chosen together, and says once how many of them it no longer holds")]
+    public void ANewerGenerationKeepsTheChosenSet()
+    {
+        WorkspaceSnapshot source = SyntheticWorkspace.Create();
+        using var old = new WorkspaceViewModel(source, "session:one:generation:1");
+        ProcessNode[] chosen = [.. source.Processes.Take(3)];
+        foreach (ProcessNode process in chosen)
+        {
+            old.ToggleGraphNodeInSelection(old.GraphDisplay.NodeOf(process.Id)!.Key);
+        }
+
+        Assert.Equal(Ids(chosen), Ids(old.ChosenProcesses));
+        WorkspaceNavigationMemento saved = old.CaptureNavigation();
+
+        using var refreshed = new WorkspaceViewModel(source, "session:one:generation:2");
+        Assert.Null(refreshed.RestoreNavigation(saved));
+        Assert.Equal(Ids(chosen), Ids(refreshed.ChosenProcesses));
+
+        // A set begun from a ranked group's row, which stays the table's row, is the selection again, not that group.
+        using var ranked = new WorkspaceViewModel(source, "session:two:generation:1");
+        ranked.SelectedRung = ranked.RungRows[0];
+        ranked.ToggleRungInSelection(ranked.RungRows[1]);
+        Assert.Null(ranked.SelectedGroup);
+        WorkspaceNavigationMemento besideRow = ranked.CaptureNavigation();
+        Assert.Equal(ranked.RungRows[0].Key, besideRow.SelectedRungKey);
+        using var rankedNext = new WorkspaceViewModel(source, "session:two:generation:2");
+        Assert.Null(rankedNext.RestoreNavigation(besideRow));
+        Assert.Equal(Ids(ranked.ChosenProcesses), Ids(rankedNext.ChosenProcesses));
+        Assert.Null(rankedNext.SelectedGroup);
+
+        // One of the three gone, the other two stay chosen together, which is said; all gone, nothing is chosen.
+        using var fewer = new WorkspaceViewModel(Without(source, chosen.Take(1)), "session:one:generation:3");
+        Assert.Equal("1 of the 3 processes chosen is no longer in the session; the rest stay chosen.", fewer.RestoreNavigation(saved));
+        Assert.Equal(Ids(chosen.Skip(1)), Ids(fewer.ChosenProcesses));
+        using var twoFewer = new WorkspaceViewModel(Without(source, chosen.Take(2)), "session:one:generation:4");
+        Assert.Equal("2 of the 3 processes chosen are no longer in the session; the rest stay chosen.",
+            twoFewer.RestoreNavigation(saved));
+        Assert.Equal(Ids(chosen.Skip(2)), Ids(twoFewer.ChosenProcesses));
+        using var none = new WorkspaceViewModel(Without(source, chosen), "session:one:generation:5");
+        Assert.Equal("None of the processes chosen is still in the session, so nothing is selected.", none.RestoreNavigation(saved));
+        Assert.False(none.HasMultiSelection);
+    }
+
+    /// <summary>Processes by their instance identities, in one order whatever theirs.</summary>
+    private static string[] Ids(IEnumerable<ProcessNode> processes) =>
+        [.. processes.Select(process => process.Id.ToString()).Order(StringComparer.Ordinal)];
+
+    /// <summary>A snapshot without <paramref name="gone"/> and the relationships they are an end of.</summary>
+    private static WorkspaceSnapshot Without(WorkspaceSnapshot source, IEnumerable<ProcessNode> gone)
+    {
+        HashSet<ProcessInstanceId> ids = [.. gone.Select(process => process.Id)];
+        return source with
+        {
+            Processes = [.. source.Processes.Where(process => !ids.Contains(process.Id))],
+            Edges = [.. source.Edges.Where(edge => !ids.Contains(edge.SourceId) && !ids.Contains(edge.TargetId))],
+        };
+    }
+
     [Fact(DisplayName = "§6.7: live publication keeps a search query and the selected hit")]
     public void SameSessionRefreshKeepsSearchSelection()
     {

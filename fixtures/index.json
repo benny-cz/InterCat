@@ -1958,6 +1958,8 @@
         "R7: a live recording's first chunk publishes soon after it holds records, and later chunks keep the interval",
         "R7: a newer generation keeps the host chosen in Other hosts' list, and says once when the list no longer holds it",
         "R7: a newer generation keeps the process chosen in an aggregate's list and the way back to it, and says once when the list no longer holds it",
+        "R7: a newer generation keeps the processes chosen together, and says once how many of them it no longer holds",
+        "R7: a newer generation keeps the relationship chosen, and says once when the session no longer holds it",
         "R7: a selected aggregate is still selected after a later publication of the session",
         "R7: a submitted layout sees frozen graph and pin inputs rather than later gesture edits",
         "R7: a view paused while recording shows the saved session once the capture ends, and never says recording continues",

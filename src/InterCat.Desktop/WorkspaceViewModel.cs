@@ -69,6 +69,8 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ChosenListedMember">The process chosen in the selected aggregate's list (§6.3).</param>
 /// <param name="ChosenListedHost">The host chosen in Other hosts' list, by its address (§6.3).</param>
 /// <param name="ListOrigin">Where the latest way down from an aggregate's list began, which the way back comes to (§3.2).</param>
+/// <param name="SelectedRelationshipKey">The relationship chosen, in the graph or its table, by its key.</param>
+/// <param name="ChosenSet">The processes chosen together (§6.7's multi-selection).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -90,7 +92,9 @@ public sealed record WorkspaceNavigationMemento(
     bool ReadsWallClock = false,
     ProcessInstanceId? ChosenListedMember = null,
     string? ChosenListedHost = null,
-    MemberListOrigin? ListOrigin = null);
+    MemberListOrigin? ListOrigin = null,
+    string? SelectedRelationshipKey = null,
+    IReadOnlyList<ProcessInstanceId>? ChosenSet = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1569,7 +1573,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedProcess?.Id, selectedInterval, selectedRung?.Key, showTables, selectedClusterKey,
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
-        scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin);
+        scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
+        selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1709,6 +1714,39 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         // The way back to a list keeps to the rungs it was kept for; the list is checked when the way back arrives there.
         memberOrigin = saved.ListOrigin;
+
+        // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
+        if (saved.SelectedRelationshipKey is { } relationship)
+        {
+            if (relationships.FirstOrDefault(row => string.Equals(row.Key, relationship, StringComparison.Ordinal)) is { } row)
+            {
+                SelectedRelationship = row;
+            }
+            else
+            {
+                notices.Add("The relationship chosen is no longer in the session, so nothing is selected.");
+            }
+        }
+
+        if (saved.ChosenSet is { Count: > 0 } set)
+        {
+            ProcessInstanceId[] held = [.. set.Where(id => wholeSnapshot.Processes.Any(process => process.Id == id))];
+            if (held.Length > 0)
+            {
+                chosenProcesses.Clear();
+                chosenProcesses.UnionWith(held);
+                ChooseTogether();
+            }
+
+            int gone = set.Count - held.Length;
+            if (gone > 0)
+            {
+                notices.Add(held.Length == 0
+                    ? "None of the processes chosen is still in the session, so nothing is selected."
+                    : string.Create(CultureInfo.CurrentCulture, $"{gone:N0} of the {set.Count:N0} processes chosen ")
+                        + (gone == 1 ? "is" : "are") + " no longer in the session; the rest stay chosen.");
+            }
+        }
 
         if (saved.SelectedInterval is { } interval)
         {
@@ -4943,6 +4981,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             chosenProcesses.UnionWith(members);
         }
 
+        ChooseTogether();
+    }
+
+    /// <summary>
+    /// Makes the processes chosen together the selection, in place of a single process, group or aggregate, a relationship
+    /// or a described row.
+    /// </summary>
+    private void ChooseTogether()
+    {
         selectedClusterKey = null;
         selectedGroupKey = null;
         chosenChannelKey = null;
