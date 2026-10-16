@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 577 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 578 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 578 — who opened connections to other hosts, drawn (§6.3, §6.6):**
+  - An edge to Other hosts, or to a host drawn on its own, draws a head at the host where its processes connected to
+    it and at the process where they accepted from it, so a process serving other machines shows at a glance; its card
+    says the same, and its title joins its ends with ↔.
+  - A node's label keeps clear of every arrowhead where a slot clear of them all is left, rather than hide one.
+  - Debug and Release each ran 2,465 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 23 mutations was caught: an edge to other hosts counting only its last address's connections made by a
+    connect, its connects as its accepts or as all its connections, or leaving out who opened its connections or how
+    many it holds; its card not saying who connected, saying it the wrong way round, or titled with a one-way arrow;
+    a host drawn on its own or Other hosts taken for a disc, or the graph standing a head toward a square off a
+    circle inside it; a square's reach from a lane beside its centre measured to the wrong side leftward or upward,
+    the farther side taken for the one it leaves by, or a reach from outside a square or toward nowhere; the graph
+    keeping no head toward either end for its labels to keep clear of, or its labels placed as if none were drawn; a
+    label placed over a head where another side was clear, or left unnamed where heads cover every slot; and a
+    head's box missing its tip.
 
 - **Revision 577 — who connected to whom, drawn (§6.3, §6.6):**
   - The graph draws a filled arrowhead at the process a relationship's connections were made to, at both ends where

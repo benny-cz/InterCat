@@ -326,7 +326,7 @@ public sealed class GraphLayoutIntegrationTests
         radii["hub"] = radius;
 
         Rect? label = GraphView.FindLabelBox(
-            pane, hub, radius, 100, 18, "hub", points, radii, [], mustShow: false);
+            pane, hub, radius, 100, 18, "hub", points, radii, [], [], mustShow: false);
 
         Assert.True(label.HasValue);
         Rect box = label.GetValueOrDefault();

@@ -64,15 +64,16 @@ public sealed class OtherHostsWorkspaceTests
             ],
             card.Lines.Skip(8));
 
-        // An edge's card: its process's connections over its transport, the hosts they ran to, how they bind, and what a
-        // click or double click does.
+        // An edge's card: its process's connections over its transport, the hosts they ran to, how they bind, that the
+        // capture saw none open, and what a click or double click does.
         HoverCard edgeCard = workspace.DescribeGraphHover(tcp.Key)!;
-        Assert.Equal("browser.exe · PID 300 → Other hosts", edgeCard.Title);
+        Assert.Equal("browser.exe · PID 300 ↔ Other hosts", edgeCard.Title);
         Assert.Equal(["2 TCP connections to 2 hosts · correlated evidence", "Hosts: 142.250.1.1 and 20.42.65.1", "Records: 3"],
             edgeCard.Lines.Take(3));
         Assert.Matches(@"^Scope: \[.+\) \S+ · whole session$", edgeCard.Lines[3]);
         Assert.Equal(
             [
+                "Direction: display order only, not who initiated or sent",
                 "Who is at these addresses is not observed; its process's rung lists each connection",
                 "Thickness: the same for every connection to other hosts, which carries no traffic value in the graph",
                 "Click chooses its process; double-click opens it",
@@ -478,7 +479,7 @@ public sealed class OtherHostsWorkspaceTests
         GraphDisplayEdge edge = workspace.GraphDisplay.Edges.Single(drawn => drawn.ToHosts && drawn.SourceKey == group.Key);
         Assert.Equal(26, workspace.GraphDisplay.OtherHosts!.ConnectedProcesses);
         HoverCard card = workspace.DescribeGraphHover(edge.Key)!;
-        Assert.StartsWith("svc.exe → Other hosts", card.Title, StringComparison.Ordinal);
+        Assert.StartsWith("svc.exe ↔ Other hosts", card.Title, StringComparison.Ordinal);
         Assert.Equal("Click chooses the group; double-click opens it", card.Lines[^1]);
 
         // A click chooses the group; a double click opens it, whose rung lists its instances.
@@ -772,6 +773,32 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Contains(service, workspace.SearchedGraphNodeKeys);
         workspace.SearchText = ":50000";
         Assert.DoesNotContain(service, workspace.SearchedGraphNodeKeys);
+    });
+
+    [Fact(DisplayName = "§6.3: an edge to other hosts says who opened its connections - its process by a connect, the hosts by one it accepted - as each host's edge drawn on its own does")]
+    public void AnEdgeToOtherHostsSaysWhoOpenedItsConnections() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, AcceptingRows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        const string Service = "svchost.exe · PID 300";
+
+        // svchost.exe connected to one host and accepted from two: its edge to Other hosts says so.
+        GraphDisplayEdge edge = Assert.Single(workspace.GraphDisplay.Edges);
+        Assert.Equal((1, 2, 3), (edge.MadeFromSource, edge.MadeFromTarget, edge.Connections));
+        Assert.Contains($"Direction: {Service} connected to Other hosts in 1 connection, Other hosts connected to {Service} in 2 "
+            + "connections", workspace.DescribeGraphHover(edge.Key)!.Lines);
+
+        // Opened, each host's edge says its own.
+        Assert.True(workspace.OpenGraphNode(workspace.GraphDisplay.OtherHosts!.Key));
+        await workspace.LayoutReady;
+        string Direction(string address) => workspace.DescribeGraphHover(workspace.GraphDisplay.Edges
+                .Single(drawn => drawn.TargetKey == GraphProjection.HostKey(address)).Key)!.Lines
+            .Single(line => line.StartsWith("Direction: ", StringComparison.Ordinal));
+        Assert.Equal($"Direction: {Service} connected to 10.0.0.5 in 1 connection, 10.0.0.5 connected to {Service} in 1 connection",
+            Direction("10.0.0.5"));
+        Assert.Equal($"Direction: 10.0.0.6 connected to {Service}", Direction("10.0.0.6"));
     });
 
     private static WorkspaceViewModel Open(TemporarySession session)

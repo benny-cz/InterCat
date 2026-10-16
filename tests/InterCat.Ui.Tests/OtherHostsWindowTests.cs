@@ -63,7 +63,7 @@ public sealed class OtherHostsWindowTests
                 window.MouseMove(At(graph, window, OnLane(graph, edge)));
                 Dispatch();
                 Assert.Equal(edge.Key, graph.HoveredKey);
-                Assert.Equal("browser.exe · PID 300 → Other hosts", Assert.IsType<HoverCard>(graph.HoverCard).Title);
+                Assert.Equal("browser.exe · PID 300 ↔ Other hosts", Assert.IsType<HoverCard>(graph.HoverCard).Title);
             }
 
             // A click on one chooses the browser; a double click opens it, whose rung lists each connection.

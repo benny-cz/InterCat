@@ -106,6 +106,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly Dictionary<string, double> drawnRadii = new(StringComparer.Ordinal);
     private readonly List<GraphDisplayNode> labelCandidates = [];
     private readonly List<Rect> placedLabels = [];
+    private readonly List<Rect> drawnHeads = [];
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
     private GraphDisplay? traversalFor;
     private IReadOnlyList<GraphDisplayNode> traversal = [];
@@ -280,11 +281,13 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// An edge as its magnitude says: a stroke of its thickness in the evidence pattern, or, when what it carried was not
     /// measured, §6.6's unmeasured band in the same hue and pattern; and an arrowhead at the end its connections ran to
     /// where the capture saw them open - at both ends where they ran both ways, at neither where it saw none open
-    /// (`contracts/relations-v1.md` §5). <paramref name="sourceReach"/> and <paramref name="targetReach"/> are how far the
-    /// discs at its ends reach along it, which an arrowhead stands just off.
+    /// (`contracts/relations-v1.md` §5), or on an edge to the other hosts, at the host its processes connected to and at the
+    /// process that accepted from it (§5d). <paramref name="sourceReach"/> and <paramref name="targetReach"/> are how far
+    /// the nodes at its ends reach along it, which an arrowhead stands just off; each head drawn is kept in
+    /// <paramref name="heads"/>, which labels keep clear of where they can.
     /// </summary>
     internal static void DrawEdgeMark(DrawingContext context, GraphDisplayEdge edge, Pen pen, Point source, Point target,
-        (double On, double Off)? pattern, double sourceReach, double targetReach)
+        (double On, double Off)? pattern, double sourceReach, double targetReach, List<Rect>? heads = null)
     {
         double width = edge.Unmeasured ? GraphEncoding.UnmeasuredBand : pen.Thickness;
         (Point Tip, Point Left, Point Right)? toward = edge.MadeFromSource > 0
@@ -309,13 +312,20 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         if (toward is { } towardHead)
         {
             DrawArrowhead(context, MechanismBrush(edge.Mechanism), towardHead);
+            heads?.Add(HeadBox(towardHead));
         }
 
         if (back is { } backHead)
         {
             DrawArrowhead(context, MechanismBrush(edge.Mechanism), backHead);
+            heads?.Add(HeadBox(backHead));
         }
     }
+
+    /// <summary>The box an arrowhead is drawn in: its tip's and both base corners'.</summary>
+    internal static Rect HeadBox((Point Tip, Point Left, Point Right) head) => new(
+        new Point(Math.Min(head.Tip.X, Math.Min(head.Left.X, head.Right.X)), Math.Min(head.Tip.Y, Math.Min(head.Left.Y, head.Right.Y))),
+        new Point(Math.Max(head.Tip.X, Math.Max(head.Left.X, head.Right.X)), Math.Max(head.Tip.Y, Math.Max(head.Left.Y, head.Right.Y))));
 
     /// <summary>How far an arrowhead's tip stands off the disc it points at: clear of the disc's rim.</summary>
     private const double ArrowGap = 1;
@@ -398,6 +408,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
+    /// How far the node drawn at <paramref name="center"/> at <paramref name="radius"/> reaches along an edge whose lane
+    /// ends at <paramref name="end"/> and runs toward <paramref name="toward"/>: a host's square to its side, which is
+    /// further toward a corner, and any other node's disc.
+    /// </summary>
+    internal static double Reach(GraphDisplayNode node, double radius, Point center, Point end, Point toward) =>
+        node.Kind is GraphNodeKind.OtherHosts or GraphNodeKind.Host
+            ? SquareReach(radius, center, end, toward)
+            : DiscReach(radius, center, end);
+
+    /// <summary>
     /// How far a disc of <paramref name="radius"/> at <paramref name="center"/> reaches along an edge whose lane ends at
     /// <paramref name="end"/>, beside the centre when the edge is drawn in a lane of its own.
     /// </summary>
@@ -405,6 +425,29 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         Vector aside = end - center;
         return Math.Sqrt(Math.Max((radius * radius) - aside.SquaredLength, 0));
+    }
+
+    /// <summary>
+    /// How far a square <paramref name="half"/> a side across from <paramref name="center"/> reaches along a line from
+    /// <paramref name="end"/> toward <paramref name="toward"/>: to the side the line leaves it by. Nothing where the line
+    /// starts outside it, or goes nowhere.
+    /// </summary>
+    internal static double SquareReach(double half, Point center, Point end, Point toward)
+    {
+        Vector along = toward - end;
+        double length = along.Length;
+        double x = end.X - center.X;
+        double y = end.Y - center.Y;
+        if (length == 0 || Math.Abs(x) > half || Math.Abs(y) > half)
+        {
+            return 0;
+        }
+
+        double ux = along.X / length;
+        double uy = along.Y / length;
+        double across = ux > 0 ? (half - x) / ux : ux < 0 ? (-half - x) / ux : double.PositiveInfinity;
+        double down = uy > 0 ? (half - y) / uy : uy < 0 ? (-half - y) / uy : double.PositiveInfinity;
+        return Math.Min(across, down);
     }
 
     /// <summary>The direction key's sample: an edge in body ink with an arrowhead at its end, as the graph draws one.</summary>
@@ -662,6 +705,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         // selection's accent at under half its strength, so a highlight never reads as the selection itself (§6.4).
         IReadOnlySet<string> cellEdges = viewModel.CellGraphEdges;
         IReadOnlySet<string> cellNodes = viewModel.CellGraphNodes;
+        List<Rect> heads = drawnHeads;
+        heads.Clear();
         for (int edgeIndex = 0; edgeIndex < display.Edges.Count; edgeIndex++)
         {
             GraphDisplayEdge edge = display.Edges[edgeIndex];
@@ -705,21 +750,21 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 || display.Node(edge.TargetKey)?.Kind == GraphNodeKind.Context;
             double opacity = (viewModel.IsRankedWithinInterval && edge.ObservationCount == 0 ? 0.3 : 1) * (leadsOut ? 0.45 : 1);
             double sourceReach = display.Node(edge.SourceKey) is { } sourceNode
-                ? DiscReach(RadiusOf(sourceNode, nodeScale), from, source)
+                ? Reach(sourceNode, RadiusOf(sourceNode, nodeScale), from, source, target)
                 : 0;
             double targetReach = display.Node(edge.TargetKey) is { } targetNode
-                ? DiscReach(RadiusOf(targetNode, nodeScale), to, target)
+                ? Reach(targetNode, RadiusOf(targetNode, nodeScale), to, target, source)
                 : 0;
             if (opacity < 1)
             {
                 using (context.PushOpacity(opacity))
                 {
-                    DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach);
+                    DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach, heads);
                 }
             }
             else
             {
-                DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach);
+                DrawEdgeMark(context, edge, pen, source, target, pattern, sourceReach, targetReach, heads);
             }
 
             if (RingsMiddle(edge.Strength))
@@ -1443,6 +1488,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The label boxes drawn in the last frame, in the order placed.</summary>
     internal IReadOnlyList<Rect> PlacedLabels => placedLabels;
 
+    /// <summary>The boxes of the arrowheads drawn in the last frame, which its labels kept clear of where they could.</summary>
+    internal IReadOnlyList<Rect> DrawnHeads => drawnHeads;
+
     /// <summary>Whether a node's label is required: it is selected, or it holds the keyboard's focus.</summary>
     private static bool IsRequired(GraphDisplayNode node, IReadOnlySet<string> selected, string? focused) =>
         selected.Contains(node.Key) || node.Key == focused;
@@ -1479,8 +1527,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>
     /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
     /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
-    /// A clear label never hides another node or label. A selected/focused label may fall back to a merely in-pane slot,
-    /// because the user explicitly asked which node has focus (§6.3, R15).
+    /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left. A
+    /// selected/focused label may fall back to a merely in-pane slot, because the user explicitly asked which node has
+    /// focus (§6.3, R15).
     /// </summary>
     private Rect? Place(
         Point point,
@@ -1493,7 +1542,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         List<Rect> placed,
         bool mustShow)
     {
-        return FindLabelBox(new Rect(Bounds.Size), point, radius, width, height, key, points, radii, placed, mustShow);
+        return FindLabelBox(new Rect(Bounds.Size), point, radius, width, height, key, points, radii, placed, drawnHeads, mustShow);
     }
 
     /// <summary>
@@ -1516,6 +1565,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         Dictionary<string, Point> points,
         Dictionary<string, double> radii,
         IReadOnlyList<Rect> placed,
+        IReadOnlyList<Rect> heads,
         bool mustShow)
     {
         const double Gap = 3;
@@ -1539,30 +1589,25 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             candidates[candidateCount++] = new Rect(point.X - horizontal - width, point.Y - vertical - height, width, height);
         }
 
-        for (int i = 0; i < candidateCount; i++)
+        // Clear of every label, node and arrowhead; failing that, of every label and node, since a label over a head is
+        // better than none.
+        for (int pass = 0; pass < 2; pass++)
         {
-            Rect candidate = candidates[i];
-            if (!pane.Contains(candidate)) continue;
-            bool overlapsLabel = false;
-            for (int placedIndex = 0; placedIndex < placed.Count; placedIndex++)
+            for (int i = 0; i < candidateCount; i++)
             {
-                if (!placed[placedIndex].Intersects(candidate)) continue;
-                overlapsLabel = true;
-                break;
+                Rect candidate = candidates[i];
+                if (!pane.Contains(candidate) || Overlaps(candidate, placed) || (pass == 0 && Overlaps(candidate, heads))) continue;
+                bool coversNode = false;
+                foreach ((string nodeKey, Point nodePoint) in points)
+                {
+                    if (nodeKey == key || !radii.TryGetValue(nodeKey, out double otherRadius)
+                        || !Covers(candidate, nodePoint, otherRadius)) continue;
+                    coversNode = true;
+                    break;
+                }
+
+                if (!coversNode) return candidate;
             }
-
-            if (overlapsLabel) continue;
-
-            bool coversNode = false;
-            foreach ((string nodeKey, Point nodePoint) in points)
-            {
-                if (nodeKey == key || !radii.TryGetValue(nodeKey, out double otherRadius)
-                    || !Covers(candidate, nodePoint, otherRadius)) continue;
-                coversNode = true;
-                break;
-            }
-
-            if (!coversNode) return candidate;
         }
 
         if (!mustShow) return null;
@@ -1592,6 +1637,20 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     private static bool Covers(Rect box, Point centre, double radius) =>
         box.Inflate(radius).Contains(centre);
+
+    /// <summary>Whether <paramref name="box"/> overlaps any of <paramref name="boxes"/>.</summary>
+    private static bool Overlaps(Rect box, IReadOnlyList<Rect> boxes)
+    {
+        for (int index = 0; index < boxes.Count; index++)
+        {
+            if (boxes[index].Intersects(box))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// The secondary line: a process's PID, a reused PID's holder numbered ("PID 100 #2"), how many processes and

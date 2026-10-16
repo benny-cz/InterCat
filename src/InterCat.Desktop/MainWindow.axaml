@@ -988,11 +988,11 @@
               <!-- Which process made a relationship's connections, where the capture saw them open (relations-v1 §5). -->
               <Border Classes="card" Padding="9" CornerRadius="7" Background="{DynamicResource Surface.Elevated}">
                 <Grid x:Name="DirectionKey" ColumnDefinitions="36,*" ColumnSpacing="10"
-                      AutomationProperties.Name="Arrowhead: at the process its connections were made to, at both ends where each connected to the other, and none where the capture saw no connection open">
+                      AutomationProperties.Name="Arrowhead: at the process or host its connections were made to, at both ends where each connected to the other, and none where the capture saw no connection open">
                   <local:DirectionKeySample VerticalAlignment="Top" Margin="0,2,0,0" />
                   <StackPanel Grid.Column="1">
                     <TextBlock Text="Arrowhead" />
-                    <TextBlock Text="at the process connected to · both ends where each connected to the other · none where none was seen opening"
+                    <TextBlock Text="at the process or host connected to · both ends where each connected to the other · none where none was seen opening"
                                Classes="muted" FontSize="11" TextWrapping="Wrap" />
                   </StackPanel>
                 </Grid>

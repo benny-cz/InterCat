@@ -1,3 +1,4 @@
+using InterCat.Analysis;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -103,6 +104,54 @@ public sealed class ConnectionMakersTests
         GraphDisplay focused = GraphProjection.Project(snapshot, neighborhood: new HashSet<ProcessInstanceId> { client.Id });
         GraphDisplayEdge rest = Assert.Single(focused.Edges, edge => edge.Mechanism == Mechanism.Tcp);
         Assert.Equal((2, 3, 1, 6), (rest.Relationships.Count, rest.MadeFromSource, rest.MadeFromTarget, rest.Connections));
+    }
+
+    [Fact(DisplayName = "§6.3: an edge to the other hosts counts the connections its process made to them by a connect and accepted from them, and a host drawn on its own counts its own")]
+    public void AnEdgeToTheOtherHostsCountsWhoOpenedItsConnections()
+    {
+        ProcessGroup group = new("tools", "tool.exe", LaneGrouping.Executable);
+        ProcessNode client = Node(1, 100, group.Key);
+        ProcessNode server = Node(2, 200, group.Key);
+        HostLink Link(ProcessNode process, Mechanism mechanism, params HostAddress[] addresses) =>
+            new(process.Id, mechanism, addresses, RelationStrength.Correlated);
+        WorkspaceSnapshot snapshot = new("Hosts", new TimeRange(0, 10), [group], [client, server], [], [], [], [], [])
+        {
+            HostLinks =
+            [
+                Link(client, Mechanism.Tcp,
+                    new HostAddress("203.0.113.1", 3, 9) { Connected = 2 },
+                    new HostAddress("203.0.113.2", 2, 4) { Connected = 1, Accepted = 1 }),
+                Link(client, Mechanism.Udp, new HostAddress("198.51.100.1", 1, 1)),
+                Link(server, Mechanism.Tcp, new HostAddress("203.0.113.2", 4, 8) { Accepted = 3 }),
+            ],
+        };
+
+        // Each process's edge to Other hosts, by transport: the client connected to them in three of its five TCP
+        // connections and accepted one; the server accepted three of its four; nothing opens a UDP flow.
+        string Who(GraphDisplay display, GraphDisplayEdge edge) =>
+            (edge.SourceKey == display.NodeOf(client.Id)!.Key ? "client" : "server") + " to "
+            + (edge.TargetKey == GraphProjection.OtherHostsKey ? "others" : display.Node(edge.TargetKey)!.Label);
+        GraphDisplay display = GraphProjection.Project(snapshot);
+        Assert.Equal(
+            [
+                ("client to others", Mechanism.Tcp, 3, 1, 5),
+                ("client to others", Mechanism.Udp, 0, 0, 1),
+                ("server to others", Mechanism.Tcp, 0, 3, 4),
+            ],
+            display.Edges.Select(edge => (Who(display, edge), edge.Mechanism, edge.MadeFromSource, edge.MadeFromTarget,
+                edge.Connections)).Order());
+
+        // Opened, each host drawn on its own counts its own connections, and Other hosts any left.
+        GraphDisplay opened = GraphProjection.Project(snapshot, openHosts: true);
+        Assert.Equal(
+            [
+                ("client to 198.51.100.1", Mechanism.Udp, 0, 0, 1),
+                ("client to 203.0.113.1", Mechanism.Tcp, 2, 0, 3),
+                ("client to 203.0.113.2", Mechanism.Tcp, 1, 1, 2),
+                ("server to 203.0.113.2", Mechanism.Tcp, 0, 3, 4),
+            ],
+            opened.Edges.Select(edge => (Who(opened, edge), edge.Mechanism, edge.MadeFromSource, edge.MadeFromTarget,
+                edge.Connections)).Order());
     }
 
     private static ProcessNode Node(int index, int processId, string group) =>

@@ -190,12 +190,13 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// An edge to the other hosts' card: its source's connections over its transport, how strongly their records bind to
-    /// it, and what a double click opens.
+    /// it, who opened them - its processes by a connect, or the hosts by one they accepted - and what a double click opens.
     /// </summary>
     private HoverCard DescribeHostEdgeHover(GraphDisplayEdge edge, GraphDisplay drawn)
     {
         HostLink[] links = LinksOn(edge, drawn);
         GraphDisplayNode? source = drawn.Node(edge.SourceKey);
+        string target = drawn.Node(edge.TargetKey)?.Label ?? edge.TargetKey;
         var lines = new List<string>
         {
             (links is [{ } only] ? HostLinkText.Reach(only) : HostLinkText.Reach(edge.Mechanism, links))
@@ -210,6 +211,7 @@ public sealed partial class WorkspaceViewModel
         [
             string.Create(CultureInfo.CurrentCulture, $"Records: {edge.ObservationCount:N0}"),
             HostScope,
+            DirectionLine(edge, source?.Title ?? edge.SourceKey, target),
             "Who is at these addresses is not observed; " + (links.Length == 1
                 ? "its process's rung lists each connection"
                 : "each process's rung lists its own connections"),
@@ -230,7 +232,8 @@ public sealed partial class WorkspaceViewModel
             lines.Add("Click chooses its processes; the ranked table lists each, and each one's rung its connections");
         }
 
-        return new($"{source?.Title ?? edge.SourceKey} → {drawn.Node(edge.TargetKey)?.Label ?? edge.TargetKey}", lines);
+        // Its ends joined as a relationship's are: who opened its connections is its direction line's to say.
+        return new($"{source?.Title ?? edge.SourceKey} ↔ {target}", lines);
     }
 
     /// <summary>

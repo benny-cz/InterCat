@@ -200,17 +200,21 @@ public sealed record GraphDisplayEdge(
 
     /// <summary>
     /// How many of the connections drawn here the source's processes made to the target's, as the capture saw them open
-    /// (`contracts/relations-v1.md` §5): summed over the relationships drawn here, each oriented as the edge is.
+    /// (`contracts/relations-v1.md` §5): summed over the relationships drawn here, each oriented as the edge is. On an edge
+    /// to the other hosts, those its processes made by a connect to the hosts (§5d).
     /// </summary>
     public int MadeFromSource { get; init; }
 
-    /// <summary>How many of the connections drawn here the target's processes made to the source's.</summary>
+    /// <summary>
+    /// How many of the connections drawn here the target's processes made to the source's; on an edge to the other hosts,
+    /// those the source's processes accepted from the hosts.
+    /// </summary>
     public int MadeFromTarget { get; init; }
 
     /// <summary>
     /// How many connections the relationships drawn here hold, TCP connections and UDP flows alike, of which
     /// <see cref="MadeFromSource"/> and <see cref="MadeFromTarget"/> say who made those the capture saw open; none for an
-    /// RPC edge, whose calls are no connections.
+    /// RPC edge, whose calls are no connections. On an edge to the other hosts, its processes' connections to them.
     /// </summary>
     public int Connections { get; init; }
 
@@ -1326,6 +1330,12 @@ public static class GraphProjection
                 foreach (HostAddress address in host)
                 {
                     reach.Observations = Add(reach.Observations, address.Records);
+
+                    // Who opened its connections, as the capture saw them open: the process by a connect, the host by one
+                    // the process accepted.
+                    reach.MadeFromSource += address.Connected;
+                    reach.MadeFromTarget += address.Accepted;
+                    reach.Connections += address.Connections;
                 }
 
                 if (link.Strength > reach.Strength)
@@ -1366,6 +1376,9 @@ public static class GraphProjection
                 {
                     ToHosts = true,
                     Lane = lane - ((side.Length - 1) / 2d),
+                    MadeFromSource = reach.MadeFromSource,
+                    MadeFromTarget = reach.MadeFromTarget,
+                    Connections = reach.Connections,
                 });
             }
         }

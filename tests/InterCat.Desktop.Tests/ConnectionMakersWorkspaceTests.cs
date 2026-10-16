@@ -98,6 +98,65 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(0, GraphView.DiscReach(10, new Point(0, 0), new Point(0, 12)));
     }
 
+    [Fact(DisplayName = "§6.3: a node's label keeps clear of an arrowhead where a slot clear of every head is left, and covers one rather than go unnamed")]
+    public void ALabelKeepsClearOfAnArrowhead()
+    {
+        Rect pane = new(0, 0, 400, 300);
+        Point node = new(200, 150);
+        var points = new Dictionary<string, Point>(StringComparer.Ordinal) { ["node"] = node };
+        var radii = new Dictionary<string, double>(StringComparer.Ordinal) { ["node"] = 10 };
+
+        // With nothing about it, a node's label goes below it.
+        Rect below = new(170, 163, 60, 20);
+        Assert.Equal(below, GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", points, radii, [], [], mustShow: false));
+
+        // The head of an edge that meets it from beneath, standing a pixel off it, sends the label above.
+        Rect head = GraphView.HeadBox(GraphView.Arrowhead(new Point(200, 250), node, 0, 11, 1.25)!.Value);
+        Assert.Equal((196.375, 161d, 7.25, 8.7), (head.X, head.Y, head.Width, Math.Round(head.Height, 6)));
+        Assert.Equal(new Rect(170, 117, 60, 20),
+            GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", points, radii, [], [head], mustShow: false));
+
+        // Where heads cover every slot, it takes the first that hides no node and no label, over a head.
+        Assert.Equal(below, GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", points, radii, [], [pane], mustShow: false));
+    }
+
+    [Fact(DisplayName = "§6.3: a host's square reaches its side's half along an axis, further toward a corner, from a lane beside its centre to the side the lane leaves by, and nothing from outside it")]
+    public void AHostsSquareReachesToTheSideAnEdgeLeavesBy()
+    {
+        // Through the centre of a square 16 px a side's half across, along each axis and toward a corner.
+        Point center = new(50, 50);
+        Assert.Equal(16, GraphView.SquareReach(16, center, center, new Point(150, 50)));
+        Assert.Equal(16, GraphView.SquareReach(16, center, center, new Point(-50, 50)));
+        Assert.Equal(16, GraphView.SquareReach(16, center, center, new Point(50, 150)));
+        Assert.Equal(16, GraphView.SquareReach(16, center, center, new Point(50, -50)));
+        Assert.Equal(16 * Math.Sqrt(2), GraphView.SquareReach(16, center, center, new Point(150, 150)), 9);
+        Assert.Equal(16 * Math.Sqrt(2), GraphView.SquareReach(16, center, center, new Point(-50, -50)), 9);
+
+        // From a lane 4 px below the centre: toward the lower right it leaves by the bottom side, 12 px down; toward the
+        // upper right by the right side, before the top 20 px up; and straight across by the right side.
+        Assert.Equal(12 * Math.Sqrt(2), GraphView.SquareReach(16, center, new Point(50, 54), new Point(150, 154)), 9);
+        Assert.Equal(16 * Math.Sqrt(2), GraphView.SquareReach(16, center, new Point(50, 54), new Point(150, -46)), 9);
+        Assert.Equal(16, GraphView.SquareReach(16, center, new Point(50, 54), new Point(150, 54)));
+
+        // From a lane 4 px right of the centre, straight back across it leaves by the left side, 20 px away; from one 4 px
+        // below it, straight up by the top, 20 px away.
+        Assert.Equal(20, GraphView.SquareReach(16, center, new Point(54, 50), new Point(-46, 50)));
+        Assert.Equal(20, GraphView.SquareReach(16, center, new Point(50, 54), new Point(50, -46)));
+
+        // A host drawn on its own and Other hosts are such squares; a process, a group and the rest are discs.
+        GraphDisplayNode Drawn(GraphNodeKind kind) => new("node", "node", kind, null, null, null, [], 0, 0, 0);
+        Point corner = new(150, 150);
+        Assert.Equal(9 * Math.Sqrt(2), GraphView.Reach(Drawn(GraphNodeKind.Host), 9, center, center, corner), 9);
+        Assert.Equal(16 * Math.Sqrt(2), GraphView.Reach(Drawn(GraphNodeKind.OtherHosts), 16, center, center, corner), 9);
+        Assert.Equal(9, GraphView.Reach(Drawn(GraphNodeKind.Process), 9, center, center, corner), 9);
+        Assert.Equal(9, GraphView.Reach(Drawn(GraphNodeKind.OtherHostsOnly), 9, center, center, corner), 9);
+
+        // From outside the square, or toward nowhere, it reaches nothing.
+        Assert.Equal(0, GraphView.SquareReach(16, center, new Point(70, 50), new Point(150, 50)));
+        Assert.Equal(0, GraphView.SquareReach(16, center, new Point(50, 30), new Point(50, 150)));
+        Assert.Equal(0, GraphView.SquareReach(16, center, center, center));
+    }
+
     /// <summary>
     /// The direction line of the card of the one relationship drawn between client.exe and server.exe, as the edge is drawn
     /// from the client's node, or from the server's when <paramref name="clientFirst"/> is false: the card's own where the
