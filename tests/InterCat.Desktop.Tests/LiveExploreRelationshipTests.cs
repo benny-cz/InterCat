@@ -228,7 +228,7 @@ public sealed class LiveExploreRelationshipTests
         await workspace.LayoutReady;
         Assert.StartsWith(running.Length.ToString(System.Globalization.CultureInfo.CurrentCulture) + " processes · 2 relationships",
             workspace.GraphSummary, StringComparison.Ordinal);
-        Assert.EndsWith(" · 1 connects to other hosts", workspace.GraphSummary, StringComparison.Ordinal);
+        Assert.EndsWith(" · 1 with connections to other hosts", workspace.GraphSummary, StringComparison.Ordinal);
         Assert.Equal(1, workspace.GraphDisplay.OtherHosts?.ConnectedProcesses);
         Assert.Null(workspace.GraphEmptyExplanation);
         derivation.Store!.ReleaseSegmentReaders();

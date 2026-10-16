@@ -497,11 +497,10 @@ public sealed partial class WorkspaceViewModel
     private string NoHostConnection => wholeSnapshot.HostLinks.Count > 0 ? " and no connection to other hosts" : string.Empty;
 
     /// <summary>
-    /// The graph summary's note of the drawn processes whose connections run to the other hosts: " · 23 connect to other
-    /// hosts". Empty when the graph draws none.
+    /// The graph summary's note of the drawn processes whose connections run to the other hosts: " · 23 with connections
+    /// to other hosts" - whichever end made them, as the edges' arrowheads say. Empty when the graph draws none.
     /// </summary>
     private string OtherHostsNote => DrawnHostLinks(graphDisplay).Select(link => link.Process).Distinct().Count() is > 0 and var connected
-        ? string.Create(CultureInfo.CurrentCulture,
-            $" · {connected:N0} {CountText.Agree(connected, "connects", "connect")} to other hosts")
+        ? string.Create(CultureInfo.CurrentCulture, $" · {connected:N0} with connections to other hosts")
         : string.Empty;
 }

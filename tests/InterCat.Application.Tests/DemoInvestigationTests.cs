@@ -35,13 +35,32 @@ public sealed class DemoInvestigationTests
                     .Where(kind => manifest.Dependencies.Any(dependency => dependency.Kind == kind))));
             Assert.StartsWith("Demo session · generation ", OverviewWorkspace.From(client).Title, StringComparison.Ordinal);
 
-            // The client's browser and sync talk out; the server's api, db and files answer, api and db over loopback.
-            Assert.Equal([("browser.exe", 73L), ("sync.exe", 20L)],
+            // The client's browser and sync connect out; the server's api and files accept, and api connects to db over
+            // loopback.
+            Assert.Equal([("browser.exe", 74L), ("sync.exe", 21L)],
                 client.Nodes.Select(node => (node.Name, node.Records)).OrderBy(node => node.Name, StringComparer.Ordinal));
-            Assert.Equal([("api.exe", 121L), ("db.exe", 61L), ("files.exe", 19L)],
+            Assert.Equal([("api.exe", 123L), ("db.exe", 62L), ("files.exe", 20L)],
                 server.Nodes.Select(node => (node.Name, node.Records)).OrderBy(node => node.Name, StringComparer.Ordinal));
             Assert.Empty(client.Edges);
             CommunicationEdge loopback = Assert.Single(server.Edges);
+
+            // Each connection's open says who made it (relations-v1 §5, §5d): each client process connected to the server
+            // once, each server process accepted once from the client, and api.exe made its one connection to db.exe.
+            Assert.All(client.HostLinks.Where(link => link.Mechanism == Mechanism.Tcp), link => Assert.Equal((1, 0, 1),
+                (link.Addresses.Sum(address => address.Connected), link.Addresses.Sum(address => address.Accepted), link.Connections)));
+            Assert.Equal(["api.exe", "files.exe"], server.HostLinks.Where(link => link.Mechanism == Mechanism.Tcp)
+                .Select(link => server.Nodes.Single(node => node.Id == link.Process).Name).Order(StringComparer.Ordinal));
+            Assert.All(server.HostLinks.Where(link => link.Mechanism == Mechanism.Tcp), link => Assert.Equal((0, 1, 1),
+                (link.Addresses.Sum(address => address.Connected), link.Addresses.Sum(address => address.Accepted), link.Connections)));
+            ProcessInstanceId api = server.Nodes.Single(node => node.Name == "api.exe").Id;
+            Assert.Equal((1, 0), loopback.SourceId == api
+                ? (loopback.SourceConnected, loopback.TargetConnected)
+                : (loopback.TargetConnected, loopback.SourceConnected));
+
+            // Its ledgers collect and deliver each open under Kernel-Network's event: the client's two connects (12), the
+            // server's one connect and three accepts (15).
+            Assert.Equal([(12, 2L)], Opens(made.ClientSession, clientManifest));
+            Assert.Equal([(12, 1L), (15, 3L)], Opens(made.ServerSession, serverManifest));
 
             // The browser's datagrams to the name server neither capture recorded run to another host beside its TCP: each
             // answer names the name server first, as a UDP receive does, so none relates the browser to itself.
@@ -148,6 +167,19 @@ public sealed class DemoInvestigationTests
         }
 
         static object Comparable(WorkspaceAlignment alignment) => alignment with { RecordedUtc = default };
+    }
+
+    /// <summary>The connects (event 12) and accepts (15) a demo session's ledger says were delivered, by event.</summary>
+    private static (int EventId, long Delivered)[] Opens(string path, SessionManifestV1 manifest)
+    {
+        CoverageLedgerV1 ledger = SessionSegments.CoverageLedger(LocalOwnedDirectory.Open(path), manifest)!;
+        CoverageEpochV1 epoch = Assert.Single(ledger.Epochs);
+        Assert.Contains(epoch.Collected, collected => collected.EventId == 12);
+        Assert.Contains(epoch.Collected, collected => collected.EventId == 15);
+        return [.. epoch.Deliveries
+            .Where(delivery => delivery.EventId is 12 or 15)
+            .Select(delivery => (delivery.EventId!.Value, delivery.Delivered))
+            .Order()];
     }
 
     private static SessionOverviewBundle Project(string path, out SessionManifestV1 manifest)

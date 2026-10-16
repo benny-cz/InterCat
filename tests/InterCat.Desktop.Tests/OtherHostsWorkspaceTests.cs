@@ -33,7 +33,7 @@ public sealed class OtherHostsWorkspaceTests
         // The summary counts the drawn processes that reach other hosts after what the relationships are drawn from, and
         // the graph's scope says what is drawn to Other hosts - and, since svchost.exe's call is linked to nothing, how to
         // draw RPC calls.
-        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP and UDP only · 1 connects to other hosts",
+        Assert.Equal("5 processes · 1 relationship among 2 of them · paired TCP and UDP only · 1 with connections to other hosts",
             workspace.GraphSummary);
         Assert.Equal(workspace.GraphSummary + ". The graph draws admitted paired TCP and UDP, and to Other hosts each drawn process's "
             + "TCP and UDP with no process of the capture at their other end; all other observed activity is in the timeline. "
@@ -143,8 +143,8 @@ public sealed class OtherHostsWorkspaceTests
         // they meet at is no process the rung draws.
         GraphDisplayEdge own = workspace.GraphDisplay.Edges.Single(edge => edge.ToHosts && edge.Mechanism == Mechanism.Udp);
         Assert.Equal(1, workspace.GraphDisplay.OtherHosts!.ConnectedProcesses);
-        Assert.Equal("browser.exe · PID 300: 1 process drawn · 4 more in Rest of the machine · paired TCP and UDP only · 1 connects "
-            + "to other hosts", workspace.GraphSummary);
+        Assert.Equal("browser.exe · PID 300: 1 process drawn · 4 more in Rest of the machine · paired TCP and UDP only · 1 with "
+            + "connections to other hosts", workspace.GraphSummary);
         Assert.DoesNotContain(workspace.DescribeGraphHover(own.Key)!.Lines, line => line.Contains("double-click", StringComparison.Ordinal));
         Assert.False(workspace.OpenGraphEdge(own.Key));
 
@@ -510,7 +510,7 @@ public sealed class OtherHostsWorkspaceTests
 
         Assert.Equal(2, workspace.GraphDisplay.Nodes.Count);
         Assert.Equal("30 processes · no relationship drawn; observed records may still be in the timeline · drawn as 1 node · "
-            + "30 connect to other hosts", workspace.GraphSummary);
+            + "30 with connections to other hosts", workspace.GraphSummary);
     });
 
     [Fact(DisplayName = "§6.4: a chosen TCP cell highlights the relationships its records belong to, never an edge to the other hosts")]

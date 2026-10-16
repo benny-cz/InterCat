@@ -30,7 +30,7 @@ public sealed class OtherHostsOnlyWorkspaceTests
             workspace.Snapshot.Processes.Where(process => folded.Members.Contains(process.Id)).Select(process => process.Name)
                 .Order(StringComparer.Ordinal));
         Assert.Equal("14 processes · 1 relationship among 2 of them · drawn as 11 nodes · paired TCP and UDP only · "
-            + "12 connect to other hosts", workspace.GraphSummary);
+            + "12 with connections to other hosts", workspace.GraphSummary);
 
         // Its card says what it folds and where their connections ran; its edge's says what a click does.
         HoverCard card = workspace.DescribeGraphHover(folded.Key)!;

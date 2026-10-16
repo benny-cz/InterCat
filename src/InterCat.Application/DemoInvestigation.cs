@@ -92,9 +92,9 @@ public static class DemoInvestigation
         InvestigationWorkspace.AlignByWallClock(making, serverMember.SessionId, clientMember.SessionId,
             synchronizationNanoseconds: 2_000_000, driftPartsPerMillion: 0,
             "The demo's two hosts are stated to keep their wall clocks within 2 ms of each other.", made);
-        InvestigationWorkspace.AddNote(making, Disclosure + " Its client's browser and sync processes talk to its "
-            + "server's api and files processes over TCP, and its server's api asks its db over loopback. The browser also "
-            + "sends UDP to a host neither capture recorded. The server began recording 0.75 s after the client and lost "
+        InvestigationWorkspace.AddNote(making, Disclosure + " Its client's browser and sync processes connect to its "
+            + "server's api and files processes over TCP, and its server's api connects to its db over loopback. The browser "
+            + "also sends UDP to a host neither capture recorded. The server began recording 0.75 s after the client and lost "
             + "two records.", at: null, made);
         File.Move(making, workspace);
         return new(full, workspace, client, server);
@@ -195,18 +195,22 @@ public static class DemoInvestigation
         new(2, "process-end", Mechanism.ProcessLifecycle),
         new(10, "tcp-send", Mechanism.Tcp),
         new(11, "tcp-receive", Mechanism.Tcp),
+        new(12, "tcp-connect", Mechanism.Tcp),
+        new(15, "tcp-accept", Mechanism.Tcp),
         new(42, "udp-send", Mechanism.Udp),
         new(43, "udp-receive", Mechanism.Udp),
     ];
 
-    // The client: browser.exe and sync.exe on 10.0.0.10, talking to the server's 443 and 8443, and the browser to a name
-    // server at 10.0.0.53 neither capture recorded.
+    // The client: browser.exe and sync.exe on 10.0.0.10, each connecting to the server - to its 443 and its 8443 - and the
+    // browser talking to a name server at 10.0.0.53 neither capture recorded.
     private static ObservationRowV1[] ClientRows()
     {
         var rows = new List<ObservationRowV1>
         {
             Started(0.20, 4_100, @"C:\Program Files\InterCat Demo\browser.exe"),
             Started(0.35, 4_200, @"C:\Program Files\InterCat Demo\sync.exe"),
+            Opened(0.95, ObservationKind.Connect, 4_100, "10.0.0.10:50100", "10.0.0.20:443"),
+            Opened(2.45, ObservationKind.Connect, 4_200, "10.0.0.10:50200", "10.0.0.20:8443"),
         };
         for (int request = 0; request < 30; request++)
         {
@@ -233,8 +237,9 @@ public static class DemoInvestigation
         return Ordered(rows);
     }
 
-    // The server: api.exe, db.exe and files.exe on 10.0.0.20. Each request the client sent reaches it 2 ms later by the
-    // shared wall clock; its capture began 0.75 s after the client's, so its session times run that much behind.
+    // The server: api.exe, db.exe and files.exe on 10.0.0.20, api.exe and files.exe accepting the client's connections and
+    // api.exe connecting to db.exe over loopback. Each record of the client's reaches it 1 or 2 ms later by the shared wall
+    // clock; its capture began 0.75 s after the client's, so its session times run that much behind.
     private static ObservationRowV1[] ServerRows()
     {
         double behind = ServerStartedLater.TotalSeconds;
@@ -243,10 +248,19 @@ public static class DemoInvestigation
             Started(0.05, 5_100, @"C:\InterCat Demo\api.exe"),
             Started(0.08, 5_200, @"C:\InterCat Demo\db.exe"),
             Started(0.09, 5_300, @"C:\InterCat Demo\files.exe"),
+            Opened(0.95 - behind + 0.001, ObservationKind.Accept, 5_100, "10.0.0.20:443", "10.0.0.10:50100"),
+            Opened(2.45 - behind + 0.001, ObservationKind.Accept, 5_300, "10.0.0.20:8443", "10.0.0.10:50200"),
         };
         for (int request = 0; request < 30; request++)
         {
             double at = 1.0 + (2.0 * request) - behind + 0.002;
+            if (request == 0)
+            {
+                // The first request opens api.exe's connection to db.exe, which every later one reuses.
+                rows.Add(Opened(at + 0.003, ObservationKind.Connect, 5_100, "127.0.0.1:50300", "127.0.0.1:5432"));
+                rows.Add(Opened(at + 0.0035, ObservationKind.Accept, 5_200, "127.0.0.1:5432", "127.0.0.1:50300"));
+            }
+
             rows.Add(Tcp(at, 5_100, Inbound, 1_200 + (37 * request), "10.0.0.20:443", "10.0.0.10:50100"));
             rows.Add(Tcp(at + 0.004, 5_100, Outbound, 300, "127.0.0.1:50300", "127.0.0.1:5432"));
             rows.Add(Tcp(at + 0.0045, 5_200, Inbound, 300, "127.0.0.1:5432", "127.0.0.1:50300"));
@@ -297,6 +311,32 @@ public static class DemoInvestigation
     private static ObservationRowV1 Tcp(double seconds, int processId, Direction direction, long bytes, string local, string remote) =>
         Transfer(seconds, direction == Direction.Outbound ? (ushort)10 : (ushort)11, Mechanism.Tcp, processId, direction, bytes,
             local, remote);
+
+    /// <summary>
+    /// A TCP connection's open as Kernel-Network records it: a connect at the end that made it (event 12), or an accept at
+    /// the end that took it (event 15), naming the record's own endpoint first. Neither carries a byte count, so neither
+    /// has a byte value or an accounting side.
+    /// </summary>
+    private static ObservationRowV1 Opened(double seconds, ObservationKind kind, int processId, string local, string remote)
+    {
+        (uint localAddress, ushort localPort) = Endpoint(local);
+        (uint remoteAddress, ushort remotePort) = Endpoint(remote);
+        return Row(seconds, kind == ObservationKind.Connect ? (ushort)12 : (ushort)15, processId) with
+        {
+            FactKey = FactKey.Create("network-transfer"),
+            Mechanism = Mechanism.Tcp,
+            Layer = ObservationLayer.Transport,
+            Kind = kind,
+            Direction = kind == ObservationKind.Connect ? Direction.Outbound : Direction.Inbound,
+            EndpointAddressFamily = 4,
+            SourceEndpointAddress = localAddress,
+            SourceEndpointPort = localPort,
+            DestinationEndpointAddress = remoteAddress,
+            DestinationEndpointPort = remotePort,
+            ByteAvailability = FieldAvailability.NotApplicable,
+            StatusAvailability = FieldAvailability.NotApplicable,
+        };
+    }
 
     /// <summary>
     /// A datagram: a send names its owner's endpoint first, and a receive the datagram's sender first, as the kernel's UDP

@@ -15,8 +15,8 @@ command - can be tried with no capture, no elevation and no second machine.
 | Path | What it is |
 |---|---|
 | `demo.icat-workspace` | The investigation (`workspace-v21`): both sessions, their hosts named `demo client` and `demo server`, the server aligned to the client by their recorded wall clocks with a stated 2 ms synchronization, and a note that opens with the disclosure of §3 |
-| `demo-client/` | The client's session, 10.0.0.10: `browser.exe` (PID 4100) and `sync.exe` (PID 4200, which exits at 58 s) send TCP to the server's 443 and 8443, and the browser sends UDP to a name server at 10.0.0.53 that neither capture recorded |
-| `demo-server/` | The server's session, 10.0.0.20: `api.exe` (5100) answers 443 and asks `db.exe` (5200) over loopback TCP, and `files.exe` (5300) answers 8443. Its capture began 0.75 s after the client's by the wall clock, and its source session lost 2 records |
+| `demo-client/` | The client's session, 10.0.0.10: `browser.exe` (PID 4100) and `sync.exe` (PID 4200, which exits at 58 s) connect by TCP to the server's 443 and 8443, and the browser sends UDP to a name server at 10.0.0.53 that neither capture recorded |
+| `demo-server/` | The server's session, 10.0.0.20: `api.exe` (5100) accepts the browser's connection at 443 and connects to `db.exe` (5200) over loopback TCP, which accepts it, and `files.exe` (5300) accepts sync's at 8443. Its capture began 0.75 s after the client's by the wall clock, and its source session lost 2 records |
 
 Each session records one minute with a 10 MHz clock and is published whole: its journal, segments, coverage ledger
 (`coverage-v2`), clock calibration (`clock-calibration-v1`), finalization marker and derivation checkpoint, so it opens
@@ -27,6 +27,13 @@ the demo's unsupported rows. The server's loss makes its collected mechanisms re
 Between the hosts, each TCP connection's two ends are one-sided in their own sessions and mirror each other, so the
 investigation finds two candidate joins (443 and 8443), overlapping in its time; the UDP to the unrecorded host has none.
 On the server, `api.exe` and `db.exe` are one paired loopback relationship.
+
+Each TCP connection's open is recorded as Kernel-Network records one: a connect (event 12) at the end that made it and
+an accept (event 15) at the end that took it, each naming its own endpoint first and carrying no byte count, so no byte
+value or accounting side. So every view says who connected to whom (`relations-v1` §5 and §5d): the client's processes
+connected to the server, whose processes accepted, and `api.exe` connected to `db.exe` (revision 580). The ledger
+collects and delivers both events as it does the transfers. A demo written before revision 580 holds no opens, and the
+window opens one it finds as it is.
 
 ## 2. Reproducible
 

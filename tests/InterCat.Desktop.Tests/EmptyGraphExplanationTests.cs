@@ -41,7 +41,7 @@ public sealed class EmptyGraphExplanationTests
             + "records belong to 2 connections to 2 other hosts. A process's connections are listed on its rung. RPC calls are "
             + "on their processes' rungs: a call is drawn to the process that served it only from a capture that collects "
             + "ALPC - choose RPC peers in the window's Keep, or run icat capture --profile rpc-peers.";
-        Assert.Equal("3 processes · no relationship drawn · 2 TCP connections ran to other hosts · 1 connects to other hosts",
+        Assert.Equal("3 processes · no relationship drawn · 2 TCP connections ran to other hosts · 1 with connections to other hosts",
             workspace.GraphSummary);
         Assert.Equal(workspace.GraphSummary + ". " + why, workspace.GraphScope);
         Assert.Equal("No relationship here. " + why, workspace.RelationshipsAbsent);

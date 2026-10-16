@@ -331,7 +331,7 @@ public sealed class HostsCommandTests
             (InterCatExitCode code, string text, string said) = await Run("hosts", demo.ClientSession, "--investigation", demo.WorkspacePath);
             Assert.True(code == InterCatExitCode.Success, said);
             Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Candidate other ends\r?$", text);
-            Assert.Matches(@"(?m)^  10\.0\.0\.20 +private +.* 78 +demo server: api\.exe · PID 5100 and files\.exe · PID 5300\r?$", text);
+            Assert.Matches(@"(?m)^  10\.0\.0\.20 +private +.* 80 +demo server: api\.exe · PID 5100 and files\.exe · PID 5300\r?$", text);
             Assert.Matches(@"(?m)^  10\.0\.0\.53 +private +.* 12 +none\r?$", text);
             Assert.Contains("never an established join", text, Ordinal);
 
