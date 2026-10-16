@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 611 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 612 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 612 — a group's instances say what each did; the graph's names stand apart (§6.1, §6.3):**
+  - From a live pass over the busy machine's svchost.exe and chrome.exe rungs: one program's instances were rows of
+    one name, the PID cut off. Each is now named by its PID and says what it did - its relationships, and the host it
+    reached where it reached one, "↔ 192.168.1.1:53" - then how it started.
+  - The graph's names no longer stand against each other where there is room, edges break round their letters, and the
+    search's chosen hit's name stands outside its ring.
+  - Debug and Release each ran 2,543 tests with revision 473's 93 failures and 4 skips and one more: a window test
+    that read a reused PID's two holders' rows in their old words, which now reads them in the new and passes in
+    both. All twenty-six mutations were caught: names keeping no room, keeping it with no fallback, or falling back
+    first; a chosen name allowed to crowd, or only an overlapping name stepping aside; no halo; a chosen hit's name
+    kept clear of the selection's ring alone, a broken ring's not at all, or not placed again, and its leader drawn
+    across the ring; one program's single instance renamed, several programs' processes renamed, rows named by
+    program, or heard by PID; one relationship unsaid, the PID repeated, the brush unsaid; an accepted connection
+    read as made, or its port unsaid; datagrams read as connections; a host's port unsaid; the first of several
+    hosts named; an IPv6 address unbracketed; the group's rung left as it was; and the rung's instances, or their
+    relationships, not read.
 
 - **Revision 611 — the way back to a chosen relationship chooses it again (§3.2, R15):**
   - E on a chosen relationship, or Enter or a double click opening it, then Esc or the breadcrumb back came to its

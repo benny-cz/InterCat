@@ -117,6 +117,16 @@ public sealed class GraphSearchMarkWindowTests
             Assert.InRange(Ringed(plain, group, graph, window, browser), 20, Bearings);
             Assert.InRange(Ringed(plain, group, graph, window, tools), 0, 2);
 
+            // Its name stands just outside the ring, as a selected node's stands outside the selection's, so no leader
+            // ties it to the node across the ring.
+            Rect named = graph.PlacedLabels[graph.PlacedLabelKeys.ToList().IndexOf(browser.Key)];
+            double beyond = graph.RadiusOf(browser.Key)!.Value + GraphView.ChosenHitHalo;
+            Point centre = graph.PointOf(browser.Key)!.Value;
+            double gap = Math.Sqrt(Math.Pow(Math.Max(0, Math.Max(named.Left - centre.X, centre.X - named.Right)), 2)
+                + Math.Pow(Math.Max(0, Math.Max(named.Top - centre.Y, centre.Y - named.Bottom)), 2)) - beyond;
+            Assert.InRange(gap, 0, GraphView.LeaderGap);
+            Assert.Empty(graph.DrawnLeaders);
+
             // The first of tool.exe's hits is its group, every process the tools' aggregate holds: ringed whole.
             workspace.SearchText = "tool";
             WriteableBitmap tool = Settle(window);

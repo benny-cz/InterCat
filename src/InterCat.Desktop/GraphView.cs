@@ -938,7 +938,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
         }
 
-        DrawLabels(context, display, order, points, radii, selected, partlySelected, focused);
+        DrawLabels(context, display, order, points, radii, new(selected, partlySelected, chosenHit, partlyChosenHit),
+            focused);
         if (viewModel.GraphLayoutProblem is { } problem)
         {
             if (!string.Equals(problemFor, problem, StringComparison.Ordinal))
@@ -1447,8 +1448,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlyList<GraphDisplayNode> order,
         Dictionary<string, Point> points,
         Dictionary<string, double> radii,
-        IReadOnlySet<string> selected,
-        IReadOnlySet<string> partlySelected,
+        NodeRings rings,
         string? focused)
     {
         bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= DetailBudget;
@@ -1464,7 +1464,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 detail is null ? alone : new(Math.Max(name.Width, detail.Width), name.Height + detail.Height)));
         }
 
-        PlaceLabels(new Rect(Bounds.Size), requests, LabelBudget, selected, partlySelected, focused, points, radii, drawnHeads,
+        PlaceLabels(new Rect(Bounds.Size), requests, LabelBudget, rings, focused, points, radii, drawnHeads,
             labelPlacements, placedLabels, chosenLabels);
         placedLabelKeys.Clear();
         drawnLeaders.Clear();
@@ -1473,7 +1473,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             (int nodeIndex, string key, Rect box, bool whole, _) = labelPlacements[index];
             placedLabelKeys.Add(key);
             (TextLayout name, TextLayout? detail) = LabelText(order[nodeIndex], detailForProcesses);
-            double clearance = radii[key] + (selected.Contains(key) || partlySelected.Contains(key) ? SelectionHalo : 0);
+            double clearance = radii[key] + rings.Clearance(key);
 
             // A name set away from its node, where the slots beside it were taken, or nearer another node, is tied to it by
             // a hairline, so in a crowded graph no name reads as its neighbour's.
@@ -1483,12 +1483,37 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 drawnLeaders.Add(leader);
             }
 
-            name.Draw(context, new(box.X + ((box.Width - name.Width) / 2), box.Y));
+            GraphDisplayNode node = order[nodeIndex];
+            Haloed(context, Halo(node.Label, 12), name, new(box.X + ((box.Width - name.Width) / 2), box.Y));
             if (whole && detail is not null)
             {
-                detail.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
+                Haloed(context, Halo(DetailOf(node), 10), detail,
+                    new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
             }
         }
+    }
+
+    /// <summary>A label's letters in the pane's colour, laid out as its own are, to draw round them.</summary>
+    private TextLayout Halo(string text, double size) =>
+        labels.Get(text, size, PlotBrush, MaximumLabelWidth, lines: 1, TextTrimming.CharacterEllipsis);
+
+    /// <summary>Where a name's halo is laid round its letters: a pixel every way.</summary>
+    private static readonly Vector[] HaloOffsets =
+        [new(-1, -1), new(0, -1), new(1, -1), new(-1, 0), new(1, 0), new(-1, 1), new(0, 1), new(1, 1)];
+
+    /// <summary>
+    /// Draws a name over its <paramref name="halo"/>, its letters in the pane's colour a pixel round them, so an edge
+    /// passing beneath breaks round each letter rather than run through it - "PID 2010" read as struck through on a
+    /// busy rung - and still meets its node on either side (§6.3).
+    /// </summary>
+    private static void Haloed(DrawingContext context, TextLayout halo, TextLayout text, Point at)
+    {
+        foreach (Vector offset in HaloOffsets)
+        {
+            halo.Draw(context, at + offset);
+        }
+
+        text.Draw(context, at);
     }
 
     /// <summary>
@@ -1511,22 +1536,22 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     internal readonly record struct LabelPlacement(int Index, string Key, Rect Box, bool Whole, bool Chosen);
 
     /// <summary>
-    /// Where a frame's names go (§6.3, §6.7). First the names a frame with nothing chosen draws, placed as it places them:
-    /// aggregates, whose counts are the compaction's disclosure, then the busiest, up to <paramref name="budget"/>, each
-    /// where it collides with no name already placed (<see cref="FindLabelBox"/>). Then the selection, the aggregates it
-    /// falls in and the keyboard's <paramref name="focused"/> node: a chosen name already placed stays unless it stands
-    /// across its node's selection ring; one not placed takes a slot free of every name, or else the slot it prefers among
-    /// the chosen names alone, where the unchosen names it overlaps step aside - left undrawn while it is chosen - rather
-    /// than move. The focused node, or a single selected one, is always named. <paramref name="boxes"/> is kept in step
-    /// with <paramref name="placed"/>, its boxes in its order; <paramref name="chosen"/> is room to gather the chosen
-    /// names' boxes in, so a frame allocates nothing (R11).
+    /// Where a frame's names go (§6.3, §6.7). First the names a frame with nothing chosen draws, placed as it places
+    /// them: aggregates, whose counts are the compaction's disclosure, then the busiest, up to
+    /// <paramref name="budget"/>, each where it keeps clear of the names already placed (<see cref="FindLabelBox"/>).
+    /// Then the selection, the aggregates it falls in, the search's chosen hit and the keyboard's
+    /// <paramref name="focused"/> node: a chosen name already placed stays unless it stands across a ring drawn round
+    /// its node (<paramref name="rings"/>); one not placed takes a slot free of every name, or else the slot it prefers
+    /// among the chosen names alone, where the unchosen names it crowds step aside - left undrawn while it is chosen -
+    /// rather than move. The focused node, or a single selected one, is always named. <paramref name="boxes"/> is kept
+    /// in step with <paramref name="placed"/>, its boxes in its order; <paramref name="chosen"/> is room to gather the
+    /// chosen names' boxes in, so a frame allocates nothing (R11).
     /// </summary>
     internal static void PlaceLabels(
         Rect pane,
         IReadOnlyList<LabelRequest> order,
         int budget,
-        IReadOnlySet<string> selected,
-        IReadOnlySet<string> partlySelected,
+        NodeRings rings,
         string? focused,
         Dictionary<string, Point> points,
         Dictionary<string, double> radii,
@@ -1554,9 +1579,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         for (int index = 0; index < order.Count; index++)
         {
             LabelRequest request = order[index];
-            bool halo = selected.Contains(request.Key) || partlySelected.Contains(request.Key);
-            if (!halo && request.Key != focused) continue;
-            double clearance = halo ? request.Radius + SelectionHalo : request.Radius;
+            double ring = rings.Clearance(request.Key);
+            if (ring == 0 && request.Key != focused) continue;
+            double clearance = request.Radius + ring;
             int drawn = placed.Count - 1;
             while (drawn >= 0 && !string.Equals(placed[drawn].Key, request.Key, StringComparison.Ordinal))
             {
@@ -1565,8 +1590,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
             if (drawn >= 0)
             {
-                // A name already placed stays where it stood, unless it stands across its node's selection ring: a selected
-                // node's name stands outside the ring, never across it.
+                // A name already placed stays where it stood, unless it stands across a ring round its node: a selected
+                // node's name, or the search's chosen hit's, stands outside the ring, never across it.
                 if (GapTo(boxes[drawn], request.Point, clearance) >= 0)
                 {
                     placed[drawn] = placed[drawn] with { Chosen = true };
@@ -1577,25 +1602,26 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 boxes.RemoveAt(drawn);
             }
 
-            if (Fit(pane, request, clearance, points, radii, boxes, heads, mustShow: false) is { } free)
+            if (Fit(pane, request, clearance, points, radii, boxes, heads, mustShow: false, crowding: false) is { } free)
             {
                 Keep(placed, boxes, new(request.Index, request.Key, free.Box, free.Whole, Chosen: true));
                 continue;
             }
 
-            // No slot is free: it takes the one it prefers among the chosen names alone, and the unchosen names there step
-            // aside.
+            // No slot keeps its room from every name: it takes the one it prefers among the chosen names alone, and the
+            // unchosen names it crowds there step aside rather than stand against it.
             chosen.Clear();
             for (int label = 0; label < placed.Count; label++)
             {
                 if (placed[label].Chosen) chosen.Add(placed[label].Box);
             }
 
-            bool mustShow = request.Key == focused || (selected.Count == 1 && selected.Contains(request.Key));
+            bool mustShow = request.Key == focused
+                || (rings.Selected.Count == 1 && rings.Selected.Contains(request.Key));
             if (Fit(pane, request, clearance, points, radii, chosen, heads, mustShow) is not { } taken) continue;
             for (int label = placed.Count - 1; label >= 0; label--)
             {
-                if (placed[label].Chosen || !boxes[label].Intersects(taken.Box)) continue;
+                if (placed[label].Chosen || !Crowds(taken.Box, boxes[label])) continue;
                 placed.RemoveAt(label);
                 boxes.RemoveAt(label);
             }
@@ -1604,7 +1630,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         }
     }
 
-    /// <summary>A name's box with its second line where both fit, or alone where only the name does; none where neither.</summary>
+    /// <summary>
+    /// A name's box with its second line where both fit, or alone where only the name does; none where neither. Without
+    /// <paramref name="crowding"/> a slot nearer another name than <see cref="NameSpacing"/> is none.
+    /// </summary>
     private static (Rect Box, bool Whole)? Fit(
         Rect pane,
         LabelRequest request,
@@ -1613,10 +1642,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         Dictionary<string, double> radii,
         IReadOnlyList<Rect> avoid,
         IReadOnlyList<Rect> heads,
-        bool mustShow)
+        bool mustShow,
+        bool crowding = true)
     {
         if (FindLabelBox(pane, request.Point, clearance, request.Whole.Width, request.Whole.Height, request.Key, points, radii,
-                avoid, heads, mustShow) is { } whole)
+                avoid, heads, mustShow, crowding) is { } whole)
         {
             return (whole, true);
         }
@@ -1624,7 +1654,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return request.Whole == request.Alone
             ? null
             : FindLabelBox(pane, request.Point, clearance, request.Alone.Width, request.Alone.Height, request.Key, points, radii,
-                avoid, heads, mustShow) is { } alone ? (alone, false) : null;
+                avoid, heads, mustShow, crowding) is { } alone ? (alone, false) : null;
     }
 
     private static void Keep(List<LabelPlacement> placed, List<Rect> boxes, LabelPlacement label)
@@ -1635,6 +1665,23 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>How far outside a node its selection's ring is drawn, and a selected node's label kept clear of it.</summary>
     internal const double SelectionHalo = 6;
+
+    /// <summary>
+    /// The rings a frame draws round nodes, which their names stand outside (§6.3, §6.7): the selection's, whole or
+    /// broken, and outside it the search's chosen hit's, whole or broken.
+    /// </summary>
+    internal readonly record struct NodeRings(
+        IReadOnlySet<string> Selected,
+        IReadOnlySet<string> PartlySelected,
+        IReadOnlySet<string> Hit,
+        IReadOnlySet<string> PartlyHit)
+    {
+        /// <summary>How far outside its rim the outermost ring round a node is drawn; 0 where none is.</summary>
+        public double Clearance(string key) =>
+            Hit.Contains(key) || PartlyHit.Contains(key) ? ChosenHitHalo
+            : Selected.Contains(key) || PartlySelected.Contains(key) ? SelectionHalo
+            : 0;
+    }
 
     /// <summary>How far outside a node's rim the ring of a search's chosen hit is drawn, outside a selection's.</summary>
     internal const double ChosenHitHalo = SelectionHalo + 4;
@@ -1753,9 +1800,11 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>
     /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
     /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
-    /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left. A
-    /// selected/focused label may fall back to a merely in-pane slot, because the user explicitly asked which node has
-    /// focus (§6.3, R15). Label placement only: it never moves a node.
+    /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left, and
+    /// keeps its room from the other names (<see cref="NameSpacing"/>) where a slot leaves it, standing nearer one only
+    /// with <paramref name="crowding"/> where none does. A selected/focused label may fall back to a merely in-pane
+    /// slot, because the user explicitly asked which node has focus (§6.3, R15). Label placement only: it never moves a
+    /// node.
     /// </summary>
     internal static Rect? FindLabelBox(
         Rect pane,
@@ -1768,7 +1817,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         Dictionary<string, double> radii,
         IReadOnlyList<Rect> placed,
         IReadOnlyList<Rect> heads,
-        bool mustShow)
+        bool mustShow,
+        bool crowding = true)
     {
         const double Gap = 3;
         const double SideBias = 3;
@@ -1793,15 +1843,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         // Clear of every label, node and arrowhead, and nearer its own node than any other, so it is read as that node's;
         // failing that, nearer another node, which a leader then ties to its own (LeaderOf); failing both, the same over a
-        // head, since a label over a head is better than none.
-        for (int pass = 0; pass < 4; pass++)
+        // head, since a label over a head is better than none. Each keeps its room from the other names where a slot
+        // leaves it, and else only clears them, since a name close to another is better than none.
+        for (int pass = 0; pass < 8; pass++)
         {
-            bool overHeads = pass >= 2;
+            bool overHeads = pass >= 4;
+            bool spaced = pass % 4 < 2;
             bool nearerAllowed = pass % 2 == 1;
+            if (!spaced && !crowding) continue;
             for (int i = 0; i < candidateCount; i++)
             {
                 Rect candidate = candidates[i];
-                if (!pane.Contains(candidate) || Overlaps(candidate, placed) || (!overHeads && Overlaps(candidate, heads))) continue;
+                if (!pane.Contains(candidate) || (spaced ? Crowds(candidate, placed) : Overlaps(candidate, placed))
+                    || (!overHeads && Overlaps(candidate, heads))) continue;
                 (bool coversNode, bool nearerAnother) = Neighbours(candidate, key, point, radius, points, radii);
                 if (!coversNode && (nearerAllowed || !nearerAnother)) return candidate;
             }
@@ -1809,19 +1863,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
         if (!mustShow) return null;
 
-        for (int i = 0; i < candidateCount; i++)
+        for (int pass = 0; pass < (crowding ? 2 : 1); pass++)
         {
-            Rect candidate = candidates[i];
-            if (!pane.Contains(candidate)) continue;
-            bool overlapsLabel = false;
-            for (int placedIndex = 0; placedIndex < placed.Count; placedIndex++)
+            for (int i = 0; i < candidateCount; i++)
             {
-                if (!placed[placedIndex].Intersects(candidate)) continue;
-                overlapsLabel = true;
-                break;
+                Rect candidate = candidates[i];
+                if (pane.Contains(candidate) && !(pass == 0 ? Crowds(candidate, placed) : Overlaps(candidate, placed)))
+                {
+                    return candidate;
+                }
             }
-
-            if (!overlapsLabel) return candidate;
         }
 
         for (int i = 0; i < candidateCount; i++)
@@ -1834,6 +1885,30 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     private static bool Covers(Rect box, Point centre, double radius) =>
         box.Inflate(radius).Contains(centre);
+
+    /// <summary>
+    /// The least room kept between two names, across and down: names standing against each other read as one word on a
+    /// busy machine's graph - "SearchHost.exespoolsv.exe" - and two blocks as one.
+    /// </summary>
+    internal static readonly Thickness NameSpacing = new(6, 2);
+
+    /// <summary>
+    /// Whether a name in <paramref name="box"/> would stand nearer one of <paramref name="names"/> than they may.
+    /// </summary>
+    private static bool Crowds(Rect box, IReadOnlyList<Rect> names)
+    {
+        for (int index = 0; index < names.Count; index++)
+        {
+            if (Crowds(box, names[index]))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool Crowds(Rect box, Rect name) => box.Inflate(NameSpacing).Intersects(name);
 
     /// <summary>Whether <paramref name="box"/> overlaps any of <paramref name="boxes"/>.</summary>
     private static bool Overlaps(Rect box, IReadOnlyList<Rect> boxes)

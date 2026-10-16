@@ -3134,7 +3134,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : Ranked([.. LadderRows(), .. ConnectionRows(), .. rpcChannelRows.Select(RankedRpcChannel),
             .. httpChannelRows.Select(RankedHttpChannel)]);
 
-    /// <summary>The ladder's rows as the rail shows them, a process's paired channels named by whom they connect it to.</summary>
+    /// <summary>
+    /// The ladder's rows as the rail shows them: one program's instances named by their PIDs, a process's paired channels by
+    /// whom they connect it to.
+    /// </summary>
     private IReadOnlyList<RungRow> LadderRows() => LadderRows(view, ladder.Current);
 
     /// <summary>
@@ -3144,6 +3147,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private IReadOnlyList<RungRow> LadderRows(LadderView shown, NavigationState state)
     {
         IReadOnlyList<RungRow> rows = LadderRowBuilder.Rows(shown, ThemeResources.CurrentMode, !ReadsBytes, RateSeconds);
+        if (state.Level == DetailLevel.Group)
+        {
+            return InstancesNamed(rows);
+        }
+
         if (!realOverview || state.Level != DetailLevel.ProcessInstance
             || state.Focus is not { } focus || !Guid.TryParse(focus.Key, out Guid id))
         {

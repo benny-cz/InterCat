@@ -254,6 +254,94 @@ public sealed class GraphLabelLeaderTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: on a crowded machine no two names stand against each other where a slot leaves room, and an edge passing beneath a name breaks round its letters")]
+    public async Task NamesStandApartAndEdgesBreakRoundThem()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            WriteableBitmap frame = Settle(window);
+
+            // Two names standing against each other read as one word - "SearchHost.exespoolsv.exe" - so none does.
+            IReadOnlyList<Rect> names = graph.PlacedLabels;
+            for (int one = 0; one < names.Count; one++)
+            {
+                for (int other = one + 1; other < names.Count; other++)
+                {
+                    Assert.False(names[one].Inflate(GraphView.NameSpacing).Intersects(names[other]),
+                        $"{graph.PlacedLabelKeys[one]} {names[one]} stands against {graph.PlacedLabelKeys[other]} {names[other]}");
+                }
+            }
+
+            // Edges pass beneath some names, and round the letters of every name is the pane's colour, never an edge's ink:
+            // each letter's pixels are ringed by a pixel of the name's halo.
+            int crossed = 0;
+            for (int index = 0; index < names.Count; index++)
+            {
+                Rect box = names[index];
+                if (workspace.GraphDisplay.Edges.Any(edge => graph.PointOf(edge.SourceKey) is { } from
+                        && graph.PointOf(edge.TargetKey) is { } to && Crosses(box, from, to)))
+                {
+                    crossed++;
+                }
+
+                Point corner = graph.TranslatePoint(box.TopLeft, window)!.Value;
+                for (int y = (int)corner.Y + 1; y < (int)(corner.Y + box.Height) - 1; y++)
+                {
+                    for (int x = (int)corner.X + 1; x < (int)(corner.X + box.Width) - 1; x++)
+                    {
+                        if (!IsLetter(RenderedPixels.At(frame, new(x, y)))) continue;
+                        for (int dy = -1; dy <= 1; dy++)
+                        {
+                            for (int dx = -1; dx <= 1; dx++)
+                            {
+                                Avalonia.Media.Color beside = RenderedPixels.At(frame, new(x + dx, y + dy));
+                                Assert.False(IsInk(beside), $"{graph.PlacedLabelKeys[index]}: {beside} beside a letter at ({x}, {y})");
+                            }
+                        }
+                    }
+                }
+            }
+
+            Assert.InRange(crossed, 3, names.Count);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>A pixel of a name's letters: the text's light ink, near white.</summary>
+    private static bool IsLetter(Avalonia.Media.Color pixel) => Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) >= 200;
+
+    /// <summary>A pixel of an edge's ink: a mechanism's hue, which neither the text nor the pane is.</summary>
+    private static bool IsInk(Avalonia.Media.Color pixel) =>
+        Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) - Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) >= 90
+        && Math.Max(pixel.R, Math.Max(pixel.G, pixel.B)) >= 120;
+
+    /// <summary>Whether the segment from <paramref name="from"/> to <paramref name="to"/> passes through <paramref name="box"/>.</summary>
+    private static bool Crosses(Rect box, Point from, Point to)
+    {
+        for (int step = 0; step <= 200; step++)
+        {
+            double t = step / 200.0;
+            if (box.Contains(new Point(from.X + ((to.X - from.X) * t), from.Y + ((to.Y - from.Y) * t))))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     private static double Distance(Point a, Point b) => Math.Sqrt(((a.X - b.X) * (a.X - b.X)) + ((a.Y - b.Y) * (a.Y - b.Y)));
 
     /// <summary>How far a box stands from a point: from the box's nearest point.</summary>

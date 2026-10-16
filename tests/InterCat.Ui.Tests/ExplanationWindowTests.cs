@@ -54,13 +54,14 @@ public sealed class ExplanationWindowTests
         Assert.Contains("its total leaves out 2 records bound to 1 later holder of a reused PID among them.", explanation.Text,
             StringComparison.Ordinal);
 
-        // It opens on its two processes, which read apart as icat processes numbers them: in their rows, their lanes and
-        // the inspector, whose explanation of the later one stands beside them.
+        // It opens on its two processes, which read apart as icat processes numbers them: in their rows, named by their
+        // PIDs as one program's instances are, their lanes and the inspector, whose explanation of the later one stands
+        // beside them.
         Assert.True(workspace.Descend());
         Dispatch();
         ProcessNode later = workspace.Snapshot.Processes.Single(node => node.PidHolder == 2);
-        Assert.Equal(["PID 100 #1 · created during capture", "PID 100 #2 · created during capture"],
-            workspace.RungRows.Select(row => row.Detail).Order(StringComparer.Ordinal));
+        Assert.Equal([("PID 100 #1", "created during capture"), ("PID 100 #2", "created during capture")],
+            workspace.RungRows.Select(row => (row.Label, row.Detail)).Order());
         await Until(() => workspace.ProcessLaneDisplay.Count == 2);
         Assert.Equal(["client.exe · PID 100 #1", "client.exe · PID 100 #2"],
             workspace.ProcessLaneDisplay.Select(lane => TimelineView.OwnerLabel(lane, workspace)).Order(StringComparer.Ordinal));
