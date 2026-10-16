@@ -38,13 +38,13 @@ public sealed class HostEdgeRowsTests
 
         // Each says where its connections ran, who opened them, and what Enter opens, aloud as on screen.
         RelationshipRow browser = workspace.TableRows[1];
-        Assert.Equal(("TCP", "3", "not counted"), (browser.Mechanism, browser.Observations, browser.KnownBytes));
+        Assert.Equal(("TCP", "3", "bytes not read"), (browser.Mechanism, browser.Observations, browser.KnownBytes));
         Assert.Equal("1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not observed.", browser.Explanation);
         Assert.Equal("Direction: browser.exe · PID 300 connected to 142.250.1.1:443", browser.DirectionLine);
         Assert.Equal("its process's rung, which lists each connection", browser.Opens);
         Assert.Equal("browser.exe · PID 300 and 142.250.1.1:443 over TCP, browser.exe · PID 300 connected to 142.250.1.1:443, "
-            + "3 observations, evidence correlated. 1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not "
-            + "observed. Press Enter to open its process's rung, which lists each connection.", browser.AccessibleName);
+            + "3 observations, bytes not read, evidence correlated. 1 TCP connection to 1 host. Host: 142.250.1.1. Who is at "
+            + "it is not observed. Press Enter to open its process's rung, which lists each connection.", browser.AccessibleName);
         Assert.Equal("Direction: 192.168.1.30 connected to server.exe · PID 200", workspace.TableRows[2].DirectionLine);
         Assert.Equal("Direction: display order only, not who initiated or sent", workspace.TableRows[3].DirectionLine);
 
@@ -98,6 +98,106 @@ public sealed class HostEdgeRowsTests
         Assert.Equal("Process: browser.exe · PID 300", workspace.Crumbs[^1].Label);
         Assert.Contains(workspace.TableRows, row => row.Key == browser.Key);
         Assert.Null(workspace.SelectedTableRow);
+    });
+
+    [Fact(DisplayName = "R15: an edge to other hosts' row says what its connections carried once the table lists it, sent and received at this machine's end, and under a brush that its counts and bytes are the whole session's")]
+    public void AnEdgeToOtherHostsSaysWhatItCarried() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows(),
+            Lifecycle(6, ObservationKind.Create, 500, 6) with { ResourceName = @"C:\Apps\updater.exe", SessionRelativeTicks = 60 },
+            .. Enumerable.Range(140, 2).Select(tick => Transfer(tick, ObservationKind.Send, AccountingSide.SendSide, null, 500,
+                (ulong)tick).Between("192.168.1.10:53000", "60.0.0.1:443") with { SessionRelativeTicks = 1_000 + tick })]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        RelationshipRow Row(string name) => workspace.TableRows.Single(row => row.Name == name);
+
+        // Hidden, the table reads nothing, however its rows change.
+        Assert.Equal("bytes not read", Row("browser.exe · PID 300 → 142.250.1.1:443").KnownBytes);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.Descend());
+        workspace.ReturnTo(0);
+        Assert.Equal("bytes not read", Row("browser.exe · PID 300 → 142.250.1.1:443").KnownBytes);
+        Assert.True(workspace.HostEdgeTrafficReady.IsCompleted);
+
+        // Shown, the table reads what each edge's connections carried, each row saying so until it is in.
+        workspace.ShowTables = true;
+        Assert.Equal("reading bytes…", Row("browser.exe · PID 300 → 142.250.1.1:443").KnownBytes);
+        await workspace.HostEdgeTrafficReady;
+        RelationshipRow browser = Row("browser.exe · PID 300 → 142.250.1.1:443");
+        Assert.Equal("200 B sent across", browser.KnownBytes);
+        Assert.Equal("1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not observed. At this machine's end: "
+            + "200 B sent · no receive recorded.", browser.Explanation);
+        Assert.Contains(", 3 observations, 200 B sent across, evidence correlated. ", browser.AccessibleName, StringComparison.Ordinal);
+
+        // What an edge received crossed it as much as what it sent; a datagram flow's sends are its own.
+        RelationshipRow accepted = Row("server.exe · PID 200 ← 192.168.1.30");
+        Assert.Equal("100 B sent across", accepted.KnownBytes);
+        Assert.EndsWith(" At this machine's end: no send recorded · 100 B received.", accepted.Explanation, StringComparison.Ordinal);
+        Assert.Equal("60 B sent across", Row("svc.exe · PID 400 ↔ [2001:db8::1]:53").KnownBytes);
+
+        // Sends that stated no size are not nothing sent.
+        RelationshipRow unsized = Row("updater.exe · PID 500 ↔ 60.0.0.1:443");
+        Assert.Equal("no size measured", unsized.KnownBytes);
+        Assert.EndsWith(" At this machine's end: 2 sends unmeasured · no receive recorded.", unsized.Explanation, StringComparison.Ordinal);
+
+        // Its process's rung draws the same connections, which are not read again.
+        workspace.SelectedTableRow = browser;
+        Assert.True(workspace.OpenSelectedTableRow());
+        Assert.Equal("200 B sent across", Row("browser.exe · PID 300 → 142.250.1.1:443").KnownBytes);
+        workspace.ReturnTo(0);
+        Assert.Equal("200 B sent across", Row("browser.exe · PID 300 → 142.250.1.1:443").KnownBytes);
+        Assert.True(workspace.HostEdgeTrafficReady.IsCompleted);
+
+        // Under a brush its counts and bytes stay the whole session's, and it says so.
+        long start = workspace.Snapshot.Extent.StartTicks;
+        workspace.SelectInterval(new TimeRange(start, start + 50));
+        await workspace.IntervalReady;
+        await workspace.HostEdgeTrafficReady;
+        browser = Row("browser.exe · PID 300 → 142.250.1.1:443");
+        Assert.Equal(("3", "200 B sent across"), (browser.Observations, browser.KnownBytes));
+        Assert.EndsWith(" Its counts and bytes are the whole session's.", browser.Explanation, StringComparison.Ordinal);
+
+        // A view with no session directory to read them from knows none.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var unread = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
+        unread.ShowTables = true;
+        Assert.All(unread.TableRows.Where(row => row.ToHosts), row => Assert.Equal("bytes unknown", row.KnownBytes));
+    });
+
+    [Fact(DisplayName = "R15: a table first shown at a deeper rung says its edges' bytes are being read until they are")]
+    public void ATableShownDeeperSaysItsBytesAreRead() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.True(workspace.Descend());
+        await workspace.SelectionBytesReady;
+        Assert.Equal("Process: browser.exe · PID 300", workspace.Crumbs[^1].Label);
+        Assert.Equal("bytes not read", workspace.TableRows.Single(row => row.ToHosts).KnownBytes);
+
+        workspace.ShowTables = true;
+        Assert.Equal("reading bytes…", workspace.TableRows.Single(row => row.ToHosts).KnownBytes);
+        await workspace.HostEdgeTrafficReady;
+        Assert.Equal("200 B sent across", workspace.TableRows.Single(row => row.ToHosts).KnownBytes);
+    });
+
+    [Fact(DisplayName = "R21: an edge to other hosts whose bytes cannot be read says so, never that it carried nothing")]
+    public void AnEdgeWhoseBytesCannotBeReadSaysSo() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        Directory.Delete(session.Path, recursive: true);
+        workspace.ShowTables = true;
+        await workspace.HostEdgeTrafficReady;
+        Assert.All(workspace.TableRows.Where(row => row.ToHosts),
+            row => Assert.Equal("bytes could not be read", row.KnownBytes));
     });
 
     [Fact(DisplayName = "§3.2/R15: the way back from what an edge to other hosts opened or listed chooses its row again with its source, and a newer generation keeps it chosen")]

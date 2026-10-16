@@ -39,7 +39,7 @@ No relationships lists the processes it counts, E lists the records of the one c
 coming back to it. When it draws no relationship, the graph says why. A search marks the processes it finds, by name,
 PID, an address they reached or a port they accepted connections at, and rings the one chosen among its hits; a number
 typed alone offers its port as well. The relationship table (T) lists each relationship it draws and each edge to other
-hosts, the busiest first, who connected included, for a keyboard or a screen reader.
+hosts, the busiest first, with who connected and the bytes that crossed it, for a keyboard or a screen reader.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

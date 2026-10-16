@@ -3013,6 +3013,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         CancelConnections();
         CancelHostRecords();
         CancelHostTraffic();
+        CancelHostEdgeTraffic();
         CancelCandidateRead();
         intervalQuery?.Cancel();
         intervalQuery?.Dispose();
@@ -3596,6 +3597,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             OnPropertyChanged();
             OnPropertyChanged(nameof(TableToggleLabel));
             FollowDescribedBytes();
+
+            // Shown, the table reads what its edges to other hosts carried.
+            RestateTableRows();
             if (ReadsBytes)
             {
                 // A shown table reads its rows' bytes, trying again one whose read failed; a hidden one reads nothing.

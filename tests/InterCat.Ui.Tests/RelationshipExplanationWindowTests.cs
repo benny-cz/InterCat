@@ -240,19 +240,59 @@ public sealed class RelationshipExplanationWindowTests
 
             // The table's rows restated as the bytes of what is chosen are read, the edge stays chosen in it.
             await workspace.SelectionBytesReady;
+            await workspace.HostEdgeTrafficReady;
             Dispatch();
             Assert.Equal(edge.Key, Assert.IsType<RelationshipRow>(table.SelectedItem).Key);
             Assert.Equal(edge.Key, workspace.SelectedTableRow?.Key);
+            Assert.Equal("64 B sent across", Assert.IsType<RelationshipRow>(table.SelectedItem).KnownBytes);
             TextBlock line = window.GetControl<TextBlock>("SelectedRelationshipText");
             Assert.True(line.IsEffectivelyVisible);
-            Assert.Equal("1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not observed. Direction: browser.exe · "
-                + "PID 400 connected to 142.250.1.1:443. Enter opens its process's rung, which lists each connection.", line.Text);
+            Assert.Equal("1 TCP connection to 1 host. Host: 142.250.1.1. Who is at it is not observed. At this machine's end: "
+                + "64 B sent · no receive recorded. Direction: browser.exe · PID 400 connected to 142.250.1.1:443. Enter opens "
+                + "its process's rung, which lists each connection.", line.Text);
 
             // Enter opens its process's rung, whose rows take the keyboard.
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             Dispatch();
             Assert.Equal("Process: browser.exe · PID 400", workspace.Crumbs[^1].Label);
             Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: an edge to other hosts chosen before its bytes are read stays chosen in the table as they arrive")]
+    public async Task AChosenEdgeStaysChosenAsItsBytesArrive()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Makers(),
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 400 },
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 20)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_000 },
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 64, 400, 21)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_100 }]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            RelationshipRow edge = workspace.TableRows.Single(row => row.ToHosts);
+            workspace.SelectedTableRow = edge;
+
+            // Shown, the table chooses its row while its bytes are read, and keeps it chosen once they are in.
+            workspace.ShowTables = true;
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Assert.Equal("reading bytes…", Assert.IsType<RelationshipRow>(table.SelectedItem).KnownBytes);
+            await workspace.HostEdgeTrafficReady;
+            Dispatch();
+            Assert.Equal(edge.Key, workspace.SelectedTableRow?.Key);
+            RelationshipRow shown = Assert.IsType<RelationshipRow>(table.SelectedItem);
+            Assert.Equal((edge.Key, "64 B sent across"), (shown.Key, shown.KnownBytes));
         }
         finally
         {

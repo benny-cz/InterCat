@@ -43,6 +43,12 @@ public sealed record HostTraffic(
 }
 
 /// <summary>
+/// What one process's connections over one transport to one other host carried (§6.3), at this machine's end, as its
+/// sends and receives measured them: the address as the census writes it. Who is at the address is not observed (P7).
+/// </summary>
+public sealed record HostReachTraffic(ProcessInstanceId Process, Mechanism Mechanism, string Address, TransportBytes Bytes);
+
+/// <summary>
 /// What each other host's connections carried, read for a ranking of the hosts by it (§6.3, R18): the census names the
 /// hosts and which connections are theirs, opening no segment; their bytes take one pass over the segments their
 /// lifetimes meet.
@@ -101,6 +107,48 @@ public static class SessionHostTraffic
                 host.Sum(pair => pair.Summary.UnmeasuredReceives)))];
         Array.Sort(hosts, (left, right) => Compare(left, right, metric));
         return hosts;
+    }
+
+    /// <summary>
+    /// What each process's connections over each transport to each address <paramref name="links"/> name carried, over the
+    /// whole session, in one pass over the segments their lifetimes meet: one reach for each that holds any connection,
+    /// the addresses as the census writes them. A graph's edge to other hosts sums its own (§6.3).
+    /// </summary>
+    public static IReadOnlyList<HostReachTraffic> OfReaches(
+        SessionStore store,
+        IReadOnlyCollection<HostLink> links,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentNullException.ThrowIfNull(links);
+
+        // Each reach is written as the census wrote its address, which the connections' own endpoints may write otherwise.
+        Dictionary<string, (ProcessInstanceId Process, Mechanism Mechanism, string Address)> reaches = new(StringComparer.OrdinalIgnoreCase);
+        foreach (HostLink link in links)
+        {
+            foreach (HostAddress address in link.Addresses)
+            {
+                reaches.TryAdd(Key(link.Process, link.Mechanism, address.Address), (link.Process, link.Mechanism, address.Address));
+            }
+        }
+
+        if (reaches.Count == 0)
+        {
+            return [];
+        }
+
+        IReadOnlyList<(TransportConnection Connection, ConnectionSummary Summary)> connections = SessionConnections.Held(store,
+            connection => reaches.ContainsKey(Key(connection.Holder.Id, connection.Mechanism,
+                HostScopeKeys.EndpointAddress(connection.RemoteEndpoint))), null, policy, cancellationToken);
+        return [.. connections
+            .GroupBy(pair => Key(pair.Connection.Holder.Id, pair.Connection.Mechanism,
+                HostScopeKeys.EndpointAddress(pair.Connection.RemoteEndpoint)), StringComparer.OrdinalIgnoreCase)
+            .Select(reach => (Reach: reaches[reach.Key], Bytes: reach.Aggregate(TransportBytes.None, (sum, pair) => sum.Plus(new(
+                pair.Summary.SentBytes, pair.Summary.Sends - pair.Summary.UnmeasuredSends, pair.Summary.UnmeasuredSends,
+                pair.Summary.ReceivedBytes, pair.Summary.Receives - pair.Summary.UnmeasuredReceives,
+                pair.Summary.UnmeasuredReceives)))))
+            .Select(reach => new HostReachTraffic(reach.Reach.Process, reach.Reach.Mechanism, reach.Reach.Address, reach.Bytes))];
     }
 
     /// <summary>

@@ -57,6 +57,33 @@ public sealed class HostTrafficTests
         Assert.False(SessionHostTraffic.Ranks(RankingMetric.ActivePeers));
     }
 
+    [Fact(DisplayName = "§6.3: what each process's connections over each transport to each host carried is read in one pass, the reaches asked for alone")]
+    public void EachReachSaysWhatItsConnectionsCarried()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        IReadOnlyList<HostLink> links = SessionOverviewProjector.Project(session.Store).HostLinks;
+        ProcessInstanceId Holder(string address) =>
+            links.First(link => link.Addresses.Any(reached => reached.Address == address)).Process;
+        ProcessInstanceId browser = Holder("8.8.8.8"), updater = Holder("60.0.0.1"), svc = Holder("52.1.1.1");
+
+        // Each process's connections to each address over each transport, two connections to one address summed, those of
+        // no stated size counted apart.
+        Dictionary<(ProcessInstanceId, Mechanism, string), TransportBytes> reaches = SessionHostTraffic.OfReaches(session.Store, links)
+            .ToDictionary(reach => (reach.Process, reach.Mechanism, reach.Address), reach => reach.Bytes);
+        Assert.Equal(7, reaches.Count);
+        Assert.Equal(new TransportBytes(500, 1, 0, 2_000, 1, 0), reaches[(browser, Mechanism.Tcp, "142.250.1.1")]);
+        Assert.Equal(new TransportBytes(100, 2, 0, 0, 0, 0), reaches[(browser, Mechanism.Tcp, "9.9.9.9")]);
+        Assert.Equal(new TransportBytes(40, 1, 0, 80, 1, 0), reaches[(browser, Mechanism.Udp, "8.8.8.8")]);
+        Assert.Equal(new TransportBytes(0, 0, 2, 0, 0, 0), reaches[(updater, Mechanism.Tcp, "142.250.1.1")]);
+        Assert.Equal(new TransportBytes(0, 0, 0, 300, 1, 0), reaches[(svc, Mechanism.Tcp, "52.1.1.1")]);
+
+        // Only the reaches asked for are read, and none asked reads none.
+        HostReachTraffic udp = Assert.Single(SessionHostTraffic.OfReaches(session.Store, [links.Single(link => link.Mechanism == Mechanism.Udp)]));
+        Assert.Equal((browser, Mechanism.Udp, "8.8.8.8"), (udp.Process, udp.Mechanism, udp.Address));
+        Assert.Empty(SessionHostTraffic.OfReaches(session.Store, []));
+    }
+
     private static string[] Addresses(IEnumerable<HostTraffic> hosts) => [.. hosts.Select(host => host.Host.Address)];
 
     /// <summary>

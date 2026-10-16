@@ -235,6 +235,14 @@ public sealed class SessionEvidenceSource(
             cancellationToken);
 
     /// <summary>
+    /// What each process's connections to each other host <paramref name="links"/> name carried, over the whole session:
+    /// for the relationship table to say what each of the graph's edges to other hosts carried.
+    /// </summary>
+    public Task<IReadOnlyList<HostReachTraffic>> HostReachTrafficAsync(IReadOnlyCollection<HostLink> links,
+        CancellationToken cancellationToken) =>
+        Task.Run(() => SessionHostTraffic.OfReaches(Store(), links, Policy, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density
     /// (<see cref="SessionHttpExchanges.Spans"/>).
     /// </summary>
