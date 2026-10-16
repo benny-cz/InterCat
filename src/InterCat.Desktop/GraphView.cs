@@ -72,6 +72,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private static Pen PinHeadPen => Current.PinHeadPen;
     private static Pen MatchPen => Current.MatchPen;
     private static Pen MatchHaloPen => Current.MatchHaloPen;
+    private static Pen ChosenHitPen => Current.ChosenHitPen;
+    private static Dashes PartlyChosenHitDashes => Current.PartlyChosenHitDashes;
     private static Dashes ContextDashes => Current.ContextDashes;
     private static Pen ContextRimPen => Current.ContextRimPen;
 
@@ -173,6 +175,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             PinHeadPen = new(PlotBrush, 1.5);
             MatchPen = new(TextBrush, 1.5);
             MatchHaloPen = new(PlotBrush, 1.5);
+            ChosenHitPen = new(TextBrush, 2.5);
+            PartlyChosenHitDashes = new(new Pen(TextBrush, 2), 3, 3);
             ContextDashes = new(MutedPen, 7, 4);
             ContextRimPen = new(MutedTextBrush, 1);
             SampleRingPen = new(TextBrush, 2);
@@ -199,6 +203,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         public Pen PinHeadPen { get; }
         public Pen MatchPen { get; }
         public Pen MatchHaloPen { get; }
+        public Pen ChosenHitPen { get; }
+        public Dashes PartlyChosenHitDashes { get; }
         public Dashes ContextDashes { get; }
         public Pen ContextRimPen { get; }
 
@@ -793,6 +799,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlySet<string> partlySelected = viewModel.PartlySelectedGraphNodeKeys;
         IReadOnlySet<string> searched = viewModel.SearchedGraphNodeKeys;
         IReadOnlySet<string> partlySearched = viewModel.PartlySearchedGraphNodeKeys;
+        IReadOnlySet<string> chosenHit = viewModel.ChosenHitGraphNodeKeys;
+        IReadOnlySet<string> partlyChosenHit = viewModel.PartlyChosenHitGraphNodeKeys;
         FollowSelection(selected, now);
         IReadOnlyList<GraphDisplayNode> order = TraversalOf(display);
         string? focused = IsFocused && order.Count > 0 ? order[KeyboardIndex(order, viewModel)].Key : null;
@@ -823,6 +831,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 {
                     context.DrawEllipse(Brushes.Transparent, SelectionPen, point, radius + SelectionHalo, radius + SelectionHalo);
                 }
+            }
+
+            if (chosenHit.Contains(node.Key))
+            {
+                // The hit chosen among a search's hits is ringed in the ink the search marks nodes in, outside where a
+                // selection's ring is drawn, as a find marks the match it is on among the others (§6.7); broken where the
+                // node holds the hit's processes among others.
+                context.DrawEllipse(Brushes.Transparent, ChosenHitPen, point, radius + ChosenHitHalo, radius + ChosenHitHalo);
+            }
+            else if (partlyChosenHit.Contains(node.Key))
+            {
+                DrawDashedCircle(context, null, PartlyChosenHitDashes, point, radius + ChosenHitHalo);
             }
 
             if (node.Key == highlightedNode)
@@ -1334,7 +1354,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
                 string found = viewModel.SearchedGraphNodeKeys.Contains(key) ? ", found by the search"
                     : viewModel.PartlySearchedGraphNodeKeys.Contains(key) ? ", partly found by the search"
                     : string.Empty;
-                name = $"{SpokenName}: {card.Title}, {card.Lines[0]}{share}{found}";
+                string chosen = viewModel.ChosenHitGraphNodeKeys.Contains(key) ? ", the hit chosen in the search"
+                    : viewModel.PartlyChosenHitGraphNodeKeys.Contains(key) ? ", holding the hit chosen in the search"
+                    : string.Empty;
+                name = $"{SpokenName}: {card.Title}, {card.Lines[0]}{share}{found}{chosen}";
             }
         }
 
@@ -1612,6 +1635,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>How far outside a node its selection's ring is drawn, and a selected node's label kept clear of it.</summary>
     internal const double SelectionHalo = 6;
+
+    /// <summary>How far outside a node's rim the ring of a search's chosen hit is drawn, outside a selection's.</summary>
+    internal const double ChosenHitHalo = SelectionHalo + 4;
 
     /// <summary>How strongly a chosen timeline cell's relationships and processes are highlighted, against the selection's whole.</summary>
     private const double CellHighlightOpacity = ThemeResources.CellHighlightStrength;

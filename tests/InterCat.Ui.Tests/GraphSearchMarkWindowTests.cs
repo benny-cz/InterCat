@@ -63,18 +63,18 @@ public sealed class GraphSearchMarkWindowTests
             Assert.True(Distance(At(part, toolsMiddle), pane) < 40, $"{At(part, toolsMiddle)} against the pane's {pane}");
             Assert.True(Distance(At(part, browserMark), At(plain, browserMark)) < 10);
 
-            // With the keyboard on a node, a screen reader is told what the mark shows.
+            // With the keyboard on a node, a screen reader is told what the mark shows, and the ring of the hit chosen.
             GraphDisplayNode server = workspace.GraphDisplay.NodeOf(
                 workspace.Snapshot.Processes.Single(process => process.ProcessId == 200).Id)!;
             AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(graph);
             graph.Focus();
             workspace.SelectGraphNode(tools.Key);
             Dispatch();
-            Assert.EndsWith(", partly found by the search", peer.GetName(), StringComparison.Ordinal);
+            Assert.EndsWith(", partly found by the search, holding the hit chosen in the search", peer.GetName(), StringComparison.Ordinal);
             workspace.SearchText = "browser";
             workspace.SelectGraphNode(browser.Key);
             Dispatch();
-            Assert.EndsWith(", found by the search", peer.GetName(), StringComparison.Ordinal);
+            Assert.EndsWith(", found by the search, the hit chosen in the search", peer.GetName(), StringComparison.Ordinal);
             workspace.SelectGraphNode(server.Key);
             Dispatch();
             Assert.DoesNotContain("found by the search", peer.GetName(), StringComparison.Ordinal);
@@ -90,6 +90,87 @@ public sealed class GraphSearchMarkWindowTests
         {
             window.Close();
         }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.7: the graph rings the hit chosen among a search's hits, whole on its own node, broken on an aggregate holding it among others, and the ring follows the choice")]
+    public async Task TheGraphRingsTheChosenHit()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            WriteableBitmap plain = Settle(window);
+            GraphDisplayNode browser = workspace.GraphDisplay.NodeOf(
+                workspace.Snapshot.Processes.Single(process => process.ProcessId == 300).Id)!;
+            GraphDisplayNode tools = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Quiet);
+
+            // A name's first hit, browser.exe's group, is the browser's node: it is ringed whole, the tools' not at all.
+            workspace.SearchText = "browser";
+            WriteableBitmap group = Settle(window);
+            Assert.InRange(Ringed(plain, group, graph, window, browser), 20, Bearings);
+            Assert.InRange(Ringed(plain, group, graph, window, tools), 0, 2);
+
+            // The first of tool.exe's hits is its group, every process the tools' aggregate holds: ringed whole.
+            workspace.SearchText = "tool";
+            WriteableBitmap tool = Settle(window);
+            Assert.InRange(Ringed(plain, tool, graph, window, tools), 20, Bearings);
+            Assert.InRange(Ringed(plain, tool, graph, window, browser), 0, 2);
+
+            // One of the three chosen instead is held among others there: the ring is broken.
+            workspace.SelectedSearchResult = workspace.SearchResults.Single(row => row.Label == "tool.exe · PID 402");
+            WriteableBitmap one = Settle(window);
+            Assert.InRange(Ringed(plain, one, graph, window, tools), 5, 17);
+
+            // With the keyboard on that node, a screen reader is told what the ring shows.
+            AutomationPeer peer = ControlAutomationPeer.CreatePeerForElement(graph);
+            graph.Focus();
+            workspace.SelectGraphNode(tools.Key);
+            Dispatch();
+            Assert.EndsWith(", found by the search, holding the hit chosen in the search", peer.GetName(), StringComparison.Ordinal);
+
+            // Cleared, no node is ringed.
+            workspace.ClearSelection();
+            workspace.SearchText = string.Empty;
+            WriteableBitmap cleared = Settle(window);
+            Assert.InRange(Ringed(plain, cleared, graph, window, tools), 0, 2);
+            Assert.InRange(Ringed(plain, cleared, graph, window, browser), 0, 2);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    /// <summary>The bearings a chosen hit's ring is sampled at around a node.</summary>
+    private const int Bearings = 24;
+
+    /// <summary>
+    /// At how many of <see cref="Bearings"/> points on the circle a chosen hit's ring is drawn on around <paramref name="node"/>
+    /// the frame differs from the plain one: nearly all for a whole ring, about half for a broken one, none for none.
+    /// </summary>
+    private static int Ringed(WriteableBitmap plain, WriteableBitmap frame, GraphView graph, Window window, GraphDisplayNode node)
+    {
+        Point centre = graph.PointOf(node.Key)!.Value;
+        double ring = graph.RadiusOf(node.Key)!.Value + GraphView.ChosenHitHalo;
+        int differing = 0;
+        for (int bearing = 0; bearing < Bearings; bearing++)
+        {
+            double angle = 2 * Math.PI * (bearing + 0.5) / Bearings;
+            Point at = graph.TranslatePoint(new Point(centre.X + (ring * Math.Cos(angle)), centre.Y + (ring * Math.Sin(angle))), window)!.Value;
+            if (Distance(At(frame, at), At(plain, at)) > 60)
+            {
+                differing++;
+            }
+        }
+
+        return differing;
     }
 
     /// <summary>A point of the search mark a node carries, <paramref name="across"/> to the right of its middle, in the window.</summary>

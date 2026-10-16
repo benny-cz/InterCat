@@ -93,6 +93,48 @@ public sealed class GraphSearchMarkTests
         Assert.Empty(workspace.SearchedGraphNodeKeys);
     });
 
+    [Fact(DisplayName = "§6.7: the hit chosen among a search's hits is the nodes its processes are, wholly or in part: a process's, a group's, a channel's two ends, and none for a port")]
+    public void TheChosenHitIsTheNodesOfItsProcesses() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        GraphDisplay drawn = workspace.GraphDisplay;
+        string client = drawn.NodeOf(Process(workspace, 100).Id)!.Key;
+        string server = drawn.NodeOf(Process(workspace, 200).Id)!.Key;
+        string browser = drawn.NodeOf(Process(workspace, 300).Id)!.Key;
+        string tools = drawn.Nodes.Single(node => node.Kind == GraphNodeKind.Quiet).Key;
+        Assert.Empty(workspace.ChosenHitGraphNodeKeys);
+
+        // tool.exe's group, the first of its hits, is every process the tools' aggregate holds.
+        workspace.SearchText = "tool";
+        Assert.Equal(SearchHitKind.Group, workspace.SelectedSearchResult!.Hit.Kind);
+        Assert.Equal([tools], workspace.ChosenHitGraphNodeKeys);
+        Assert.Empty(workspace.PartlyChosenHitGraphNodeKeys);
+
+        // One of its processes is held there among others; browser.exe's is its node.
+        workspace.SelectedSearchResult = workspace.SearchResults.Single(row => row.Label == "tool.exe · PID 402");
+        Assert.Empty(workspace.ChosenHitGraphNodeKeys);
+        Assert.Equal([tools], workspace.PartlyChosenHitGraphNodeKeys);
+        workspace.SearchText = "300";
+        Assert.Equal(SearchHitKind.Process, workspace.SelectedSearchResult!.Hit.Kind);
+        Assert.Equal([browser], workspace.ChosenHitGraphNodeKeys);
+
+        // A port a number offers is no process's; the channel at it is its two ends.
+        workspace.SearchText = "8080";
+        Assert.Equal(SearchHitKind.Port, workspace.SelectedSearchResult!.Hit.Kind);
+        Assert.Empty(workspace.ChosenHitGraphNodeKeys);
+        Assert.Empty(workspace.PartlyChosenHitGraphNodeKeys);
+        workspace.SelectedSearchResult = workspace.SearchResults.Single(row => row.Hit.Kind == SearchHitKind.Channel);
+        Assert.Equal(new[] { client, server }.Order(StringComparer.Ordinal), workspace.ChosenHitGraphNodeKeys.Order(StringComparer.Ordinal));
+
+        // Cleared, no hit is chosen.
+        workspace.SearchText = string.Empty;
+        Assert.Empty(workspace.ChosenHitGraphNodeKeys);
+        Assert.Empty(workspace.PartlyChosenHitGraphNodeKeys);
+    });
+
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 

@@ -1,5 +1,6 @@
 using System.Globalization;
 using InterCat.Application;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 
 namespace InterCat.Desktop;
@@ -9,18 +10,33 @@ namespace InterCat.Desktop;
 /// by the rule its hits and the timeline's lanes are found by: a name, a PID or an address the process's connections to
 /// other hosts reached - filled where every process the node holds is found and open where only some are, and marks the
 /// Other hosts node when an address the drawn processes' connections ran to is found. Its summary counts them and a
-/// found node's card says so, so the graph shows where a search's processes are without selecting any.
+/// found node's card says so, so the graph shows where a search's processes are without selecting any. The hit chosen
+/// among the search's hits is ringed besides, as a find marks the match it is on among the others: the nodes that are its
+/// processes, and those holding some of them among others.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
     private (GraphDisplay Display, WorkspaceSnapshot Snapshot, string Text, IReadOnlySet<string> Whole, IReadOnlySet<string> Part,
         int Found)? graphSearch;
 
+    // The nodes of the hit chosen among a search's hits, worked out once for each drawing, snapshot and hit (R11).
+    private (GraphDisplay Display, WorkspaceSnapshot Snapshot, SearchRow Hit, IReadOnlySet<string> Whole, IReadOnlySet<string> Part)?
+        chosenHit;
+
     /// <summary>The drawn nodes every process of which the search typed finds, and the Other hosts node it finds; empty while none is typed.</summary>
     public IReadOnlySet<string> SearchedGraphNodeKeys => GraphSearch().Whole;
 
     /// <summary>The drawn aggregates some but not all of whose processes the search typed finds.</summary>
     public IReadOnlySet<string> PartlySearchedGraphNodeKeys => GraphSearch().Part;
+
+    /// <summary>
+    /// The drawn nodes that are the processes of the hit chosen among a search's hits - a process, a group's processes, a
+    /// channel's two ends - every process each holds being one of them; empty for a moment, a port, or no hit chosen.
+    /// </summary>
+    public IReadOnlySet<string> ChosenHitGraphNodeKeys => ChosenHit().Whole;
+
+    /// <summary>The drawn aggregates holding some of the chosen hit's processes among others.</summary>
+    public IReadOnlySet<string> PartlyChosenHitGraphNodeKeys => ChosenHit().Part;
 
     /// <summary>
     /// The graph summary's note of what the search typed finds: " · 3 found by the search", or that it finds none. Empty
@@ -106,6 +122,57 @@ public sealed partial class WorkspaceViewModel
 
         graphSearch = (graphDisplay, wholeSnapshot, searchText, whole, part, found.Count);
         return (whole, part, found.Count);
+    }
+
+    /// <summary>The drawn nodes the chosen hit's processes are, wholly and in part, worked out once for each drawing and hit.</summary>
+    private (IReadOnlySet<string> Whole, IReadOnlySet<string> Part) ChosenHit()
+    {
+        // No hit is chosen while no search is typed.
+        if (selectedSearchResult is not { } hit)
+        {
+            return (NoKeys, NoKeys);
+        }
+
+        if (chosenHit is { } known && ReferenceEquals(known.Display, graphDisplay) && ReferenceEquals(known.Snapshot, wholeSnapshot)
+            && ReferenceEquals(known.Hit, hit))
+        {
+            return (known.Whole, known.Part);
+        }
+
+        HashSet<ProcessInstanceId> processes = ProcessesOf(hit.Hit);
+        var whole = new HashSet<string>(StringComparer.Ordinal);
+        var part = new HashSet<string>(StringComparer.Ordinal);
+        foreach (GraphDisplayNode node in graphDisplay.Nodes)
+        {
+            int count = node.Members.Count(processes.Contains);
+            if (count > 0)
+            {
+                (count == node.Members.Count ? whole : part).Add(node.Key);
+            }
+        }
+
+        chosenHit = (graphDisplay, wholeSnapshot, hit, whole, part);
+        return (whole, part);
+    }
+
+    /// <summary>A hit's processes: a process's own, a group's members, a channel's two ends; none for a moment or a port.</summary>
+    private HashSet<ProcessInstanceId> ProcessesOf(SearchHit hit)
+    {
+        switch (hit.Kind)
+        {
+            case SearchHitKind.Process:
+                return [.. wholeSnapshot.Processes.Where(process => process.Id.ToString() == hit.Key).Select(process => process.Id)];
+            case SearchHitKind.Group:
+                return [.. wholeSnapshot.Processes.Where(process => string.Equals(process.GroupKey, hit.Key, StringComparison.Ordinal))
+                    .Select(process => process.Id)];
+            case SearchHitKind.Channel:
+                string? edge = wholeSnapshot.Channels.FirstOrDefault(channel => channel.Key == hit.Key)?.EdgeKey;
+                return wholeSnapshot.Edges.FirstOrDefault(candidate => candidate.Key == edge) is { } ends
+                    ? [ends.SourceId, ends.TargetId]
+                    : [];
+            default:
+                return [];
+        }
     }
 
     /// <summary>Every process the search typed finds, by the rule its hits are ranked by.</summary>
