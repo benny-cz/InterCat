@@ -55,7 +55,7 @@ public sealed class EmptyGraphExplanationTests
         GraphDisplayNode quiet = Assert.Single(workspace.GraphDisplay.Nodes, node => node.Kind == GraphNodeKind.Quiet);
         workspace.SelectGraphNode(quiet.Key);
         Assert.Equal("2 processes with no admitted relationship and no connection to other hosts in this session, counted in "
-            + "one node rather than drawn one by one. The ranked table lists each of them. " + why, workspace.SelectionSubtitle);
+            + "one node rather than drawn one by one, and listed below. " + why, workspace.SelectionSubtitle);
     });
 
     [Fact(DisplayName = "§6.8: a graph that draws nothing across its pane says why beneath it, and says nothing beneath a process's rung")]
@@ -91,7 +91,7 @@ public sealed class EmptyGraphExplanationTests
         Assert.Equal(GraphNodeKind.Quiet, quiet.Kind);
         workspace.SelectGraphNode(quiet.Key);
         Assert.Equal("2 processes with no admitted relationship in this session, counted in one node rather than drawn one "
-            + "by one. The ranked table lists each of them. " + why, workspace.SelectionSubtitle);
+            + "by one, and listed below. " + why, workspace.SelectionSubtitle);
 
         // At a process's rung the graph draws that process, and its own rows list its connections: nothing is said beneath.
         ProcessNode browser = workspace.Snapshot.Processes.Single(node => node.ProcessId == 300);

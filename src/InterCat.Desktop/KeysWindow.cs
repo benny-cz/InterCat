@@ -102,6 +102,8 @@ internal static class WindowKeys
         new("Inspector", "Enter", "on a host Other hosts lists, find the processes that reached it, as searching its address "
             + "does"),
         new("Inspector", "E", "with a host Other hosts lists chosen, list the records of every connection to it"),
+        new("Inspector", "Enter", "on a process an aggregate lists - No relationships, Other hosts only, Other processes or "
+            + "Other members - open it, as Enter on a process drawn on its own does"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),
         new("A level's records", "C", "inspect the chosen record's content"),
     ]);

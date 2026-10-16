@@ -229,7 +229,7 @@ public sealed partial class WorkspaceViewModel
         }
         else if (source is { Kind: GraphNodeKind.OtherHostsOnly })
         {
-            lines.Add("Click chooses its processes; the ranked table lists each, and each one's rung its connections");
+            lines.Add("Click chooses its processes, which the inspector lists; Enter on one there opens it");
         }
 
         // Its ends joined as a relationship's are: who opened its connections is its direction line's to say.

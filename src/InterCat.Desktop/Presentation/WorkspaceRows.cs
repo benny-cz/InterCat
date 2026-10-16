@@ -109,6 +109,16 @@ public sealed record HostRow(string Address, string Detail) : IAccessibleRow
 }
 
 /// <summary>
+/// A process an aggregate counts, as the inspector lists it beneath the aggregate's description (§6.3): its name and PID,
+/// then its records over the scope shown, its relationships and its connections to other hosts.
+/// </summary>
+public sealed record MemberRow(ProcessInstanceId Process, string Name, string Detail) : IAccessibleRow
+{
+    /// <summary>The process read aloud, with what Enter does on it.</summary>
+    public string AccessibleName => $"{Name}, {Detail}. Press Enter to open it.";
+}
+
+/// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
 /// holding no record, of one coverage state, as one row spanning them.
 /// </summary>

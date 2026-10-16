@@ -2446,6 +2446,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(PinTip));
         RaiseLineageChanged();
         RaiseHostListChanged();
+        RaiseMemberListChanged();
         UpdateHighlight();
         FollowDescribedBytes();
     }
@@ -3900,13 +3901,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         return cluster.Kind switch
         {
             GraphNodeKind.Quiet => $"{members} with no admitted relationship{NoHostConnection} in this session, counted in one "
-                + "node rather than drawn one by one. The ranked table lists each of them."
+                + "node rather than drawn one by one, and listed below."
                 + (EmptyCensus is { } census ? " " + RelationshipCensusText.Explain(census, CultureInfo.CurrentCulture) : string.Empty),
             GraphNodeKind.OtherMembers => $"{members} of this group not drawn on their own"
                 + (quiet == cluster.Members.Count ? ", none with a relationship"
                     : quiet > 0 ? string.Create(CultureInfo.CurrentCulture,
                         $": {quiet:N0} without a relationship, the rest its least active") : ", its least active")
-                + $" · {relationships}. The ranked table lists each of them.",
+                + $" · {relationships}. They are listed below.",
             GraphNodeKind.Group => $"{members} · {relationships}. "
                 + (ladder.Current.Level == DetailLevel.Machine ? "Enter opens the group." : "Return to the machine rung to open it."),
             GraphNodeKind.Context => $"{members} outside this focus, counted rather than drawn · "
@@ -3915,8 +3916,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             GraphNodeKind.Host => DescribeHost(cluster),
             GraphNodeKind.OtherHostsOnly => $"{members} whose only drawn activity is their connections to other hosts, the less "
                 + "busy of those that have no relationship, counted in one node rather than drawn one by one around Other "
-                + "hosts. The ranked table lists each of them, and each one's rung its connections.",
-            _ => $"{members} folded together to keep the graph readable · {relationships}. The ranked table lists each of them.",
+                + "hosts. They are listed below, and Enter on one opens its rung, which lists its connections.",
+            _ => $"{members} folded together to keep the graph readable · {relationships}. They are listed below.",
         };
     }
 
@@ -6504,8 +6505,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(EvidenceSummary));
 
-        // The selection's connections are the whole session's, which the inspector says under a brush and not without one.
+        // The selection's connections are the whole session's, which the inspector says under a brush and not without one;
+        // an aggregate's processes are listed by their records over the scope shown.
         OnPropertyChanged(nameof(SelectionConnections));
+        RaiseMemberListChanged();
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a
         // process's RPC channels and a channel's calls.

@@ -33,10 +33,10 @@ names the busiest addresses they ran to, lists them all with the ports reached a
 accepted from each, and, opened, draws them on their own; a host chosen, drawn or listed, highlights the records of
 every connection to it for E to list. Processes that only reach other hosts are drawn beside it by program, several of
 one program as one node: the busiest programs each on its own, the rest counted in **Other hosts only**; processes with
-no relationship are counted in **No relationships**, and large executable groups collapse. When it draws no
-relationship, the graph says why. A search marks the processes it finds, by name, PID, an address they reached or a port
-they accepted connections at. The relationship table (T) lists each relationship it draws, who connected included, for a
-keyboard or a screen reader.
+no relationship are counted in **No relationships**, and large executable groups collapse; chosen, Other hosts only or
+No relationships lists the processes it counts, and Enter opens one. When it draws no relationship, the graph says why.
+A search marks the processes it finds, by name, PID, an address they reached or a port they accepted connections at. The
+relationship table (T) lists each relationship it draws, who connected included, for a keyboard or a screen reader.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

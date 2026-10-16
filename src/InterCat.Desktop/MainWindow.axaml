@@ -824,6 +824,38 @@
                 <TextBlock x:Name="HostsNoteText" Text="{Binding HostsNote}" Classes="muted" FontSize="12" TextWrapping="Wrap"
                            IsVisible="{Binding HasHostsNote}" />
               </StackPanel>
+              <!-- §6.3: an aggregate chosen - No relationships, Other hosts only, Other processes or an opened group's Other
+                   members - lists the processes it counts, the busiest first; Enter or a double click on one opens its rung,
+                   as on a process drawn on its own. -->
+              <StackPanel x:Name="MembersPanel" Spacing="3" Margin="0,10,0,0" IsVisible="{Binding ListsMembers}">
+                <TextBlock x:Name="MembersHeadingText" Text="{Binding MembersHeading}" Classes="muted" TextWrapping="Wrap" />
+                <ListBox x:Name="MemberList" ItemsSource="{Binding MemberRows}" Background="Transparent" BorderThickness="0"
+                         DoubleTapped="OpenListedMember" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                         AutomationProperties.Name="Processes the selected aggregate counts; Enter opens the selected one">
+                  <!-- At most a hundred processes, laid out whole within the inspector's own scroll, which the wheel scrolls. -->
+                  <ListBox.ItemsPanel>
+                    <ItemsPanelTemplate>
+                      <StackPanel />
+                    </ItemsPanelTemplate>
+                  </ListBox.ItemsPanel>
+                  <ListBox.Styles>
+                    <Style Selector="ListBoxItem">
+                      <Setter Property="Padding" Value="6,3" />
+                      <Setter Property="MinHeight" Value="0" />
+                    </Style>
+                  </ListBox.Styles>
+                  <ListBox.ItemTemplate>
+                    <DataTemplate x:DataType="pres:MemberRow">
+                      <StackPanel Margin="0,1" Spacing="1">
+                        <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextWrapping="Wrap" />
+                        <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                      </StackPanel>
+                    </DataTemplate>
+                  </ListBox.ItemTemplate>
+                </ListBox>
+                <TextBlock x:Name="MembersNoteText" Text="{Binding MembersNote}" Classes="muted" FontSize="12" TextWrapping="Wrap"
+                           IsVisible="{Binding HasMembersNote}" />
+              </StackPanel>
             </StackPanel>
             <Border Classes="card" Margin="0,18,0,0" Padding="11" CornerRadius="8"
                     Background="{DynamicResource Surface.Elevated}">

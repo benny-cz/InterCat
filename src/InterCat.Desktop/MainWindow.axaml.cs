@@ -624,6 +624,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     break;
                 }
 
+                if (MemberList.IsKeyboardFocusWithin)
+                {
+                    // Enter on a process an aggregate lists opens its rung, as Enter on a process drawn on its own does.
+                    e.Handled = OpenSelectedMember(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -2534,6 +2541,25 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         HostRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as HostRow
             ?? HostList.SelectedItem as HostRow;
         return row is not null && viewModel.FindHost(row);
+    }
+
+    private void OpenListedMember(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            OpenSelectedMember(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Opens the rung of the process of an aggregate's list the keyboard is on, or else the one selected, as Enter on a
+    /// process drawn on its own does (§6.3). False when there is none.
+    /// </summary>
+    internal bool OpenSelectedMember(WorkspaceViewModel viewModel)
+    {
+        MemberRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as MemberRow
+            ?? MemberList.SelectedItem as MemberRow;
+        return row is not null && viewModel.OpenMember(row);
     }
 
     private void OpenCellRecord(object? sender, TappedEventArgs eventArgs)
