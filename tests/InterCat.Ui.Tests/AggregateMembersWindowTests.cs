@@ -20,7 +20,7 @@ namespace InterCat.Ui.Tests;
 /// </summary>
 public sealed class AggregateMembersWindowTests
 {
-    [AvaloniaFact(DisplayName = "§6.3: an aggregate chosen in the window lists its processes in the inspector, each read whole, and Enter on one opens its rung")]
+    [AvaloniaFact(DisplayName = "§6.3: an aggregate chosen in the window lists its processes in the inspector, each read whole; the one the keyboard chooses E lists, and Enter on one opens its rung")]
     public async Task TheInspectorListsAnAggregatesProcesses()
     {
         using var session = new TemporarySession();
@@ -45,12 +45,48 @@ public sealed class AggregateMembersWindowTests
             Assert.Equal("Its 2 processes, the busiest first", window.GetControl<TextBlock>("MembersHeadingText").Text);
             Assert.False(window.GetControl<TextBlock>("MembersNoteText").IsVisible);
             Assert.Equal(2, members.ItemCount);
-            Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press Enter to open it.",
-                AutomationProperties.GetName(members.ContainerFromIndex(0)!));
+            Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press E to list its records, or Enter "
+                + "to open it.", AutomationProperties.GetName(members.ContainerFromIndex(0)!));
             Save(window, "inspector-aggregate-members.png");
 
-            // Enter on the second opens its rung, through its group, and the list goes with the aggregate's choice.
+            // The keyboard moving down the list chooses the second: the card counts its records, and, once a brush has
+            // restated the list with the process still chosen, E lists them, which hides the list, so the keyboard goes to
+            // their table rather than nowhere.
+            Assert.True(members.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+            Assert.Equal("program0.exe · PID 100", Assert.IsType<MemberRow>(members.SelectedItem).Name);
+            Assert.Equal("Selected process", window.GetControl<TextBlock>("EvidenceHeadingText").Text);
+
+            // A brush restates the list, the process chosen still chosen among its rows.
+            long start = workspace.Snapshot.Extent.StartTicks;
+            workspace.SelectInterval(new TimeRange(start, start + 50));
+            await workspace.IntervalReady;
+            Dispatch();
+            Assert.Equal("program0.exe · PID 100", workspace.ChosenMemberRow?.Name);
+            Assert.Equal(workspace.ChosenMemberRow, Assert.IsType<MemberRow>(members.SelectedItem));
+            Assert.EndsWith(" · whole session", workspace.ChosenMemberRow!.Detail, StringComparison.Ordinal);
+
+            // E lists its records in the brushed interval, its start alone.
             Assert.True(members.ContainerFromIndex(1)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(workspace.IsEvidenceRung);
+            Assert.False(panel.IsEffectivelyVisible);
+            await workspace.EvidenceReady;
+            Dispatch();
+            Assert.Single(workspace.RungRows);
+            Assert.True(window.GetControl<ListBox>("RungList").IsKeyboardFocusWithin);
+            workspace.ReturnTo(0);
+            Dispatch();
+
+            // Enter on the first, still in the brush's order, opens its rung, through its group, and the list goes with the
+            // aggregate's choice.
+            workspace.SelectGraphNode(workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key);
+            Dispatch();
+            Assert.Equal("program0.exe · PID 100", Assert.IsType<MemberRow>(members.Items[0]).Name);
+            Assert.True(members.ContainerFromIndex(0)!.Focus());
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
             Dispatch();
             Assert.Equal(3, workspace.Crumbs.Count);
@@ -73,8 +109,8 @@ public sealed class AggregateMembersWindowTests
         var rows = new List<ObservationRowV1>();
         for (int index = 0; index < 10; index++)
         {
-            rows.Add(Lifecycle(index, ObservationKind.Create, 100 + index, ordinal++)
-                with { ResourceName = $@"C:\Apps\program{index}.exe", SessionRelativeTicks = 100 + index });
+            rows.Add(Lifecycle(1 + index, ObservationKind.Create, 100 + index, ordinal++)
+                with { ResourceName = $@"C:\Apps\program{index}.exe", SessionRelativeTicks = 100 * (1 + index) });
         }
 
         for (int index = 0; index < 10; index++)
@@ -82,12 +118,12 @@ public sealed class AggregateMembersWindowTests
             string local = $"192.168.1.10:{52_000 + index}";
             string remote = $"52.0.0.{index + 1}:443";
             rows.Add(Transfer(100 + (long)ordinal, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100 + index, ordinal)
-                .Between(local, remote) with { SessionRelativeTicks = 10_000 + (long)ordinal });
+                .Between(local, remote) with { SessionRelativeTicks = 100 * (100 + (long)ordinal) });
             ordinal++;
             for (int send = 0; send <= index; send++)
             {
                 rows.Add(Transfer(100 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 100 + index, ordinal)
-                    .Between(local, remote) with { SessionRelativeTicks = 10_000 + (long)ordinal });
+                    .Between(local, remote) with { SessionRelativeTicks = 100 * (100 + (long)ordinal) });
                 ordinal++;
             }
         }

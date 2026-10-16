@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 594 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 595 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 595 — a process chosen in an aggregate's list is its own records (§6.4, §6.7):**
+  - Chosen by a click or the arrow keys, it is what the timeline highlights, the card counts as the selected process
+    and E lists; a node chosen in the graph lets it go, and a brush keeps it chosen as the list restates.
+  - The list control let its choice go while its rows were restated, though the choice read back as kept, so the list
+    showed none chosen while the card counted one; read during a restatement, the choice is now none.
+  - Debug ran 2,503 tests with revision 473's 93 failures and 4 skips, and nothing else failed. Release ran the
+    same, but for the merged-time window test known to fail now and then - Enter on its first column did not open
+    alpha's session within 15 s - which passed five reruns. All ten mutations were caught: the aggregate's records
+    highlighted, headed, counted or listed by E with a process chosen; the choice kept when a node is chosen in the
+    graph; the list's restatement written back as no choice, or the choice read back during it; the choice not said
+    again after it; the highlight not following a choice; and the card's heading not said again.
 
 - **Revision 594 — an aggregate chosen lists the processes it counts (§6.3, §6.7):**
   - No relationships, Other hosts only, Other processes and Other members list their processes in the inspector, the

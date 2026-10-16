@@ -114,8 +114,8 @@ public sealed record HostRow(string Address, string Detail) : IAccessibleRow
 /// </summary>
 public sealed record MemberRow(ProcessInstanceId Process, string Name, string Detail) : IAccessibleRow
 {
-    /// <summary>The process read aloud, with what Enter does on it.</summary>
-    public string AccessibleName => $"{Name}, {Detail}. Press Enter to open it.";
+    /// <summary>The process read aloud, with what E and Enter do on it.</summary>
+    public string AccessibleName => $"{Name}, {Detail}. Press E to list its records, or Enter to open it.";
 }
 
 /// <summary>

@@ -8,8 +8,10 @@ namespace InterCat.Desktop;
 /// <summary>
 /// The processes an aggregate counts (§6.3): No relationships, Other hosts only, Other processes and an opened group's
 /// Other members fold processes the graph does not draw on their own. Chosen, one lists them in the inspector beneath its
-/// description, the busiest first, each with what it did, so every process it counts is read where it is counted; Enter
-/// or a double click on one opens its rung, as Enter on a process drawn on its own does.
+/// description, the busiest first, each with what it did, so every process it counts is read where it is counted. One
+/// chosen there is its own records, as a process drawn on its own and chosen is: the timeline highlights them, the card
+/// counts them and E lists them (§6.4). Enter or a double click on one opens its rung, as Enter on a process drawn on its
+/// own does.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -18,6 +20,50 @@ public sealed partial class WorkspaceViewModel
 
     // The rows of the chosen aggregate's processes, worked out once for each drawing and scope (R11).
     private (GraphDisplayNode Node, WorkspaceSnapshot Scope, int Count, IReadOnlyList<MemberRow> Rows)? listedMembers;
+
+    // The process chosen in an aggregate's list, while the aggregate stays chosen; a node chosen in the graph, the same
+    // aggregate again included, lets it go.
+    private ProcessInstanceId? chosenListedMember;
+
+    // While an aggregate's list restates its rows it lets its choice go for a moment, which is not the person's.
+    private bool restatingMembers;
+
+    /// <summary>
+    /// The process chosen in the list an aggregate gives the inspector: what the card counts, the timeline highlights and E
+    /// lists, as for a process drawn on its own and chosen. Null while none is, no aggregate is chosen, or the list does not
+    /// hold the process. When the list restates its rows, the process chosen is chosen again among them.
+    /// </summary>
+    public MemberRow? ChosenMemberRow
+    {
+        // While the list restates its rows a binding that reads the choice back finds none, as the list then holds none;
+        // said changed once the rows are in place, the choice is then a change it applies.
+        get => !restatingMembers && chosenListedMember is { } chosen ? MemberRows.FirstOrDefault(row => row.Process == chosen) : null;
+        set
+        {
+            if (restatingMembers)
+            {
+                return;
+            }
+
+            ProcessInstanceId? process = value?.Process;
+            if (process == chosenListedMember)
+            {
+                return;
+            }
+
+            chosenListedMember = process;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(EvidenceHeading));
+            OnPropertyChanged(nameof(EvidenceSummary));
+            UpdateHighlight();
+            FollowDescribedBytes();
+        }
+    }
+
+    /// <summary>The process chosen in an aggregate's list while the list holds it; null for any other selection.</summary>
+    private ProcessNode? ChosenMember => ChosenMemberRow is { } row
+        ? Snapshot.Processes.FirstOrDefault(process => process.Id == row.Process)
+        : null;
 
     /// <summary>The chosen aggregate whose processes the inspector lists; null for any other selection.</summary>
     private GraphDisplayNode? ListingAggregate => SelectedCluster is
@@ -120,10 +166,23 @@ public sealed partial class WorkspaceViewModel
         return (ranked.Length, rows);
     }
 
-    /// <summary>Says the process list changed, after the choice, the drawing or the scope did.</summary>
+    /// <summary>
+    /// Says the process list changed, after the choice, the drawing or the scope did. A list given new rows lets its choice
+    /// go and writes that back as none chosen; the process chosen is kept and chosen again among them.
+    /// </summary>
     private void RaiseMemberListChanged()
     {
-        OnPropertyChanged(nameof(MemberRows));
+        restatingMembers = true;
+        try
+        {
+            OnPropertyChanged(nameof(MemberRows));
+        }
+        finally
+        {
+            restatingMembers = false;
+        }
+
+        OnPropertyChanged(nameof(ChosenMemberRow));
         OnPropertyChanged(nameof(ListsMembers));
         OnPropertyChanged(nameof(MembersHeading));
         OnPropertyChanged(nameof(MembersNote));

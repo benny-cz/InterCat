@@ -825,13 +825,15 @@
                            IsVisible="{Binding HasHostsNote}" />
               </StackPanel>
               <!-- §6.3: an aggregate chosen - No relationships, Other hosts only, Other processes or an opened group's Other
-                   members - lists the processes it counts, the busiest first; Enter or a double click on one opens its rung,
-                   as on a process drawn on its own. -->
+                   members - lists the processes it counts, the busiest first. The one chosen is its own records, which the
+                   timeline highlights, the card counts and E lists (§6.4); Enter or a double click on one opens its rung, as
+                   on a process drawn on its own. -->
               <StackPanel x:Name="MembersPanel" Spacing="3" Margin="0,10,0,0" IsVisible="{Binding ListsMembers}">
                 <TextBlock x:Name="MembersHeadingText" Text="{Binding MembersHeading}" Classes="muted" TextWrapping="Wrap" />
-                <ListBox x:Name="MemberList" ItemsSource="{Binding MemberRows}" Background="Transparent" BorderThickness="0"
+                <ListBox x:Name="MemberList" ItemsSource="{Binding MemberRows}" SelectedItem="{Binding ChosenMemberRow, Mode=TwoWay}"
+                         Background="Transparent" BorderThickness="0"
                          DoubleTapped="OpenListedMember" ScrollViewer.VerticalScrollBarVisibility="Disabled"
-                         AutomationProperties.Name="Processes the selected aggregate counts; Enter opens the selected one">
+                         AutomationProperties.Name="Processes the selected aggregate counts; E lists the records of the selected one, and Enter opens it">
                   <!-- At most a hundred processes, laid out whole within the inspector's own scroll, which the wheel scrolls. -->
                   <ListBox.ItemsPanel>
                     <ItemsPanelTemplate>

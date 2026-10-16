@@ -858,6 +858,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return (new(HostScopeKeys.Of(host), []), "connections to " + host);
         }
 
+        // A process chosen in an aggregate's list is its own records, as one drawn on its own and chosen is.
+        if (ChosenMember is { } member)
+        {
+            return (new(null, [member.Id]), member.NameWithPid);
+        }
+
         if (SelectedCluster is { } cluster)
         {
             return cluster.Members.Count == 0 ? (null, null) : (new(null, cluster.Members), cluster.Label);
@@ -2075,6 +2081,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedGroupKey = null;
         selectedClusterKey = key;
         chosenListedHost = null;
+        chosenListedMember = null;
         chosenChannelKey = null;
         chosenProcesses.Clear();
         graphSelection = null;
@@ -4620,6 +4627,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : HasMultiSelection ? "Selected processes"
         : ChosenRow is { } row ? "Selected " + ChosenRowNoun(row.Row)
         : OpenedChannel is { } opened ? opened.Heading
+        : ChosenMember is not null ? "Selected process"
         : SelectedCluster is { IsHost: false } ? "Selected aggregate"
         : ChosenHostAddress is not null ? "Selected host"
         : SelectedGroup is not null ? "Selected group"
@@ -4700,6 +4708,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             // An aggregate drawn in the graph stands for its processes, as a set of them chosen together does: the card
             // counts their own records, as the timeline highlights them and E lists them.
             HashSet<ProcessInstanceId> scope = HasMultiSelection ? [.. chosenProcesses]
+                : ChosenMember is { } member ? [member.Id]
                 : SelectedCluster is { } cluster ? [.. cluster.Members]
                 : SelectedGroup is { } group
                 ? [.. Snapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
@@ -4953,10 +4962,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// Jumps to evidence in one step, from whichever rung the user is on (section 3.2). It lists what the inspector's
     /// evidence card counts: in a published session a chosen relationship's records at any rung; several processes chosen,
-    /// or an aggregate of them drawn in the graph; a row chosen among a process's rows; a host drawn on its own, whose
-    /// connections' records they are, whichever process held them; a process selected at the machine rung or among a
-    /// group's members; a group selected at the machine rung; and otherwise the rung's own - named in the filter bar, where
-    /// it can be removed.
+    /// or an aggregate of them drawn in the graph, or one of an aggregate's processes chosen in its list; a row chosen
+    /// among a process's rows; a host drawn on its own, whose connections' records they are, whichever process held them; a
+    /// process selected at the machine rung or among a group's members; a group selected at the machine rung; and otherwise
+    /// the rung's own - named in the filter bar, where it can be removed.
     /// </summary>
     public bool ShowEvidence()
     {
@@ -4987,10 +4996,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     }
 
     /// <summary>
-    /// E's step from what is selected, before a chosen cell's or the rung's own records: a chosen relationship's records,
-    /// a chosen row's, a host's connections', an aggregate's processes, or the process or group selected at the machine or
-    /// a group's rung, where choosing one is a choice made there. Null where E lists the chosen cell's records or the
-    /// rung's own - at a process's or a channel's rung the process it was reached with is its context, not such a choice.
+    /// E's step from what is selected, before a chosen cell's or the rung's own records: a chosen relationship's records, a
+    /// chosen row's, a host's connections', a process chosen in an aggregate's list, an aggregate's processes, or the
+    /// process or group selected at the machine or a group's rung, where choosing one is a choice made there. Null where E
+    /// lists the chosen cell's records or the rung's own - at a process's or a channel's rung the process it was reached
+    /// with is its context, not such a choice.
     /// </summary>
     private LadderDescent? SelectionEvidenceDescent(TimeRange viewport)
     {
@@ -5006,6 +5016,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport, HostRecordsTarget(host),
                 $"Evidence was reached from the {rung} rung with the host {host} chosen: every connection to it, whichever "
                 + "process held it.")
+            : realOverview && ChosenMember is { } member
+            ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
+                new(DetailLevel.ProcessInstance, member.Id.ToString(), member.NameWithPid),
+                $"Evidence was reached from the {rung} rung with {member.NameWithPid} chosen among the processes "
+                + $"{SelectedCluster?.Label} counts.")
             : realOverview && SelectedCluster is { Members.Count: > 0 } aggregate
             ? LadderProjection.EvidenceDescentFor(ladder.Current, viewport,
                 new(DetailLevel.Group, ProcessSetFilter.KeyOf(aggregate.Members), aggregate.Label),

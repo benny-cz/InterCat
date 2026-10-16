@@ -38,8 +38,8 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Equal(
             [("program1.exe · PID 101", "4 records · 1 TCP connection to 1 host"), ("program0.exe · PID 100", "3 records · 1 TCP connection to 1 host")],
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
-        Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press Enter to open it.",
-            workspace.MemberRows[0].AccessibleName);
+        Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press E to list its records, or Enter to "
+            + "open it.", workspace.MemberRows[0].AccessibleName);
         Assert.False(workspace.HasMembersNote);
 
         // No relationships lists its three, as busy as each other, by name whatever its case; Other hosts, which stands for no
@@ -61,6 +61,49 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Equal(3, workspace.Crumbs.Count);
         Assert.Equal("Group: program1.exe", workspace.Crumbs[1].Label);
         Assert.EndsWith("program1.exe · PID 101", workspace.Crumbs[^1].Label, StringComparison.Ordinal);
+    });
+
+    [Fact(DisplayName = "§6.4: a process chosen in an aggregate's list is its own records - the card counts them, the timeline highlights them and E lists them - until a node is chosen in the graph")]
+    public void AProcessChosenInTheListIsItsRecords() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+        string hostOnly = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Key;
+        workspace.SelectGraphNode(hostOnly);
+        Assert.Null(workspace.ChosenMemberRow);
+        Assert.Equal("Selected aggregate", workspace.EvidenceHeading);
+        Assert.Equal("Other hosts only", workspace.TimelineHighlightName);
+
+        // Chosen in the list, program1.exe is the records the card counts and the timeline highlights, as if chosen alone.
+        workspace.ChosenMemberRow = workspace.MemberRows[0];
+        Assert.Equal(workspace.MemberRows[0], workspace.ChosenMemberRow);
+        Assert.Equal("Selected process", workspace.EvidenceHeading);
+        Assert.StartsWith("4 own records, mostly TCP · no admitted relationship · ", workspace.EvidenceSummary, StringComparison.Ordinal);
+        Assert.Equal("program1.exe · PID 101", workspace.TimelineHighlightName);
+        await workspace.HighlightReady;
+
+        // A row the list does not hold chooses none, and the aggregate's records are the selection's again.
+        workspace.ChosenMemberRow = workspace.MemberRows[0] with { Process = Process(workspace, 109).Id };
+        Assert.Null(workspace.ChosenMemberRow);
+        Assert.Equal("Other hosts only", workspace.TimelineHighlightName);
+
+        // A node chosen in the graph, the same aggregate again included, lets the choice go.
+        workspace.ChosenMemberRow = workspace.MemberRows[1];
+        workspace.SelectGraphNode(hostOnly);
+        Assert.Null(workspace.ChosenMemberRow);
+        Assert.Equal("Selected aggregate", workspace.EvidenceHeading);
+
+        // E lists the chosen process's records, saying where they were chosen.
+        workspace.ChosenMemberRow = workspace.MemberRows[1];
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal(3, workspace.RungRows.Count);
+        FilterRow scope = Assert.Single(workspace.Filters, filter => filter.Field == "scope");
+        Assert.Equal("Records of: program0.exe · PID 100", scope.Chip);
+        Assert.EndsWith("with program0.exe · PID 100 chosen among the processes Other hosts only counts.", scope.Reason,
+            StringComparison.Ordinal);
     });
 
     [Fact(DisplayName = "§6.3: under a brush an aggregate's processes are listed by their records in it, their connections to other hosts the whole session's, as said")]
@@ -153,8 +196,8 @@ public sealed class AggregateMembersWorkspaceTests
     /// <summary>
     /// Ten programs of one process each, program0.exe (PID 100) to program9.exe (PID 109), each connecting to a host of its
     /// own and sending to it once more than the one before; and three processes with no connection, quiet0.exe,
-    /// QUIET1.EXE and quiet2.exe (PIDs 200 to 202). Every process starts within 0.12 µs, and every connection opens after
-    /// 10 µs.
+    /// QUIET1.EXE and quiet2.exe (PIDs 200 to 202). Every process starts within 1.4 µs, and every connection opens after
+    /// 11 µs.
     /// </summary>
     internal static ObservationRowV1[] Rows()
     {
@@ -162,14 +205,14 @@ public sealed class AggregateMembersWorkspaceTests
         var rows = new List<ObservationRowV1>();
         for (int index = 0; index < 10; index++)
         {
-            rows.Add(Lifecycle(index, ObservationKind.Create, 100 + index, ordinal++)
-                with { ResourceName = $@"C:\Apps\program{index}.exe", SessionRelativeTicks = 100 + index });
+            rows.Add(Lifecycle(1 + index, ObservationKind.Create, 100 + index, ordinal++)
+                with { ResourceName = $@"C:\Apps\program{index}.exe", SessionRelativeTicks = 100 * (1 + index) });
         }
 
         for (int index = 0; index < 3; index++)
         {
-            rows.Add(Lifecycle(10 + index, ObservationKind.Create, 200 + index, ordinal++)
-                with { ResourceName = index == 1 ? @"C:\APPS\QUIET1.EXE" : $@"C:\Apps\quiet{index}.exe", SessionRelativeTicks = 110 + index });
+            rows.Add(Lifecycle(11 + index, ObservationKind.Create, 200 + index, ordinal++)
+                with { ResourceName = index == 1 ? @"C:\APPS\QUIET1.EXE" : $@"C:\Apps\quiet{index}.exe", SessionRelativeTicks = 100 * (11 + index) });
         }
 
         for (int index = 0; index < 10; index++)
@@ -177,12 +220,12 @@ public sealed class AggregateMembersWorkspaceTests
             string local = $"192.168.1.10:{52_000 + index}";
             string remote = $"52.0.0.{index + 1}:443";
             rows.Add(Transfer(100 + (long)ordinal, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100 + index, ordinal)
-                .Between(local, remote) with { SessionRelativeTicks = 10_000 + (long)ordinal });
+                .Between(local, remote) with { SessionRelativeTicks = 100 * (100 + (long)ordinal) });
             ordinal++;
             for (int send = 0; send <= index; send++)
             {
                 rows.Add(Transfer(100 + (long)ordinal, ObservationKind.Send, AccountingSide.SendSide, 100, 100 + index, ordinal)
-                    .Between(local, remote) with { SessionRelativeTicks = 10_000 + (long)ordinal });
+                    .Between(local, remote) with { SessionRelativeTicks = 100 * (100 + (long)ordinal) });
                 ordinal++;
             }
         }
