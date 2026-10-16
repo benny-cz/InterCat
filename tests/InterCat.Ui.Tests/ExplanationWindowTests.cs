@@ -115,8 +115,8 @@ public sealed class ExplanationWindowTests
         Assert.True(explanation.IsEffectivelyVisible);
         Assert.Equal("How it was paired", heading.Text);
         Assert.StartsWith("Each end's records bind to one process and name the other end: paired by "
-            + "transport-endpoint-relation, version 4, correlated. Opened and closed in the capture.", explanation.Text,
-            StringComparison.Ordinal);
+            + $"transport-endpoint-relation, version 4, correlated. Opened and closed in the capture, by a connect from {ClientEnd}.",
+            explanation.Text, StringComparison.Ordinal);
         Assert.Contains(channel.Key, explanation.Text, StringComparison.Ordinal);
         Save(window, "explanation-channel-1456x939.png");
         window.Close();

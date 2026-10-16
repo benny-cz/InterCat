@@ -3041,8 +3041,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// A paired channel's row at its process's rung, named by the process at its other end. A channel's own name is its
     /// endpoint pair, and a server's channels all begin with the server's own endpoint, so the rail cut every row before the
-    /// peer's port and they read alike. The peer leads, the process's own port and the peer's follow, and the tooltip,
-    /// crumb and export keep the channel's own name.
+    /// peer's port and they read alike. The peer leads - "→" where the process made the connection, "←" where the peer
+    /// did, "↔" where the capture cannot say or a datagram flow - the process's own port and the peer's follow, and the
+    /// tooltip, crumb and export keep the channel's own name.
     /// </summary>
     private static RungRow PeerNamed(RungRow row, ProcessInstanceId process, Channel channel, CommunicationEdge edge,
         Dictionary<ProcessInstanceId, string> names)
@@ -3050,11 +3051,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ProcessInstanceId peer = edge.SourceId == process ? edge.TargetId : edge.SourceId;
         string peerName = peer == process ? "itself" : names.GetValueOrDefault(peer, "an unknown process");
         string ends = ChannelNames.Compact(channel.Name, swap: channel.FirstHolder is { } first && first != process);
+        bool made = peer != process && channel.ConnectedBy == process;
+        bool came = peer != process && channel.ConnectedBy == peer;
         return row with
         {
-            Label = "↔ " + peerName,
+            Label = (made ? "→ " : came ? "← " : "↔ ") + peerName,
             Detail = $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ends}",
-            SpokenLabel = "Channel with " + peerName,
+            SpokenLabel = (made ? "Connection to " : came ? "Connection from " : "Channel with ") + peerName,
         };
     }
 
@@ -4095,11 +4098,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 ? "Bytes: none · an RPC call carries no size"
                 : HoverBytes(DescribedEdges(Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))), drawn.ObservationCount),
         ]);
+        // Each end named as its node's card names it, and as the relationship table names a process: by name and PID, so
+        // an edge between two instances of one executable never reads "chrome.exe ↔ chrome.exe".
+        string source = graphDisplay.Node(drawn.SourceKey)?.Title ?? drawn.SourceKey;
+        string target = graphDisplay.Node(drawn.TargetKey)?.Title ?? drawn.TargetKey;
         if (realOverview)
         {
             lines.Add(drawn.Mechanism == Mechanism.Rpc
                 ? "Direction: display order only; each end's RPC rows say which calls and which served"
-                : "Direction: display order only, not who initiated or sent");
+                : DirectionLine(drawn, made, drawnDisplay, source, target));
         }
 
         lines.Add("Coverage: " + CoverageStateText.Value(drawn.Mechanism == Mechanism.Rpc ? RpcEdgeCoverage()
@@ -4116,11 +4123,50 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             lines.Add("Double-click opens " + WorkspaceRowBuilder.Opens(Snapshot, only));
         }
 
-        // Each end named as its node's card names it, and as the relationship table names a process: by name and PID, so
-        // an edge between two instances of one executable never reads "chrome.exe ↔ chrome.exe".
-        string source = graphDisplay.Node(drawn.SourceKey)?.Title ?? drawn.SourceKey;
-        string target = graphDisplay.Node(drawn.TargetKey)?.Title ?? drawn.TargetKey;
         return new($"{source} ↔ {target}", lines);
+    }
+
+    /// <summary>
+    /// Who made a drawn transport edge's connections, as the capture saw their ends open: "Direction: client.exe · PID 100
+    /// connected to server.exe · PID 200", counted where some went the other way or the capture saw some open neither way;
+    /// display order only where it saw none open, for a UDP flow, which nothing opens, and within one drawn node.
+    /// </summary>
+    internal static string DirectionLine(GraphDisplayEdge drawn, IReadOnlyList<CommunicationEdge> made, GraphDisplay display,
+        string source, string target)
+    {
+        int fromSource = 0;
+        int fromTarget = 0;
+        foreach (CommunicationEdge edge in made)
+        {
+            bool forward = display.NodeOf(edge.SourceId)?.Key == drawn.SourceKey;
+            fromSource += forward ? edge.SourceConnected : edge.TargetConnected;
+            fromTarget += forward ? edge.TargetConnected : edge.SourceConnected;
+        }
+
+        int connections = made.Sum(edge => edge.Evidence.Count);
+        if (fromSource + fromTarget == 0 || drawn.SourceKey == drawn.TargetKey)
+        {
+            return "Direction: display order only, not who initiated or sent";
+        }
+
+        string all = connections > 1 ? string.Create(CultureInfo.CurrentCulture, $", in all {connections:N0} of its connections") : string.Empty;
+        if (fromSource == connections)
+        {
+            return $"Direction: {source} connected to {target}{all}";
+        }
+
+        if (fromTarget == connections)
+        {
+            return $"Direction: {target} connected to {source}{all}";
+        }
+
+        int unseen = connections - fromSource - fromTarget;
+        return "Direction: " + string.Join(", ", new[]
+            {
+                fromSource > 0 ? $"{source} connected to {target} in " + CountText.Of(fromSource, "connection") : null,
+                fromTarget > 0 ? $"{target} connected to {source} in " + CountText.Of(fromTarget, "connection") : null,
+            }.OfType<string>())
+            + (unseen > 0 ? "; the capture saw " + CountText.Of(unseen, "connection") + " open neither way" : string.Empty);
     }
 
     /// <summary>

@@ -541,6 +541,55 @@ public sealed class RelationTests
             PeerIdentities(split.Store, splitProcesses, splitRelations));
     }
 
+    [Fact(DisplayName = "§7.4: a paired connection says which end made it, from a connect at one end or an accept at the other, and neither where its ends say nothing or both")]
+    public void APairedConnectionSaysWhichEndMadeIt()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            // 100 connects to 200, both ends seen opening it.
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1).Between(ClientEnd, ServerEnd),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between(ServerEnd, ClientEnd),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 3).Between(ClientEnd, ServerEnd),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 4).Between(ServerEnd, ClientEnd),
+
+            // 300's connection to 200, of which only the server's accept was seen.
+            Transfer(20, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 5).Between(ServerEnd, "127.0.0.1:50001"),
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 8, 300, 6).Between("127.0.0.1:50001", ServerEnd),
+            Transfer(22, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 7).Between(ServerEnd, "127.0.0.1:50001"),
+
+            // 400 and 500, whose ends both connected - a simultaneous open, which names no maker.
+            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 8).Between("127.0.0.1:50002", "127.0.0.1:50003"),
+            Transfer(31, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 500, 9).Between("127.0.0.1:50003", "127.0.0.1:50002"),
+            Transfer(32, ObservationKind.Send, AccountingSide.SendSide, 8, 400, 10).Between("127.0.0.1:50002", "127.0.0.1:50003"),
+            Transfer(33, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 500, 11).Between("127.0.0.1:50003", "127.0.0.1:50002"),
+
+            // 600 and 700, seen opening at neither end.
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 8, 600, 12).Between("127.0.0.1:50004", "127.0.0.1:9090"),
+            Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 700, 13).Between("127.0.0.1:9090", "127.0.0.1:50004"),
+
+            // 800's connection to 900's port 60000, whose end sorts after 800's, of which only 900's accept was seen.
+            Transfer(50, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 900, 14).Between("127.0.0.1:60000", "127.0.0.1:50005"),
+            Transfer(51, ObservationKind.Send, AccountingSide.SendSide, 8, 800, 15).Between("127.0.0.1:50005", "127.0.0.1:60000"),
+            Transfer(52, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 900, 16).Between("127.0.0.1:60000", "127.0.0.1:50005"),
+        ]);
+        (_, TransportRelationIndex relations) = Derive(session.Store);
+
+        // Each relation by its ends' processes, first and second, and the process that made it: 0 where none is said.
+        Assert.Equal(
+            [(200, 100, 100), (200, 300, 300), (400, 500, 0), (700, 600, 0), (800, 900, 800)],
+            relations.Relations
+                .Select(relation => (relation.First.ProcessId, relation.Second.ProcessId, relation.Opening switch
+                {
+                    RelationOpening.FirstConnected => relation.First.ProcessId,
+                    RelationOpening.SecondConnected => relation.Second.ProcessId,
+                    _ => 0,
+                }))
+                .Order());
+        Assert.Equal(RelationOpening.SecondConnected, relations.Relations.Single(relation => relation.Second.ProcessId == 100).Opening);
+        Assert.Equal(RelationOpening.NotWitnessed, relations.Relations.Single(relation => relation.First.ProcessId == 400).Opening);
+    }
+
     [Fact(DisplayName = "R22: a port reused by a later connection is another connection, paired with its own other end")]
     public void AReusedPortIsAnotherConnection()
     {

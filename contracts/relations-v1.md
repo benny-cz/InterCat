@@ -113,6 +113,13 @@ they hold and how many of those have no usable session time, and whether each en
 process connected to itself is a relation with itself. Relations are listed by the end whose key sorts first, then by
 incarnation.
 
+Since revision 576 a relation also says which end **made** the connection, as the capture saw its two ends open (§3):
+the first, where its end connected or the second's accepted; the second, the other way round; and neither where the
+capture saw neither end open, or the ends say both connected or both accepted, as a simultaneous open would. The
+overview counts, for each relationship, how many of its connections its source made and how many its target made
+(`sourceConnected`, `targetConnected`), and names each channel's maker and the endpoint it connected from
+(`connectedBy`, `connectedFrom`); a UDP flow, which nothing opens, and a process connected to itself have none.
+
 Every record of an incarnation has that incarnation's other end (§4), so a count of records by their other end is a
 sum over incarnations, plus the records with no end, and needs no second read of any record: how many records of a
 mechanism have no other end a policy admits is exactly how many of them a per-record read would find unadmitted.

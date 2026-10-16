@@ -326,6 +326,16 @@ public sealed record CommunicationEdge(
     public required IReadOnlyList<string> Evidence { get; init; }
 
     /// <summary>
+    /// How many of its connections the source made to the target, as the capture saw their ends open - a connect at the
+    /// source's end, or an accept at the target's (`contracts/relations-v1.md` §5). None for a UDP flow, which nothing
+    /// opens, and for a process connected to itself.
+    /// </summary>
+    public int SourceConnected { get; init; }
+
+    /// <summary>How many of its connections the target made to the source, as <see cref="SourceConnected"/> counts them.</summary>
+    public int TargetConnected { get; init; }
+
+    /// <summary>
     /// Two relationships are one when each of their fields is, their evidence compared key by key: one generation read
     /// twice yields equal relationships (R7), though each read builds its own list.
     /// </summary>
@@ -339,9 +349,12 @@ public sealed record CommunicationEdge(
         && KnownBytes == other.KnownBytes
         && Strength == other.Strength
         && Rule == other.Rule
+        && SourceConnected == other.SourceConnected
+        && TargetConnected == other.TargetConnected
         && Evidence.SequenceEqual(other.Evidence, StringComparer.Ordinal);
 
-    public override int GetHashCode() => HashCode.Combine(Key, SourceId, TargetId, Mechanism, ObservationCount, KnownBytes, Strength, Rule);
+    public override int GetHashCode() => HashCode.Combine(Key, SourceId, TargetId, Mechanism, ObservationCount, KnownBytes, Strength,
+        HashCode.Combine(Rule, SourceConnected, TargetConnected));
 }
 
 /// <summary>
@@ -395,6 +408,15 @@ public sealed record Channel(
 
     /// <inheritdoc cref="OpenWitnessed"/>
     public bool CloseWitnessed { get; init; } = true;
+
+    /// <summary>
+    /// The process that made the connection, as the capture saw its ends open - a connect at its end, or an accept at the
+    /// other's; null where the capture cannot say, and for a UDP flow, which nothing opens.
+    /// </summary>
+    public ProcessInstanceId? ConnectedBy { get; init; }
+
+    /// <summary>The endpoint the connection was made from, its maker's own; null where <see cref="ConnectedBy"/> is.</summary>
+    public string? ConnectedFrom { get; init; }
 }
 
 /// <summary>

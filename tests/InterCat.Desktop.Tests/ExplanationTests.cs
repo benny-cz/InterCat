@@ -228,9 +228,17 @@ public sealed class ExplanationTests
         Assert.True(workspace.Descend());
         workspace.SelectedRung = workspace.RungRows.Single();
         Assert.True(workspace.Descend());
+        // The connection the client made leads with an arrow toward the server; the one the capture saw open neither way
+        // with both.
+        Assert.Equal(("→ server.exe · PID 200", "↔ server.exe · PID 200"),
+            (workspace.RungRows.Single(row => row.Key == whole.Key).Label, workspace.RungRows.Single(row => row.Key == unseen.Key).Label));
+        Assert.Equal(("Connection to server.exe · PID 200", "Channel with server.exe · PID 200"),
+            (workspace.RungRows.Single(row => row.Key == whole.Key).SpokenLabel,
+                workspace.RungRows.Single(row => row.Key == unseen.Key).SpokenLabel));
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == whole.Key);
-        Assert.Equal(("How it was paired", Paired + "Opened and closed in the capture. Coverage over the session: unknown. "
-            + $"E lists its records at both ends, by its key {whole.Key}."), (workspace.ExplanationHeading, workspace.Explanation));
+        Assert.Equal(("How it was paired", Paired + $"Opened and closed in the capture, by a connect from {ClientEnd}. Coverage over the "
+            + $"session: unknown. E lists its records at both ends, by its key {whole.Key}."),
+            (workspace.ExplanationHeading, workspace.Explanation));
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == unseen.Key);
         Assert.Equal(Paired + "Open before the capture and after it. Coverage over the session: unknown. "
             + $"E lists its records at both ends, by its key {unseen.Key}.", workspace.Explanation);

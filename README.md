@@ -26,13 +26,14 @@ Windows build is in [the per-build coverage](docs/PER-BUILD-COVERAGE.md).
 
 **The graph** relates processes by TCP connections and UDP flows whose two ends both belong to processes of the capture,
 and by RPC calls linked to the calls that served them in an RPC peers capture. Each pair's relationships run side by
-side, a mechanism's hue each. Connections whose other end no record holds - most of a real machine's, to other hosts -
-are drawn to one **Other hosts** node, which names the busiest addresses they ran to, lists them all with the ports
-reached at each and the connections a process accepted from each, and, opened, draws them on their own; a host chosen,
-drawn or listed, highlights the records of every connection to it for E to list. The busiest processes that only reach
-other hosts are drawn on their own and the rest counted in **Other hosts only**, processes with no relationship in
-**No relationships**, and large executable groups collapse. When it draws no relationship, the graph says why. A search
-marks the processes it finds, by name, PID, an address they reached or a port they accepted connections at.
+side, a mechanism's hue each, and say which process connected to which where the capture saw their connections open.
+Connections whose other end no record holds - most of a real machine's, to other hosts - are drawn to one
+**Other hosts** node, which names the busiest addresses they ran to, lists them all with the ports reached at each and
+the connections a process accepted from each, and, opened, draws them on their own; a host chosen, drawn or listed,
+highlights the records of every connection to it for E to list. The busiest processes that only reach other hosts are
+drawn on their own and the rest counted in **Other hosts only**, processes with no relationship in **No relationships**,
+and large executable groups collapse. When it draws no relationship, the graph says why. A search marks the processes it
+finds, by name, PID, an address they reached or a port they accepted connections at.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.

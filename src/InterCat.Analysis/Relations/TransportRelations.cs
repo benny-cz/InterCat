@@ -19,6 +19,18 @@ public enum ConnectionOpening
 }
 
 /// <summary>
+/// Which end of a paired connection opened it, as the capture saw its ends open (`contracts/relations-v1.md` §5): the
+/// first end connected - it made a connect, or the second accepted - or the second did. Neither when the capture saw
+/// neither end open, or the two ends say both made the connection, or both accepted it.
+/// </summary>
+public enum RelationOpening
+{
+    NotWitnessed = 0,
+    FirstConnected = 1,
+    SecondConnected = 2,
+}
+
+/// <summary>
 /// One connection incarnation whose two ends are each held by exactly one process instance: the relation §7.4's
 /// network correlator proves between them (`contracts/relations-v1.md`). Endpoints are as the source names them, never
 /// normalized into an identity of their own (R22).
@@ -69,6 +81,9 @@ public sealed record TransportRelation
     public required bool OpenWitnessed { get; init; }
 
     public required bool CloseWitnessed { get; init; }
+
+    /// <summary>Which end connected to the other, as the capture saw the two ends open; neither where it cannot say.</summary>
+    public required RelationOpening Opening { get; init; }
 }
 
 /// <summary>
@@ -852,6 +867,7 @@ public sealed partial class TransportRelationIndex
                     RecordsWithoutSessionTime = incarnation.Untimed + other.Untimed,
                     OpenWitnessed = incarnation.OpenWitnessed && other.OpenWitnessed,
                     CloseWitnessed = incarnation.CloseWitnessed && other.CloseWitnessed,
+                    Opening = Opened(incarnation.Opening, other.Opening),
                 });
             }
         }
@@ -896,6 +912,19 @@ public sealed partial class TransportRelationIndex
         }
 
         return connections;
+    }
+
+    /// <summary>
+    /// Which end of a paired connection connected, from how the capture saw each open: the first, where it connected or the
+    /// second accepted; the second, where it connected or the first accepted; neither, where the ends say both or nothing.
+    /// </summary>
+    private static RelationOpening Opened(ConnectionOpening first, ConnectionOpening second)
+    {
+        bool firstConnected = first == ConnectionOpening.Connected || second == ConnectionOpening.Accepted;
+        bool secondConnected = second == ConnectionOpening.Connected || first == ConnectionOpening.Accepted;
+        return firstConnected == secondConnected ? RelationOpening.NotWitnessed
+            : firstConnected ? RelationOpening.FirstConnected
+            : RelationOpening.SecondConnected;
     }
 
     /// <summary>The weaker of two strengths: a relation is only as strong as the weakest binding it rests on.</summary>

@@ -319,9 +319,11 @@ public static class LadderProjection
                 channel.Key,
                 channel.Name,
                 // Words, not enumeration names: the one display mapping names the mechanism here as everywhere else (R5).
-                channel.Direction == Direction.UnknownDirection
+                (channel.Direction == Direction.UnknownDirection
                     ? $"{EvidenceRowText.MechanismName(channel.Mechanism)} · paired endpoints; direction varies by observation"
-                    : $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ObservationText.DirectionOf(channel.Direction)}",
+                    : $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ObservationText.DirectionOf(channel.Direction)}")
+                    // Which end made the connection, where the capture saw it open.
+                    + (channel.ConnectedFrom is { } from ? " · made from " + from : string.Empty),
                 channel.ObservationCount,
                 channel.KnownBytes,
                 channel.Mechanism,

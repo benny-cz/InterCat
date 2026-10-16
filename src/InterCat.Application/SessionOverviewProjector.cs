@@ -255,6 +255,12 @@ public static class SessionOverviewProjector
                 // Each connection or flow by the key its channel rung opens: its first record at either end.
                 Rule = RelationRule.TransportEndpoint,
                 Evidence = [.. group.Select(relation => relation.StableKey).Order(StringComparer.Ordinal)],
+
+                // Who made each connection, where the capture saw its ends open; a process connected to itself makes none.
+                SourceConnected = group.Key.Pair.First == group.Key.Pair.Second ? 0
+                    : group.Count(relation => ConnectedBy(relation) == group.Key.Pair.First),
+                TargetConnected = group.Key.Pair.First == group.Key.Pair.Second ? 0
+                    : group.Count(relation => ConnectedBy(relation) == group.Key.Pair.Second),
             })];
 
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
@@ -586,6 +592,21 @@ public static class SessionOverviewProjector
         Strength = relation.Strength,
         OpenWitnessed = relation.OpenWitnessed,
         CloseWitnessed = relation.CloseWitnessed,
+        ConnectedBy = ConnectedBy(relation),
+        ConnectedFrom = relation.Opening switch
+        {
+            RelationOpening.FirstConnected => relation.FirstEndpoint,
+            RelationOpening.SecondConnected => relation.SecondEndpoint,
+            _ => null,
+        },
+    };
+
+    /// <summary>The process that made a paired connection, as the capture saw its ends open; null where it cannot say.</summary>
+    private static ProcessInstanceId? ConnectedBy(TransportRelation relation) => relation.Opening switch
+    {
+        RelationOpening.FirstConnected => relation.First.Id,
+        RelationOpening.SecondConnected => relation.Second.Id,
+        _ => null,
     };
 
     /// <summary>

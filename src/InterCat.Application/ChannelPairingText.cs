@@ -10,8 +10,8 @@ public static class ChannelPairingText
 {
     /// <summary>
     /// The rule that paired its ends and how strongly the pairing holds, whether the capture saw the connection open and
-    /// close - a UDP flow has no record that opens or closes it - and the capture's coverage over the session. A channel no
-    /// rule paired, as the tour's, has none to explain.
+    /// close - a UDP flow has no record that opens or closes it - and from which end it was made where the capture saw
+    /// that, and the capture's coverage over the session. A channel no rule paired, as the tour's, has none to explain.
     /// </summary>
     public static string Explain(Channel channel)
     {
@@ -26,7 +26,8 @@ public static class ChannelPairingText
             : "correlated";
         string lifetime = channel.Mechanism == Mechanism.Udp
             ? "a datagram flow, which no record opens or closes"
-            : ConnectionSummary.LifetimeWords(channel.OpenWitnessed, channel.CloseWitnessed);
+            : ConnectionSummary.LifetimeWords(channel.OpenWitnessed, channel.CloseWitnessed)
+                + (channel.ConnectedFrom is { } from ? ", by a connect from " + from : string.Empty);
         return $"Each end's records bind to one process and name the other end: paired by {ProcessBindingText.Rule(rule)}, {strength}. "
             + $"{char.ToUpperInvariant(lifetime[0])}{lifetime[1..]}. Coverage over the session: {CoverageStateText.Value(channel.Coverage)}.";
     }
