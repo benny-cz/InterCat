@@ -61,6 +61,18 @@ internal static class ConnectionOpens
         return counts;
     }
 
+    /// <summary>
+    /// Whether the session records any connection's open at all, at either end of a paired connection or at a one-sided
+    /// one's: where it records none - a capture that collected no connect or accept, or an import whose source recorded none
+    /// - how many connections a process made or accepted is unknown, never none (R21).
+    /// </summary>
+    public static bool Recorded(TransportRelationIndex relations)
+    {
+        ArgumentNullException.ThrowIfNull(relations);
+        return relations.Relations.Any(relation => relation.Opening != RelationOpening.NotWitnessed || relation.OpenWitnessed)
+            || relations.OneSided.Any(connection => connection.Opening != ConnectionOpening.NotWitnessed);
+    }
+
     /// <summary>Whether a native reading is within a half-open interval, as a record's is; every reading is, with none.</summary>
     private static bool Within(TimeRange? native, long ticks) =>
         native is not { } range || (ticks >= range.StartTicks && ticks < range.EndTicks);

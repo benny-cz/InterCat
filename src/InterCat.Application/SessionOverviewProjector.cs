@@ -133,6 +133,13 @@ public sealed record SessionOverviewBundle(
     public RelationshipCensus? Census { get; init; }
 
     /// <summary>
+    /// Whether the session records any connection's open (<see cref="ConnectionOpens.Recorded"/>), so that a process whose
+    /// <see cref="ProcessNode.ConnectionsMade"/> and <see cref="ProcessNode.ConnectionsAccepted"/> are none made and accepted
+    /// none, rather than ones the capture could not have seen (R21).
+    /// </summary>
+    public bool ConnectionOpensRecorded { get; init; }
+
+    /// <summary>
     /// Each process's connections to other hosts, by transport, whose binding <see cref="Policy"/> admits: what the graph
     /// draws to its Other hosts node (§6.3). Empty for an overview no session was projected for.
     /// </summary>
@@ -445,6 +452,7 @@ public static class SessionOverviewProjector
             Demo = DemoInvestigation.IsDemo(manifest),
             Policy = policy,
             Census = census,
+            ConnectionOpensRecorded = ConnectionOpens.Recorded(relations),
             HostLinks = hostLinks,
             Collectors = collectors,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }

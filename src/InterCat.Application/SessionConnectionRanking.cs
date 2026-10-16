@@ -95,8 +95,7 @@ public static class SessionConnectionRanking
         var generation = new GenerationSegments(store, manifest, clock);
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
-        bool opensRecorded = relations.Relations.Any(relation => relation.Opening != RelationOpening.NotWitnessed || relation.OpenWitnessed)
-            || relations.OneSided.Any(connection => connection.Opening != ConnectionOpening.NotWitnessed);
+        bool opensRecorded = ConnectionOpens.Recorded(relations);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
         SegmentReaderV1[] segments = native is { } readings
             ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))

@@ -424,6 +424,71 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  300 .* unmeasured +no receives\r?$", table);
     }
 
+    [Fact(DisplayName = "§5.2: icat processes says the connections each instance made and accepted as the window's card counts them, and not recorded where the session records no open")]
+    public async Task ProcessesSayTheConnectionsEachMadeAndAccepted()
+    {
+        // The client connects to the server, which accepts, and to another host; the resolver sends UDP, which opens nothing.
+        using var opened = new TemporarySession();
+        Publish(opened.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe" },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between("192.168.1.10:52000", "203.0.113.1:443"),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 30).Between("192.168.1.10:53000", "10.0.0.53:53")
+                with { Mechanism = Mechanism.Udp },
+        ]);
+        opened.Store.ReleaseSegmentReaders();
+        (InterCatExitCode code, string table, string said) = await Run("processes", opened.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  100 +client\.exe .* 2 made · 0 accepted +", table);
+        Assert.Matches(@"(?m)^  200 +server\.exe .* 0 made · 1 accepted +", table);
+        Assert.Matches(@"(?m)^  300 +resolver\.exe .* +none +32 B +no receives\r?$", table);
+        Assert.Contains("Connections made and accepted are each instance's TCP connections as the capture saw them open",
+            table, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Connections +0 made · 1 accepted, as the capture saw them open\r?$",
+            (await Run("processes", opened.Path, "--pid", "200")).Output);
+        Assert.Matches(@"(?m)^  Connections +none the capture saw open\r?$",
+            (await Run("processes", opened.Path, "--pid", "300")).Output);
+
+        // The document says the same, and they are the overview's own counts, which each process's card reads.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(opened.Store);
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", opened.Path, "--json")).Output))
+        {
+            foreach (JsonElement item in json.RootElement.GetProperty("instances").EnumerateArray())
+            {
+                ProcessNode node = overview.Nodes.Single(candidate => candidate.Id.ToString()
+                    == item.GetProperty("process").GetProperty("instanceId").GetString());
+                Assert.Equal((node.ConnectionsMade, node.ConnectionsAccepted),
+                    (item.GetProperty("connectionsMade").GetInt64(), item.GetProperty("connectionsAccepted").GetInt64()));
+            }
+        }
+
+        // A session that records no connection's open cannot say how many any instance made or accepted.
+        using var unopened = new TemporarySession();
+        Publish(unopened.Store,
+        [
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        ]);
+        unopened.Store.ReleaseSegmentReaders();
+        (code, table, said) = await Run("processes", unopened.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  100 .* not recorded +8 B +no receives\r?$", table);
+        Assert.Contains("This session records no connection's open, so how many connections an instance made or accepted is "
+            + "unknown rather than none.", table, StringComparison.Ordinal);
+        Assert.Matches(@"(?m)^  Connections +not recorded: this session records no connection's open\r?$",
+            (await Run("processes", unopened.Path, "--pid", "100")).Output);
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", unopened.Path, "--json")).Output))
+        {
+            JsonElement only = Assert.Single(json.RootElement.GetProperty("instances").EnumerateArray());
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null),
+                (only.GetProperty("connectionsMade").ValueKind, only.GetProperty("connectionsAccepted").ValueKind));
+        }
+    }
+
     [Fact(DisplayName = "R18: icat overview says what the capture covered over the session in the words the window's inspector uses")]
     public async Task TheOverviewSaysWhatTheCaptureCovered()
     {

@@ -62,6 +62,16 @@ internal sealed record ProcessActivityDocument
     public required ProcessTransportRecordsDocument Receives { get; init; }
 
     /// <summary>
+    /// The TCP connections the instance made over the session, as the capture saw each open at either end - by its own
+    /// connect or the other end's accept - as the window's card and a connection ranking count them (`relations-v1` §5);
+    /// null where the session records no connection's open, so how many it made is unknown rather than none (R21).
+    /// </summary>
+    public required long? ConnectionsMade { get; init; }
+
+    /// <summary>The TCP connections it accepted, by its own accept or the other end's connect, as <see cref="ConnectionsMade"/> counts them.</summary>
+    public required long? ConnectionsAccepted { get; init; }
+
+    /// <summary>
     /// Who the instance exchanged data with, through proven relations, when one PID was asked about; null otherwise,
     /// because deriving every instance's peers is a query per instance.
     /// </summary>
@@ -223,7 +233,8 @@ internal static class ProcessesCommand
         // Each instance as the inspector explains it: the overview's own projection under the same policy (R18).
         SessionOverviewBundle projected = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken);
         Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
-        ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound);
+        ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound,
+            projected.ConnectionOpensRecorded);
         if (pid is { } selected)
         {
             ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with.");
@@ -294,7 +305,8 @@ internal static class ProcessesCommand
         MetricResult received,
         EvidencePolicy policy,
         Dictionary<ProcessInstanceId, ProcessNode> nodes,
-        IReadOnlyList<CollectorProcessV1> unfound)
+        IReadOnlyList<CollectorProcessV1> unfound,
+        bool opensRecorded)
     {
         Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
         Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
@@ -311,6 +323,8 @@ internal static class ProcessesCommand
                     TransportBytesReceived = receivedBy.GetValueOrDefault(group.Process!.Id)?.Value,
                     Sends = Records(sentBy.GetValueOrDefault(group.Process!.Id)),
                     Receives = Records(receivedBy.GetValueOrDefault(group.Process!.Id)),
+                    ConnectionsMade = opensRecorded ? nodes[group.Process!.Id].ConnectionsMade : null,
+                    ConnectionsAccepted = opensRecorded ? nodes[group.Process!.Id].ConnectionsAccepted : null,
                     PidHolders = nodes[group.Process!.Id].PidHolders,
                     CandidateRecords = nodes[group.Process!.Id].CandidateRecords,
                     WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
@@ -333,6 +347,12 @@ internal static class ProcessesCommand
             "Sent and received bytes are each instance's own transport records: sender-accounted for what it sent and "
             + "receiver-accounted for what it received. Added across instances they count a local transfer at both "
             + "ends.",
+            opensRecorded
+                ? "Connections made and accepted are each instance's TCP connections as the capture saw them open at either "
+                    + "end, by its own connect or accept or the other end's: one between two instances is one each counts, "
+                    + "and one an instance made to itself it both made and accepted."
+                : "This session records no connection's open, so how many connections an instance made or accepted is "
+                    + "unknown rather than none.",
         };
         caveats.AddRange(records.Caveats.Where(caveat => caveat.Contains("process-binding", StringComparison.Ordinal)
             || caveat.Contains("reused", StringComparison.Ordinal)
@@ -523,7 +543,7 @@ internal static class ProcessesCommand
         else
         {
             ConsoleUi.Table(
-                ["PID", "Image", "Instance", "Records", "Sent (transport)", "Received (transport)"],
+                ["PID", "Image", "Instance", "Records", "Connections", "Sent (transport)", "Received (transport)"],
                 [
                     .. shown.Select(item => new[]
                     {
@@ -535,6 +555,7 @@ internal static class ProcessesCommand
                             + (item.Collector is { } collector ? $" ({CollectorText.Label(collector)})" : string.Empty),
                         Lifetime(item.Process, clock),
                         ConsoleUi.Count(item.Records),
+                        Connections(item, "none"),
                         Bytes(item.TransportBytesSent, item.Sends, "no sends"),
                         Bytes(item.TransportBytesReceived, item.Receives, "no receives"),
                     }),
@@ -631,6 +652,14 @@ internal static class ProcessesCommand
             ConsoleUi.Field("Evidence gaps", string.Join(", ", process.Gaps.Select(Words)));
         }
 
+        // Who opened its connections, as its card in the window counts them.
+        ConsoleUi.Field("Connections", (item.ConnectionsMade, item.ConnectionsAccepted) switch
+        {
+            (null, _) or (_, null) => "not recorded: this session records no connection's open",
+            (0, 0) => "none the capture saw open",
+            _ => Connections(item, string.Empty) + ", as the capture saw them open",
+        });
+
         if (item.Peers is not { } peers)
         {
             return;
@@ -661,6 +690,19 @@ internal static class ProcessesCommand
         ConsoleUi.Note("To rank every record it took part in by the process at the other end:");
         ConsoleUi.Line($"    icat metric \"{path}\" --metric observations --participant {process.InstanceId} --group-by peer");
     }
+
+    /// <summary>
+    /// The TCP connections an instance made and accepted, "3 made · 12 accepted"; <paramref name="none"/> where it made and
+    /// accepted none, and "not recorded" where the session records no connection's open (R21).
+    /// </summary>
+    private static string Connections(ProcessActivityDocument item, string none) =>
+        (item.ConnectionsMade, item.ConnectionsAccepted) switch
+        {
+            ({ } made, { } accepted) when made + accepted > 0 =>
+                $"{ConsoleUi.Count(made)} made · {ConsoleUi.Count(accepted)} accepted",
+            ({ }, { }) => none,
+            _ => "not recorded",
+        };
 
     private static string Words(string pascal) =>
         string.Concat(pascal.Select((character, index) =>
@@ -700,8 +742,9 @@ internal static class ProcessesCommand
         ConsoleUi.Line("                 [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Lists the process instances the session's evidence supports - created, exited,");
         ConsoleUi.Line("      running at capture start, or seen only in their own records - with each one's");
-        ConsoleUi.Line("      lifetime, how many records bind to it, and the transport bytes it sent and");
-        ConsoleUi.Line("      received. A PID is never an identity on its own: a reused PID is two instances.");
+        ConsoleUi.Line("      lifetime, how many records bind to it, the TCP connections it made and accepted as");
+        ConsoleUi.Line("      the capture saw them open, and the transport bytes it sent and received. A PID is");
+        ConsoleUi.Line("      never an identity on its own: a reused PID is two instances.");
         ConsoleUi.Line("      What the capture covered, mechanism by mechanism, is said as icat metric says it, so a");
         ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
