@@ -102,8 +102,8 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// The processes the inspector lists while an aggregate is chosen (§6.3), the busiest over the scope shown first and at
-    /// most <see cref="MembersListed"/>, each with its records, its relationships and its connections to other hosts, the
-    /// whole session's, which a brush does not re-count.
+    /// most <see cref="MembersListed"/>, each with its records, its relationships and its connections to other hosts - those
+    /// it accepted said apart, at its own ports - the whole session's, which a brush does not re-count.
     /// </summary>
     public IReadOnlyList<MemberRow> MemberRows => ListedMembers().Rows;
 
@@ -189,11 +189,17 @@ public sealed partial class WorkspaceViewModel
                 relationships.GetValueOrDefault(process.Id) is > 0 and var related
                     ? CountText.Of(related, "relationship")
                     : string.Empty,
-                links[process.Id].Any() ? HostLinkText.Line(links[process.Id]) + wholeOnly : string.Empty,
+                links[process.Id].Any() ? HostReach([.. links[process.Id]]) + wholeOnly : string.Empty,
             }.Where(part => part.Length > 0))))];
         listedMembers = (aggregate, Snapshot, ranked.Length, rows);
         return (ranked.Length, rows);
     }
+
+    /// <summary>A process's connections to other hosts, transport by transport, and those it accepted at its own ports.</summary>
+    private static string HostReach(IReadOnlyCollection<HostLink> links) =>
+        HostLinkText.Accepted(links) is { Length: > 0 } accepted
+            ? HostLinkText.Line(links) + " · " + accepted
+            : HostLinkText.Line(links);
 
     /// <summary>
     /// Says the process list changed, after the choice, the drawing or the scope did. A list given new rows lets its choice

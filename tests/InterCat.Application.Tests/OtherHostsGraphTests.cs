@@ -568,6 +568,20 @@ public sealed class OtherHostsGraphTests
             HostLinkText.Reach(Mechanism.Tcp, [Link(one, Mechanism.Tcp, 3, 2, 4), Link(two, Mechanism.Tcp, 4, 4, 4)]));
         Assert.Equal("2 UDP flows from 1 process with 1 host", HostLinkText.Reach(Mechanism.Udp, [Link(one, Mechanism.Udp, 2, 1, 4)]));
 
+        // Those a process accepted are said apart, at its own ports: all of its TCP connections, or how many of them. A UDP
+        // flow is never accepted, and none accepted says nothing.
+        HostLink accepting = new(one.Id, Mechanism.Tcp,
+            [new HostAddress("203.0.113.1", 2, 4) { Accepted = 2, AcceptedPorts = [3389, 445] }], RelationStrength.Direct);
+        HostLink mixed = new(one.Id, Mechanism.Tcp,
+        [
+            new HostAddress("203.0.113.1", 1, 2) { Accepted = 1, AcceptedPorts = [445] },
+            new HostAddress("203.0.113.2", 2, 2) { Connected = 2 },
+        ], RelationStrength.Direct);
+        HostLink flows = Link(one, Mechanism.Udp, 3, 1, 3);
+        Assert.Equal("accepted here at ports 445 and 3389", HostLinkText.Accepted([accepting, flows]));
+        Assert.Equal("1 accepted here at port 445", HostLinkText.Accepted([mixed]));
+        Assert.Equal(string.Empty, HostLinkText.Accepted([flows]));
+
         // A line says TCP before UDP, one process's with its hosts and several processes' by how many made them.
         Assert.Equal("3 TCP connections to 2 hosts · 5 UDP flows with 3 hosts",
             HostLinkText.Line([Link(one, Mechanism.Udp, 5, 3, 9), Link(one, Mechanism.Tcp, 3, 2, 4)]));

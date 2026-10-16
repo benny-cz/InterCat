@@ -36,7 +36,10 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.True(workspace.ListsMembers);
         Assert.Equal("Its 2 processes, the busiest first", workspace.MembersHeading);
         Assert.Equal(
-            [("program1.exe · PID 101", "4 records · 1 TCP connection to 1 host"), ("program0.exe · PID 100", "3 records · 1 TCP connection to 1 host")],
+            [
+                ("program1.exe · PID 101", "4 records · 1 TCP connection to 1 host"),
+                ("program0.exe · PID 100", "3 records · 1 TCP connection to 1 host · accepted here at port 445"),
+            ],
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
         Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press E to list its records, or Enter to "
             + "open it.", workspace.MemberRows[0].AccessibleName);
@@ -166,7 +169,7 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Contains(nameof(WorkspaceViewModel.MemberRows), restated);
         Assert.Equal(
             [
-                ("program0.exe · PID 100", "1 record · 1 TCP connection to 1 host · whole session"),
+                ("program0.exe · PID 100", "1 record · 1 TCP connection to 1 host · accepted here at port 445 · whole session"),
                 ("program1.exe · PID 101", "1 record · 1 TCP connection to 1 host · whole session"),
             ],
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
@@ -234,7 +237,8 @@ public sealed class AggregateMembersWorkspaceTests
 
     /// <summary>
     /// Ten programs of one process each, program0.exe (PID 100) to program9.exe (PID 109), each connecting to a host of its
-    /// own and sending to it once more than the one before; and three processes with no connection, quiet0.exe,
+    /// own - program0.exe accepting the connection, at its port 445 - and sending to it once more than the one before; and
+    /// three processes with no connection, quiet0.exe,
     /// QUIET1.EXE and quiet2.exe (PIDs 200 to 202). Every process starts within 1.4 µs, and every connection opens after
     /// 11 µs.
     /// </summary>
@@ -256,9 +260,11 @@ public sealed class AggregateMembersWorkspaceTests
 
         for (int index = 0; index < 10; index++)
         {
-            string local = $"192.168.1.10:{52_000 + index}";
-            string remote = $"52.0.0.{index + 1}:443";
-            rows.Add(Transfer(100 + (long)ordinal, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100 + index, ordinal)
+            // program0's one connection is one it accepted from its host, at its own port 445.
+            string local = index == 0 ? "192.168.1.10:445" : $"192.168.1.10:{52_000 + index}";
+            string remote = index == 0 ? "52.0.0.1:51000" : $"52.0.0.{index + 1}:443";
+            rows.Add(Transfer(100 + (long)ordinal, index == 0 ? ObservationKind.Accept : ObservationKind.Connect,
+                    AccountingSide.EndpointActivity, 0, 100 + index, ordinal)
                 .Between(local, remote) with { SessionRelativeTicks = 100 * (100 + (long)ordinal) });
             ordinal++;
             for (int send = 0; send <= index; send++)

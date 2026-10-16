@@ -72,6 +72,26 @@ public static class HostLinkText
     }
 
     /// <summary>
+    /// The connections a process accepted from other hosts, with its own ports they arrived at: "accepted here at port 445"
+    /// where every one of its TCP connections to them was, else "1 accepted here at port 3389". Empty where the capture saw
+    /// none accepted.
+    /// </summary>
+    public static string Accepted(IReadOnlyCollection<HostLink> links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        int accepted = links.SelectMany(link => link.Addresses).Sum(address => address.Accepted);
+        if (accepted == 0)
+        {
+            return string.Empty;
+        }
+
+        ushort[] ports = [.. links.SelectMany(link => link.Addresses).SelectMany(address => address.AcceptedPorts).Distinct().Order()];
+        string at = ports.Length == 0 ? " here" : " here at " + Ports(ports);
+        long tcp = links.Where(link => link.Mechanism == Mechanism.Tcp).Sum(link => (long)link.Connections);
+        return accepted == tcp ? "accepted" + at : string.Create(CultureInfo.CurrentCulture, $"{accepted:N0} accepted{at}");
+    }
+
+    /// <summary>
     /// The same as a table's cell states it, the ports as numbers: "2 at 443 and 8443"; "-" where none was accepted.
     /// </summary>
     public static string AcceptedCell(int accepted, IReadOnlyList<ushort> ports)
