@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Avalonia;
 using Avalonia.Automation;
@@ -927,11 +928,31 @@ public sealed class MainWindowPathTests
         return window.OwnedWindows.OfType<T>().Single();
     }
 
+    /// <summary>
+    /// Presses Escape in <paramref name="dialog"/> once it has the keyboard, as a person presses it, and waits for it to
+    /// close; one left open fails saying whether it was still active, where its keyboard was and what its key handlers
+    /// heard. Active is not enough: a dialog places the keyboard once it has read what it shows, and until then this
+    /// platform gives a key to whatever had the keyboard before, the button that opened the dialog, which leaves it open.
+    /// </summary>
     private static void Escape(Window window, Window dialog)
     {
-        WaitFor(() => dialog.IsActive);
+        WaitFor(() => dialog.IsActive && dialog.FocusManager?.GetFocusedElement() is Visual focusedInside
+            && dialog.IsVisualAncestorOf(focusedInside));
+        var heard = new List<string>();
+        dialog.AddHandler(InputElement.KeyDownEvent, (_, key) => heard.Add(
+                $"{key.Key} {key.Route} at {key.Source?.GetType().Name ?? "nothing"}{(key.Handled ? ", handled" : string.Empty)}"),
+            RoutingStrategies.Tunnel | RoutingStrategies.Bubble, handledEventsToo: true);
+        string focused = dialog.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing";
         dialog.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
-        WaitFor(() => window.OwnedWindows.Count == 0);
+        for (int attempt = 0; attempt < 1_500 && window.OwnedWindows.Count != 0; attempt++)
+        {
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            Thread.Sleep(10);
+        }
+
+        Assert.True(window.OwnedWindows.Count == 0, $"Escape left {dialog.GetType().Name} open for 15 s: active {dialog.IsActive}, "
+            + $"visible {dialog.IsVisible}, the keyboard on {focused} when pressed and on "
+            + $"{dialog.FocusManager?.GetFocusedElement()?.GetType().Name ?? "nothing"} now, heard: {string.Join("; ", heard)}");
     }
 
     /// <summary>Whether the ranked table's row at <paramref name="index"/> has the keyboard, once laid out.</summary>
@@ -957,14 +978,18 @@ public sealed class MainWindowPathTests
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();
     }
 
-    private static void WaitFor(Func<bool> condition)
+    /// <summary>
+    /// Runs the window's jobs until <paramref name="condition"/> holds, for up to 15 s, which a machine busy with other test
+    /// runs needs, as the investigation window's tests wait; one that never holds fails naming what was waited for.
+    /// </summary>
+    private static void WaitFor(Func<bool> condition, [CallerArgumentExpression(nameof(condition))] string? waited = null)
     {
-        for (int attempt = 0; attempt < 500 && !condition(); attempt++)
+        for (int attempt = 0; attempt < 1_500 && !condition(); attempt++)
         {
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
             Thread.Sleep(10);
         }
 
-        Assert.True(condition());
+        Assert.True(condition(), "Waited 15 s for " + waited);
     }
 }

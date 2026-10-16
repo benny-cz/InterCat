@@ -2050,8 +2050,13 @@ public sealed class InvestigationWindowTests
     }
 
     /// <summary>Closes a dialog with Escape, as a person cancels one, and waits until it is gone.</summary>
+    /// <summary>
+    /// Presses Escape in <paramref name="dialog"/> once it has the keyboard, as a person presses it, and waits for it to
+    /// close: until a dialog places the keyboard this platform gives a key to whatever had it before.
+    /// </summary>
     private static void Escape(Window window, Window dialog)
     {
+        WaitFor(() => dialog.FocusManager?.GetFocusedElement() is Visual focusedInside && dialog.IsVisualAncestorOf(focusedInside));
         dialog.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         WaitFor(() => window.OwnedWindows.Count == 0);
         Avalonia.Threading.Dispatcher.UIThread.RunJobs();

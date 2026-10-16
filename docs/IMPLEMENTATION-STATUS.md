@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 596 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 597 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 597 — the other intermittent window tests, stressed (R13, R15):**
+  - With three of four cores busy, the HTTP lane test failed none of 120 runs. The path tests' failures were Escape
+    pressed in a dialog before it had the keyboard, which this headless platform gives to the button that opened it;
+    the tests press Escape once the dialog has the keyboard, as a person does, their waits allow 15 s and name what
+    they wait for, and none of 120 runs failed. No product code changed.
+  - Debug and Release each ran 2,504 tests with revision 473's 93 failures and 4 skips, and nothing else failed. The
+    change is to tests alone, so the stress runs are its evidence: under the same load the corrected path test
+    failed none of 120 runs, where it had failed 4 and 5 of 60.
 
 - **Revision 596 — a zoom of the merged time left before it is read is never drawn (R13):**
   - Every zoom's reading was drawn in turn, one already left included; drawn between Home and Enter, it made Enter act
