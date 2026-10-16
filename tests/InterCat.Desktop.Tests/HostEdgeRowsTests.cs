@@ -100,6 +100,105 @@ public sealed class HostEdgeRowsTests
         Assert.Null(workspace.SelectedTableRow);
     });
 
+    [Fact(DisplayName = "§3.2/R15: the way back from what an edge to other hosts opened or listed chooses its row again with its source, and a newer generation keeps it chosen")]
+    public void TheWayBackChoosesTheEdgeAgain() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Rows(), .. Fleet()]);
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // E with the edge chosen lists its process's records, the table there choosing none; Esc back chooses it again
+        // with its process, and asks for the keyboard to go to its row.
+        RelationshipRow browser = workspace.TableRows.Single(row => row.Name == "browser.exe · PID 300 → 142.250.1.1:443");
+        workspace.SelectedTableRow = browser;
+        int asked = workspace.RelationshipAsked;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Null(workspace.SelectedTableRow);
+        Assert.True(workspace.Ascend());
+        Assert.Equal(browser.Key, workspace.SelectedTableRow?.Key);
+        Assert.Equal("browser.exe · PID 300", workspace.SelectedProcess?.NameWithPid);
+        Assert.Equal(asked + 1, workspace.RelationshipAsked);
+
+        // Enter opens its process's rung through its group's: Esc back to the group's rung is no way back to it, and the
+        // breadcrumb back to the machine's, which nothing there chose, chooses it again with its process.
+        Assert.True(workspace.OpenSelectedTableRow());
+        Assert.Equal("Process: browser.exe · PID 300", workspace.Crumbs[^1].Label);
+        Assert.True(workspace.Ascend());
+        Assert.Equal("Group: browser.exe", workspace.Crumbs[^1].Label);
+        Assert.Null(workspace.SelectedTableRow);
+        workspace.ClearSelection();
+        workspace.ReturnTo(0);
+        Assert.Equal(browser.Key, workspace.SelectedTableRow?.Key);
+        Assert.Equal("browser.exe · PID 300", workspace.SelectedProcess?.NameWithPid);
+        Assert.Equal(asked + 2, workspace.RelationshipAsked);
+
+        // A group's edge opens its group's rung, and Esc back chooses it again with the group.
+        RelationshipRow workers = workspace.TableRows.Single(row => row.Source == "worker.exe");
+        workspace.SelectedTableRow = workers;
+        Assert.True(workspace.OpenSelectedTableRow());
+        Assert.Equal("Group: worker.exe", workspace.Crumbs[^1].Label);
+        Assert.True(workspace.Ascend());
+        Assert.Equal(workers.Key, workspace.SelectedTableRow?.Key);
+        Assert.Equal(workers.SourceNode, workspace.SelectedGraphNodeKey);
+
+        // A newer generation chooses it again while its source is still the selection, and not once it is not.
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        Assert.Equal(workers.Key, saved.ChosenHostEdge);
+        using (WorkspaceViewModel newer = Open(session))
+        {
+            await newer.LayoutReady;
+            Assert.Null(newer.RestoreNavigation(saved));
+            Assert.Equal(workers.Key, newer.SelectedTableRow?.Key);
+        }
+
+        using (WorkspaceViewModel newer = Open(session))
+        {
+            await newer.LayoutReady;
+            Assert.Null(newer.RestoreNavigation(saved with { SelectedRungKey = null }));
+            Assert.Null(newer.SelectedTableRow);
+        }
+
+        // A relationship's choice is no edge's.
+        workspace.SelectedTableRow = workspace.TableRows[0];
+        Assert.Null(workspace.CaptureNavigation().ChosenHostEdge);
+    });
+
+    [Fact(DisplayName = "§3.2/R15: an aggregate's edge to other hosts stays chosen with a process chosen in its list, and the way back from that process's records, or a newer generation, chooses both again")]
+    public void AnAggregatesEdgeKeepsItsListsChoice() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Spread());
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // Enter on the aggregate's edge lists its processes in the inspector, the edge still chosen.
+        RelationshipRow folded = workspace.TableRows.Single(row => row.Source == "Other hosts only");
+        Assert.Equal(("Other hosts only → Other hosts · 2 hosts", "its processes in the inspector"), (folded.Name, folded.Opens));
+        workspace.SelectedTableRow = folded;
+        Assert.True(workspace.OpenSelectedTableRow());
+        Assert.Equal(folded.Key, workspace.SelectedTableRow?.Key);
+
+        // A process chosen in the list leaves it chosen; E lists that process's records, and Esc back chooses the
+        // aggregate, the process in its list and the edge again.
+        MemberRow member = workspace.MemberRows[0];
+        workspace.ChosenMemberRow = member;
+        Assert.Equal(folded.Key, workspace.SelectedTableRow?.Key);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        Assert.Equal(member.Process, workspace.ChosenMemberRow?.Process);
+        Assert.Equal(folded.Key, workspace.SelectedTableRow?.Key);
+
+        // A newer generation chooses all three again.
+        using WorkspaceViewModel newer = Open(session);
+        await newer.LayoutReady;
+        Assert.Null(newer.RestoreNavigation(workspace.CaptureNavigation()));
+        Assert.Equal(member.Process, newer.ChosenMemberRow?.Process);
+        Assert.Equal(folded.Key, newer.SelectedTableRow?.Key);
+    });
+
     [Fact(DisplayName = "R15: an edge to other hosts from a group or an aggregate says what Enter opens there: the group, or its processes' list")]
     public void AnAggregatesEdgeOpensWhatItsDoubleClickDoes() => SingleThreadedContext.Run(async () =>
     {
@@ -185,6 +284,19 @@ public sealed class HostEdgeRowsTests
         Tcp(121, ObservationKind.Receive, 200, 121, "192.168.1.10:8080", "192.168.1.30:52001"),
         Transfer(130, ObservationKind.Send, AccountingSide.SendSide, 60, 400, 130).Between("[2001:db8::10]:51000", "[2001:db8::1]:53")
             with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 1_130 },
+    ];
+
+    /// <summary>
+    /// Ten programs' processes, each only connecting to a host of its own, each more quietly than the one before: the graph
+    /// draws eight of them, and the two quietest as Other hosts only.
+    /// </summary>
+    private static ObservationRowV1[] Spread() =>
+    [
+        .. Enumerable.Range(0, 10).Select(index => Lifecycle(20 + index, ObservationKind.Create, 700 + index, (ulong)(20 + index))
+            with { ResourceName = $@"C:\Apps\app{index}.exe", SessionRelativeTicks = 70 + index }),
+        .. Enumerable.Range(0, 10).SelectMany(index => Enumerable.Range(0, 10 - index).Select(record => Tcp(300 + (index * 10) + record,
+            record == 0 ? ObservationKind.Connect : ObservationKind.Send, 700 + index, (ulong)(300 + (index * 10) + record),
+            $"192.168.1.10:{54000 + index}", $"30.0.0.{1 + index}:443"))),
     ];
 
     /// <summary>worker.exe's three processes, each connecting to a host of its own.</summary>

@@ -260,6 +260,106 @@ public sealed class RelationshipExplanationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: E on an edge to other hosts chosen in the table lets its row go at the records, and Esc back chooses it again, its row with the keyboard")]
+    public async Task TheWayBackGivesTheEdgesRowTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Makers(),
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 400 },
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 20)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_000 },
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 64, 400, 21)
+                .Between("192.168.1.10:52000", "142.250.1.1:443") with { SessionRelativeTicks = 2_100 }]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await ShowTables(window, session);
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            RelationshipRow edge = Assert.IsType<RelationshipRow>(table.Items[2]);
+            Assert.True(table.ContainerFromIndex(1)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            await workspace.SelectionBytesReady;
+            Dispatch();
+            Assert.Equal(edge.Key, workspace.SelectedTableRow?.Key);
+
+            // E lists its process's records; the table there, listing the same edge, chooses none, though its rows were
+            // restated with the edge chosen.
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(workspace.IsEvidenceRung);
+            await workspace.EvidenceReady;
+            await workspace.SelectionBytesReady;
+            Dispatch();
+            Assert.Contains(workspace.TableRows, row => row.Key == edge.Key);
+            Assert.Null(workspace.SelectedTableRow);
+            Assert.Null(table.SelectedItem);
+
+            // Esc comes back to it, chosen with its process, its row with the keyboard.
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(edge.Key, workspace.SelectedTableRow?.Key);
+            Assert.Equal("browser.exe · PID 400", workspace.SelectedProcess?.NameWithPid);
+            Assert.Equal(edge.Key, Assert.IsType<RelationshipRow>(table.SelectedItem).Key);
+            Assert.Same(table.ContainerFromItem(table.SelectedItem!), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "R15: another rung's relationship table starts at its first row, never at the scroll of the rung left, and the way back brings the row chosen there into view")]
+    public async Task AnotherRungsTableStartsAtItsFirstRow()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, GraphLabelLeaderTests.BusyMachine());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await ShowTables(window, session);
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            ScrollViewer scroller = table.GetVisualDescendants().OfType<ScrollViewer>().First();
+
+            // The machine's thirty rows scrolled to the last; Enter on it opens its process's rung, whose eight rows, more
+            // than the table shows at once, start at the first.
+            Assert.True(table.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.End, RawInputModifiers.None);
+            Dispatch();
+            RelationshipRow last = Assert.IsType<RelationshipRow>(table.SelectedItem);
+            Assert.True(scroller.Offset.Y > 0);
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            await workspace.LayoutReady;
+            Settle();
+            Assert.Equal("Process: MsMpEng.exe · PID 1600", workspace.Crumbs[^1].Label);
+            Assert.True(scroller.Extent.Height > scroller.Viewport.Height);
+            Assert.Equal(0, scroller.Offset.Y);
+
+            // So do its group's, a rung up; back at the machine, the row chosen there is chosen and in view again.
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await workspace.LayoutReady;
+            Settle();
+            Assert.Equal(0, scroller.Offset.Y);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            await workspace.LayoutReady;
+            Settle();
+            Assert.Equal(last.Key, workspace.SelectedTableRow?.Key);
+            Assert.True(scroller.Offset.Y > 0);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        void Settle()
+        {
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+        }
+    }
+
     /// <summary>Two clients that each exchange records with one server, each over a connection of its own: two relationships.</summary>
     [AvaloniaFact(DisplayName = "R15: a relationship table that lists none says why in its place, and says nothing while it lists any")]
     public async Task AnEmptyRelationshipTableSaysWhy()

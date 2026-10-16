@@ -101,6 +101,29 @@ public sealed partial class WorkspaceViewModel
         ? TableRows.FirstOrDefault(row => row.ToHosts && string.Equals(row.Key, key, StringComparison.Ordinal))
         : null;
 
+    /// <summary>
+    /// Chooses <paramref name="row"/>'s edge to other hosts again where its source is the selection, as a newer generation
+    /// or a way back restores it: what choosing it would select is selected already. False where its source is not.
+    /// </summary>
+    private bool ChooseHostEdgeAgain(RelationshipRow row)
+    {
+        if (!string.Equals(SelectedGraphNodeKey, row.SourceNode, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        chosenHostEdge = row.Key;
+        RaiseTableChoice();
+        return true;
+    }
+
+    /// <summary>Lets go of the edge to other hosts chosen in the table, and says so.</summary>
+    private void ForgetHostEdge()
+    {
+        chosenHostEdge = null;
+        RaiseTableChoice();
+    }
+
     /// <summary>Restates the table's rows where the relationships or the drawing gave it others, and then its choice.</summary>
     private void RestateTableRows()
     {

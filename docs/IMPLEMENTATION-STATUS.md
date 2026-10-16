@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 613 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 614 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,22 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 614 — the table's edges to other hosts on the way down and back (R15, §3.2):**
+  - From a live pass over revision 613's table on the busy machine: an edge chosen in it came back chosen at the rung
+    E or Enter led to, choosing its process there; the way back from there chose nothing; each rung's table opened at
+    the scroll of the rung left, a row cut in half; and its relationships stood in the order of their keys. The table
+    now lets the edge go before its rows change, the way back chooses it again with its source and the keyboard on its
+    row, a newer generation keeps it, each rung's table starts at its first or chosen row, and the relationships come
+    most observed first.
+  - Debug and Release each ran 2,553 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    eighteen mutations were caught: an edge to other hosts let go on the way down without a word, after the table's
+    rows changed, or not at all; the way back finding no edge, choosing its source again over the process chosen in
+    an aggregate's list, or not choosing it where nothing else did; E or Enter keeping no way back to it, or Enter
+    keeping it before the way down let it go; a newer generation given no edge, choosing none, choosing its source
+    again, or choosing it whatever the selection; the keyboard given to a relationship's row alone; the table left
+    at the scroll of the rung left; and the relationships in the snapshot's order, ties unordered, or the quietest
+    first.
 
 - **Revision 613 — the relationship table lists the graph's edges to other hosts (R15):**
   - The table, the graph's table equivalent, listed none of the edges to other hosts the graph draws since revision

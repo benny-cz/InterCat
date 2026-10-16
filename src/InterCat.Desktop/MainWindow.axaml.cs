@@ -2576,7 +2576,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// </summary>
     private void FocusChosenRelationship() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
     {
-        if (!closed && DataContext is WorkspaceViewModel { SelectedRelationship: { } row })
+        if (!closed && DataContext is WorkspaceViewModel { SelectedTableRow: { } row })
         {
             _ = FocusRow(RelationshipList, row);
         }
@@ -4787,8 +4787,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         {
             // The user moved to another rung. Its table starts at its busiest rows, or at the row it selected, never at
             // the scroll offset of the rung it left, which would open it part-way down with its first row cut off. A
-            // publication restores navigation before this window listens, so live updates never move the table.
-            ShowRankedTableStart();
+            // publication restores navigation before this window listens, so live updates never move the table. The
+            // relationship table lists another rung's relationships too, and starts at its first or its chosen row.
+            ShowTableStart(RungList);
+            ShowTableStart(RelationshipList);
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.HoldsGeneration) && !workspace.HoldsGeneration
@@ -4806,18 +4808,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// The new rows are not laid out yet. The offset returns to the top at once, before the layout pass would clamp the
     /// old offset against the new rows. A selected row is brought into view once it has a place.
     /// </summary>
-    private void ShowRankedTableStart()
+    private static void ShowTableStart(ListBox list)
     {
-        if (RungList.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } scroller)
+        if (list.GetVisualDescendants().OfType<ScrollViewer>().FirstOrDefault() is { } scroller)
         {
             scroller.Offset = new Vector(scroller.Offset.X, 0);
         }
 
-        if (RungList.SelectedItem is not null)
+        if (list.SelectedItem is not null)
         {
             Dispatcher.UIThread.Post(() =>
             {
-                if (RungList.SelectedItem is { } selected) RungList.ScrollIntoView(selected);
+                if (list.SelectedItem is { } selected) list.ScrollIntoView(selected);
             }, DispatcherPriority.Background);
         }
     }

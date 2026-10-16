@@ -71,7 +71,10 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ListOrigin">Where the latest way down from an aggregate's list began, which the way back comes to (§3.2).</param>
 /// <param name="SelectedRelationshipKey">The relationship chosen, in the graph or its table, by its key.</param>
 /// <param name="ChosenSet">The processes chosen together (§6.7's multi-selection).</param>
-/// <param name="RelationshipOrigins">Where each way down with a relationship chosen began, which the way back comes to (§3.2).</param>
+/// <param name="RelationshipOrigins">
+/// Where each way down with a relationship, or an edge to other hosts, chosen began, which the way back comes to (§3.2).
+/// </param>
+/// <param name="ChosenHostEdge">The edge to other hosts chosen in the relationship table, by its key (R15).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -96,7 +99,8 @@ public sealed record WorkspaceNavigationMemento(
     MemberListOrigin? ListOrigin = null,
     string? SelectedRelationshipKey = null,
     IReadOnlyList<ProcessInstanceId>? ChosenSet = null,
-    IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null);
+    IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null,
+    string? ChosenHostEdge = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1584,7 +1588,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
-        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null);
+        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1739,6 +1743,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             {
                 notices.Add("The relationship chosen is no longer in the session, so nothing is selected.");
             }
+        }
+
+        // An edge to other hosts chosen in the table is chosen again while this generation draws it from the node that is
+        // still the selection; else its source stays selected, as a click on the edge leaves it.
+        if (saved.ChosenHostEdge is { } hostEdge
+            && TableRows.FirstOrDefault(row => row.ToHosts && string.Equals(row.Key, hostEdge, StringComparison.Ordinal)) is { } hostRow)
+        {
+            _ = ChooseHostEdgeAgain(hostRow);
         }
 
         if (saved.ChosenSet is { Count: > 0 } set)
@@ -2197,14 +2209,26 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// <summary>
     /// §6.7's double-click on an edge: opens the one relationship it stands for, as <see cref="OpenRelationship"/> does. An
     /// aggregate edge stands for several relationships and opens nothing. An edge to the other hosts opens the node its
-    /// connections come from, as Enter on it does: a process's rung lists each of its connections.
+    /// connections come from, as Enter on it does: a process's rung lists each of its connections. The way back to the rung
+    /// it was opened from chooses its row in the relationship table again there, as a relationship's (§3.2).
     /// </summary>
     public bool OpenGraphEdge(string edgeKey)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(edgeKey);
         GraphDisplayEdge? drawn = graphDisplay.Edges.FirstOrDefault(edge => edge.Key == edgeKey);
-        return drawn is { ToHosts: true } ? OpenGraphNode(drawn.SourceKey)
-            : drawn is { Relationships.Count: 1 } && OpenRelationship(drawn.Relationships[0]);
+        if (drawn is not { ToHosts: true })
+        {
+            return drawn is { Relationships.Count: 1 } && OpenRelationship(drawn.Relationships[0]);
+        }
+
+        RelationshipOrigin here = OriginHere(drawn.Key);
+        if (!OpenGraphNode(drawn.SourceKey))
+        {
+            return false;
+        }
+
+        KeepWayBack(here);
+        return true;
     }
 
     /// <summary>
@@ -5157,7 +5181,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // that takes it stands beneath the card that counts the selection. On a process chosen in an aggregate's list it
         // is a way down from that list, as Enter on it is, and the way back comes to its row again (§3.2).
         MemberListOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
-        RelationshipOrigin? related = selectedRelationship is { } chosen ? OriginHere(chosen.Key) : null;
+        RelationshipOrigin? related = SelectedTableRow is { } chosen ? OriginHere(chosen.Key) : null;
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
             ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
@@ -5424,12 +5448,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenChannelKey = null;
         chosenProcesses.Clear();
         graphSelection = null;
+
+        // An edge to other hosts chosen in the table goes with the rung left, and the table hears so before its rows are
+        // another rung's: a list still choosing it as they change would choose it there again.
+        ForgetHostEdge();
         RefreshGraphDisplay();
 
-        // The relationship table lists what the rung's graph draws; a relationship chosen at the rung left goes with it,
-        // and an edge to other hosts chosen in its table.
+        // The relationship table lists what the rung's graph draws; a relationship chosen at the rung left goes with it.
         ForgetRelationship();
-        chosenHostEdge = null;
         relationships = RelationshipRows();
         OnPropertyChanged(nameof(Relationships));
         OnPropertyChanged(nameof(RelationshipTableScope));

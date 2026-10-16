@@ -396,7 +396,7 @@ public sealed class GraphLabelLeaderTests
     /// endpoint mapper, SQL Server, PostgreSQL and node.exe dev servers accept connections at; the web, from a dozen
     /// programs, a LAN's SMB and RDP, and DNS, mDNS, SSDP and a call over UDP.
     /// </summary>
-    private static ObservationRowV1[] BusyMachine()
+    internal static ObservationRowV1[] BusyMachine()
     {
         var rows = new List<ObservationRowV1>();
         ulong ordinal = 1;

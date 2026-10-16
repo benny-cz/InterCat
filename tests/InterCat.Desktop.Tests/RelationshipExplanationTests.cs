@@ -26,6 +26,24 @@ public sealed class RelationshipExplanationTests
             + "whose rows list its 2 channels.", browser.AccessibleName, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "R15: the relationship table lists the most observed relationships first, those as busy as each other in the order of their keys")]
+    public void TheBusiestRelationshipsComeFirst()
+    {
+        WorkspaceSnapshot synthetic = SyntheticWorkspace.Create();
+        Assert.Equal(["edge.browser-api", "edge.indexer-broker", "edge.api-cache", "edge.api-indexer", "edge.cache-broker"],
+            WorkspaceRowBuilder.Relationships(synthetic, ThemeMode.Light).Select(row => row.Key));
+
+        // Two as busy as each other read in the order of their keys, whichever the snapshot holds first.
+        WorkspaceSnapshot tied = synthetic with
+        {
+            Edges = [.. synthetic.Edges.Select(edge => edge.Key is "edge.browser-api" or "edge.api-cache"
+                ? edge with { ObservationCount = 400 }
+                : edge)],
+        };
+        Assert.Equal(["edge.api-cache", "edge.browser-api", "edge.indexer-broker", "edge.api-indexer", "edge.cache-broker"],
+            WorkspaceRowBuilder.Relationships(tied, ThemeMode.Light).Select(row => row.Key));
+    }
+
     [Fact(DisplayName = "§6.8: a relationship's row marks who connected between its ends, says it in the mark's tooltip, and reads it aloud, its ends joined by and rather than to")]
     public void ARelationshipRowSaysWhoConnected()
     {

@@ -225,9 +225,9 @@ public static class WorkspaceRowBuilder
 
     /// <summary>
     /// The relationship table's rows, each end named with its PID, since one executable's instances otherwise read as the
-    /// same row. Where <paramref name="bytesOf"/> is given, as for a real session, whose overview sums no bytes, it says
-    /// each relationship's bytes: what was read as sent across it, or why that is not known, rather than calling them
-    /// unknown.
+    /// same row; the most observed first, as a busy machine's table is read for who talks most, then by key. Where
+    /// <paramref name="bytesOf"/> is given, as for a real session, whose overview sums no bytes, it says each
+    /// relationship's bytes: what was read as sent across it, or why that is not known, rather than calling them unknown.
     /// </summary>
     public static IReadOnlyList<RelationshipRow> Relationships(
         WorkspaceSnapshot snapshot, ThemeMode mode, Func<CommunicationEdge, string>? bytesOf = null)
@@ -270,7 +270,7 @@ public static class WorkspaceRowBuilder
             });
         }
 
-        return rows;
+        return [.. rows.OrderByDescending(row => row.ObservationCount).ThenBy(row => row.Key, StringComparer.Ordinal)];
     }
 
     public static IReadOnlyList<IntervalRow> Intervals(WorkspaceSnapshot snapshot, ThemeMode mode, bool sumsBytes = true)
