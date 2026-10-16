@@ -186,8 +186,8 @@ public sealed class GraphLabelLeaderTests
 
     /// <summary>
     /// A busy machine: thirty svchost.exe instances, twelve chrome.exe and other applications; loopback services the
-    /// endpoint mapper, SQL Server, PostgreSQL and node.exe dev servers accept connections at; the web, a LAN's SMB and
-    /// RDP, and DNS, mDNS and SSDP over UDP.
+    /// endpoint mapper, SQL Server, PostgreSQL and node.exe dev servers accept connections at; the web, from a dozen
+    /// programs, a LAN's SMB and RDP, and DNS, mDNS, SSDP and a call over UDP.
     /// </summary>
     private static ObservationRowV1[] BusyMachine()
     {
@@ -271,6 +271,18 @@ public sealed class GraphLabelLeaderTests
         Process(2700, @"C:\Program Files\Docker\Docker\resources\com.docker.backend.exe");
         Process(2800, @"C:\Program Files\PostgreSQL\16\bin\postgres.exe");
         Process(2801, @"C:\Program Files\PostgreSQL\16\bin\postgres.exe");
+        Process(3000, @"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE");
+        for (int index = 0; index < 3; index++)
+        {
+            Process(3100 + index, @"C:\Users\me\AppData\Local\slack\app-4.41.105\slack.exe");
+            Process(3700 + index, @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");
+        }
+
+        Process(3200, @"C:\Users\me\AppData\Roaming\Spotify\Spotify.exe");
+        Process(3300, @"C:\Users\me\AppData\Roaming\Zoom\bin\Zoom.exe");
+        Process(3400, @"C:\Program Files (x86)\Dropbox\Client\Dropbox.exe");
+        Process(3500, @"C:\Program Files (x86)\Steam\steam.exe");
+        Process(3600, @"C:\Users\me\AppData\Local\Discord\app-1.0.9180\Discord.exe");
 
         foreach (int client in new[] { 1800, 1900, 2300, 2400, 1500, 1600, 2700 })
         {
@@ -305,6 +317,16 @@ public sealed class GraphLabelLeaderTests
         Out(2300, "13.107.42.14:443", 5);
         Out(1004, "20.42.65.92:443", 2);
         Out(1600, "140.82.112.4:443", 2);
+        Out(3000, "52.96.165.18:443", 4);
+        Out(3100, "3.120.218.106:443", 3);
+        Out(3101, "3.120.218.106:443", 1);
+        Out(3200, "35.186.224.25:443", 6);
+        Out(3400, "162.125.19.131:443", 2);
+        Out(3500, "23.33.45.12:443", 3);
+        Out(3600, "162.159.135.232:443", 2);
+        Out(3700, "204.79.197.200:443", 2);
+        Out(3701, "13.107.21.200:443", 1);
+        Udp(3300, "170.114.52.2:8801", 5);
         In(4, 445, "192.168.1.22:51000");
         In(1010, 3389, "192.168.1.30:52000");
         Udp(1007, "192.168.1.1:53", 8);

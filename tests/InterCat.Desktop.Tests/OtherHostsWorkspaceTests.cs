@@ -494,6 +494,31 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Equal("Group: svc.exe", workspace.Crumbs[^1].Label);
     });
 
+    [Fact(DisplayName = "§6.3: a program's processes that only reach other hosts are drawn as its one node beside Other hosts, whose card says they relate to nothing, and Enter opens them")]
+    public void AProgramsProcessesThatOnlyReachOtherHostsAreOneNode() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, GroupReachingHosts(3));
+        using WorkspaceViewModel workspace = Open(session);
+        await workspace.LayoutReady;
+
+        // Three instances of one executable, each connected only to another host, are their group's one node, edged to
+        // Other hosts once, far below the threshold a group collapses past.
+        GraphDisplayNode group = workspace.GraphDisplay.Nodes.Single(node => node.Kind == GraphNodeKind.Group);
+        Assert.Equal((3, 2), (group.Members.Count, workspace.GraphDisplay.Nodes.Count));
+        Assert.Single(workspace.GraphDisplay.Edges, drawn => drawn.ToHosts && drawn.SourceKey == group.Key);
+        HoverCard card = workspace.DescribeGraphHover(group.Key)!;
+        Assert.Equal("3 processes of this executable, drawn as one node · no relationship", card.Lines[0]);
+        Assert.Equal("Double-click or Enter opens the group", card.Lines[^1]);
+
+        // Opened, its rung draws each of them, a process with no relationship carded as one.
+        Assert.True(workspace.OpenGraphNode(group.Key));
+        Assert.Equal("Group: svc.exe", workspace.Crumbs[^1].Label);
+        GraphDisplayNode[] instances = [.. workspace.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Process)];
+        Assert.Equal(3, instances.Length);
+        Assert.Equal("Process instance · no relationship", workspace.DescribeGraphHover(instances[0].Key)!.Lines[0]);
+    });
+
     [Fact(DisplayName = "§6.3: a graph's summary counts the nodes its processes are drawn as, never the Other hosts node")]
     public void TheSummaryCountsNoOtherHostsNode() => SingleThreadedContext.Run(async () =>
     {

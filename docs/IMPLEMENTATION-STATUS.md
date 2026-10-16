@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 592 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 593 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -53,7 +53,7 @@ presets exist: a metadata-only **report**, a reopenable redacted **session packa
 **original evidence package**. The communication graph is a bounded §6.3 projection with a relationship-first §19.4 layout, qualified on
 two real sessions, one sparse and one dense. Since revision 545 it relates processes by paired UDP flows beside TCP
 connections, a pair's edges side by side. Processes with no relationship are counted in one parked node, since
-revision 546 the less busy of those that only reach other hosts in another, past the eight busiest, and groups
+revision 546 the less busy of those that only reach other hosts in another, past the eight busiest - since revision 593 the eight busiest programs, several processes of one drawn as its node - and groups
 collapse only under budget pressure. Since revision 550 the Other hosts node names the busiest addresses the drawn
 processes' connections ran to, and since revision 555 Enter on it draws them on their own; since revision 564 a host chosen there, and since revision 565 one chosen in the list it gives the inspector, is the records of every connection to it, which the timeline highlights and E lists, as `icat evidence --host` reads them since revision 563. Since revision 570 a member of an investigation names each host's candidate other ends in another member's capture, never as an established join, and since revision 571 a session opened from its investigation names them in the window. Hubs draw as stars with components apart, executable groups read as file names,
 and positions survive descents and live publications. A bounded metadata search now finds groups, process instances and
@@ -96,6 +96,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 593 — a program's processes that only reach other hosts take one place (§6.3):**
+  - The eight places beside Other hosts go to programs, ranked by their processes' records together: several of one
+    are its group's node, one is itself, and one place left over is drawn rather than folded. The busy machine's eight
+    places had gone to Teams' four processes, two of svchost.exe's, one of chrome.exe's and ntoskrnl.exe; now
+    chrome.exe's eleven, svchost.exe's nine and Teams' four are three nodes, and nothing is folded.
+  - A node's card says "no relationship" rather than "0 relationships"; under the node budget a group's node that
+    holds its processes that only reach other hosts takes its other members, each counted as a node saved.
+  - Debug and Release each ran 2,497 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    fifteen mutations were caught: places by process rather than by program, here and in the property; a place
+    ranked by its busiest process or by its size; ties broken the other way; a place too few drawn; a place counted
+    in Other hosts only rather than drawn as its group's node; a place skipped by the fold; one place left over
+    folded, or one place more drawn, here and in the property; an opened group's processes placed; a group's node
+    refused its one remaining member, or credited a node less for it; and "0 relationships" said again.
 
 - **Revision 592 — the ranked list's rows take only their room (§6.1, R15):**
   - A row is 62 px, its two lines and touch target with 4 px of padding, not the theme's 21 px: six rows whole at 1456

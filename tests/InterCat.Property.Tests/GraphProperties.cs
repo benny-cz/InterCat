@@ -222,18 +222,22 @@ public sealed class GraphProperties
         }
 
         // Other hosts only folds processes that relate to nothing and reach other hosts, past the budget's count, each no
-        // busier than every one of them drawn on its own outside an opened group.
+        // busier than every one of them drawn on its own outside an opened group. A program's such processes take one
+        // place, its group's node where they are several: no two of one program are drawn on their own.
         HashSet<ProcessInstanceId> ends = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
         Dictionary<ProcessInstanceId, long> reach = snapshot.HostLinks.GroupBy(link => link.Process)
             .ToDictionary(group => group.Key, group => group.Sum(link => link.Records));
+        ProcessInstanceId[] alone = [.. display.Nodes
+            .Where(node => node.Kind == GraphNodeKind.Process && node.Process is { } process && reach.ContainsKey(process)
+                && !ends.Contains(process) && process != kept && node.GroupKey != display.ExpandedGroup)
+            .Select(node => node.Process!.Value)];
+        Dictionary<ProcessInstanceId, string> groupOf = snapshot.Processes.ToDictionary(process => process.Id, process => process.GroupKey);
+        Assert.True(alone.Select(process => groupOf[process]).Distinct(StringComparer.Ordinal).Count() == alone.Length,
+            $"{label}: two processes of one program are drawn on their own beside the hub");
         if (display.Nodes.FirstOrDefault(node => node.Kind == GraphNodeKind.OtherHostsOnly) is { } folded)
         {
             Assert.All(folded.Members, member => Assert.True(reach.ContainsKey(member) && !ends.Contains(member),
                 $"{label}: {member} is folded among those that only reach other hosts"));
-            ProcessInstanceId[] alone = [.. display.Nodes
-                .Where(node => node.Kind == GraphNodeKind.Process && node.Process is { } process && reach.ContainsKey(process)
-                    && !ends.Contains(process) && process != kept && node.GroupKey != display.ExpandedGroup)
-                .Select(node => node.Process!.Value)];
             Assert.True(alone.Length <= budget.HostOnlyDrawn, $"{label}: {alone.Length} drawn alone past {budget.HostOnlyDrawn}");
             long quietestAlone = alone.Length == 0 ? long.MaxValue : alone.Min(process => reach[process]);
             Assert.True(folded.Members.All(member => reach[member] <= quietestAlone),

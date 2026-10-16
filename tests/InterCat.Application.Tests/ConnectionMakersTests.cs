@@ -109,12 +109,14 @@ public sealed class ConnectionMakersTests
     [Fact(DisplayName = "§6.3: an edge to the other hosts counts the connections its process made to them by a connect and accepted from them, and a host drawn on its own counts its own")]
     public void AnEdgeToTheOtherHostsCountsWhoOpenedItsConnections()
     {
-        ProcessGroup group = new("tools", "tool.exe", LaneGrouping.Executable);
-        ProcessNode client = Node(1, 100, group.Key);
-        ProcessNode server = Node(2, 200, group.Key);
+        // Two programs, each its own place beside Other hosts.
+        ProcessGroup clients = new("client", "client.exe", LaneGrouping.Executable);
+        ProcessGroup servers = new("server", "server.exe", LaneGrouping.Executable);
+        ProcessNode client = Node(1, 100, clients.Key);
+        ProcessNode server = Node(2, 200, servers.Key);
         HostLink Link(ProcessNode process, Mechanism mechanism, params HostAddress[] addresses) =>
             new(process.Id, mechanism, addresses, RelationStrength.Correlated);
-        WorkspaceSnapshot snapshot = new("Hosts", new TimeRange(0, 10), [group], [client, server], [], [], [], [], [])
+        WorkspaceSnapshot snapshot = new("Hosts", new TimeRange(0, 10), [clients, servers], [client, server], [], [], [], [], [])
         {
             HostLinks =
             [

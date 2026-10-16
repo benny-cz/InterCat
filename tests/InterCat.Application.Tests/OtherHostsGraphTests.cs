@@ -64,8 +64,10 @@ public sealed class OtherHostsGraphTests
     [Fact(DisplayName = "§6.3: the graph draws each process's connections to other hosts to one Other hosts node, a transport an edge, side by side")]
     public void TheGraphDrawsConnectionsToOneOtherHostsNode()
     {
+        // The two processes that reach other hosts are of two programs, each its own place beside the hub.
         ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
-        ProcessNode[] processes = [.. Enumerable.Range(1, 6).Select(index => Node(index, group.Key))];
+        ProcessGroup other = new("h", "h.exe", LaneGrouping.Executable);
+        ProcessNode[] processes = [.. Enumerable.Range(1, 6).Select(index => Node(index, index == 2 ? other.Key : group.Key))];
         CommunicationEdge pair = Edge("pair", processes[2], processes[3], 10);
         HostLink[] links =
         [
@@ -74,7 +76,7 @@ public sealed class OtherHostsGraphTests
             Link(processes[1], Mechanism.Tcp, 1, 1, 7),
         ];
 
-        GraphDisplay display = GraphProjection.Project(Snapshot([group], processes, [pair], links));
+        GraphDisplay display = GraphProjection.Project(Snapshot([group, other], processes, [pair], links));
 
         // A process whose connections run to other hosts is drawn on its own; the two with neither are No relationships.
         Assert.All(processes[..4], process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
@@ -123,7 +125,7 @@ public sealed class OtherHostsGraphTests
         Assert.True(layout.Positions[hub.Key].IsValid);
 
         // A snapshot with no connection to other hosts draws no such node.
-        GraphDisplay none = GraphProjection.Project(Snapshot([group], processes, [pair]));
+        GraphDisplay none = GraphProjection.Project(Snapshot([group, other], processes, [pair]));
         Assert.Null(none.OtherHosts);
         Assert.DoesNotContain(none.Edges, edge => edge.ToHosts);
     }
@@ -175,13 +177,14 @@ public sealed class OtherHostsGraphTests
     [Fact(DisplayName = "§6.3: past the budget's count, the less busy of the processes that only reach other hosts are counted in one Other hosts only node, edged to Other hosts once per transport")]
     public void TheLessBusyProcessesThatOnlyReachOtherHostsFoldTogether()
     {
-        // Fourteen processes reach other hosts and relate to nothing, the busier the later by TCP, two of the quieter by UDP
-        // too - enough, added, to make the second of them one of the busiest; a client and a server relate to each other
-        // and reach other hosts as well.
-        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
-        ProcessNode[] reaching = [.. Enumerable.Range(1, 14).Select(index => Node(index, group.Key))];
-        ProcessNode client = Node(20, group.Key);
-        ProcessNode server = Node(21, group.Key);
+        // Fourteen programs of one process each reach other hosts and relate to nothing, the busier the later by TCP, two of
+        // the quieter by UDP too - enough, added, to make the second of them one of the busiest; a client and a server
+        // relate to each other and reach other hosts as well.
+        ProcessGroup[] groups = [.. Enumerable.Range(1, 15)
+            .Select(index => new ProcessGroup($"g{index}", $"g{index}.exe", LaneGrouping.Executable))];
+        ProcessNode[] reaching = [.. Enumerable.Range(1, 14).Select(index => Node(index, groups[index - 1].Key))];
+        ProcessNode client = Node(20, groups[14].Key);
+        ProcessNode server = Node(21, groups[14].Key);
         CommunicationEdge pair = Edge("pair", client, server, 6);
         HostLink[] links =
         [
@@ -190,7 +193,7 @@ public sealed class OtherHostsGraphTests
             Link(reaching[1], Mechanism.Udp, 2, 1, 9),
             Link(client, Mechanism.Tcp, 1, 1, 1),
         ];
-        WorkspaceSnapshot snapshot = Snapshot([group], [.. reaching, client, server], [pair], links);
+        WorkspaceSnapshot snapshot = Snapshot(groups, [.. reaching, client, server], [pair], links);
         GraphDisplay display = GraphProjection.Project(snapshot);
 
         // The eight busiest by all their connections' records stay drawn; the six less busy are one node, and the related
@@ -219,6 +222,13 @@ public sealed class OtherHostsGraphTests
         });
         Assert.Equal(folded.Members, brushed.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members);
 
+        // Two equally busy - the second, by TCP and UDP, and the eleventh - are told apart the same way every time, by
+        // their groups' keys: four places draw the eleventh and fold the second.
+        GraphDisplay four = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 4 });
+        Assert.Equal(
+            (GraphNodeKind.Process, GraphNodeKind.OtherHostsOnly),
+            (four.NodeOf(reaching[10].Id)!.Kind, four.NodeOf(reaching[1].Id)!.Kind));
+
         // A budget drawing thirteen of them folds none - the one less busy process left would be a one-member aggregate -
         // and a budget drawing none folds every one.
         GraphDisplay nine = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 13 });
@@ -228,29 +238,147 @@ public sealed class OtherHostsGraphTests
         Assert.Equal(nameof(GraphDisplayBudget.HostOnlyDrawn), Assert.Throws<ArgumentOutOfRangeException>(
             () => GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = -1 })).ParamName);
 
-        // The process kept in focus stays drawn, and an opened group's members are its focus: none of them is folded.
+        // The process kept in focus stays drawn, and so does an opened group's: its members are its focus.
         GraphDisplay kept = GraphProjection.Project(snapshot, kept: reaching[0].Id);
         Assert.Equal(GraphNodeKind.Process, kept.NodeOf(reaching[0].Id)!.Kind);
         Assert.Equal(5, kept.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members.Count);
         Assert.DoesNotContain(reaching[0].Id, kept.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members);
-        GraphDisplay opened = GraphProjection.Project(snapshot, expandedGroup: group.Key);
-        Assert.DoesNotContain(opened.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly);
+        GraphDisplay opened = GraphProjection.Project(snapshot, expandedGroup: groups[0].Key);
+        Assert.Equal(GraphNodeKind.Process, opened.NodeOf(reaching[0].Id)!.Kind);
+        Assert.Equal(kept.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members,
+            opened.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members);
+    }
+
+    [Fact(DisplayName = "§6.3: the processes of one program that only reach other hosts take one place beside the hub, drawn as their group's node, so the places name distinct programs")]
+    public void AProgramsProcessesThatOnlyReachOtherHostsTakeOnePlace()
+    {
+        // Five services of one host process each reach other hosts a little, together more than any other program; three
+        // of a browser's helpers reach them least, and its fourth, the busiest of all, relates to a client too; nine
+        // programs of one process each reach them in between.
+        ProcessGroup services = new("svchost", "svchost.exe", LaneGrouping.Executable);
+        ProcessGroup browser = new("browser", "browser.exe", LaneGrouping.Executable);
+        ProcessGroup clients = new("client", "client.exe", LaneGrouping.Executable);
+        ProcessGroup[] programs = [.. Enumerable.Range(1, 9)
+            .Select(index => new ProcessGroup($"p{index}", $"program{index}.exe", LaneGrouping.Executable))];
+        ProcessNode[] hosted = [.. Enumerable.Range(1, 5).Select(index => Node(index, services.Key))];
+        ProcessNode[] helpers = [.. Enumerable.Range(10, 4).Select(index => Node(index, browser.Key))];
+        ProcessNode[] alone = [.. programs.Select((program, index) => Node(20 + index, program.Key))];
+        ProcessNode client = Node(40, clients.Key);
+        HostLink[] links =
+        [
+            .. hosted.Select(process => Link(process, Mechanism.Tcp, 1, 1, 4)),
+            .. helpers[..3].Select(process => Link(process, Mechanism.Tcp, 1, 1, 1)),
+            Link(helpers[3], Mechanism.Tcp, 2, 2, 50),
+            .. alone.Select((process, index) => Link(process, Mechanism.Tcp, 1, 1, 5 + index)),
+        ];
+        WorkspaceSnapshot snapshot = Snapshot([services, browser, clients, .. programs],
+            [.. hosted, .. helpers, .. alone, client], [Edge("pair", helpers[3], client, 3)], links);
+        GraphDisplay display = GraphProjection.Project(snapshot);
+
+        // The services, twenty records together, take the first place as their group's one node, edged to Other hosts
+        // with all their connections; the seven busiest programs take the rest, each its own process.
+        GraphDisplayNode together = display.NodeOf(hosted[0].Id)!;
+        Assert.Equal((GraphNodeKind.Group, "svchost.exe", services.Key), (together.Kind, together.Label, together.GroupKey));
+        Assert.Equal(Sorted(hosted.Select(process => process.Id)), Sorted(together.Members));
+        GraphDisplayEdge fromServices = Assert.Single(display.Edges, edge => edge.SourceKey == together.Key);
+        Assert.Equal((true, Mechanism.Tcp, 20L, 5),
+            (fromServices.ToHosts, fromServices.Mechanism, fromServices.ObservationCount, fromServices.Relationships.Count));
+        Assert.All(alone[2..], process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+
+        // The two quietest programs and the browser's three helpers - three records together, however busy its fourth -
+        // are counted in Other hosts only; the fourth, related to the client, stays drawn as itself.
+        Assert.Equal(Sorted([alone[0].Id, alone[1].Id, .. helpers[..3].Select(process => process.Id)]),
+            Sorted(Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly).Members));
+        Assert.All(new[] { helpers[3], client }, process => Assert.Equal(GraphNodeKind.Process, display.NodeOf(process.Id)!.Kind));
+        Assert.Equal(12, display.Nodes.Count);
+
+        // A brush re-counts the drawing and keeps who is drawn together.
+        GraphDisplay brushed = GraphProjection.Rescope(display, snapshot, snapshot with
+        {
+            Edges = [.. snapshot.Edges.Select(edge => edge with { ObservationCount = 1 })],
+        });
+        Assert.Equal(together.Members, brushed.NodeOf(hosted[0].Id)!.Members);
+
+        // With every place drawn the browser's helpers are its group's node too, beside its fourth process - and so with
+        // all but theirs, since one place left over would save no node counted in Other hosts only, and hide its name; with
+        // one place the services alone are drawn.
+        GraphDisplay every = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 11 });
+        Assert.DoesNotContain(every.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly);
+        Assert.Equal((GraphNodeKind.Group, 3), (every.NodeOf(helpers[0].Id)!.Kind, every.NodeOf(helpers[0].Id)!.Members.Count));
+        Assert.Equal(GraphNodeKind.Process, every.NodeOf(helpers[3].Id)!.Kind);
+        GraphDisplay ten = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 10 });
+        Assert.Equal(every.Nodes.Select(node => (node.Key, node.Members.Count)), ten.Nodes.Select(node => (node.Key, node.Members.Count)));
+        GraphDisplay nine = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 9 });
+        Assert.Equal(Sorted([alone[0].Id, .. helpers[..3].Select(process => process.Id)]),
+            Sorted(nine.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members));
+        GraphDisplay one = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { HostOnlyDrawn = 1 });
+        Assert.Equal(GraphNodeKind.Group, one.NodeOf(hosted[0].Id)!.Kind);
+        Assert.Equal(12, one.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members.Count);
+
+        // The kept service is drawn on its own beside the rest of them, and the opened group draws each of its services.
+        GraphDisplay kept = GraphProjection.Project(snapshot, kept: hosted[0].Id);
+        Assert.Equal(GraphNodeKind.Process, kept.NodeOf(hosted[0].Id)!.Kind);
+        Assert.Equal(Sorted(hosted[1..].Select(process => process.Id)), Sorted(kept.NodeOf(hosted[1].Id)!.Members));
+        GraphDisplay opened = GraphProjection.Project(snapshot, expandedGroup: services.Key);
+        Assert.All(hosted, process => Assert.Equal(GraphNodeKind.Process, opened.NodeOf(process.Id)!.Kind));
+        Assert.Equal(Sorted([alone[0].Id, .. helpers[..3].Select(process => process.Id)]),
+            Sorted(opened.Nodes.Single(node => node.Kind == GraphNodeKind.OtherHostsOnly).Members));
+    }
+
+    [Fact(DisplayName = "§6.3: under the node budget a group already drawn as one node for its processes that only reach other hosts takes its other members first, each saving a node")]
+    public void AGroupsNodeTakesItsOtherMembersFirstUnderTheBudget()
+    {
+        // Two programs each have three processes that only reach other hosts, drawn as their group's node, and a fourth
+        // related, quietly, to a busy pair; two more pairs relate to each other.
+        ProcessGroup app = new("app", "app.exe", LaneGrouping.Executable);
+        ProcessGroup dev = new("dev", "dev.exe", LaneGrouping.Executable);
+        ProcessGroup busy = new("busy", "busy.exe", LaneGrouping.Executable);
+        ProcessGroup chat = new("chat", "chat.exe", LaneGrouping.Executable);
+        ProcessGroup sync = new("sync", "sync.exe", LaneGrouping.Executable);
+        ProcessNode[] apps = [.. Enumerable.Range(1, 4).Select(index => Node(index, app.Key))];
+        ProcessNode[] devs = [.. Enumerable.Range(11, 4).Select(index => Node(index, dev.Key))];
+        ProcessNode[] pair = [Node(21, busy.Key), Node(22, busy.Key)];
+        ProcessNode[] chats = [Node(31, chat.Key), Node(32, chat.Key)];
+        ProcessNode[] syncs = [Node(41, sync.Key), Node(42, sync.Key)];
+        CommunicationEdge[] edges =
+        [
+            Edge("app", apps[3], pair[0], 1),
+            Edge("dev", devs[3], pair[1], 2),
+            Edge("busy", pair[0], pair[1], 100),
+            Edge("chat", chats[0], chats[1], 50),
+            Edge("sync", syncs[0], syncs[1], 60),
+        ];
+        HostLink[] links = [.. apps[..3].Concat(devs[..3]).Select(process => Link(process, Mechanism.Tcp, 1, 1, 2))];
+        WorkspaceSnapshot snapshot = Snapshot([app, dev, busy, chat, sync], [.. apps, .. devs, .. pair, .. chats, .. syncs],
+            edges, links);
+
+        // Drawn whole: each program's node and its fourth process, the pairs and Other hosts, eleven nodes.
+        Assert.Equal(11, GraphProjection.Project(snapshot).Nodes.Count);
+
+        // Nine allowed, the two quietest groups fold their fourth processes into the nodes already drawn for them, a node
+        // saved by each, and every pair stays drawn as itself.
+        GraphDisplay nine = GraphProjection.Project(snapshot, budget: GraphDisplayBudget.Default with { Nodes = 9 });
+        Assert.Equal(9, nine.Nodes.Count);
+        Assert.Equal((GraphNodeKind.Group, 4), (nine.NodeOf(apps[3].Id)!.Kind, nine.NodeOf(apps[3].Id)!.Members.Count));
+        Assert.Equal((GraphNodeKind.Group, 4), (nine.NodeOf(devs[3].Id)!.Kind, nine.NodeOf(devs[3].Id)!.Members.Count));
+        Assert.All(pair.Concat(chats).Concat(syncs), process => Assert.Equal(GraphNodeKind.Process, nine.NodeOf(process.Id)!.Kind));
     }
 
     [Fact(DisplayName = "§6.3: a collapsed group keeps its members that only reach other hosts, and only the processes drawn on their own are folded")]
     public void ACollapsedGroupKeepsItsMembers()
     {
-        // Thirty workers of one executable collapse into their group; ten other processes reach other hosts on their own.
+        // Thirty workers of one executable collapse into their group; ten programs of one process each reach other hosts.
         ProcessGroup pool = new("pool", "worker.exe", LaneGrouping.Executable);
-        ProcessGroup others = new("others", "other.exe", LaneGrouping.Executable);
+        ProcessGroup[] programs = [.. Enumerable.Range(40, 10)
+            .Select(index => new ProcessGroup($"p{index}", $"program{index}.exe", LaneGrouping.Executable))];
         ProcessNode[] workers = [.. Enumerable.Range(1, 30).Select(index => Node(index, pool.Key))];
-        ProcessNode[] reaching = [.. Enumerable.Range(40, 10).Select(index => Node(index, others.Key))];
+        ProcessNode[] reaching = [.. programs.Select((program, index) => Node(40 + index, program.Key))];
         HostLink[] links =
         [
             .. workers.Select(worker => Link(worker, Mechanism.Tcp, 1, 1, 100)),
             .. reaching.Select((process, index) => Link(process, Mechanism.Tcp, 1, 1, 1 + index)),
         ];
-        GraphDisplay display = GraphProjection.Project(Snapshot([pool, others], [.. workers, .. reaching], [], links));
+        GraphDisplay display = GraphProjection.Project(Snapshot([pool, .. programs], [.. workers, .. reaching], [], links));
         Assert.Equal(30, Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.Group).Members.Count);
         Assert.Equal(Sorted([reaching[0].Id, reaching[1].Id]),
             Sorted(Assert.Single(display.Nodes, node => node.Kind == GraphNodeKind.OtherHostsOnly).Members));
@@ -341,14 +469,19 @@ public sealed class OtherHostsGraphTests
     [Fact(DisplayName = "§6.3: Other hosts opened draws its busiest hosts on their own, edged from the processes that reached them, and keeps the rest")]
     public void OtherHostsOpenedDrawsItsBusiestHosts()
     {
-        ProcessGroup group = new("g", "g.exe", LaneGrouping.Executable);
-        ProcessNode browser = Node(1, group.Key);
-        ProcessNode updater = Node(2, group.Key);
-        ProcessNode idle = Node(3, group.Key);
+        ProcessGroup[] groups =
+        [
+            new("browser", "browser.exe", LaneGrouping.Executable),
+            new("updater", "updater.exe", LaneGrouping.Executable),
+            new("idle", "idle.exe", LaneGrouping.Executable),
+        ];
+        ProcessNode browser = Node(1, groups[0].Key);
+        ProcessNode updater = Node(2, groups[1].Key);
+        ProcessNode idle = Node(3, groups[2].Key);
         HostLink browserTcp = new(browser.Id, Mechanism.Tcp, [new("142.250.1.1", 3, 50), new("20.42.65.1", 1, 4)], RelationStrength.Direct);
         HostLink browserUdp = new(browser.Id, Mechanism.Udp, [new("142.250.1.1", 1, 9)], RelationStrength.Correlated);
         HostLink updaterTcp = new(updater.Id, Mechanism.Tcp, [new("20.42.65.1", 2, 30), new("13.107.4.50", 1, 2)], RelationStrength.Direct);
-        WorkspaceSnapshot snapshot = Snapshot([group], [browser, updater, idle], [], [browserTcp, browserUdp, updaterTcp]);
+        WorkspaceSnapshot snapshot = Snapshot(groups, [browser, updater, idle], [], [browserTcp, browserUdp, updaterTcp]);
         GraphDisplayBudget two = GraphDisplayBudget.Default with { HostsDrawn = 2 };
 
         // Folded, as ever: one Other hosts node, and nothing opened.

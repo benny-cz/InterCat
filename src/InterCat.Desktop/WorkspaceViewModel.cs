@@ -1944,6 +1944,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private static string Counted(int count, string one, string many) =>
         string.Create(CultureInfo.CurrentCulture, $"{count:N0} {(count == 1 ? one : many)}");
 
+    /// <summary>A node's relationships counted, none said as the inspector says it.</summary>
+    private static string RelationshipCount(int count) =>
+        count == 0 ? "no relationship" : Counted(count, "relationship", "relationships");
+
     /// <summary>Stable coordinates of every drawn node, by its key.</summary>
     public IReadOnlyDictionary<string, GraphPoint> DisplayPositions => displayPositions;
 
@@ -3976,9 +3980,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             {
                 GraphNodeKind.Process => "Process instance · "
                     + (collector is { } role ? CollectorText.Label(role) + " · " : string.Empty)
-                    + Counted(node.Relationships, "relationship", "relationships"),
-                GraphNodeKind.Group => GroupMembers(node) + ", drawn as one node · "
-                    + Counted(node.Relationships, "relationship", "relationships"),
+                    + RelationshipCount(node.Relationships),
+                GraphNodeKind.Group => GroupMembers(node) + ", drawn as one node · " + RelationshipCount(node.Relationships),
                 GraphNodeKind.OtherMembers => Counted(node.Members.Count, "member", "members") + " of the opened group not drawn on their own",
                 GraphNodeKind.Remainder => Counted(node.Members.Count, "less active process", "less active processes") + " folded together",
                 GraphNodeKind.Context => Counted(node.Members.Count, "process", "processes") + " outside this focus, counted rather than drawn",

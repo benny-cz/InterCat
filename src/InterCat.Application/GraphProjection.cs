@@ -714,9 +714,11 @@ public static class GraphProjection
         }
 
         // A process whose only drawn activity is its connections to other hosts is drawn beside the hub while few are. A
-        // busy machine has dozens, a star that buries the relationships between processes: past the budget's count, outside
-        // the explicit focus, the busiest by their connections' records stay drawn and the rest are counted in one Other
-        // hosts only node, edged to Other hosts once per transport. A collapsed group keeps its members.
+        // busy machine has dozens, a star that buries the relationships between processes. Several of one group - the
+        // services of svchost.exe, a browser's helpers - are drawn as their group's one node, so the hub's places name
+        // distinct programs; past the budget's count of places, outside the explicit focus, the busiest by their
+        // connections' records stay drawn and the rest are counted in one Other hosts only node, edged to Other hosts once
+        // per transport. A collapsed group keeps its members.
         HashSet<ProcessInstanceId> ends = [.. snapshot.Edges.SelectMany(edge => new[] { edge.SourceId, edge.TargetId })];
         Dictionary<ProcessInstanceId, long> reach = [];
         foreach (HostLink link in snapshot.HostLinks)
@@ -724,29 +726,43 @@ public static class GraphProjection
             reach[link.Process] = Add(reach.GetValueOrDefault(link.Process), link.Records);
         }
 
-        ProcessInstanceId[] hostOnly = [.. reach.Keys
+        ProcessInstanceId[][] places = [.. reach.Keys
             .Where(id => !ends.Contains(id) && kept != id && IsIndividual(id, assignment)
                 && !string.Equals(processes[id].GroupKey, expandedGroup, StringComparison.Ordinal))
-            .OrderByDescending(id => reach[id])
-            .ThenBy(id => id.ToString(), StringComparer.Ordinal)];
-        if (hostOnly.Length > budget.HostOnlyDrawn)
+            .GroupBy(id => processes[id].GroupKey, StringComparer.Ordinal)
+            .Select(group => (group.Key, Members: group.OrderBy(id => id.ToString(), StringComparer.Ordinal).ToArray(),
+                Reach: group.Aggregate(0L, (sum, id) => Add(sum, reach[id]))))
+            .OrderByDescending(place => place.Reach)
+            .ThenBy(place => place.Key, StringComparer.Ordinal)
+            .Select(place => place.Members)];
+        // One place left over is drawn as itself: counted in Other hosts only it would save no node and hide its name.
+        int drawnPlaces = places.Length == budget.HostOnlyDrawn + 1 ? places.Length : Math.Min(places.Length, budget.HostOnlyDrawn);
+        for (int place = 0; place < drawnPlaces; place++)
         {
-            nodeCount -= FoldTogether(HostOnlyKey, hostOnly[budget.HostOnlyDrawn..], assignment);
+            nodeCount -= FoldTogether(GroupNodeKey(processes[places[place][0]].GroupKey), places[place], assignment);
+        }
+
+        if (places.Length > drawnPlaces)
+        {
+            nodeCount -= FoldTogether(HostOnlyKey, [.. places[drawnPlaces..].SelectMany(members => members)], assignment);
         }
 
         // Then collapse further groups, lowest whole-session incident metric first, until the budget fits. The order never
         // uses a brushed interval, so a gesture cannot re-cluster the graph under the hand. The node budget is met by an
-        // exact count; the edge budget is found by bisection over the same order.
+        // exact count; the edge budget is found by bisection over the same order. A group's node that already holds its
+        // members that only reach other hosts saves a node for each member folded into it.
+        HashSet<string> holding = [.. assignment.Values];
         Fold[] collapses = [.. membersByGroup.Keys
             .Where(key => !string.Equals(key, expandedGroup, StringComparison.Ordinal))
             .OrderBy(key => groupMetric.GetValueOrDefault(key))
             .ThenBy(key => key, StringComparer.Ordinal)
             .Select(key => new Fold(GroupNodeKey(key), Individually(membersByGroup[key], kept, assignment)))
-            .Where(fold => fold.Members.Count >= 2)];
+            .Where(fold => fold.Members.Count >= (holding.Contains(fold.Key) ? 1 : 2))];
         int length = 0;
         while (nodeCount > budget.Nodes && length < collapses.Length)
         {
-            nodeCount -= collapses[length++].Members.Count - 1;
+            Fold fold = collapses[length++];
+            nodeCount -= fold.Members.Count - (holding.Contains(fold.Key) ? 0 : 1);
         }
 
         GraphDisplay display = ShortestFittingPrefix(
