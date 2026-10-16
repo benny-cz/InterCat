@@ -35,7 +35,10 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private const double LabelInset = 52;
 
     /// <summary>Beyond this many nodes only the most important are labelled; the rest are named on selection and in the table.</summary>
-    private const int LabelBudget = 24;
+    private const int LabelBudget = 40;
+
+    /// <summary>A graph of at most this many nodes names each process's PID beneath its name, where the pane is wide enough.</summary>
+    private const int DetailBudget = 24;
 
     /// <summary>A label's widest line; a longer name ends in an ellipsis and is read in full on selection and in the table.</summary>
     private const double MaximumLabelWidth = 150;
@@ -1425,7 +1428,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         IReadOnlySet<string> partlySelected,
         string? focused)
     {
-        bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= LabelBudget;
+        bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= DetailBudget;
         List<LabelRequest> requests = labelRequests;
         requests.Clear();
         for (int index = 0; index < order.Count; index++)

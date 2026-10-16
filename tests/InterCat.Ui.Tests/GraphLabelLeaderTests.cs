@@ -77,6 +77,85 @@ public sealed class GraphLabelLeaderTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: a busy machine's graph names every node a large window has room for, past two dozen, each process by its name alone")]
+    public async Task ALargeWindowNamesEveryNodeItHasRoomFor()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1920, Height = 1080 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            _ = Settle(window);
+
+            // Thirty nodes, every one named where it stands.
+            GraphDisplay drawn = workspace.GraphDisplay;
+            Assert.InRange(drawn.Nodes.Count, 25, 40);
+            Assert.Equal(drawn.Nodes.Select(node => node.Key).Order(StringComparer.Ordinal),
+                graph.PlacedLabelKeys.Order(StringComparer.Ordinal));
+
+            // So many names leave a process's PID to its card: each process's name is a line high, where an aggregate's says
+            // what it counts on a second.
+            Dictionary<string, Rect> boxes = graph.PlacedLabelKeys.Zip(graph.PlacedLabels)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            double[] processes = [.. drawn.Nodes.Where(node => node.Kind == GraphNodeKind.Process).Select(node => boxes[node.Key].Height)];
+            double[] aggregates = [.. drawn.Nodes.Where(node => node.Kind != GraphNodeKind.Process).Select(node => boxes[node.Key].Height)];
+            Assert.True(processes.Max() < aggregates.Min(), $"process names {processes.Max()} high, aggregates' {aggregates.Min()}");
+            Save(window, "label-budget-1920x1080.png");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: a small graph names each process with its PID beneath, as an aggregate says what it counts")]
+    public async Task ASmallGraphNamesEachProcessWithItsPid()
+    {
+        // A client and its server over loopback, and a third process reaching another host: four nodes with Other hosts.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\updater.exe", SessionRelativeTicks = 300 },
+            Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 6, 100, 4).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 6, 200, 5).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 1_100 },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 40, 300, 6).Between("192.168.1.10:52000", "52.0.0.1:443")
+                with { SessionRelativeTicks = 1_200 },
+        ]);
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            _ = Settle(window);
+
+            // Each process's name has its PID on a second line, as high as Other hosts' name and what it counts.
+            Dictionary<string, Rect> boxes = graph.PlacedLabelKeys.Zip(graph.PlacedLabels)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            GraphDisplayNode[] processes = [.. workspace.GraphDisplay.Nodes.Where(node => node.Kind == GraphNodeKind.Process)];
+            Assert.Equal(3, processes.Length);
+            double hub = boxes[workspace.GraphDisplay.OtherHosts!.Key].Height;
+            Assert.All(processes, process => Assert.Equal(hub, boxes[process.Key].Height, 0.5));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3: on a crowded machine choosing a node or moving the keyboard leaves every other name where it stood, or steps it aside for the chosen one's")]
     public async Task NamesStayWhereTheyStoodWhenANodeIsChosen()
     {
@@ -146,10 +225,11 @@ public sealed class GraphLabelLeaderTests
             workspace.ClearSelection();
             Assert.Equal(unchosen, Names());
 
-            // The keyboard moving on from node to node without choosing names each where it rests, the same way.
+            // The keyboard moving on from node to node without choosing, through every node, names each where it rests, the
+            // same way.
             graph.Focus();
             int newlyNamed = 0;
-            for (int step = 0; step < 6; step++)
+            for (int step = 0; step < workspace.GraphDisplay.Nodes.Count; step++)
             {
                 window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Control);
                 Dictionary<string, Rect> now = Names();
