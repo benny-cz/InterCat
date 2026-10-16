@@ -296,8 +296,10 @@ public sealed class RpcScopeTests
         workspace.SelectedRung = workspace.RungRows.First(candidate => RpcChannelKeys.IsRpc(candidate.Key));
         Assert.Equal((null, null), (workspace.SelectedRelationship, workspace.HighlightedEdgeKey));
 
-        // Its row in the relationship table says what Enter opens, and opens the same.
+        // Back at the machine rung, where it was opened, it is chosen again. Its row in the relationship table says what
+        // Enter opens, and opens the same.
         workspace.ReturnTo(0);
+        Assert.Equal(relationship.Key, workspace.SelectedRelationship?.Key);
         RelationshipRow row = Assert.Single(workspace.Relationships, candidate => candidate.Key == relationship.Key);
         Assert.Equal("the calls its links join", row.Opens);
 

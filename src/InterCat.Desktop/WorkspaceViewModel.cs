@@ -71,6 +71,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="ListOrigin">Where the latest way down from an aggregate's list began, which the way back comes to (§3.2).</param>
 /// <param name="SelectedRelationshipKey">The relationship chosen, in the graph or its table, by its key.</param>
 /// <param name="ChosenSet">The processes chosen together (§6.7's multi-selection).</param>
+/// <param name="RelationshipOrigins">Where each way down with a relationship chosen began, which the way back comes to (§3.2).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -94,7 +95,8 @@ public sealed record WorkspaceNavigationMemento(
     string? ChosenListedHost = null,
     MemberListOrigin? ListOrigin = null,
     string? SelectedRelationshipKey = null,
-    IReadOnlyList<ProcessInstanceId>? ChosenSet = null);
+    IReadOnlyList<ProcessInstanceId>? ChosenSet = null,
+    IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1581,7 +1583,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         searchText, selectedSearchResult?.Hit.Key, SelectedTimelineMechanism, SelectedTimelineDirection,
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
-        selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null);
+        selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
+        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1719,8 +1722,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             RestoreListChoice(saved, drawn, notices);
         }
 
-        // The way back to a list keeps to the rungs it was kept for; the list is checked when the way back arrives there.
+        // The way back to a list, or to a relationship, keeps to the rungs it was kept for; what it chooses again is checked
+        // when the way back arrives there.
         memberOrigin = saved.ListOrigin;
+        relationshipOrigins.Clear();
+        relationshipOrigins.AddRange(saved.RelationshipOrigins ?? []);
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -2206,8 +2212,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// screen-reader equivalent (R15). The ladder descends one rung at a time from the machine, through the source
     /// process's group, to the process. A relationship resting on exactly one channel goes on to that channel. An RPC
     /// relationship goes on to the calls its links join, which the process's evidence step reads by the relationship's own
-    /// key (R4). Any other stops at the process, whose rows list its channels. The breadcrumb states every rung, and each
-    /// Esc climbs one.
+    /// key (R4). Any other stops at the process, whose rows list its channels. The breadcrumb states every rung, each Esc
+    /// climbs one, and the way back to the rung it was opened from chooses it there again (§3.2).
     /// </summary>
     public bool OpenRelationship(string relationshipKey)
     {
@@ -2218,11 +2224,20 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
+        // The way back to the rung it was opened from chooses it again there (§3.2). The way down begins at the machine
+        // rung, which lets go of any way back below it, so the rung is taken before it.
+        RelationshipOrigin here = OriginHere(relationship.Key);
         string[] process = [source.GroupKey, source.Id.ToString()];
         if (relationship.Rule != RelationRule.RpcCallPeer)
         {
             Channel[] channels = [.. Snapshot.Channels.Where(channel => channel.EdgeKey == relationship.Key)];
-            return DescendAlong(channels.Length == 1 ? [.. process, channels[0].Key] : process, selectedInterval);
+            if (!DescendAlong(channels.Length == 1 ? [.. process, channels[0].Key] : process, selectedInterval))
+            {
+                return false;
+            }
+
+            KeepWayBack(here);
+            return true;
         }
 
         // Linked calls are records only the session holds, so there is nothing to open without it.
@@ -2240,6 +2255,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             new(DetailLevel.Channel, relationship.Key, LinkedCalls(source.NameWithPid, peer)),
             "Evidence was reached from an RPC relationship: the calls its links join."));
         AfterNavigation();
+        KeepWayBack(here);
         return true;
     }
 
@@ -5089,12 +5105,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         // A way down from the rung where one from an aggregate's list began, or from above it, is a way of its own: the
-        // way back follows it, not the list's (§3.2).
+        // way back follows it, not the list's (§3.2), nor a relationship's kept for that rung or one below it.
         if (memberOrigin is { } origin && from <= origin.Depth)
         {
             memberOrigin = null;
         }
 
+        ForgetWaysBackFrom(from);
         return true;
     }
 
@@ -5124,6 +5141,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // that takes it stands beneath the card that counts the selection. On a process chosen in an aggregate's list it
         // is a way down from that list, as Enter on it is, and the way back comes to its row again (§3.2).
         MemberListOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
+        RelationshipOrigin? related = selectedRelationship is { } chosen ? OriginHere(chosen.Key) : null;
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
         LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
             ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
@@ -5133,6 +5151,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         memberOrigin = listed ?? memberOrigin;
+        if (related is not null)
+        {
+            KeepWayBack(related);
+        }
+
         AfterNavigation();
         return true;
     }
@@ -5227,6 +5250,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         ResumeMemberOrigin();
+        ResumeRelationshipOrigin();
         return true;
     }
 
@@ -5245,6 +5269,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (ladder.Depth < from)
             {
                 ResumeMemberOrigin();
+                ResumeRelationshipOrigin();
             }
         }
     }

@@ -2569,6 +2569,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (!closed) _ = FocusRow(MemberList);
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
+    /// <summary>
+    /// Gives the relationship table's chosen row the keyboard once its rows are laid out, where the table is shown: the way
+    /// back to the rung a relationship was opened or listed from chooses it there again and asks for it (§3.2, R15).
+    /// </summary>
+    private void FocusChosenRelationship() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!closed && DataContext is WorkspaceViewModel { SelectedRelationship: { } row })
+        {
+            _ = FocusRow(RelationshipList, row);
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     private void OpenListedMember(object? sender, TappedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)
@@ -4733,6 +4745,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.MembersAsked))
         {
             FocusMemberList();
+        }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.RelationshipAsked))
+        {
+            FocusChosenRelationship();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ReadsWallClock))

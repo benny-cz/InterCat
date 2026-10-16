@@ -152,6 +152,64 @@ public sealed class RelationshipExplanationWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§3.2/R15: back from a relationship's records or its channel, the table chooses it again, with the keyboard on its row")]
+    public async Task TheWayBackGivesTheRelationshipsRowTheKeyboard()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TwoClients());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            WorkspaceViewModel workspace = await ShowTables(window, session);
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            RelationshipRow second = Assert.IsType<RelationshipRow>(table.Items[1]);
+
+            // E on the row chosen lists its records, which take the keyboard; Esc comes back to it, its row with the keyboard.
+            Assert.True(table.ContainerFromIndex(0)!.Focus());
+            window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+            Dispatch();
+            Assert.Same(second, table.SelectedItem);
+            window.KeyPressQwerty(PhysicalKey.E, RawInputModifiers.None);
+            Dispatch();
+            Assert.True(workspace.IsEvidenceRung);
+            await workspace.EvidenceReady;
+            Dispatch();
+            Assert.False(table.IsKeyboardFocusWithin);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            KeyboardOn(second.Key);
+
+            // Enter opens its channel, three rungs down, whose step to its records takes the keyboard; three Escs come back.
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(4, workspace.Crumbs.Count);
+            Assert.False(table.IsKeyboardFocusWithin);
+            for (int climb = 0; climb < 3; climb++)
+            {
+                window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+                Dispatch();
+            }
+
+            Assert.Single(workspace.Crumbs);
+            KeyboardOn(second.Key);
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        // The machine rung's table restated, the relationship is chosen again in it, its row with the keyboard.
+        void KeyboardOn(string key)
+        {
+            var workspace = (WorkspaceViewModel)window.DataContext!;
+            ListBox table = window.GetControl<ListBox>("RelationshipList");
+            Assert.Equal(key, workspace.SelectedRelationship?.Key);
+            Assert.Same(workspace.SelectedRelationship, table.SelectedItem);
+            Assert.Same(table.ContainerFromItem(table.SelectedItem!), window.FocusManager?.GetFocusedElement());
+        }
+    }
+
     /// <summary>Two clients that each exchange records with one server, each over a connection of its own: two relationships.</summary>
     [AvaloniaFact(DisplayName = "R15: a relationship table that lists none says why in its place, and says nothing while it lists any")]
     public async Task AnEmptyRelationshipTableSaysWhy()
