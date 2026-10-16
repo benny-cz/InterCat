@@ -675,6 +675,13 @@ public sealed record WorkspaceSnapshot(
     public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
 
     /// <summary>
+    /// Whether the session records any connection's open, so that a process whose <see cref="ProcessNode.ConnectionsMade"/>
+    /// and <see cref="ProcessNode.ConnectionsAccepted"/> are none made and accepted none, rather than ones the capture could
+    /// not have seen (R21). False for a snapshot not projected from a session.
+    /// </summary>
+    public bool ConnectionOpensRecorded { get; init; }
+
+    /// <summary>
     /// The interval the session's capture recorded, which its whole-session rates divide by (<see cref="SessionRecording"/>);
     /// null when the capture recorded no stop.
     /// </summary>

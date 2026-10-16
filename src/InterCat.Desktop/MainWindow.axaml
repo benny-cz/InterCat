@@ -873,6 +873,13 @@
                   <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock x:Name="EvidenceSummaryText" Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>
+                <!-- §6.8: who opened the selected process's or group's connections, as its card counts them, here where a
+                     keyboard and a screen reader reach it. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsConnections}">
+                  <TextBlock Text="Connections" Classes="muted" />
+                  <TextBlock x:Name="ConnectionsText" Text="{Binding SelectionConnections}" TextWrapping="Wrap"
+                             AutomationProperties.Name="{Binding SelectionConnections, StringFormat='Connections: {0}'}" />
+                </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">

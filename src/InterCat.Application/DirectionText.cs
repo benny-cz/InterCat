@@ -91,9 +91,15 @@ public static class DirectionText
     /// What a node's card says of them: "Connections: 3 made · 12 accepted, as the capture saw them open"; null where it saw
     /// none of theirs open.
     /// </summary>
-    public static string? OpenedLine(long made, long accepted) => made + accepted == 0
+    public static string? OpenedLine(long made, long accepted) => OpenedCounts(made, accepted) is { } counts ? "Connections: " + counts : null;
+
+    /// <summary>
+    /// The same counts as the inspector states them beneath its own heading: "3 made · 12 accepted, as the capture saw them
+    /// open"; null where it saw none of theirs open.
+    /// </summary>
+    public static string? OpenedCounts(long made, long accepted) => made + accepted == 0
         ? null
-        : string.Create(CultureInfo.CurrentCulture, $"Connections: {made:N0} made · {accepted:N0} accepted, as the capture saw them open");
+        : string.Create(CultureInfo.CurrentCulture, $"{made:N0} made · {accepted:N0} accepted, as the capture saw them open");
 
     /// <summary>
     /// The same as a screen reader says it within a row's name: "client.exe · PID 100 connected to server.exe · PID 200",

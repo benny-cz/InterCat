@@ -63,6 +63,7 @@ public static class OverviewWorkspace
             RowsNoProcessHolds = overview.RowsNoProcessHolds,
             Census = overview.Census,
             HostLinks = overview.HostLinks,
+            ConnectionOpensRecorded = overview.ConnectionOpensRecorded,
             Recording = overview.Recording,
             Began = overview.Began,
             WallClock = overview.WallClock,

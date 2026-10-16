@@ -45,6 +45,40 @@ public sealed partial class WorkspaceViewModel
         : string.Empty;
 
     /// <summary>
+    /// The TCP connections the selected process, or the selected group's processes together, made and accepted over the
+    /// whole session, as their card counts them and a ranking of the whole session reads (<see cref="DirectionText.Opened"/>):
+    /// "3 made · 12 accepted, as the capture saw them open", none the capture saw open, or not recorded where the session
+    /// records no connection's open (R21). Under a brush it says it is the whole session's. The inspector states it where a
+    /// keyboard and a screen reader reach it, which a card is not; empty for any other selection.
+    /// </summary>
+    public string SelectionConnections
+    {
+        get
+        {
+            HashSet<ProcessInstanceId>? members = ShowsLineage && selectedProcess is { } selected ? [selected.Id]
+                : GroupingExplanation.Length > 0 && SelectedGroup is { } group
+                    ? [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
+                    : null;
+            if (members is null)
+            {
+                return string.Empty;
+            }
+
+            if (!wholeSnapshot.ConnectionOpensRecorded)
+            {
+                return "Not recorded: this session records no connection's open, so how many were made or accepted is unknown";
+            }
+
+            (long made, long accepted) = DirectionText.Opened(wholeSnapshot, members);
+            return (DirectionText.OpenedCounts(made, accepted) ?? "None the capture saw open")
+                + (appliedInterval is null ? string.Empty : " · whole session");
+        }
+    }
+
+    /// <summary>Whether the inspector states the selection's connections.</summary>
+    public bool ShowsConnections => SelectionConnections.Length > 0;
+
+    /// <summary>
     /// The selection's explanation, as the inspector states it: a process's binding, a group's grouping or a channel's
     /// pairing, of which at most one applies to any selection.
     /// </summary>
@@ -127,5 +161,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ExplanationHeading));
         OnPropertyChanged(nameof(HasExplanation));
         OnPropertyChanged(nameof(OffersCandidates));
+        OnPropertyChanged(nameof(SelectionConnections));
+        OnPropertyChanged(nameof(ShowsConnections));
     }
 }

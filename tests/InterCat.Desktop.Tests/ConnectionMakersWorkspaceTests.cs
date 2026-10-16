@@ -70,6 +70,62 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(ClientMade, Card(100)[1]);
     });
 
+    [Fact(DisplayName = "§6.8: the inspector states the connections a selected process or group made and accepted, as its card counts them, the whole session's under a brush, and not recorded where no open is")]
+    public void TheInspectorStatesTheSelectionsConnections() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. Mixed(), .. Workers()]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        ProcessInstanceId Id(int pid) => workspace.Snapshot.Processes.Single(process => process.ProcessId == pid).Id;
+        // What the inspector last heard of them, so a binding is never left reading a stale count.
+        var heard = new List<string>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.SelectionConnections))
+            {
+                heard.Add(workspace.SelectionConnections);
+            }
+        };
+
+        // Nothing selected, nothing said; a process says what its card does, beneath its own heading.
+        Assert.False(workspace.ShowsConnections);
+        workspace.SelectProcess(Id(100));
+        Assert.Equal("2 made · 1 accepted, as the capture saw them open", workspace.SelectionConnections);
+        Assert.True(workspace.ShowsConnections);
+        Assert.Equal(workspace.SelectionConnections, heard[^1]);
+        workspace.SelectProcess(Id(600));
+        Assert.Equal("None the capture saw open", workspace.SelectionConnections);
+        Assert.Equal(workspace.SelectionConnections, heard[^1]);
+
+        // A group's are its members' together.
+        workspace.ClearSelection();
+        Assert.False(workspace.ShowsConnections);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "worker.exe");
+        Assert.NotNull(workspace.SelectedGroup);
+        Assert.Equal("0 made · 2 accepted, as the capture saw them open", workspace.SelectionConnections);
+        Assert.Equal(workspace.SelectionConnections, heard[^1]);
+
+        // Under a brush they are still the whole session's, and say so.
+        workspace.SelectProcess(Id(100));
+        workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
+        await workspace.IntervalReady;
+        Assert.Equal("2 made · 1 accepted, as the capture saw them open · whole session", workspace.SelectionConnections);
+        Assert.Equal(workspace.SelectionConnections, heard[^1]);
+
+        // A session that records no connection's open cannot say how many were made or accepted.
+        using var unseen = new TemporarySession();
+        Publish(unseen.Store, Unseen());
+        SessionOverviewBundle unopened = SessionOverviewProjector.Project(unseen.Store);
+        using var blind = new WorkspaceViewModel(OverviewWorkspace.From(unopened), unopened.GraphIdentity,
+            new SessionEvidenceSource(unseen.Path, unopened.SessionId, unopened.Generation));
+        blind.SelectProcess(blind.Snapshot.Processes.Single(process => process.ProcessId == 100).Id);
+        Assert.Equal("Not recorded: this session records no connection's open, so how many were made or accepted is unknown",
+            blind.SelectionConnections);
+    });
+
     [Fact(DisplayName = "§7.4: a process's channels lead with an arrow toward a peer it connected to, or from one that connected to it, and both ways where the capture cannot say")]
     public void AProcesssChannelsLeadWithWhoConnected() => SingleThreadedContext.Run(async () =>
     {
@@ -269,6 +325,16 @@ public sealed class ConnectionMakersWorkspaceTests
         Transfer(52, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 17).Between("127.0.0.1:53000", "127.0.0.1:9999"),
         Transfer(53, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 18).Between("127.0.0.1:53001", "127.0.0.1:53002"),
         Transfer(54, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 19).Between("127.0.0.1:53002", "127.0.0.1:53001"),
+    ];
+
+    /// <summary>Two worker.exe instances, each accepting a connection from another host, and an idle process.</summary>
+    private static ObservationRowV1[] Workers() =>
+    [
+        Lifecycle(45, ObservationKind.Create, 400, 20) with { ResourceName = @"C:\Tools\worker.exe" },
+        Lifecycle(46, ObservationKind.Create, 500, 21) with { ResourceName = @"C:\Tools\worker.exe" },
+        Lifecycle(47, ObservationKind.Create, 600, 22) with { ResourceName = @"C:\Tools\idle.exe" },
+        Transfer(60, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 23).Between("192.168.1.10:9000", "10.0.0.7:50002"),
+        Transfer(61, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 500, 24).Between("192.168.1.10:9001", "10.0.0.8:50003"),
     ];
 
     /// <summary>A TCP connection between them, seen opening at neither end.</summary>

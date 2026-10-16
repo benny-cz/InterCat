@@ -6501,6 +6501,9 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(EvidenceSummary));
 
+        // The selection's connections are the whole session's, which the inspector says under a brush and not without one.
+        OnPropertyChanged(nameof(SelectionConnections));
+
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a
         // process's RPC channels and a channel's calls.
         RaiseRankingChanged();
