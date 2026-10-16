@@ -8,8 +8,8 @@ namespace InterCat.Desktop;
 /// What the inspector says made the selection's numbers (§6.8: every visual claim is one action from its explanation):
 /// for a process, the rule that bound its records to it and what the evidence policy left out; for an executable group,
 /// how its members were grouped and what its total left out; for a paired channel, the rule that paired its two ends,
-/// whether the capture saw it open and close, and the key its records are listed by. A relationship explains itself
-/// beneath the table and in the inspector's subtitle (R4).
+/// whether the capture saw it open and close, and the key its records are listed by; for a relationship, its evidence, the
+/// rule that derived it and the keys of what it rests on, as beneath the table (R4).
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -79,15 +79,17 @@ public sealed partial class WorkspaceViewModel
     public bool ShowsConnections => SelectionConnections.Length > 0;
 
     /// <summary>
-    /// The selection's explanation, as the inspector states it: a process's binding, a group's grouping or a channel's
-    /// pairing, of which at most one applies to any selection.
+    /// The selection's explanation, as the inspector states it: a relationship's derivation, a process's binding, a group's
+    /// grouping or a channel's pairing, of which at most one applies to any selection.
     /// </summary>
-    public string Explanation => BindingExplanation is { Length: > 0 } binding ? binding
+    public string Explanation => selectedRelationship is { } relationship ? relationship.Explanation
+        : BindingExplanation is { Length: > 0 } binding ? binding
         : GroupingExplanation is { Length: > 0 } grouping ? grouping
         : PairingExplanation;
 
     /// <summary>What the explanation answers, above it.</summary>
-    public string ExplanationHeading => BindingExplanation.Length > 0 ? "How its records are counted"
+    public string ExplanationHeading => selectedRelationship is not null ? "How it was derived"
+        : BindingExplanation.Length > 0 ? "How its records are counted"
         : GroupingExplanation.Length > 0 ? "How its processes are grouped"
         : "How it was paired";
 

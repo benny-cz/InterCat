@@ -56,6 +56,7 @@ public sealed class RelationshipExplanationTests
         Assert.Equal("Direction: p1.exe · PID 100 connected to p2.exe · PID 200 in 2 connections, p2.exe · PID 200 connected "
             + "to p1.exe · PID 100 in 1 connection; the capture saw 1 connection open neither way", both.DirectionLine);
         Assert.StartsWith("p1.exe · PID 100 and p2.exe · PID 200 over ", both.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("p1.exe · PID 100 ⇄ p2.exe · PID 200", both.Name);
         Assert.Contains(", each connected to the other, 10 observations, ", both.AccessibleName, StringComparison.Ordinal);
 
         // The target alone: the mark points back at the source, and the name says the target connected.
@@ -64,12 +65,14 @@ public sealed class RelationshipExplanationTests
             (back.Direction, back.DirectionLine));
         Assert.Contains(", p3.exe · PID 300 connected to p1.exe · PID 100, 10 observations, ", back.AccessibleName,
             StringComparison.Ordinal);
+        Assert.Equal("p1.exe · PID 100 ← p3.exe · PID 300", back.Name);
 
         // None seen opening: no mark, display order only, and nothing said of it aloud.
         RelationshipRow flow = Row("udp:a");
         Assert.Equal(("", "Direction: display order only, not who initiated or sent", null),
             (flow.Direction, flow.DirectionLine, flow.SpokenDirection));
         Assert.Contains(" over UDP, 10 observations, ", flow.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal("p2.exe · PID 200 ↔ p3.exe · PID 300", flow.Name);
     }
 
     private static ProcessNode Node(int index, int processId, string group) =>

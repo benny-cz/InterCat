@@ -122,8 +122,11 @@ public sealed class SelectionHighlightTests
         Assert.Same(chosen, window.GetControl<ListBox>("RelationshipList").SelectedItem);
         Assert.Null(workspace.SelectedProcess);
         Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
+        // The capture saw none of its connections open, so the inspector names its ends in display order, says its mechanism
+        // and evidence beneath, and how it was derived further down.
         Assert.Equal($"{chosen.Source} ↔ {chosen.Target}", workspace.SelectionTitle);
-        Assert.Equal($"{chosen.Mechanism} · {chosen.Explanation}", workspace.SelectionSubtitle);
+        Assert.Equal($"TCP · {chosen.Evidence} evidence", workspace.SelectionSubtitle);
+        Assert.Equal(("How it was derived", chosen.Explanation), (workspace.ExplanationHeading, workspace.Explanation));
         Assert.Equal("A double click on its edge, or Enter on its row, opens its channel", workspace.SelectionActions);
         await workspace.HighlightReady;
         Dispatch();
@@ -143,19 +146,24 @@ public sealed class SelectionHighlightTests
         Assert.Null(workspace.HighlightedEdgeKey);
         Assert.Equal(client.Name, workspace.SelectionTitle);
 
-        // Chosen again in the table and then unchosen there, it takes its halo and its records' highlight with it.
+        // Chosen again in the table and then unchosen there, it takes its halo, its records' highlight and the inspector's
+        // explanation of how it was derived with it.
         ListBox table = window.GetControl<ListBox>("RelationshipList");
+        TextBlock explanation = window.GetControl<TextBlock>("ExplanationText");
         table.SelectedIndex = 0;
         Dispatch();
         await workspace.HighlightReady;
         Assert.Equal(chosen.Key, workspace.HighlightedEdgeKey);
         Assert.NotNull(workspace.TimelineHighlightBuckets);
+        Assert.True(explanation.IsEffectivelyVisible);
+        Assert.Equal(chosen.Explanation, explanation.Text);
         // The range brushed above is still the analysis interval, which the inspector then titles.
         table.SelectedIndex = -1;
         Dispatch();
         await workspace.HighlightReady;
         Assert.Equal((null, null, "Time range"),
             (workspace.HighlightedEdgeKey, workspace.TimelineHighlightBuckets, workspace.SelectionTitle));
+        Assert.False(explanation.IsEffectivelyVisible);
         window.Close();
     }
 

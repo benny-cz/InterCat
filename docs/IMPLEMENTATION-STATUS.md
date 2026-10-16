@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 609 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 610 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 610 — the inspector says who connected for a chosen relationship (§6.3, §6.8, R4):**
+  - From a live pass over the busy machine's relationships: chosen, a relationship was titled "A ↔ B" whoever
+    connected, and its subtitle was eight lines of channel key. It is now titled with its row's mark, "A → B", its
+    subtitle says who connected, and how it was derived is the inspector's explanation further down.
+  - Found and next: Esc after E on a chosen relationship comes back with nothing chosen.
+  - Debug and Release each ran 2,532 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    nine mutations were caught: a relationship named with "↔" whoever connected, or with no mark where none opened;
+    the inspector's title not that name; its subtitle without who connected, or its derivation again; the timeline's
+    highlight named without the mark; the inspector's explanation not the relationship's, or headed as a pairing;
+    and the explanation kept after the choice was let go.
 
 - **Revision 609 — the graph rings the hit chosen among a search's hits (§6.7, R15):**
   - From revision 607's live pass: arrowing through the busy machine's 31 hits for svchost moved nothing in the graph.

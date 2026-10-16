@@ -2,6 +2,7 @@ using Avalonia;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -37,6 +38,57 @@ public sealed class ConnectionMakersWorkspaceTests
 
         // None seen opening: display order only.
         Assert.Equal("Direction: display order only, not who initiated or sent", await DirectionAsync(Unseen(), clientFirst: true));
+    });
+
+    [Fact(DisplayName = "§6.8: the inspector names a chosen relationship with the mark of who connected between its ends, says who beneath, and how it was derived in its explanation")]
+    public void TheInspectorSaysWhoConnectedForAChosenRelationship() => SingleThreadedContext.Run(async () =>
+    {
+        var highlighted = new List<string?>();
+        foreach ((ObservationRowV1[] rows, string? said) in new (ObservationRowV1[], string?)[]
+        {
+            (OneWay(), $"{Client} connected to {Server}"),
+            (OneWay()[..^3], $"{Client} connected to {Server}"),
+            (Mixed(), "each connected to the other"),
+            (Unseen(), null),
+        })
+        {
+            using var session = new TemporarySession();
+            Publish(session.Store, rows);
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+            using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+                new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+            await workspace.LayoutReady;
+            RelationshipRow chosen = Assert.Single(workspace.Relationships);
+            workspace.SelectedRelationship = chosen;
+
+            // The client alone connected: an arrow from it, whichever end the row names first; each way, both; none seen, none.
+            string mark = said switch
+            {
+                null => "↔",
+                "each connected to the other" => "⇄",
+                _ => chosen.Source == Client ? "→" : "←",
+            };
+            Assert.Equal($"{chosen.Source} {mark} {chosen.Target}", workspace.SelectionTitle);
+            Assert.Equal(string.Join(" · ", new[] { "TCP", said, chosen.Evidence + " evidence" }.OfType<string>()),
+                workspace.SelectionSubtitle);
+            Assert.Equal(("How it was derived", chosen.Explanation), (workspace.ExplanationHeading, workspace.Explanation));
+            Assert.StartsWith("Correlated evidence, derived by transport-endpoint-relation", workspace.Explanation, StringComparison.Ordinal);
+
+            // The timeline names the records it highlights by the same name, where they are one channel's.
+            if (workspace.TimelineHighlightName is { } name)
+            {
+                Assert.Equal(workspace.SelectionTitle, name);
+            }
+
+            highlighted.Add(workspace.TimelineHighlightName);
+
+            // Let go, the inspector explains nothing of it.
+            workspace.SelectedRelationship = null;
+            Assert.False(workspace.HasExplanation);
+        }
+
+        // The one connection the client made is one channel, highlighted under the name with its arrow.
+        Assert.Matches(@"^client\.exe · PID 100 → server\.exe · PID 200$|^server\.exe · PID 200 ← client\.exe · PID 100$", highlighted[1]);
     });
 
     [Fact(DisplayName = "§6.3: a process's card counts the connections it made and accepted as the capture saw them open, and the rest of the machine's leaves theirs to their own rungs")]

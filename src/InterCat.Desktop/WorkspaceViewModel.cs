@@ -858,7 +858,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         // A chosen relationship's records: its linked calls, read by its own key, or the one channel it rests on.
         if (selectedRelationship is { } relationship)
         {
-            string name = $"{relationship.Source} ↔ {relationship.Target}";
+            string name = relationship.Name;
             return RpcChannelKeys.IsRpc(relationship.Key) ? (new(null, [], relationship.Key), name)
                 : chosenChannelKey is { } only ? (new(only, []), name)
                 : (null, null);
@@ -3862,6 +3862,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(HasSelectionActions));
         OnPropertyChanged(nameof(EvidenceHeading));
         OnPropertyChanged(nameof(EvidenceSummary));
+        RaiseExplanationChanged();
     }
 
     /// <summary>
@@ -3962,7 +3963,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public TimeRange? SelectedInterval => selectedInterval;
 
-    public string SelectionTitle => selectedRelationship is { } chosen ? $"{chosen.Source} ↔ {chosen.Target}"
+    /// <summary>
+    /// What the inspector describes, named: a chosen relationship by its two ends with the mark its row carries between them
+    /// - "→" where the first made its connections, "←" where the second did, "⇄" where each did - and "↔" where the capture
+    /// saw none open (§6.3).
+    /// </summary>
+    public string SelectionTitle => selectedRelationship is { } chosen ? chosen.Name
         : DescribedRow is { } row ? row.Source.Label
         : HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
         : SelectedCluster is { } cluster ? cluster.Label
@@ -3970,7 +3976,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : DescribesOpened ? OpenedTitle!
         : selectedProcess is null ? IntervalTitle ?? "Nothing selected" : selectedProcess.Name;
 
-    public string SelectionSubtitle => selectedRelationship is { } chosen ? $"{chosen.Mechanism} · {chosen.Explanation}"
+    /// <summary>
+    /// What the inspector says beneath its title: of a chosen relationship, its mechanism, who made its connections where
+    /// the capture saw them open, and how strongly its evidence ties it - how it was derived, by which rule from what, is
+    /// its explanation, further down (§6.8).
+    /// </summary>
+    public string SelectionSubtitle => selectedRelationship is { } chosen
+        ? string.Join(" · ", new[] { chosen.Mechanism, chosen.SpokenDirection, chosen.Evidence + " evidence" }.OfType<string>())
         : DescribedRow is { } row ? DescribeRow(row)
         : HasMultiSelection ? DescribeChosen()
         : SelectedCluster is { } cluster ? DescribeCluster(cluster)

@@ -68,6 +68,12 @@ public sealed record RelationshipRow(
     /// </summary>
     public string Direction { get; init; } = string.Empty;
 
+    /// <summary>
+    /// The relationship named by its two ends with the mark between them, as the inspector titles it and the timeline names
+    /// its highlight: "↔" where the capture saw none of its connections open.
+    /// </summary>
+    public string Name => $"{Source} {(Direction.Length > 0 ? Direction : "↔")} {Target}";
+
     /// <summary>Who made its connections in words, as its edge's card says it: the mark's tooltip (<see cref="DirectionText.Line"/>).</summary>
     public string DirectionLine { get; init; } = string.Empty;
 
