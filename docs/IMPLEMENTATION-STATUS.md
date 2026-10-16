@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 588 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 589 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 589 — names stay where they stand when a node is chosen or the keyboard moves (§6.3, §6.7, R15):**
+  - The names drawn with nothing chosen are placed first, as that frame places them; a chosen or focused node's name
+    takes a free slot, or else its preferred one, where unchosen names step aside rather than move. This closes the
+    item revision 588 left open.
+  - Debug and Release each ran 2,491 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Each of 16 mutations of the placement, made a function of its own, was caught: a chosen name inside its ring, or
+    taking a held slot before a free one, or leaving the name it overlaps, or treating unchosen names as chosen
+    ones; the keyboard's node not always named, or not named at all; a name already drawn not kept as chosen, or
+    placed again though it stands beyond its ring, or kept twice; the budget never spent, or ranks ignored; a name
+    and its second line said alone, or one alone said with it; a chosen node's leader from its rim; and the view not
+    saying whose its names are, or not telling the placement what is chosen. An earlier run of 8 mutations against
+    the drawing alone left 5 uncaught, which is why the placement was made testable on its own.
 
 - **Revision 588 — a name set away from its node is tied to it (§6.3):**
   - From a live pass over a busy synthetic machine, where names in the outer rings read as their neighbours': a name

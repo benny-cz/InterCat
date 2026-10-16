@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.Media.Imaging;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -69,6 +70,103 @@ public sealed class GraphLabelLeaderTests
             Assert.Equal(graph.DrawnLeaders.Count, tied);
 
             Save(window, "label-leaders-1456x939.png");
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: on a crowded machine choosing a node or moving the keyboard leaves every other name where it stood, or steps it aside for the chosen one's")]
+    public async Task NamesStayWhereTheyStoodWhenANodeIsChosen()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            Dictionary<string, Rect> Names()
+            {
+                _ = Settle(window);
+
+                // No two names overlap, however they were placed.
+                IReadOnlyList<Rect> boxes = graph.PlacedLabels;
+                Assert.DoesNotContain(Enumerable.Range(0, boxes.Count), index =>
+                    Enumerable.Range(index + 1, boxes.Count - index - 1).Any(other => boxes[index].Intersects(boxes[other])));
+                return graph.PlacedLabelKeys.Zip(graph.PlacedLabels)
+                    .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            }
+
+            // With nothing chosen some processes go unnamed, the budget and the room spent on the others.
+            Dictionary<string, Rect> unchosen = Names();
+            string[] unnamed = [.. workspace.GraphDisplay.Nodes
+                .Where(node => node.Kind == GraphNodeKind.Process && !unchosen.ContainsKey(node.Key)).Select(node => node.Key)];
+            Assert.NotEmpty(unnamed);
+
+            // Each other name stands where it stood, or, where the newly named node needs its place, steps aside.
+            void StoodOrSteppedAside(Dictionary<string, Rect> now, string named)
+            {
+                Rect taken = now[named];
+                foreach ((string key, Rect box) in unchosen.Where(entry => entry.Key != named))
+                {
+                    if (now.TryGetValue(key, out Rect stood))
+                    {
+                        Assert.Equal(box, stood);
+                    }
+                    else
+                    {
+                        Assert.True(box.Intersects(taken), $"{key}'s name went elsewhere rather than step aside for {named}'s");
+                    }
+                }
+            }
+
+            // Chosen, an unnamed process is named, and a leader tying its name to it starts at its selection's ring.
+            int ringed = 0;
+            foreach (string key in unnamed.Take(4))
+            {
+                workspace.SelectGraphNode(key);
+                Dictionary<string, Rect> now = Names();
+                StoodOrSteppedAside(now, key);
+                foreach ((Point from, _) in graph.DrawnLeaders.Where(leader => OnEdge(now[key], leader.To)))
+                {
+                    Assert.Equal(graph.RadiusOf(key)!.Value + GraphView.SelectionHalo, Distance(graph.PointOf(key)!.Value, from), 6);
+                    ringed++;
+                }
+            }
+
+            Assert.NotEqual(0, ringed);
+
+            // Nothing chosen again, every name is back where it stood.
+            workspace.ClearSelection();
+            Assert.Equal(unchosen, Names());
+
+            // The keyboard moving on from node to node without choosing names each where it rests, the same way.
+            graph.Focus();
+            int newlyNamed = 0;
+            for (int step = 0; step < 6; step++)
+            {
+                window.KeyPressQwerty(PhysicalKey.ArrowRight, RawInputModifiers.Control);
+                Dictionary<string, Rect> now = Names();
+                string[] added = [.. now.Keys.Except(unchosen.Keys)];
+                Assert.True(added.Length <= 1, string.Join(", ", added));
+                if (added is [{ } focused])
+                {
+                    StoodOrSteppedAside(now, focused);
+                    newlyNamed++;
+                }
+                else
+                {
+                    Assert.Equal(unchosen, now);
+                }
+            }
+
+            Assert.NotEqual(0, newlyNamed);
         }
         finally
         {

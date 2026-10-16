@@ -107,6 +107,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly List<GraphDisplayNode> labelCandidates = [];
     private readonly List<Rect> placedLabels = [];
     private readonly List<string> placedLabelKeys = [];
+    private readonly List<LabelRequest> labelRequests = [];
+    private readonly List<LabelPlacement> labelPlacements = [];
+    private readonly List<Rect> chosenLabels = [];
     private readonly List<(Point From, Point To)> drawnLeaders = [];
     private readonly List<Rect> drawnHeads = [];
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
@@ -1407,9 +1410,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// Labels are a last pass, so no circle overdraws a name, and each is placed where it collides with no label already
-    /// placed: nearest cardinal slots first, then wider and diagonal slots, avoiding other nodes where it can. The selection and keyboard focus
-    /// are placed first, then the busiest nodes, up to the label budget; a node left unlabelled is named when selected or
+    /// Labels are a last pass, so no circle overdraws a name. Where each goes is <see cref="PlaceLabels"/>'s: the names a
+    /// frame with nothing chosen draws, placed as it places them, then the selection's and the keyboard's, so choosing a
+    /// node or moving the keyboard leaves every other name where it stood. A node left unlabelled is named when selected or
     /// focused and in the ranked table (R15). Names take one line and end in an ellipsis rather than wrap mid-word.
     /// </summary>
     private void DrawLabels(
@@ -1423,81 +1426,185 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         string? focused)
     {
         bool detailForProcesses = Bounds.Width >= NarrowPaneWidth && display.Nodes.Count <= LabelBudget;
-
-        // The selection and the focus come first. After them come aggregates, whose counts are the compaction's disclosure
-        // (§6.3), then the busiest, up to the label budget: three passes over the keyboard's order, so ties keep it.
-        List<GraphDisplayNode> candidates = labelCandidates;
-        candidates.Clear();
+        List<LabelRequest> requests = labelRequests;
+        requests.Clear();
         for (int index = 0; index < order.Count; index++)
         {
-            if (IsRequired(order[index], selected, focused)) candidates.Add(order[index]);
+            GraphDisplayNode node = order[index];
+            if (!points.TryGetValue(node.Key, out Point point)) continue;
+            (TextLayout name, TextLayout? detail) = LabelText(node, detailForProcesses);
+            Size alone = new(name.Width, name.Height);
+            requests.Add(new(index, node.Key, point, radii[node.Key], LabelRank(node), alone,
+                detail is null ? alone : new(Math.Max(name.Width, detail.Width), name.Height + detail.Height)));
         }
 
-        int required = candidates.Count;
-        int budget = Math.Max(0, LabelBudget - required);
-        for (int rank = 0; rank < 3 && budget > 0; rank++)
-        {
-            for (int index = 0; index < order.Count && budget > 0; index++)
-            {
-                GraphDisplayNode node = order[index];
-                if (IsRequired(node, selected, focused) || LabelRank(node, partlySelected) != rank) continue;
-                candidates.Add(node);
-                budget--;
-            }
-        }
-
-        // The focused node, or a single selected one, is always named even beside another label. A selection of many
-        // nodes, such as an opened group's members, is named first but never at the cost of overlapping text.
-        List<Rect> placed = placedLabels;
-        placed.Clear();
+        PlaceLabels(new Rect(Bounds.Size), requests, LabelBudget, selected, partlySelected, focused, points, radii, drawnHeads,
+            labelPlacements, placedLabels, chosenLabels);
         placedLabelKeys.Clear();
         drawnLeaders.Clear();
-        for (int index = 0; index < candidates.Count; index++)
+        for (int index = 0; index < labelPlacements.Count; index++)
         {
-            GraphDisplayNode node = candidates[index];
-            if (!points.TryGetValue(node.Key, out Point point)) continue;
-            double radius = radii[node.Key];
-            TextLayout name = Text(node.Label, 12, strong: true, MaximumLabelWidth);
-
-            // A process's PID is optional detail; an aggregate's count is part of the compaction disclosure and is kept
-            // whenever its name fits (§6.3).
-            TextLayout? detail = (node.Kind != GraphNodeKind.Process || detailForProcesses) && DetailOf(node) is { Length: > 0 } line
-                ? Text(line, 10, strong: false, MaximumLabelWidth)
-                : null;
-            double width = Math.Max(name.Width, detail?.Width ?? 0);
-            double height = name.Height + (detail?.Height ?? 0);
-            bool mustShow = index < required && (node.Key == focused || selected.Count == 1);
-
-            // A selected node's name stands outside the halo drawn around it, never across the ring, with its second line or
-            // without it.
-            double clearance = selected.Contains(node.Key) || partlySelected.Contains(node.Key) ? radius + SelectionHalo : radius;
-            Rect? where = Place(point, clearance, width, height, node.Key, points, radii, placed, mustShow);
-            if (where is null && detail is not null)
-            {
-                // Without room for the second line, the name alone may still fit.
-                detail = null;
-                where = Place(point, clearance, name.Width, name.Height, node.Key, points, radii, placed, mustShow);
-            }
-
-            if (where is not { } box)
-            {
-                continue;
-            }
-
-            placed.Add(box);
-            placedLabelKeys.Add(node.Key);
+            (int nodeIndex, string key, Rect box, bool whole, _) = labelPlacements[index];
+            placedLabelKeys.Add(key);
+            (TextLayout name, TextLayout? detail) = LabelText(order[nodeIndex], detailForProcesses);
+            double clearance = radii[key] + (selected.Contains(key) || partlySelected.Contains(key) ? SelectionHalo : 0);
 
             // A name set away from its node, where the slots beside it were taken, or nearer another node, is tied to it by
             // a hairline, so in a crowded graph no name reads as its neighbour's.
-            if (LeaderFor(box, node.Key, point, clearance, points, radii) is { } leader)
+            if (LeaderFor(box, key, points[key], clearance, points, radii) is { } leader)
             {
                 context.DrawLine(Current.LeaderPen, leader.From, leader.To);
                 drawnLeaders.Add(leader);
             }
 
             name.Draw(context, new(box.X + ((box.Width - name.Width) / 2), box.Y));
-            detail?.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
+            if (whole && detail is not null)
+            {
+                detail.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
+            }
         }
+    }
+
+    /// <summary>
+    /// A node's name and its second line: a process's PID is optional detail; an aggregate's count is part of the compaction
+    /// disclosure and is kept whenever its name fits (§6.3). Laid out once per text and theme mode (R11).
+    /// </summary>
+    private (TextLayout Name, TextLayout? Detail) LabelText(GraphDisplayNode node, bool detailForProcesses) => (
+        Text(node.Label, 12, strong: true, MaximumLabelWidth),
+        (node.Kind != GraphNodeKind.Process || detailForProcesses) && DetailOf(node) is { Length: > 0 } line
+            ? Text(line, 10, strong: false, MaximumLabelWidth)
+            : null);
+
+    /// <summary>
+    /// A node a frame may name, in the keyboard's order (<see cref="LabelRequest.Index"/>): where it is drawn and how large,
+    /// its rank among the names drawn with nothing chosen, and the room its name takes alone and with its second line.
+    /// </summary>
+    internal readonly record struct LabelRequest(int Index, string Key, Point Point, double Radius, int Rank, Size Alone, Size Whole);
+
+    /// <summary>A name placed: whose, where, with its second line or alone, and whether its node is chosen.</summary>
+    internal readonly record struct LabelPlacement(int Index, string Key, Rect Box, bool Whole, bool Chosen);
+
+    /// <summary>
+    /// Where a frame's names go (§6.3, §6.7). First the names a frame with nothing chosen draws, placed as it places them:
+    /// aggregates, whose counts are the compaction's disclosure, then the busiest, up to <paramref name="budget"/>, each
+    /// where it collides with no name already placed (<see cref="FindLabelBox"/>). Then the selection, the aggregates it
+    /// falls in and the keyboard's <paramref name="focused"/> node: a chosen name already placed stays unless it stands
+    /// across its node's selection ring; one not placed takes a slot free of every name, or else the slot it prefers among
+    /// the chosen names alone, where the unchosen names it overlaps step aside - left undrawn while it is chosen - rather
+    /// than move. The focused node, or a single selected one, is always named. <paramref name="boxes"/> is kept in step
+    /// with <paramref name="placed"/>, its boxes in its order; <paramref name="chosen"/> is room to gather the chosen
+    /// names' boxes in, so a frame allocates nothing (R11).
+    /// </summary>
+    internal static void PlaceLabels(
+        Rect pane,
+        IReadOnlyList<LabelRequest> order,
+        int budget,
+        IReadOnlySet<string> selected,
+        IReadOnlySet<string> partlySelected,
+        string? focused,
+        Dictionary<string, Point> points,
+        Dictionary<string, double> radii,
+        IReadOnlyList<Rect> heads,
+        List<LabelPlacement> placed,
+        List<Rect> boxes,
+        List<Rect> chosen)
+    {
+        placed.Clear();
+        boxes.Clear();
+        for (int rank = 0; rank < 2 && budget > 0; rank++)
+        {
+            for (int index = 0; index < order.Count && budget > 0; index++)
+            {
+                LabelRequest request = order[index];
+                if (request.Rank != rank) continue;
+                budget--;
+                if (Fit(pane, request, request.Radius, points, radii, boxes, heads, mustShow: false) is { } fit)
+                {
+                    Keep(placed, boxes, new(request.Index, request.Key, fit.Box, fit.Whole, Chosen: false));
+                }
+            }
+        }
+
+        for (int index = 0; index < order.Count; index++)
+        {
+            LabelRequest request = order[index];
+            bool halo = selected.Contains(request.Key) || partlySelected.Contains(request.Key);
+            if (!halo && request.Key != focused) continue;
+            double clearance = halo ? request.Radius + SelectionHalo : request.Radius;
+            int drawn = placed.Count - 1;
+            while (drawn >= 0 && !string.Equals(placed[drawn].Key, request.Key, StringComparison.Ordinal))
+            {
+                drawn--;
+            }
+
+            if (drawn >= 0)
+            {
+                // A name already placed stays where it stood, unless it stands across its node's selection ring: a selected
+                // node's name stands outside the ring, never across it.
+                if (GapTo(boxes[drawn], request.Point, clearance) >= 0)
+                {
+                    placed[drawn] = placed[drawn] with { Chosen = true };
+                    continue;
+                }
+
+                placed.RemoveAt(drawn);
+                boxes.RemoveAt(drawn);
+            }
+
+            if (Fit(pane, request, clearance, points, radii, boxes, heads, mustShow: false) is { } free)
+            {
+                Keep(placed, boxes, new(request.Index, request.Key, free.Box, free.Whole, Chosen: true));
+                continue;
+            }
+
+            // No slot is free: it takes the one it prefers among the chosen names alone, and the unchosen names there step
+            // aside.
+            chosen.Clear();
+            for (int label = 0; label < placed.Count; label++)
+            {
+                if (placed[label].Chosen) chosen.Add(placed[label].Box);
+            }
+
+            bool mustShow = request.Key == focused || (selected.Count == 1 && selected.Contains(request.Key));
+            if (Fit(pane, request, clearance, points, radii, chosen, heads, mustShow) is not { } taken) continue;
+            for (int label = placed.Count - 1; label >= 0; label--)
+            {
+                if (placed[label].Chosen || !boxes[label].Intersects(taken.Box)) continue;
+                placed.RemoveAt(label);
+                boxes.RemoveAt(label);
+            }
+
+            Keep(placed, boxes, new(request.Index, request.Key, taken.Box, taken.Whole, Chosen: true));
+        }
+    }
+
+    /// <summary>A name's box with its second line where both fit, or alone where only the name does; none where neither.</summary>
+    private static (Rect Box, bool Whole)? Fit(
+        Rect pane,
+        LabelRequest request,
+        double clearance,
+        Dictionary<string, Point> points,
+        Dictionary<string, double> radii,
+        IReadOnlyList<Rect> avoid,
+        IReadOnlyList<Rect> heads,
+        bool mustShow)
+    {
+        if (FindLabelBox(pane, request.Point, clearance, request.Whole.Width, request.Whole.Height, request.Key, points, radii,
+                avoid, heads, mustShow) is { } whole)
+        {
+            return (whole, true);
+        }
+
+        return request.Whole == request.Alone
+            ? null
+            : FindLabelBox(pane, request.Point, clearance, request.Alone.Width, request.Alone.Height, request.Key, points, radii,
+                avoid, heads, mustShow) is { } alone ? (alone, false) : null;
+    }
+
+    private static void Keep(List<LabelPlacement> placed, List<Rect> boxes, LabelPlacement label)
+    {
+        placed.Add(label);
+        boxes.Add(label.Box);
     }
 
     /// <summary>How far outside a node its selection's ring is drawn, and a selected node's label kept clear of it.</summary>
@@ -1580,13 +1687,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return Math.Sqrt((dx * dx) + (dy * dy)) - radius;
     }
 
-    /// <summary>Whether a node's label is required: it is selected, or it holds the keyboard's focus.</summary>
-    private static bool IsRequired(GraphDisplayNode node, IReadOnlySet<string> selected, string? focused) =>
-        selected.Contains(node.Key) || node.Key == focused;
-
-    /// <summary>A label's rank after the required ones: part of the selection, then an aggregate, then a process.</summary>
-    private static int LabelRank(GraphDisplayNode node, IReadOnlySet<string> partlySelected) =>
-        partlySelected.Contains(node.Key) ? 0 : node.Kind != GraphNodeKind.Process ? 1 : 2;
+    /// <summary>A name's rank among those drawn with nothing chosen: an aggregate's, then a process's.</summary>
+    private static int LabelRank(GraphDisplayNode node) => node.Kind != GraphNodeKind.Process ? 0 : 1;
 
     /// <summary>A node's second label line, formatted once per node of the drawing shown.</summary>
     private string DetailOf(GraphDisplayNode node)
@@ -1614,36 +1716,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
-    /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
-    /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left. A
-    /// selected/focused label may fall back to a merely in-pane slot, because the user explicitly asked which node has
-    /// focus (§6.3, R15).
-    /// </summary>
-    private Rect? Place(
-        Point point,
-        double radius,
-        double width,
-        double height,
-        string key,
-        Dictionary<string, Point> points,
-        Dictionary<string, double> radii,
-        List<Rect> placed,
-        bool mustShow)
-    {
-        return FindLabelBox(new Rect(Bounds.Size), point, radius, width, height, key, points, radii, placed, drawnHeads, mustShow);
-    }
-
-    /// <summary>
-    /// Pure label-placement core, exposed internally so the crowded-hub fallback has a deterministic regression test.
-    /// Candidates stay close to the node first, then search outward; this is label placement only and never moves a node.
-    /// </summary>
-    /// <summary>
     /// How far out each ring of label positions lies. A static array: a span of constants is built from a field handle
     /// on every call where the JIT does not optimise, and this runs for every label of every repaint (R11).
     /// </summary>
     private static readonly double[] LabelRings = [0, 18, 42];
 
+    /// <summary>
+    /// Where a label block fits beside its node. The first ring is the familiar below/above/right/left placement; two
+    /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
+    /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left. A
+    /// selected/focused label may fall back to a merely in-pane slot, because the user explicitly asked which node has
+    /// focus (§6.3, R15). Label placement only: it never moves a node.
+    /// </summary>
     internal static Rect? FindLabelBox(
         Rect pane,
         Point point,
