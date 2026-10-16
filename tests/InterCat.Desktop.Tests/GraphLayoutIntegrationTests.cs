@@ -336,6 +336,46 @@ public sealed class GraphLayoutIntegrationTests
                 $"label covered {entry.Key} at {entry.Value}"));
     }
 
+    [Fact(DisplayName = "§6.3: a label takes a slot nearer its own node than any other where one is left, before one over an arrowhead, and a name set away from its node, or nearer another, is tied to it by a leader from its rim")]
+    public void ALabelReadsAsItsOwnNodes()
+    {
+        var pane = new Rect(0, 0, 400, 300);
+        var node = new Point(200, 150);
+        var points = new Dictionary<string, Point>(StringComparer.Ordinal) { ["node"] = node, ["below"] = new(200, 195) };
+        var radii = new Dictionary<string, double>(StringComparer.Ordinal) { ["node"] = 10, ["below"] = 10 };
+
+        // The slot below, 3 px under the node, would stand 2 px over the other node's rim, nearer it than its own: the name
+        // goes above instead, nearer nothing but its node.
+        Rect below = new(170, 163, 60, 20);
+        Rect above = new(170, 117, 60, 20);
+        Assert.Equal((false, true), GraphView.Neighbours(below, "node", node, 10, points, radii));
+        Assert.Equal((false, false), GraphView.Neighbours(above, "node", node, 10, points, radii));
+        Assert.Equal(above, GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", points, radii, [], [], mustShow: false));
+
+        // Where every slot clear of the other node is over an arrowhead, the one nearer its own node is still taken first.
+        Assert.Equal(above, GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", points, radii, [], [pane], mustShow: false));
+
+        // Each is measured from its own rim: 3 px from it below, 5 px from a node a little further down, the name stays below.
+        var further = new Dictionary<string, Point>(StringComparer.Ordinal) { ["node"] = node, ["below"] = new(200, 198) };
+        Assert.Equal(below, GraphView.FindLabelBox(pane, node, 10, 60, 20, "node", further, radii, [], [], mustShow: false));
+
+        // A name beside its node needs no leader, unless it stands nearer another; one set away from it is tied to it from
+        // the rim toward the nearest point of its box; one over its node can be tied to nothing.
+        Assert.Null(GraphView.LeaderOf(node, 10, below));
+        Assert.Equal((new Point(200, 160), new Point(200, 163)), GraphView.LeaderOf(node, 10, below, nearerAnother: true));
+        Assert.Null(GraphView.LeaderOf(node, 10, new Rect(170, 170, 60, 20)));
+        Assert.Equal((new Point(200, 160), new Point(200, 170.5)), GraphView.LeaderOf(node, 10, new Rect(170, 170.5, 60, 20)));
+        (Point from, Point to) = GraphView.LeaderOf(node, 10, new Rect(230, 180, 60, 20))!.Value;
+        Assert.Equal((207.071068, 157.071068, 230d, 180d), (Math.Round(from.X, 6), Math.Round(from.Y, 6), to.X, to.Y));
+        Assert.Null(GraphView.LeaderOf(node, 10, new Rect(190, 140, 60, 20)));
+        Assert.Null(GraphView.LeaderOf(node, 10, new Rect(170, 155, 60, 20), nearerAnother: true));
+        Assert.Equal((new Point(200, 140), new Point(200, 120)), GraphView.LeaderOf(node, 10, new Rect(170, 100, 60, 20)));
+
+        // A drawn name takes the leader its neighbours call for: below, nearer the other node, it is tied; above, it is not.
+        Assert.Equal((new Point(200, 160), new Point(200, 163)), GraphView.LeaderFor(below, "node", node, 10, points, radii));
+        Assert.Null(GraphView.LeaderFor(above, "node", node, 10, points, radii));
+    }
+
     /// <summary>A layout scheduler whose drawn-graph layouts wait while <see cref="Holding"/>, so a test reads the first frame.</summary>
     private sealed class HeldLayouts
     {

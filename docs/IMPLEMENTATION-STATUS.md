@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 587 · Branch: `main`
+Updated: 2026-10-16 · Plan revision: 588 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -96,6 +96,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 588 — a name set away from its node is tied to it (§6.3):**
+  - From a live pass over a busy synthetic machine, where names in the outer rings read as their neighbours': a name
+    takes a slot nearer its own node than any other where one is left, before standing over an arrowhead, and one more
+    than 10 px from its node's rim, or nearer another node, is tied to it by a hairline from the rim.
+  - Still open from the same pass: choosing a node can move the names around it.
+  - Debug and Release each ran 2,486 tests with revision 473's 93 failures and 4 skips, and nothing else failed. Of
+    14 mutations 13 were caught: a name taking a slot nearer another node, or one over an arrowhead before one
+    nearer another, or its gap measured from its node's centre; a name hiding a node; no leader for a name far off,
+    or near but nearer another, through the decision a drawn name takes or alone; a leader for a name over its node,
+    from the centre rather than the rim, or to the wrong side of a box above; and the window keeping no leader or no
+    owner of a name. The one left, the window's call deciding a near leader without its neighbours, survived because
+    the busy machine leaves no name near its node yet nearer another, as names now avoid such slots; the decision's
+    own test catches the same change.
 
 - **Revision 587 — the inspector states the selection's connections made and accepted (§6.8, R15):**
   - A Connections fact beneath the selected process's or group's summary, as its card counts them, where a keyboard

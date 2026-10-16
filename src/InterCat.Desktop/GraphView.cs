@@ -106,6 +106,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly Dictionary<string, double> drawnRadii = new(StringComparer.Ordinal);
     private readonly List<GraphDisplayNode> labelCandidates = [];
     private readonly List<Rect> placedLabels = [];
+    private readonly List<string> placedLabelKeys = [];
+    private readonly List<(Point From, Point To)> drawnLeaders = [];
     private readonly List<Rect> drawnHeads = [];
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
     private GraphDisplay? traversalFor;
@@ -168,6 +170,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             ContextDashes = new(MutedPen, 7, 4);
             ContextRimPen = new(MutedTextBrush, 1);
             SampleRingPen = new(TextBrush, 2);
+            LeaderPen = new(MutedTextBrush, 1);
         }
 
         public IBrush NodeBrush { get; }
@@ -192,6 +195,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         public Pen MatchHaloPen { get; }
         public Dashes ContextDashes { get; }
         public Pen ContextRimPen { get; }
+
+        /// <summary>The hairline that ties a name set away from its node to the node.</summary>
+        public Pen LeaderPen { get; }
 
         /// <summary>Mechanism fills and edge pens, cached per semantic key within this mode.</summary>
         public Dictionary<Mechanism, SolidColorBrush> MechanismBrushes { get; } = [];
@@ -1444,6 +1450,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         // nodes, such as an opened group's members, is named first but never at the cost of overlapping text.
         List<Rect> placed = placedLabels;
         placed.Clear();
+        placedLabelKeys.Clear();
+        drawnLeaders.Clear();
         for (int index = 0; index < candidates.Count; index++)
         {
             GraphDisplayNode node = candidates[index];
@@ -1477,6 +1485,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
 
             placed.Add(box);
+            placedLabelKeys.Add(node.Key);
+
+            // A name set away from its node, where the slots beside it were taken, or nearer another node, is tied to it by
+            // a hairline, so in a crowded graph no name reads as its neighbour's.
+            if (LeaderFor(box, node.Key, point, clearance, points, radii) is { } leader)
+            {
+                context.DrawLine(Current.LeaderPen, leader.From, leader.To);
+                drawnLeaders.Add(leader);
+            }
+
             name.Draw(context, new(box.X + ((box.Width - name.Width) / 2), box.Y));
             detail?.Draw(context, new(box.X + ((box.Width - detail.Width) / 2), box.Y + name.Height));
         }
@@ -1491,8 +1509,76 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>The label boxes drawn in the last frame, in the order placed.</summary>
     internal IReadOnlyList<Rect> PlacedLabels => placedLabels;
 
+    /// <summary>Whose each of <see cref="PlacedLabels"/> is: the key of the node it names, in the same order.</summary>
+    internal IReadOnlyList<string> PlacedLabelKeys => placedLabelKeys;
+
     /// <summary>The boxes of the arrowheads drawn in the last frame, which its labels kept clear of where they could.</summary>
     internal IReadOnlyList<Rect> DrawnHeads => drawnHeads;
+
+    /// <summary>The leaders drawn in the last frame, each from a node's rim to its name set away from it.</summary>
+    internal IReadOnlyList<(Point From, Point To)> DrawnLeaders => drawnLeaders;
+
+    /// <summary>How far from a node's rim, or its selection's ring, its name may stand before a leader ties it to the node.</summary>
+    internal const double LeaderGap = 10;
+
+    /// <summary>
+    /// The leader from a node to its name set away from it: from the rim at <paramref name="clearance"/>, toward the nearest
+    /// point of the name's box, ending on it. None where the name stands within <see cref="LeaderGap"/> of the rim, as one in
+    /// a slot beside its node does, unless it stands nearer another node (<paramref name="nearerAnother"/>); and none where
+    /// it overlaps the rim, which nothing can tie.
+    /// </summary>
+    internal static (Point From, Point To)? LeaderOf(Point centre, double clearance, Rect box, bool nearerAnother = false)
+    {
+        Point near = new(Math.Clamp(centre.X, box.Left, box.Right), Math.Clamp(centre.Y, box.Top, box.Bottom));
+        double dx = near.X - centre.X;
+        double dy = near.Y - centre.Y;
+        double distance = Math.Sqrt((dx * dx) + (dy * dy));
+        return distance <= clearance || (distance - clearance <= LeaderGap && !nearerAnother)
+            ? null
+            : (new Point(centre.X + (dx / distance * clearance), centre.Y + (dy / distance * clearance)), near);
+    }
+
+    /// <summary>The leader a drawn name takes (<see cref="LeaderOf"/>): tied as one set away from its node, or nearer another.</summary>
+    internal static (Point From, Point To)? LeaderFor(
+        Rect box,
+        string key,
+        Point point,
+        double clearance,
+        Dictionary<string, Point> points,
+        Dictionary<string, double> radii) =>
+        LeaderOf(point, clearance, box, Neighbours(box, key, point, clearance, points, radii).NearerAnother);
+
+    /// <summary>
+    /// Whether a label's box hides another node, and whether it stands nearer another node's rim than its own node's, where
+    /// it would read as that node's name.
+    /// </summary>
+    internal static (bool CoversNode, bool NearerAnother) Neighbours(
+        Rect box,
+        string key,
+        Point point,
+        double radius,
+        Dictionary<string, Point> points,
+        Dictionary<string, double> radii)
+    {
+        double own = GapTo(box, point, radius);
+        bool nearerAnother = false;
+        foreach ((string nodeKey, Point nodePoint) in points)
+        {
+            if (nodeKey == key || !radii.TryGetValue(nodeKey, out double otherRadius)) continue;
+            if (Covers(box, nodePoint, otherRadius)) return (true, nearerAnother);
+            nearerAnother |= GapTo(box, nodePoint, otherRadius) < own;
+        }
+
+        return (false, nearerAnother);
+    }
+
+    /// <summary>How far a box stands from a node's rim: from the nearest point of the box to the centre, less the radius.</summary>
+    private static double GapTo(Rect box, Point centre, double radius)
+    {
+        double dx = Math.Clamp(centre.X, box.Left, box.Right) - centre.X;
+        double dy = Math.Clamp(centre.Y, box.Top, box.Bottom) - centre.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy)) - radius;
+    }
 
     /// <summary>Whether a node's label is required: it is selected, or it holds the keyboard's focus.</summary>
     private static bool IsRequired(GraphDisplayNode node, IReadOnlySet<string> selected, string? focused) =>
@@ -1592,24 +1678,19 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             candidates[candidateCount++] = new Rect(point.X - horizontal - width, point.Y - vertical - height, width, height);
         }
 
-        // Clear of every label, node and arrowhead; failing that, of every label and node, since a label over a head is
-        // better than none.
-        for (int pass = 0; pass < 2; pass++)
+        // Clear of every label, node and arrowhead, and nearer its own node than any other, so it is read as that node's;
+        // failing that, nearer another node, which a leader then ties to its own (LeaderOf); failing both, the same over a
+        // head, since a label over a head is better than none.
+        for (int pass = 0; pass < 4; pass++)
         {
+            bool overHeads = pass >= 2;
+            bool nearerAllowed = pass % 2 == 1;
             for (int i = 0; i < candidateCount; i++)
             {
                 Rect candidate = candidates[i];
-                if (!pane.Contains(candidate) || Overlaps(candidate, placed) || (pass == 0 && Overlaps(candidate, heads))) continue;
-                bool coversNode = false;
-                foreach ((string nodeKey, Point nodePoint) in points)
-                {
-                    if (nodeKey == key || !radii.TryGetValue(nodeKey, out double otherRadius)
-                        || !Covers(candidate, nodePoint, otherRadius)) continue;
-                    coversNode = true;
-                    break;
-                }
-
-                if (!coversNode) return candidate;
+                if (!pane.Contains(candidate) || Overlaps(candidate, placed) || (!overHeads && Overlaps(candidate, heads))) continue;
+                (bool coversNode, bool nearerAnother) = Neighbours(candidate, key, point, radius, points, radii);
+                if (!coversNode && (nearerAllowed || !nearerAnother)) return candidate;
             }
         }
 
