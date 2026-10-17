@@ -176,11 +176,18 @@ public sealed record IntervalRow(
     /// </summary>
     public bool ShowsBytes { get; init; } = true;
 
+    /// <summary>
+    /// Whether <see cref="KnownBytes"/> are an earlier publication's, stated while a live session's are read again rather
+    /// than blinking out each time: they are said to be updating.
+    /// </summary>
+    public bool BytesUpdating { get; init; }
+
     public string AccessibleName =>
         $"{Window}, {Spoken.Count(ObservationCount, "observation")}"
         + (Cells > 1 ? string.Create(CultureInfo.CurrentCulture, $" in {Cells:N0} intervals") : string.Empty)
         + (FocusCount is { } focused ? string.Create(CultureInfo.CurrentCulture, $", {focused:N0} in focus") : string.Empty)
-        + (ShowsBytes ? $", {KnownBytes}" : string.Empty) + (Mechanism.Length > 0 ? $", {Mechanism}" : string.Empty)
+        + (ShowsBytes ? $", {KnownBytes}" + (BytesUpdating ? ", updating" : string.Empty) : string.Empty)
+        + (Mechanism.Length > 0 ? $", {Mechanism}" : string.Empty)
         + $", {Spoken.Coverage(Coverage)}";
 }
 
@@ -295,13 +302,15 @@ public static class WorkspaceRowBuilder
     /// 20-ms bucket never reads "5 s to 5 s" (§6.2 escalates units the same way). A focused rung's count for the same
     /// window stands beside the window's own, as its colour stands inside the window's grey bar (§3.2). Where the
     /// timeline sums no bytes (<paramref name="sumsBytes"/> false), the rows state none; where they are read apart from it
-    /// (<paramref name="bytesOf"/>), each row states what was read for its interval. Every bucket holding a record is a row
+    /// (<paramref name="bytesOf"/>), each row states what was read for its interval, and whether that is an earlier
+    /// publication's, updating (<paramref name="bytesUpdating"/>). Every bucket holding a record is a row
     /// of its own; a run of consecutive empty ones of one coverage state is one row spanning them, so a timeline counted a
     /// column per device pixel lists what it holds rather than hundreds of empty rows, and still says where nothing was.
     /// </summary>
     public static IReadOnlyList<IntervalRow> Intervals(
         IReadOnlyList<TimelineBucket> buckets, ThemeMode mode, IReadOnlyList<TimelineBucket>? focus = null,
-        bool sumsBytes = true, Func<TimelineBucket, string>? bytesOf = null, SessionClock? clock = null)
+        bool sumsBytes = true, Func<TimelineBucket, string>? bytesOf = null, SessionClock? clock = null,
+        Func<TimelineBucket, bool>? bytesUpdating = null)
     {
         ArgumentNullException.ThrowIfNull(buckets);
 
@@ -346,6 +355,7 @@ public static class WorkspaceRowBuilder
                 FocusCount = focusCount,
                 Cells = cells,
                 ShowsBytes = sumsBytes,
+                BytesUpdating = bytesUpdating?.Invoke(bucket) ?? false,
             });
             index = last;
         }

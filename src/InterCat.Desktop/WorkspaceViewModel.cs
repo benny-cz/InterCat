@@ -141,8 +141,8 @@ public sealed record HostRecordsCarry(TimeRange? Scope, HostConnectionList List)
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
-/// by that focus's key, and the bytes its lanes plotted under a byte ranking, a group's or a process's for that focus. The
-/// next publication of the same session shows them until its own arrive.
+/// by that focus's key, the bytes its lanes plotted under a byte ranking, a group's or a process's for that focus, and the
+/// bytes its interval table stated. The next publication of the same session shows them until its own arrive.
 /// </summary>
 public sealed record TimelineCarry(
     SessionTimelineDetail? Detail,
@@ -159,7 +159,8 @@ public sealed record TimelineCarry(
     SessionMechanismByteMeasures? LaneBytes = null,
     SessionMechanismByteMeasures? ZoomedLaneBytes = null,
     SessionOwnerByteMeasures? ProcessLaneBytes = null,
-    SessionDirectionByteMeasures? DirectionLaneBytes = null);
+    SessionDirectionByteMeasures? DirectionLaneBytes = null,
+    SessionIntervalByteMeasures? IntervalBytes = null);
 
 public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDisposable
 {
@@ -801,7 +802,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         FollowIntervalBytes(listed);
         intervalCells = buckets.Count;
         intervals = WorkspaceRowBuilder.Intervals(buckets, ThemeResources.CurrentMode, listsWhole ? focus : null,
-            IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null, TimeBase);
+            IntervalTableShowsBytes, listed is { } request ? bucket => IntervalBytesText(request, bucket) : null, TimeBase,
+            listed is { } stated ? bucket => IntervalBytesStandIn(stated, bucket) : null);
         OnPropertyChanged(nameof(Intervals));
         OnPropertyChanged(nameof(IntervalTableScope));
 
@@ -1131,7 +1133,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public TimelineCarry CarryTimeline() => new(timelineDetail, timelineFocus?.Key, timelineFocusBuckets,
         timelineProcessLanes, processLaneProblem, timelineDirectionLanes, timelineChannelEnds,
         highlight?.Key, timelineFoldedLane, highlightBuckets, highlightLanes, overviewLaneBytes?.Measures,
-        zoomedLaneBytes?.Measures, ownerLaneBytes?.Measures, directionLaneBytes?.Measures);
+        zoomedLaneBytes?.Measures, ownerLaneBytes?.Measures, directionLaneBytes?.Measures, CarryIntervalBytes());
 
     /// <summary>
     /// Shows an earlier publication's zoomed detail and focus counts until this generation's own arrive, so a live
@@ -1153,8 +1155,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             SetHighlight(carry.Highlight, carry.HighlightLanes);
         }
 
-        // The lanes' bytes stand in the same way, so a live refresh under a byte ranking does not blink back to records.
+        // The lanes' bytes stand in the same way, so a live refresh under a byte ranking does not blink back to records, and
+        // so do the interval table's, marked updating.
         AdoptTimelineBytes(carry, sameFocus);
+        AdoptIntervalBytes(carry.IntervalBytes);
         OnPropertyChanged(nameof(TimelineCaption));
     }
 

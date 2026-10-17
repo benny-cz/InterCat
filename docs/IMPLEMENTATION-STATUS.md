@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 619 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 620 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 620 — a live publication keeps the interval table's bytes until it has read its own (§6.4, R15):**
+  - Each publication read every listed interval's bytes again, its rows saying "reading bytes…" meanwhile. The
+    timeline's columns keep their places as a live extent grows, so the bytes the last publication read for the same
+    records over exactly an interval now stand in, marked updating on screen and aloud; a new interval or another
+    lane's rows are read afresh, and a failed read lets none remain.
+  - Debug and Release each ran 2,570 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    eleven mutations were caught: no interval's bytes standing in, one standing in with no read under way, or for
+    another lane's records; a stand-in unmarked in its row, aloud or in the caption; a publication carrying none of
+    the interval bytes, or not those it was itself standing in, taking none on, or not restating its rows when it
+    does; and the last one's carried on after this publication's own read failed.
 
 - **Revision 619 — a publication reads its bytes once (R11):**
   - Ranked by bytes with the table or a selection shown, each live publication read the whole session's bytes twice,

@@ -714,6 +714,70 @@ public sealed class RankingSelectorTests
             StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.4/R15: a live publication's interval table states the last one's bytes for the same intervals, marked updating aloud as on screen, until its own are read; one whose own cannot be read says so")]
+    public void ALivePublicationKeepsTheIntervalTablesBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, ClientAndServer());
+        using WorkspaceViewModel first = Open(session);
+        first.ShowTables = true;
+        await first.IntervalBytesReady;
+        static IntervalRow At(WorkspaceViewModel workspace, long tick) => workspace.Intervals.Single(row => row.Interval.Contains(tick));
+        static string Sent(long bytes) => $"{WorkspaceRowBuilder.DescribeSize(bytes)} sent · no receive recorded";
+        Assert.Equal(Sent(5_000), At(first, 30).KnownBytes);
+
+        // The next publication holds a later send. Until it has read its own, each interval the last one listed states
+        // what it read there, marked updating, aloud as on screen; an interval it did not list is being read.
+        Publish(session.Store, [Timed(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 700, 100, 50)
+            .Between("127.0.0.1:50002", "10.0.0.9:443"))]);
+        using WorkspaceViewModel second = Open(session);
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        second.AdoptTimeline(first.CarryTimeline());
+        second.AdoptScope(first.CarryScope());
+        IntervalRow large = At(second, 30);
+        Assert.Equal((Sent(5_000), true), (large.KnownBytes, large.BytesUpdating));
+        Assert.Contains($", {Sent(5_000)}, updating, ", large.AccessibleName, StringComparison.Ordinal);
+        Assert.Equal(("reading bytes…", false), (At(second, 50).KnownBytes, At(second, 50).BytesUpdating));
+        Assert.EndsWith(" · bytes each interval's records sent and received · updating", second.IntervalTableScope,
+            StringComparison.Ordinal);
+        (WorkspaceNavigationMemento Navigation, TimelineCarry Timeline) unread = (second.CaptureNavigation(), second.CarryTimeline());
+
+        await second.IntervalBytesReady;
+        Assert.Equal((Sent(5_000), false), (At(second, 30).KnownBytes, At(second, 30).BytesUpdating));
+        Assert.Equal(Sent(700), At(second, 50).KnownBytes);
+        Assert.EndsWith(" · bytes each interval's records sent and received", second.IntervalTableScope, StringComparison.Ordinal);
+
+        // One following a publication that had not read its own yet states what the one before it read; a lane's rows,
+        // which list other records, are read afresh.
+        using (WorkspaceViewModel next = Open(session))
+        {
+            Assert.Null(next.RestoreNavigation(unread.Navigation));
+            next.AdoptTimeline(unread.Timeline);
+            Assert.Equal((Sent(5_000), true), (At(next, 30).KnownBytes, At(next, 30).BytesUpdating));
+            next.SelectTimelineLane(Mechanism.Tcp);
+            Assert.Equal(("reading bytes…", false), (At(next, 30).KnownBytes, At(next, 30).BytesUpdating));
+        }
+
+        // A table hidden reads nothing, and states nothing an earlier publication read.
+        using (WorkspaceViewModel hidden = Open(session))
+        {
+            Assert.Null(hidden.RestoreNavigation(unread.Navigation with { ShowTables = false }));
+            hidden.AdoptTimeline(unread.Timeline);
+            Assert.Equal(("bytes not read", false), (At(hidden, 30).KnownBytes, At(hidden, 30).BytesUpdating));
+        }
+
+        // One whose own cannot be read says so, never what the last one read, and carries it no further.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var third = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(Path.Combine(session.Path, "gone"), overview.SessionId, overview.Generation));
+        Assert.Null(third.RestoreNavigation(second.CaptureNavigation()));
+        third.AdoptTimeline(second.CarryTimeline());
+        await third.IntervalBytesReady;
+        Assert.All(third.Intervals, row => Assert.Equal(("bytes could not be read", false), (row.KnownBytes, row.BytesUpdating)));
+        Assert.StartsWith("bytes could not be read: ", third.IntervalTableScope.Split(" · ")[^1], StringComparison.Ordinal);
+        Assert.Null(third.CarryTimeline().IntervalBytes);
+    });
+
     [Fact(DisplayName = "R21: a real session's interval table reads each interval's bytes over exactly the records it lists")]
     public void TheIntervalTableReadsTheBytesOfWhatItLists() => SingleThreadedContext.Run(async () =>
     {

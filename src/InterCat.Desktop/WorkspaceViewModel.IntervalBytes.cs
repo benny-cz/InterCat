@@ -8,7 +8,9 @@ namespace InterCat.Desktop;
 /// The interval table's bytes on a real session (§6.2's table equivalent, R15, R21). The timeline counts records and sums
 /// no bytes (`overview-index-v1` §4), so once the table is shown the bytes of the rows it lists are read: what each
 /// interval's records sent and received, over exactly the records its count counts, those that recorded no size stated
-/// apart. Until they arrive each row says they are being read; a table that is not shown reads nothing.
+/// apart. Until they arrive each row says they are being read; a table that is not shown reads nothing. A live session's
+/// next publication states what the last one read for the same records over the same interval, marked updating, until it
+/// has read its own: the timeline's columns keep their places as its extent grows, so most rows have such bytes.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -16,6 +18,9 @@ public sealed partial class WorkspaceViewModel
     private SessionIntervalByteMeasures? intervalBytes;
     private (IntervalBytesRequest Request, CancellationTokenSource Cancellation)? intervalBytesRead;
     private (IntervalBytesRequest Request, string Problem)? intervalBytesFailure;
+
+    // What an earlier publication of the session read of its rows' bytes, stated while this one reads its own.
+    private SessionIntervalByteMeasures? carriedIntervalBytes;
 
     // What the table lists now, and whether a focus's count stands beside each row's own.
     private IntervalBytesRequest? listedIntervalBytes;
@@ -110,7 +115,10 @@ public sealed partial class WorkspaceViewModel
 
             intervalBytesRead = null;
             cancellation.Dispose();
+
+            // This generation's answer replaces what an earlier publication read even when its read failed.
             intervalBytesFailure = (request, exception.Message);
+            carriedIntervalBytes = null;
         }
 
         RefreshIntervalRows(timelineFocusBuckets);
@@ -127,12 +135,13 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// A listed row's bytes in words: what its records sent and received once read, or that they are being read, could not
-    /// be, or have not been, since the table is not shown.
+    /// A listed row's bytes in words: what its records sent and received once read, or while they are read, what an earlier
+    /// publication read for the same records over the same interval; else that they are being read, could not be, or have
+    /// not been, since the table is not shown.
     /// </summary>
     private string IntervalBytesText(IntervalBytesRequest request, TimelineBucket bucket)
     {
-        if (intervalBytes is { } known && request.IsAnsweredBy(known) && known.For(bucket.Interval) is { } bytes)
+        if ((OwnIntervalBytes(request, bucket) ?? StandInIntervalBytes(request, bucket)) is { } bytes)
         {
             return WorkspaceRowBuilder.DescribeTransfers(bytes);
         }
@@ -142,19 +151,54 @@ public sealed partial class WorkspaceViewModel
             : "bytes not read";
     }
 
+    /// <summary>A listed row's bytes as this generation read them for its listing; null until then.</summary>
+    private TransportBytes? OwnIntervalBytes(IntervalBytesRequest request, TimelineBucket bucket) =>
+        intervalBytes is { } known && request.IsAnsweredBy(known) ? known.For(bucket.Interval) : null;
+
+    /// <summary>
+    /// A listed row's bytes as an earlier publication read them for the same records over exactly its interval, while this
+    /// generation reads its own; null once they are in, while none is read, or where no earlier one answers it.
+    /// </summary>
+    private TransportBytes? StandInIntervalBytes(IntervalBytesRequest request, TimelineBucket bucket) =>
+        intervalBytesRead?.Request == request && carriedIntervalBytes is { } earlier && earlier.Scope == request.Scope
+            ? earlier.For(bucket.Interval)
+            : null;
+
+    /// <summary>Whether a listed row states an earlier publication's bytes, marked updating, while this one's are read.</summary>
+    private bool IntervalBytesStandIn(IntervalBytesRequest request, TimelineBucket bucket) =>
+        OwnIntervalBytes(request, bucket) is null && StandInIntervalBytes(request, bucket) is not null;
+
+    /// <summary>What this generation read of its rows' bytes, or else what an earlier publication did, for the next to state.</summary>
+    private SessionIntervalByteMeasures? CarryIntervalBytes() => intervalBytes ?? carriedIntervalBytes;
+
+    /// <summary>Takes on what an earlier publication of this session read of its rows' bytes, and states it in the rows.</summary>
+    private void AdoptIntervalBytes(SessionIntervalByteMeasures? earlier)
+    {
+        if (evidenceSource is not { } source || earlier?.SessionId != source.SessionId)
+        {
+            return;
+        }
+
+        carriedIntervalBytes = earlier;
+        RefreshIntervalRows(timelineFocusBuckets);
+    }
+
     /// <summary>
     /// What the interval table's caption says of its bytes on a real session: that they are what each interval's records
     /// sent and received - every record's where a focus's count stands beside - that they are being read, or why not.
     /// </summary>
     private string IntervalBytesCaption =>
         listedIntervalBytes is not { } listed ? "bytes not summed per interval"
-        : intervalBytes is { } known && listed.IsAnsweredBy(known)
-            ? (intervalRowsBesideFocus
-                ? "bytes each interval's records sent and received, every record's and not only the focus's"
-                : "bytes each interval's records sent and received")
+        : intervalBytes is { } known && listed.IsAnsweredBy(known) ? IntervalBytesMeaning
         : intervalBytesFailure is { } failed && failed.Request == listed ? "bytes could not be read: " + failed.Problem
-        : intervalBytesRead?.Request == listed ? "reading each interval's bytes…"
+        : intervalBytesRead?.Request == listed
+            ? intervals.Any(row => row.BytesUpdating) ? IntervalBytesMeaning + " · updating" : "reading each interval's bytes…"
         : "bytes not read";
+
+    /// <summary>What the rows' bytes are: what each interval's records sent and received, every record's beside a focus.</summary>
+    private string IntervalBytesMeaning => intervalRowsBesideFocus
+        ? "bytes each interval's records sent and received, every record's and not only the focus's"
+        : "bytes each interval's records sent and received";
 
     /// <summary>
     /// A timeline bucket's bytes for its hover card, when the interval table has read them for the same records over the
