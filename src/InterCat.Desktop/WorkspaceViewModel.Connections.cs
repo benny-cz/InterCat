@@ -157,7 +157,10 @@ public sealed partial class WorkspaceViewModel
         }
     }
 
-    /// <summary>Announces the connection rows as read, keeping the selected row when it is still listed.</summary>
+    /// <summary>
+    /// Announces the connection rows as read, keeping the selected row when it is still listed, and the ranking's note,
+    /// which sums them with the channels beside them.
+    /// </summary>
     private void RebuildConnectionRows()
     {
         if (disposed)
@@ -166,6 +169,8 @@ public sealed partial class WorkspaceViewModel
         }
 
         RaiseRpcChanged();
+        OnPropertyChanged(nameof(RankingNote));
+        OnPropertyChanged(nameof(RankingNoteDetail));
     }
 
     /// <summary>

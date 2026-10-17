@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 622 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 623 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 623 — a process's rung counts and ranks its connections to other hosts by bytes (§6.1, R21):**
+  - A live pass over a recording's newer generations found the byte ranking's note at a process's rung summing its
+    paired channels alone: "800 B on 2 sends" beside a 1.4 KB connection, and "No sends in scope" for a process whose
+    only row, a connection to another host, sent 200 B. It now counts every row the rung ranks and is restated once
+    the connections are read. "Bytes sent and received" now ranks connections too, rather than the rung falling back
+    to records under byte figures; "1 send" replaces "1 sends", and no zero is stated where nothing measured one.
+    Open: the rung's export holds its channels alone (revision 624).
+  - Debug and Release each ran 2,575 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    17 mutations were caught: the note leaving the connections out; a connection unranked by bytes sent and
+    received, ranked where nothing measured, by its sends alone, or with no transfer unmeasured; "1 sends", "with no
+    size" and "none with a size" swapped either way, "0 B on 0 measured sends" or "no record" stated where nothing
+    measured, "1 measured sends"; the note or its detail not restated once the connections are read; and the
+    definition not naming them.
 
 - **Revision 622 — a newer generation keeps a process's rung whole (§6.4, R7):**
   - A process's connections, RPC channels and HTTP exchanges were read afresh by each publication, so its rows to

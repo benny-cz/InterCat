@@ -29,16 +29,19 @@ public sealed record ConnectionSummary(
     public long Unmeasured => UnmeasuredSends + UnmeasuredReceives;
 
     /// <summary>
-    /// Its transport bytes as a metric ranks them: what its sends or receives measured, of how many, and how many stated no
-    /// size; null for any other metric, which a connection holds nothing of.
+    /// Its transport bytes as a metric ranks them: what its sends, its receives or both together measured, of how many, and
+    /// how many stated no size; null for any other metric, which a connection holds nothing of.
     /// </summary>
     public RankedValue? RankedBy(RankingMetric metric) => metric switch
     {
         RankingMetric.BytesSent => new(metric, Sends > UnmeasuredSends ? SentBytes : null, Sends - UnmeasuredSends, UnmeasuredSends),
         RankingMetric.BytesReceived => new(metric, Receives > UnmeasuredReceives ? ReceivedBytes : null, Receives - UnmeasuredReceives,
             UnmeasuredReceives),
+        RankingMetric.EndpointBytes => new(metric, Sends + Receives > Unmeasured ? checked(SentBytes + ReceivedBytes) : null,
+            Sends + Receives - Unmeasured, Unmeasured),
         _ => null,
     };
+
     /// <summary>
     /// Whether its process connected to the other end or accepted the other end's connection, as the capture saw it open;
     /// <see cref="ConnectionOpening.NotWitnessed"/> when it saw neither.

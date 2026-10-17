@@ -306,12 +306,12 @@ public sealed partial class WorkspaceViewModel
             }
             else
             {
-                string records = rankBy == RankingMetric.BytesSent ? "sends" : "receives";
+                string record = rankBy == RankingMetric.BytesSent ? "send" : "receive";
                 note = measured > 0
-                    ? string.Create(CultureInfo.CurrentCulture, $"{WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} {records}")
+                    ? $"{WorkspaceRowBuilder.DescribeSize(value)} on {Spoken.Count(measured, record)}"
                     : unmeasured > 0
-                        ? string.Create(CultureInfo.CurrentCulture, $"{unmeasured:N0} {records}, none with a size")
-                        : $"No {records} in scope";
+                        ? Spoken.Count(unmeasured, record) + (unmeasured == 1 ? ", with no size" : ", none with a size")
+                        : $"No {record}s in scope";
                 if (measured > 0 && unmeasured > 0)
                 {
                     note += string.Create(CultureInfo.CurrentCulture, $" · {unmeasured:N0} unmeasured");
@@ -453,22 +453,29 @@ public sealed partial class WorkspaceViewModel
             }
             else
             {
-                string records = rankBy switch
+                string record = rankBy switch
                 {
-                    RankingMetric.BytesSent => "sends",
-                    RankingMetric.BytesReceived => "receives",
-                    _ => "records",
+                    RankingMetric.BytesSent => "send",
+                    RankingMetric.BytesReceived => "receive",
+                    _ => "record",
                 };
-                detail = string.Create(CultureInfo.CurrentCulture,
-                    $"{definition} The rows shown hold {WorkspaceRowBuilder.DescribeSize(value)} on {measured:N0} measured {records}");
-                detail += unmeasured > 0
-                    ? string.Create(CultureInfo.CurrentCulture,
-                        $"; {unmeasured:N0} more recorded no size. A row with none measured ranks after every measured row, never as zero.")
-                    : ".";
+
+                // No zero is stated that no record measured (R21): rows none of whose records stated a size hold no bytes.
+                detail = measured > 0
+                    ? $"{definition} The rows shown hold {WorkspaceRowBuilder.DescribeSize(value)} on {Spoken.Count(measured, "measured " + record)}"
+                        + (unmeasured > 0
+                            ? string.Create(CultureInfo.CurrentCulture,
+                                $"; {unmeasured:N0} more recorded no size. A row with none measured ranks after every measured row, never as zero.")
+                            : ".")
+                    : unmeasured > 0
+                        ? $"{definition} The rows shown hold {Spoken.Count(unmeasured, record)}, "
+                            + (unmeasured == 1 ? "which recorded no size: its bytes are" : "none of which recorded a size: their bytes are")
+                            + " unmeasured, never zero."
+                        : $"{definition} The rows shown hold no {(rankBy == RankingMetric.EndpointBytes ? "transfer" : record)} in this scope.";
                 if (ladder.Current.Level == DetailLevel.Machine
                     && ((SessionByteMeasures)shown).Unattributed.Of(rankBy).Value is { } unheld)
                 {
-                    detail += $" {WorkspaceRowBuilder.DescribeSize(unheld)} more are on {records} no process holds.";
+                    detail += $" {WorkspaceRowBuilder.DescribeSize(unheld)} more are on {record}s no process holds.";
                 }
             }
 
@@ -544,13 +551,20 @@ public sealed partial class WorkspaceViewModel
         ? SessionExport.CallCaveat(calls)
         : null;
 
-    /// <summary>The ranked values of the rows shown, the records behind them, those not counted, and the failed calls.</summary>
+    /// <summary>
+    /// The ranked values of the rows shown, the records behind them, those not counted, and the failed calls: at a process's
+    /// rung its connections to other hosts' with its channels', as the rung lists and ranks them together.
+    /// </summary>
     private (long Value, long Measured, long Unmeasured, long Failed) RankedTotals()
     {
         long value = 0, measured = 0, unmeasured = 0, failed = 0;
-        foreach (LadderRow row in view.Rows)
+        IEnumerable<RankedValue?> connectionsRanked = ladder.Current.Level == DetailLevel.ProcessInstance
+            && ShownMeasures is SessionByteMeasures && connections is { } load
+            ? load.Connections.Select(connection => connection.RankedBy(rankBy))
+            : [];
+        foreach (RankedValue? row in view.Rows.Select(row => row.Ranked).Concat(connectionsRanked))
         {
-            if (row.Ranked is not { } ranked) continue;
+            if (row is not { } ranked) continue;
             value = checked(value + (ranked.Value ?? 0));
             measured += ranked.Measured;
             unmeasured += ranked.Unmeasured;
@@ -593,11 +607,11 @@ public sealed partial class WorkspaceViewModel
     private static string ChannelDefinition(RankingMetric metric) => metric switch
     {
         RankingMetric.BytesSent => "Bytes sent are the transport-observed bytes of this process's own send records on each "
-            + "channel, sender-accounted; its RPC channels carry no size.",
+            + "channel or connection to another host, sender-accounted; its RPC channels carry no size.",
         RankingMetric.BytesReceived => "Bytes received are the transport-observed bytes of this process's own receive records "
-            + "on each channel, receiver-accounted; its RPC channels carry no size.",
+            + "on each channel or connection to another host, receiver-accounted; its RPC channels carry no size.",
         _ => "Bytes sent and received are the transport-observed bytes of every one of this process's own records on each "
-            + "channel, both directions; its RPC channels carry no size.",
+            + "channel or connection to another host, both directions; its RPC channels carry no size.",
     };
 
     private static string Definition(RankingMetric metric) => metric switch

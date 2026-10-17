@@ -39,6 +39,7 @@ public sealed class SessionConnectionsTests
         Assert.Equal("100 B sent, 200 B received (1 receive unmeasured)", tcp.Transfers(CultureInfo.InvariantCulture));
         Assert.Equal("40 B sent, no receive recorded", list.Connections[1].Transfers(CultureInfo.InvariantCulture));
         Assert.Equal(new RankedValue(RankingMetric.BytesReceived, 200, 1, 1), tcp.RankedBy(RankingMetric.BytesReceived));
+        Assert.Equal(new RankedValue(RankingMetric.EndpointBytes, 300, 2, 1), tcp.RankedBy(RankingMetric.EndpointBytes));
         Assert.Null(tcp.RankedBy(RankingMetric.Records));
         Assert.Equal("a datagram flow", list.Connections[1].Lifetime);
 

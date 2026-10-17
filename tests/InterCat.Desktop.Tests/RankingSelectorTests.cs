@@ -619,6 +619,89 @@ public sealed class RankingSelectorTests
         Assert.All(workspace.RungRows, row => Assert.Null(row.RankedFigure));
     });
 
+    [Fact(DisplayName = "§6.1/R21: at a process's rung a byte ranking ranks its connections to other hosts with its channels, and its note counts every row it ranks")]
+    public void AProcessesConnectionsRankWithItsChannels() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. HostEdgeRowsTests.Rows(), .. Unsized()]);
+        using WorkspaceViewModel workspace = HostEdgeRowsTests.Open(session);
+        workspace.RankBy = RankingMetric.BytesReceived;
+        await workspace.RankingReady;
+
+        // server.exe received 100 B over its channel from client.exe and 100 B over a connection it accepted from another
+        // host: the note counts both, as the rung lists and ranks them together.
+        await Visit("server.exe");
+        Assert.Equal(["100 B", "100 B"], workspace.RungRows.Select(row => row.Figure));
+        Assert.Equal("200 B on 2 receives", workspace.RankingNote);
+        Assert.Equal("Bytes received are the transport-observed bytes of this process's own receive records on each channel or "
+            + "connection to another host, receiver-accounted; its RPC channels carry no size. The rows shown hold 200 B on 2 "
+            + "measured receives.", workspace.RankingNoteDetail);
+
+        // Bytes sent and received rank the connection too, rather than every row falling back to its records.
+        workspace.RankBy = RankingMetric.EndpointBytes;
+        Assert.Equal(RankingMetric.EndpointBytes, workspace.AppliedRanking);
+        Assert.Equal([("← 192.168.1.30:52001", "100 B"), ("← client.exe · PID 100", "100 B")],
+            workspace.RungRows.Select(row => (row.Label, row.Figure)));
+        Assert.Equal("100 B sent and received on 1 measured record", workspace.RungRows[0].RankedSpoken);
+        Assert.Equal("200 B on 2 records · both ends", workspace.RankingNote);
+
+        // It sent nothing, and no zero is stated for it.
+        workspace.RankBy = RankingMetric.BytesSent;
+        Assert.Equal("No sends in scope", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold no send in this scope.", workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // client.exe sent once, which is one send, not "1 sends", and received nothing.
+        await Visit("client.exe");
+        Assert.Equal("100 B on 1 send", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold 100 B on 1 measured send.", workspace.RankingNoteDetail, StringComparison.Ordinal);
+        workspace.RankBy = RankingMetric.BytesReceived;
+        Assert.Equal("No receives in scope", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold no receive in this scope.", workspace.RankingNoteDetail, StringComparison.Ordinal);
+        workspace.RankBy = RankingMetric.BytesSent;
+
+        // browser.exe's only row is its connection to another host: the note counts it once it is read.
+        var raised = new List<string?>();
+        workspace.ReturnTo(0);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = Assert.Single(workspace.RungRows);
+        Assert.True(workspace.Descend());
+        Assert.Equal("No sends in scope", workspace.RankingNote);
+        workspace.PropertyChanged += (_, args) => raised.Add(args.PropertyName);
+        await workspace.ConnectionsReady;
+        Assert.Contains(nameof(WorkspaceViewModel.RankingNote), raised);
+        Assert.Contains(nameof(WorkspaceViewModel.RankingNoteDetail), raised);
+        Assert.Equal(("→ 142.250.1.1:443", "200 B"), (Assert.Single(workspace.RungRows).Label, workspace.RungRows[0].Figure));
+        Assert.Equal("200 B on 2 sends", workspace.RankingNote);
+
+        // Sends that recorded no size are unmeasured, never a zero.
+        await Visit("quiet.exe");
+        Assert.Equal("2 sends, none with a size", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold 2 sends, none of which recorded a size: their bytes are unmeasured, never zero.",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+        await Visit("hush.exe");
+        Assert.Equal("1 send, with no size", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold 1 send, which recorded no size: its bytes are unmeasured, never zero.",
+            workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        // A connection that only opened transferred nothing either way.
+        workspace.RankBy = RankingMetric.EndpointBytes;
+        await Visit("idle.exe");
+        Assert.Equal("no transfers", Assert.Single(workspace.RungRows).Figure);
+        Assert.Equal("No transfers in scope", workspace.RankingNote);
+        Assert.EndsWith(" The rows shown hold no transfer in this scope.", workspace.RankingNoteDetail, StringComparison.Ordinal);
+
+        async Task Visit(string program)
+        {
+            workspace.ReturnTo(0);
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == program);
+            Assert.True(workspace.Descend());
+            workspace.SelectedRung = Assert.Single(workspace.RungRows);
+            Assert.True(workspace.Descend());
+            await workspace.ConnectionsReady;
+        }
+    });
+
     [Fact(DisplayName = "R21: a selection's bytes are read and stated for its scope, and a relationship's are what was sent across it")]
     public void ASelectionsBytesAreReadAndStated() => SingleThreadedContext.Run(async () =>
     {
@@ -1277,6 +1360,28 @@ public sealed class RankingSelectorTests
         .. Enumerable.Range(0, 6).Select(index =>
             Timed(Transfer(20 + index, ObservationKind.Receive, AccountingSide.ReceiveSide, 32, 400, (ulong)(20 + index)))),
     ];
+
+    /// <summary>
+    /// quiet.exe sending twice to 10.0.0.9:443 and hush.exe once to 10.0.0.8:443, none of their sends with a size, and
+    /// idle.exe only connecting to 10.0.0.7:443.
+    /// </summary>
+    private static ObservationRowV1[] Unsized() =>
+    [
+        Lifecycle(6, ObservationKind.Create, 500, 6) with { ResourceName = @"C:\Tools\quiet.exe", SessionRelativeTicks = 60 },
+        Lifecycle(7, ObservationKind.Create, 501, 7) with { ResourceName = @"C:\Tools\hush.exe", SessionRelativeTicks = 70 },
+        HostEdgeRowsTests.Tcp(500, ObservationKind.Connect, 500, 500, "192.168.1.10:53000", "10.0.0.9:443"),
+        Unsized(501, 500, "192.168.1.10:53000", "10.0.0.9:443"),
+        Unsized(502, 500, "192.168.1.10:53000", "10.0.0.9:443"),
+        HostEdgeRowsTests.Tcp(510, ObservationKind.Connect, 501, 510, "192.168.1.10:53001", "10.0.0.8:443"),
+        Unsized(511, 501, "192.168.1.10:53001", "10.0.0.8:443"),
+        Lifecycle(8, ObservationKind.Create, 502, 8) with { ResourceName = @"C:\Tools\idle.exe", SessionRelativeTicks = 80 },
+        Transfer(520, ObservationKind.Connect, AccountingSide.EndpointActivity, null, 502, 520)
+            .Between("192.168.1.10:53002", "10.0.0.7:443") with { SessionRelativeTicks = 1_520 },
+    ];
+
+    private static ObservationRowV1 Unsized(long tick, int pid, string local, string remote) =>
+        Transfer(tick, ObservationKind.Send, AccountingSide.SendSide, null, pid, (ulong)tick).Between(local, remote)
+            with { SessionRelativeTicks = 1_000 + tick };
 
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 }
