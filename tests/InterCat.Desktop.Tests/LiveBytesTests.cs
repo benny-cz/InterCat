@@ -14,7 +14,8 @@ namespace InterCat.Desktop.Tests;
 /// A live session's next publication reads its bytes again, and until it has, states what the last one read, marked
 /// updating (§6.4), as a byte ranking's measures stand in: the relationship table's rows - relationships and edges to other
 /// hosts alike - and its caption, and the inspector's card, aloud as on screen. None blinks to "reading bytes…" on each
-/// publication, and none states the last one's once its own could not be read.
+/// publication, and none states the last one's once its own could not be read. It reads them once, for its ranking and
+/// its descriptions alike, and only at the rung it shows (R11).
 /// </summary>
 public sealed class LiveBytesTests
 {
@@ -212,6 +213,78 @@ public sealed class LiveBytesTests
         Assert.Null(third.RestoreNavigation(second.CaptureNavigation()));
         Assert.Null(third.DescribedRow);
         Assert.Equal("Selected process", third.EvidenceHeading);
+    });
+
+    [Fact(DisplayName = "R11: a publication ranked by bytes with its table shown reads its bytes once, for the ranking and the table alike, and its edges' traffic only at the rung it shows")]
+    public void ALivePublicationReadsItsBytesOnce() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel first = Open(session);
+        await first.LayoutReady;
+        first.ShowTables = true;
+        first.RankBy = RankingMetric.BytesSent;
+        first.SelectedRung = first.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(first.Descend());
+        first.SelectedRung = first.RungRows[0];
+        Assert.True(first.Descend());
+        await first.RankingReady;
+        await first.SelectionBytesReady;
+        await first.HostEdgeTrafficReady;
+
+        // The next publication, put back at browser.exe's rung, reads the session's bytes once and its edge's traffic there.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        var source = new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation);
+        using (var second = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, source))
+        {
+            await second.LayoutReady;
+            Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+            second.AdoptScope(first.CarryScope());
+            await second.RankingReady;
+            await second.SelectionBytesReady;
+            await second.HostEdgeTrafficReady;
+            Assert.Equal("Process: browser.exe · PID 300", second.Crumbs[^1].Label);
+            Assert.Equal("200 B sent across", second.TableRows.Single(row => row.ToHosts).KnownBytes);
+            Assert.Equal((1, 1), (source.ByteMeasureReads, source.HostReachReads));
+        }
+
+        // A byte ranking chosen once a description has read the bytes ranks the rows at once, reading them no more.
+        var described = new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation);
+        using (var third = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity, described))
+        {
+            third.ShowTables = true;
+            await third.SelectionBytesReady;
+            third.RankBy = RankingMetric.BytesSent;
+            Assert.Equal(RankingMetric.BytesSent, third.AppliedRanking);
+            await third.RankingReady;
+            Assert.Equal(1, described.ByteMeasureReads);
+        }
+
+        // A description reading through a byte ranking reads for itself once another ranking is chosen meanwhile.
+        using (WorkspaceViewModel fourth = Open(session))
+        {
+            fourth.RankBy = RankingMetric.BytesSent;
+            fourth.ShowTables = true;
+            fourth.RankBy = RankingMetric.Records;
+            Assert.Equal("reading bytes…", fourth.TableRows[0].KnownBytes);
+            await fourth.SelectionBytesReady;
+            Assert.Equal("100 B sent across", fourth.TableRows[0].KnownBytes);
+        }
+
+        // One chosen while the table states the last publication's bytes reads its own, never ranks by those.
+        using (WorkspaceViewModel byRecords = Open(session))
+        {
+            await byRecords.LayoutReady;
+            byRecords.ShowTables = true;
+            await byRecords.SelectionBytesReady;
+            using WorkspaceViewModel next = Open(session);
+            await next.LayoutReady;
+            Assert.Null(next.RestoreNavigation(byRecords.CaptureNavigation()));
+            next.AdoptScope(byRecords.CarryScope());
+            Assert.True(next.TableRows[0].BytesUpdating);
+            next.RankBy = RankingMetric.BytesSent;
+            Assert.Equal((RankingMetric.Records, "Reading bytes sent…"), (next.AppliedRanking, next.RankingNote));
+        }
     });
 
     /// <summary>

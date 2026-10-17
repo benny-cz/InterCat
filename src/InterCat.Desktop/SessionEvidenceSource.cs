@@ -15,6 +15,8 @@ public sealed class SessionEvidenceSource(
 {
     private readonly Lock storeGate = new();
     private SessionStore? store;
+    private int byteMeasureReads;
+    private int hostReachReads;
 
     public string SessionPath { get; } = sessionPath ?? throw new ArgumentNullException(nameof(sessionPath));
 
@@ -47,12 +49,18 @@ public sealed class SessionEvidenceSource(
     /// Each process's transport bytes over the whole session, or over <paramref name="interval"/>, for the ranked table's
     /// byte ranking (<see cref="SessionByteRanking"/>).
     /// </summary>
-    public Task<SessionByteMeasures> ByteMeasuresAsync(TimeRange? interval, CancellationToken cancellationToken) =>
-        Task.Run(() => SessionByteRanking.Measure(
+    public Task<SessionByteMeasures> ByteMeasuresAsync(TimeRange? interval, CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref byteMeasureReads);
+        return Task.Run(() => SessionByteRanking.Measure(
             Store(),
             interval,
             policy: Policy,
             cancellationToken: cancellationToken), cancellationToken);
+    }
+
+    /// <summary>How many reads of the processes' transport bytes this source has started; a test uses it.</summary>
+    internal int ByteMeasureReads => Volatile.Read(ref byteMeasureReads);
 
     /// <summary>
     /// Each process's RPC calls made and served over the whole session, or over <paramref name="interval"/>, for the
@@ -239,8 +247,14 @@ public sealed class SessionEvidenceSource(
     /// for the relationship table to say what each of the graph's edges to other hosts carried.
     /// </summary>
     public Task<IReadOnlyList<HostReachTraffic>> HostReachTrafficAsync(IReadOnlyCollection<HostLink> links,
-        CancellationToken cancellationToken) =>
-        Task.Run(() => SessionHostTraffic.OfReaches(Store(), links, Policy, cancellationToken), cancellationToken);
+        CancellationToken cancellationToken)
+    {
+        Interlocked.Increment(ref hostReachReads);
+        return Task.Run(() => SessionHostTraffic.OfReaches(Store(), links, Policy, cancellationToken), cancellationToken);
+    }
+
+    /// <summary>How many reads of what the edges to other hosts carried this source has started; a test uses it.</summary>
+    internal int HostReachReads => Volatile.Read(ref hostReachReads);
 
     /// <summary>
     /// A process's HTTP exchanges within a viewport for the timeline's exchange lane, one by one or as density

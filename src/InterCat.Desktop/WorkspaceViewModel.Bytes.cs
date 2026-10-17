@@ -15,7 +15,7 @@ namespace InterCat.Desktop;
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
-    // Bytes read for a description when no byte ranking has read them for the scope; a byte ranking's own are preferred.
+    // Bytes read for a description when no byte ranking reads them; under one, a description reads through the ranking's.
     private readonly RankingReads<SessionByteMeasures> selectionBytes = new((source, scope, cancellation) =>
         source.ByteMeasuresAsync(scope, cancellation));
 
@@ -88,7 +88,10 @@ public sealed partial class WorkspaceViewModel
             return;
         }
 
-        SelectionBytesReady = FollowAsync(selectionBytes, ranks: false);
+        // Under a byte ranking the description states the bytes the ranking reads, through the same read, never a second.
+        SelectionBytesReady = Family == RankingFamily.Bytes
+            ? FollowAsync(byteReads, ranks: false)
+            : FollowAsync(selectionBytes, ranks: false);
     }
 
     /// <summary>

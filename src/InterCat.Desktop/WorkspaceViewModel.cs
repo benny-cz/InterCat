@@ -1647,7 +1647,6 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             throw new InvalidOperationException("Navigation can only be restored into a fresh workspace.");
         }
-        ShowTables = saved.ShowTables;
         NavigationState[] old = [.. saved.Breadcrumb];
         if (old[0].Level != DetailLevel.Machine || old[0].Focus is not null)
         {
@@ -1721,6 +1720,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         PerSecond = saved.PerSecond;
         ScalesEachLane = saved.ScalesEachLane;
         ReadsWallClock = saved.ReadsWallClock;
+
+        // The tables are shown once the rung and its ranking are back, so they read their rows' bytes and their edges'
+        // traffic there alone, through the ranking's read under a byte ranking, never first at each rung on the way.
+        ShowTables = saved.ShowTables;
         if (saved.SelectedTimelineMechanism is { } savedMechanism)
         {
             if (timelineLaneOptions.Any(option => option.Mechanism == savedMechanism))

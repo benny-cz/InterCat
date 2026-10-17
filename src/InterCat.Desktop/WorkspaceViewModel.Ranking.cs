@@ -110,6 +110,15 @@ public sealed partial class WorkspaceViewModel
             if (Family != RankingFamily.Calls) callReads.Cancel();
             if (Family != RankingFamily.Peers) peerReads.Cancel();
             if (Family != RankingFamily.Connections) connectionReads.Cancel();
+
+            // Bytes a description has read for the scope rank the rows at once, rather than being read again.
+            if (Family == RankingFamily.Bytes && selectionBytes.For(CountedScope) is { } described
+                && !selectionBytes.IsCarried(described)
+                && (byteReads.For(CountedScope) is not { } ranked || byteReads.IsCarried(ranked)))
+            {
+                byteReads.Keep(described);
+            }
+
             Rerank();
 
             // Other hosts' list follows a byte ranking too, read for its hosts' traffic.
@@ -119,6 +128,9 @@ public sealed partial class WorkspaceViewModel
             // they draw.
             FollowTimelineBytes();
             RankingReady = FollowRankedMeasuresAsync();
+
+            // A description's read through a byte ranking the change cancelled is read again for itself.
+            FollowDescribedBytes();
         }
     }
 
