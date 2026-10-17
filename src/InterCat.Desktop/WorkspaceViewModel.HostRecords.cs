@@ -155,7 +155,10 @@ public sealed partial class WorkspaceViewModel
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(hostRecords, load)) return;
+
+            // This generation's answer replaces an earlier publication's count even when its read failed.
             load.Problem = exception.Message;
+            carriedHostRecords = null;
         }
 
         OnPropertyChanged(nameof(EvidenceSummary));

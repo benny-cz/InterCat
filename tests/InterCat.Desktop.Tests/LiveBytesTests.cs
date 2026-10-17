@@ -122,6 +122,10 @@ public sealed class LiveBytesTests
         Assert.All(third.TableRows, row => Assert.Equal(("bytes could not be read", false), (row.KnownBytes, row.BytesUpdating)));
         Assert.Equal("Whole machine · 1 relationship · 3 edges to other hosts", third.RelationshipTableScope);
         Assert.Equal("4 records of its connections · bytes could not be read", third.EvidenceSummary);
+
+        // What it could not read it carries to the next publication neither.
+        ScopeCarry onward = third.CarryScope();
+        Assert.Equal((null, null), (onward.WholeDescribedBytes, onward.HostReaches));
     });
 
     [Fact(DisplayName = "§6.4: under a brush, a live publication's table states the last one's bytes for the interval, marked updating, until its own are read")]

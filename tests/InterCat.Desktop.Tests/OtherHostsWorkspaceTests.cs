@@ -684,6 +684,19 @@ public sealed class OtherHostsWorkspaceTests
                 next.EvidenceSummary);
         }
 
+        // One whose own count cannot be read says so, and carries the last one's no further.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using (var unreadable = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(Path.Combine(session.Path, "gone"), overview.SessionId, overview.Generation)))
+        {
+            await unreadable.LayoutReady;
+            Assert.Null(unreadable.RestoreNavigation(unread.Navigation));
+            unreadable.AdoptScope(unread.Scope);
+            await unreadable.HostRecordsReady;
+            Assert.StartsWith("Its records could not be read: ", unreadable.EvidenceSummary, StringComparison.Ordinal);
+            Assert.Null(unreadable.CarryScope().HostRecords);
+        }
+
         // Another host chosen meanwhile is read afresh: what the last publication counted was another host's.
         using WorkspaceViewModel third = Open(session);
         await third.LayoutReady;

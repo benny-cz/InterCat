@@ -416,7 +416,10 @@ public sealed partial class WorkspaceViewModel
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(hostEdgeTraffic, load)) return;
+
+            // This generation's answer replaces what an earlier publication read even when its read failed.
             load.Problem = exception.Message;
+            carriedReachTraffic = null;
         }
 
         tableRows = null;

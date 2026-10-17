@@ -670,7 +670,9 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// Reads one family's measures for the scope the rows count, unless this generation's are already known. A newer scope
-    /// supersedes the read; a failed one leaves the rows ranked by records and says why, and is not read again on its own.
+    /// supersedes the read; a failed one leaves the rows ranked by records and says why, and is not read again on its own:
+    /// an earlier publication's whole-session measures that stood in go, rather than ranking the rows as if updating, and an
+    /// interval's go with the counts read beside them.
     /// Whole-session measures that arrive after the scope moved are kept for its return. A read for a description
     /// (<paramref name="ranks"/> false) only keeps its measures and refreshes what states bytes: it never re-ranks the rows,
     /// which its arrival must not move under a selection or a navigation in progress.
@@ -725,8 +727,17 @@ public sealed partial class WorkspaceViewModel
         {
             if (!disposed && reads.IsCurrent(read))
             {
+                // This generation's answer replaces a stand-in even when its read failed.
                 reads.Problem = exception.Message;
-                RaiseRankingChanged();
+                if (reads.ForgetCarriedWhole() && ranks && Family == family && CountedScope == scope)
+                {
+                    Rerank();
+                }
+                else
+                {
+                    RaiseRankingChanged();
+                }
+
                 RefreshBytesState<T>();
             }
         }
@@ -856,6 +867,17 @@ public sealed partial class WorkspaceViewModel
         {
             CarriedWhole = Whole is null && whole?.SessionId == session ? whole : null;
             CarriedInterval = Interval is null && interval?.SessionId == session ? interval : null;
+        }
+
+        /// <summary>
+        /// Lets an earlier publication's whole-session measures go once this generation's read failed; true when they stood
+        /// in. An interval's go when its counts arrive, as the measures read beside them replace them.
+        /// </summary>
+        public bool ForgetCarriedWhole()
+        {
+            bool stood = CarriedWhole is not null;
+            CarriedWhole = null;
+            return stood;
         }
 
         /// <summary>Whether the last read of <paramref name="scope"/> failed, so it is not read again until chosen again.</summary>

@@ -199,6 +199,35 @@ public sealed class RankingSelectorTests
         Assert.Equal(("zero.exe", WorkspaceRowBuilder.DescribeSize(5_000)), (second.RungRows[0].Label, second.RungRows[0].Figure));
     });
 
+    [Fact(DisplayName = "§6.4/R21: a live publication whose own bytes cannot be read ranks by records again and says why, never by the last one's said to be updating")]
+    public void ALivePublicationWhoseBytesCannotBeReadSaysSo() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        using WorkspaceViewModel first = Open(session);
+        first.RankBy = RankingMetric.BytesSent;
+        await first.RankingReady;
+        Assert.Equal("big.exe", first.RungRows[0].Label);
+
+        // The next publication ranks by the last one's bytes while it reads its own; once that read has failed, by records,
+        // saying why, and an export names that ranking rather than waiting for one no read will bring.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var second = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(Path.Combine(session.Path, "gone"), overview.SessionId, overview.Generation));
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        second.AdoptScope(first.CarryScope());
+        Assert.Equal(("big.exe", RankingMetric.BytesSent), (second.RungRows[0].Label, second.AppliedRanking));
+        Assert.EndsWith(" · updating", second.RankingNote, StringComparison.Ordinal);
+        await second.RankingReady;
+        Assert.Equal(("listen.exe", RankingMetric.Records), (second.RungRows[0].Label, second.AppliedRanking));
+        Assert.StartsWith("Bytes sent unavailable: ", second.RankingNote, StringComparison.Ordinal);
+        Assert.DoesNotContain("previous publication", second.RankingNoteDetail, StringComparison.Ordinal);
+        Assert.Equal(RankingMetric.Records, (await second.ExportAsync(ExportFormat.Json, Exported)).Context.RankedBy);
+
+        // What it could not read it carries to the next publication neither.
+        Assert.Null(second.CarryScope().WholeBytes);
+    });
+
     [Fact(DisplayName = "§6.1: the tour offers no byte ranking, and a byte figure is written in the next unit it rounds to")]
     public void TheTourOffersNoByteRankingAndSizesRoundUp()
     {
