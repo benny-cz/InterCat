@@ -204,6 +204,116 @@ public sealed class ChannelRungCardTests
         Assert.Equal(workspace.SelectionSubtitle, said);
     });
 
+    [Fact(DisplayName = "§6.4/R7: a newer generation lists a process rung's RPC channels and HTTP exchanges at once, as the last one read them, and the row chosen among them stays chosen")]
+    public void ANewerGenerationKeepsAProcessRungsReadRows() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        PublishClient(session);
+        using WorkspaceViewModel first = Open(session);
+        await OpenClient(first);
+        foreach ((Func<RungRow, bool> isKind, string noun, _, _) in Kinds[1..])
+        {
+            // The rows the last publication read are listed until this one's are, so the row chosen is chosen again.
+            RungRow chosen = first.RungRows.Single(isKind);
+            first.SelectedRung = chosen;
+            using WorkspaceViewModel second = Open(session);
+            Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+            second.AdoptScope(first.CarryScope());
+            Assert.Equal(first.RungRows.Select(row => row.Key), second.RungRows.Select(row => row.Key));
+            Assert.Equal((chosen.Key, "Selected " + noun), (second.SelectedRung?.Key, second.EvidenceHeading));
+            await second.RpcReady;
+            await second.HttpReady;
+            Assert.Equal(chosen.Key, second.SelectedRung?.Key);
+
+            // Put back without them, it is chosen once its rung has read it.
+            using WorkspaceViewModel restored = Open(session);
+            Assert.Null(restored.RestoreNavigation(first.CaptureNavigation()));
+            Assert.Null(restored.SelectedRung);
+            await restored.RpcReady;
+            await restored.HttpReady;
+            Assert.Equal((chosen.Key, "Selected " + noun), (restored.SelectedRung?.Key, restored.EvidenceHeading));
+        }
+
+        // Its process chosen again over it is the selection again once the row is listed; anything chosen meanwhile lets
+        // the row go.
+        first.SelectProcess(first.SelectedProcess!.Id);
+        using (WorkspaceViewModel described = Open(session))
+        {
+            Assert.Null(described.RestoreNavigation(first.CaptureNavigation()));
+            await described.RpcReady;
+            await described.HttpReady;
+            Assert.Equal((first.SelectedRung!.Key, "Selected process"), (described.SelectedRung?.Key, described.EvidenceHeading));
+        }
+
+        first.SelectedRung = first.RungRows.Single(Kinds[1].IsKind);
+        Action<WorkspaceViewModel>[] meanwhile =
+        [
+            workspace => workspace.ClearSelection(),
+            workspace => workspace.SelectedRung = null,
+            workspace => workspace.SelectedProcess = workspace.Snapshot.Processes.Single(process => process.ProcessId == 200),
+            workspace => workspace.SelectGraphNode(workspace.GraphDisplay.NodeOf(workspace.SelectedProcess!.Id)!.Key),
+        ];
+        foreach (Action<WorkspaceViewModel> choose in meanwhile)
+        {
+            using WorkspaceViewModel overruled = Open(session);
+            Assert.Null(overruled.RestoreNavigation(first.CaptureNavigation()));
+            choose(overruled);
+            await overruled.RpcReady;
+            await overruled.HttpReady;
+            Assert.Null(overruled.SelectedRung);
+        }
+    });
+
+    [Fact(DisplayName = "§6.4/R7: a newer generation chooses again the call chosen on an RPC channel's rung once its rung has read its calls")]
+    public void ANewerGenerationChoosesTheCallAgain() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        PublishClient(session);
+        using WorkspaceViewModel first = Open(session);
+        await OpenClient(first);
+        first.SelectedRung = first.RungRows.Single(Kinds[1].IsKind);
+        Assert.True(first.Descend());
+        await first.RpcReady;
+        RungRow call = Assert.Single(first.RungRows);
+        first.SelectedRung = call;
+
+        using WorkspaceViewModel second = Open(session);
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        await second.RpcReady;
+        Assert.Equal(call.Key, second.SelectedRung?.Key);
+    });
+
+    [Fact(DisplayName = "§6.4/R7: a newer generation lists a process rung's connections to other hosts at once, as the last one read them, and the connection chosen stays chosen")]
+    public void ANewerGenerationKeepsAProcessRungsConnections() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, HostEdgeRowsTests.Rows());
+        using WorkspaceViewModel first = HostEdgeRowsTests.Open(session);
+        first.SelectedRung = first.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(first.Descend());
+        first.SelectedRung = Assert.Single(first.RungRows);
+        Assert.True(first.Descend());
+        await first.ConnectionsReady;
+        first.SelectedRung = first.RungRows.Single(row => row.Label == "→ 142.250.1.1:443");
+        Assert.Equal("Selected connection", first.EvidenceHeading);
+
+        using WorkspaceViewModel second = HostEdgeRowsTests.Open(session);
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        second.AdoptScope(first.CarryScope());
+        Assert.Equal(("→ 142.250.1.1:443", "Selected connection"), (second.SelectedRung?.Label, second.EvidenceHeading));
+        await second.ConnectionsReady;
+        Assert.Equal(("→ 142.250.1.1:443", "Selected connection"), (second.SelectedRung?.Label, second.EvidenceHeading));
+
+        // A rung left before its rows are read chooses nothing of them where it is entered again.
+        using WorkspaceViewModel left = HostEdgeRowsTests.Open(session);
+        Assert.Null(left.RestoreNavigation(first.CaptureNavigation()));
+        left.ReturnTo(0);
+        Assert.True(left.OpenGraphNode(left.GraphDisplay.NodeOf(left.SelectedProcess!.Id)!.Key));
+        Assert.Equal("Process: browser.exe · PID 300", left.Crumbs[^1].Label);
+        await left.ConnectionsReady;
+        Assert.Null(left.SelectedRung);
+    });
+
     private static readonly (Func<RungRow, bool> IsKind, string Noun, string Heading, int Records)[] Kinds =
     [
         (row => row.Label == "↔ server.exe · PID 200", "channel", "This channel", 3),

@@ -105,6 +105,58 @@ public sealed partial class WorkspaceViewModel
         RebuildConnectionRows();
     }
 
+    /// <summary>
+    /// The rows this process's rung read - its connections, RPC channels and HTTP exchanges - over the scope its rows count,
+    /// for the next publication to list until it has read its own; none at any other rung.
+    /// </summary>
+    private RungReadsCarry? CarryRungReads()
+    {
+        if (evidenceSource is not { } source || ladder.Current.Level != DetailLevel.ProcessInstance
+            || (connections?.Instance ?? rpcChannels?.Instance ?? httpChannels?.Instance) is not { } process)
+        {
+            return null;
+        }
+
+        TimeRange? scope = CountedScope;
+        return new(source.SessionId, process, scope,
+            connections is { } listed && listed.Instance == process && listed.Scope == scope ? listed.Connections : [],
+            rpcChannels is { } calls && calls.Instance == process && calls.Scope == scope ? calls.Channels : [],
+            httpChannels is { } exchanges && exchanges.Instance == process && exchanges.Scope == scope ? exchanges.Channels : []);
+    }
+
+    /// <summary>
+    /// Lists what an earlier publication of this session read for the same process's rung over the same scope while this
+    /// generation's own reads of it are under way, rather than none, and so lets the row the view chose be chosen again
+    /// once the ranking adopted with them restates the rows.
+    /// </summary>
+    private void AdoptRungReads(RungReadsCarry? carry, Guid session)
+    {
+        if (carry is not { } earlier || earlier.SessionId != session)
+        {
+            return;
+        }
+
+        if (connections is { Loading: true, Connections.Count: 0 } reading && reading.Instance == earlier.Instance
+            && reading.Scope == earlier.Scope && earlier.Connections.Count > 0)
+        {
+            reading.Connections = earlier.Connections;
+        }
+
+        if (rpcChannels is { Loading: true, Channels.Count: 0 } calls && calls.Instance == earlier.Instance
+            && calls.Scope == earlier.Scope && earlier.RpcChannels.Count > 0)
+        {
+            calls.Channels = earlier.RpcChannels;
+            RebuildRpcRows();
+        }
+
+        if (httpChannels is { Loading: true, Channels.Count: 0 } exchanges && exchanges.Instance == earlier.Instance
+            && exchanges.Scope == earlier.Scope && earlier.HttpChannels.Count > 0)
+        {
+            exchanges.Channels = earlier.HttpChannels;
+            RebuildHttpRows();
+        }
+    }
+
     /// <summary>Announces the connection rows as read, keeping the selected row when it is still listed.</summary>
     private void RebuildConnectionRows()
     {

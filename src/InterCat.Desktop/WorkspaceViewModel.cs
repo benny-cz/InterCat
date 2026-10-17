@@ -114,7 +114,7 @@ public sealed record WorkspaceNavigationMemento(
 /// where no byte ranking had, for the whole session and for that interval, what the relationship table's edges to other
 /// hosts carried, a chosen host's connections as its card counted them and what Other hosts' hosts carried under a byte
 /// ranking stand in the same way: the table, the inspector and its host list state them, marked updating, until its own
-/// are read.
+/// are read. A process's rung lists the rows it read - connections, RPC channels, HTTP exchanges - until its own are.
 /// </summary>
 public sealed record ScopeCarry(
     TimeRange? VisibleRange,
@@ -130,7 +130,8 @@ public sealed record ScopeCarry(
     SessionByteMeasures? IntervalDescribedBytes = null,
     HostReachCarry? HostReaches = null,
     HostRecordsCarry? HostRecords = null,
-    HostTrafficCarry? HostTraffic = null);
+    HostTrafficCarry? HostTraffic = null,
+    RungReadsCarry? RungReads = null);
 
 /// <summary>
 /// What one publication read of the connections its edges to other hosts draw, by reach - one process's connections over
@@ -143,6 +144,18 @@ public sealed record HostRecordsCarry(TimeRange? Scope, HostConnectionList List)
 
 /// <summary>What Other hosts' hosts carried as one publication read them for its list under a byte ranking.</summary>
 public sealed record HostTrafficCarry(Guid SessionId, RankingMetric Metric, IReadOnlyList<HostTraffic> Hosts);
+
+/// <summary>
+/// The rows one publication read for a process's rung - its one-sided connections, RPC channels and HTTP exchanges - over
+/// the scope they count, for the next publication of the same session to list until it has read its own.
+/// </summary>
+public sealed record RungReadsCarry(
+    Guid SessionId,
+    ProcessInstanceId Instance,
+    TimeRange? Scope,
+    IReadOnlyList<ConnectionSummary> Connections,
+    IReadOnlyList<RpcChannelSummary> RpcChannels,
+    IReadOnlyList<HttpChannelSummary> HttpChannels);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
@@ -194,6 +207,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private SessionEvidenceRecord? selectedEvidence;
     private string? pendingEvidenceKey;
     private IReadOnlyList<RungRow> evidenceRows = [];
+
+    // The row a restored view chose among rows its rung reads after it is shown - a process's connections, RPC channels or
+    // HTTP exchanges, a channel's calls - chosen once they list it, and whether the inspector described it; any choice made
+    // meanwhile, or another rung, lets it go.
+    private string? pendingRungKey;
+    private bool pendingDescribesRow;
 
     // A published process's RPC channels at its rung, and one RPC channel's calls at its rung, read from the session: the
     // overview holds neither (`contracts/operations-v1.md` §5). Each belongs to the rung it was read for.
@@ -1097,7 +1116,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval,
         peerReads.Whole ?? peerReads.CarriedWhole, peerReads.Interval ?? peerReads.CarriedInterval,
         selectionBytes.Whole ?? selectionBytes.CarriedWhole, selectionBytes.Interval ?? selectionBytes.CarriedInterval,
-        CarryHostReaches(), CarryHostRecords(), CarryHostTraffic());
+        CarryHostReaches(), CarryHostRecords(), CarryHostTraffic(), CarryRungReads());
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
@@ -1117,6 +1136,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             AdoptHostReaches(carry.HostReaches, current.SessionId);
             carriedHostRecords = carry.HostRecords is { } host && host.List.SessionId == current.SessionId ? host : null;
             AdoptHostTraffic(carry.HostTraffic, current.SessionId);
+            AdoptRungReads(carry.RungReads, current.SessionId);
 
             // What states bytes states the earlier publication's at once, where this generation's are still being read.
             RefreshDescribedBytes();
@@ -1866,6 +1886,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             SelectedSearchResult = hit;
         }
 
+        // A row its rung reads after it is shown is chosen once the rung lists it, as it was chosen.
+        if (selectedRung is null && ladder.Depth == old.Length - 1 && saved.SelectedRungKey is { } awaited
+            && ladder.Current.Level is DetailLevel.ProcessInstance or DetailLevel.Channel)
+        {
+            pendingRungKey = awaited;
+            pendingDescribesRow = saved.DescribesRow;
+        }
+
         // The view is back where it was; from here a drawing the person moves to is laid out as a new one.
         settledLayout = false;
         return notices.Count == 0 ? null : string.Join(" ", notices);
@@ -2212,6 +2240,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             return;
         }
+
+        pendingRungKey = null;
 
         if (node.Process is { } process)
         {
@@ -3680,6 +3710,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         {
             // While the ranked table restates its rows the list lets its choice go for a moment; the choice is kept by key.
             if (restatingRungs) return;
+            pendingRungKey = null;
             selectedRung = value;
             OnPropertyChanged();
             if (IsEvidenceRung)
@@ -3772,6 +3803,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (chosen is null)
         {
             OnPropertyChanged(nameof(SelectedRung));
+            ChooseAwaitedRow();
             return;
         }
 
@@ -3784,6 +3816,27 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedRung = kept;
         OnPropertyChanged(nameof(SelectedRung));
         RaiseSelectionDescribed();
+    }
+
+    /// <summary>
+    /// Chooses the row a restored view chose once its rung lists it, describing it in the inspector as it was described, or
+    /// its process where that was chosen again over it.
+    /// </summary>
+    private void ChooseAwaitedRow()
+    {
+        if (pendingRungKey is not { } awaited || RungRows.FirstOrDefault(row => row.Key == awaited) is not { } row)
+        {
+            return;
+        }
+
+        bool describes = pendingDescribesRow;
+        SelectedRung = row;
+        if (!describes && describesRow)
+        {
+            describesRow = false;
+            UpdateHighlight();
+            RaiseSelectionDescribed();
+        }
     }
 
     private void RaiseSelectionDescribed()
@@ -4053,6 +4106,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             selectedProcess = value;
+            pendingRungKey = null;
 
             // A process's lane chosen after a cell is the one explained (§6.8).
             if (ShowsProcessLanes)
@@ -5489,6 +5543,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public void ClearSelection()
     {
+        pendingRungKey = null;
         selectedClusterKey = null;
         selectedGroupKey = null;
         chosenChannelKey = null;
@@ -5510,6 +5565,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         view = ProjectLadder();
         selectedRung = null;
+        pendingRungKey = null;
         selectedCrumb = null;
 
         // A chosen cell is a place in the rung's lanes, which the rung left takes with it.
