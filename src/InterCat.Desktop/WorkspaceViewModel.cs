@@ -75,6 +75,10 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// Where each way down with a relationship, or an edge to other hosts, chosen began, which the way back comes to (§3.2).
 /// </param>
 /// <param name="ChosenHostEdge">The edge to other hosts chosen in the relationship table, by its key (R15).</param>
+/// <param name="DescribesRow">
+/// Whether the inspector described the selected row - a channel or a call chosen among a process's rows - rather than the
+/// process, which is the selection again once chosen there.
+/// </param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -100,12 +104,16 @@ public sealed record WorkspaceNavigationMemento(
     string? SelectedRelationshipKey = null,
     IReadOnlyList<ProcessInstanceId>? ChosenSet = null,
     IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null,
-    string? ChosenHostEdge = null);
+    string? ChosenHostEdge = null,
+    bool DescribesRow = false);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
 /// interval they answer, and the bytes and RPC calls a ranking read for the whole session and for that interval. The
-/// next publication of the same session shows them, marked pending, until its own arrive.
+/// next publication of the same session shows them, marked pending, until its own arrive. The bytes a description read
+/// where no byte ranking had, for the whole session and for that interval, what the relationship table's edges to other
+/// hosts carried and a chosen host's connections as its card counted them stand in the same way: the table and the
+/// inspector state them, marked updating, until its own are read.
 /// </summary>
 public sealed record ScopeCarry(
     TimeRange? VisibleRange,
@@ -116,7 +124,20 @@ public sealed record ScopeCarry(
     SessionCallMeasures? WholeCalls = null,
     SessionCallMeasures? IntervalCalls = null,
     SessionPeerMeasures? WholePeers = null,
-    SessionPeerMeasures? IntervalPeers = null);
+    SessionPeerMeasures? IntervalPeers = null,
+    SessionByteMeasures? WholeDescribedBytes = null,
+    SessionByteMeasures? IntervalDescribedBytes = null,
+    HostReachCarry? HostReaches = null,
+    HostRecordsCarry? HostRecords = null);
+
+/// <summary>
+/// What one publication read of the connections its edges to other hosts draw, by reach - one process's connections over
+/// one transport to one address - for the next publication of the same session to state until its own are read.
+/// </summary>
+public sealed record HostReachCarry(Guid SessionId, IReadOnlyDictionary<string, TransportBytes> Reaches);
+
+/// <summary>A chosen host's connections as one publication's card counted them, over the scope it counted them in.</summary>
+public sealed record HostRecordsCarry(TimeRange? Scope, HostConnectionList List);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
@@ -1060,16 +1081,22 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
     }
 
-    /// <summary>What this workspace's ranking counted, for the next publication of the same session to show until its own arrive.</summary>
+    /// <summary>
+    /// What this workspace's ranking counted, and the bytes its descriptions stated, for the next publication of the same
+    /// session to show until its own arrive.
+    /// </summary>
     public ScopeCarry CarryScope() => new(visibleRange, displayedCountsInterval, displayedCounts,
         byteReads.Whole ?? byteReads.CarriedWhole, byteReads.Interval ?? byteReads.CarriedInterval,
         callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval,
-        peerReads.Whole ?? peerReads.CarriedWhole, peerReads.Interval ?? peerReads.CarriedInterval);
+        peerReads.Whole ?? peerReads.CarriedWhole, peerReads.Interval ?? peerReads.CarriedInterval,
+        selectionBytes.Whole ?? selectionBytes.CarriedWhole, selectionBytes.Interval ?? selectionBytes.CarriedInterval,
+        CarryHostReaches(), CarryHostRecords());
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
     /// and shows that publication's counts while this one's own are read. Nothing stands in once they have arrived, or
-    /// when the scope is the whole session. A ranking's bytes or calls stand in the same way.
+    /// when the scope is the whole session. A ranking's bytes or calls stand in the same way, and so do the bytes the
+    /// relationship table and the inspector state, marked updating.
     /// </summary>
     public void AdoptScope(ScopeCarry carry)
     {
@@ -1079,6 +1106,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             byteReads.Adopt(carry.WholeBytes, carry.IntervalBytes, current.SessionId);
             callReads.Adopt(carry.WholeCalls, carry.IntervalCalls, current.SessionId);
             peerReads.Adopt(carry.WholePeers, carry.IntervalPeers, current.SessionId);
+            selectionBytes.Adopt(carry.WholeDescribedBytes, carry.IntervalDescribedBytes, current.SessionId);
+            AdoptHostReaches(carry.HostReaches, current.SessionId);
+            carriedHostRecords = carry.HostRecords is { } host && host.List.SessionId == current.SessionId ? host : null;
+
+            // What states bytes states the earlier publication's at once, where this generation's are still being read.
+            RefreshDescribedBytes();
         }
 
         ShowVisibleRange(carry.VisibleRange);
@@ -1594,7 +1627,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
-        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key);
+        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1721,6 +1754,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             && !string.Equals(goneFocus, selected.ToString(), StringComparison.Ordinal))
         {
             notices.Add("The selected process is no longer in the session, so nothing is selected.");
+        }
+
+        // A channel or a call chosen among the process's rows is described again, not the process its rung was reached with.
+        if (saved.DescribesRow && selectedRung is not null && !IsEvidenceRung && !describesRow)
+        {
+            describesRow = true;
+            UpdateHighlight();
+            RaiseSelectionDescribed();
         }
 
         // An aggregate's key names its role (no relationships, other processes, an opened group's other members), so it
@@ -3063,8 +3104,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : Snapshot with { Edges = [.. Snapshot.Edges.Where(edge => drawn.Contains(edge.SourceId) || drawn.Contains(edge.TargetId))] };
 
     /// <summary>
-    /// What the relationship table lists, as the graph's caption names it - its relationships and edges to other hosts - and
-    /// how many relationships it leaves out.
+    /// What the relationship table lists, as the graph's caption names it - its relationships and edges to other hosts - how
+    /// many relationships it leaves out, and while its rows state an earlier publication's bytes, that they are updating.
     /// </summary>
     public string RelationshipTableScope
     {
@@ -3074,11 +3115,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             string listed = Counted(relationships.Count, "relationship", "relationships")
                 + (toHosts > 0 ? " · " + Counted(toHosts, "edge to other hosts", "edges to other hosts") : string.Empty);
             int elsewhere = Snapshot.Edges.Count - relationships.Count;
-            return graphFocus.Neighborhood is null
+            string updating = TableRows.Any(row => row.BytesUpdating) ? " · bytes updating" : string.Empty;
+            return (graphFocus.Neighborhood is null
                 ? $"Whole machine · {listed}"
                 : $"{graphFocus.Description} · {listed}" + (elsewhere > 0
                     ? string.Create(CultureInfo.CurrentCulture, $" · {elsewhere:N0} more elsewhere, listed at the machine rung")
-                    : string.Empty);
+                    : string.Empty)) + updating;
         }
     }
 
@@ -4366,12 +4408,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         // A real session's overview sums no bytes: they are read once something is selected, and then each relationship
         // carries what was sent across it, each transfer counted once at its sender.
-        if (ReadsBytes && DescribedBytes is null)
+        if (ReadsBytes && StatedBytes is null)
         {
             return "Bytes: not read yet · selecting reads them for this scope";
         }
 
-        if (ReadsBytes && DescribedBytes is { } read)
+        if (ReadsBytes && StatedBytes is { } read)
         {
             // What was sent across the relationships, each transfer once at its sender: a measured sum, sends that recorded
             // no size, or none at all. Unknown is not zero, and none sent is not unknown (R21).
@@ -4379,11 +4421,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             SentAcrossTally across = all.Aggregate(default(SentAcrossTally), (sum, edge) => sum.Plus(sent.GetValueOrDefault(edge.Key)));
             string unmeasured = across.Unmeasured == 1 ? "1 send recorded no size"
                 : string.Create(CultureInfo.CurrentCulture, $"{across.Unmeasured:N0} sends recorded no size");
-            return across.Measured > 0
+            return (across.Measured > 0
                 ? "Bytes: " + WorkspaceRowBuilder.DescribeSize(across.Sent) + " sent across, each transfer counted once at its sender"
                     + (across.Unmeasured > 0 ? " · " + unmeasured : string.Empty)
                 : across.Unmeasured > 0 ? "Bytes: unknown · " + unmeasured
-                : "Bytes: nothing sent across";
+                : "Bytes: nothing sent across") + BytesUpdating;
         }
 
         if (known.Length == 0)
@@ -4868,7 +4910,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     : realOverview && transport is { } paired ? $"paired {MechanismText.Name(paired)} observations"
                     : realOverview ? "paired observations" : "observations";
                 return string.Create(CultureInfo.CurrentCulture, $"{chosen.ObservationCount:N0} {counted} · ")
-                    + (calls ? "an RPC call carries no size" : chosen.KnownBytes);
+                    + (calls ? "an RPC call carries no size" : chosen.StatedBytes);
             }
 
             // An edge to other hosts chosen in the table: its connections' records, as its row counts them and E lists
@@ -4876,7 +4918,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (ChosenHostEdgeRow() is { } toHosts)
             {
                 return string.Create(CultureInfo.CurrentCulture, $"{toHosts.ObservationCount:N0} records of its connections · ")
-                    + toHosts.KnownBytes;
+                    + toHosts.StatedBytes;
             }
 
             // A row chosen among a process's rows: its records, as E lists them; and on its own rung once opened.

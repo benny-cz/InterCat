@@ -10,11 +10,15 @@ namespace InterCat.Desktop;
 /// inspector, which holds the many hosts the graph does not draw on their own: its records are those of every connection
 /// to its address, whichever process held it, as its scope reads them (<see cref="HostScopeKeys"/>). The timeline
 /// highlights them, the inspector's card counts them and what they measured over the scope the rows count, and E lists
-/// them. Who is at the address is not observed (P7).
+/// them. Who is at the address is not observed (P7). A live session's next publication counts what the last one did,
+/// marked updating, until it has read its own.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
     private HostRecordsLoad? hostRecords;
+
+    // A chosen host's connections as an earlier publication of the session counted them, stated while this one reads its own.
+    private HostRecordsCarry? carriedHostRecords;
 
     // The address of the host chosen in Other hosts' list, while Other hosts stays chosen; a node chosen in the graph, Other
     // hosts again included, lets it go.
@@ -80,13 +84,17 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// The card's count of the chosen host's records over the scope the rows count, and what they measured: "11 records of
-    /// 2 TCP connections from 2 processes · 1,210 B sent, no receive recorded". Until they are read, it says so.
+    /// 2 TCP connections from 2 processes · 1,210 B sent, no receive recorded". Until they are read, it says so, or while
+    /// an earlier publication counted the same host over the same scope, states that count, marked updating.
     /// </summary>
     private string HostEvidence(string address)
     {
         if (hostRecords is not { } load || load.Address != address || load.Scope != CountedScope || load.List is null && load.Problem is null)
         {
-            return "Reading the records of its connections…";
+            return hostRecords is { List: null, Problem: null } reading && reading.Address == address && reading.Scope == CountedScope
+                && carriedHostRecords is { } earlier && earlier.List.Address == address && earlier.Scope == CountedScope
+                ? HostRecordsCount(earlier.List, earlier.Scope) + " · updating"
+                : "Reading the records of its connections…";
         }
 
         if (load.Problem is { } problem)
@@ -94,12 +102,18 @@ public sealed partial class WorkspaceViewModel
             return "Its records could not be read: " + problem;
         }
 
-        HostConnectionList list = load.List!;
-        return list.Connections.Count == 0
-            ? "No record of a connection to it" + (load.Scope is null ? string.Empty : " in this interval")
-            : Spoken.Count(list.Records, "record") + " of " + HostLinkText.Reached(list.Host) + " · "
-                + list.Transfers(CultureInfo.CurrentCulture);
+        return HostRecordsCount(load.List!, load.Scope);
     }
+
+    /// <summary>A host's connections as the card counts them over <paramref name="scope"/>: their records and what they measured.</summary>
+    private static string HostRecordsCount(HostConnectionList list, TimeRange? scope) => list.Connections.Count == 0
+        ? "No record of a connection to it" + (scope is null ? string.Empty : " in this interval")
+        : Spoken.Count(list.Records, "record") + " of " + HostLinkText.Reached(list.Host) + " · "
+            + list.Transfers(CultureInfo.CurrentCulture);
+
+    /// <summary>The chosen host's connections as this generation's card counted them, or else as an earlier publication's did.</summary>
+    private HostRecordsCarry? CarryHostRecords() =>
+        hostRecords is { List: { } list } read ? new(read.Scope, list) : carriedHostRecords;
 
     /// <summary>
     /// Reads the chosen host's connections for the scope the rows count when none are read for it, so the card counts what

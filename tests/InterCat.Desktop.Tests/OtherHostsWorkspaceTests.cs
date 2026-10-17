@@ -649,6 +649,51 @@ public sealed class OtherHostsWorkspaceTests
         Assert.Null(third.ChosenHostRow);
     });
 
+    [Fact(DisplayName = "§6.4: a live publication's card counts the chosen host's records as the last one did, marked updating, until it has read its own")]
+    public void ALivePublicationKeepsTheHostsCount() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TenHosts());
+        using WorkspaceViewModel first = Open(session);
+        await first.LayoutReady;
+        first.SelectGraphNode(first.GraphDisplay.OtherHosts!.Key);
+        first.ChosenHostRow = first.HostRows.Single(row => row.Address == "52.0.0.9");
+        await first.HostRecordsReady;
+        Assert.Equal("2 records of 1 TCP connection from 1 process · 200 B sent, no receive recorded", first.EvidenceSummary);
+
+        // The next publication holds a third send to it.
+        Publish(session.Store, [Transfer(950, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 950)
+            .Between("192.168.1.10:52009", "52.0.0.9:443") with { SessionRelativeTicks = 950 }]);
+        using WorkspaceViewModel second = Open(session);
+        await second.LayoutReady;
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        second.AdoptScope(first.CarryScope());
+        Assert.Equal("2 records of 1 TCP connection from 1 process · 200 B sent, no receive recorded · updating",
+            second.EvidenceSummary);
+        (WorkspaceNavigationMemento Navigation, ScopeCarry Scope) unread = (second.CaptureNavigation(), second.CarryScope());
+        await second.HostRecordsReady;
+        Assert.Equal("3 records of 1 TCP connection from 1 process · 300 B sent, no receive recorded", second.EvidenceSummary);
+
+        // One following a publication that had not counted them yet counts them as the one before it did.
+        using (WorkspaceViewModel next = Open(session))
+        {
+            await next.LayoutReady;
+            Assert.Null(next.RestoreNavigation(unread.Navigation));
+            next.AdoptScope(unread.Scope);
+            Assert.Equal("2 records of 1 TCP connection from 1 process · 200 B sent, no receive recorded · updating",
+                next.EvidenceSummary);
+        }
+
+        // Another host chosen meanwhile is read afresh: what the last publication counted was another host's.
+        using WorkspaceViewModel third = Open(session);
+        await third.LayoutReady;
+        Assert.Null(third.RestoreNavigation(second.CaptureNavigation() with { ChosenListedHost = "52.0.0.8" }));
+        third.AdoptScope(second.CarryScope());
+        Assert.Equal("Reading the records of its connections…", third.EvidenceSummary);
+        await third.HostRecordsReady;
+        Assert.Equal("3 records of 1 TCP connection from 1 process · 300 B sent, no receive recorded", third.EvidenceSummary);
+    });
+
     [Fact(DisplayName = "§6.4: a host chosen in Other hosts' list is the records of every connection to it, as one drawn on its own is, kept as the list restates its rows and let go by any node chosen in the graph")]
     public void AHostChosenInOtherHostsListIsItsRecords() => SingleThreadedContext.Run(async () =>
     {

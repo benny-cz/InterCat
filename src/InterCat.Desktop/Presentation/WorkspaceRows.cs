@@ -90,17 +90,28 @@ public sealed record RelationshipRow(
     public string SourceNode { get; init; } = string.Empty;
 
     /// <summary>
+    /// Whether <see cref="KnownBytes"/> are an earlier publication's, stated while a live session's are read again rather
+    /// than blinking out each time: they are said to be updating.
+    /// </summary>
+    public bool BytesUpdating { get; init; }
+
+    /// <summary>Its bytes as said in a sentence: what <see cref="KnownBytes"/> states, and whether that is updating.</summary>
+    public string StatedBytes => BytesUpdating ? KnownBytes + " · updating" : KnownBytes;
+
+    /// <summary>
     /// The row read aloud: its ends joined by "and", since which is the source is display order only, then who connected
     /// where the capture saw it, its counts, evidence and rule, and what Enter opens. An edge to other hosts says what
     /// its explanation says in the place of a rule, which derives none of it.
     /// </summary>
     public string AccessibleName => ToHosts
         ? $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } toward ? toward + ", " : string.Empty)
-            + $"{Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, evidence {Evidence}. {Explanation} "
+            + $"{Spoken.Count(ObservationCount, "observation")}, {SpokenBytes}, evidence {Evidence}. {Explanation} "
             + (Opens.Length > 0 ? $"Press Enter to open {Opens}." : "Each process's rung lists its connections.")
         : $"{Source} and {Target} over {Mechanism}, " + (SpokenDirection is { } spoken ? spoken + ", " : string.Empty)
-            + $"{Spoken.Count(ObservationCount, "observation")}, {KnownBytes}, evidence {Evidence}, derived by {Rule}. "
+            + $"{Spoken.Count(ObservationCount, "observation")}, {SpokenBytes}, evidence {Evidence}, derived by {Rule}. "
             + $"Press Enter to open {Opens}.";
+
+    private string SpokenBytes => BytesUpdating ? KnownBytes + ", updating" : KnownBytes;
 }
 
 /// <summary>

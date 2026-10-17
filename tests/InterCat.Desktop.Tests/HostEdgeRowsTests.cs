@@ -403,17 +403,17 @@ public sealed class HostEdgeRowsTests
         Assert.StartsWith("No relationship here. ", workspace.RelationshipsAbsent, StringComparison.Ordinal);
     });
 
-    private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
+    internal static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 
-    private static WorkspaceViewModel Open(TemporarySession session)
+    internal static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
             new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
     }
 
-    private static ObservationRowV1 Tcp(long tick, ObservationKind kind, int pid, ulong ordinal, string local, string remote) =>
+    internal static ObservationRowV1 Tcp(long tick, ObservationKind kind, int pid, ulong ordinal, string local, string remote) =>
         Transfer(tick, kind, kind is ObservationKind.Send or ObservationKind.Receive
                 ? kind == ObservationKind.Send ? AccountingSide.SendSide : AccountingSide.ReceiveSide
                 : AccountingSide.EndpointActivity,
@@ -425,7 +425,7 @@ public sealed class HostEdgeRowsTests
     /// connection from 192.168.1.30 at its 8080; svc.exe's 400 sending datagrams to an IPv6 host's 53, and 401 only
     /// starting.
     /// </summary>
-    private static ObservationRowV1[] Rows() =>
+    internal static ObservationRowV1[] Rows() =>
     [
         Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 10 },
         Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 20 },

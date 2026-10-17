@@ -15,7 +15,8 @@ namespace InterCat.Desktop;
 /// does - its source - and stays chosen while that is; Enter or a double click opens what a double click on it opens.
 /// The graph draws such an edge with no traffic value, yet its connections' records measured what they carried: once the
 /// table lists it in a session whose bytes are read, its row says what crossed them, each transfer counted once at this
-/// machine's end - its sends, and the other host's as its receives - and its explanation what it sent and received.
+/// machine's end - its sends, and the other host's as its receives - and its explanation what it sent and received. A live
+/// session's next publication states what the last one read, marked updating, until it has read its own.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -34,6 +35,9 @@ public sealed partial class WorkspaceViewModel
     // and found holding none carries none - and the read of the reaches drawn that are not read yet.
     private readonly Dictionary<string, TransportBytes> reachTraffic = new(StringComparer.OrdinalIgnoreCase);
     private HostEdgeTrafficLoad? hostEdgeTraffic;
+
+    // What an earlier publication of the session read of its reaches, stated while this generation reads its own.
+    private IReadOnlyDictionary<string, TransportBytes>? carriedReachTraffic;
 
     /// <summary>Completes when the latest read of what the table's edges to other hosts carried has applied or failed.</summary>
     public Task HostEdgeTrafficReady { get; private set; } = Task.CompletedTask;
@@ -165,6 +169,7 @@ public sealed partial class WorkspaceViewModel
         }
 
         OnPropertyChanged(nameof(TableRowsAbsent));
+        OnPropertyChanged(nameof(RelationshipTableScope));
         RaiseTableChoice();
     }
 
@@ -241,7 +246,7 @@ public sealed partial class WorkspaceViewModel
             string to = hosts.Count == 1 ? toward : $"{toward} · {CountText.Of(hosts.Count, "host")}";
             FamilyTokens tokens = ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(edge.Mechanism));
             string reach = links is [{ } link] ? HostLinkText.Reach(link) : HostLinkText.Reach(edge.Mechanism, links);
-            TransportBytes? carried = Carried(links);
+            TransportBytes? carried = Carried(links, out bool updating);
             rows.Add(new RelationshipRow(
                 source is { Members: [ProcessInstanceId member] } ? member : default,
                 from,
@@ -263,7 +268,8 @@ public sealed partial class WorkspaceViewModel
                     + (carried is { } each
                         ? " At this machine's end: " + WorkspaceRowBuilder.Directional(each.SentBytes, each.SentMeasured,
                             each.SentUnmeasured, "sent", "send") + " · " + WorkspaceRowBuilder.Directional(each.ReceivedBytes,
-                            each.ReceivedMeasured, each.ReceivedUnmeasured, "received", "receive") + "."
+                            each.ReceivedMeasured, each.ReceivedUnmeasured, "received", "receive")
+                            + (updating ? " · updating." : ".")
                         : string.Empty)
                     + (appliedInterval is null ? string.Empty
                         : carried is null ? " Its counts are the whole session's."
@@ -275,21 +281,33 @@ public sealed partial class WorkspaceViewModel
                 SpokenDirection = DirectionText.Spoken(edge.MadeFromSource, edge.MadeFromTarget, from, toward),
                 ToHosts = true,
                 SourceNode = edge.SourceKey,
+                BytesUpdating = updating,
             });
         }
 
         return [.. rows];
     }
 
-    /// <summary>What <paramref name="links"/>' connections carried, each reach once, once each is read; null until then.</summary>
-    private TransportBytes? Carried(IEnumerable<HostLink> links)
+    /// <summary>
+    /// What <paramref name="links"/>' connections carried, each reach once, once each is read; null until then. While this
+    /// generation reads a reach an earlier publication read, that publication's stands in for it, and the sum is
+    /// <paramref name="updating"/>.
+    /// </summary>
+    private TransportBytes? Carried(IEnumerable<HostLink> links, out bool updating)
     {
+        updating = false;
         TransportBytes sum = TransportBytes.None;
         foreach (string reach in ReachKeys(links))
         {
             if (!reachTraffic.TryGetValue(reach, out TransportBytes? carried))
             {
-                return null;
+                if (hostEdgeTraffic is not { Problem: null } || carriedReachTraffic is null
+                    || !carriedReachTraffic.TryGetValue(reach, out carried))
+                {
+                    return null;
+                }
+
+                updating = true;
             }
 
             sum = sum.Plus(carried);
@@ -297,6 +315,38 @@ public sealed partial class WorkspaceViewModel
 
         return sum;
     }
+
+    /// <summary>What this generation read of its reaches, over what an earlier publication's read stood in for.</summary>
+    private HostReachCarry? CarryHostReaches()
+    {
+        if (evidenceSource is not { } source || reachTraffic.Count == 0 && carriedReachTraffic is null)
+        {
+            return null;
+        }
+
+        var reaches = new Dictionary<string, TransportBytes>(StringComparer.OrdinalIgnoreCase);
+        if (carriedReachTraffic is { } earlier)
+        {
+            foreach ((string reach, TransportBytes bytes) in earlier)
+            {
+                reaches[reach] = bytes;
+            }
+        }
+
+        foreach ((string reach, TransportBytes bytes) in reachTraffic)
+        {
+            reaches[reach] = bytes;
+        }
+
+        return new(source.SessionId, reaches);
+    }
+
+    /// <summary>
+    /// Takes on what an earlier publication of this session read of its reaches, to state while its own are read; the rows
+    /// state it once restated.
+    /// </summary>
+    private void AdoptHostReaches(HostReachCarry? carry, Guid session) =>
+        carriedReachTraffic = carry is { } earlier && earlier.SessionId == session ? earlier.Reaches : null;
 
     /// <summary>The links of every edge to other hosts drawn at this rung, each with the addresses its edge draws.</summary>
     private HostLink[] DrawnHostEdgeLinks() =>

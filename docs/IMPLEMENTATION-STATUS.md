@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-16 · Plan revision: 616 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 617 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,25 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 617 — a live publication keeps the table's and card's bytes until it has read its own (§6.4, R15, R21):**
+  - Each publication read again what the relationship table's rows, the card, a channel's total and a mark's card
+    state, and all said "reading bytes…" meanwhile, every two seconds. The last publication's bytes, edge traffic and
+    host count now stand in, for the same scope, marked updating on screen and aloud, until its own arrive; a read
+    that fails lets none remain.
+  - Found on the way: a newer generation turned a channel chosen among a process's rows back into its process, at
+    every live publication; the navigation carried keeps the row described.
+  - Debug and Release each ran 2,567 tests with revision 473's 93 failures and 4 skips, and nothing else failed. Of
+    38 mutations 36 were caught: no stand-in, one standing in once a read failed, or the whole session's for an
+    interval; a stand-in unmarked in a row, aloud, in the caption, the card, a channel's total, a mark's card, an
+    edge's explanation or a host's count; a publication carrying none of its bytes, edge traffic or host count, or
+    not those it was itself standing in, or taking none on, or not restating the table when it does; a mark's card
+    calling the bytes unread meanwhile; edge traffic standing in for none, or after its read failed; a host's count
+    standing in for none, or for another host; a described row not kept, described again once its process was chosen
+    again, or never; and the caption not said again as the edges' traffic arrives, which a test of its own now
+    catches. One, the adoption dropping the table's cached rows, survived because the restatement after it rebuilds
+    them, so the reset went. The one left, the restore highlighting a described row itself, survived because the
+    read the restore starts re-highlights it through the table's choice; it stays so the restore leans on no read.
 
 - **Revision 616 — an edge to other hosts chosen in the table is its own records (§6.4, I5, R15):**
   - E on such a row listed its source's every record. A host's scope now names several addresses and the processes

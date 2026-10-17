@@ -10,7 +10,8 @@ namespace InterCat.Desktop;
 /// bytes, so "bytes unknown" said nothing true of a real session: its records carry sizes that no view had read. Once a
 /// selection or the relationship table needs them, the bytes of the scope the rows count are read through the same
 /// per-scope read a byte ranking uses, and each relationship carries the bytes sent across it, each transfer counted once
-/// at its sender. Until they arrive the inspector says they are being read.
+/// at its sender. Until they arrive the inspector says they are being read; on a live session, whose every publication
+/// reads them again, the previous publication's stand in meanwhile, marked updating, instead of blinking out each time.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -29,6 +30,27 @@ public sealed partial class WorkspaceViewModel
         byteReads.For(CountedScope) is { } ranked && !byteReads.IsCarried(ranked) ? ranked
         : selectionBytes.For(CountedScope) is { } read && !selectionBytes.IsCarried(read) ? read
         : null;
+
+    /// <summary>
+    /// The bytes a description states for the scope the rows count: this generation's once read, and while they are read,
+    /// an earlier publication's for the same scope, which it marks as updating (<see cref="BytesStandIn"/>); else none.
+    /// </summary>
+    private SessionByteMeasures? StatedBytes => DescribedBytes ?? StandInBytes;
+
+    /// <summary>
+    /// An earlier publication's bytes for the scope the rows count while this generation's are read, as a ranking's stand
+    /// in for it (§6.4): none once they are, or while none is read; a read that failed says so instead.
+    /// </summary>
+    private SessionByteMeasures? StandInBytes =>
+        DescribedBytes is null && (selectionBytes.Reads(CountedScope) || byteReads.Reads(CountedScope))
+            ? byteReads.For(CountedScope) ?? selectionBytes.For(CountedScope)
+            : null;
+
+    /// <summary>Whether a description states an earlier publication's bytes, marked as updating, while this one's are read.</summary>
+    private bool BytesStandIn => StandInBytes is not null;
+
+    /// <summary>What a description adds to the bytes it states while they are an earlier publication's.</summary>
+    private string BytesUpdating => BytesStandIn ? " · updating" : string.Empty;
 
     /// <summary>
     /// Whether this workspace reads its bytes when a description needs them: a real session with the directory to read
@@ -85,7 +107,7 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// The relationship table's rows, those the graph draws at this rung, with the bytes sent across each once they are
     /// read, or that none was sent or none of its sends measured a size; until the bytes are read, each says why they are
-    /// not known yet.
+    /// not known yet, or states an earlier publication's, marked as updating, while a live session's are read again.
     /// </summary>
     private IReadOnlyList<RelationshipRow> RelationshipRows()
     {
@@ -95,15 +117,16 @@ public sealed partial class WorkspaceViewModel
             return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode);
         }
 
-        if (DescribedBytes is not { } bytes)
+        if (StatedBytes is not { } bytes)
         {
             string unread = UnreadBytes;
             return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode, _ => unread);
         }
 
         ILookup<string, Channel> channels = listed.Channels.ToLookup(channel => channel.EdgeKey, StringComparer.Ordinal);
-        return WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode,
+        IReadOnlyList<RelationshipRow> rows = WorkspaceRowBuilder.Relationships(listed, ThemeResources.CurrentMode,
             edge => SentAcross(edge, channels[edge.Key], bytes).Phrase);
+        return BytesStandIn ? [.. rows.Select(row => row with { BytesUpdating = true })] : rows;
     }
 
     /// <summary>
@@ -117,14 +140,14 @@ public sealed partial class WorkspaceViewModel
             return "bytes unknown";
         }
 
-        if (DescribedBytes is not { } bytes)
+        if (StatedBytes is not { } bytes)
         {
             return UnreadBytes;
         }
 
-        return Snapshot.Edges.FirstOrDefault(edge => edge.Key == channel.EdgeKey) is { } relationship
+        return (Snapshot.Edges.FirstOrDefault(edge => edge.Key == channel.EdgeKey) is { } relationship
             ? SentAcross(relationship, [channel], bytes).Phrase
-            : "nothing sent across";
+            : "nothing sent across") + BytesUpdating;
     }
 
     /// <summary>
@@ -198,11 +221,12 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// A selection's own bytes, sent and received, as the inspector states them on a real session: what its records
-    /// measured over the scope the rows count, "reading bytes…" until that is read, or why it could not be.
+    /// measured over the scope the rows count, "reading bytes…" until that is read, or why it could not be; while a live
+    /// session's are read again, the previous publication's, marked as updating.
     /// </summary>
     private string SelectionBytes(IReadOnlyCollection<ProcessNode> members)
     {
-        if (DescribedBytes is not { } bytes)
+        if (StatedBytes is not { } bytes)
         {
             return selectionBytes.Problem is not null || byteReads.Problem is not null ? "bytes could not be read" : "reading bytes…";
         }
@@ -210,7 +234,8 @@ public sealed partial class WorkspaceViewModel
         TransportBytes sum = members.Aggregate(TransportBytes.None,
             (total, member) => total.Plus(bytes.ByProcess.GetValueOrDefault(member.Id) ?? TransportBytes.None));
         return WorkspaceRowBuilder.Directional(sum.SentBytes, sum.SentMeasured, sum.SentUnmeasured, "sent", "send") + " · "
-            + WorkspaceRowBuilder.Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receive");
+            + WorkspaceRowBuilder.Directional(sum.ReceivedBytes, sum.ReceivedMeasured, sum.ReceivedUnmeasured, "received", "receive")
+            + BytesUpdating;
     }
 
     /// <summary>
