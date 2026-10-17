@@ -176,7 +176,8 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Opens the rung of a process the chosen aggregate lists, as Enter on a process drawn on its own does: through its
     /// group, so the breadcrumb states every rung and Esc climbs each, back to the aggregate and the process chosen in its
-    /// list. False for a process the list does not hold.
+    /// list, and to the aggregate's edge to other hosts where the table had it chosen, as E's way back does. False for a
+    /// process the list does not hold.
     /// </summary>
     public bool OpenMember(MemberRow row)
     {
@@ -188,12 +189,18 @@ public sealed partial class WorkspaceViewModel
         }
 
         MemberListOrigin? origin = MemberOriginHere(process.Id);
+        RelationshipOrigin? related = SelectedTableRow is { } chosen ? OriginHere(chosen.Key) : null;
         if (!DescendAlong([process.GroupKey, process.Id.ToString()], selectedInterval))
         {
             return false;
         }
 
         memberOrigin = origin;
+        if (related is not null)
+        {
+            KeepWayBack(related);
+        }
+
         return true;
     }
 

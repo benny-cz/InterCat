@@ -323,7 +323,7 @@ public sealed class HostEdgeRowsTests
         Assert.Null(workspace.CaptureNavigation().ChosenHostEdge);
     });
 
-    [Fact(DisplayName = "§3.2/R15: an aggregate's edge to other hosts stays chosen with a process chosen in its list, and the way back from that process's records, or a newer generation, chooses both again")]
+    [Fact(DisplayName = "§3.2/R15: an aggregate's edge to other hosts stays chosen with a process chosen in its list, and the way back from that process's records or rung, or a newer generation, chooses both again")]
     public void AnAggregatesEdgeKeepsItsListsChoice() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -348,6 +348,18 @@ public sealed class HostEdgeRowsTests
         Assert.True(workspace.Ascend());
         Assert.Equal(member.Process, workspace.ChosenMemberRow?.Process);
         Assert.Equal(folded.Key, workspace.SelectedTableRow?.Key);
+
+        // Enter on the process opens its rung through its group's, and Esc back up both chooses all three again too, and
+        // asks for the keyboard to go to the edge's row.
+        int asked = workspace.RelationshipAsked;
+        Assert.True(workspace.OpenMember(member));
+        Assert.Equal(3, workspace.Crumbs.Count);
+        Assert.True(workspace.Ascend());
+        Assert.Null(workspace.SelectedTableRow);
+        Assert.True(workspace.Ascend());
+        Assert.Equal((member.Process, folded.Key, folded.SourceNode),
+            (workspace.ChosenMemberRow?.Process, workspace.SelectedTableRow?.Key, workspace.SelectedGraphNodeKey));
+        Assert.Equal(asked + 1, workspace.RelationshipAsked);
 
         // A newer generation chooses all three again.
         using WorkspaceViewModel newer = Open(session);
