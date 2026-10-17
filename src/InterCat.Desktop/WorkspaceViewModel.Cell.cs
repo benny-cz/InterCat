@@ -32,6 +32,10 @@ public sealed partial class WorkspaceViewModel
     private TimelineCellLane? chosenCell;
     private bool choosingCell;
 
+    // The cell that click chose as its lane drew it then, so it stays that lane's cell once the timeline cuts its columns
+    // afresh - a wider or narrower window, a zoom - and draws it no more.
+    private KeptCell? keptCell;
+
     /// <summary>
     /// Chooses the cell a click landed on: its interval becomes the analysis interval, and the inspector explains it as a
     /// cell of its lane - a mechanism's, a process's among a group's, a source direction's or a channel end's, or else
@@ -44,8 +48,12 @@ public sealed partial class WorkspaceViewModel
         choosingCell = true;
         try
         {
-            chosenCell = new TimelineCellLane(lane, ownerLane?.Id, directionLane, endLane?.End, foldedLane);
+            var cellLane = new TimelineCellLane(lane, ownerLane?.Id, directionLane, endLane?.End, foldedLane);
+            chosenCell = cellLane;
             SelectInterval(bucket.Interval);
+            keptCell = CellWhere(cellLane, drawn => drawn.Interval == bucket.Interval) is { } cell
+                ? new(cellLane, cell.Bucket, cell.Zoomed, ColumnWords(cellLane, cell.Zoomed))
+                : null;
         }
         finally
         {
@@ -96,7 +104,19 @@ public sealed partial class WorkspaceViewModel
     /// is the zoomed view's own count; null when the rung does not draw the lane or the interval is no cell of it.
     /// </summary>
     private (TimelineBucket Bucket, bool Zoomed)? CellOf(TimelineCellLane lane, TimeRange interval) =>
-        CellWhere(lane, bucket => bucket.Interval == interval);
+        CellWhere(lane, bucket => bucket.Interval == interval)
+        ?? (KeptCellOf(lane, interval) is { } kept ? (kept.Bucket, kept.Zoomed) : null);
+
+    /// <summary>
+    /// The cell a click chose in <paramref name="lane"/> over <paramref name="interval"/>, while that choice stands, once the
+    /// timeline no longer draws it: cut afresh, its columns hold another interval. Null while it draws it, or once another
+    /// choice stands.
+    /// </summary>
+    private KeptCell? KeptCellOf(TimelineCellLane lane, TimeRange interval) =>
+        keptCell is { } kept && ReferenceEquals(kept.Lane, chosenCell) && ReferenceEquals(lane, chosenCell)
+        && kept.Bucket.Interval == interval && CellWhere(lane, bucket => bucket.Interval == interval) is null
+            ? kept
+            : null;
 
     /// <summary>The lane's bucket holding <paramref name="ticks"/>, as <see cref="CellOf"/> finds one by its interval.</summary>
     private (TimelineBucket Bucket, bool Zoomed)? CellAt(TimelineCellLane lane, long ticks) =>
@@ -232,16 +252,9 @@ public sealed partial class WorkspaceViewModel
         string plots = count == 0 ? string.Empty
             : bytes is { } metric ? $" Its bar plots their {Phrase(metric)} per second, from those that recorded a size."
             : " Its bar plots their count per second.";
-        string column = (lane.Owner is not null || lane.Folded) && CoarserLaneColumns is { } laneColumns
-            ? string.Create(CultureInfo.CurrentCulture,
-                $"one of the lanes' own {laneColumns:N0}, coarser than the view's so the group's {processLaneDisplay.Count:N0} ")
-                + string.Create(CultureInfo.CurrentCulture, $"lanes stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
-            : zoomed && timelineDetail is { } detail
-            ? string.Create(CultureInfo.CurrentCulture, $"one of this view's own {detail.Buckets.Count:N0}")
-                + (detail.Generation != DisplayedGeneration
-                    ? string.Create(CultureInfo.CurrentCulture, $", counted from generation {detail.Generation:N0}")
-                    : string.Empty)
-            : string.Create(CultureInfo.CurrentCulture, $"one of the overview's {Snapshot.Timeline.Count:N0} over the whole session");
+        string column = KeptCellOf(lane, bucket.Interval) is { } kept
+            ? $"{kept.Column} when it was chosen, a column the timeline no longer draws since it cut its columns afresh"
+            : ColumnWords(lane, zoomed);
         string coverage = "Coverage over the cell: " + CoverageStateText.Value(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered
                 ? count == 0 ? ", so nothing the capture collects happened here." : "."
@@ -252,6 +265,22 @@ public sealed partial class WorkspaceViewModel
 
         static string Have(int count) => count == 1 ? "has" : "have";
     }
+
+    /// <summary>The columns a cell of <paramref name="lane"/> is one of, as the timeline draws them now.</summary>
+    private string ColumnWords(TimelineCellLane lane, bool zoomed) =>
+        (lane.Owner is not null || lane.Folded) && CoarserLaneColumns is { } laneColumns
+            ? string.Create(CultureInfo.CurrentCulture,
+                $"one of the lanes' own {laneColumns:N0}, coarser than the view's so the group's {processLaneDisplay.Count:N0} ")
+                + string.Create(CultureInfo.CurrentCulture, $"lanes stay within {SessionTimelineQuery.MaximumProcessLaneCells:N0} cells")
+            : zoomed && timelineDetail is { } detail
+            ? string.Create(CultureInfo.CurrentCulture, $"one of this view's own {detail.Buckets.Count:N0}")
+                + (detail.Generation != DisplayedGeneration
+                    ? string.Create(CultureInfo.CurrentCulture, $", counted from generation {detail.Generation:N0}")
+                    : string.Empty)
+            : string.Create(CultureInfo.CurrentCulture, $"one of the overview's {Snapshot.Timeline.Count:N0} over the whole session");
+
+    /// <summary>A cell a click chose, as its lane drew it then: its bucket, whether the view's own columns held it, and their words.</summary>
+    private sealed record KeptCell(TimelineCellLane Lane, TimelineBucket Bucket, bool Zoomed, string Column);
 
     /// <summary>What a source direction's row holds, as a sentence: the source's marking, never who initiated a conversation.</summary>
     private static string CellDirection(Direction direction) => direction switch

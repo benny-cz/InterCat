@@ -134,6 +134,62 @@ public sealed class TimelineCellTests
         Assert.Contains(" here one of this view's own 40;", next.CellExplanation, StringComparison.Ordinal);
     });
 
+    [Fact(DisplayName = "§6.8: a chosen cell stays the cell when the timeline cuts its columns afresh, explained in the columns it was chosen in, until another interval is chosen")]
+    public void AChosenCellOutlivesItsColumns() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        TimeRange extent = workspace.Snapshot.Extent;
+        var zoom = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        workspace.RequestTimelineDetail(zoom, 40);
+        await workspace.TimelineDetailReady;
+        TimelineBucket fine = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(fine, Mechanism.Tcp);
+        string chosen = workspace.CellExplanation;
+        Assert.Contains(" here one of this view's own 40;", chosen, StringComparison.Ordinal);
+
+        // A wider window cuts the view into 57 columns, none of them the cell's nor the overview's: it stays the cell,
+        // explained in the columns it was chosen in, titled as one and listing its records.
+        workspace.RequestTimelineDetail(zoom, 57);
+        await workspace.TimelineDetailReady;
+        Assert.DoesNotContain(Lane(workspace, Mechanism.Tcp), bucket => bucket.Interval == fine.Interval);
+        Assert.DoesNotContain(workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets,
+            bucket => bucket.Interval == fine.Interval);
+        Assert.Equal(fine.Interval, workspace.SelectedInterval);
+        Assert.Equal(chosen.Replace(" here one of this view's own 40;", " here one of this view's own 40 when it was chosen, a "
+            + "column the timeline no longer draws since it cut its columns afresh;", StringComparison.Ordinal), workspace.CellExplanation);
+        string records = Counted(fine.ObservationCount, "record");
+        Assert.Equal(("Timeline cell", "TCP lane · " + records), (workspace.SelectionTitle, workspace.SelectionSubtitle));
+        Assert.EndsWith(", TCP lane, " + records, workspace.IntervalSpoken, StringComparison.Ordinal);
+        await workspace.CellRecordsReady;
+        Assert.Equal(fine.ObservationCount, workspace.CellRecordRows.Count);
+
+        // Once the timeline draws its column again, it is explained as one of them.
+        workspace.RequestTimelineDetail(zoom, 40);
+        await workspace.TimelineDetailReady;
+        Assert.Equal(chosen, workspace.CellExplanation);
+
+        // Another interval chosen ends the choice: the cell's interval chosen again in 57 columns is a time range, no cell.
+        workspace.RequestTimelineDetail(zoom, 57);
+        await workspace.TimelineDetailReady;
+        workspace.SelectInterval(zoom);
+        workspace.SelectInterval(fine.Interval);
+        Assert.Equal((false, "Time range"), (workspace.HasCellExplanation, workspace.SelectionTitle));
+
+        // Chosen again and its columns cut afresh, E lists exactly its TCP records.
+        workspace.RequestTimelineDetail(zoom, 40);
+        await workspace.TimelineDetailReady;
+        workspace.ChooseTimelineCell(Lane(workspace, Mechanism.Tcp).Single(bucket => bucket.Interval == fine.Interval), Mechanism.Tcp);
+        workspace.RequestTimelineDetail(zoom, 57);
+        await workspace.TimelineDetailReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Equal("Mechanism: TCP", Assert.Single(workspace.Filters, filter => filter.Field == EvidenceScopes.MechanismField).Chip);
+        Assert.Equal(Ticks(SessionEvidenceQuery.ReadScope(session.Store, 1_000, interval: fine.Interval, mechanism: Mechanism.Tcp)),
+            workspace.EvidenceMarkTicks.Order());
+    });
+
     [Fact(DisplayName = "§6.8: a cell chosen in a group's process lane, counted coarser than the view, is the analysis interval and names its owner, the rule that bound its records and the columns it was counted in")]
     public void AProcessLanesCellIsExplained() => SingleThreadedContext.Run(async () =>
     {

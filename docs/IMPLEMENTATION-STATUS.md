@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 628 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 629 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 629 — a clicked timeline cell stays the cell when the timeline cuts its columns afresh (§6.8, §6.4):**
+  - A wider or narrower window, or another zoom, counts the view in other columns; a clicked cell none of them is lost
+    its explanation, was titled a time range, listed no records, and E lost its lane's filter. The cell is now kept as
+    drawn when chosen until another interval, lane or rung is chosen, and explained in the columns it was chosen in.
+  - Debug and Release each ran 2,590 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    five mutations were caught: no kept cell to fall back on, none kept when chosen, one kept once another interval
+    was chosen, one kept while the timeline draws its column, and the kept cell described in the columns drawn now.
 
 - **Revision 628 — the way back from Enter on an aggregate's process chooses its edge to other hosts again (§3.2, R15):**
   - E on a process chosen in an aggregate's list kept the way back to the list and to the aggregate's edge chosen in
