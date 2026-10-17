@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 625 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 626 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 626 — a newer generation keeps a channel's rung whole (§6.4, R7):**
+  - An RPC channel's calls and a process's HTTP exchanges were listed afresh by each publication, so the list went
+    empty every couple of seconds until read, the chosen call coming back only then. The last publication's rows for
+    the same channel and scope now stay listed until this one's first page replaces them, the chosen one chosen at
+    once; another scope's rows are never handed on, and a failed read drops them with the reason.
+  - Debug and Release each ran 2,588 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    18 mutations were caught: a publication carrying no channel list or taking none on; carrying no calls or no
+    exchanges, or another scope's while that scope's are read, or none of an earlier publication's still unread;
+    taking on no calls or no exchanges, appending its own first page to them, not saying the rows changed, not
+    marking them as taken on, or listing them with no channel summary.
 
 - **Revision 625 — an RPC channel's and HTTP exchanges' rung export their calls and exchanges (§6.4, R18):**
   - Both rungs list calls or exchanges a page at a time but exported nothing, saying "This rung lists no row", and

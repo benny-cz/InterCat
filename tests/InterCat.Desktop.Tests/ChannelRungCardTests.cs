@@ -283,6 +283,58 @@ public sealed class ChannelRungCardTests
         Assert.Equal(call.Key, second.SelectedRung?.Key);
     });
 
+    [Fact(DisplayName = "§6.4/R7: a newer generation lists an RPC channel's calls and a process's HTTP exchanges at once, as the last one listed them, and the call chosen stays chosen")]
+    public void ANewerGenerationKeepsAChannelRungsList() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        PublishClient(session);
+        foreach ((Func<RungRow, bool> isKind, string _, string _, int _) in Kinds[1..])
+        {
+            using WorkspaceViewModel first = Open(session);
+            await OpenClient(first);
+            first.SelectedRung = first.RungRows.Single(isKind);
+            Assert.True(first.Descend());
+            await first.RpcReady;
+            await first.HttpReady;
+            RungRow listed = Assert.Single(first.RungRows);
+            first.SelectedRung = listed;
+
+            // The newer generation lists it, and chooses it, before its own read; its read replaces it.
+            using WorkspaceViewModel second = Open(session);
+            Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+            second.AdoptScope(first.CarryScope());
+            Assert.Equal((listed.Key, listed.Key), (Assert.Single(second.RungRows).Key, second.SelectedRung?.Key));
+            Assert.True(second.CanExport);
+
+            // Unread still, it hands them on to the one after it.
+            ScopeCarry onward = second.CarryScope();
+            Assert.NotNull(onward.ChannelList);
+            await second.RpcReady;
+            await second.HttpReady;
+            Assert.Equal((listed.Key, listed.Key), (Assert.Single(second.RungRows).Key, second.SelectedRung?.Key));
+
+            // A generation whose own read fails lists none of them, says why, and hands none on.
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+            using var unread = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+                new SessionEvidenceSource(Path.Combine(session.Path, "gone"), overview.SessionId, overview.Generation));
+            Assert.Null(unread.RestoreNavigation(first.CaptureNavigation()));
+            unread.AdoptScope(onward);
+            Assert.Single(unread.RungRows);
+            await unread.RpcReady;
+            await unread.HttpReady;
+            Assert.Empty(unread.RungRows);
+            Assert.False(unread.CanExport);
+            Assert.Null(unread.CarryScope().ChannelList);
+
+            // Rows listed for another scope while this one's are read are not handed on as this scope's.
+            first.SelectInterval(new TimeRange(50, 61));
+            await first.IntervalReady;
+            Assert.Null(first.CarryScope().ChannelList);
+            await first.RpcReady;
+            await first.HttpReady;
+        }
+    });
+
     [Fact(DisplayName = "§6.4/R7: a newer generation lists a process rung's connections to other hosts at once, as the last one read them, and the connection chosen stays chosen")]
     public void ANewerGenerationKeepsAProcessRungsConnections() => SingleThreadedContext.Run(async () =>
     {

@@ -542,6 +542,12 @@ public sealed partial class WorkspaceViewModel
         /// <summary>Whether the exchanges shown are the previous scope's, which this scope's first page replaces.</summary>
         public bool ReplaceOnFirstPage { get; set; }
 
+        /// <summary>
+        /// Whether the exchanges shown while this scope's first page is read are an earlier publication's for this process and
+        /// scope, rather than the previous scope's, so a later publication may take them on in turn.
+        /// </summary>
+        public bool Adopted { get; set; }
+
         public HttpChannelSummary? Channel { get; set; }
 
         public List<HttpExchangeRow> Exchanges { get; } = [];
