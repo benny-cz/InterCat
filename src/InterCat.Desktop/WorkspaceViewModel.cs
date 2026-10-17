@@ -6966,6 +6966,32 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             await RankingReady.WaitAsync(cancellationToken);
         }
 
+        // An RPC channel's rung lists its calls, and a process's HTTP exchanges' rung its exchanges, a page at a time; the
+        // export holds every one of the scope, read in one pass up to the limit an evidence export keeps, as icat export
+        // reads them, and says when the limit left some out.
+        if ((IsRpcChannelRung || IsHttpChannelRung) && evidenceSource is { } channelSource && ladder.Current.Focus is { } channel)
+        {
+            if ((IsRpcChannelRung ? rpcCalls?.Problem : httpExchanges?.Problem) is not null)
+            {
+                throw new InvalidOperationException(NothingToExport);
+            }
+
+            ChannelRungRead read = await channelSource.ChannelRowsAsync(channel.Key, CountedScope, ListedExportLimit, cancellationToken)
+                .AnsweredLater();
+            if (read.Problem is { } unread)
+            {
+                throw new InvalidOperationException(unread);
+            }
+
+            ExportContext listed = ChannelRungRows.Describe(DescribeExport(exportedUtc), read,
+                $"The export holds this scope's first {ChannelRungRows.Counted(channel.Key, read.Rows.Count)}, leaving the rest out; "
+                + "narrow it with a brushed interval, or use icat export --limit for them.");
+            string listedContent = redacted
+                ? RedactedShareExport.Ranking(format, listed, read.Rows)
+                : WorkspaceExport.Ranking(format, listed, read.Rows);
+            return new(listedContent, listed, read.Rows.Count);
+        }
+
         // A process's rung lists its connections, RPC channels and HTTP exchanges with its channels, each read for the
         // scope its rows count; the export holds them all, as icat export reads them, so it waits for this scope's reads.
         for (int wait = 0; ProcessRowsReading; wait++)
@@ -6991,6 +7017,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             : WorkspaceExport.Ranking(format, ranked, rows);
         return new(rankedContent, ranked, rows.Count);
     }
+
+    /// <summary>
+    /// How many calls or exchanges an export of an RPC channel's or HTTP exchanges' rung holds at most: as many records as an
+    /// evidence export holds; a test lowers it.
+    /// </summary>
+    internal int ListedExportLimit { get; set; } = SessionExport.DefaultEvidenceLimit;
 
     /// <summary>
     /// The rows an export of a ranked rung holds: its ranked rows, and at a process's rung its connections, RPC channels
@@ -7029,9 +7061,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private static string Unexported(string rows, string problem) =>
         $"This process's {rows} could not be read ({problem.TrimEnd('.')}), so an export would leave them out.";
 
-    /// <summary>Whether the rung shows anything to export: ranked rows, or a readable evidence scope that holds records.</summary>
-    public bool CanExport => IsEvidenceRung
-        ? evidence is { Problem: null, Records.Count: > 0 }
+    /// <summary>
+    /// Whether the rung shows anything to export: ranked rows, a channel's calls or exchanges read and listed, or a readable
+    /// evidence scope that holds records.
+    /// </summary>
+    public bool CanExport => IsEvidenceRung ? evidence is { Problem: null, Records.Count: > 0 }
+        : IsRpcChannelRung ? rpcCalls is { Problem: null, Calls.Count: > 0 }
+        : IsHttpChannelRung ? httpExchanges is { Problem: null, Exchanges.Count: > 0 }
         : ProcessRowsProblem is null && ExportRows().Count > 0;
 
     /// <summary>What exporting the rung does, or why there is nothing to export yet, as its button's tooltip says it.</summary>
@@ -7043,8 +7079,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : NothingToExport;
 
     /// <summary>
-    /// Why the rung's rows cannot be exported or shared: no session yet, records that could not be read, are still being
-    /// read or are none, a process's rows that could not be read, or a rung that lists nothing.
+    /// Why the rung's rows cannot be exported or shared: no session yet, records, calls or exchanges that could not be
+    /// read, are still being read or are none, a process's rows that could not be read, or a rung that lists nothing.
     /// </summary>
     private string NothingToExport => emptyWorkspace ? "Open or record a session first: there is nothing to export yet."
         : IsEvidenceRung ? evidence switch
@@ -7053,7 +7089,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             { Loading: false } => "No source record is in this scope, so there is nothing to export.",
             _ => "No source record is listed here yet, so there is nothing to export.",
         }
+        : IsRpcChannelRung ? Unlisted(rpcCalls?.Problem, rpcCalls is { Loading: false }, "call")
+        : IsHttpChannelRung ? Unlisted(httpExchanges?.Problem, httpExchanges is { Loading: false }, "exchange")
         : ProcessRowsProblem ?? "This rung lists no row, so there is nothing to export.";
+
+    /// <summary>Why a channel's calls or exchanges cannot be exported: they could not be read, are none, or are still being read.</summary>
+    private static string Unlisted(string? problem, bool read, string row) =>
+        problem is not null ? $"This channel's {row}s could not be read, so there is nothing to export."
+        : read ? $"No {row} of this channel is in this scope, so there is nothing to export."
+        : $"No {row} is listed here yet, so there is nothing to export.";
 
     /// <summary>Whether the graph draws a node to lay out afresh; a graph of none has nothing to place.</summary>
     public bool CanRelayoutGraph => wholeDisplay.Nodes.Count > 0;

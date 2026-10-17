@@ -354,6 +354,37 @@ public static class SessionHttpExchanges
         ArgumentNullException.ThrowIfNull(store);
         ArgumentOutOfRangeException.ThrowIfNegative(offset);
         if (pageSize is < 1 or > MaximumPageSize) throw new ArgumentOutOfRangeException(nameof(pageSize));
+        return Page(store, channelKey, offset, pageSize, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
+    /// The first <paramref name="limit"/> exchanges <paramref name="channelKey"/> names in reading order, read in one pass
+    /// of one generation for an export of every exchange its rung lists (§6.4); <see cref="HttpExchangePage.More"/> says
+    /// the limit left exchanges out. Within <paramref name="interval"/> they are the exchanges <see cref="Exchanges"/>
+    /// lists there.
+    /// </summary>
+    public static HttpExchangePage ExchangesUpTo(
+        SessionStore store,
+        string channelKey,
+        int limit,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        return Page(store, channelKey, 0, limit, interval, policy, cancellationToken);
+    }
+
+    private static HttpExchangePage Page(
+        SessionStore store,
+        string channelKey,
+        int offset,
+        int pageSize,
+        TimeRange? interval,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
         if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
         if (!HttpExchangeKeys.TryParseChannel(channelKey, out ProcessInstanceId instance))
         {

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 624 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 625 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,23 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 625 — an RPC channel's and HTTP exchanges' rung export their calls and exchanges (§6.4, R18):**
+  - Both rungs list calls or exchanges a page at a time but exported nothing, saying "This rung lists no row", and
+    `icat export --at` could not reach them. Their export now holds every call or exchange of the scope, read in one
+    pass up to the evidence limit, each with its session time and how it went, culture-invariant; `icat export --at
+    <channel key>` reaches the rung and writes the same file, `--limit` bounds the calls or exchanges too, and an
+    export it cut short says so. A rung with none listed yet, none in scope or an unreadable read says which.
+  - Debug and Release each ran 2,587 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    40 mutations were caught: the window exporting a channel's rung as ranked rows, offering or writing an export of
+    calls it could not read, not saying what its limit left out, ignoring that limit or the brushed interval; the
+    export offered with none listed or read, or for neither rung; its tip calling calls exchanges, saying none are
+    in scope before they are read, or silent on a failed read; icat export not descending to the channel, writing
+    its ranked rows, ignoring --limit or the interval, not saying what the limit left out, or refusing --limit
+    without --evidence; the builder listing no HTTP rung, its reads always complete, its counts unagreed or all
+    calls, its context never incomplete or silent; a call's duration where it has none, its procedure, missing
+    status, failure, other end, records or start time; an exchange's unrecorded end or its parts; and the one-pass
+    reads ignoring their limit or interval.
 
 - **Revision 624 — a process's rung exports every row it lists (§6.4, R18):**
   - Its export held the paired channels alone: none of the connections to other hosts, RPC channels or HTTP exchanges

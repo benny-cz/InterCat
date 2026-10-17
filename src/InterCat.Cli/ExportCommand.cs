@@ -69,8 +69,7 @@ internal static class ExportCommand
         };
         int limit = SessionExport.DefaultEvidenceLimit;
         bool invalidLimit = limitText is not null
-            && (!evidence
-                || !int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
+            && (!int.TryParse(limitText, NumberStyles.None, CultureInfo.InvariantCulture, out limit)
                 || limit is < 1 or > SessionExport.MaximumEvidenceLimit);
         string? problem = directory is null ? "A session directory is required: icat export <directory> --output <path>."
             : hasUnknown ? command.Refusal(unknown!)
@@ -78,7 +77,7 @@ internal static class ExportCommand
             : format is null ? "--format must be json or csv."
             : intervalText is not null && interval is null
                 ? tooWide ?? "--interval must be " + TickInterval.Takes + "."
-            : invalidLimit ? $"--limit applies to --evidence and must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}."
+            : invalidLimit ? $"--limit must be an integer from 1 to {SessionExport.MaximumEvidenceLimit:N0}: the records an --evidence export holds, or the calls or exchanges of an RPC channel's or HTTP exchanges' rung."
             : rankBy is null
                 ? "--rank-by must be records, bytes-sent, bytes-received, bytes-sent-and-received, rpc-calls-made, rpc-calls-served, "
                     + "rpc-errors, rpc-call-time-median, rpc-serve-time-median, active-peers, connections-made or "
@@ -182,11 +181,12 @@ internal static class ExportCommand
         ConsoleUi.Line("                       rpc-calls-served|rpc-errors|rpc-call-time-median|rpc-serve-time-median|");
         ConsoleUi.Line("                       active-peers|connections-made|connections-accepted]");
         ConsoleUi.Line("            [--group-by executable|session] [--set-aside-collectors]");
-        ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
+        ConsoleUi.Line("            [--evidence] [--limit <1-1000000>] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
         ConsoleUi.Line("  A process instance's rung holds its channels with its connections whose other end no record");
-        ConsoleUi.Line("  holds, its RPC channels and its HTTP exchanges, as the window lists them.");
+        ConsoleUi.Line("  holds, its RPC channels and its HTTP exchanges, as the window lists them; --at one of the last");
+        ConsoleUi.Line("  two opens its rung, which exports every call or exchange of the scope, up to --limit.");
         ConsoleUi.Line("  --interval ranks within [start,end), each bound in 100-nanosecond session ticks or a time with its");
         ConsoleUi.Line("  unit (1.5s, 250ms). --rank-by orders the machine");
         ConsoleUi.Line("  and group rungs by records (the default), by each process's transport-observed bytes on its own");

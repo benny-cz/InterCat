@@ -218,6 +218,13 @@ public sealed class SessionEvidenceSource(
             cancellationToken: cancellationToken), cancellationToken);
 
     /// <summary>
+    /// Every call of an RPC channel, or every exchange of a process's HTTP exchanges, in the current generation and the
+    /// whole session or <paramref name="interval"/>, up to <paramref name="limit"/>, as rows an export writes (§6.4).
+    /// </summary>
+    public Task<ChannelRungRead> ChannelRowsAsync(string channelKey, TimeRange? interval, int limit, CancellationToken cancellationToken) =>
+        Task.Run(() => ChannelRungRows.Read(Store(), channelKey, interval, limit, Policy, cancellationToken), cancellationToken);
+
+    /// <summary>
     /// One process instance's one-sided connections in the current generation - the TCP connections and UDP flows whose
     /// other end no record holds - with their records and bytes, in the whole session or <paramref name="interval"/>.
     /// </summary>

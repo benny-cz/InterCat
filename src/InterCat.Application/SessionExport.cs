@@ -146,8 +146,14 @@ public static class SessionExport
         var ladder = new DetailLadder(SyntheticWorkspace.Root(snapshot));
         foreach (string key in request.Path)
         {
+            // A process's RPC channels and HTTP exchanges are rows of its rung beside its channels, and open rungs of
+            // their own, as the window opens them.
             LadderView view = LadderProjection.Project(snapshot, ladder.Current);
             LadderRow row = view.Rows.FirstOrDefault(candidate => KeyNames(candidate.Key, key))
+                ?? (ladder.Current.Level == DetailLevel.ProcessInstance && ChannelRungRows.Lists(key)
+                    ? ProcessRows(store, whole, ladder.Current, view.Rows, request, overview.SessionId, cancellationToken)
+                        .FirstOrDefault(candidate => candidate.Key == key)
+                    : null)
                 ?? throw new ArgumentException(NoSuchRow(view, key));
             LadderDescent descent = LadderProjection.DescentFor(row, ladder.Current, request.Interval ?? ladder.Current.Viewport);
             if (!ladder.TryDescend(descent, out string? refusal))
@@ -161,10 +167,29 @@ public static class SessionExport
             // Only the machine and group rungs rank by a chosen metric, and a process's by bytes; the export names the
             // ranking its rows use. A process's rung lists its connections, RPC channels and HTTP exchanges with its
             // channels, as the window lists them.
+            // An RPC channel's rung lists its calls and a process's HTTP exchanges' rung its exchanges: every one of the
+            // scope, up to the limit, as the window's export holds them.
             LadderView view = LadderProjection.Project(snapshot, ladder.Current, request.RankBy);
-            IReadOnlyList<LadderRow> rows = ladder.Current.Level == DetailLevel.ProcessInstance
-                ? ProcessRows(store, whole, ladder.Current, view.Rows, request, overview.SessionId, cancellationToken)
-                : view.Rows;
+            string? listedKey = ladder.Current is { Level: DetailLevel.Channel, Focus: { } channel } && ChannelRungRows.Lists(channel.Key)
+                ? channel.Key
+                : null;
+            ChannelRungRead? listed = listedKey is null
+                ? null
+                : ChannelRungRows.Read(store, listedKey, request.Interval, request.EvidenceLimit, cancellationToken: cancellationToken);
+            if (listed is not null && listed.SessionId != overview.SessionId)
+            {
+                throw new InvalidOperationException("This directory began holding another session during the export.");
+            }
+
+            if (listed?.Problem is { } unread)
+            {
+                throw new InvalidOperationException(unread);
+            }
+
+            IReadOnlyList<LadderRow> rows = listed?.Rows
+                ?? (ladder.Current.Level == DetailLevel.ProcessInstance
+                    ? ProcessRows(store, whole, ladder.Current, view.Rows, request, overview.SessionId, cancellationToken)
+                    : view.Rows);
             RankingMetric applied = rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied,
@@ -172,6 +197,13 @@ public static class SessionExport
             if (rankingCaveat is not null && ladder.Current.Level is DetailLevel.Machine or DetailLevel.Group)
             {
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };
+            }
+
+            if (listed is not null)
+            {
+                ranked = ChannelRungRows.Describe(ranked, listed,
+                    $"The export holds this scope's first {ChannelRungRows.Counted(listedKey!, rows.Count)}, leaving the rest out; "
+                    + "raise --limit for them.");
             }
 
             string content = request.Redacted

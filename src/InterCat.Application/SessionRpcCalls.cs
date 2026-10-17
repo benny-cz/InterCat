@@ -389,6 +389,30 @@ public static class SessionRpcCalls
     }
 
     /// <summary>
+    /// One channel's calls in reading order, the first <paramref name="limit"/> of them, read in one pass of one generation
+    /// for an export of every call its rung lists (§6.4); <see cref="RpcCallPage.More"/> says the limit left calls out.
+    /// Within <paramref name="interval"/> they are the calls <see cref="Calls"/> lists there.
+    /// </summary>
+    public static RpcCallPage CallsUpTo(
+        SessionStore store,
+        string channelKey,
+        int limit,
+        TimeRange? interval = null,
+        EvidencePolicy policy = EvidencePolicy.IncludeCorrelated,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(store);
+        ArgumentOutOfRangeException.ThrowIfLessThan(limit, 1);
+        if (!Enum.IsDefined(policy)) throw new ArgumentOutOfRangeException(nameof(policy));
+        if (!RpcChannelKeys.TryParseChannel(channelKey, out _, out _, out _))
+        {
+            throw new ArgumentException("This key names no RPC channel.", nameof(channelKey));
+        }
+
+        return Page(store, channelKey, 0, (_, _, _) => limit, interval, policy, cancellationToken);
+    }
+
+    /// <summary>
     /// One channel's calls in reading order from the first, through the call <paramref name="callKey"/> names and to the
     /// end of the page of <paramref name="pageSize"/> that holds it, so a list the user returns to lands on the call they
     /// left it for, however far down its pages (§3.2). A call the scope does not list, or one past the first
