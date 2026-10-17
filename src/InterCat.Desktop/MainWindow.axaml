@@ -52,58 +52,58 @@
                      AutomationProperties.Name="What the ranked table holds" />
           <!-- §6.1's metric selector: what the machine and group rungs rank by. A byte ranking says what it measured, and
                ranks a row whose records recorded no size after every measured row, never as zero (§5.2). -->
-          <!-- The basis a ranking is on stays on screen beside it (§3.2): observations or operations, in full on hover. -->
-          <Grid Margin="0,2,0,0" IsVisible="{Binding ShowsRankingChoice}">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" SharedSizeGroup="SelectorLabel" />
-              <ColumnDefinition Width="*" />
-              <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel VerticalAlignment="Center" Margin="0,0,8,0">
-              <TextBlock Text="Rank by" Classes="muted" FontSize="11" />
-              <TextBlock x:Name="RankingBasisText" Text="{Binding RankingBasis}" Classes="muted" FontSize="9"
+          <!-- The basis a ranking is on stays on screen beside it (§3.2): observations or operations, at the end of the line
+               that names the box from above it, in full on hover. Above it, the box has the rail's width and shows every
+               metric's name whole: beside a label it had too little to tell "Bytes sent" from "Bytes sent and received". -->
+          <StackPanel x:Name="RankByRow" Margin="0,2,0,0" Spacing="2" IsVisible="{Binding ShowsRankingChoice}">
+            <DockPanel>
+              <TextBlock x:Name="RankingBasisText" DockPanel.Dock="Right" Text="{Binding RankingBasis}" Classes="muted"
+                         FontSize="9" VerticalAlignment="Bottom" Margin="8,0,0,1"
                          ToolTip.Tip="{Binding RankingBasisDetail}"
                          AutomationProperties.HelpText="{Binding RankingBasisDetail}" />
-            </StackPanel>
-            <ComboBox x:Name="RankBySelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
-                      ItemsSource="{Binding RankingOptions}"
-                      SelectedItem="{Binding SelectedRanking, Mode=TwoWay}"
-                      ToolTip.Tip="{x:Static local:WorkspaceViewModel.RankingDefinition}"
-                      AutomationProperties.Name="Rank groups and processes by"
-                      AutomationProperties.HelpText="{x:Static local:WorkspaceViewModel.RankingDefinition}">
-              <ComboBox.ItemTemplate>
-                <DataTemplate x:DataType="local:RankingOption">
-                  <StackPanel>
-                    <TextBlock Text="{Binding BasisHeading}" Classes="eyebrow" IsVisible="{Binding OpensBasis}" Margin="0,2,0,4" />
-                    <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
-                  </StackPanel>
-                </DataTemplate>
-              </ComboBox.ItemTemplate>
-              <ComboBox.SelectionBoxItemTemplate>
-                <DataTemplate x:DataType="local:RankingOption">
-                  <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
-                </DataTemplate>
-              </ComboBox.SelectionBoxItemTemplate>
-            </ComboBox>
-            <!-- §5.2's rate: a count or sum per second over the interval the rows count, in the order of its total. It sits
-                 on the selector's own row, since the rail's height is the ranked rows'; a median or a distinct count has
-                 no rate, so it steps aside for them. -->
-            <ToggleButton x:Name="PerSecondToggle" Grid.Column="2" Content="/s" Margin="6,0,0,0" MinHeight="28" MinWidth="30"
-                          FontSize="11" Padding="6,0" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
-                          IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
-                          ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
-                          AutomationProperties.Name="Per second" />
-          </Grid>
+              <TextBlock Text="Rank by" Classes="muted" FontSize="11" VerticalAlignment="Bottom" />
+            </DockPanel>
+            <Grid>
+              <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+              </Grid.ColumnDefinitions>
+              <ComboBox x:Name="RankBySelector" Grid.Column="0" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
+                        ItemsSource="{Binding RankingOptions}"
+                        SelectedItem="{Binding SelectedRanking, Mode=TwoWay}"
+                        ToolTip.Tip="{x:Static local:WorkspaceViewModel.RankingDefinition}"
+                        AutomationProperties.Name="Rank groups and processes by"
+                        AutomationProperties.HelpText="{x:Static local:WorkspaceViewModel.RankingDefinition}">
+                <ComboBox.ItemTemplate>
+                  <DataTemplate x:DataType="local:RankingOption">
+                    <StackPanel>
+                      <TextBlock Text="{Binding BasisHeading}" Classes="eyebrow" IsVisible="{Binding OpensBasis}" Margin="0,2,0,4" />
+                      <TextBlock Text="{Binding Label}" AutomationProperties.Name="{Binding AccessibleName}" />
+                    </StackPanel>
+                  </DataTemplate>
+                </ComboBox.ItemTemplate>
+                <ComboBox.SelectionBoxItemTemplate>
+                  <DataTemplate x:DataType="local:RankingOption">
+                    <TextBlock Text="{Binding Label}" TextTrimming="CharacterEllipsis" />
+                  </DataTemplate>
+                </ComboBox.SelectionBoxItemTemplate>
+              </ComboBox>
+              <!-- §5.2's rate: a count or sum per second over the interval the rows count, in the order of its total. It sits
+                   on the selector's own row, since the rail's height is the ranked rows'; a median or a distinct count has
+                   no rate, so it steps aside for them. -->
+              <ToggleButton x:Name="PerSecondToggle" Grid.Column="1" Content="/s" Margin="6,0,0,0" MinHeight="28" MinWidth="30"
+                            FontSize="11" Padding="6,0" VerticalAlignment="Stretch" VerticalContentAlignment="Center"
+                            IsChecked="{Binding PerSecond, Mode=TwoWay}" IsVisible="{Binding OffersPerSecond}"
+                            ToolTip.Tip="Per second: state each row's value per second over the whole interval the rows count - the one brushed or zoomed to, or the whole recording. The rows keep the order of their totals; a session whose capture recorded no stop, such as an import, needs an interval brushed or zoomed to."
+                            AutomationProperties.Name="Per second" />
+            </Grid>
+          </StackPanel>
           <!-- §6.3's grouping: by executable, or by the terminal session each process's lifecycle records name. It stands at
                the machine rung, whose rows are the groups, once a session is named, its box beneath the ranking's; a choice
                regroups the overview already projected and reads nothing again. -->
-          <Grid x:Name="GroupByRow" Margin="0,2,0,0" IsVisible="{Binding ShowsGroupingChoice}">
-            <Grid.ColumnDefinitions>
-              <ColumnDefinition Width="Auto" SharedSizeGroup="SelectorLabel" />
-              <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
-            <TextBlock Text="Group by" Classes="muted" FontSize="11" VerticalAlignment="Center" Margin="0,0,8,0" />
-            <ComboBox x:Name="GroupBySelector" Grid.Column="1" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
+          <StackPanel x:Name="GroupByRow" Margin="0,2,0,0" Spacing="2" IsVisible="{Binding ShowsGroupingChoice}">
+            <TextBlock Text="Group by" Classes="muted" FontSize="11" />
+            <ComboBox x:Name="GroupBySelector" HorizontalAlignment="Stretch" MinHeight="28" FontSize="11"
                       ItemsSource="{Binding GroupingOptions}"
                       SelectedItem="{Binding SelectedGrouping, Mode=OneWay}"
                       SelectionChanged="GroupingChosen"
@@ -116,7 +116,7 @@
                 </DataTemplate>
               </ComboBox.ItemTemplate>
             </ComboBox>
-          </Grid>
+          </StackPanel>
           <TextBlock x:Name="RankingNote" Text="{Binding RankingNote}" Classes="muted" FontSize="11" TextWrapping="Wrap"
                      IsVisible="{Binding ShowsRankingNote}" ToolTip.Tip="{Binding RankingNoteDetail}"
                      AutomationProperties.Name="What the ranking measured"

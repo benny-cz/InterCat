@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
@@ -110,6 +111,39 @@ public sealed class RankingSelectorWindowTests
         Assert.True(second.Ascend());
         Dispatch();
         Assert.True(selector.IsEffectivelyVisible);
+        window.Close();
+    }
+
+    [AvaloniaFact(DisplayName = "R15: at the smallest window the closed Rank by box shows every metric's name whole, its label and basis above it")]
+    public async Task RankByShowsEveryMetricWhole()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Traffic());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        window.ApplyCaptureUpdate(Update(session));
+        Dispatch();
+        var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+        await workspace.LayoutReady;
+        ComboBox selector = window.GetControl<ComboBox>("RankBySelector");
+        TextBlock basis = window.GetControl<TextBlock>("RankingBasisText");
+
+        // Beside a label the box had too little to tell Bytes sent from Bytes sent and received, or Connections made from
+        // Connections accepted; above it, every name is whole, the per-second box beside it or not.
+        foreach (RankingOption option in workspace.RankingOptions)
+        {
+            workspace.SelectedRanking = option;
+            Dispatch();
+            _ = window.CaptureRenderedFrame();
+            Dispatch();
+            TextBlock shown = Assert.Single(selector.GetVisualDescendants().OfType<TextBlock>(),
+                text => text.IsEffectivelyVisible && text.Text == option.Label);
+            Assert.False(shown.TextLayout.TextLines.Any(line => line.HasCollapsed), $"{option.Label} is cut short in the box.");
+            Assert.True(basis.TranslatePoint(new(0, basis.Bounds.Height), window)!.Value.Y <= selector.TranslatePoint(default, window)!.Value.Y,
+                "The basis stands above the box.");
+        }
+
+        Save(window.CaptureRenderedFrame()!, "l0-rank-by-whole-1080x700.png");
         window.Close();
     }
 
