@@ -259,10 +259,10 @@ public sealed partial class WorkspaceViewModel
     /// <summary>A process's HTTP exchanges as one row: how many, how they were recorded, and the bytes of their messages.</summary>
     private static RungRow HttpChannelRungRow(HttpChannelSummary channel, FamilyTokens tokens)
     {
-        string detail = "HTTP client · " + channel.Outcome(CultureInfo.CurrentCulture);
+        LadderRow source = ProcessRungRows.HttpChannel(channel, CultureInfo.CurrentCulture);
+        string detail = source.Detail;
         string bytes = HttpBytes(channel);
         // The rail is narrow, so the row reads "HTTP exchanges"; its crumb, filter and records' scope say the whole name.
-        LadderRow source = HttpChannelRow(channel.Key, HttpChannelSummary.Name, detail, channel.Records);
         return new(channel.Key, "HTTP exchanges", detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
             bytes, tokens.Label, tokens.Glyph, string.Empty, NavigationState.Name(DetailLevel.Channel), source)
         {

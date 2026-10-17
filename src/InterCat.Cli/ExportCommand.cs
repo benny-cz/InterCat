@@ -185,6 +185,8 @@ internal static class ExportCommand
         ConsoleUi.Line("            [--evidence [--limit <1-1000000>]] [--format json|csv] [--share-redacted] [--overwrite]");
         ConsoleUi.Line("  By default, exports one rung in the detailed intercat-export-v1 contract. Each --at descends");
         ConsoleUi.Line("  into the row with that key (group, process-instance, then channel keys from icat overview).");
+        ConsoleUi.Line("  A process instance's rung holds its channels with its connections whose other end no record");
+        ConsoleUi.Line("  holds, its RPC channels and its HTTP exchanges, as the window lists them.");
         ConsoleUi.Line("  --interval ranks within [start,end), each bound in 100-nanosecond session ticks or a time with its");
         ConsoleUi.Line("  unit (1.5s, 250ms). --rank-by orders the machine");
         ConsoleUi.Line("  and group rungs by records (the default), by each process's transport-observed bytes on its own");

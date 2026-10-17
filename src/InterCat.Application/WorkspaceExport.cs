@@ -150,14 +150,17 @@ public static class WorkspaceExport
     public static string RankingCaveat(RankingMetric rankedBy, DetailLevel rung = DetailLevel.Machine) => (rankedBy, rung) switch
     {
         (RankingMetric.BytesSent, DetailLevel.ProcessInstance) => "Rows are ranked by bytes sent: transport-observed bytes on "
-            + "this process's own send records on each channel, sender-accounted. A channel none of whose sends recorded a size "
-            + "is unmeasured and ranks after every measured channel, then channels with no send.",
+            + "this process's own send records on each channel or connection to another host, sender-accounted. A row none of "
+            + "whose sends recorded a size is unmeasured and ranks after every measured row, then rows with no send - its RPC "
+            + "channels and HTTP exchanges among them, which carry no transport bytes.",
         (RankingMetric.EndpointBytes, DetailLevel.ProcessInstance) => "Rows are ranked by bytes sent and received: "
-            + "transport-observed bytes on every one of this process's own records on each channel, both directions. A channel "
-            + "none of whose records recorded a size is unmeasured and ranks after every measured channel.",
+            + "transport-observed bytes on every one of this process's own records on each channel or connection to another "
+            + "host, both directions. A row none of whose records recorded a size is unmeasured and ranks after every measured "
+            + "row, then rows with no transfer - its RPC channels and HTTP exchanges among them, which carry no transport bytes.",
         (RankingMetric.BytesReceived, DetailLevel.ProcessInstance) => "Rows are ranked by bytes received: transport-observed "
-            + "bytes on this process's own receive records on each channel, receiver-accounted. A channel none of whose "
-            + "receives recorded a size is unmeasured and ranks after every measured channel, then channels with no receive.",
+            + "bytes on this process's own receive records on each channel or connection to another host, receiver-accounted. "
+            + "A row none of whose receives recorded a size is unmeasured and ranks after every measured row, then rows with "
+            + "no receive - its RPC channels and HTTP exchanges among them, which carry no transport bytes.",
         _ => MachineCaveat(rankedBy),
     };
 

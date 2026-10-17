@@ -6546,11 +6546,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         string label = channel.Interface is null ? "Calls whose start was not seen" : RpcInterfaceNames.Describe(channel.Interface);
         // Who is at the other end leads, once the capture collected ALPC to follow each call's message (ADR-034): the
         // rail is narrow, and in such a session that is what a channel's row is read for.
-        string? peers = channel.Peers?.Describe(channel.Side, channel.Counts.Calls, CultureInfo.CurrentCulture);
-        string detail = (channel.Side == RpcCallSide.Client ? "RPC client · " : "RPC server · ")
-            + (peers is null ? string.Empty : peers + " · ")
-            + channel.Outcome(CultureInfo.CurrentCulture);
-        LadderRow source = RpcChannelRow(channel.Key, channel.Name, detail, channel.Records);
+        LadderRow source = ProcessRungRows.RpcChannel(channel, CultureInfo.CurrentCulture);
+        string detail = source.Detail;
         return new(channel.Key, label, detail, channel.Records.ToString("N0", CultureInfo.CurrentCulture),
             WorkspaceRowBuilder.DescribeBytes(null), tokens.Label, tokens.Glyph, string.Empty,
             NavigationState.Name(DetailLevel.Channel), source)
@@ -6906,7 +6903,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ExportContext context = WorkspaceExport.RankingContext(
             evidenceSource?.SessionId, evidenceSource?.Generation, ladder, appliedInterval, workspaceDisclosure,
             Snapshot.MechanismCoverage, exportedUtc,
-            view.Rows.Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records, Grouping,
+            ExportRows().Any(row => row.Ranked is not null) ? AppliedRanking : RankingMetric.Records, Grouping,
             wholeSnapshot.SetAside);
 
         // A call ranking says why it could not rank, or the RPC coverage its counts rest on, as icat export does.
@@ -6969,15 +6966,73 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             await RankingReady.WaitAsync(cancellationToken);
         }
 
+        // A process's rung lists its connections, RPC channels and HTTP exchanges with its channels, each read for the
+        // scope its rows count; the export holds them all, as icat export reads them, so it waits for this scope's reads.
+        for (int wait = 0; ProcessRowsReading; wait++)
+        {
+            if (disposed || wait == 4)
+            {
+                throw new InvalidOperationException(
+                    "This process's connections and channels are still being read; export again once they are listed.");
+            }
+
+            await Task.WhenAll(ConnectionsReady, RpcReady, HttpReady).WaitAsync(cancellationToken);
+        }
+
+        if (ProcessRowsProblem is { } problem)
+        {
+            throw new InvalidOperationException(problem);
+        }
+
         ExportContext ranked = DescribeExport(exportedUtc);
+        IReadOnlyList<LadderRow> rows = ExportRows();
         string rankedContent = redacted
-            ? RedactedShareExport.Ranking(format, ranked, view.Rows)
-            : WorkspaceExport.Ranking(format, ranked, view.Rows);
-        return new(rankedContent, ranked, view.Rows.Count);
+            ? RedactedShareExport.Ranking(format, ranked, rows)
+            : WorkspaceExport.Ranking(format, ranked, rows);
+        return new(rankedContent, ranked, rows.Count);
     }
 
+    /// <summary>
+    /// The rows an export of a ranked rung holds: its ranked rows, and at a process's rung its connections, RPC channels
+    /// and HTTP exchanges with its channels, in the order the rung lists them, as <c>icat export</c> reads them (R18).
+    /// </summary>
+    private IReadOnlyList<LadderRow> ExportRows()
+    {
+        if (ladder.Current.Level != DetailLevel.ProcessInstance)
+        {
+            return view.Rows;
+        }
+
+        // A file's words do not follow the reader's culture, as the ladder's own rows' do not.
+        CultureInfo culture = CultureInfo.InvariantCulture;
+        return ProcessRungRows.Ranked(view.Rows,
+            (connections?.Connections ?? []).Select(connection => ProcessRungRows.Connection(connection, ByteRanking, culture)),
+            (rpcChannels?.Channels ?? []).Select(channel => ProcessRungRows.RpcChannel(channel, culture)),
+            (httpChannels?.Channels ?? []).Select(channel => ProcessRungRows.HttpChannel(channel, culture)),
+            ByteRanking);
+    }
+
+    /// <summary>Whether a process's rung is still reading a kind of row it lists beside its channels.</summary>
+    private bool ProcessRowsReading => ladder.Current.Level == DetailLevel.ProcessInstance
+        && (connections is { Loading: true } || rpcChannels is { Loading: true } || httpChannels is { Loading: true });
+
+    /// <summary>
+    /// Why an export of a process's rung would leave out a kind of row it lists beside its channels: a read of them that
+    /// failed. Null where none did.
+    /// </summary>
+    private string? ProcessRowsProblem => ladder.Current.Level != DetailLevel.ProcessInstance ? null
+        : connections?.Problem is { } connection ? Unexported("connections", connection)
+        : rpcChannels?.Problem is { } rpc ? Unexported("RPC channels", rpc)
+        : httpChannels?.Problem is { } http ? Unexported("HTTP exchanges", http)
+        : null;
+
+    private static string Unexported(string rows, string problem) =>
+        $"This process's {rows} could not be read ({problem.TrimEnd('.')}), so an export would leave them out.";
+
     /// <summary>Whether the rung shows anything to export: ranked rows, or a readable evidence scope that holds records.</summary>
-    public bool CanExport => IsEvidenceRung ? evidence is { Problem: null, Records.Count: > 0 } : view.Rows.Count > 0;
+    public bool CanExport => IsEvidenceRung
+        ? evidence is { Problem: null, Records.Count: > 0 }
+        : ProcessRowsProblem is null && ExportRows().Count > 0;
 
     /// <summary>What exporting the rung does, or why there is nothing to export yet, as its button's tooltip says it.</summary>
     public string ExportTip => CanExport ? "Export the rows this rung shows, named by their scope (Ctrl+E)." : NothingToExport;
@@ -6989,7 +7044,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     /// <summary>
     /// Why the rung's rows cannot be exported or shared: no session yet, records that could not be read, are still being
-    /// read or are none, or a rung that lists nothing.
+    /// read or are none, a process's rows that could not be read, or a rung that lists nothing.
     /// </summary>
     private string NothingToExport => emptyWorkspace ? "Open or record a session first: there is nothing to export yet."
         : IsEvidenceRung ? evidence switch
@@ -6998,7 +7053,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             { Loading: false } => "No source record is in this scope, so there is nothing to export.",
             _ => "No source record is listed here yet, so there is nothing to export.",
         }
-        : "This rung lists no row, so there is nothing to export.";
+        : ProcessRowsProblem ?? "This rung lists no row, so there is nothing to export.";
 
     /// <summary>Whether the graph draws a node to lay out afresh; a graph of none has nothing to place.</summary>
     public bool CanRelayoutGraph => wholeDisplay.Nodes.Count > 0;

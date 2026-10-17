@@ -514,6 +514,9 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The measures ranking the rows: the current ones, unless the capture did not collect what they count.</summary>
     private IRankingMeasures? ShownMeasures => CurrentMeasures is SessionCallMeasures { Unavailable: not null } ? null : CurrentMeasures;
 
+    /// <summary>The byte ranking the rows rank by while its measures are shown; null under any other ranking or until then.</summary>
+    private RankingMetric? ByteRanking => ShownMeasures is SessionByteMeasures ? rankBy : null;
+
     /// <summary>Whether the current measures are an earlier publication's, which an export waits past.</summary>
     private bool MeasuresStandIn => CurrentMeasures switch
     {

@@ -342,7 +342,7 @@ public sealed class ChannelRungCardTests
     /// client.exe sends server.exe 8 bytes twice over one paired channel, calls the service control manager once over RPC,
     /// and makes one HTTP exchange.
     /// </summary>
-    private static void PublishClient(TemporarySession session, ClockCalibrationV1? calibration = null)
+    internal static void PublishClient(TemporarySession session, ClockCalibrationV1? calibration = null)
     {
         Guid activity = new(1, 0x5043, 0x4c4c, 0x80, 0, 0, 0, 0, 0, 0, 1);
         ObservationRowV1[] http = [Http(80, 2001, 10, 181), Http(81, 2003, 11, 115), Http(82, 2004, 12, 7)];

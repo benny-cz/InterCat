@@ -100,6 +100,7 @@ public static class SessionExport
         }
 
         IReadOnlySet<ProcessInstanceId> aside = WorkspaceCollectors.Instances(snapshot);
+        WorkspaceSnapshot whole = snapshot;
         if (request.Interval is { } interval)
         {
             SessionIntervalCounts counts = SessionIntervalQuery.Count(store, interval, cancellationToken: cancellationToken);
@@ -157,9 +158,14 @@ public static class SessionExport
 
         if (!request.Evidence)
         {
-            // Only the machine and group rungs rank by a chosen metric; the export names the ranking its rows use.
+            // Only the machine and group rungs rank by a chosen metric, and a process's by bytes; the export names the
+            // ranking its rows use. A process's rung lists its connections, RPC channels and HTTP exchanges with its
+            // channels, as the window lists them.
             LadderView view = LadderProjection.Project(snapshot, ladder.Current, request.RankBy);
-            RankingMetric applied = view.Rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
+            IReadOnlyList<LadderRow> rows = ladder.Current.Level == DetailLevel.ProcessInstance
+                ? ProcessRows(store, whole, ladder.Current, view.Rows, request, overview.SessionId, cancellationToken)
+                : view.Rows;
+            RankingMetric applied = rows.Any(row => row.Ranked is not null) ? request.RankBy : RankingMetric.Records;
             ExportContext ranked = WorkspaceExport.RankingContext(overview.SessionId, overview.Generation, ladder,
                 request.Interval, OverviewWorkspace.DisclosureFor(snapshot), snapshot.MechanismCoverage, exportedUtc, applied,
                 request.Grouping, snapshot.SetAside);
@@ -168,7 +174,6 @@ public static class SessionExport
                 ranked = ranked with { Caveats = [.. ranked.Caveats, rankingCaveat] };
             }
 
-            IReadOnlyList<LadderRow> rows = view.Rows;
             string content = request.Redacted
                 ? RedactedShareExport.Ranking(request.Format, ranked, rows)
                 : WorkspaceExport.Ranking(request.Format, ranked, rows);
@@ -198,6 +203,56 @@ public static class SessionExport
             ? RedactedShareExport.Evidence(request.Format, context, records)
             : WorkspaceExport.Evidence(request.Format, context, records);
         return new(evidenceContent, context, records.Count);
+    }
+
+    /// <summary>
+    /// A process's rung's rows as the window lists them (§7.1): its channels with the connections, RPC channels and HTTP
+    /// exchanges it holds, each read as the window reads it - for the scope the rows count, wherever the whole session's
+    /// records hold any of its kind - and ranked together, in words that do not follow the reader's culture.
+    /// </summary>
+    private static IReadOnlyList<LadderRow> ProcessRows(SessionStore store, WorkspaceSnapshot whole, NavigationState rung,
+        IReadOnlyList<LadderRow> channels, SessionExportRequest request, Guid session, CancellationToken cancellationToken)
+    {
+        if (rung.Focus is not { } focus
+            || whole.Processes.FirstOrDefault(process => process.Id.ToString() == focus.Key) is not { } process)
+        {
+            return channels;
+        }
+
+        bool Holds(Mechanism one, Mechanism? other = null) =>
+            process.Activity.Any(count => (count.Mechanism == one || count.Mechanism == other) && count.Records > 0);
+        IReadOnlyList<ConnectionSummary> connections = [];
+        IReadOnlyList<RpcChannelSummary> rpc = [];
+        IReadOnlyList<HttpChannelSummary> http = [];
+        if (Holds(Mechanism.Tcp, Mechanism.Udp))
+        {
+            ConnectionList read = SessionConnections.OneSided(store, process.Id, request.Interval, cancellationToken: cancellationToken);
+            connections = Same(read.SessionId, read.Connections);
+        }
+
+        if (Holds(Mechanism.Rpc))
+        {
+            RpcChannelList read = SessionRpcCalls.Channels(store, process.Id, request.Interval, cancellationToken: cancellationToken);
+            rpc = Same(read.SessionId, read.Channels);
+        }
+
+        if (Holds(Mechanism.Http))
+        {
+            HttpChannelList read = SessionHttpExchanges.Channels(store, process.Id, request.Interval, cancellationToken: cancellationToken);
+            http = Same(read.SessionId, read.Channels);
+        }
+
+        CultureInfo culture = CultureInfo.InvariantCulture;
+        RankingMetric? bytes = RankingMetrics.FamilyOf(request.RankBy) == RankingFamily.Bytes ? request.RankBy : null;
+        return ProcessRungRows.Ranked(channels,
+            connections.Select(connection => ProcessRungRows.Connection(connection, bytes, culture)),
+            rpc.Select(channel => ProcessRungRows.RpcChannel(channel, culture)),
+            http.Select(channel => ProcessRungRows.HttpChannel(channel, culture)),
+            bytes);
+
+        IReadOnlyList<T> Same<T>(Guid read, IReadOnlyList<T> rows) => read == session
+            ? rows
+            : throw new InvalidOperationException("This directory began holding another session during the export.");
     }
 
     /// <summary>

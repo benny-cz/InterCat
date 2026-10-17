@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 623 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 624 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 624 — a process's rung exports every row it lists (§6.4, R18):**
+  - Its export held the paired channels alone: none of the connections to other hosts, RPC channels or HTTP exchanges
+    listed beside them, and a process whose rows are all connections said it had nothing to export. The window and
+    `icat export` now build the same rows through one builder (`ProcessRungRows`) and write them in the rung's order,
+    byte for byte and culture-invariant; an export waits for rows still being read, and refuses, saying why, when they
+    could not be read. Open: an RPC channel's or HTTP exchanges' rung still exports nothing (revision 625).
+  - Debug and Release each ran 2,582 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    39 mutations were caught, one after a test added for it: the window's export holding the channels alone, or none
+    of the connections, RPC channels or HTTP exchanges; the connections, or the RPC and HTTP rows, unranked by
+    bytes; the words in the reader's culture, here and in icat export's; the ranking named by the channels alone; an
+    export not waiting for each kind of row it reads, or giving up at once; one written or offered, or its tip
+    silent, when a kind could not be read; icat export reading its rows over the whole session in an interval, none
+    of its RPC or HTTP rows, no datagram flow, unranked, or naming its ranking by the channels; and the builder's
+    known bytes, datagram wording, ranking, RPC side and other end, HTTP wording and order.
 
 - **Revision 623 — a process's rung counts and ranks its connections to other hosts by bytes (§6.1, R21):**
   - A live pass over a recording's newer generations found the byte ranking's note at a process's rung summing its

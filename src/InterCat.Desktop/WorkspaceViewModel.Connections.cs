@@ -181,14 +181,9 @@ public sealed partial class WorkspaceViewModel
     private RungRow ConnectionRungRow(ConnectionSummary connection, ThemeMode mode)
     {
         FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(connection.Mechanism));
-        string protocol = connection.Mechanism == Mechanism.Udp ? "UDP" : "TCP";
-        string detail = $"{protocol} {connection.OwnEnd} · {connection.Lifetime} · {connection.Transfers(CultureInfo.CurrentCulture)}";
-        RankedValue? ranked = ShownMeasures is SessionByteMeasures ? connection.RankedBy(rankBy) : null;
-        var source = new LadderRow(connection.Key, connection.Name, detail, connection.Records, null, connection.Mechanism,
-            CoverageState.UnknownCoverage, DetailLevel.Evidence, AccountingSide.CanonicalOwner)
-        {
-            Ranked = ranked,
-        };
+        LadderRow source = ProcessRungRows.Connection(connection, ByteRanking, CultureInfo.CurrentCulture);
+        string detail = source.Detail;
+        RankedValue? ranked = source.Ranked;
         bool perSecond = RateSeconds is > 0 && ranked is not null;
         string toward = connection.Opening == ConnectionOpening.Accepted ? "← " : "→ ";
         return new(connection.Key, toward + connection.RemoteEndpoint, detail, connection.Records.ToString("N0", CultureInfo.CurrentCulture),
