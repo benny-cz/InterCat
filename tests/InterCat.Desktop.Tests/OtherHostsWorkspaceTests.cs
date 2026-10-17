@@ -811,6 +811,64 @@ public sealed class OtherHostsWorkspaceTests
         Assert.DoesNotContain(workspace.HostRows, row => row.Detail.Contains(" sent", StringComparison.Ordinal));
     });
 
+    [Fact(DisplayName = "§6.4: a live publication keeps Other hosts' list ranked by the last one's bytes, said to be updating aloud as on screen, until it has read its own; one whose own cannot be read says so")]
+    public void ALivePublicationKeepsOtherHostsRankedByBytes() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, CarriedRows());
+        using WorkspaceViewModel first = Open(session);
+        await first.LayoutReady;
+        first.SelectGraphNode(first.GraphDisplay.OtherHosts!.Key);
+        first.RankBy = RankingMetric.BytesSent;
+        await first.HostTrafficReady;
+        Assert.Equal(["52.0.0.2", "52.0.0.1", "52.0.0.3"], first.HostRows.Select(row => row.Address));
+
+        // The next publication holds a large send to 52.0.0.1, which leads once read; until then the list ranks as the last
+        // one read, and says so, aloud as on screen, rather than by records and back.
+        Publish(session.Store, [Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 9_000, 300, 40)
+            .Between("192.168.1.10:52001", "52.0.0.1:443") with { SessionRelativeTicks = 4_000 }]);
+        using WorkspaceViewModel second = Open(session);
+        await second.LayoutReady;
+        Assert.Null(second.RestoreNavigation(first.CaptureNavigation()));
+        var said = new List<string?>();
+        second.PropertyChanged += (_, changed) => said.Add(changed.PropertyName);
+        second.AdoptScope(first.CarryScope());
+        Assert.Contains(nameof(WorkspaceViewModel.HostRows), said);
+        Assert.Equal(["52.0.0.2", "52.0.0.1", "52.0.0.3"], second.HostRows.Select(row => row.Address));
+        Assert.Equal("Its 3 hosts, the most bytes sent first · updating", second.HostsHeading);
+        Assert.Contains(" · 5,000 B sent, no receive recorded, updating. Press E", second.HostRows[0].AccessibleName,
+            StringComparison.Ordinal);
+        (WorkspaceNavigationMemento Navigation, ScopeCarry Scope) unread = (second.CaptureNavigation(), second.CarryScope());
+        await second.HostTrafficReady;
+        Assert.Equal(["52.0.0.1", "52.0.0.2", "52.0.0.3"], second.HostRows.Select(row => row.Address));
+        Assert.Equal("Its 3 hosts, the most bytes sent first", second.HostsHeading);
+        Assert.DoesNotContain(second.HostRows, row => row.BytesUpdating);
+
+        // One following a publication that had not read its own yet ranks as the one before it did; another byte ranking
+        // reads its own.
+        using (WorkspaceViewModel next = Open(session))
+        {
+            await next.LayoutReady;
+            Assert.Null(next.RestoreNavigation(unread.Navigation));
+            next.AdoptScope(unread.Scope);
+            Assert.Equal(["52.0.0.2", "52.0.0.1", "52.0.0.3"], next.HostRows.Select(row => row.Address));
+            next.RankBy = RankingMetric.BytesReceived;
+            Assert.Equal("Its 3 hosts, the busiest first, while their bytes received are read", next.HostsHeading);
+        }
+
+        // One whose own cannot be read says so, ranks by records, and carries the last one's no further.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var unreadable = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(Path.Combine(session.Path, "gone"), overview.SessionId, overview.Generation));
+        await unreadable.LayoutReady;
+        Assert.Null(unreadable.RestoreNavigation(second.CaptureNavigation()));
+        unreadable.AdoptScope(second.CarryScope());
+        await unreadable.HostTrafficReady;
+        Assert.Equal("Its 3 hosts, the busiest first; their bytes sent could not be read", unreadable.HostsHeading);
+        Assert.Equal(["52.0.0.1", "52.0.0.3", "52.0.0.2"], unreadable.HostRows.Select(row => row.Address));
+        Assert.Null(unreadable.CarryScope().HostTraffic);
+    });
+
     [Fact(DisplayName = "§6.3: Other hosts' list whose bytes cannot be read keeps the busiest first and says why")]
     public void OtherHostsListSaysItsBytesCouldNotBeRead() => SingleThreadedContext.Run(async () =>
     {

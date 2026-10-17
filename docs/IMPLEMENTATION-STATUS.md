@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 620 · Branch: `main`
+Updated: 2026-10-17 · Plan revision: 621 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 621 — a live publication keeps Other hosts' list in its byte ranking (§6.3, §6.4):**
+  - Under a byte ranking the list ranked its hosts by records until each publication had read their bytes, so its rows
+    moved to records order and back every couple of seconds. The last publication's bytes now rank it, for the same
+    byte ranking, said to be updating in the heading and aloud per row, until this one's are in; a failed read lets
+    them go.
+  - Debug and Release each ran 2,571 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    ten mutations were caught: no host traffic standing in, or one for another byte ranking; a stand-in unmarked in
+    the heading, its rows or aloud; a publication carrying none of the traffic, or not that it was itself standing
+    in, taking none on, or not saying its list changed when it does; and the last one's carried on after this
+    publication's own read failed.
 
 - **Revision 620 — a live publication keeps the interval table's bytes until it has read its own (§6.4, R15):**
   - Each publication read every listed interval's bytes again, its rows saying "reading bytes…" meanwhile. The

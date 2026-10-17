@@ -7,11 +7,16 @@ namespace InterCat.Desktop;
 /// Other hosts' list under a byte ranking (§6.3, R21): while the rail ranks by the bytes sent, received or both, the hosts
 /// Other hosts lists are read for what their connections carried and ranked by it, as the processes beside them are, each
 /// saying both directions' bytes. A host whose transfers stated no size follows those that did, never as a zero; until
-/// the bytes are read, or where they cannot be, the list keeps the busiest first by records and says why.
+/// the bytes are read, or where they cannot be, the list keeps the busiest first by records and says why. A live session's
+/// next publication ranks it by what the last one read, said to be updating, until it has read its own, so its rows do not
+/// move back to records and again at every publication.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
     private HostTrafficLoad? hostTraffic;
+
+    // Other hosts' traffic as an earlier publication of the session read it, ranking the list while this one's is read.
+    private HostTrafficCarry? carriedHostTraffic;
 
     /// <summary>Completes when the latest read of Other hosts' traffic has applied, been superseded or failed.</summary>
     public Task HostTrafficReady { get; private set; } = Task.CompletedTask;
@@ -29,13 +34,24 @@ public sealed partial class WorkspaceViewModel
             : null;
 
     /// <summary>
+    /// An earlier publication's traffic of Other hosts' hosts under the byte ranking the list follows, while this generation
+    /// reads its own: it ranks the list meanwhile, said to be updating. None once this one's is in, while none is read, or
+    /// once its read failed.
+    /// </summary>
+    private IReadOnlyList<HostTraffic>? StandInHostTraffic => HostByteRanking is { } metric
+        && CurrentHostTraffic is { Hosts: null, Problem: null } && carriedHostTraffic is { } earlier && earlier.Metric == metric
+            ? earlier.Hosts
+            : null;
+
+    /// <summary>
     /// The hosts Other hosts' list holds, in its order: by what their connections carried once a byte ranking's read is in,
-    /// each with it; else the busiest first by records, as the census counts them.
+    /// or while it is read, by what an earlier publication read, each with it; else the busiest first by records, as the
+    /// census counts them. A host the traffic does not hold follows those it does.
     /// </summary>
     private IReadOnlyList<(OtherHost Host, HostTraffic? Traffic)> RankedHosts()
     {
         IReadOnlyList<OtherHost> hosts = ListedHosts();
-        if (CurrentHostTraffic?.Hosts is not { } traffic)
+        if ((CurrentHostTraffic?.Hosts ?? StandInHostTraffic) is not { } traffic)
         {
             return [.. hosts.Select(host => (host, (HostTraffic?)null))];
         }
@@ -66,12 +82,14 @@ public sealed partial class WorkspaceViewModel
         }
 
         string phrase = RankingMetrics.Phrase(metric);
+        string most = count <= HostsListed
+            ? string.Create(CultureInfo.CurrentCulture, $"Its {count:N0} hosts, the most {phrase} first")
+            : string.Create(CultureInfo.CurrentCulture, $"The {HostsListed:N0} of its {count:N0} hosts with the most {phrase}");
         return CurrentHostTraffic switch
         {
-            { Hosts: not null } => count <= HostsListed
-                ? string.Create(CultureInfo.CurrentCulture, $"Its {count:N0} hosts, the most {phrase} first")
-                : string.Create(CultureInfo.CurrentCulture, $"The {HostsListed:N0} of its {count:N0} hosts with the most {phrase}"),
+            { Hosts: not null } => most,
             { Problem: not null } => busiest + $"; their {phrase} could not be read",
+            _ when StandInHostTraffic is not null => most + " · updating",
             _ => busiest + $", while their {phrase} are read",
         };
     }
@@ -121,10 +139,28 @@ public sealed partial class WorkspaceViewModel
             or UnauthorizedAccessException or ArgumentException)
         {
             if (disposed || !ReferenceEquals(hostTraffic, load)) return;
+
+            // This generation's answer replaces what an earlier publication read even when its read failed.
             load.Problem = exception.Message;
+            carriedHostTraffic = null;
         }
 
         RaiseHostListChanged();
+    }
+
+    /// <summary>Other hosts' traffic as this generation read it for the list, or else as an earlier publication did.</summary>
+    private HostTrafficCarry? CarryHostTraffic() => evidenceSource is { } source && hostTraffic is { Hosts: { } hosts } read
+        ? new(source.SessionId, read.Metric, hosts)
+        : carriedHostTraffic;
+
+    /// <summary>Takes on what an earlier publication of this session read of Other hosts' hosts, ranking the list by it.</summary>
+    private void AdoptHostTraffic(HostTrafficCarry? carry, Guid session)
+    {
+        carriedHostTraffic = carry is { } earlier && earlier.SessionId == session ? earlier : null;
+        if (carriedHostTraffic is not null)
+        {
+            RaiseHostListChanged();
+        }
     }
 
     private void CancelHostTraffic()

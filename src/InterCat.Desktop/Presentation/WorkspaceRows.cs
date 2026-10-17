@@ -133,9 +133,16 @@ public sealed record CellRecordRow(string Title, string Detail, string Glyph, st
 /// </summary>
 public sealed record HostRow(string Address, string Detail) : IAccessibleRow
 {
+    /// <summary>
+    /// Whether the bytes <see cref="Detail"/> states are an earlier publication's, ranking the list while a live session's
+    /// are read again: they are said to be updating.
+    /// </summary>
+    public bool BytesUpdating { get; init; }
+
     /// <summary>The host read aloud, with what E and Enter do on it.</summary>
     public string AccessibleName =>
-        $"{Address}, {Detail}. Press E to list the records of its connections, or Enter to find the processes that reached it.";
+        $"{Address}, {Detail}{(BytesUpdating ? ", updating" : string.Empty)}. Press E to list the records of its connections, "
+        + "or Enter to find the processes that reached it.";
 }
 
 /// <summary>

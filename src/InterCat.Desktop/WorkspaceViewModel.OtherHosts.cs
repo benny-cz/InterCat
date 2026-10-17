@@ -304,6 +304,7 @@ public sealed partial class WorkspaceViewModel
         get
         {
             bool several = SelectedCluster is { ConnectedProcesses: > 1 };
+            bool updating = StandInHostTraffic is not null;
             return [.. RankedHosts().Take(HostsListed).Select(entry => new HostRow(entry.Host.Address,
                 (AddressScope.Of(entry.Host.Address) is { } scope ? scope + " · " : string.Empty)
                     + HostLinkText.Reached(entry.Host, several)
@@ -313,7 +314,10 @@ public sealed partial class WorkspaceViewModel
                     + (entry.Traffic is { } traffic ? " · " + traffic.Transfers(CultureInfo.CurrentCulture) : string.Empty)
                     + (CandidatesAt(entry.Host.Address) is { } candidates
                         ? " · candidate other ends: " + candidates.Words
-                        : string.Empty)))];
+                        : string.Empty))
+            {
+                BytesUpdating = updating && entry.Traffic is not null,
+            })];
         }
     }
 

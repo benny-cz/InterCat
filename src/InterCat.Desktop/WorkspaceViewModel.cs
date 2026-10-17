@@ -112,8 +112,9 @@ public sealed record WorkspaceNavigationMemento(
 /// interval they answer, and the bytes and RPC calls a ranking read for the whole session and for that interval. The
 /// next publication of the same session shows them, marked pending, until its own arrive. The bytes a description read
 /// where no byte ranking had, for the whole session and for that interval, what the relationship table's edges to other
-/// hosts carried and a chosen host's connections as its card counted them stand in the same way: the table and the
-/// inspector state them, marked updating, until its own are read.
+/// hosts carried, a chosen host's connections as its card counted them and what Other hosts' hosts carried under a byte
+/// ranking stand in the same way: the table, the inspector and its host list state them, marked updating, until its own
+/// are read.
 /// </summary>
 public sealed record ScopeCarry(
     TimeRange? VisibleRange,
@@ -128,7 +129,8 @@ public sealed record ScopeCarry(
     SessionByteMeasures? WholeDescribedBytes = null,
     SessionByteMeasures? IntervalDescribedBytes = null,
     HostReachCarry? HostReaches = null,
-    HostRecordsCarry? HostRecords = null);
+    HostRecordsCarry? HostRecords = null,
+    HostTrafficCarry? HostTraffic = null);
 
 /// <summary>
 /// What one publication read of the connections its edges to other hosts draw, by reach - one process's connections over
@@ -138,6 +140,9 @@ public sealed record HostReachCarry(Guid SessionId, IReadOnlyDictionary<string, 
 
 /// <summary>A chosen host's connections as one publication's card counted them, over the scope it counted them in.</summary>
 public sealed record HostRecordsCarry(TimeRange? Scope, HostConnectionList List);
+
+/// <summary>What Other hosts' hosts carried as one publication read them for its list under a byte ranking.</summary>
+public sealed record HostTrafficCarry(Guid SessionId, RankingMetric Metric, IReadOnlyList<HostTraffic> Hosts);
 
 /// <summary>
 /// What one publication's timeline drew beyond the overview: its zoomed detail, the counts of the focus it was drawn for,
@@ -1092,7 +1097,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         callReads.Whole ?? callReads.CarriedWhole, callReads.Interval ?? callReads.CarriedInterval,
         peerReads.Whole ?? peerReads.CarriedWhole, peerReads.Interval ?? peerReads.CarriedInterval,
         selectionBytes.Whole ?? selectionBytes.CarriedWhole, selectionBytes.Interval ?? selectionBytes.CarriedInterval,
-        CarryHostReaches(), CarryHostRecords());
+        CarryHostReaches(), CarryHostRecords(), CarryHostTraffic());
 
     /// <summary>
     /// Takes on an earlier publication's visible range, so this generation starts counting it before the view is bound,
@@ -1111,6 +1116,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             selectionBytes.Adopt(carry.WholeDescribedBytes, carry.IntervalDescribedBytes, current.SessionId);
             AdoptHostReaches(carry.HostReaches, current.SessionId);
             carriedHostRecords = carry.HostRecords is { } host && host.List.SessionId == current.SessionId ? host : null;
+            AdoptHostTraffic(carry.HostTraffic, current.SessionId);
 
             // What states bytes states the earlier publication's at once, where this generation's are still being read.
             RefreshDescribedBytes();
