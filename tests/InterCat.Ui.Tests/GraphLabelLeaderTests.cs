@@ -159,9 +159,10 @@ public sealed class GraphLabelLeaderTests
     [AvaloniaFact(DisplayName = "§6.3: on a crowded machine choosing a node or moving the keyboard leaves every other name where it stood, or steps it aside for the chosen one's")]
     public async Task NamesStayWhereTheyStoodWhenANodeIsChosen()
     {
+        // At the smallest window, where the room runs out before the budget: at 1456 × 939 every node is named.
         using var session = new TemporarySession();
         Publish(session.Store, BusyMachine());
-        var window = new MainWindow { Width = 1456, Height = 939 };
+        var window = new MainWindow { Width = 1080, Height = 700 };
         window.Show();
         try
         {
@@ -188,7 +189,7 @@ public sealed class GraphLabelLeaderTests
                 .Where(node => node.Kind == GraphNodeKind.Process && !unchosen.ContainsKey(node.Key)).Select(node => node.Key)];
             Assert.NotEmpty(unnamed);
 
-            // Each other name stands where it stood, or, where the newly named node needs its place, steps aside.
+            // Each other name stands where it stood, or, where it would crowd the newly named node's, steps aside.
             void StoodOrSteppedAside(Dictionary<string, Rect> now, string named)
             {
                 Rect taken = now[named];
@@ -200,7 +201,8 @@ public sealed class GraphLabelLeaderTests
                     }
                     else
                     {
-                        Assert.True(box.Intersects(taken), $"{key}'s name went elsewhere rather than step aside for {named}'s");
+                        Assert.True(taken.Inflate(GraphView.NameSpacing).Intersects(box),
+                            $"{key}'s name went elsewhere rather than step aside for {named}'s, which it would crowd");
                     }
                 }
             }
@@ -259,7 +261,7 @@ public sealed class GraphLabelLeaderTests
     {
         using var session = new TemporarySession();
         Publish(session.Store, BusyMachine());
-        var window = new MainWindow { Width = 1456, Height = 939 };
+        var window = new MainWindow { Width = 1920, Height = 1080 };
         window.Show();
         try
         {
@@ -268,18 +270,30 @@ public sealed class GraphLabelLeaderTests
             var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
             await workspace.LayoutReady;
             GraphView graph = window.GetControl<GraphView>("GraphSurface");
-            WriteableBitmap frame = Settle(window);
 
-            // Two names standing against each other read as one word - "SearchHost.exespoolsv.exe" - so none does.
-            IReadOnlyList<Rect> names = graph.PlacedLabels;
-            for (int one = 0; one < names.Count; one++)
+            // Two names standing against each other read as one word - "SearchHost.exespoolsv.exe" - so none does: at
+            // 1920 × 1080, where every name has a slot that leaves its room, each keeps it; at 1456 × 939, where one does
+            // not, it keeps a word's space, as at the smallest window (CrowdedNamesKeepAWordsSpace).
+            void NoneAgainstAnother(Thickness room)
             {
-                for (int other = one + 1; other < names.Count; other++)
+                IReadOnlyList<Rect> placed = graph.PlacedLabels;
+                for (int one = 0; one < placed.Count; one++)
                 {
-                    Assert.False(names[one].Inflate(GraphView.NameSpacing).Intersects(names[other]),
-                        $"{graph.PlacedLabelKeys[one]} {names[one]} stands against {graph.PlacedLabelKeys[other]} {names[other]}");
+                    for (int other = one + 1; other < placed.Count; other++)
+                    {
+                        Assert.False(placed[one].Inflate(room).Intersects(placed[other]),
+                            $"{graph.PlacedLabelKeys[one]} {placed[one]} stands against {graph.PlacedLabelKeys[other]} {placed[other]}");
+                    }
                 }
             }
+
+            _ = Settle(window);
+            NoneAgainstAnother(GraphView.NameSpacing);
+            window.Width = 1456;
+            window.Height = 939;
+            WriteableBitmap frame = Settle(window);
+            NoneAgainstAnother(new Thickness(4, 1));
+            IReadOnlyList<Rect> names = graph.PlacedLabels;
 
             // Edges pass beneath some names, and round the letters of every name is the pane's colour, never an edge's ink:
             // each letter's pixels are ringed by a pixel of the name's halo.

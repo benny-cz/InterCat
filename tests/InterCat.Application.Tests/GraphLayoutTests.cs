@@ -190,22 +190,71 @@ public sealed class GraphLayoutTests
 
     private static readonly int[] RingSteps = [7, 17, 29];
 
-    /// <summary>
-    /// <paramref name="count"/> processes of twelve programs, the first sixty each related to three others round their ring
-    /// at varied weights, and any more each related to three of them: relaxation alone settles them nearer than their
-    /// discs are wide.
-    /// </summary>
-    private static GraphDisplay Dense(int count)
+    [Fact(DisplayName = "§19.4: a lone component is drawn about the pane's middle, not toward the side its seeding leaned")]
+    public void ALoneComponentIsDrawnAboutTheMiddle()
     {
-        ProcessGroup[] programs = [.. Enumerable.Range(0, 12)
-            .Select(index => new ProcessGroup($"program-{index}", $"program{index}.exe", LaneGrouping.Executable))];
-        ProcessNode[] processes = [.. Enumerable.Range(0, count).Select(index => new ProcessNode(
-            new ProcessInstanceId(Guid.Parse(GuidFrom(100 + index))), 4_000 + (4 * index), $"Process {index}", "test",
-            programs[index % programs.Length].Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new(Mechanism.Tcp, 5)] })];
-        CommunicationEdge[] edges = [.. Enumerable.Range(0, count).SelectMany(index => RingSteps.Select(step => new CommunicationEdge(
-            $"ring-{index}-{step}", processes[index].Id, processes[(index + step) % 60].Id, Mechanism.Tcp, 1 + (index * step % 13),
-            null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] }))];
-        return GraphProjection.Project(Workspace(programs, processes, edges));
+        foreach (int ring in (int[])[12, 20, 60])
+        {
+            GraphDisplay display = Dense(ring, ring);
+            IReadOnlyDictionary<string, GraphPoint> positions = GraphLayout.ComputeDisplay($"ring-{ring}", display).Positions;
+            Assert.InRange(display.Nodes.Average(node => positions[node.Key].X), 0.46, 0.54);
+        }
+    }
+
+    [Fact(DisplayName = "§19.4: a component alone in the seeding grid's short last row starts about its middle")]
+    public void AShortLastRowStartsAboutTheMiddle()
+    {
+        // Four rings of eight fill the grid's first row; a related pair, the smallest component, has the second to itself.
+        GraphDisplay display = Rings(8, 8, 8, 8, 2);
+        IReadOnlyDictionary<string, GraphPoint> positions = GraphLayout.ComputeDisplay("rings", display).Positions;
+        ProcessInstanceId[] ends = [Numbered(232).Id, Numbered(233).Id];
+        GraphDisplayNode[] pair = [.. display.Nodes.Where(node => node.Process is { } process && ends.Contains(process))];
+        Assert.Equal(2, pair.Length);
+        Assert.InRange(pair.Average(node => positions[node.Key].X), 0.35, 0.65);
+    }
+
+    private static readonly ProcessGroup[] Programs = [.. Enumerable.Range(0, 12)
+        .Select(index => new ProcessGroup($"program-{index}", $"program{index}.exe", LaneGrouping.Executable))];
+
+    private static ProcessNode Numbered(int index) => new(
+        new ProcessInstanceId(Guid.Parse(GuidFrom(index))), 4_000 + (4 * index), $"Process {index}", "test",
+        Programs[index % Programs.Length].Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new(Mechanism.Tcp, 5)] };
+
+    private static CommunicationEdge Weighted(string key, ProcessNode source, ProcessNode target, int weight) =>
+        new(key, source.Id, target.Id, Mechanism.Tcp, weight, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
+
+    /// <summary>
+    /// Separate rings of the given sizes, each a component of its own: every process related to the next round its ring
+    /// and to the one three on.
+    /// </summary>
+    private static GraphDisplay Rings(params int[] sizes)
+    {
+        var processes = new List<ProcessNode>();
+        var edges = new List<CommunicationEdge>();
+        foreach (int size in sizes)
+        {
+            int start = processes.Count;
+            processes.AddRange(Enumerable.Range(start, size).Select(index => Numbered(200 + index)));
+            edges.AddRange(Enumerable.Range(0, size).SelectMany(index => ((int[])[1, 3])
+                .Where(step => (index + step) % size != index)
+                .Select(step => Weighted($"ring-{start + index}-{step}", processes[start + index],
+                    processes[start + ((index + step) % size)], 1 + ((start + index) * step % 13)))));
+        }
+
+        return GraphProjection.Project(Workspace(Programs, processes, edges));
+    }
+
+    /// <summary>
+    /// <paramref name="count"/> processes of twelve programs, the first <paramref name="ring"/> each related to three others
+    /// round their ring at varied weights, and any more each related to three of them: relaxation alone settles them
+    /// nearer than their discs are wide.
+    /// </summary>
+    private static GraphDisplay Dense(int count, int ring = 60)
+    {
+        ProcessNode[] processes = [.. Enumerable.Range(0, count).Select(index => Numbered(100 + index))];
+        CommunicationEdge[] edges = [.. Enumerable.Range(0, count).SelectMany(index => RingSteps.Select(step => Weighted(
+            $"ring-{index}-{step}", processes[index], processes[(index + step) % ring], 1 + (index * step % 13))))];
+        return GraphProjection.Project(Workspace(Programs, processes, edges));
     }
 
     /// <summary>

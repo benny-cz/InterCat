@@ -596,8 +596,9 @@ public static class GraphLayout
 
     /// <summary>
     /// Places every related node not already placed: each unplaced component starts from a cell of a deterministic grid
-    /// over the region, at its best-connected node, and every other node starts beside a placed neighbour. A node that
-    /// joins a graph the user has seen therefore appears next to what it relates to, not somewhere arbitrary.
+    /// over the region, at its best-connected node, and is set back across on the cell's middle once grown, and every
+    /// other node starts beside a placed neighbour. A node that joins a graph the user has seen therefore appears next to
+    /// what it relates to, not somewhere arbitrary.
     /// </summary>
     private static void PlaceUnplaced(
         LayoutNode[] ordered,
@@ -613,22 +614,26 @@ public static class GraphLayout
         double bottom,
         double ideal)
     {
-        // Components with nothing placed get grid cells, largest first, filling the region's shape row by row.
+        // Components with nothing placed get grid cells, largest first, filling the region's shape row by row, a short
+        // row centred: a lone component starts in the middle, not in the first of two cells across a wide pane.
         List<int>[] fresh = [.. members
             .Where(list => !list.Any(i => placed[i]))
             .OrderByDescending(list => list.Count)
             .ThenBy(list => list.Min(i => hash[i]))];
         int columns = Math.Max(1, (int)Math.Ceiling(Math.Sqrt(fresh.Length * (right - left) / Math.Max(1e-9, bottom - top))));
         int rows = Math.Max(1, (int)Math.Ceiling((double)fresh.Length / columns));
+        var middles = new double[fresh.Length];
         for (int cell = 0; cell < fresh.Length; cell++)
         {
+            int row = cell / columns;
+            double column = (cell % columns) + ((columns - Math.Min(columns, fresh.Length - (row * columns))) / 2d);
             int root = fresh[cell]
                 .OrderByDescending(i => neighbours[i].Count)
                 .ThenBy(i => hash[i])
                 .ThenBy(i => ordered[i].Key, StringComparer.Ordinal)
                 .First();
-            x[root] = left + ((right - left) * ((cell % columns) + 0.5) / columns);
-            y[root] = top + ((bottom - top) * ((cell / columns) + 0.5) / rows);
+            x[root] = middles[cell] = left + ((right - left) * (column + 0.5) / columns);
+            y[root] = top + ((bottom - top) * (row + 0.5) / rows);
             placed[root] = true;
         }
 
@@ -653,6 +658,17 @@ public static class GraphLayout
                 y[next] = Math.Clamp(y[from] + (Math.Sin(angle) * ideal), top, bottom);
                 placed[next] = true;
                 queue.Enqueue(next);
+            }
+        }
+
+        // Grown from its root at angles its hashes fix, a component leans whichever way they fall, and relaxation's pull
+        // toward the middle is too weak across the pane's width to undo the lean: each is set back across on its cell.
+        for (int cell = 0; cell < fresh.Length; cell++)
+        {
+            double by = middles[cell] - fresh[cell].Average(i => x[i]);
+            foreach (int i in fresh[cell])
+            {
+                x[i] = Math.Clamp(x[i] + by, left, right);
             }
         }
     }

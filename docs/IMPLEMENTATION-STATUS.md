@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 641 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 642 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 642 — a lone component is drawn about the pane's middle (§19.4):**
+  - The seeding grid gave a lone component two columns on the wide pane and started it in the first, and grown at
+    angles its hashes fix it leaned further; relaxation's weak pull across never brought it back, so dense drawings
+    sat with their middles a quarter to a third of the way across. A short row of the grid is now centred and a
+    component, once grown, is set back across on its cell's middle: the same drawings sit within 0.02 of the middle.
+    The busy machine is named whole at 1456 × 939, and two window tests of its names check each rule where its premise
+    holds; an edge's ink showing through a name's halo at 1920 × 1080, found on the way, is left for its own revision.
+  - Debug and Release each ran 2,627 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    five mutations were caught: a short row's components started at its left or at its right; a component left
+    leaning, or set back by its rightmost node rather than its middle; and revision 641's spread grown from the
+    drawing's left edge rather than its middle, which a centred drawing now shows. Two mutations of a first draft
+    went unnoticed, and the code they named went with them: no more columns than components, which a centred short
+    row already gives a lone one, and a component set back down as well as across, which relaxation's pull down
+    already does.
 
 - **Revision 641 — a dense graph's discs stand apart (§6.3, §19.4):**
   - A live pass over a wide machine, 253 processes of 80 programs, found its machine rung drawn in the left half of
