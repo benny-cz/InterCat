@@ -848,10 +848,10 @@ public sealed class TimelineCellTests
     });
 
     /// <summary>A mechanism's lane as the machine rung draws it: the view's own count where it has arrived, else the overview's.</summary>
-    private static IReadOnlyList<TimelineBucket> Lane(WorkspaceViewModel workspace, Mechanism mechanism) =>
+    internal static IReadOnlyList<TimelineBucket> Lane(WorkspaceViewModel workspace, Mechanism mechanism) =>
         (workspace.TimelineDetail?.MechanismLanes ?? workspace.Snapshot.MechanismLanes).Single(lane => lane.Mechanism == mechanism).Buckets;
 
-    private static WorkspaceViewModel Open(TemporarySession session)
+    internal static WorkspaceViewModel Open(TemporarySession session)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
@@ -902,14 +902,14 @@ public sealed class TimelineCellTests
         }
     });
 
-    private static void DescendTo(WorkspaceViewModel workspace, string key)
+    internal static void DescendTo(WorkspaceViewModel workspace, string key)
     {
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
         Assert.True(workspace.Descend());
     }
 
     /// <summary>client.exe sending to server.exe over one paired connection, the server receiving each send.</summary>
-    private static ObservationRowV1[] Rows() =>
+    internal static ObservationRowV1[] Rows() =>
     [
         Timed(Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" }),
         Timed(Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" }),

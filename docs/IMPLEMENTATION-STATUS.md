@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-17 · Plan revision: 629 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 630 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 630 — the way back to a clicked timeline cell chooses it again (§3.2, §6.8):**
+  - Esc or the breadcrumb back from E, a listed record or Enter brought back the cell's interval but not the cell: the
+    inspector explained another lane's cell or none, and E lost the lane's filter. A rung left with a cell chosen now
+    keeps the way back to it - Esc, the breadcrumb and forward choose it again - taken when used and kept by a newer
+    generation. Revision 629's kept cell now stands in only while its lane is drawn, which also keeps E from failing
+    on a channel end's cell before the rung's lanes are counted again.
+  - Debug and Release each ran 2,594 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    seventeen mutations were caught: no way back kept on a way down, an ascent, the breadcrumb or forward; none
+    taken by Esc, the breadcrumb, the crumb of the rung shown or forward; one taken at another rung at its depth, or
+    left to be taken again; one kept past a way down of its own; the cell chosen again unsaid, or its timeline name
+    unsaid; a newer generation not given the ways back, not restoring them, or keeping none for the cell it
+    restored; and a kept cell standing in while its lane is not drawn.
 
 - **Revision 629 — a clicked timeline cell stays the cell when the timeline cuts its columns afresh (§6.8, §6.4):**
   - A wider or narrower window, or another zoom, counts the view in other columns; a clicked cell none of them is lost

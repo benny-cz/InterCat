@@ -51,6 +51,7 @@ public sealed partial class WorkspaceViewModel
             var cellLane = new TimelineCellLane(lane, ownerLane?.Id, directionLane, endLane?.End, foldedLane);
             chosenCell = cellLane;
             SelectInterval(bucket.Interval);
+            chosenCellOrigin = CellOriginHere(cellLane);
             keptCell = CellWhere(cellLane, drawn => drawn.Interval == bucket.Interval) is { } cell
                 ? new(cellLane, cell.Bucket, cell.Zoomed, ColumnWords(cellLane, cell.Zoomed))
                 : null;
@@ -108,13 +109,14 @@ public sealed partial class WorkspaceViewModel
         ?? (KeptCellOf(lane, interval) is { } kept ? (kept.Bucket, kept.Zoomed) : null);
 
     /// <summary>
-    /// The cell a click chose in <paramref name="lane"/> over <paramref name="interval"/>, while that choice stands, once the
-    /// timeline no longer draws it: cut afresh, its columns hold another interval. Null while it draws it, or once another
-    /// choice stands.
+    /// The cell a click chose in <paramref name="lane"/> over <paramref name="interval"/>, while that choice stands and the
+    /// rung draws the lane in columns cut afresh, none of them the cell's. Null while the lane draws the cell, while the
+    /// rung draws no such lane - not yet counted, or its count failed - and once another choice stands.
     /// </summary>
     private KeptCell? KeptCellOf(TimelineCellLane lane, TimeRange interval) =>
         keptCell is { } kept && ReferenceEquals(kept.Lane, chosenCell) && ReferenceEquals(lane, chosenCell)
-        && kept.Bucket.Interval == interval && CellWhere(lane, bucket => bucket.Interval == interval) is null
+        && kept.Bucket.Interval == interval && CellWhere(lane, _ => true) is not null
+        && CellWhere(lane, bucket => bucket.Interval == interval) is null
             ? kept
             : null;
 
@@ -758,6 +760,7 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(EvidenceSummary));
         OnPropertyChanged(nameof(SelectionTitle));
         OnPropertyChanged(nameof(SelectionSubtitle));
+        OnPropertyChanged(nameof(IntervalSpoken));
     }
 
     /// <summary>What the cell's explanation reads, by the name its change is raised under.</summary>

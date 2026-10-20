@@ -79,6 +79,9 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// Whether the inspector described the selected row - a channel or a call chosen among a process's rows - rather than the
 /// process, which is the selection again once chosen there.
 /// </param>
+/// <param name="CellOrigins">
+/// Each rung left with a timeline cell chosen, and that cell, which the way back and forward come to (§3.2).
+/// </param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -105,7 +108,8 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<ProcessInstanceId>? ChosenSet = null,
     IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null,
     string? ChosenHostEdge = null,
-    bool DescribesRow = false);
+    bool DescribesRow = false,
+    IReadOnlyList<CellOrigin>? CellOrigins = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1674,7 +1678,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedChannelEnd, [.. ladder.Forward.Select(rung => rung with { Filters = [.. rung.Filters] })], rankBy, perSecond,
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
-        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null);
+        relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
+        cellOrigins.Count > 0 ? [.. cellOrigins] : null);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1823,11 +1828,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             RestoreListChoice(saved, drawn, notices);
         }
 
-        // The way back to a list, or to a relationship, keeps to the rungs it was kept for; what it chooses again is checked
-        // when the way back arrives there.
+        // The way back to a list, a relationship or a cell keeps to the rungs it was kept for; what it chooses again is
+        // checked when the way back arrives there.
         memberOrigin = saved.ListOrigin;
         relationshipOrigins.Clear();
         relationshipOrigins.AddRange(saved.RelationshipOrigins ?? []);
+        cellOrigins.Clear();
+        cellOrigins.AddRange(saved.CellOrigins ?? []);
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -1893,6 +1900,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         if (saved.ExplainedCell is { } cell)
         {
             chosenCell = cell;
+            chosenCellOrigin = CellOriginHere(cell);
             RaiseCellExplanationChanged();
         }
 
@@ -5424,6 +5432,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
+        KeepCellWayBack();
         ResumeIntervalOf(restored);
         ArriveFrom(left);
 
@@ -5438,6 +5447,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
         ResumeMemberOrigin();
         ResumeRelationshipOrigin();
+        ResumeCellOrigin();
         return true;
     }
 
@@ -5449,15 +5459,19 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         int from = ladder.Depth;
         if (ladder.TryReturnTo(depth, out NavigationState restored))
         {
+            KeepCellWayBack();
             ResumeIntervalOf(restored);
             ArriveFrom(left);
 
-            // The rung shown now, its crumb chosen again, is no way back: what has been chosen there since stays chosen.
+            // The rung shown now, its crumb chosen again, is no way back: what has been chosen there since stays chosen, a
+            // cell included.
             if (ladder.Depth < from)
             {
                 ResumeMemberOrigin();
                 ResumeRelationshipOrigin();
             }
+
+            ResumeCellOrigin();
         }
     }
 
@@ -5505,8 +5519,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
+        KeepCellWayBack();
         ResumeIntervalOf(entered);
         AfterNavigation();
+        ResumeCellOrigin();
         return true;
     }
 
@@ -5585,7 +5601,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         pendingRungKey = null;
         selectedCrumb = null;
 
-        // A chosen cell is a place in the rung's lanes, which the rung left takes with it.
+        // A chosen cell is a place in the rung's lanes, which the rung left takes with it, keeping the way back to it.
+        KeepCellWayBack();
         chosenCell = null;
 
         // The process a rung was reached with is its context, not a choice made there: an opened channel is described
