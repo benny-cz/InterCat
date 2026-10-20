@@ -139,6 +139,17 @@ internal sealed record ProcessPeerDocument
 
     /// <summary>The instance's receive records from this end, as <see cref="Sends"/> counts them.</summary>
     public required ProcessTransportRecordsDocument Receives { get; init; }
+
+    /// <summary>
+    /// How many TCP connections the instance made to this end, as the capture saw each open at either end: its own
+    /// <see cref="ProcessActivityDocument.ConnectionsMade"/>, end by end, so the ends' add up to it - one it made to itself
+    /// counted at its own row, and those whose other end no record holds at the row of an end not observed. Null where the
+    /// session records no connection's open (R21).
+    /// </summary>
+    public long? ConnectionsMade { get; init; }
+
+    /// <summary>How many this end made to the instance, which it accepted, as <see cref="ConnectionsMade"/> counts them.</summary>
+    public long? ConnectionsAccepted { get; init; }
 }
 
 /// <summary>
@@ -279,7 +290,13 @@ internal static class ProcessesCommand
             projected.ConnectionOpensRecorded);
         if (pid is { } selected)
         {
-            ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with.");
+            ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with, and who connected to whom.");
+
+            // Who opened their connections, end by end, by the rule its card's counts take (relations-v1 §5): only where the
+            // session records an open, since otherwise how many any end made is unknown rather than none.
+            TransportRelationIndex? relations = projected.ConnectionOpensRecorded
+                ? SessionMetricDerivations.For(store, cancellationToken)?.Relations(cancellationToken)
+                : null;
             document = document with
             {
                 Instances =
@@ -288,7 +305,10 @@ internal static class ProcessesCommand
                         ? item
                         : item with
                         {
-                            Peers = Peers(store, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)), policy, records.Clock, cancellationToken),
+                            Peers = Peers(store, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)), policy, records.Clock,
+                                relations is null ? null
+                                    : ConnectionOpens.With(relations, policy, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))),
+                                cancellationToken),
                             OtherHosts = OtherHosts(store, projected.HostLinks, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)),
                                 policy, cancellationToken),
                             RpcRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
@@ -440,13 +460,16 @@ internal static class ProcessesCommand
     /// <summary>
     /// What one instance sent to and received from each process at the other end, through the relation rule, with the
     /// traffic whose other end is unresolved kept as its own rows. Both totals are the instance's own records, so
-    /// nothing here is measured at a peer.
+    /// nothing here is measured at a peer. With <paramref name="openings"/>, each row also counts the connections the
+    /// instance made to that end and accepted from it, and an end it opened connections with and exchanged no data with is
+    /// a row of its own, so the rows' connections add up to its own.
     /// </summary>
     private static List<ProcessPeerDocument> Peers(
         SessionStore store,
         ProcessInstanceId instance,
         EvidencePolicy policy,
         SourceClockDescriptor? clock,
+        IReadOnlyList<PeerConnections>? openings,
         CancellationToken cancellationToken)
     {
         MetricResult sentTo = SessionMetrics.Evaluate(store, PeerRequest(Metric.BytesSent, AccountingSide.SendSide, policy) with
@@ -473,20 +496,32 @@ internal static class ProcessesCommand
             }
         }
 
+        // The connections each end opened, by the same keys: those whose other end no record holds are the end not
+        // observed, as their traffic is.
+        var opened = new Dictionary<string, PeerConnections>(StringComparer.Ordinal);
+        foreach (PeerConnections connections in openings ?? [])
+        {
+            string key = connections.Peer?.Id.ToString() ?? $"reason/{ProcessBindingReason.PeerNotObserved}";
+            opened[key] = connections;
+            _ = peers.TryAdd(key, (connections.Peer, connections.Peer is null ? ProcessBindingReason.PeerNotObserved : null, null, null));
+        }
+
         return
         [
-            .. peers.Values
-                .OrderBy(entry => entry.Peer is null)
-                .ThenByDescending(entry => (entry.Sent?.Value ?? 0) + (entry.Received?.Value ?? 0))
-                .ThenBy(entry => entry.Peer?.Id.ToString() ?? entry.Reason.ToString(), StringComparer.Ordinal)
+            .. peers
+                .OrderBy(entry => entry.Value.Peer is null)
+                .ThenByDescending(entry => (entry.Value.Sent?.Value ?? 0) + (entry.Value.Received?.Value ?? 0))
+                .ThenBy(entry => entry.Value.Peer?.Id.ToString() ?? entry.Value.Reason.ToString(), StringComparer.Ordinal)
                 .Select(entry => new ProcessPeerDocument
                 {
-                    Peer = entry.Peer is { } peer ? ProcessInstanceDocument.From(peer, clock) : null,
-                    Unresolved = entry.Reason?.ToString(),
-                    SentTo = entry.Sent?.Value,
-                    ReceivedFrom = entry.Received?.Value,
-                    Sends = Records(entry.Sent),
-                    Receives = Records(entry.Received),
+                    Peer = entry.Value.Peer is { } peer ? ProcessInstanceDocument.From(peer, clock) : null,
+                    Unresolved = entry.Value.Reason?.ToString(),
+                    SentTo = entry.Value.Sent?.Value,
+                    ReceivedFrom = entry.Value.Received?.Value,
+                    Sends = Records(entry.Value.Sent),
+                    Receives = Records(entry.Value.Received),
+                    ConnectionsMade = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.Made ?? 0,
+                    ConnectionsAccepted = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.Accepted ?? 0,
                 }),
         ];
     }
@@ -758,19 +793,32 @@ internal static class ProcessesCommand
         }
         else
         {
+            // Who connected to whom, end by end, where the capture saw any of their connections open: its own count above.
+            bool opened = peers.Any(peer => peer.ConnectionsMade + peer.ConnectionsAccepted > 0);
             ConsoleUi.Line($"  Exchanged with ({TransportRelationIndex.RelationRule}; each total is a record this instance made):");
             ConsoleUi.Table(
-                ["Other end", "Sent to", "Received from"],
+                ["Other end", .. opened ? ["Connections"] : Array.Empty<string>(), "Sent to", "Received from"],
                 [
-                    .. peers.Select(peer => new[]
-                    {
+                    .. peers.Select(peer => (IReadOnlyList<string>)
+                    [
                         peer.Peer is { } other
                             ? string.Create(CultureInfo.InvariantCulture, $"PID {other.ProcessId} {other.ImageName ?? "(image not witnessed)"}")
-                            : "unresolved: " + BindingText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
+                                + (other.InstanceId == process.InstanceId ? " (itself)" : string.Empty)
+                            : peer.Unresolved == nameof(ProcessBindingReason.PeerNotObserved)
+                                ? "not in the capture (remote or unobserved)"
+                                : "unresolved: " + BindingText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
+                        .. opened ? [Opened(peer.ConnectionsMade ?? 0, peer.ConnectionsAccepted ?? 0)] : Array.Empty<string>(),
                         Bytes(peer.SentTo, peer.Sends, "none"),
                         Bytes(peer.ReceivedFrom, peer.Receives, "none"),
-                    }),
+                    ]),
                 ]);
+            if (opened)
+            {
+                ConsoleUi.Note("Connections are those it made to each end and those it accepted from each, as the capture saw them "
+                    + "open, and add up to its own above" + (peers.Any(peer => peer.ConnectionsMade + peer.ConnectionsAccepted == 0)
+                        ? "; - where it saw none of theirs open, as of a UDP flow, which nothing opens."
+                        : "."));
+            }
         }
 
         // The other hosts it reached, by address, which the table above counts as one unresolved end: as icat hosts lists
@@ -815,6 +863,18 @@ internal static class ProcessesCommand
             ({ }, { }) => none,
             _ => "not recorded",
         };
+
+    /// <summary>
+    /// The connections an instance made to one end and accepted from it: "2 made", "1 accepted", "1 made · 1 accepted", or
+    /// "-" where the capture saw none of theirs open.
+    /// </summary>
+    private static string Opened(long made, long accepted) => (made, accepted) switch
+    {
+        (0, 0) => "-",
+        (_, 0) => $"{ConsoleUi.Count(made)} made",
+        (0, _) => $"{ConsoleUi.Count(accepted)} accepted",
+        _ => $"{ConsoleUi.Count(made)} made · {ConsoleUi.Count(accepted)} accepted",
+    };
 
     private static string Words(string pascal) =>
         string.Concat(pascal.Select((character, index) =>
@@ -861,8 +921,9 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
         ConsoleUi.Line("      takes, its image path and parent, what it sent to and received from each process");
-        ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}), each other host its");
-        ConsoleUi.Line("      connections ran to, by address, the most bytes first, and its RPC call records, whose");
-        ConsoleUi.Line("      calls icat operations lists with the process at each one's other end.");
+        ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}) and the connections it");
+        ConsoleUi.Line("      made to each and accepted from each, each other host its connections ran to, by");
+        ConsoleUi.Line("      address, the most bytes first, and its RPC call records, whose calls icat operations");
+        ConsoleUi.Line("      lists with the process at each one's other end.");
     }
 }

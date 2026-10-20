@@ -92,7 +92,7 @@ icat capture <new-session-folder> --profile rpc-peers
 
 # Read a session: its graph and timeline, which processes and programs connected to which, its paired channels and
 # their records, the other hosts it reached and which processes reached each, its processes and the connections
-# each made and accepted, and its RPC calls.
+# each made and accepted - one process's with each process at the other end, with --pid - and its RPC calls.
 icat overview <session>
 icat programs <session> --program svchost.exe
 icat channels <session>
@@ -102,6 +102,7 @@ icat hosts <session> --rank-by bytes-sent
 icat hosts <session> --address 10.0.0
 icat evidence <session> --host 10.0.0.20
 icat processes <session>
+icat processes <session> --pid <pid>
 icat operations <session>
 
 # Share it.

@@ -15,7 +15,7 @@ namespace InterCat.Application;
 /// end, and so does one whose binding the evidence policy does not admit or whose two ends the capture could not tell
 /// apart from another connection's: the counts are of what the evidence says, never a guess.
 /// </remarks>
-internal static class ConnectionOpens
+public static class ConnectionOpens
 {
     /// <summary>
     /// Each instance's connections made and accepted under <paramref name="policy"/>, of those whose first record, at
@@ -29,37 +29,89 @@ internal static class ConnectionOpens
     {
         ArgumentNullException.ThrowIfNull(relations);
         var counts = new Dictionary<ProcessInstanceId, (long Made, long Accepted)>();
-        foreach (TransportRelation relation in relations.Relations)
+        foreach (TransportRelation relation in relations.Relations.Where(relation => Counted(relation, policy, native)))
         {
-            if (relation.Mechanism != Mechanism.Tcp
-                || relation.Opening == RelationOpening.NotWitnessed
-                || !SessionOverviewProjector.Admitted(relation.Strength, policy)
-                || !Within(native, relation.FirstNativeTicks))
-            {
-                continue;
-            }
-
             bool firstConnected = relation.Opening == RelationOpening.FirstConnected;
             Add(counts, (firstConnected ? relation.First : relation.Second).Id, 1, 0);
             Add(counts, (firstConnected ? relation.Second : relation.First).Id, 0, 1);
         }
 
-        foreach (TransportConnection connection in relations.OneSided)
+        foreach (TransportConnection connection in relations.OneSided.Where(connection => Counted(connection, policy, native)))
         {
-            if (connection.Mechanism != Mechanism.Tcp
-                || connection.Opening == ConnectionOpening.NotWitnessed
-                || !SessionOverviewProjector.Admitted(connection.Strength, policy)
-                || !Within(native, connection.FirstNativeTicks))
-            {
-                continue;
-            }
-
             bool connected = connection.Opening == ConnectionOpening.Connected;
             Add(counts, connection.Holder.Id, connected ? 1 : 0, connected ? 0 : 1);
         }
 
         return counts;
     }
+
+    /// <summary>
+    /// One instance's connections made and accepted under <paramref name="policy"/>, as <see cref="Count"/> counts them over
+    /// the whole session, end by end: one for each process at the other end of some - itself for one it made to itself,
+    /// which it both made and accepted - in the order of their ids, and last one with no process for those whose other end
+    /// no record holds. They add up to its count; an end it made and accepted none with is absent.
+    /// </summary>
+    public static IReadOnlyList<PeerConnections> With(TransportRelationIndex relations, EvidencePolicy policy, ProcessInstanceId instance)
+    {
+        ArgumentNullException.ThrowIfNull(relations);
+        var peers = new Dictionary<ProcessInstanceId, (ProcessInstance Peer, long Made, long Accepted)>();
+        foreach (TransportRelation relation in relations.Relations.Where(relation => Counted(relation, policy, null)))
+        {
+            (ProcessInstance connected, ProcessInstance accepted) = relation.Opening == RelationOpening.FirstConnected
+                ? (relation.First, relation.Second)
+                : (relation.Second, relation.First);
+            if (connected.Id == instance)
+            {
+                Tally(accepted, 1, 0);
+            }
+
+            if (accepted.Id == instance)
+            {
+                Tally(connected, 0, 1);
+            }
+        }
+
+        long made = 0;
+        long acceptedUnheld = 0;
+        foreach (TransportConnection connection in relations.OneSided
+            .Where(connection => connection.Holder.Id == instance && Counted(connection, policy, null)))
+        {
+            bool connected = connection.Opening == ConnectionOpening.Connected;
+            made += connected ? 1 : 0;
+            acceptedUnheld += connected ? 0 : 1;
+        }
+
+        return
+        [
+            .. peers.Values
+                .OrderBy(entry => entry.Peer.Id.ToString(), StringComparer.Ordinal)
+                .Select(entry => new PeerConnections(entry.Peer, entry.Made, entry.Accepted)),
+            .. made + acceptedUnheld > 0 ? [new PeerConnections(null, made, acceptedUnheld)] : Array.Empty<PeerConnections>(),
+        ];
+
+        void Tally(ProcessInstance peer, long madeTo, long acceptedFrom)
+        {
+            (ProcessInstance Peer, long Made, long Accepted) held = peers.GetValueOrDefault(peer.Id, (peer, 0, 0));
+            peers[peer.Id] = (peer, held.Made + madeTo, held.Accepted + acceptedFrom);
+        }
+    }
+
+    /// <summary>
+    /// Whether a paired connection counts: a TCP connection whose opening the capture saw at one end alone, admitted by the
+    /// policy, its first record within <paramref name="native"/>.
+    /// </summary>
+    private static bool Counted(TransportRelation relation, EvidencePolicy policy, TimeRange? native) =>
+        relation.Mechanism == Mechanism.Tcp
+        && relation.Opening != RelationOpening.NotWitnessed
+        && SessionOverviewProjector.Admitted(relation.Strength, policy)
+        && Within(native, relation.FirstNativeTicks);
+
+    /// <summary>Whether a one-sided connection counts, as a paired one does.</summary>
+    private static bool Counted(TransportConnection connection, EvidencePolicy policy, TimeRange? native) =>
+        connection.Mechanism == Mechanism.Tcp
+        && connection.Opening != ConnectionOpening.NotWitnessed
+        && SessionOverviewProjector.Admitted(connection.Strength, policy)
+        && Within(native, connection.FirstNativeTicks);
 
     /// <summary>
     /// Whether the session records any connection's open at all, at either end of a paired connection or at a one-sided
@@ -83,3 +135,11 @@ internal static class ConnectionOpens
         counts[process] = (held.Made + made, held.Accepted + accepted);
     }
 }
+
+/// <summary>
+/// The TCP connections one process instance made and accepted with one other end, as <see cref="ConnectionOpens"/> counts
+/// them: <see cref="Made"/> it connected to that end, and <see cref="Accepted"/> that end connected to it. <see cref="Peer"/>
+/// is the process there, or null for its connections whose other end no record holds - a remote host's, or a process the
+/// capture did not observe - which no process is at.
+/// </summary>
+public sealed record PeerConnections(ProcessInstance? Peer, long Made, long Accepted);

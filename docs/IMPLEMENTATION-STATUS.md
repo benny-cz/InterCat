@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 662 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 663 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 663 — `icat processes --pid` says who connected to whom, end by end (§5.2, §7.4, R18):**
+  - A process's detail counted the connections it made and accepted, but not with whom. Each process it exchanged data
+    with now counts the connections it made to it and accepted from it, adding up to its own: itself named as itself,
+    an end it sent nothing to listed, and the ends no record holds named "not in the capture (remote or unobserved)";
+    the JSON counts them, null where the session records no open.
+  - Debug and Release each ran 2,649 tests with revision 473's 93 failures and 4 skips, and nothing else failed.
+    Sixteen of seventeen mutations were caught: a connection it made counted as accepted, those it accepted
+    uncounted, one to itself counted once, those whose other end no record holds dropped or taken from every
+    process, an end it sent nothing to left out, "(itself)" said of the other ends, the column shown where nothing
+    was seen open, "-" explained where no row has one, the old label kept, counts given or read where the session
+    records no open, and the policy's admission or the seen opening dropped from either kind of connection's count.
+    The seventeenth, counting a one-sided UDP flow's opening, is equivalent: no UDP descriptor the capture admits
+    connects or accepts, so a flow's opening is never seen.
 
 - **Revision 662 — `icat processes --pid` points to a process's RPC calls (§7.4, R18):**
   - An RPC caller's detail said only that it made no transport record. It now states its RPC call records and that

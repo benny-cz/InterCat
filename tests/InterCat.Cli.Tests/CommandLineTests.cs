@@ -488,6 +488,94 @@ public sealed class CommandLineTests : IDisposable
             Assert.Equal((JsonValueKind.Null, JsonValueKind.Null),
                 (only.GetProperty("connectionsMade").ValueKind, only.GetProperty("connectionsAccepted").ValueKind));
         }
+
+        // Nor how many it made to or accepted from any end it exchanged data with.
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", unopened.Path, "--pid", "100", "--json")).Output))
+        {
+            JsonElement end = Assert.Single(Assert.Single(json.RootElement.GetProperty("instances").EnumerateArray())
+                .GetProperty("peers").EnumerateArray());
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null),
+                (end.GetProperty("connectionsMade").ValueKind, end.GetProperty("connectionsAccepted").ValueKind));
+        }
+
+        Assert.Matches(@"(?m)^  Other end +Sent to +Received from\r?$", (await Run("processes", unopened.Path, "--pid", "100")).Output);
+    }
+
+    [Fact(DisplayName = "§5.2: icat processes --pid says who connected to whom end by end, adding up to the instance's own count: with itself, with an end it sent nothing to, and with ends no record holds")]
+    public async Task AProcesssDetailSaysWhoConnectedEndByEnd()
+    {
+        // The client connects to the server and to another host, and sends the resolver a datagram; a probe connects to the
+        // server and sends nothing; a process connects to itself, as a self-pipe does; the resolver sends a datagram out.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe" },
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\pipe.exe" },
+            Lifecycle(5, ObservationKind.Create, 500, 5) with { ResourceName = @"C:\Tools\probe.exe" },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between("192.168.1.10:52000", "203.0.113.1:443"),
+            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 500, 30).Between("127.0.0.1:51000", "127.0.0.1:8080"),
+            Transfer(31, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 31).Between("127.0.0.1:8080", "127.0.0.1:51000"),
+            Transfer(40, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 40).Between("127.0.0.1:52000", "127.0.0.1:52001"),
+            Transfer(41, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 41).Between("127.0.0.1:52001", "127.0.0.1:52000"),
+            Transfer(42, ObservationKind.Send, AccountingSide.SendSide, 1, 400, 42).Between("127.0.0.1:52000", "127.0.0.1:52001"),
+            Transfer(43, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, 43).Between("127.0.0.1:52001", "127.0.0.1:52000"),
+            Datagram(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 50)).Between("192.168.1.10:53000", "10.0.0.53:53"),
+            Datagram(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 60)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
+            Datagram(Transfer(61, ObservationKind.Receive, AccountingSide.ReceiveSide, 4, 300, 61)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        // The server accepted both connections made to it, one carrying data and one none, each its own row.
+        (InterCatExitCode code, string server, string said) = await Run("processes", session.Path, "--pid", "200");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Connections +0 made · 2 accepted, as the capture saw them open\r?$", server);
+        Assert.Matches(@"(?m)^  Other end +Connections +Sent to +Received from\r?$", server);
+        Assert.Matches(@"(?m)^  PID 100 client\.exe +1 accepted +none +8 B\r?$", server);
+        Assert.Matches(@"(?m)^  PID 500 probe\.exe +1 accepted +none +none\r?$", server);
+        Assert.Contains("  Connections are those it made to each end and those it accepted from each, as the capture saw them open, "
+            + "and add up to its own above.\n", server.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+
+        // The client made one to the server and one to another host, whose end no record holds, and its datagram flow to the
+        // resolver opened none.
+        string client = (await Run("processes", session.Path, "--pid", "100")).Output;
+        Assert.Matches(@"(?m)^  PID 200 server\.exe +1 made +8 B +none\r?$", client);
+        Assert.Matches(@"(?m)^  PID 300 resolver\.exe +- +4 B +none\r?$", client);
+        Assert.Matches(@"(?m)^  not in the capture \(remote or unobserved\) +1 made +none +none\r?$", client);
+        Assert.Contains("and add up to its own above; - where it saw none of theirs open, as of a UDP flow, which nothing opens.",
+            client, StringComparison.Ordinal);
+
+        // A process connected to itself made the connection and accepted it, at its own row.
+        Assert.Matches(@"(?m)^  PID 400 pipe\.exe \(itself\) +1 made · 1 accepted +1 B +1 B\r?$",
+            (await Run("processes", session.Path, "--pid", "400")).Output);
+
+        // One whose ends opened nothing has no such column, and its datagrams to another host are the end not observed.
+        string resolver = (await Run("processes", session.Path, "--pid", "300")).Output;
+        Assert.Matches(@"(?m)^  Other end +Sent to +Received from\r?$", resolver);
+        Assert.Matches(@"(?m)^  not in the capture \(remote or unobserved\) +32 B +none\r?$", resolver);
+        Assert.DoesNotContain("Connections are those", resolver, StringComparison.Ordinal);
+
+        // Each instance's ends add up to its own count, the overview's, which its card reads.
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        foreach (int pid in new[] { 100, 200, 300, 400, 500 })
+        {
+            using JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--pid",
+                pid.ToString(CultureInfo.InvariantCulture), "--json")).Output);
+            JsonElement instance = json.RootElement.GetProperty("instances").EnumerateArray()
+                .Single(item => item.GetProperty("process").GetProperty("processId").GetInt32() == pid);
+            ProcessNode node = overview.Nodes.Single(candidate => candidate.ProcessId == pid);
+            JsonElement[] ends = [.. instance.GetProperty("peers").EnumerateArray()];
+            Assert.Equal((node.ConnectionsMade, node.ConnectionsAccepted),
+                (ends.Sum(end => end.GetProperty("connectionsMade").GetInt64()), ends.Sum(end => end.GetProperty("connectionsAccepted").GetInt64())));
+        }
+
+        // A UDP record names the datagram's source and destination, whichever end recorded it.
+        static ObservationRowV1 Datagram(ObservationRowV1 row) => row with { Mechanism = Mechanism.Udp, EventId = 42 };
     }
 
     [Fact(DisplayName = "R18: icat overview says what the capture covered over the session in the words the window's inspector uses")]
@@ -559,8 +647,7 @@ public sealed class CommandLineTests : IDisposable
 
         // A process whose one send recorded no size lists the end it sent to, its bytes unmeasured rather than none.
         (_, string idle, _) = await Run("processes", tcp.Path, "--pid", "300");
-        Assert.Matches(@"(?m)^  unresolved: no record in this capture holds the other end \(a remote or unobserved peer\) +unmeasured +none\r?$",
-            idle);
+        Assert.Matches(@"(?m)^  not in the capture \(remote or unobserved\) +unmeasured +none\r?$", idle);
         Assert.DoesNotContain("sent and received no transport bytes", idle, StringComparison.Ordinal);
 
         // A receiver sent its sender nothing, which reads as none beside the bytes it received from it.
