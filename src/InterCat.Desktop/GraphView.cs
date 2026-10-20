@@ -118,6 +118,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly List<(Point From, Point To)> drawnLeaders = [];
     private readonly List<Rect> drawnHeads = [];
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
+    private readonly Dictionary<GraphDisplayNode, string> names = new(ReferenceEqualityComparer.Instance);
+    private readonly List<string> placedLabelNames = [];
     private GraphDisplay? traversalFor;
     private IReadOnlyList<GraphDisplayNode> traversal = [];
     private string? problemFor;
@@ -1458,7 +1460,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         {
             GraphDisplayNode node = order[index];
             if (!points.TryGetValue(node.Key, out Point point)) continue;
-            (TextLayout name, TextLayout? detail) = LabelText(node, detailForProcesses);
+            (TextLayout name, TextLayout? detail) = LabelText(node, detailForProcesses, display);
             Size alone = new(name.Width, name.Height);
             requests.Add(new(index, node.Key, point, radii[node.Key], LabelRank(node), alone,
                 detail is null ? alone : new(Math.Max(name.Width, detail.Width), name.Height + detail.Height)));
@@ -1467,12 +1469,14 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         PlaceLabels(new Rect(Bounds.Size), requests, LabelBudget, rings, focused, points, radii, drawnHeads,
             labelPlacements, placedLabels, chosenLabels);
         placedLabelKeys.Clear();
+        placedLabelNames.Clear();
         drawnLeaders.Clear();
         for (int index = 0; index < labelPlacements.Count; index++)
         {
             (int nodeIndex, string key, Rect box, bool whole, _) = labelPlacements[index];
             placedLabelKeys.Add(key);
-            (TextLayout name, TextLayout? detail) = LabelText(order[nodeIndex], detailForProcesses);
+            placedLabelNames.Add(NameOf(order[nodeIndex], display));
+            (TextLayout name, TextLayout? detail) = LabelText(order[nodeIndex], detailForProcesses, display);
             double clearance = radii[key] + rings.Clearance(key);
 
             // A name set away from its node, where the slots beside it were taken, or nearer another node, is tied to it by
@@ -1484,7 +1488,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             }
 
             GraphDisplayNode node = order[nodeIndex];
-            Haloed(context, Halo(node.Label, 12), name, new(box.X + ((box.Width - name.Width) / 2), box.Y));
+            Haloed(context, Halo(NameOf(node, display), 12), name, new(box.X + ((box.Width - name.Width) / 2), box.Y));
             if (whole && detail is not null)
             {
                 Haloed(context, Halo(DetailOf(node), 10), detail,
@@ -1524,14 +1528,35 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     }
 
     /// <summary>
-    /// A node's name and its second line: a process's PID is optional detail; an aggregate's count is part of the compaction
-    /// disclosure and is kept whenever its name fits (§6.3). Laid out once per text and theme mode (R11).
+    /// A node's name and its second line: a process's PID is optional detail, but none under a name that is its PID
+    /// already; an aggregate's count is part of the compaction disclosure and is kept whenever its name fits (§6.3). Laid
+    /// out once per text and theme mode (R11).
     /// </summary>
-    private (TextLayout Name, TextLayout? Detail) LabelText(GraphDisplayNode node, bool detailForProcesses) => (
-        Text(node.Label, 12, strong: true, MaximumLabelWidth),
-        (node.Kind != GraphNodeKind.Process || detailForProcesses) && DetailOf(node) is { Length: > 0 } line
-            ? Text(line, 10, strong: false, MaximumLabelWidth)
-            : null);
+    private (TextLayout Name, TextLayout? Detail) LabelText(GraphDisplayNode node, bool detailForProcesses, GraphDisplay display)
+    {
+        string name = NameOf(node, display);
+        return (
+            Text(name, 12, strong: true, MaximumLabelWidth),
+            string.Equals(name, node.Label, StringComparison.Ordinal)
+                && (node.Kind != GraphNodeKind.Process || detailForProcesses) && DetailOf(node) is { Length: > 0 } line
+                ? Text(line, 10, strong: false, MaximumLabelWidth)
+                : null);
+    }
+
+    /// <summary>
+    /// The name a node is drawn with (§6.3): an opened group's own process by its PID, as the rung's table and lanes name
+    /// it - the rung's title names the program they share, which each of its names repeated - and any other node by its
+    /// label.
+    /// </summary>
+    internal static string DrawnName(GraphDisplayNode node, GraphDisplay display)
+    {
+        ArgumentNullException.ThrowIfNull(node);
+        ArgumentNullException.ThrowIfNull(display);
+        return node.Kind == GraphNodeKind.Process && display.ExpandedGroup is { } opened
+            && string.Equals(node.GroupKey, opened, StringComparison.Ordinal) && node.PidLabel is { } pid
+            ? pid
+            : node.Label;
+    }
 
     /// <summary>
     /// A node a frame may name, in the keyboard's order (<see cref="LabelRequest.Index"/>): where it is drawn and how large,
@@ -1702,6 +1727,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// <summary>Whose each of <see cref="PlacedLabels"/> is: the key of the node it names, in the same order.</summary>
     internal IReadOnlyList<string> PlacedLabelKeys => placedLabelKeys;
 
+    /// <summary>What each of <see cref="PlacedLabels"/> reads: the name drawn there, in the same order.</summary>
+    internal IReadOnlyList<string> PlacedLabelNames => placedLabelNames;
+
     /// <summary>The boxes of the arrowheads drawn in the last frame, which its labels kept clear of where they could.</summary>
     internal IReadOnlyList<Rect> DrawnHeads => drawnHeads;
 
@@ -1781,6 +1809,18 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         _ => 1,
     };
 
+    /// <summary>The name a node is drawn with (<see cref="DrawnName"/>), formatted once per node of the drawing shown.</summary>
+    private string NameOf(GraphDisplayNode node, GraphDisplay display)
+    {
+        if (!names.TryGetValue(node, out string? name))
+        {
+            name = DrawnName(node, display);
+            names[node] = name;
+        }
+
+        return name;
+    }
+
     /// <summary>A node's second label line, formatted once per node of the drawing shown.</summary>
     private string DetailOf(GraphDisplayNode node)
     {
@@ -1801,6 +1841,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             traversalFor = display;
             traversal = Traversal(display);
             details.Clear();
+            names.Clear();
         }
 
         return traversal;

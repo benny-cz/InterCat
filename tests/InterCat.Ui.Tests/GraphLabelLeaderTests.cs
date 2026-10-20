@@ -287,53 +287,64 @@ public sealed class GraphLabelLeaderTests
                 }
             }
 
-            // Edges pass beneath some names, and round the letters of every name is the pane's colour, never an edge's ink:
-            // each letter's pixels are ringed by a pixel of the name's halo, at its corners too.
-            int EdgesBreakRoundTheLetters(WriteableBitmap frame)
-            {
-                IReadOnlyList<Rect> names = graph.PlacedLabels;
-                int crossed = 0;
-                for (int index = 0; index < names.Count; index++)
-                {
-                    Rect box = names[index];
-                    if (workspace.GraphDisplay.Edges.Any(edge => graph.PointOf(edge.SourceKey) is { } from
-                            && graph.PointOf(edge.TargetKey) is { } to && Crosses(box, from, to)))
-                    {
-                        crossed++;
-                    }
-
-                    Point corner = graph.TranslatePoint(box.TopLeft, window)!.Value;
-                    for (int y = (int)corner.Y + 1; y < (int)(corner.Y + box.Height) - 1; y++)
-                    {
-                        for (int x = (int)corner.X + 1; x < (int)(corner.X + box.Width) - 1; x++)
-                        {
-                            if (!IsLetter(RenderedPixels.At(frame, new(x, y)))) continue;
-                            for (int dy = -1; dy <= 1; dy++)
-                            {
-                                for (int dx = -1; dx <= 1; dx++)
-                                {
-                                    Avalonia.Media.Color beside = RenderedPixels.At(frame, new(x + dx, y + dy));
-                                    Assert.False(IsInk(beside), $"{graph.PlacedLabelKeys[index]}: {beside} beside a letter at ({x}, {y})");
-                                }
-                            }
-                        }
-                    }
-                }
-
-                return crossed;
-            }
-
-            Assert.InRange(EdgesBreakRoundTheLetters(Settle(window)), 3, graph.PlacedLabels.Count);
+            // Edges pass beneath some names, and round the letters of every name is the pane's colour, never an edge's ink.
+            Assert.InRange(EdgesBreakRoundTheLetters(window, graph, workspace.GraphDisplay, Settle(window)), 3, graph.PlacedLabels.Count);
             NoneAgainstAnother(GraphView.NameSpacing);
             window.Width = 1456;
             window.Height = 939;
-            Assert.InRange(EdgesBreakRoundTheLetters(Settle(window)), 3, graph.PlacedLabels.Count);
+            Assert.InRange(EdgesBreakRoundTheLetters(window, graph, workspace.GraphDisplay, Settle(window)), 3, graph.PlacedLabels.Count);
             NoneAgainstAnother(new Thickness(4, 1));
 
             // svchost.exe's endpoint mapper is its one process drawn on its own, which its group says of one.
             workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");
             Assert.StartsWith("30 processes · 9 drawn as one node; Enter opens the group · 1 drawn on its own · 20 without a "
                 + "relationship", workspace.SelectionSubtitle, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
+    [AvaloniaFact(DisplayName = "§6.3: an opened group's own processes are named by their PIDs, as its table names them, and its peers by their programs")]
+    public async Task AnOpenedGroupsProcessesAreNamedByTheirPids()
+    {
+        // Each of chrome.exe's processes read "chrome.exe", its rung's title already, telling them apart not at all.
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "chrome.exe");
+            Assert.True(workspace.Descend());
+            await workspace.LayoutReady;
+
+            // The halo is laid round the name drawn, so an edge passing beneath breaks round a PID's letters as round a name's.
+            GraphDisplay display = workspace.GraphDisplay;
+            Assert.InRange(EdgesBreakRoundTheLetters(window, graph, display, Settle(window)), 1, graph.PlacedLabels.Count);
+            Dictionary<string, string> named = graph.PlacedLabelKeys.Zip(graph.PlacedLabelNames)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            GraphDisplayNode[] members = [.. display.Nodes.Where(node => node.Kind == GraphNodeKind.Process
+                && node.GroupKey == display.ExpandedGroup && named.ContainsKey(node.Key))];
+            GraphDisplayNode[] peers = [.. display.Nodes.Where(node => node.Kind == GraphNodeKind.Process
+                && node.GroupKey != display.ExpandedGroup && named.ContainsKey(node.Key))];
+            Assert.True(members.Length >= 5, string.Join(", ", named.Values));
+            Assert.All(members, member => Assert.Equal(member.PidLabel, named[member.Key]));
+            Assert.All(members, member => Assert.Contains(workspace.RungRows, row => row.Label == member.PidLabel));
+            Assert.NotEmpty(peers);
+            Assert.All(peers, peer => Assert.Equal(peer.Label, named[peer.Key]));
+
+            // In a graph this small a process's PID is its name's second line, but not under a name that is its PID.
+            Dictionary<string, Rect> boxes = graph.PlacedLabelKeys.Zip(graph.PlacedLabels)
+                .ToDictionary(pair => pair.First, pair => pair.Second, StringComparer.Ordinal);
+            double twoLines = peers.Max(peer => boxes[peer.Key].Height);
+            Assert.All(members, member => Assert.True(boxes[member.Key].Height < twoLines - 4, $"{boxes[member.Key].Height} of {twoLines}"));
         }
         finally
         {
@@ -450,6 +461,44 @@ public sealed class GraphLabelLeaderTests
     }
 
     /// <summary>A pixel of a name's letters: the text's light ink, near white.</summary>
+    /// <summary>
+    /// Each letter of every name drawn in <paramref name="frame"/> ringed by its halo, at its corners too, never beside an
+    /// edge's ink; how many names an edge passes beneath.
+    /// </summary>
+    private static int EdgesBreakRoundTheLetters(Window window, GraphView graph, GraphDisplay display, WriteableBitmap frame)
+    {
+        IReadOnlyList<Rect> names = graph.PlacedLabels;
+        int crossed = 0;
+        for (int index = 0; index < names.Count; index++)
+        {
+            Rect box = names[index];
+            if (display.Edges.Any(edge => graph.PointOf(edge.SourceKey) is { } from
+                    && graph.PointOf(edge.TargetKey) is { } to && Crosses(box, from, to)))
+            {
+                crossed++;
+            }
+
+            Point corner = graph.TranslatePoint(box.TopLeft, window)!.Value;
+            for (int y = (int)corner.Y + 1; y < (int)(corner.Y + box.Height) - 1; y++)
+            {
+                for (int x = (int)corner.X + 1; x < (int)(corner.X + box.Width) - 1; x++)
+                {
+                    if (!IsLetter(RenderedPixels.At(frame, new(x, y)))) continue;
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            Avalonia.Media.Color beside = RenderedPixels.At(frame, new(x + dx, y + dy));
+                            Assert.False(IsInk(beside), $"{graph.PlacedLabelKeys[index]}: {beside} beside a letter at ({x}, {y})");
+                        }
+                    }
+                }
+            }
+        }
+
+        return crossed;
+    }
+
     private static bool IsLetter(Avalonia.Media.Color pixel) => Math.Min(pixel.R, Math.Min(pixel.G, pixel.B)) >= 200;
 
     /// <summary>A pixel of an edge's ink: a mechanism's hue, which neither the text nor the pane is.</summary>
