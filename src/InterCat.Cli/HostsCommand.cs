@@ -160,7 +160,8 @@ internal static class HostsCommand
         IReadOnlyList<OtherHost> hosts = traffic is null ? OtherHost.Of(overview.HostLinks) : [.. traffic.Select(host => host.Host)];
         int processes = overview.HostLinks.Select(link => link.Process).Distinct().Count();
         Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
-        Dictionary<string, (ProcessInstanceId Process, long Records)[]> reachers = Reachers(overview.HostLinks);
+        IReadOnlyDictionary<string, IReadOnlyList<(ProcessInstanceId Process, long Records)>> reachers =
+            HostLinkText.Reachers(overview.HostLinks);
         if (json)
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
@@ -350,33 +351,12 @@ internal static class HostsCommand
     }
 
     /// <summary>
-    /// The processes whose connections ran to each address, made or accepted, the busiest there first by the records their
-    /// connections to it hold, then by instance, as --address lists them: one that reached it over both transports once,
-    /// its records summed.
-    /// </summary>
-    internal static Dictionary<string, (ProcessInstanceId Process, long Records)[]> Reachers(IEnumerable<HostLink> links) =>
-        links
-            .SelectMany(link => link.Addresses.Select(address => (link.Process, address.Address, address.Records)))
-            .GroupBy(reach => reach.Address, StringComparer.OrdinalIgnoreCase)
-            .ToDictionary(
-                host => host.Key,
-                host => host
-                    .GroupBy(reach => reach.Process)
-                    .Select(process => (Process: process.Key, Records: process.Sum(reach => reach.Records)))
-                    .OrderByDescending(process => process.Records)
-                    .ThenBy(process => process.Process.ToString(), StringComparer.Ordinal)
-                    .ToArray(),
-                StringComparer.OrdinalIgnoreCase);
-
-    /// <summary>
-    /// The processes that reached a host as a table's cell names them, as an RPC channel's row names who served it: the
-    /// busiest, "updater.exe · PID 310", and how many more there are, "browser.exe · PID 300 and 4 more"; "-" for none.
+    /// The processes that reached a host as a table's cell names them (<see cref="HostLinkText.ReachedBy"/>): the busiest,
+    /// "updater.exe · PID 310", and how many more there are, "browser.exe · PID 300 and 4 more"; "-" for none.
     /// </summary>
     internal static string ProcessesCell(IReadOnlyList<(ProcessInstanceId Process, long Records)>? reachers,
         IReadOnlyDictionary<ProcessInstanceId, ProcessNode> nodes) =>
-        reachers is not { Count: > 0 } ? "-"
-            : CollectorText.Named(nodes[reachers[0].Process])
-                + (reachers.Count > 1 ? string.Create(CultureInfo.CurrentCulture, $" and {reachers.Count - 1:N0} more") : string.Empty);
+        reachers is not { Count: > 0 } ? "-" : HostLinkText.ReachedBy(reachers, process => CollectorText.Named(nodes[process]));
 
     /// <summary>A ranking as --rank-by names it.</summary>
     private static string RankName(RankingMetric metric) => metric switch

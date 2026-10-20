@@ -36,6 +36,42 @@ public static class HostLinkText
     }
 
     /// <summary>
+    /// The processes whose connections ran to each address <paramref name="links"/> reached, made or accepted, the busiest
+    /// there first by the records their connections to it hold, then by instance: one that reached it over both transports
+    /// once, its records summed. Who is at the address is not observed (P7).
+    /// </summary>
+    public static IReadOnlyDictionary<string, IReadOnlyList<(ProcessInstanceId Process, long Records)>> Reachers(
+        IEnumerable<HostLink> links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        return links
+            .SelectMany(link => link.Addresses.Select(address => (link.Process, address.Address, address.Records)))
+            .GroupBy(reach => reach.Address, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                host => host.Key,
+                host => (IReadOnlyList<(ProcessInstanceId Process, long Records)>)[.. host
+                    .GroupBy(reach => reach.Process)
+                    .Select(process => (Process: process.Key, Records: process.Sum(reach => reach.Records)))
+                    .OrderByDescending(process => process.Records)
+                    .ThenBy(process => process.Process.ToString(), StringComparer.Ordinal)],
+                StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// The processes that reached a host, as a narrow row names them and an RPC channel's row names who served it: the
+    /// busiest, "updater.exe · PID 310", and how many more there are, "browser.exe · PID 300 and 4 more". Empty for none.
+    /// </summary>
+    public static string ReachedBy(IReadOnlyList<(ProcessInstanceId Process, long Records)> reachers,
+        Func<ProcessInstanceId, string> nameOf)
+    {
+        ArgumentNullException.ThrowIfNull(reachers);
+        ArgumentNullException.ThrowIfNull(nameOf);
+        return reachers.Count == 0 ? string.Empty
+            : nameOf(reachers[0].Process)
+                + (reachers.Count > 1 ? string.Create(CultureInfo.CurrentCulture, $" and {reachers.Count - 1:N0} more") : string.Empty);
+    }
+
+    /// <summary>
     /// What reached one other host, transport by transport, and from how many processes: "12 TCP connections from 2
     /// processes", "2 TCP connections and 3 UDP flows from 1 process". Where every host named is one process's,
     /// <paramref name="countsProcesses"/> false leaves the process out: "2 TCP connections and 3 UDP flows".

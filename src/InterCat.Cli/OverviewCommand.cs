@@ -165,7 +165,8 @@ internal static class OverviewCommand
             // The hosts they ran to, the busiest first by the records their connections hold, as the Other hosts node names
             // them, each with the busiest process there: where the connections ran, and never who is at them (P7).
             IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
-            Dictionary<string, (ProcessInstanceId Process, long Records)[]> reachers = HostsCommand.Reachers(overview.HostLinks);
+            IReadOnlyDictionary<string, IReadOnlyList<(ProcessInstanceId Process, long Records)>> reachers =
+                HostLinkText.Reachers(overview.HostLinks);
             bool accepting = hosts.Take(5).Any(host => host.Accepted > 0);
             ConsoleUi.Table(
                 ["Busiest other host", "Processes", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(),

@@ -88,8 +88,8 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     internal const int HostsListed = 100;
 
-    // The hosts the chosen Other hosts node stands for, worked out once for each drawing (R11).
-    private (GraphDisplay Display, IReadOnlyList<OtherHost> Hosts)? listedHosts;
+    // The hosts the chosen Other hosts node stands for, and who reached each, worked out once for each drawing (R11).
+    private (GraphDisplay Display, IReadOnlyList<OtherHost> Hosts, IReadOnlyDictionary<string, string> ReachedBy)? listedHosts;
 
     /// <summary>How many hosts an edge to the other hosts names on its card, on one line.</summary>
     private const int HostsOnEdgeCard = 3;
@@ -150,17 +150,18 @@ public sealed partial class WorkspaceViewModel
                 + CountText.Of(transport.Sum(link => link.Records), "record"));
         }
 
-        // The busiest hosts by the records their connections hold, a line each beneath what heads them; one process's
-        // need not say whose they are.
+        // The busiest hosts by the records their connections hold, a line each beneath what heads them, each saying who
+        // reached it; one process's need not say whose they are.
         IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
         if (hosts.Count > 0)
         {
+            IReadOnlyDictionary<string, string> reachedBy = ReachedByAddress(links);
             lines.Add(hosts.Count <= HostsOnCard
                 ? CountText.Agree(hosts.Count, "Host:", "Hosts:")
                 : string.Create(CultureInfo.CurrentCulture, $"Busiest {HostsOnCard} of {hosts.Count:N0} hosts:"));
             lines.AddRange(hosts.Take(HostsOnCard).Select(host => "  " + host.Address
                 + (AddressScope.Of(host.Address) is { } scope ? " (" + scope + ")" : string.Empty) + " · "
-                + HostLinkText.Reached(host, hub.ConnectedProcesses > 1)
+                + ReachedFrom(host, hub.ConnectedProcesses > 1, reachedBy)
                 + (HostLinkText.Accepted(host) is { Length: > 0 } accepted ? " · " + accepted : string.Empty)
                 + " · " + CountText.Of(host.Records, "record")));
         }
@@ -289,10 +290,38 @@ public sealed partial class WorkspaceViewModel
             return known.Hosts;
         }
 
-        IReadOnlyList<OtherHost> hosts = OtherHost.Of(HubLinks(graphDisplay));
-        listedHosts = (graphDisplay, hosts);
+        HostLink[] links = HubLinks(graphDisplay);
+        IReadOnlyList<OtherHost> hosts = OtherHost.Of(links);
+        listedHosts = (graphDisplay, hosts, ReachedByAddress(links));
         return hosts;
     }
+
+    /// <summary>Who reached each host <see cref="ListedHosts"/> holds, by its address; none while it holds none.</summary>
+    private IReadOnlyDictionary<string, string> ListedReachedBy() =>
+        ListedHosts().Count > 0 && listedHosts is { } known ? known.ReachedBy : new Dictionary<string, string>();
+
+    /// <summary>
+    /// Who reached each host <paramref name="links"/> ran to, as `icat hosts` names them: the busiest process there and how
+    /// many more (<see cref="HostLinkText.ReachedBy"/>), by address.
+    /// </summary>
+    private Dictionary<string, string> ReachedByAddress(IEnumerable<HostLink> links)
+    {
+        Dictionary<ProcessInstanceId, ProcessNode> processes = wholeSnapshot.Processes.ToDictionary(process => process.Id);
+        return HostLinkText.Reachers(links).ToDictionary(
+            host => host.Key,
+            host => HostLinkText.ReachedBy(host.Value,
+                process => processes.TryGetValue(process, out ProcessNode? node) ? node.NameWithPid : process.ToString()),
+            StringComparer.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// What reached a host, as Other hosts' list and card say it: its transports and, where several drawn processes'
+    /// connections run to the other hosts, who reached this one - "5 UDP flows from msedge.exe · PID 3400 and 4 more".
+    /// </summary>
+    private static string ReachedFrom(OtherHost host, bool several, IReadOnlyDictionary<string, string> reachedBy) =>
+        several && reachedBy.TryGetValue(host.Address, out string? by) && by.Length > 0
+            ? HostLinkText.Reached(host, countsProcesses: false) + " from " + by
+            : HostLinkText.Reached(host, several);
 
     /// <summary>
     /// The hosts the inspector lists while Other hosts is chosen (§6.3), the busiest first and at most
@@ -305,9 +334,10 @@ public sealed partial class WorkspaceViewModel
         {
             bool several = SelectedCluster is { ConnectedProcesses: > 1 };
             bool updating = StandInHostTraffic is not null;
+            IReadOnlyDictionary<string, string> reachedBy = ListedReachedBy();
             return [.. RankedHosts().Take(HostsListed).Select(entry => new HostRow(entry.Host.Address,
                 (AddressScope.Of(entry.Host.Address) is { } scope ? scope + " · " : string.Empty)
-                    + HostLinkText.Reached(entry.Host, several)
+                    + ReachedFrom(entry.Host, several, reachedBy)
                     + (entry.Host.Ports.Count == 0 ? string.Empty : " · " + HostLinkText.Ports(entry.Host.Ports))
                     + (HostLinkText.Accepted(entry.Host) is { Length: > 0 } accepted ? " · " + accepted : string.Empty)
                     + " · " + CountText.Of(entry.Host.Records, "record")

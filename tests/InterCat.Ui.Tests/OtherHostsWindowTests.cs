@@ -357,7 +357,7 @@ public sealed class OtherHostsWindowTests
 
             // Opened, Other hosts lists the two hosts it still stands for, now one process's, so each row says less; the one
             // chosen is still chosen there.
-            Assert.Equal("1 TCP connection from 1 process · port 443 · 2 records", workspace.ChosenHostRow?.Detail);
+            Assert.Equal("1 TCP connection from browser.exe · PID 300 · port 443 · 2 records", workspace.ChosenHostRow?.Detail);
             Assert.True(workspace.OpenGraphNode(hub.Key));
             await workspace.LayoutReady;
             Dispatch();

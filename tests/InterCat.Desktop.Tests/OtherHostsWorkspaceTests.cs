@@ -176,8 +176,8 @@ public sealed class OtherHostsWorkspaceTests
         GraphDisplayEdge Edge(int pid, Mechanism mechanism) => drawn.Edges.Single(edge => edge.ToHosts && edge.Mechanism == mechanism
             && edge.SourceKey == drawn.NodeOf(workspace.Snapshot.Processes.Single(node => node.ProcessId == pid).Id)!.Key);
 
-        // A host is counted once whichever processes and transports reached it, the busiest by records first: the browser's
-        // TCP and QUIC to one, the browser's and the updater's TCP to another.
+        // A host is counted once whichever processes and transports reached it, the busiest by records first, each naming who
+        // reached it: the browser's TCP and QUIC to one, the updater's TCP and the browser's to another, the busier first.
         HoverCard card = workspace.DescribeGraphHover(hub.Key)!;
         Assert.Equal(
             [
@@ -185,9 +185,9 @@ public sealed class OtherHostsWorkspaceTests
                 "7 TCP connections from 2 processes to 5 hosts · 10 records",
                 "2 UDP flows from 2 processes with 2 hosts · 4 records",
                 "Busiest 3 of 6 hosts:",
-                "  142.250.1.1 · 2 TCP connections and 1 UDP flow from 1 process · 5 records",
-                "  20.42.65.1 · 2 TCP connections from 2 processes · 4 records",
-                "  8.8.8.8 · 1 UDP flow from 1 process · 2 records",
+                "  142.250.1.1 · 2 TCP connections and 1 UDP flow from browser.exe · PID 300 · 5 records",
+                "  20.42.65.1 · 2 TCP connections from updater.exe · PID 310 and 1 more · 4 records",
+                "  8.8.8.8 · 1 UDP flow from svchost.exe · PID 320 · 2 records",
             ],
             card.Lines.Take(7));
         Assert.StartsWith("Scope: ", card.Lines[7], StringComparison.Ordinal);
@@ -203,12 +203,12 @@ public sealed class OtherHostsWorkspaceTests
             + "below has its records highlighted", workspace.SelectionSubtitle, StringComparison.Ordinal);
         Assert.Equal(
             [
-                "142.250.1.1 | 2 TCP connections and 1 UDP flow from 1 process · port 443 · 5 records",
-                "20.42.65.1 | 2 TCP connections from 2 processes · port 443 · 4 records",
-                "8.8.8.8 | 1 UDP flow from 1 process · port 53 · 2 records",
-                "13.107.4.50 | 1 TCP connection from 1 process · port 443 · 1 record",
-                "52.1.1.1 | 1 TCP connection from 1 process · port 443 · 1 record",
-                "52.1.1.2 | 1 TCP connection from 1 process · port 443 · 1 record",
+                "142.250.1.1 | 2 TCP connections and 1 UDP flow from browser.exe · PID 300 · port 443 · 5 records",
+                "20.42.65.1 | 2 TCP connections from updater.exe · PID 310 and 1 more · port 443 · 4 records",
+                "8.8.8.8 | 1 UDP flow from svchost.exe · PID 320 · port 53 · 2 records",
+                "13.107.4.50 | 1 TCP connection from updater.exe · PID 310 · port 443 · 1 record",
+                "52.1.1.1 | 1 TCP connection from browser.exe · PID 300 · port 443 · 1 record",
+                "52.1.1.2 | 1 TCP connection from browser.exe · PID 300 · port 443 · 1 record",
             ],
             workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
 
@@ -350,9 +350,10 @@ public sealed class OtherHostsWorkspaceTests
         Assert.True(workspace.ListsHosts);
         Assert.Equal("Its 10 hosts, the busiest first", workspace.HostsHeading);
         Assert.Equal([.. Enumerable.Range(1, 10).Select(index => $"52.0.0.{index}")], workspace.HostRows.Select(row => row.Address));
-        Assert.Equal("2 TCP connections from 2 processes · port 443 · 11 records", workspace.HostRows[0].Detail);
-        Assert.Equal("1 TCP connection from 1 process · port 443 · 1 record", workspace.HostRows[^1].Detail);
-        Assert.Equal("52.0.0.1, 2 TCP connections from 2 processes · port 443 · 11 records. Press E to list the records of its "
+        Assert.Equal("2 TCP connections from browser.exe · PID 300 and 1 more · port 443 · 11 records", workspace.HostRows[0].Detail);
+        Assert.Equal("1 TCP connection from browser.exe · PID 300 · port 443 · 1 record", workspace.HostRows[^1].Detail);
+        Assert.Equal("52.0.0.1, 2 TCP connections from browser.exe · PID 300 and 1 more · port 443 · 11 records. Press E to list "
+            + "the records of its "
             + "connections, or Enter to find the processes that reached it.", workspace.HostRows[0].AccessibleName);
         Assert.False(workspace.HasHostsNote);
         Assert.Equal(string.Empty, workspace.HostsNote);
@@ -444,15 +445,16 @@ public sealed class OtherHostsWorkspaceTests
         workspace.SelectGraphNode(hub.Key);
         Assert.Equal(
             [
-                "239.255.255.250 | multicast · 1 UDP flow from 1 process · port 1900 · 3 records",
-                "192.168.1.20 | private · 1 TCP connection from 1 process · port 445 · 2 records",
-                "142.250.1.1 | 1 TCP connection from 1 process · port 443 · 1 record",
+                "239.255.255.250 | multicast · 1 UDP flow from svchost.exe · PID 320 · port 1900 · 3 records",
+                "192.168.1.20 | private · 1 TCP connection from share.exe · PID 330 · port 445 · 2 records",
+                "142.250.1.1 | 1 TCP connection from browser.exe · PID 300 · port 443 · 1 record",
             ],
             workspace.HostRows.Select(row => row.Address + " | " + row.Detail));
 
         // Other hosts' card says it beside the address of each host it names.
-        Assert.Contains("  239.255.255.250 (multicast) · 1 UDP flow from 1 process · 3 records", workspace.DescribeGraphHover(hub.Key)!.Lines);
-        Assert.Contains("  142.250.1.1 · 1 TCP connection from 1 process · 1 record", workspace.DescribeGraphHover(hub.Key)!.Lines);
+        Assert.Contains("  239.255.255.250 (multicast) · 1 UDP flow from svchost.exe · PID 320 · 3 records",
+            workspace.DescribeGraphHover(hub.Key)!.Lines);
+        Assert.Contains("  142.250.1.1 · 1 TCP connection from browser.exe · PID 300 · 1 record", workspace.DescribeGraphHover(hub.Key)!.Lines);
 
         // Drawn on its own, a multicast group says so beneath its address, and its card and description what it means.
         Assert.True(workspace.OpenGraphNode(hub.Key));
