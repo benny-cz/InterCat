@@ -118,10 +118,22 @@ internal static class OverviewCommand
             .Take(5)];
         if (busiest.Length > 0)
         {
+            // Who opened their connections, as icat processes and each process's card count them, where the session records
+            // any open: otherwise how many each made is unknown rather than none, and the column is left out.
+            bool opened = overview.ConnectionOpensRecorded;
             ConsoleUi.Table(
-                ["Busiest process", "Own records", "Mostly"],
+                ["Busiest process", "Own records", "Mostly", .. opened ? ["Connections"] : Array.Empty<string>()],
                 [.. busiest.Select(node => (IReadOnlyList<string>)
-                    [CollectorText.Named(node), ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism)])]);
+                [
+                    CollectorText.Named(node), ConsoleUi.Count(node.Records), EvidenceRowText.MechanismName(node.Activity[0].Mechanism),
+                    .. opened ? [ConnectionsOf(node)] : Array.Empty<string>(),
+                ])]);
+            if (opened)
+            {
+                ConsoleUi.Note("Connections are each one's TCP connections made and accepted, as the capture saw them open. "
+                    + "icat processes <directory> --pid <PID> names who it connected to and who connected to it, and "
+                    + "--rank-by connections-made or connections-accepted lists the processes that did so most.");
+            }
         }
 
         // The window's relationship table in brief: the busiest relationships, each arrow pointing at the process its
@@ -230,6 +242,14 @@ internal static class OverviewCommand
         };
     }
 
+    /// <summary>
+    /// The TCP connections a process made and accepted over the session, as icat processes lists them: "41 made · 34
+    /// accepted", or "none" where the capture saw none of its own open.
+    /// </summary>
+    private static string ConnectionsOf(ProcessNode node) => node.ConnectionsMade + node.ConnectionsAccepted == 0
+        ? "none"
+        : string.Create(CultureInfo.CurrentCulture, $"{node.ConnectionsMade:N0} made · {node.ConnectionsAccepted:N0} accepted");
+
     /// <summary>The connections a process accepted from other hosts, with its own ports they arrived at: "2 at 443 and 8443", "-".</summary>
     private static string Accepted(IEnumerable<HostLink> links)
     {
@@ -245,7 +265,8 @@ internal static class OverviewCommand
         ConsoleUi.Line("  timeline.");
         ConsoleUi.Line("  The graph is narrower than the session. --json returns the Desktop's exact numeric bundle.");
         ConsoleUi.Line("  It says what the capture covered, mechanism by mechanism, in the words the window's inspector");
-        ConsoleUi.Line("  uses beneath its time scope, and lists the busiest relationships, each arrow pointing at the");
+        ConsoleUi.Line("  uses beneath its time scope, the busiest processes with the connections each made and accepted");
+        ConsoleUi.Line("  where the capture saw them open, and the busiest relationships, each arrow pointing at the");
         ConsoleUi.Line("  process connected to where the capture saw the connections open. Where two programs' processes");
         ConsoleUi.Line("  share more than one relationship, it lists the busiest pairs of programs too, their");
         ConsoleUi.Line("  relationships summed.");

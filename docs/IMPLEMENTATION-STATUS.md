@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 665 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 666 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,14 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 666 — `icat overview`'s busiest processes say the connections each made and accepted (§5.2, R18):**
+  - Its first table said what each process mostly did, nothing of who connected. Where the session records opens, a
+    column says "41 made · 34 accepted" or "none", as `icat processes` counts them, and a note points to `icat
+    processes --pid` for with whom and to `--rank-by connections-made` or `connections-accepted`.
+  - Debug and Release each ran 2,652 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    five mutations were caught: the column shown where the session records no open, or never, none said as zeros,
+    made and accepted swapped, and the note said only where no open is recorded.
 
 - **Revision 665 — a chosen process's inspector names the processes it talked with (§6.3, §6.8):**
   - Chosen, a process said how many connections it made and accepted but not with whom. The inspector now lists its

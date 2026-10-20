@@ -167,6 +167,16 @@ public sealed class OverviewCensusTests
         // Each two of its programs share one relationship, which that table names, so none sums them.
         Assert.DoesNotContain("Busiest pair of programs", text, Ordinal);
 
+        // Its busiest processes say the connections each made and accepted, as icat processes counts them - the server's
+        // three accepted counting the one from another host - and where to read with whom.
+        Assert.Matches(@"(?m)^  Busiest process +Own records +Mostly +Connections\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +9 +TCP +1 made · 3 accepted\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe · PID 100 +6 +TCP +1 made · 0 accepted\r?$", text);
+        Assert.Matches(@"(?m)^  helper\.exe · PID 300 +5 +TCP +1 made · 1 accepted\r?$", text);
+        Assert.Contains("Connections are each one's TCP connections made and accepted, as the capture saw them open. icat "
+            + "processes <directory> --pid <PID> names who it connected to and who connected to it, and --rank-by "
+            + "connections-made or connections-accepted lists the processes that did so most.", Regex.Replace(text, @"\s+", " "), Ordinal);
+
         // The server accepted its connection from another host, at its own 445, which its row and the host's say.
         Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);
         Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection to 1 host +1 at 445\r?$", text);
@@ -190,12 +200,46 @@ public sealed class OverviewCensusTests
         (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  PID 400 → PID 1960 +RPC +8\r?$", text);
+
+        // It records no connection's open, so its busiest processes say nothing of connections, which would read as none.
+        Assert.Matches(@"(?m)^  Busiest process +Own records +Mostly\r?$", text);
+        Assert.DoesNotContain("Connections are each one's", text, Ordinal);
         Assert.Contains("1 relationship in all. An arrow points at the process connected to, where the capture saw the "
             + "connections open, or called, where an RPC call was linked to the call that served it, and ⇄ joins two that each "
             + "did so to the other; two joined by \"and\" were seen opening none. Records are both ends'.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
         Assert.Contains("which called which over RPC only where each call was linked to the call that served it",
             Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "§5.2: icat overview's busiest processes say none for one the capture saw open no connection of, where it saw others' open")]
+    public async Task IcatOverviewSaysNoneForABusyProcessThatOpenedNone()
+    {
+        // The client connects to the server; a resolver, the busiest, sends three datagrams to another host, which open nothing.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe", SessionRelativeTicks = 120 },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 200 },
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 210 },
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 220 },
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 230 },
+            .. Enumerable.Range(20, 3).Select(ticks => Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 32, 300, (ulong)ticks)
+                .Between("192.168.1.10:53000", "10.0.0.53:53") with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = ticks * 10 }),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  resolver\.exe · PID 300 +4 +UDP +none\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe · PID 100 +3 +TCP +1 made · 0 accepted\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +3 +TCP +0 made · 1 accepted\r?$", text);
     }
 
     [Fact(DisplayName = "§6.3: icat overview sums the relationships of programs that run several processes by the two programs at their ends, each pair named by who connected to whom")]
