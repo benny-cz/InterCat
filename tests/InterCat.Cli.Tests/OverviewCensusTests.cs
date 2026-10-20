@@ -164,6 +164,9 @@ public sealed class OverviewCensusTests
             + "none. Records are both ends'.", Regex.Replace(text, @"\s+", " "), Ordinal);
         Assert.True(text.IndexOf("client.exe · PID 100 → server.exe", Ordinal) < text.IndexOf(" ⇄ ", Ordinal));
 
+        // Each two of its programs share one relationship, which that table names, so none sums them.
+        Assert.DoesNotContain("Busiest pair of programs", text, Ordinal);
+
         // The server accepted its connection from another host, at its own 445, which its row and the host's say.
         Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);
         Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection to 1 host +1 at 445\r?$", text);
@@ -173,6 +176,47 @@ public sealed class OverviewCensusTests
         // The caveat says what the order of an edge's ends is, and where who connected is said.
         Assert.Contains("An edge's source and target are a stable display order, not a claim about direction: which process "
             + "made its connections is said only where the capture saw them open", Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
+    [Fact(DisplayName = "§6.3: icat overview sums the relationships of programs that run several processes by the two programs at their ends, each pair named by who connected to whom")]
+    public async Task IcatOverviewListsTheBusiestPairsOfPrograms()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 101, 2) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 200, 3) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 120 },
+
+            // Both of the browser's processes connect to the server's 8080, and its second to its first's 9222.
+            .. Connection(10, 100, "127.0.0.1:50000", 200, "127.0.0.1:8080"),
+            .. Connection(20, 101, "127.0.0.1:50001", 200, "127.0.0.1:8080"),
+            .. Connection(30, 101, "127.0.0.1:50002", 100, "127.0.0.1:9222"),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Relationships +3\r?$", text);
+
+        // The busiest first: the browser's two processes to the server, then the browser's own two to each other.
+        Assert.Matches(@"(?m)^  Busiest pair of programs +Relationships +Processes +Over +Records\r?$", text);
+        Assert.Matches(@"(?m)^  browser\.exe → server\.exe +2 +3 +TCP +6\r?$", text);
+        Assert.Matches(@"(?m)^  browser\.exe → browser\.exe +1 +2 +TCP +3\r?$", text);
+        Assert.True(text.IndexOf("browser.exe → server.exe", Ordinal) < text.IndexOf("browser.exe → browser.exe", Ordinal));
+        Assert.Contains("2 pairs of programs in all, each program by its executable: one named at both ends is its own processes "
+            + "connecting to each other. Arrows and records read as above, and Processes counts those at either end.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        static ObservationRowV1[] Connection(long at, int maker, string from, int taker, string to) =>
+        [
+            Transfer(at, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, maker, (ulong)at)
+                .Between(from, to) with { SessionRelativeTicks = 200 + at },
+            Transfer(at + 1, ObservationKind.Send, AccountingSide.SendSide, 8, maker, (ulong)at + 1)
+                .Between(from, to) with { SessionRelativeTicks = 201 + at },
+            Transfer(at + 2, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, taker, (ulong)at + 2)
+                .Between(to, from) with { SessionRelativeTicks = 202 + at },
+        ];
     }
 
     [Fact(DisplayName = "§6.8: a relationship the overview lists names first the process that made its connections, whichever end it is drawn from")]

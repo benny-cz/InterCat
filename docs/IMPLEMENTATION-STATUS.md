@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 655 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 656 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 656 — `icat overview` lists the busiest pairs of programs (§6.3, R18):**
+  - On the heavy machine four of its five busiest relationships were chrome.exe's own processes. It now also sums them
+    by the two programs at their ends, maker first, with their relationships, processes, mechanisms and records -
+    svchost.exe → svchost.exe, chrome.exe → chrome.exe, msedge.exe → msedge.exe, Code.exe → node.exe, svchost.exe →
+    lsass.exe - wherever two programs share more than one relationship.
+  - Debug and Release each ran 2,640 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    nine mutations were caught: the maker not named first, no tie broken by name, a program's own connections split
+    as two ways, fewer relationships ranked first, a target's process uncounted, a connection counted in drawn
+    order, both ways read as one, the table listed where each pair shares one relationship, and only its first row
+    listed.
 
 - **Revision 655 — the investigation's notes and candidate joins say why they list none (§8.3):**
   - A fresh investigation's Notes tab and, before a search, its Candidate joins tab showed blank boxes. Each now says

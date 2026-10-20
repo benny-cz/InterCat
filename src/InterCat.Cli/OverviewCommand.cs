@@ -140,6 +140,24 @@ internal static class OverviewCommand
             ConsoleUi.Note(CountText.Of(overview.Edges.Count, "relationship") + " in all. An arrow points at the process "
                 + "connected to, where the capture saw the connections open, and ⇄ joins two that each connected to the other; "
                 + "two joined by \"and\" were seen opening none. Records are both ends'.");
+
+            // The same relationships summed by the programs at their ends, as the graph's edges between groups sum them:
+            // which programs talk to which on a busy machine, however many processes each runs. Where no two programs
+            // share more than one relationship, the table above already says it all.
+            IReadOnlyList<ProgramPair> programs = ProgramPairs.Of(overview.Edges, overview.Nodes, overview.Groups);
+            if (programs.Count < overview.Edges.Count)
+            {
+                ConsoleUi.Table(
+                    ["Busiest pair of programs", "Relationships", "Processes", "Over", "Records"],
+                    [.. programs.Take(5).Select(pair => (IReadOnlyList<string>)
+                    [
+                        pair.Joined, ConsoleUi.Count(pair.Relationships), ConsoleUi.Count(pair.Processes), pair.Over,
+                        ConsoleUi.Count(pair.Records),
+                    ])]);
+                ConsoleUi.Note(CountText.Of(programs.Count, "pair") + " of programs in all, each program by its executable: one "
+                    + "named at both ends is its own processes connecting to each other. Arrows and records read as above, and "
+                    + "Processes counts those at either end.");
+            }
         }
 
         // The processes whose connections ran to other hosts, as the window's graph draws them to its Other hosts node: the
@@ -222,6 +240,8 @@ internal static class OverviewCommand
         ConsoleUi.Line("  The graph is narrower than the session. --json returns the Desktop's exact numeric bundle.");
         ConsoleUi.Line("  It says what the capture covered, mechanism by mechanism, in the words the window's inspector");
         ConsoleUi.Line("  uses beneath its time scope, and lists the busiest relationships, each arrow pointing at the");
-        ConsoleUi.Line("  process connected to where the capture saw the connections open.");
+        ConsoleUi.Line("  process connected to where the capture saw the connections open. Where two programs' processes");
+        ConsoleUi.Line("  share more than one relationship, it lists the busiest pairs of programs too, their");
+        ConsoleUi.Line("  relationships summed.");
     }
 }

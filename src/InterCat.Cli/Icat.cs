@@ -192,6 +192,7 @@ internal static class Icat
         ConsoleUi.Line("  icat overview <directory> [--json]");
         ConsoleUi.Line("      The Desktop's exact leased process graph, paired TCP and UDP channels and timeline bundle.");
         ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
+        ConsoleUi.Line("      Its text names the busiest processes, relationships, pairs of programs and other hosts.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat hosts <directory> [--address <address>] [--limit <n>] [--json]");
         ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, each naming the process");

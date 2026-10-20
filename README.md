@@ -90,9 +90,9 @@ icat workspace show <new-folder>/demo.icat-workspace
 icat capture <new-session-folder> --duration 60
 icat capture <new-session-folder> --profile rpc-peers
 
-# Read a session: its graph and timeline, who connected to whom, its paired channels and their records, the other
-# hosts it reached and which processes reached each, its processes and the connections each made and accepted, and
-# its RPC calls.
+# Read a session: its graph and timeline, which processes and programs connected to which, its paired channels and
+# their records, the other hosts it reached and which processes reached each, its processes and the connections
+# each made and accepted, and its RPC calls.
 icat overview <session>
 icat channels <session>
 icat evidence <session> --channel <key from icat channels>
