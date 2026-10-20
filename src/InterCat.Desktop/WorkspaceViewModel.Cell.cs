@@ -32,9 +32,10 @@ public sealed partial class WorkspaceViewModel
     private TimelineCellLane? chosenCell;
     private bool choosingCell;
 
-    // The cell that click chose as its lane drew it then, so it stays that lane's cell once the timeline cuts its columns
-    // afresh - a wider or narrower window, a zoom - and draws it no more.
-    private KeptCell? keptCell;
+    // The cell the analysis interval is at each rung, as its lane drew it last - one a click chose, a step or the interval
+    // table - so it stays that lane's cell once the timeline cuts its columns afresh, a wider or narrower window, a zoom,
+    // and draws it no more.
+    private readonly Dictionary<CellRung, KeptCell> keptCells = [];
 
     /// <summary>
     /// Chooses the cell a click landed on: its interval becomes the analysis interval, and the inspector explains it as a
@@ -52,9 +53,7 @@ public sealed partial class WorkspaceViewModel
             chosenCell = cellLane;
             SelectInterval(bucket.Interval);
             chosenCellOrigin = CellOriginHere(cellLane);
-            keptCell = CellWhere(cellLane, drawn => drawn.Interval == bucket.Interval) is { } cell
-                ? new(cellLane, cell.Bucket, cell.Zoomed, ColumnWords(cellLane, cell.Zoomed))
-                : null;
+            KeepDrawnCell();
         }
         finally
         {
@@ -109,16 +108,41 @@ public sealed partial class WorkspaceViewModel
         ?? (KeptCellOf(lane, interval) is { } kept ? (kept.Bucket, kept.Zoomed) : null);
 
     /// <summary>
-    /// The cell a click chose in <paramref name="lane"/> over <paramref name="interval"/>, while that choice stands and the
-    /// rung draws the lane in columns cut afresh, none of them the cell's. Null while the lane draws the cell, while the
-    /// rung draws no such lane - not yet counted, or its count failed - and once another choice stands.
+    /// The cell of <paramref name="lane"/> over <paramref name="interval"/> this rung drew last, while the rung draws the
+    /// lane in columns cut afresh, none of them the cell's. Null while the lane draws the cell, while the rung draws no
+    /// such lane - not yet counted, or its count failed - and for a lane or an interval chosen since.
     /// </summary>
     private KeptCell? KeptCellOf(TimelineCellLane lane, TimeRange interval) =>
-        keptCell is { } kept && ReferenceEquals(kept.Lane, chosenCell) && ReferenceEquals(lane, chosenCell)
-        && kept.Bucket.Interval == interval && CellWhere(lane, _ => true) is not null
-        && CellWhere(lane, bucket => bucket.Interval == interval) is null
+        keptCells.TryGetValue(RungHere, out KeptCell? kept) && kept.Lane == lane && kept.Bucket.Interval == interval
+        && CellWhere(lane, _ => true) is not null && CellWhere(lane, bucket => bucket.Interval == interval) is null
             ? kept
             : null;
+
+    /// <summary>
+    /// Keeps the cell the analysis interval is in the lane it is explained in, as the timeline draws it now: when a click
+    /// chooses it, and before the timeline is counted afresh, so the columns that drew it are no longer needed to say what
+    /// it is.
+    /// </summary>
+    private void KeepDrawnCell()
+    {
+        TimelineCellLane lane = ExplainedLane;
+        if (realOverview && selectedInterval is { } interval && CellWhere(lane, bucket => bucket.Interval == interval) is { } cell)
+        {
+            keptCells[RungHere] = new(lane, cell.Bucket, cell.Zoomed, ColumnWords(lane, cell.Zoomed));
+        }
+    }
+
+    /// <summary>The rung shown, by its depth, level and focus: the cells it keeps are its own.</summary>
+    private CellRung RungHere => new(ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key);
+
+    /// <summary>Lets go of the cells kept at the rung at <paramref name="depth"/> and those below it.</summary>
+    private void ForgetKeptCellsFrom(int depth)
+    {
+        foreach (CellRung rung in keptCells.Keys.Where(rung => rung.Depth >= depth).ToArray())
+        {
+            _ = keptCells.Remove(rung);
+        }
+    }
 
     /// <summary>The lane's bucket holding <paramref name="ticks"/>, as <see cref="CellOf"/> finds one by its interval.</summary>
     private (TimelineBucket Bucket, bool Zoomed)? CellAt(TimelineCellLane lane, long ticks) =>
@@ -282,8 +306,11 @@ public sealed partial class WorkspaceViewModel
                     : string.Empty)
             : string.Create(CultureInfo.CurrentCulture, $"one of the overview's {Snapshot.Timeline.Count:N0} over the whole session");
 
-    /// <summary>A cell a click chose, as its lane drew it then: its bucket, whether the view's own columns held it, and their words.</summary>
+    /// <summary>A cell as its lane drew it last: its bucket, whether the view's own columns held it, and their words.</summary>
     private sealed record KeptCell(TimelineCellLane Lane, TimelineBucket Bucket, bool Zoomed, string Column);
+
+    /// <summary>A rung, by its depth, level and focus, as the cells it kept name it.</summary>
+    private readonly record struct CellRung(int Depth, DetailLevel Level, string? Focus);
 
     /// <summary>What a source direction's row holds, as a sentence: the source's marking, never who initiated a conversation.</summary>
     private static string CellDirection(Direction direction) => direction switch

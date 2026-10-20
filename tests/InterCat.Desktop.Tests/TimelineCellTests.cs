@@ -192,6 +192,59 @@ public sealed class TimelineCellTests
             workspace.EvidenceMarkTicks.Order());
     });
 
+    [Fact(DisplayName = "§6.8: a cell a step or the interval table chose stays the cell when the timeline cuts its columns afresh, while its lane is the one explained")]
+    public void AStepsCellOutlivesItsColumns() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        using WorkspaceViewModel workspace = Open(session);
+        TimeRange extent = workspace.Snapshot.Extent;
+        var zoom = new TimeRange(extent.StartTicks, extent.StartTicks + (extent.SpanTicks / 2));
+        workspace.RequestTimelineDetail(zoom, 40);
+        await workspace.TimelineDetailReady;
+
+        // With the TCP lane selected, a step's column is that lane's cell, and in 57 columns, none of them its own, it stays
+        // the cell, explained in the columns it was chosen in.
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        TimelineBucket stepped = Lane(workspace, Mechanism.Tcp).First(bucket => bucket.ObservationCount > 0);
+        workspace.SelectInterval(stepped.Interval);
+        string explained = workspace.CellExplanation;
+        Assert.Contains(" here one of this view's own 40;", explained, StringComparison.Ordinal);
+        workspace.RequestTimelineDetail(zoom, 57);
+        await workspace.TimelineDetailReady;
+        Assert.DoesNotContain(Lane(workspace, Mechanism.Tcp), bucket => bucket.Interval == stepped.Interval);
+        Assert.Equal(Kept(explained, 40), workspace.CellExplanation);
+        Assert.Equal(("Timeline cell", "TCP lane · " + Counted(stepped.ObservationCount, "record")),
+            (workspace.SelectionTitle, workspace.SelectionSubtitle));
+
+        // Another lane selected is the one explained, and no column draws its cell; the TCP lane again, its cell again.
+        workspace.SelectTimelineLane(Mechanism.ProcessLifecycle);
+        Assert.False(workspace.HasCellExplanation);
+        workspace.SelectTimelineLane(Mechanism.Tcp);
+        Assert.Equal(Kept(explained, 40), workspace.CellExplanation);
+
+        // A row the interval table lists, chosen in 40 columns, likewise stays the cell in 33.
+        workspace.RequestTimelineDetail(zoom, 40);
+        await workspace.TimelineDetailReady;
+        workspace.ShowTables = true;
+        IntervalRow row = workspace.Intervals.First(candidate => candidate.Cells == 1 && candidate.Interval != stepped.Interval
+            && Lane(workspace, Mechanism.Tcp).Any(bucket => bucket.Interval == candidate.Interval && bucket.ObservationCount > 0));
+        workspace.SelectedIntervalRow = row;
+        string listed = workspace.CellExplanation;
+        Assert.Contains(" here one of this view's own 40;", listed, StringComparison.Ordinal);
+        workspace.RequestTimelineDetail(zoom, 33);
+        await workspace.TimelineDetailReady;
+        Assert.DoesNotContain(Lane(workspace, Mechanism.Tcp), bucket => bucket.Interval == row.Interval);
+        Assert.Equal(Kept(listed, 40), workspace.CellExplanation);
+    });
+
+    /// <summary>A cell's explanation once the timeline no longer draws the column it was chosen in, of <paramref name="columns"/>.</summary>
+    private static string Kept(string explained, int columns) => explained
+        .Replace($" here one of this view's own {columns};", $" here, as the cell was chosen, one of this view's own {columns};",
+            StringComparison.Ordinal)
+        .Replace(" counts in none.", " counts in none. The timeline has since cut its columns afresh and no longer draws that one.",
+            StringComparison.Ordinal);
+
     [Fact(DisplayName = "§6.8: a cell chosen in a group's process lane, counted coarser than the view, is the analysis interval and names its owner, the rule that bound its records and the columns it was counted in")]
     public void AProcessLanesCellIsExplained() => SingleThreadedContext.Run(async () =>
     {

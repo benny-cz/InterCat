@@ -42,11 +42,15 @@ public sealed partial class WorkspaceViewModel
     /// </summary>
     private void KeepWayBack(RelationshipOrigin origin) => relationshipOrigins.Add(origin);
 
-    /// <summary>Lets go of the ways back to the rung at <paramref name="depth"/> and those below it, a chosen cell's too.</summary>
+    /// <summary>
+    /// Lets go of the ways back to the rung at <paramref name="depth"/> and those below it, and of the cells the rungs below
+    /// it kept; the rung itself keeps its own, which the way back to it comes to.
+    /// </summary>
     private void ForgetWaysBackFrom(int depth)
     {
         relationshipOrigins.RemoveAll(origin => origin.Depth >= depth);
         cellOrigins.RemoveAll(origin => origin.Depth >= depth);
+        ForgetKeptCellsFrom(depth + 1);
     }
 
     /// <summary>

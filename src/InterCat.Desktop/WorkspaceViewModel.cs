@@ -591,9 +591,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// device pixels per logical pixel where the view says. The overview's coarse buckets stay on screen until the answer
     /// arrives and a newer viewport cancels an older request (P25). The whole session is counted in its own columns too,
     /// unless they are no finer than the overview's, which then answer it. A request that fails leaves the coarse
-    /// buckets, which remain true at their own resolution.
+    /// buckets, which remain true at their own resolution. The cell the analysis interval is, as the columns asked for
+    /// afresh replace those that drew it, stays the cell (§6.8).
     /// </summary>
     public void RequestTimelineDetail(TimeRange viewport, int columns, double? scaling = null)
+    {
+        if (!disposed)
+        {
+            KeepDrawnCell();
+        }
+
+        RecountTimeline(viewport, columns, scaling);
+    }
+
+    /// <summary>Counts the timeline over a viewport afresh, as <see cref="RequestTimelineDetail"/> asks, keeping no cell.</summary>
+    private void RecountTimeline(TimeRange viewport, int columns, double? scaling = null)
     {
         columns = Math.Clamp(columns, 1, SessionTimelineQuery.MaximumColumns);
         if (disposed)
@@ -1121,11 +1133,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(TimelineCaption));
         OnPropertyChanged(nameof(TimelineShowsFocus));
 
-        // A selection that is now the rung's own focus is drawn in colour, not highlighted over it.
+        // A selection that is now the rung's own focus is drawn in colour, not highlighted over it. The rung was left as
+        // its focus changed, and keeps the cell it drew: the rung come to has drawn none yet.
         UpdateHighlight();
         if (drawnTimeline is { } drawn)
         {
-            RequestTimelineDetail(drawn.Viewport, drawn.Columns);
+            RecountTimeline(drawn.Viewport, drawn.Columns);
         }
     }
 
