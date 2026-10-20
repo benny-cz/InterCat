@@ -287,45 +287,48 @@ public sealed class GraphLabelLeaderTests
                 }
             }
 
-            _ = Settle(window);
-            NoneAgainstAnother(GraphView.NameSpacing);
-            window.Width = 1456;
-            window.Height = 939;
-            WriteableBitmap frame = Settle(window);
-            NoneAgainstAnother(new Thickness(4, 1));
-            IReadOnlyList<Rect> names = graph.PlacedLabels;
-
             // Edges pass beneath some names, and round the letters of every name is the pane's colour, never an edge's ink:
-            // each letter's pixels are ringed by a pixel of the name's halo.
-            int crossed = 0;
-            for (int index = 0; index < names.Count; index++)
+            // each letter's pixels are ringed by a pixel of the name's halo, at its corners too.
+            int EdgesBreakRoundTheLetters(WriteableBitmap frame)
             {
-                Rect box = names[index];
-                if (workspace.GraphDisplay.Edges.Any(edge => graph.PointOf(edge.SourceKey) is { } from
-                        && graph.PointOf(edge.TargetKey) is { } to && Crosses(box, from, to)))
+                IReadOnlyList<Rect> names = graph.PlacedLabels;
+                int crossed = 0;
+                for (int index = 0; index < names.Count; index++)
                 {
-                    crossed++;
-                }
-
-                Point corner = graph.TranslatePoint(box.TopLeft, window)!.Value;
-                for (int y = (int)corner.Y + 1; y < (int)(corner.Y + box.Height) - 1; y++)
-                {
-                    for (int x = (int)corner.X + 1; x < (int)(corner.X + box.Width) - 1; x++)
+                    Rect box = names[index];
+                    if (workspace.GraphDisplay.Edges.Any(edge => graph.PointOf(edge.SourceKey) is { } from
+                            && graph.PointOf(edge.TargetKey) is { } to && Crosses(box, from, to)))
                     {
-                        if (!IsLetter(RenderedPixels.At(frame, new(x, y)))) continue;
-                        for (int dy = -1; dy <= 1; dy++)
+                        crossed++;
+                    }
+
+                    Point corner = graph.TranslatePoint(box.TopLeft, window)!.Value;
+                    for (int y = (int)corner.Y + 1; y < (int)(corner.Y + box.Height) - 1; y++)
+                    {
+                        for (int x = (int)corner.X + 1; x < (int)(corner.X + box.Width) - 1; x++)
                         {
-                            for (int dx = -1; dx <= 1; dx++)
+                            if (!IsLetter(RenderedPixels.At(frame, new(x, y)))) continue;
+                            for (int dy = -1; dy <= 1; dy++)
                             {
-                                Avalonia.Media.Color beside = RenderedPixels.At(frame, new(x + dx, y + dy));
-                                Assert.False(IsInk(beside), $"{graph.PlacedLabelKeys[index]}: {beside} beside a letter at ({x}, {y})");
+                                for (int dx = -1; dx <= 1; dx++)
+                                {
+                                    Avalonia.Media.Color beside = RenderedPixels.At(frame, new(x + dx, y + dy));
+                                    Assert.False(IsInk(beside), $"{graph.PlacedLabelKeys[index]}: {beside} beside a letter at ({x}, {y})");
+                                }
                             }
                         }
                     }
                 }
+
+                return crossed;
             }
 
-            Assert.InRange(crossed, 3, names.Count);
+            Assert.InRange(EdgesBreakRoundTheLetters(Settle(window)), 3, graph.PlacedLabels.Count);
+            NoneAgainstAnother(GraphView.NameSpacing);
+            window.Width = 1456;
+            window.Height = 939;
+            Assert.InRange(EdgesBreakRoundTheLetters(Settle(window)), 3, graph.PlacedLabels.Count);
+            NoneAgainstAnother(new Thickness(4, 1));
 
             // svchost.exe's endpoint mapper is its one process drawn on its own, which its group says of one.
             workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");

@@ -1497,9 +1497,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private TextLayout Halo(string text, double size) =>
         labels.Get(text, size, PlotBrush, MaximumLabelWidth, lines: 1, TextTrimming.CharacterEllipsis);
 
-    /// <summary>Where a name's halo is laid round its letters: a pixel every way.</summary>
+    /// <summary>
+    /// Where a name's halo is laid round its letters: a pixel every way, and the four corners twice. A letter's corner
+    /// pixel has one copy alone over its diagonal, which covers it only as far as the letter's anti-aliased edge reaches,
+    /// so an edge passing there showed through by nearly half; laid twice, it shows a fifth, darker than any edge's ink.
+    /// </summary>
     private static readonly Vector[] HaloOffsets =
-        [new(-1, -1), new(0, -1), new(1, -1), new(-1, 0), new(1, 0), new(-1, 1), new(0, 1), new(1, 1)];
+    [
+        new(-1, -1), new(0, -1), new(1, -1), new(-1, 0), new(1, 0), new(-1, 1), new(0, 1), new(1, 1),
+        new(-1, -1), new(1, -1), new(-1, 1), new(1, 1),
+    ];
 
     /// <summary>
     /// Draws a name over its <paramref name="halo"/>, its letters in the pane's colour a pixel round them, so an edge
