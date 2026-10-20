@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.CaptureBroker;
@@ -57,6 +58,21 @@ public sealed class ConnectionsInspectorWindowTests
         workspace.ClearSelection();
         Dispatch();
         Assert.False(connections.IsEffectivelyVisible);
+
+        // A program chosen names the programs its processes talked with, each pair on a line of its own over what joins it,
+        // and a screen reader hears who connected in words.
+        ItemsControl programs = window.GetControl<ItemsControl>("ProgramsList");
+        Assert.False(programs.IsEffectivelyVisible);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "client.exe");
+        Dispatch();
+        Assert.True(programs.IsEffectivelyVisible);
+        Assert.Equal("Relationships by program", window.GetControl<TextBlock>("ProgramsHeadingText").Text);
+        Assert.Equal(["client.exe → server.exe", "1 relationship · 3 records"],
+            programs.GetRealizedContainers().SelectMany(container => container.GetVisualDescendants().OfType<TextBlock>())
+                .Select(text => text.Text));
+        Assert.Equal("Relationships by program: client.exe connected to server.exe: 1 relationship, 3 records",
+            AutomationProperties.GetName(programs));
+        Assert.False(window.GetControl<TextBlock>("ProgramsMoreText").IsEffectivelyVisible);
         window.Close();
     }
 

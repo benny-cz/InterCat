@@ -925,6 +925,25 @@
                   <TextBlock x:Name="ConnectionsText" Text="{Binding SelectionConnections}" TextWrapping="Wrap"
                              AutomationProperties.Name="{Binding SelectionConnections, StringFormat='Connections: {0}'}" />
                 </StackPanel>
+                <!-- §6.3: which programs a chosen program's processes talked with, maker first, as icat overview sums them:
+                     on a busy machine otherwise read off the graph edge by edge. Each pair on a line of its own, what joins
+                     it beneath, so a pair's wrapped words never run into the next pair's. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsPrograms}">
+                  <TextBlock x:Name="ProgramsHeadingText" Text="{Binding ProgramsHeading}" Classes="muted" TextWrapping="Wrap" />
+                  <ItemsControl x:Name="ProgramsList" ItemsSource="{Binding SelectionPrograms}"
+                                AutomationProperties.Name="{Binding SpokenSelectionPrograms}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="pres:ProgramPairRow">
+                        <StackPanel Margin="0,0,0,4" Spacing="1">
+                          <TextBlock Text="{Binding Pair}" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Counts}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock x:Name="ProgramsMoreText" Text="{Binding ProgramsMore}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsProgramsMore}" />
+                </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">

@@ -38,6 +38,17 @@ public sealed record ProgramPair(
         _ => $"{First.Name} and {Second.Name}",
     };
 
+    /// <summary>
+    /// The same as a screen reader says it, who connected in words: "client.exe connected to server.exe", "a.exe and b.exe,
+    /// each connected to the other", "a.exe and b.exe".
+    /// </summary>
+    public string Spoken => (FirstConnected > 0, SecondConnected > 0) switch
+    {
+        (true, false) => $"{First.Name} connected to {Second.Name}",
+        (true, true) => $"{First.Name} and {Second.Name}, each connected to the other",
+        _ => $"{First.Name} and {Second.Name}",
+    };
+
     /// <summary>What they ran over, in words: "TCP", "TCP and UDP".</summary>
     public string Over => WorkspaceLayout.Series([.. Mechanisms.Select(MechanismText.Name)]);
 }

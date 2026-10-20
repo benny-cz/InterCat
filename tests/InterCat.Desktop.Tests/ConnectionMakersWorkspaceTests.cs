@@ -247,6 +247,99 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.GraphDisplay));
     });
 
+    [Fact(DisplayName = "§6.3: a chosen program's inspector names the programs its processes talked with, the busiest first, each maker first, as icat overview sums them")]
+    public void AChosenProgramNamesTheProgramsItTalkedWith() => SingleThreadedContext.Run(async () =>
+    {
+        // Three of browser.exe's processes each connect to the server, and two of them to the first; the server connects
+        // to five more programs once each.
+        string[] others = ["alpha", "beta", "gamma", "delta", "epsilon"];
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 301, 2) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 302, 3) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 120 },
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 130 },
+            .. others.Select((name, index) => Lifecycle(5 + index, ObservationKind.Create, 500 + index, (ulong)(5 + index))
+                with { ResourceName = $@"C:\Apps\{name}.exe", SessionRelativeTicks = 140 + index }),
+            .. Connection(20, 300, 400, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Connection(30, 301, 400, "127.0.0.1:50001", "127.0.0.1:8080"),
+            .. Connection(40, 302, 400, "127.0.0.1:50002", "127.0.0.1:8080"),
+            .. Connection(50, 301, 300, "127.0.0.1:50003", "127.0.0.1:9222"),
+            .. Connection(60, 302, 300, "127.0.0.1:50004", "127.0.0.1:9222"),
+            .. others.SelectMany((_, index) => Connection(70 + (10 * index), 400, 500 + index, $"127.0.0.1:{51000 + index}",
+                $"127.0.0.1:{7000 + index}")),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        // What the inspector last heard of them, so a binding is never left reading a stale list or heading.
+        var heard = new List<int>();
+        var headings = new List<string>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.SelectionPrograms))
+            {
+                heard.Add(workspace.SelectionPrograms.Count);
+            }
+            else if (changed.PropertyName == nameof(WorkspaceViewModel.ProgramsHeading))
+            {
+                headings.Add(workspace.ProgramsHeading);
+            }
+        };
+
+        // Nothing chosen, nothing named.
+        Assert.False(workspace.ShowsPrograms);
+        Assert.Empty(workspace.SelectionPrograms);
+
+        // The browser's processes connected to the server three times, and to each other twice.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
+        Assert.True(workspace.ShowsPrograms);
+        Assert.Equal(
+            [
+                ("browser.exe → server.exe", "3 relationships · 12 records"),
+                ("browser.exe → browser.exe", "2 relationships · 8 records"),
+            ],
+            workspace.SelectionPrograms.Select(row => (row.Pair, row.Counts)));
+        Assert.Equal(2, heard[^1]);
+        Assert.False(workspace.ShowsProgramsMore);
+        Assert.Equal("Relationships by program: browser.exe connected to server.exe: 3 relationships, 12 records; "
+            + "browser.exe connected to browser.exe: 2 relationships, 8 records", workspace.SpokenSelectionPrograms);
+
+        // The server talked with six programs, five of them named, ties by name, and the sixth counted.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.Equal(
+            ["browser.exe → server.exe", "server.exe → alpha.exe", "server.exe → beta.exe", "server.exe → delta.exe",
+                "server.exe → epsilon.exe"],
+            workspace.SelectionPrograms.Select(row => row.Pair));
+        Assert.Equal("1 relationship · 4 records", workspace.SelectionPrograms[^1].Counts);
+        Assert.Equal("and 1 more program", workspace.ProgramsMore);
+        Assert.True(workspace.ShowsProgramsMore);
+        Assert.EndsWith("server.exe connected to epsilon.exe: 1 relationship, 4 records; and 1 more program",
+            workspace.SpokenSelectionPrograms, StringComparison.Ordinal);
+
+        // Under a brush they are still the whole session's, and say so.
+        workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
+        await workspace.IntervalReady;
+        Assert.Equal("Relationships by program · whole session", workspace.ProgramsHeading);
+        Assert.Equal(workspace.ProgramsHeading, headings[^1]);
+        Assert.StartsWith("Relationships by program, over the whole session: browser.exe connected to server.exe",
+            workspace.SpokenSelectionPrograms, StringComparison.Ordinal);
+
+        // A process is not a program, and neither is a group of processes by their terminal session.
+        workspace.SelectProcess(workspace.Snapshot.Processes.Single(process => process.ProcessId == 400).Id);
+        Assert.False(workspace.ShowsPrograms);
+        Assert.Equal(0, heard[^1]);
+        using var bySession = new WorkspaceViewModel(WorkspaceGrouping.Regroup(OverviewWorkspace.From(overview), LaneGrouping.UserSession),
+            WorkspaceGrouping.Identity(overview.GraphIdentity, LaneGrouping.UserSession),
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await bySession.LayoutReady;
+        bySession.SelectedRung = bySession.RungRows[0];
+        Assert.NotNull(bySession.SelectedGroup);
+        Assert.False(bySession.ShowsPrograms);
+    });
+
     /// <summary>One TCP connection <paramref name="maker"/> made to <paramref name="taker"/>, opened, and a send across it.</summary>
     private static ObservationRowV1[] Connection(long ticks, int maker, int taker, string from, string to) =>
     [

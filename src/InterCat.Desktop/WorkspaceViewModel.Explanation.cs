@@ -78,6 +78,58 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the inspector states the selection's connections.</summary>
     public bool ShowsConnections => SelectionConnections.Length > 0;
 
+    /// <summary>The most pairs of programs the inspector names for a chosen program, the busiest.</summary>
+    internal const int ProgramPairsNamed = 5;
+
+    /// <summary>Every pair of programs the session's relationships join, summed once when first asked for.</summary>
+    private IReadOnlyList<ProgramPair>? programPairs;
+
+    /// <summary>
+    /// The selected program's relationships summed by the program at each end, as `icat overview` sums them
+    /// (<see cref="ProgramPairs"/>), the busiest first: each named first by the program whose processes made its
+    /// connections - "svchost.exe → lsass.exe", "12 relationships · 72 records" - its own processes connecting to each
+    /// other among them, over the whole session. Which programs a busy one's processes talk to is otherwise read off the
+    /// graph edge by edge. Empty for any other selection, a group of processes by their session, and a program none of
+    /// whose processes has a relationship.
+    /// </summary>
+    public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection().Take(ProgramPairsNamed).Select(pair =>
+    {
+        string counts = RelationshipCount(pair.Relationships) + " · " + Spoken.Count(pair.Records, "record");
+        return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal));
+    })];
+
+    /// <summary>How many more programs the selected program's processes talked with than the inspector names.</summary>
+    public string ProgramsMore => ProgramsOfSelection().Count - ProgramPairsNamed is > 0 and var more
+        ? "and " + Spoken.Count(more, "more program", "more programs")
+        : string.Empty;
+
+    /// <summary>Whether more programs than the inspector names are said to be left out.</summary>
+    public bool ShowsProgramsMore => ProgramsMore.Length > 0;
+
+    /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
+    public string ProgramsHeading => "Relationships by program" + (appliedInterval is null ? string.Empty : " · whole session");
+
+    /// <summary>All of it as a screen reader hears it, who connected said in words.</summary>
+    public string SpokenSelectionPrograms => SelectionPrograms is { Count: > 0 } rows
+        ? ProgramsHeading.Replace(" · ", ", over the ", StringComparison.Ordinal) + ": "
+            + string.Join("; ", rows.Select(row => row.Spoken)) + (ShowsProgramsMore ? "; " + ProgramsMore : string.Empty)
+        : string.Empty;
+
+    /// <summary>Whether the inspector names the programs the selected program's processes talked with.</summary>
+    public bool ShowsPrograms => SelectionPrograms.Count > 0;
+
+    private IReadOnlyList<ProgramPair> ProgramsOfSelection()
+    {
+        if (GroupingExplanation.Length == 0 || SelectedGroup is not { Kind: LaneGrouping.Executable } program)
+        {
+            return [];
+        }
+
+        programPairs ??= ProgramPairs.Of(wholeSnapshot.Edges, wholeSnapshot.Processes, wholeSnapshot.Groups);
+        return [.. programPairs.Where(pair => string.Equals(pair.First.Key, program.Key, StringComparison.Ordinal)
+            || string.Equals(pair.Second.Key, program.Key, StringComparison.Ordinal))];
+    }
+
     /// <summary>
     /// The selection's explanation, as the inspector states it: a relationship's derivation, a process's binding, a group's
     /// grouping or a channel's pairing, of which at most one applies to any selection.
@@ -165,5 +217,10 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(OffersCandidates));
         OnPropertyChanged(nameof(SelectionConnections));
         OnPropertyChanged(nameof(ShowsConnections));
+        OnPropertyChanged(nameof(SelectionPrograms));
+        OnPropertyChanged(nameof(SpokenSelectionPrograms));
+        OnPropertyChanged(nameof(ProgramsMore));
+        OnPropertyChanged(nameof(ShowsProgramsMore));
+        OnPropertyChanged(nameof(ShowsPrograms));
     }
 }

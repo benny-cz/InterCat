@@ -158,6 +158,13 @@ public sealed record MemberRow(ProcessInstanceId Process, string Name, string De
 }
 
 /// <summary>
+/// One pair of programs a chosen program's processes talked with, as the inspector lists it (§6.3): the two named maker
+/// first, as `icat overview` names them - "svchost.exe → lsass.exe" - what joins them - "12 relationships · 72 records" -
+/// and both read aloud, who connected said in words.
+/// </summary>
+public sealed record ProgramPairRow(string Pair, string Counts, string Spoken);
+
+/// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
 /// holding no record, of one coverage state, as one row spanning them.
 /// </summary>
