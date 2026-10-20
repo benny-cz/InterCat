@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 648 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 649 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 649 — `icat processes --pid` lists the other hosts an instance reached (§6.3, R18):**
+  - Its Exchanged with table folded every end with no process of the capture into one row: chrome.exe's 673,817 B to
+    41 hosts read as one "unresolved" end. Beneath it the instance's other hosts are now listed by address, as `icat
+    hosts` lists them, over its own connections: connections, ports, those accepted, records and bytes each way, the
+    most bytes first, twenty and how many more; the JSON gives every one (`otherHosts`).
+  - Debug and Release each ran 2,634 tests with revision 473's 93 failures and 4 skips, and nothing else failed, a
+    repaint on every rung still allocating nothing of its own. All eleven mutations were caught: the hosts not
+    listed or not read, another process's connections counted, the hosts ranked by records, every host listed or the
+    rest not counted, the accepted connections, ports, scope or sent bytes left out or misread, and the note on who
+    reached an address pointing where it did.
 
 - **Revision 648 — the command line names who reached each other host (§6.3, R18):**
   - A live pass with `icat` over the heavy machine's session: `icat hosts` counted the processes that reached each of

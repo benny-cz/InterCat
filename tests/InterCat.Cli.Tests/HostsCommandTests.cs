@@ -138,6 +138,90 @@ public sealed class HostsCommandTests
             + "one, and with --address <address> every process that reached one.", Regex.Replace(text, @"\s+", " "), Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat processes --pid lists the other hosts an instance's connections ran to, by address, the most bytes first, its own connections alone")]
+    public async Task IcatProcessesListsTheHostsAnInstanceReached()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        session.Store.ReleaseSegmentReaders();
+
+        // The browser's three hosts, the most bytes first: its own two records to 142.250.1.1, not the updater's three.
+        (InterCatExitCode code, string text, string said) = await Run("processes", session.Path, "--pid", "300");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("  Other hosts it reached, the most bytes sent and received first; who is at an address is not observed:",
+            text, Ordinal);
+        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Sent +Received\r?$", text);
+        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +- +(\d+ (?:TCP|UDP) \S+) +(\d+) +(\d+) +([\d,]+ B) +no receives\r?$")
+            .Select(match => $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value} | "
+                + match.Groups[5].Value)];
+        Assert.Equal(
+            [
+                "142.250.1.1 | 1 TCP connection | 443 | 2 | 200 B",
+                "142.250.1.10 | 1 TCP connection | 443 | 1 | 100 B",
+                "8.8.8.8 | 1 UDP flow | 53 | 1 | 40 B",
+            ],
+            rows);
+        Assert.DoesNotContain("more, quieter", text, Ordinal);
+
+        // As JSON, every host of the instance asked about, and none of any other.
+        (code, text, _) = await Run("processes", session.Path, "--pid", "300", "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement[] instances = [.. JsonDocument.Parse(text).RootElement.GetProperty("instances").EnumerateArray()];
+        JsonElement browser = instances.Single(item => item.GetProperty("process").GetProperty("processId").GetInt32() == 300);
+        Assert.Equal(
+            [("142.250.1.1", 1, 0, 2L, 200L, "443"), ("142.250.1.10", 1, 0, 1L, 100L, "443"), ("8.8.8.8", 0, 1, 1L, 40L, "53")],
+            browser.GetProperty("otherHosts").EnumerateArray().Select(host => (host.GetProperty("address").GetString(),
+                host.GetProperty("tcpConnections").GetInt32(), host.GetProperty("udpFlows").GetInt32(), host.GetProperty("records").GetInt64(),
+                host.GetProperty("sentBytes").GetInt64(), Ports(host.GetProperty("ports")))));
+        Assert.Equal(JsonValueKind.Null, instances.Single(item => item.GetProperty("process").GetProperty("processId").GetInt32() == 310)
+            .GetProperty("otherHosts").ValueKind);
+
+        // Who reached an address points to it.
+        (_, text, _) = await Run("hosts", session.Path, "--address", "142.250.1.1");
+        Assert.Contains("Who is at an address is not observed. icat processes <directory> --pid <pid> lists every other host a "
+            + "process reached.", Regex.Replace(text, @"\s+", " "), Ordinal);
+
+        // A host a process accepted a connection from says so, at its own port; the hosts tie on bytes and records, so by
+        // address.
+        using var service = new TemporarySession();
+        Publish(service.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe", SessionRelativeTicks = 1 },
+            Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 2).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 3).Between("192.168.1.10:3389", "10.0.0.5:50000"),
+            Transfer(12, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between("192.168.1.10:52000", "10.0.0.6:443"),
+            Transfer(13, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 5).Between("192.168.1.10:52000", "10.0.0.6:443"),
+        ]);
+        service.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("processes", service.Path, "--pid", "300");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Accepted here +Records +Sent +Received\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +1 TCP connection +- +1 at 3389 +2 +no sends +100 B\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +1 TCP connection +443 +- +2 +100 B +no receives\r?$", text);
+        Assert.True(text.IndexOf("10.0.0.5 ", Ordinal) < text.IndexOf("10.0.0.6 ", Ordinal));
+        Assert.DoesNotMatch(@"\b50000\b", text);
+
+        // Past twenty hosts, the quietest are counted, and where each is listed said, by its instance id.
+        using var wide = new TemporarySession();
+        Publish(wide.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 500, 1) with { ResourceName = @"C:\Apps\crawler.exe", SessionRelativeTicks = 1 },
+            .. Enumerable.Range(1, 22).Select(index => Transfer(10 + index, ObservationKind.Send, AccountingSide.SendSide, 1_000 - index, 500,
+                (ulong)(10 + index)).Between($"192.168.1.10:{52000 + index}", $"10.1.0.{index}:443") with { SessionRelativeTicks = 10 + index }),
+        ]);
+        wide.Store.ReleaseSegmentReaders();
+        (code, text, said) = await Run("processes", wide.Path, "--pid", "500");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  10\.1\.0\.20 +private +1 TCP connection +443 +1 +980 B +no receives\r?$", text);
+        Assert.DoesNotMatch(@"(?m)^  10\.1\.0\.2[12] ", text);
+        string crawler = InterCat.Application.SessionOverviewProjector.Project(wide.Store).Nodes.Single().Id.ToString();
+        wide.Store.ReleaseSegmentReaders();
+        Assert.Contains($"2 more, quieter; --json lists every one, and icat channels <directory> --process {crawler} --one-sided each "
+            + "of its connections.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        (_, text, _) = await Run("processes", wide.Path, "--pid", "500", "--json");
+        Assert.Equal(22, JsonDocument.Parse(text).RootElement.GetProperty("instances")[0].GetProperty("otherHosts").GetArrayLength());
+    }
+
     [Fact(DisplayName = "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, at a port or any address at a port, as the window's search finds them")]
     public async Task IcatHostsFindsTheProcessesThatReachedAnAddress()
     {

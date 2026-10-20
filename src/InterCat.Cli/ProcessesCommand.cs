@@ -77,6 +77,13 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public IReadOnlyList<ProcessPeerDocument>? Peers { get; init; }
 
+    /// <summary>
+    /// The other hosts the instance's connections ran to with no process of the capture at their other end, made or
+    /// accepted, the most bytes sent and received first, when one PID was asked about; null otherwise, as
+    /// <see cref="Peers"/> is. Who is at an address is not observed (P7).
+    /// </summary>
+    public IReadOnlyList<ProcessHostDocument>? OtherHosts { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -127,6 +134,31 @@ internal sealed record ProcessPeerDocument
     public required ProcessTransportRecordsDocument Receives { get; init; }
 }
 
+/// <summary>
+/// One other host an instance's connections ran to, as `icat hosts` lists a host, over this instance's connections alone:
+/// its TCP connections and UDP flows, how many of them the capture saw the instance open by a connect or accept from the
+/// host, the ports they ran to there and those of its own the accepted ones arrived at, their records, and what the
+/// instance's own transfers there measured each way.
+/// </summary>
+internal sealed record ProcessHostDocument
+{
+    public required string Address { get; init; }
+    public required string? Scope { get; init; }
+    public required int TcpConnections { get; init; }
+    public required int UdpFlows { get; init; }
+    public required int Connected { get; init; }
+    public required int Accepted { get; init; }
+    public required IReadOnlyList<ushort> Ports { get; init; }
+    public required IReadOnlyList<ushort> AcceptedPorts { get; init; }
+    public required long Records { get; init; }
+    public required long Sends { get; init; }
+    public required long SentBytes { get; init; }
+    public required long UnmeasuredSends { get; init; }
+    public required long Receives { get; init; }
+    public required long ReceivedBytes { get; init; }
+    public required long UnmeasuredReceives { get; init; }
+}
+
 internal sealed record ProcessUnattributedDocument
 {
     public required string Reason { get; init; }
@@ -140,6 +172,9 @@ internal sealed record ProcessUnattributedDocument
 /// </summary>
 internal static class ProcessesCommand
 {
+    /// <summary>The other hosts one instance's detail lists, the most bytes first; its document holds every one.</summary>
+    private const int HostsListed = 20;
+
     public static async Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken)
     {
         if (command.TryTakeFlag("--help") || command.TryTakeFlag("-h"))
@@ -247,6 +282,8 @@ internal static class ProcessesCommand
                         : item with
                         {
                             Peers = Peers(store, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)), policy, records.Clock, cancellationToken),
+                            OtherHosts = OtherHosts(store, projected.HostLinks, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)),
+                                policy, cancellationToken),
                         }),
                 ],
             };
@@ -444,6 +481,39 @@ internal static class ProcessesCommand
                 }),
         ];
     }
+
+    /// <summary>
+    /// The other hosts one instance's connections ran to, read as `icat hosts --rank-by bytes-sent-and-received` reads every
+    /// process's: the census's connections to each, and what the instance's transfers there measured, the most first.
+    /// </summary>
+    private static List<ProcessHostDocument> OtherHosts(
+        SessionStore store,
+        IReadOnlyList<HostLink> links,
+        ProcessInstanceId instance,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken) =>
+    [
+        .. SessionHostTraffic.Of(store, [.. links.Where(link => link.Process == instance)], RankingMetric.EndpointBytes,
+                policy: policy, cancellationToken: cancellationToken)
+            .Select(traffic => new ProcessHostDocument
+            {
+                Address = traffic.Host.Address,
+                Scope = AddressScope.Of(traffic.Host.Address),
+                TcpConnections = traffic.Host.TcpConnections,
+                UdpFlows = traffic.Host.UdpFlows,
+                Connected = traffic.Host.Connected,
+                Accepted = traffic.Host.Accepted,
+                Ports = traffic.Host.Ports,
+                AcceptedPorts = traffic.Host.AcceptedPorts,
+                Records = traffic.Host.Records,
+                Sends = traffic.Sends,
+                SentBytes = traffic.SentBytes,
+                UnmeasuredSends = traffic.UnmeasuredSends,
+                Receives = traffic.Receives,
+                ReceivedBytes = traffic.ReceivedBytes,
+                UnmeasuredReceives = traffic.UnmeasuredReceives,
+            }),
+    ];
 
     private static MetricRequest PeerRequest(Metric metric, AccountingSide side, EvidencePolicy policy) => new()
     {
@@ -687,6 +757,32 @@ internal static class ProcessesCommand
                 ]);
         }
 
+        // The other hosts it reached, by address, which the table above counts as one unresolved end: as icat hosts lists
+        // them, its own connections alone.
+        if (item.OtherHosts is { Count: > 0 } hosts)
+        {
+            ConsoleUi.Line("  Other hosts it reached, the most bytes sent and received first; who is at an address is not observed:");
+            bool accepting = hosts.Take(HostsListed).Any(host => host.Accepted > 0);
+            ConsoleUi.Table(
+                ["Host", "Scope", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(), "Records", "Sent",
+                    "Received"],
+                [.. hosts.Take(HostsListed).Select(host => (IReadOnlyList<string>)
+                [
+                    host.Address, host.Scope ?? "-",
+                    HostLinkText.Reached(new OtherHost(host.Address, host.TcpConnections, host.UdpFlows, 1, host.Records), countsProcesses: false),
+                    host.Ports.Count == 0 ? "-" : HostLinkText.PortNumbers(host.Ports),
+                    .. accepting ? [HostLinkText.AcceptedCell(host.Accepted, host.AcceptedPorts)] : Array.Empty<string>(),
+                    ConsoleUi.Count(host.Records),
+                    HostsCommand.Bytes(host.SentBytes, host.Sends, host.UnmeasuredSends, "no sends"),
+                    HostsCommand.Bytes(host.ReceivedBytes, host.Receives, host.UnmeasuredReceives, "no receives"),
+                ])]);
+            if (hosts.Count > HostsListed)
+            {
+                ConsoleUi.Note(string.Create(CultureInfo.CurrentCulture, $"{hosts.Count - HostsListed:N0} more, quieter; --json lists every one, and ")
+                    + $"icat channels <directory> --process {process.InstanceId} --one-sided each of its connections.");
+            }
+        }
+
         ConsoleUi.Note("To rank every record it took part in by the process at the other end:");
         ConsoleUi.Line($"    icat metric \"{path}\" --metric observations --participant {process.InstanceId} --group-by peer");
     }
@@ -748,7 +844,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      What the capture covered, mechanism by mechanism, is said as icat metric says it, so a");
         ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
-        ConsoleUi.Line("      takes, its image path and parent, and what it sent to and received from each");
-        ConsoleUi.Line($"      process at the other end ({TransportRelationIndex.RelationRule}).");
+        ConsoleUi.Line("      takes, its image path and parent, what it sent to and received from each process");
+        ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}), and each other host its");
+        ConsoleUi.Line("      connections ran to, by address, the most bytes first.");
     }
 }

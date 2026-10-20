@@ -2094,6 +2094,7 @@
         "R18: icat package --interval holds an interval's records and its processes', and icat session says so in the window's words",
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
         "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect",
+        "R18: icat processes --pid lists the other hosts an instance's connections ran to, by address, the most bytes first, its own connections alone",
         "R18: icat raw says a record's facts as the window does, in words - its provider named, its lengths counted - and its bytes only when asked",
         "R18: icat rederive needs a session's folder, and says so of none and of one that is not there",
         "R18: icat rederive refuses an option it cannot read, saying what it expects",

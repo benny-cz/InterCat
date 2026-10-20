@@ -298,7 +298,8 @@ internal static class Icat
         ConsoleUi.Line();
         ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--json]");
         ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
-        ConsoleUi.Line("      lifetime, records and transport bytes. A reused PID is two instances.");
+        ConsoleUi.Line("      lifetime, records and transport bytes; --pid shows one in full, with the processes");
+        ConsoleUi.Line("      and other hosts it exchanged data with. A reused PID is two instances.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat operations <directory> [--pid <id>] [--interface <uuid>] [--calls <n>] [--json]");
         ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");

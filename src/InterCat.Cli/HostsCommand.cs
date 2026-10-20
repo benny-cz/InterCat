@@ -344,8 +344,8 @@ internal static class HostsCommand
                 $"{reached.Length - limit:N0} more, quieter; --limit {reached.Length:N0} lists every one."));
         }
 
-        ConsoleUi.Note("Who is at an address is not observed. icat channels <directory> --process <instance-guid> --one-sided "
-            + "lists a process's connections.");
+        ConsoleUi.Note("Who is at an address is not observed. icat processes <directory> --pid <pid> lists every other host a "
+            + "process reached.");
         return InterCatExitCode.Success;
     }
 
@@ -391,7 +391,7 @@ internal static class HostsCommand
     /// One direction's bytes as the window's rows say them (R21): what its measured transfers carried, "unmeasured" when
     /// none of them stated a size, or <paramref name="none"/> when it made none.
     /// </summary>
-    private static string Bytes(long bytes, long transfers, long unmeasured, string none) =>
+    internal static string Bytes(long bytes, long transfers, long unmeasured, string none) =>
         transfers > unmeasured ? ConsoleUi.Bytes(bytes) : transfers > 0 ? "unmeasured" : none;
 
     private static void PrintHelp()
