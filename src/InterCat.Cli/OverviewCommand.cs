@@ -156,7 +156,8 @@ internal static class OverviewCommand
                     ])]);
                 ConsoleUi.Note(CountText.Of(programs.Count, "pair") + " of programs in all, each program by its executable: one "
                     + "named at both ends is its own processes connecting to each other. Arrows and records read as above, and "
-                    + "Processes counts those at either end.");
+                    + "Processes counts those at either end. icat programs <directory> lists every pair, and with --program <name> "
+                    + "those one program is in.");
             }
         }
 

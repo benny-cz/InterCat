@@ -94,6 +94,7 @@ icat capture <new-session-folder> --profile rpc-peers
 # their records, the other hosts it reached and which processes reached each, its processes and the connections
 # each made and accepted, and its RPC calls.
 icat overview <session>
+icat programs <session> --program svchost.exe
 icat channels <session>
 icat evidence <session> --channel <key from icat channels>
 icat timeline <session> --interval 0:10s

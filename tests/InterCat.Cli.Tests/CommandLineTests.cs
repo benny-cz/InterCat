@@ -26,9 +26,9 @@ public sealed class CommandLineTests : IDisposable
     private static readonly string[] Commands =
     [
         "capabilities", "profiles", "measure", "import", "record", "capture", "rederive", "session", "overview", "channels",
-        "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain", "compact",
-        "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench", "support",
-        "demo",
+        "hosts", "programs", "evidence", "timeline", "export", "package", "raw", "content", "recover", "staging", "retain",
+        "compact", "checkpoint", "follow", "metric", "processes", "operations", "exchanges", "workspace", "verify", "bench",
+        "support", "demo",
     ];
 
     /// <summary>The fields of icat staging's review, whose labels run past the column a short label takes.</summary>
@@ -133,6 +133,7 @@ public sealed class CommandLineTests : IDisposable
             string[][] asked =
             [
                 ["overview", folder], ["channels", folder], ["channels", folder, "--process", record[1], "--one-sided"],
+                ["hosts", folder], ["programs", folder], ["programs", folder, "--program", "svchost.exe"],
                 ["evidence", folder], ["timeline", folder, "--interval", "0:10"],
                 ["export", folder, "--output", Path.Combine(package, "rows.csv")], ["processes", folder], ["operations", folder],
                 ["exchanges", folder], ["metric", folder, "--metric", "observations"], ["raw", folder, .. record],

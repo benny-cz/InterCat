@@ -48,6 +48,7 @@ internal static class Icat
                 "overview" => await OverviewCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "channels" => await ChannelsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "hosts" => await HostsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
+                "programs" => await ProgramsCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "evidence" => await EvidenceCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "timeline" => await TimelineCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
                 "export" => await ExportCommand.RunAsync(command, cancellationToken).ConfigureAwait(false),
@@ -198,6 +199,10 @@ internal static class Icat
         ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, each naming the process");
         ConsoleUi.Line("      that reached it most; with --address every process that reached one: the address whole, or");
         ConsoleUi.Line("      begun up to a dot or colon.");
+        ConsoleUi.Line();
+        ConsoleUi.Line("  icat programs <directory> [--program <name>] [--limit <n>] [--json]");
+        ConsoleUi.Line("      The programs whose processes talked to each other, each pair named by which program's");
+        ConsoleUi.Line("      processes connected to which, the busiest first; with --program the pairs one program is in.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

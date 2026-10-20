@@ -205,7 +205,8 @@ public sealed class OverviewCensusTests
         Assert.Matches(@"(?m)^  browser\.exe → browser\.exe +1 +2 +TCP +3\r?$", text);
         Assert.True(text.IndexOf("browser.exe → server.exe", Ordinal) < text.IndexOf("browser.exe → browser.exe", Ordinal));
         Assert.Contains("2 pairs of programs in all, each program by its executable: one named at both ends is its own processes "
-            + "connecting to each other. Arrows and records read as above, and Processes counts those at either end.",
+            + "connecting to each other. Arrows and records read as above, and Processes counts those at either end. icat programs "
+            + "<directory> lists every pair, and with --program <name> those one program is in.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
 
         static ObservationRowV1[] Connection(long at, int maker, string from, int taker, string to) =>
