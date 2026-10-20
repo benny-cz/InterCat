@@ -2,6 +2,7 @@ using Avalonia.Automation;
 using Avalonia.Controls;
 using Avalonia.Headless;
 using Avalonia.Headless.XUnit;
+using Avalonia.Input;
 using Avalonia.VisualTree;
 using InterCat.Analysis.Tests;
 using InterCat.Application;
@@ -54,17 +55,27 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal("0 made · 1 accepted, as the capture saw them open", connections.Text);
 
         // Beneath them, the processes it talked with: each on a line of its own, marked from its side, over what it carried,
-        // and who connected said in words for a screen reader.
-        ItemsControl peers = window.GetControl<ItemsControl>("PeersList");
+        // and who connected said in words for a screen reader as the keyboard reaches its row.
+        ListBox peers = window.GetControl<ListBox>("PeersList");
         Assert.True(peers.IsEffectivelyVisible);
         Assert.Equal("Its relationships, the busiest first", window.GetControl<TextBlock>("PeersHeadingText").Text);
-        Assert.Equal(["← client.exe · PID 100", "1 accepted · TCP · 3 records"],
-            peers.GetRealizedContainers().SelectMany(container => container.GetVisualDescendants().OfType<TextBlock>())
-                .Select(text => text.Text));
-        Assert.Equal("Its relationships, the busiest first: client.exe · PID 100 connected to it: 1 accepted, TCP, 3 records",
+        Assert.Equal(["← client.exe · PID 100", "1 accepted · TCP · 3 records"], Texts(peers));
+        Assert.Equal("Its relationships, the busiest first; Enter on one chooses the process at its other end",
             AutomationProperties.GetName(peers));
+        Assert.Equal("client.exe · PID 100 connected to it: 1 accepted, TCP, 3 records. Press Enter to choose the process at its "
+            + "other end.", AutomationProperties.GetName(peers.ContainerFromIndex(0)!));
         Assert.False(window.GetControl<TextBlock>("PeersMoreText").IsEffectivelyVisible);
         Save(window, "connections-inspector-1456x939.png");
+
+        // Enter on it chooses the client at its other end, whose own relationships the list then holds, the keyboard staying
+        // on it, so who connected to whom is walked a key at a time.
+        Assert.True(peers.ContainerFromIndex(0)!.Focus());
+        Dispatch();
+        window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+        Dispatch();
+        Assert.Equal(100, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal(["→ server.exe · PID 200", "1 made · TCP · 3 records"], Texts(peers));
+        Assert.Same(peers.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
 
         // Nothing chosen, nothing said.
         workspace.ClearSelection();
@@ -85,7 +96,7 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal("Relationships by program: client.exe connected to server.exe: 1 relationship, 3 records",
             AutomationProperties.GetName(programs));
         Assert.False(window.GetControl<TextBlock>("ProgramsMoreText").IsEffectivelyVisible);
-        Assert.False(window.GetControl<ItemsControl>("PeersList").IsEffectivelyVisible);
+        Assert.False(window.GetControl<ListBox>("PeersList").IsEffectivelyVisible);
         window.Close();
     }
 
@@ -104,4 +115,9 @@ public sealed class ConnectionsInspectorWindowTests
     private static ObservationRowV1 Timed(ObservationRowV1 row) => row with { SessionRelativeTicks = row.NativeTicks * 100 };
 
     private static void Dispatch() => Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+    /// <summary>The words a list's rows show, row by row and line by line.</summary>
+    private static string[] Texts(ItemsControl list) =>
+        [.. list.GetRealizedContainers().SelectMany(container => container.GetVisualDescendants().OfType<TextBlock>())
+            .Select(text => text.Text ?? string.Empty)];
 }

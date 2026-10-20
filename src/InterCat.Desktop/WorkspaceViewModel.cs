@@ -7049,7 +7049,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(ProgramsHeading));
         OnPropertyChanged(nameof(SpokenSelectionPrograms));
         OnPropertyChanged(nameof(PeersHeading));
-        OnPropertyChanged(nameof(SpokenSelectionPeers));
+        OnPropertyChanged(nameof(PeersListName));
         RaiseMemberListChanged();
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a

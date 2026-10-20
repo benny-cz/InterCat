@@ -427,10 +427,20 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal(5, heard[^1]);
         Assert.Equal("and 3 more relationships", workspace.PeersMore);
         Assert.True(workspace.ShowsPeersMore);
-        Assert.Equal("Its relationships, the busiest first: browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records; "
-            + "it and browser.exe · PID 301 each connected to the other: 1 made, 1 accepted, TCP, 8 records; it connected to "
-            + "alpha.exe · PID 500: 1 made, TCP, 4 records; it connected to beta.exe · PID 501: 1 made, TCP, 4 records; it "
-            + "connected to delta.exe · PID 503: 1 made, TCP, 4 records; and 3 more relationships", workspace.SpokenSelectionPeers);
+        // Each row says itself whole as the keyboard reaches it, who connected in words, and what Enter on it does.
+        Assert.Equal(
+            [
+                "browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records",
+                "it and browser.exe · PID 301 each connected to the other: 1 made, 1 accepted, TCP, 8 records",
+                "it connected to alpha.exe · PID 500: 1 made, TCP, 4 records",
+                "it connected to beta.exe · PID 501: 1 made, TCP, 4 records",
+                "it connected to delta.exe · PID 503: 1 made, TCP, 4 records",
+            ],
+            workspace.SelectionPeers.Select(row => row.Spoken));
+        Assert.Equal("browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records. Press Enter to choose the process at "
+            + "its other end.", workspace.SelectionPeers[0].AccessibleName);
+        Assert.Equal("Its relationships, the busiest first; Enter on one chooses the process at its other end",
+            workspace.PeersListName);
 
         // The resolver's flow opened nothing, and its connection to itself is drawn with no arrowhead, as its edge's card says
         // display order only: neither row is marked or says a count of connections.
@@ -443,14 +453,28 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.SelectionPeers.Select(row => (row.Peer, row.Detail, row.Spoken)));
         Assert.False(workspace.ShowsPeersMore);
 
+        // Its connection to itself goes nowhere, and says no Enter; its other end, the server, is chosen as a click on its
+        // node chooses it, its own relationships then listed, and from the server alpha.exe, which lists the server it was
+        // come to from: who connected to whom is walked a relationship at a time.
+        Assert.Equal("resolver.exe · PID 600 (itself): TCP, 4 records", workspace.SelectionPeers[0].AccessibleName);
+        Assert.False(workspace.ChoosePeer(workspace.SelectionPeers[0]));
+        Assert.Equal(600, workspace.SelectedProcess?.ProcessId);
+        Assert.True(workspace.ChoosePeer(workspace.SelectionPeers[1]));
+        Assert.Equal(400, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal("← browser.exe · PID 300", workspace.SelectionPeers[0].Peer);
+        Assert.Equal(5, heard[^1]);
+        Assert.True(workspace.ChoosePeer(workspace.SelectionPeers[2]));
+        Assert.Equal(500, workspace.SelectedProcess?.ProcessId);
+        Assert.Equal(["← server.exe · PID 400"], workspace.SelectionPeers.Select(row => row.Peer));
+
         // Under a brush they are still the whole session's, and say so.
         workspace.SelectProcess(Process(workspace, 400).Id);
         workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
         await workspace.IntervalReady;
         Assert.Equal("Its relationships, the busiest first · whole session", workspace.PeersHeading);
         Assert.Equal(workspace.PeersHeading, headings[^1]);
-        Assert.StartsWith("Its relationships, the busiest first, over the whole session: browser.exe · PID 300 connected to it",
-            workspace.SpokenSelectionPeers, StringComparison.Ordinal);
+        Assert.Equal("Its relationships, the busiest first, over the whole session; Enter on one chooses the process at its "
+            + "other end", workspace.PeersListName);
 
         // A program is not a process: it names programs.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");

@@ -635,6 +635,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     break;
                 }
 
+                if (PeersList.IsKeyboardFocusWithin)
+                {
+                    // Enter on one of a chosen process's relationships chooses the process at its other end; the keyboard
+                    // stays on the list, now that one's, so the next relationship is a key away.
+                    e.Handled = ChooseSelectedPeer(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -2625,6 +2633,35 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         MemberRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as MemberRow
             ?? MemberList.SelectedItem as MemberRow;
         return row is not null && viewModel.OpenMember(row);
+    }
+
+    private void ChooseListedPeer(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            ChooseSelectedPeer(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Chooses the process at the other end of the relationship of a chosen process's list the keyboard is on, or else the
+    /// one selected, and gives the keyboard to the list again, now that process's, so who connected to whom is walked a
+    /// key at a time (§6.3). False when there is none, or it is the process itself.
+    /// </summary>
+    internal bool ChooseSelectedPeer(WorkspaceViewModel viewModel)
+    {
+        PeerRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as PeerRow
+            ?? PeersList.SelectedItem as PeerRow;
+        if (row is null || !viewModel.ChoosePeer(row))
+        {
+            return false;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed) _ = FocusRow(PeersList);
+        });
+        return true;
     }
 
     private void OpenCellRecord(object? sender, TappedEventArgs eventArgs)

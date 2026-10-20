@@ -153,11 +153,29 @@ public sealed partial class WorkspaceViewModel
     /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
     public string PeersHeading => "Its relationships, the busiest first" + (appliedInterval is null ? string.Empty : " · whole session");
 
-    /// <summary>All of it as a screen reader hears it, who connected said in words.</summary>
-    public string SpokenSelectionPeers => SelectionPeers is { Count: > 0 } rows
-        ? PeersHeading.Replace(" · ", ", over the ", StringComparison.Ordinal) + ": "
-            + string.Join("; ", rows.Select(row => row.Spoken)) + (ShowsPeersMore ? "; " + PeersMore : string.Empty)
-        : string.Empty;
+    /// <summary>
+    /// The list as a screen reader names it: what it holds and what Enter on a row does. Each row says itself whole as the
+    /// keyboard reaches it, who connected said in words.
+    /// </summary>
+    public string PeersListName => PeersHeading.Replace(" · ", ", over the ", StringComparison.Ordinal)
+        + "; Enter on one chooses the process at its other end";
+
+    /// <summary>
+    /// Chooses the process at the other end of one of the selected process's relationships, as a click on its node does,
+    /// so who connected to whom can be walked a relationship at a time: its own relationships are then listed, the one
+    /// just come from among them. False for one connected to itself, which goes nowhere.
+    /// </summary>
+    public bool ChoosePeer(PeerRow row)
+    {
+        ArgumentNullException.ThrowIfNull(row);
+        if (selectedProcess?.Id == row.PeerId)
+        {
+            return false;
+        }
+
+        SelectProcess(row.PeerId);
+        return true;
+    }
 
     /// <summary>Whether the inspector names the processes the selected process talked with.</summary>
     public bool ShowsPeers => SelectionPeers.Count > 0;
@@ -199,8 +217,13 @@ public sealed partial class WorkspaceViewModel
             _ => peer,
         };
         string glyph = DirectionText.Glyph((int)Math.Min(made, int.MaxValue), (int)Math.Min(accepted, int.MaxValue));
+        ProcessInstanceId other = first ? edge.TargetId : edge.SourceId;
         return new PeerRow((glyph.Length > 0 ? glyph + " " : string.Empty) + peer, detail,
-            said + ": " + detail.Replace(" · ", ", ", StringComparison.Ordinal));
+            said + ": " + detail.Replace(" · ", ", ", StringComparison.Ordinal))
+        {
+            PeerId = other,
+            Itself = other == selected,
+        };
     }
 
     private IReadOnlyList<ProgramPair> ProgramsOfSelection()
@@ -308,7 +331,6 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ShowsProgramsMore));
         OnPropertyChanged(nameof(ShowsPrograms));
         OnPropertyChanged(nameof(SelectionPeers));
-        OnPropertyChanged(nameof(SpokenSelectionPeers));
         OnPropertyChanged(nameof(PeersMore));
         OnPropertyChanged(nameof(ShowsPeersMore));
         OnPropertyChanged(nameof(ShowsPeers));

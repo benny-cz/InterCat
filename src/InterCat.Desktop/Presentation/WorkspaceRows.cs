@@ -169,7 +169,17 @@ public sealed record ProgramPairRow(string Pair, string Counts, string Spoken);
 /// chosen process's side as its own connection count reads - "← node.exe · PID 3808", the other end connected to it - what
 /// it carried - "1 accepted · TCP · 10 records" - and both read aloud, who connected said in words.
 /// </summary>
-public sealed record PeerRow(string Peer, string Detail, string Spoken);
+public sealed record PeerRow(string Peer, string Detail, string Spoken) : IAccessibleRow
+{
+    /// <summary>The process at the relationship's other end, which Enter or a double click on the row chooses.</summary>
+    public ProcessInstanceId PeerId { get; init; }
+
+    /// <summary>Whether the other end is the chosen process itself, connected to itself: choosing it again goes nowhere.</summary>
+    public bool Itself { get; init; }
+
+    /// <summary>The row read aloud: who connected in words, what it carried, and what Enter on it does.</summary>
+    public string AccessibleName => Itself ? Spoken : $"{Spoken}. Press Enter to choose the process at its other end.";
+}
 
 /// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells

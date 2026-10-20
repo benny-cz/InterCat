@@ -945,20 +945,36 @@
                              TextWrapping="Wrap" IsVisible="{Binding ShowsProgramsMore}" />
                 </StackPanel>
                 <!-- §6.3: which processes a chosen process talked with, and who connected, from its side as its connections
-                     above count them: on a busy machine otherwise read off the graph edge by edge or the table row by row. -->
+                     above count them: on a busy machine otherwise read off the graph edge by edge or the table row by row.
+                     Enter or a double click on one chooses the process at its other end, whose own are then listed, so who
+                     connected to whom is walked a relationship at a time. -->
                 <StackPanel Spacing="3" IsVisible="{Binding ShowsPeers}">
                   <TextBlock x:Name="PeersHeadingText" Text="{Binding PeersHeading}" Classes="muted" TextWrapping="Wrap" />
-                  <ItemsControl x:Name="PeersList" ItemsSource="{Binding SelectionPeers}"
-                                AutomationProperties.Name="{Binding SpokenSelectionPeers}">
-                    <ItemsControl.ItemTemplate>
+                  <ListBox x:Name="PeersList" ItemsSource="{Binding SelectionPeers}" Background="Transparent" BorderThickness="0"
+                           DoubleTapped="ChooseListedPeer" ScrollViewer.VerticalScrollBarVisibility="Disabled"
+                           ScrollViewer.BringIntoViewOnFocusChange="False"
+                           AutomationProperties.Name="{Binding PeersListName}">
+                    <!-- Five at most, laid out whole within the inspector's own scroll. -->
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,3" />
+                        <Setter Property="MinHeight" Value="0" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
                       <DataTemplate x:DataType="pres:PeerRow">
-                        <StackPanel Margin="0,0,0,4" Spacing="1">
+                        <StackPanel Margin="0,1" Spacing="1">
                           <TextBlock Text="{Binding Peer}" TextWrapping="Wrap" />
                           <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
                         </StackPanel>
                       </DataTemplate>
-                    </ItemsControl.ItemTemplate>
-                  </ItemsControl>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
                   <TextBlock x:Name="PeersMoreText" Text="{Binding PeersMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsPeersMore}" />
                 </StackPanel>
