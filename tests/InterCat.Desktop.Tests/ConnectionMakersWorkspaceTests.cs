@@ -40,6 +40,28 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.Equal("Direction: display order only, not who initiated or sent", await DirectionAsync(Unseen(), clientFirst: true));
     });
 
+    [Fact(DisplayName = "§6.3: an edge's card is titled as its row in the relationship table names it, the end that made its connections first, whichever end the graph draws first")]
+    public void AnEdgesCardIsTitledByWhoConnected() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, [.. OneWay(), .. Updater(), .. Workers()]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        string Title(GraphDisplayEdge edge) => workspace.DescribeGraphHover(edge.Key)!.Title;
+
+        // The client connected to the server: named first, as the inspector names the relationship chosen.
+        GraphDisplayEdge pair = Assert.Single(workspace.GraphDisplay.Edges, edge => !edge.ToHosts);
+        Assert.Equal($"{Client} → {Server}", Title(pair));
+        workspace.SelectedRelationship = workspace.Relationships.Single(row => row.Key == Assert.Single(pair.Relationships));
+        Assert.Equal(workspace.SelectionTitle, Title(pair));
+
+        // The updater connected out to another host, and the workers' processes accepted connections from them.
+        Assert.Equal(["Other hosts → worker.exe", "updater.exe · PID 300 → Other hosts"],
+            workspace.GraphDisplay.Edges.Where(edge => edge.ToHosts).Select(Title).Order(StringComparer.Ordinal));
+    });
+
     [Fact(DisplayName = "§6.8: the inspector names a chosen relationship with the mark of who connected between its ends, says who beneath, and how it was derived in its explanation")]
     public void TheInspectorSaysWhoConnectedForAChosenRelationship() => SingleThreadedContext.Run(async () =>
     {

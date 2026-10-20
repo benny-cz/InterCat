@@ -233,8 +233,9 @@ public sealed partial class WorkspaceViewModel
             lines.Add("Click chooses its processes, which the inspector lists; double-click takes the keyboard there");
         }
 
-        // Its ends joined as a relationship's are: who opened its connections is its direction line's to say.
-        return new($"{source?.Title ?? edge.SourceKey} ↔ {target}", lines);
+        // Its ends joined as a relationship's are, the end that opened its connections first: its processes, by a connect,
+        // or the hosts, by one its processes accepted.
+        return new(DirectionText.Joined(edge.MadeFromSource, edge.MadeFromTarget, source?.Title ?? edge.SourceKey, target), lines);
     }
 
     /// <summary>

@@ -82,5 +82,9 @@ public sealed class DirectionTextTests
         Assert.Equal("b connected to a", DirectionText.Spoken(0, 1, "a", "b"));
         Assert.Equal("each connected to the other", DirectionText.Spoken(1, 3, "a", "b"));
         Assert.Null(DirectionText.Spoken(0, 0, "a", "b"));
+
+        // A card's title names the two ends as the table does: the maker first, whichever end is given first.
+        Assert.Equal(["a → b", "b → a", "a ⇄ b", "a ↔ b"],
+            new[] { (2, 0), (0, 1), (1, 3), (0, 0) }.Select(made => DirectionText.Joined(made.Item1, made.Item2, "a", "b")));
     }
 }

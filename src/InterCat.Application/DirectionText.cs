@@ -67,6 +67,19 @@ public static class DirectionText
     };
 
     /// <summary>
+    /// Two ends named as the relationship table names a relationship's, the end that made its connections first: "client.exe
+    /// · PID 100 → server.exe · PID 200" whichever end <paramref name="source"/> is, "a ⇄ b" where each made some, and "a ↔
+    /// b", in the order given, where the capture saw none open, so a card's title never contradicts its direction line.
+    /// </summary>
+    public static string Joined(int fromSource, int fromTarget, string source, string target) => (fromSource > 0, fromTarget > 0) switch
+    {
+        (true, false) => $"{source} → {target}",
+        (false, true) => $"{target} → {source}",
+        (true, true) => $"{source} ⇄ {target}",
+        _ => $"{source} ↔ {target}",
+    };
+
+    /// <summary>
     /// How many TCP connections a set of processes made and accepted over the whole session, as the capture saw each open at
     /// either end (`relations-v1` §5): their own, each counted for the end that connected and the end that accepted, so one
     /// between two of them is one the set made and one it accepted, and one a process made to itself both. A ranking of the

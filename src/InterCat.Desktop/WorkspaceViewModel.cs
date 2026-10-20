@@ -4495,7 +4495,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             lines.Add("Double-click opens " + WorkspaceRowBuilder.Opens(Snapshot, only));
         }
 
-        return new($"{source} ↔ {target}", lines);
+        // Its ends named as its row in the relationship table names them, the end that made its connections first.
+        return new(DirectionText.Joined(drawn.MadeFromSource, drawn.MadeFromTarget, source, target), lines);
     }
 
     /// <summary>
