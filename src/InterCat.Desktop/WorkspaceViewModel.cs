@@ -83,6 +83,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// Each rung left with a timeline cell chosen, and that cell, which the way back and forward come to (§3.2).
 /// </param>
 /// <param name="RecordOrigin">Where the latest way down from a cell's listed record began, which the way back comes to (§3.2).</param>
+/// <param name="IntervalRowOrigin">Where the latest way down from the interval table's row began, which the way back comes to (§3.2).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -111,7 +112,8 @@ public sealed record WorkspaceNavigationMemento(
     string? ChosenHostEdge = null,
     bool DescribesRow = false,
     IReadOnlyList<CellOrigin>? CellOrigins = null,
-    CellRecordOrigin? RecordOrigin = null);
+    CellRecordOrigin? RecordOrigin = null,
+    IntervalRowOrigin? IntervalRowOrigin = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -866,8 +868,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(IntervalTableScope));
 
         // The analysis interval stays selected, its row the new rows' one that is exactly it: a focus count arriving at
-        // the same resolution keeps it, and a new resolution with no such row drops it.
+        // the same resolution keeps it, and a new resolution with no such row drops it. A way back waiting for its row
+        // has it once listed.
         SyncSelectedIntervalRow();
+        OfferAskedIntervalRow();
     }
 
     private void SetTimelineDetailProblem(string? problem)
@@ -1694,7 +1698,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
-        cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin);
+        cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1851,6 +1855,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         cellOrigins.Clear();
         cellOrigins.AddRange(saved.CellOrigins ?? []);
         cellRecordOrigin = saved.RecordOrigin;
+        intervalRowOrigin = saved.IntervalRowOrigin;
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -3729,6 +3734,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             OnPropertyChanged();
             OnPropertyChanged(nameof(TableToggleLabel));
             FollowDescribedBytes();
+            if (!value)
+            {
+                // Hidden, the tables let go the row a way back came for: shown again, they give the keyboard nowhere.
+                askedIntervalRow = null;
+            }
 
             // Shown, the table reads what its edges to other hosts carried.
             RestateTableRows();
@@ -5334,6 +5344,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             cellRecordOrigin = null;
         }
 
+        if (intervalRowOrigin is { } moment && from <= moment.Depth)
+        {
+            intervalRowOrigin = null;
+        }
+
         ForgetWaysBackFrom(from);
         return true;
     }
@@ -5487,6 +5502,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ResumeRelationshipOrigin();
         ResumeCellOrigin();
         ResumeCellRecordOrigin();
+        ResumeIntervalRowOrigin();
         return true;
     }
 
@@ -5514,6 +5530,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             if (ladder.Depth < from)
             {
                 ResumeCellRecordOrigin();
+                ResumeIntervalRowOrigin();
             }
         }
     }
@@ -5649,6 +5666,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         KeepCellWayBack();
         chosenCell = null;
         askedCellRecord = null;
+        askedIntervalRow = null;
 
         // The process a rung was reached with is its context, not a choice made there: an opened channel is described
         // over it until another is chosen.
@@ -7201,10 +7219,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             chosenCell = null;
         }
 
-        // A record a way back came for is a record of the interval it came back to.
+        // A record or a row a way back came for is the interval's it came back to.
         if (changed.Interval != selectedInterval)
         {
             askedCellRecord = null;
+            askedIntervalRow = null;
         }
 
         selectedInterval = changed.Interval;

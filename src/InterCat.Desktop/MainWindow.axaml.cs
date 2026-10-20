@@ -659,9 +659,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 if (IntervalList.IsKeyboardFocusWithin)
                 {
                     // An interval is a moment of the timeline, not a row to descend into: Enter lists its records, as E
-                    // does with the analysis interval it sets (§6.4), and E's table then has the keyboard. It descended
-                    // into the ranked table's chosen row, which the interval table does not show.
-                    e.Handled = viewModel.ShowEvidence();
+                    // does with the analysis interval it sets (§6.4), and E's table then has the keyboard; the way back
+                    // gives it to the row again. It descended into the ranked table's chosen row, which the interval
+                    // table does not show.
+                    e.Handled = viewModel.ShowIntervalRecords();
                     if (e.Handled) FocusRail();
                     break;
                 }
@@ -692,7 +693,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 // so E's table takes it there, as after Enter; on a surface or a control that stays, it stays.
                 bool rebuilt = RelationshipList.IsKeyboardFocusWithin || IntervalList.IsKeyboardFocusWithin
                     || CellRecordsList.IsKeyboardFocusWithin;
-                e.Handled = viewModel.ShowEvidence();
+                e.Handled = IntervalList.IsKeyboardFocusWithin ? viewModel.ShowIntervalRecords() : viewModel.ShowEvidence();
                 if (e.Handled && rebuilt) FocusRail();
                 break;
             }
@@ -2579,6 +2580,18 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (!closed && DataContext is WorkspaceViewModel { SelectedTableRow: { } row })
         {
             _ = FocusRow(RelationshipList, row);
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
+    /// <summary>
+    /// Gives the interval table's chosen row the keyboard once its rows are laid out: the way back to the rung a moment's
+    /// records were listed from asks for it (§3.2, R15), so the next moment is a key away.
+    /// </summary>
+    private void FocusIntervalRow() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!closed && DataContext is WorkspaceViewModel { SelectedIntervalRow: { } row })
+        {
+            _ = FocusRow(IntervalList, row);
         }
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
@@ -4769,6 +4782,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.CellRecordAsked))
         {
             FocusAskedCellRecord();
+        }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.IntervalRowAsked))
+        {
+            FocusIntervalRow();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ReadsWallClock))

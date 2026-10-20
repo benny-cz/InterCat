@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 633 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 634 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,19 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 634 — the way back from a moment the interval table lists gives the keyboard back to its row (§3.2, R15):**
+  - A live pass stepping and resizing by keyboard on the busy machine found that Enter on an interval-table row, which
+    lists its moment's records in E, came back by Esc with the keyboard on the ranked table. The way back - Esc, the
+    breadcrumb, or forward and back - now gives it to the row again where the tables are shown and the row is still
+    the analysis interval's.
+  - Debug and Release each ran 2,600 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    twenty mutations were caught: Enter or E in the interval table listing the moment as E from elsewhere does; the
+    window not answering the ask, or not giving the row the keyboard; the way down not kept; Esc or the breadcrumb
+    not asking; the tables hidden on the way back asking; the way back spent when taken, kept for another rung at
+    its depth, or that rung not checked; hidden tables keeping the ask; the rows listed again not offering it,
+    offering it for another row, or asking again; a navigation or another interval keeping the ask; a way down of
+    its own keeping the way back; and a newer generation not carrying or not restoring it.
 
 - **Revision 633 — a cell a step or the interval table chose stays the cell when the timeline cuts its columns afresh (§6.8):**
   - A step or an interval-table row chooses a column explained as a cell of the lane it follows, and a resize or zoom

@@ -113,6 +113,18 @@ public sealed class KeyboardWorkflowTests
         Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
         Assert.Equal(moment, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
         Assert.Same(intervals.SelectedItem, (window.FocusManager?.GetFocusedElement() as Control)?.DataContext);
+
+        // Enter on the moment's row lists its records in E, E's table taking the keyboard; Esc comes back to the row with it.
+        Press(window, PhysicalKey.Enter);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.Escape);
+        Dispatch();
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(moment, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
+        Assert.Same(intervals.SelectedItem, (window.FocusManager?.GetFocusedElement() as Control)?.DataContext);
         Press(window, PhysicalKey.F6);
         Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
         window.Close();
@@ -228,14 +240,14 @@ public sealed class KeyboardWorkflowTests
         Assert.Equal(4, workspace.RungRows.Count);
         Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
 
-        // Esc comes back to the moment. Two rows down is a run of empty intervals, one row, and Enter on it lists nothing:
-        // the reason has the keyboard, named by what it says, rather than nothing.
+        // Esc comes back to the moment, the keyboard on its row where the way down began. Two rows down is a run of empty
+        // intervals, one row, and Enter on it lists nothing: the reason has the keyboard, named by what it says, rather
+        // than nothing.
         Press(window, PhysicalKey.Escape);
+        Dispatch();
         Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
-        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
-        Press(window, PhysicalKey.F6);
-        Press(window, PhysicalKey.F6);
         Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(moment, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
         Press(window, PhysicalKey.ArrowDown);
         Press(window, PhysicalKey.ArrowDown);
         IntervalRow empty = Assert.IsType<IntervalRow>(intervals.SelectedItem);
@@ -250,15 +262,15 @@ public sealed class KeyboardWorkflowTests
         Assert.True(reason.IsFocused, Focused(window));
         Assert.StartsWith("No admitted source record is in this scope.", AutomationProperties.GetName(reason), StringComparison.Ordinal);
 
-        // Esc leaves it as from any record, and the ranked table has the keyboard again.
+        // Esc leaves it as from any record, and the run's row has the keyboard again.
         Press(window, PhysicalKey.Escape);
+        Dispatch();
         Assert.Equal("L0 · MACHINE", workspace.LevelBadge);
-        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(empty.Interval, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
 
         // E in the interval table on the first moment does what Enter does: the table's rows are rebuilt for E, so E's
         // table has the keyboard rather than nothing.
-        Press(window, PhysicalKey.F6);
-        Press(window, PhysicalKey.F6);
         Press(window, PhysicalKey.Home);
         Assert.Equal(moment, workspace.SelectedInterval);
         await workspace.IntervalReady;
@@ -269,6 +281,12 @@ public sealed class KeyboardWorkflowTests
         Dispatch();
         Assert.Equal(4, workspace.RungRows.Count);
         Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+
+        // And Esc back from them comes to the moment's row with the keyboard, as from Enter.
+        Press(window, PhysicalKey.Escape);
+        Dispatch();
+        Assert.True(intervals.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(moment, Assert.IsType<IntervalRow>(intervals.SelectedItem).Interval);
         window.Close();
     }
 
