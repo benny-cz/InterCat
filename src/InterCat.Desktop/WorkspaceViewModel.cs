@@ -3331,15 +3331,15 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         var process = new ProcessInstanceId(id);
         Dictionary<string, Channel> channels = Snapshot.Channels.ToDictionary(channel => channel.Key, StringComparer.Ordinal);
         Dictionary<string, CommunicationEdge> edges = Snapshot.Edges.ToDictionary(edge => edge.Key, StringComparer.Ordinal);
-        Dictionary<ProcessInstanceId, string> names = [];
+        Dictionary<ProcessInstanceId, ProcessNode> nodes = [];
         foreach (ProcessNode node in Snapshot.Processes)
         {
-            names.TryAdd(node.Id, node.NameWithPid);
+            nodes.TryAdd(node.Id, node);
         }
 
         return [.. rows.Select(row => channels.TryGetValue(row.Key, out Channel? channel)
             && edges.TryGetValue(channel.EdgeKey, out CommunicationEdge? edge)
-                ? PeerNamed(row, process, channel, edge, names)
+                ? PeerNamed(row, process, channel, edge, nodes)
                 : row)];
     }
 
@@ -3348,19 +3348,26 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     /// endpoint pair, and a server's channels all begin with the server's own endpoint, so the rail cut every row before the
     /// peer's port and they read alike. The peer leads - "→" where the process made the connection, "←" where the peer
     /// did, "↔" where the capture cannot say or a datagram flow - the process's own port and the peer's follow, and the
-    /// tooltip, crumb and export keep the channel's own name.
+    /// tooltip, crumb and export keep the channel's own name. A peer of the process's own program is named by its PID
+    /// alone, as the graph names it at this rung and its group's rung names its processes: the program is the rung's title,
+    /// and the rail cut a name it repeats before the PID that tells the rows apart. Read aloud, it is named whole.
     /// </summary>
     private static RungRow PeerNamed(RungRow row, ProcessInstanceId process, Channel channel, CommunicationEdge edge,
-        Dictionary<ProcessInstanceId, string> names)
+        Dictionary<ProcessInstanceId, ProcessNode> nodes)
     {
         ProcessInstanceId peer = edge.SourceId == process ? edge.TargetId : edge.SourceId;
-        string peerName = peer == process ? "itself" : names.GetValueOrDefault(peer, "an unknown process");
+        ProcessNode? other = nodes.GetValueOrDefault(peer);
+        string peerName = peer == process ? "itself" : other?.NameWithPid ?? "an unknown process";
+        string shown = peer != process && other is not null && nodes.GetValueOrDefault(process) is { } own
+            && string.Equals(own.GroupKey, other.GroupKey, StringComparison.Ordinal)
+                ? other.PidLabel
+                : peerName;
         string ends = ChannelNames.Compact(channel.Name, swap: channel.FirstHolder is { } first && first != process);
         bool made = peer != process && channel.ConnectedBy == process;
         bool came = peer != process && channel.ConnectedBy == peer;
         return row with
         {
-            Label = (made ? "→ " : came ? "← " : "↔ ") + peerName,
+            Label = (made ? "→ " : came ? "← " : "↔ ") + shown,
             Detail = $"{EvidenceRowText.MechanismName(channel.Mechanism)} · {ends}",
             SpokenLabel = (made ? "Connection to " : came ? "Connection from " : "Channel with ") + peerName,
         };

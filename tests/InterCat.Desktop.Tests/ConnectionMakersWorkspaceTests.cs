@@ -209,6 +209,57 @@ public sealed class ConnectionMakersWorkspaceTests
             workspace.RungRows.Select(row => (row.Label, row.SpokenLabel!)).Order());
     });
 
+    [Fact(DisplayName = "§7.4: at a process's rung a peer of its own program is named by its PID, as the graph names it there, and read aloud whole")]
+    public void APeerOfTheProcesssOwnProgramIsNamedByItsPid() => SingleThreadedContext.Run(async () =>
+    {
+        // Two of browser.exe's processes connect to the third, which connects to the server.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 301, 2) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 302, 3) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 120 },
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 130 },
+            .. Connection(10, 301, 300, "127.0.0.1:50001", "127.0.0.1:9222"),
+            .. Connection(20, 302, 300, "127.0.0.1:50002", "127.0.0.1:9222"),
+            .. Connection(30, 300, 400, "127.0.0.1:50003", "127.0.0.1:8080"),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        ProcessNode browser = workspace.Snapshot.Processes.Single(process => process.ProcessId == 300);
+        foreach (string key in new[] { browser.GroupKey, browser.Id.ToString() })
+        {
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+            Assert.True(workspace.Descend());
+        }
+
+        Assert.Equal(
+            [
+                ("← PID 301", "Connection from browser.exe · PID 301"),
+                ("← PID 302", "Connection from browser.exe · PID 302"),
+                ("→ server.exe · PID 400", "Connection to server.exe · PID 400"),
+            ],
+            workspace.RungRows.Select(row => (row.Label, row.SpokenLabel!)).Order());
+        ProcessNode child = workspace.Snapshot.Processes.Single(process => process.ProcessId == 301);
+        Assert.Equal("PID 301", GraphView.DrawnName(workspace.GraphDisplay.Nodes.Single(node => node.Process == child.Id),
+            workspace.GraphDisplay));
+    });
+
+    /// <summary>One TCP connection <paramref name="maker"/> made to <paramref name="taker"/>, opened, and a send across it.</summary>
+    private static ObservationRowV1[] Connection(long ticks, int maker, int taker, string from, string to) =>
+    [
+        Transfer(ticks, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, maker, (ulong)ticks).Between(from, to)
+            with { SessionRelativeTicks = ticks * 100 },
+        Transfer(ticks + 1, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, taker, (ulong)ticks + 1).Between(to, from)
+            with { SessionRelativeTicks = (ticks + 1) * 100 },
+        Transfer(ticks + 2, ObservationKind.Send, AccountingSide.SendSide, 64, maker, (ulong)ticks + 2).Between(from, to)
+            with { SessionRelativeTicks = (ticks + 2) * 100 },
+        Transfer(ticks + 3, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, taker, (ulong)ticks + 3).Between(to, from)
+            with { SessionRelativeTicks = (ticks + 3) * 100 },
+    ];
+
     [Fact(DisplayName = "§6.3: an arrowhead points at the disc its connections ran to, standing just off it, wider than its stroke by a margin either side, and is left out where the edge cannot hold one at each end")]
     public void AnArrowheadPointsAtTheDiscItsConnectionsRanTo()
     {
