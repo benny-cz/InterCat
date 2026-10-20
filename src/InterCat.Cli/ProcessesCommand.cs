@@ -15,6 +15,13 @@ internal sealed record ProcessesDocument
     public required long Generation { get; init; }
     public required string BindingRule { get; init; }
     public required string EvidencePolicy { get; init; }
+
+    /// <summary>
+    /// What <see cref="Instances"/> are ranked by, the most first, as `--rank-by` names it: bytes-sent-and-received unless
+    /// it named records, bytes-sent, bytes-received, connections-made or connections-accepted.
+    /// </summary>
+    public required string RankedBy { get; init; }
+
     public required ProcessesSummaryDocument Summary { get; init; }
 
     /// <summary>
@@ -203,6 +210,7 @@ internal static class ProcessesCommand
 
         string? topOption = command.TakeOption("--top");
         string? pidOption = command.TakeOption("--pid");
+        string? rankOption = command.TakeOption("--rank-by");
         string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
         string? sessionPath = command.TakePositional();
@@ -248,6 +256,26 @@ internal static class ProcessesCommand
             pid = parsed;
         }
 
+        // The list is ranked by what --rank-by names, in icat export's and icat hosts' words; one PID's detail is not a list.
+        RankingMetric? rankBy = rankOption switch
+        {
+            null or "bytes-sent-and-received" => RankingMetric.EndpointBytes,
+            "records" => RankingMetric.Records,
+            "bytes-sent" => RankingMetric.BytesSent,
+            "bytes-received" => RankingMetric.BytesReceived,
+            "connections-made" => RankingMetric.ConnectionsMade,
+            "connections-accepted" => RankingMetric.ConnectionsAccepted,
+            _ => null,
+        };
+        if (rankBy is null || (rankOption is not null && pid is not null))
+        {
+            ConsoleUi.Failure(rankBy is null
+                ? "--rank-by ranks the instances by records, bytes-sent, bytes-received, bytes-sent-and-received, "
+                    + $"connections-made or connections-accepted; '{rankOption}' is none of them."
+                : "--rank-by ranks the list of instances; --pid shows each instance of one PID in full.");
+            return InterCatExitCode.InvalidInvocation;
+        }
+
         EvidencePolicy policy = EvidencePolicy.IncludeCorrelated;
         if (policyOption is not null
             && (!Enum.TryParse(policyOption.Replace("-", string.Empty, StringComparison.Ordinal), ignoreCase: true, out policy)
@@ -285,9 +313,16 @@ internal static class ProcessesCommand
 
         // Each instance as the inspector explains it: the overview's own projection under the same policy (R18).
         SessionOverviewBundle projected = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken);
+        if (rankBy is RankingMetric.ConnectionsMade or RankingMetric.ConnectionsAccepted && !projected.ConnectionOpensRecorded)
+        {
+            ConsoleUi.Failure($"This session records no connection's open, so how many connections each instance made or accepted "
+                + $"is unknown rather than none, and there is nothing to rank by {rankOption}.");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
         ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound,
-            projected.ConnectionOpensRecorded);
+            projected.ConnectionOpensRecorded, rankBy.Value);
         if (pid is { } selected)
         {
             ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with, and who connected to whom.");
@@ -372,10 +407,12 @@ internal static class ProcessesCommand
         EvidencePolicy policy,
         Dictionary<ProcessInstanceId, ProcessNode> nodes,
         IReadOnlyList<CollectorProcessV1> unfound,
-        bool opensRecorded)
+        bool opensRecorded,
+        RankingMetric rankBy)
     {
         Dictionary<ProcessInstanceId, MetricGroup> sentBy = ByInstance(sent);
         Dictionary<ProcessInstanceId, MetricGroup> receivedBy = ByInstance(received);
+        (Func<ProcessActivityDocument, long> first, Func<ProcessActivityDocument, long> then) = Ranking(rankBy);
         List<ProcessActivityDocument> instances =
         [
             .. records.Groups
@@ -397,8 +434,8 @@ internal static class ProcessesCommand
                     Binding = ProcessBindingText.Explain(nodes[group.Process!.Id], unfound),
                     Collector = nodes[group.Process!.Id].Collector,
                 })
-                .OrderByDescending(item => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0))
-                .ThenByDescending(item => item.Records)
+                .OrderByDescending(first)
+                .ThenByDescending(then)
                 .ThenBy(item => item.Process.ProcessId)
                 .ThenBy(item => item.Process.LifecycleEpoch),
         ];
@@ -431,6 +468,7 @@ internal static class ProcessesCommand
             Generation = records.Generation,
             BindingRule = records.BindingRule ?? ProcessInstanceIndex.BindingRule,
             EvidencePolicy = policy.ToString(),
+            RankedBy = RankName(rankBy),
             Coverage = MetricCommand.CoverageDocument(records.Coverage),
             Summary = new()
             {
@@ -631,6 +669,12 @@ internal static class ProcessesCommand
             string.Create(
                 CultureInfo.CurrentCulture,
                 $"{document.Summary.RecordsAttributed:N0} of {allRecords:N0}"));
+
+        // The list's order, which --rank-by chooses; one PID's instances are shown in full, not ranked.
+        if (pid is null)
+        {
+            ConsoleUi.Field("Ranked by", RankedWords(document.RankedBy));
+        }
 
         // What the capture covered, in the words icat metric uses of the same answer: a count is only as complete as the
         // capture was, and an instance's count of none for a mechanism it did not collect is no proof of inactivity (R21).
@@ -865,6 +909,46 @@ internal static class ProcessesCommand
         };
 
     /// <summary>
+    /// What a ranking orders instances by, the most first, and what breaks its ties before the PID: an instance's other
+    /// direction of connections under a connection ranking, its bytes under a ranking by records, and its records otherwise.
+    /// </summary>
+    private static (Func<ProcessActivityDocument, long> First, Func<ProcessActivityDocument, long> Then) Ranking(RankingMetric rankBy)
+    {
+        static long Bytes(ProcessActivityDocument item) => (item.TransportBytesSent ?? 0) + (item.TransportBytesReceived ?? 0);
+        return rankBy switch
+        {
+            RankingMetric.Records => (item => item.Records, Bytes),
+            RankingMetric.BytesSent => (item => item.TransportBytesSent ?? 0, item => item.Records),
+            RankingMetric.BytesReceived => (item => item.TransportBytesReceived ?? 0, item => item.Records),
+            RankingMetric.ConnectionsMade => (item => item.ConnectionsMade ?? 0, item => item.ConnectionsAccepted ?? 0),
+            RankingMetric.ConnectionsAccepted => (item => item.ConnectionsAccepted ?? 0, item => item.ConnectionsMade ?? 0),
+            _ => (Bytes, item => item.Records),
+        };
+    }
+
+    /// <summary>A ranking as --rank-by names it.</summary>
+    private static string RankName(RankingMetric rankBy) => rankBy switch
+    {
+        RankingMetric.Records => "records",
+        RankingMetric.BytesSent => "bytes-sent",
+        RankingMetric.BytesReceived => "bytes-received",
+        RankingMetric.ConnectionsMade => "connections-made",
+        RankingMetric.ConnectionsAccepted => "connections-accepted",
+        _ => "bytes-sent-and-received",
+    };
+
+    /// <summary>What a list's "Ranked by" says: "connections made, the most first, then connections accepted".</summary>
+    private static string RankedWords(string rankedBy) => rankedBy switch
+    {
+        "records" => "records, the most first, then transport bytes sent and received",
+        "bytes-sent" => "transport bytes sent, the most first, then records",
+        "bytes-received" => "transport bytes received, the most first, then records",
+        "connections-made" => "connections made, the most first, then connections accepted",
+        "connections-accepted" => "connections accepted, the most first, then connections made",
+        _ => "transport bytes sent and received, the most first, then records",
+    };
+
+    /// <summary>
     /// The connections an instance made to one end and accepted from it: "2 made", "1 accepted", "1 made · 1 accepted", or
     /// "-" where the capture saw none of theirs open.
     /// </summary>
@@ -911,12 +995,17 @@ internal static class ProcessesCommand
     private static void PrintHelp()
     {
         ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--evidence-policy <name>]");
+        ConsoleUi.Line("                 [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received");
+        ConsoleUi.Line("                            |connections-made|connections-accepted]");
         ConsoleUi.Line("                 [--output <path>] [--overwrite] [--json]");
         ConsoleUi.Line("      Lists the process instances the session's evidence supports - created, exited,");
         ConsoleUi.Line("      running at capture start, or seen only in their own records - with each one's");
         ConsoleUi.Line("      lifetime, how many records bind to it, the TCP connections it made and accepted as");
         ConsoleUi.Line("      the capture saw them open, and the transport bytes it sent and received. A PID is");
         ConsoleUi.Line("      never an identity on its own: a reused PID is two instances.");
+        ConsoleUi.Line("      The list is ranked by the transport bytes each sent and received, the most first,");
+        ConsoleUi.Line("      unless --rank-by names another measure: connections-made lists first the instances");
+        ConsoleUi.Line("      that connected to the most others, and connections-accepted those the most connected to.");
         ConsoleUi.Line("      What the capture covered, mechanism by mechanism, is said as icat metric says it, so a");
         ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");

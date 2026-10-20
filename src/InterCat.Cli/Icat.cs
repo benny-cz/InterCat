@@ -240,7 +240,8 @@ internal static class Icat
         ConsoleUi.Line("      Detailed export of one ladder rung; --evidence writes source-record metadata.");
         ConsoleUi.Line("      --rank-by ranks the machine and group rungs by records, bytes-sent, bytes-received,");
         ConsoleUi.Line("      bytes-sent-and-received, rpc-calls-made, rpc-calls-served, rpc-errors, rpc-call-time-median,");
-        ConsoleUi.Line("      rpc-serve-time-median or active-peers, as the Desktop's Rank by selector does.");
+        ConsoleUi.Line("      rpc-serve-time-median, active-peers, connections-made or connections-accepted, as the");
+        ConsoleUi.Line("      Desktop's Rank by selector does.");
         ConsoleUi.Line("      --share-redacted writes a separate pseudonymized report, not a reopenable session.");
         ConsoleUi.Line("      Both formats are staged, never left partly written.");
         ConsoleUi.Line();
@@ -303,11 +304,12 @@ internal static class Icat
         ConsoleUi.Line("      --peer <instance> on one process at the other end, and --between <instances>");
         ConsoleUi.Line("      --and <instances> on the records connecting two sets (icat metric --help lists them).");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--json]");
+        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--rank-by <ranking>] [--json]");
         ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
-        ConsoleUi.Line("      lifetime, records and transport bytes; --pid shows one in full: the processes and");
-        ConsoleUi.Line("      other hosts it exchanged data with, and who connected to whom. A reused PID is two");
-        ConsoleUi.Line("      instances.");
+        ConsoleUi.Line("      lifetime, records, connections made and accepted, and transport bytes, the most bytes");
+        ConsoleUi.Line("      first unless --rank-by names records, bytes-sent, bytes-received, connections-made or");
+        ConsoleUi.Line("      connections-accepted; --pid shows one in full: the processes and other hosts it");
+        ConsoleUi.Line("      exchanged data with, and who connected to whom. A reused PID is two instances.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat operations <directory> [--pid <id>] [--interface <uuid>] [--calls <n>] [--json]");
         ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");

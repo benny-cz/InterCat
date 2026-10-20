@@ -101,7 +101,7 @@ icat timeline <session> --interval 0:10s
 icat hosts <session> --rank-by bytes-sent
 icat hosts <session> --address 10.0.0
 icat evidence <session> --host 10.0.0.20
-icat processes <session>
+icat processes <session> --rank-by connections-accepted
 icat processes <session> --pid <pid>
 icat operations <session>
 

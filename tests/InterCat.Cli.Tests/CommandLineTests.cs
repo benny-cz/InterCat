@@ -504,32 +504,7 @@ public sealed class CommandLineTests : IDisposable
     [Fact(DisplayName = "§5.2: icat processes --pid says who connected to whom end by end, adding up to the instance's own count: with itself, with an end it sent nothing to, and with ends no record holds")]
     public async Task AProcesssDetailSaysWhoConnectedEndByEnd()
     {
-        // The client connects to the server and to another host, and sends the resolver a datagram; a probe connects to the
-        // server and sends nothing; a process connects to itself, as a self-pipe does; the resolver sends a datagram out.
-        using var session = new TemporarySession();
-        Publish(session.Store,
-        [
-            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
-            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" },
-            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe" },
-            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\pipe.exe" },
-            Lifecycle(5, ObservationKind.Create, 500, 5) with { ResourceName = @"C:\Tools\probe.exe" },
-            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
-            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
-            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
-            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:50000"),
-            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between("192.168.1.10:52000", "203.0.113.1:443"),
-            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 500, 30).Between("127.0.0.1:51000", "127.0.0.1:8080"),
-            Transfer(31, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 31).Between("127.0.0.1:8080", "127.0.0.1:51000"),
-            Transfer(40, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 40).Between("127.0.0.1:52000", "127.0.0.1:52001"),
-            Transfer(41, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 41).Between("127.0.0.1:52001", "127.0.0.1:52000"),
-            Transfer(42, ObservationKind.Send, AccountingSide.SendSide, 1, 400, 42).Between("127.0.0.1:52000", "127.0.0.1:52001"),
-            Transfer(43, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, 43).Between("127.0.0.1:52001", "127.0.0.1:52000"),
-            Datagram(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 50)).Between("192.168.1.10:53000", "10.0.0.53:53"),
-            Datagram(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 60)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
-            Datagram(Transfer(61, ObservationKind.Receive, AccountingSide.ReceiveSide, 4, 300, 61)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
-        ]);
-        session.Store.ReleaseSegmentReaders();
+        using TemporarySession session = ConnectingProcesses();
 
         // The server accepted both connections made to it, one carrying data and one none, each its own row.
         (InterCatExitCode code, string server, string said) = await Run("processes", session.Path, "--pid", "200");
@@ -573,6 +548,116 @@ public sealed class CommandLineTests : IDisposable
             Assert.Equal((node.ConnectionsMade, node.ConnectionsAccepted),
                 (ends.Sum(end => end.GetProperty("connectionsMade").GetInt64()), ends.Sum(end => end.GetProperty("connectionsAccepted").GetInt64())));
         }
+
+    }
+
+    [Fact(DisplayName = "§5.2: icat processes ranks its list by what --rank-by names and says what, and ranks nothing by connections where the session records no open")]
+    public async Task TheProcessListSaysWhatItIsRankedBy()
+    {
+        using TemporarySession session = ConnectingProcesses();
+
+        // By the bytes each sent and received unless asked otherwise.
+        (InterCatExitCode code, string table, string said) = await Run("processes", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Ranked by +transport bytes sent and received, the most first, then records\r?$", table);
+        Assert.Equal([300, 100, 200, 500, 400], Listed(table));
+
+        // By the connections each accepted, the most first: the server, then the process connected to itself, then those
+        // that made more, whatever their records.
+        (code, table, said) = await Run("processes", session.Path, "--rank-by", "connections-accepted");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Ranked by +connections accepted, the most first, then connections made\r?$", table);
+        Assert.Equal([200, 400, 100, 500, 300], Listed(table));
+
+        // By those each made: of the two that made one, the one that also accepted one first, though it holds fewer records.
+        (_, table, _) = await Run("processes", session.Path, "--rank-by", "connections-made");
+        Assert.Matches(@"(?m)^  Ranked by +connections made, the most first, then connections accepted\r?$", table);
+        Assert.Equal([100, 400, 500, 200, 300], Listed(table));
+
+        // By records, ties going to the bytes; by the bytes of one direction, ties going to the records.
+        string byRecords = (await Run("processes", session.Path, "--rank-by", "records")).Output;
+        string bySent = (await Run("processes", session.Path, "--rank-by", "bytes-sent")).Output;
+        string byReceived = (await Run("processes", session.Path, "--rank-by", "bytes-received")).Output;
+        Assert.Equal([500, 100, 400, 200, 300], Listed(byRecords));
+        Assert.Equal([300, 100, 500, 400, 200], Listed(bySent));
+        Assert.Equal([200, 300, 400, 500, 100], Listed(byReceived));
+
+        // The document names its ranking and lists in its order.
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--rank-by", "connections-accepted", "--json")).Output))
+        {
+            Assert.Equal("connections-accepted", json.RootElement.GetProperty("rankedBy").GetString());
+            Assert.Equal([200, 400, 100, 500, 300], json.RootElement.GetProperty("instances").EnumerateArray()
+                .Select(item => item.GetProperty("process").GetProperty("processId").GetInt32()));
+        }
+
+        // A ranking it does not know, and a ranking of one PID's detail, are refused.
+        (code, _, said) = await Run("processes", session.Path, "--rank-by", "busiest");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--rank-by ranks the instances by records, bytes-sent, bytes-received, bytes-sent-and-received, "
+            + "connections-made or connections-accepted; 'busiest' is none of them.", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("processes", session.Path, "--rank-by", "records", "--pid", "100");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--pid shows each instance of one PID in full", said, StringComparison.Ordinal);
+        Assert.DoesNotContain("Ranked by", (await Run("processes", session.Path, "--pid", "100")).Output, StringComparison.Ordinal);
+
+        // Where the session records no connection's open, how many each made or accepted is unknown: nothing ranks by it.
+        using var unopened = new TemporarySession();
+        Publish(unopened.Store,
+        [
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+        ]);
+        unopened.Store.ReleaseSegmentReaders();
+        (code, _, said) = await Run("processes", unopened.Path, "--rank-by", "connections-made");
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("This session records no connection's open, so how many connections each instance made or accepted is "
+            + "unknown rather than none, and there is nothing to rank by connections-made.", said, StringComparison.Ordinal);
+
+        // icat's help names the rankings, and an export's by connections as its own help does.
+        string help = Regex.Replace((await Run("--help")).Output, @"\s+", " ");
+        Assert.Contains("the most bytes first unless --rank-by names records, bytes-sent, bytes-received, connections-made or "
+            + "connections-accepted", help, StringComparison.Ordinal);
+        Assert.Contains("rpc-serve-time-median, active-peers, connections-made or connections-accepted, as the Desktop's Rank by "
+            + "selector does.", help, StringComparison.Ordinal);
+
+        // The PIDs a list's rows name, in its order.
+        static int[] Listed(string list) =>
+            [.. Regex.Matches(list, @"(?m)^  (\d+) +\S").Select(row => int.Parse(row.Groups[1].Value, CultureInfo.InvariantCulture))];
+    }
+
+    /// <summary>
+    /// Five processes and who connected to whom: the client connects to the server and to another host, and sends the
+    /// resolver a datagram; a probe connects to the server and sends nothing over it, then four datagrams to another host;
+    /// a process connects to itself, as a self-pipe does; the resolver sends a datagram out.
+    /// </summary>
+    private static TemporarySession ConnectingProcesses()
+    {
+        var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe" },
+            Lifecycle(3, ObservationKind.Create, 300, 3) with { ResourceName = @"C:\Tools\resolver.exe" },
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Tools\pipe.exe" },
+            Lifecycle(5, ObservationKind.Create, 500, 5) with { ResourceName = @"C:\Tools\probe.exe" },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 10).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 11).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080"),
+            Transfer(13, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 13).Between("127.0.0.1:8080", "127.0.0.1:50000"),
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 20).Between("192.168.1.10:52000", "203.0.113.1:443"),
+            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 500, 30).Between("127.0.0.1:51000", "127.0.0.1:8080"),
+            Transfer(31, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 31).Between("127.0.0.1:8080", "127.0.0.1:51000"),
+            Transfer(40, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 400, 40).Between("127.0.0.1:52000", "127.0.0.1:52001"),
+            Transfer(41, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 400, 41).Between("127.0.0.1:52001", "127.0.0.1:52000"),
+            Transfer(42, ObservationKind.Send, AccountingSide.SendSide, 1, 400, 42).Between("127.0.0.1:52000", "127.0.0.1:52001"),
+            Transfer(43, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 400, 43).Between("127.0.0.1:52001", "127.0.0.1:52000"),
+            Datagram(Transfer(50, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 50)).Between("192.168.1.10:53000", "10.0.0.53:53"),
+            Datagram(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 60)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
+            Datagram(Transfer(61, ObservationKind.Receive, AccountingSide.ReceiveSide, 4, 300, 61)).Between("127.0.0.1:53100", "127.0.0.1:5353"),
+            .. Enumerable.Range(70, 4).Select(ticks => Datagram(Transfer(ticks, ObservationKind.Send, AccountingSide.SendSide, 1, 500, (ulong)ticks))
+                .Between("192.168.1.10:54000", "198.51.100.7:9")),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+        return session;
 
         // A UDP record names the datagram's source and destination, whichever end recorded it.
         static ObservationRowV1 Datagram(ObservationRowV1 row) => row with { Mechanism = Mechanism.Udp, EventId = 42 };
