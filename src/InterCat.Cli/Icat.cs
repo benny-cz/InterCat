@@ -194,8 +194,9 @@ internal static class Icat
         ConsoleUi.Line("      Graph eligibility is narrower than the all-observations timeline; caveats are included.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat hosts <directory> [--address <address>] [--limit <n>] [--json]");
-        ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, or with --address the");
-        ConsoleUi.Line("      processes that reached one: the address whole, or begun up to a dot or colon.");
+        ConsoleUi.Line("      The other hosts the session's processes reached, the busiest first, each naming the process");
+        ConsoleUi.Line("      that reached it most; with --address every process that reached one: the address whole, or");
+        ConsoleUi.Line("      begun up to a dot or colon.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");

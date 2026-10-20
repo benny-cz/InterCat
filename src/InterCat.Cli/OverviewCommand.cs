@@ -163,19 +163,23 @@ internal static class OverviewCommand
                 ])]);
 
             // The hosts they ran to, the busiest first by the records their connections hold, as the Other hosts node names
-            // them: where the connections ran, each process's rung listing its own, and never who is at them (P7).
+            // them, each with the busiest process there: where the connections ran, and never who is at them (P7).
             IReadOnlyList<OtherHost> hosts = OtherHost.Of(overview.HostLinks);
+            Dictionary<string, (ProcessInstanceId Process, long Records)[]> reachers = HostsCommand.Reachers(overview.HostLinks);
             bool accepting = hosts.Take(5).Any(host => host.Accepted > 0);
             ConsoleUi.Table(
-                ["Busiest other host", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(), "Records"],
+                ["Busiest other host", "Processes", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(),
+                    "Records"],
                 [.. hosts.Take(5).Select(host => (IReadOnlyList<string>)
                 [
-                    host.Address, HostLinkText.Reached(host), host.Ports.Count == 0 ? "-" : HostLinkText.PortNumbers(host.Ports),
+                    host.Address, HostsCommand.ProcessesCell(reachers.GetValueOrDefault(host.Address), nodes),
+                    HostLinkText.Reached(host, countsProcesses: false),
+                    host.Ports.Count == 0 ? "-" : HostLinkText.PortNumbers(host.Ports),
                     .. accepting ? [HostLinkText.AcceptedCell(host.Accepted, host.AcceptedPorts)] : Array.Empty<string>(),
                     ConsoleUi.Count(host.Records),
                 ])]);
             ConsoleUi.Note(CountText.Of(hosts.Count, "other host") + " in all, counted by address; who is at them is not "
-                + "observed. icat channels <directory> --process <instance-guid> --one-sided lists a process's connections.");
+                + "observed. icat hosts <directory> lists every one, and with --address <address> every process that reached one.");
         }
 
         foreach (string caveat in overview.Caveats) ConsoleUi.Note(caveat);

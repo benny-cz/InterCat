@@ -57,6 +57,44 @@ public sealed class HostTrafficTests
         Assert.False(SessionHostTraffic.Ranks(RankingMetric.ActivePeers));
     }
 
+    [Fact(DisplayName = "§6.3: a byte ranking counts each host as the census does, its connections made and accepted and their ports")]
+    public void AByteRankingCountsEachHostAsTheCensusDoes()
+    {
+        // 10.0.0.5 connected to the service at its own port 3389, from the host's 50000, and was sent nothing; the service
+        // connected to 10.0.0.6's 443 and sent it 100 B.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Timed(Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Windows\System32\svchost.exe" }),
+            Timed(Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 2).Between("192.168.1.10:3389", "10.0.0.5:50000")),
+            Timed(Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 300, 3).Between("192.168.1.10:3389", "10.0.0.5:50000")),
+            Timed(Transfer(12, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 300, 4).Between("192.168.1.10:52000", "10.0.0.6:443")),
+            Timed(Transfer(13, ObservationKind.Send, AccountingSide.SendSide, 100, 300, 5).Between("192.168.1.10:52000", "10.0.0.6:443")),
+        ]);
+        IReadOnlyList<HostLink> links = SessionOverviewProjector.Project(session.Store).HostLinks;
+
+        // The census counts the accepted connection at the service's own port, never at the host's 50000, which it chose.
+        OtherHost[] census = [.. OtherHost.Of(links).OrderBy(host => host.Address, StringComparer.Ordinal)];
+        Assert.Equal(("10.0.0.5", 0, 1), (census[0].Address, census[0].Connected, census[0].Accepted));
+        Assert.Equal([3389], census[0].AcceptedPorts);
+        Assert.Empty(census[0].Ports);
+        Assert.Equal(("10.0.0.6", 1, 0), (census[1].Address, census[1].Connected, census[1].Accepted));
+        Assert.Equal([443], census[1].Ports);
+
+        // Every ranking reads each host alike, its ports and openings with its records.
+        foreach (RankingMetric metric in new[] { RankingMetric.Records, RankingMetric.BytesSent, RankingMetric.BytesReceived, RankingMetric.EndpointBytes })
+        {
+            Assert.Equal(census, SessionHostTraffic.Of(session.Store, links, metric).Select(host => host.Host)
+                .OrderBy(host => host.Address, StringComparer.Ordinal));
+        }
+
+        // Within an interval, so too.
+        OtherHost within = Assert.Single(SessionHostTraffic.Of(session.Store, links, RankingMetric.BytesReceived, new TimeRange(5, 12))).Host;
+        Assert.Equal(("10.0.0.5", 1, 2L), (within.Address, within.Accepted, within.Records));
+        Assert.Equal([3389], within.AcceptedPorts);
+        Assert.Empty(within.Ports);
+    }
+
     [Fact(DisplayName = "§6.3: what each process's connections over each transport to each host carried is read in one pass, the reaches asked for alone")]
     public void EachReachSaysWhatItsConnectionsCarried()
     {

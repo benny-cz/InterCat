@@ -44,11 +44,12 @@ public sealed class OverviewCensusTests
         Assert.Matches(@"(?m)^  Process +Connections to other hosts\r?$", text);
         Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +1 TCP connection to 1 host\r?$", text);
 
-        // And the hosts they ran to, the busiest first, by address, with what reached each, the ports at it and its records.
-        Assert.Matches(@"(?m)^  Busiest other host +Connections +Ports +Records\r?$", text);
-        Assert.Matches(@"(?m)^  142\.250\.1\.1 +1 TCP connection from 1 process +443 +2\r?$", text);
-        Assert.Contains("1 other host in all, counted by address; who is at them is not observed. icat channels <directory> "
-            + "--process <instance-guid> --one-sided lists a process's connections.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        // And the hosts they ran to, the busiest first, by address, with who reached each and over what, the ports at it and
+        // its records.
+        Assert.Matches(@"(?m)^  Busiest other host +Processes +Connections +Ports +Records\r?$", text);
+        Assert.Matches(@"(?m)^  142\.250\.1\.1 +browser\.exe · PID 300 +1 TCP connection +443 +2\r?$", text);
+        Assert.Contains("1 other host in all, counted by address; who is at them is not observed. icat hosts <directory> lists every "
+            + "one, and with --address <address> every process that reached one.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
         (code, text, said) = await Run("overview", remote.Path, "--json");
         Assert.True(code == InterCatExitCode.Success, said);
@@ -166,8 +167,8 @@ public sealed class OverviewCensusTests
         // The server accepted its connection from another host, at its own 445, which its row and the host's say.
         Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);
         Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection to 1 host +1 at 445\r?$", text);
-        Assert.Matches(@"(?m)^  Busiest other host +Connections +Ports +Accepted here +Records\r?$", text);
-        Assert.Matches(@"(?m)^  10\.0\.0\.6 +1 TCP connection from 1 process +- +1 at 445 +2\r?$", text);
+        Assert.Matches(@"(?m)^  Busiest other host +Processes +Connections +Ports +Accepted here +Records\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +server\.exe · PID 200 +1 TCP connection +- +1 at 445 +2\r?$", text);
 
         // The caveat says what the order of an edge's ends is, and where who connected is said.
         Assert.Contains("An edge's source and target are a stable display order, not a claim about direction: which process "

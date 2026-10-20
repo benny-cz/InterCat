@@ -21,9 +21,10 @@ internal static class HostsCommand
     /// scope since its third, since its fourth the ranking the hosts are listed by and, under a byte ranking, what each
     /// host's connections' transfers measured, since its fifth, read with an investigation, each listed host's candidate
     /// other ends in its other members' captures, and since its sixth how many of each host's TCP connections the capture
-    /// saw opened by a connect or accepted from it, with the ports the accepted ones arrived at, which its ports leave out.
+    /// saw opened by a connect or accepted from it, with the ports the accepted ones arrived at, which its ports leave out,
+    /// and since its seventh the processes whose connections ran to each listed host, the busiest there first.
     /// </summary>
-    internal const string Contract = "other-hosts-v6";
+    internal const string Contract = "other-hosts-v7";
 
     private const int DefaultLimit = 50;
 
@@ -158,6 +159,8 @@ internal static class HostsCommand
     {
         IReadOnlyList<OtherHost> hosts = traffic is null ? OtherHost.Of(overview.HostLinks) : [.. traffic.Select(host => host.Host)];
         int processes = overview.HostLinks.Select(link => link.Process).Distinct().Count();
+        Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
+        Dictionary<string, (ProcessInstanceId Process, long Records)[]> reachers = Reachers(overview.HostLinks);
         if (json)
         {
             Console.Out.WriteLine(JsonSerializer.Serialize(new
@@ -174,6 +177,12 @@ internal static class HostsCommand
                     host.TcpConnections,
                     host.UdpFlows,
                     host.Processes,
+                    ReachedBy = (reachers.GetValueOrDefault(host.Address) ?? []).Select(reach => new
+                    {
+                        Process = reach.Process.Value,
+                        Name = nodes[reach.Process].NameWithPid,
+                        reach.Records,
+                    }),
                     host.Records,
                     host.Ports,
                     host.Connected,
@@ -220,16 +229,17 @@ internal static class HostsCommand
             ? "the records their connections hold"
             : RankingMetrics.Phrase(rankBy) + ", as this machine's end of their connections measured them; hosts whose "
                 + "transfers stated no size follow, then those that made none");
-        // Each row: what reached the host, the connections accepted from it where any listed host has some, its bytes under a
-        // byte ranking, and the candidate other ends an investigation proposes.
+        // Each row: who reached the host and over what, the connections accepted from it where any listed host has some, its
+        // bytes under a byte ranking, and the candidate other ends an investigation proposes.
         bool accepting = hosts.Take(limit).Any(host => host.Accepted > 0);
-        string[] heads = ["Host", "Scope", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(),
+        string[] heads = ["Host", "Scope", "Processes", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(),
             "Records",
             .. traffic is null ? Array.Empty<string>() : ["Sent", "Received"],
             .. candidates is null ? Array.Empty<string>() : ["Candidate other ends"]];
         ConsoleUi.Table(heads, [.. hosts.Take(limit).Select((host, index) => (IReadOnlyList<string>)
         [
-            host.Address, AddressScope.Of(host.Address) ?? "-", HostLinkText.Reached(host),
+            host.Address, AddressScope.Of(host.Address) ?? "-", ProcessesCell(reachers.GetValueOrDefault(host.Address), nodes),
+            HostLinkText.Reached(host, countsProcesses: false),
             host.Ports.Count == 0 ? "-" : HostLinkText.PortNumbers(host.Ports),
             .. accepting ? [HostLinkText.AcceptedCell(host.Accepted, host.AcceptedPorts)] : Array.Empty<string>(),
             ConsoleUi.Count(host.Records),
@@ -247,8 +257,9 @@ internal static class HostsCommand
                 $"{hosts.Count - limit:N0} more, quieter; --limit {hosts.Count:N0} lists every one."));
         }
 
-        ConsoleUi.Note("An address is where the connections ran; who is at it is not observed. icat hosts <directory> "
-            + "--address <address> lists the processes that reached one.");
+        ConsoleUi.Note("An address is where the connections ran; who is at it is not observed. Processes names the busiest "
+            + "process whose connections ran there and how many more there are; icat hosts <directory> --address <address> "
+            + "lists every one.");
         if (accepting)
         {
             ConsoleUi.Note("Accepted here counts the TCP connections a process of this session accepted from the host, as the "
@@ -338,6 +349,35 @@ internal static class HostsCommand
         return InterCatExitCode.Success;
     }
 
+    /// <summary>
+    /// The processes whose connections ran to each address, made or accepted, the busiest there first by the records their
+    /// connections to it hold, then by instance, as --address lists them: one that reached it over both transports once,
+    /// its records summed.
+    /// </summary>
+    internal static Dictionary<string, (ProcessInstanceId Process, long Records)[]> Reachers(IEnumerable<HostLink> links) =>
+        links
+            .SelectMany(link => link.Addresses.Select(address => (link.Process, address.Address, address.Records)))
+            .GroupBy(reach => reach.Address, StringComparer.OrdinalIgnoreCase)
+            .ToDictionary(
+                host => host.Key,
+                host => host
+                    .GroupBy(reach => reach.Process)
+                    .Select(process => (Process: process.Key, Records: process.Sum(reach => reach.Records)))
+                    .OrderByDescending(process => process.Records)
+                    .ThenBy(process => process.Process.ToString(), StringComparer.Ordinal)
+                    .ToArray(),
+                StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The processes that reached a host as a table's cell names them, as an RPC channel's row names who served it: the
+    /// busiest, "updater.exe · PID 310", and how many more there are, "browser.exe · PID 300 and 4 more"; "-" for none.
+    /// </summary>
+    internal static string ProcessesCell(IReadOnlyList<(ProcessInstanceId Process, long Records)>? reachers,
+        IReadOnlyDictionary<ProcessInstanceId, ProcessNode> nodes) =>
+        reachers is not { Count: > 0 } ? "-"
+            : CollectorText.Named(nodes[reachers[0].Process])
+                + (reachers.Count > 1 ? string.Create(CultureInfo.CurrentCulture, $" and {reachers.Count - 1:N0} more") : string.Empty);
+
     /// <summary>A ranking as --rank-by names it.</summary>
     private static string RankName(RankingMetric metric) => metric switch
     {
@@ -362,9 +402,10 @@ internal static class HostsCommand
         ConsoleUi.Line("  The other hosts the session's processes reached: each address their connections ran to with no");
         ConsoleUi.Line("  process of the capture at the other end, the busiest first by the records those connections hold,");
         ConsoleUi.Line("  as the window's Other hosts node names them, with the ports at each they ran to and, where a");
-        ConsoleUi.Line("  process accepted connections from a host, how many and at which of its own ports. --address lists");
-        ConsoleUi.Line("  the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250 or");
-        ConsoleUi.Line("  2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
+        ConsoleUi.Line("  process accepted connections from a host, how many and at which of its own ports. Each names the");
+        ConsoleUi.Line("  process whose connections there hold the most records and how many more reached it. --address");
+        ConsoleUi.Line("  lists the processes that reached it - the address whole, or begun up to a dot or colon, as 142.250");
+        ConsoleUi.Line("  or 2001:db8:, an address at a port, as 142.250.1.1:443 or [2001:db8::1]:443, or a port at any");
         ConsoleUi.Line("  address, as :443, or which accepted connections at that port of their own - as the window's");
         ConsoleUi.Line($"  search finds them. --limit lists at most that many, {DefaultLimit} by default. --rank-by lists the");
         ConsoleUi.Line("  hosts by the bytes their connections sent there, received from there or both, as this machine's");

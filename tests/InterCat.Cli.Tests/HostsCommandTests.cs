@@ -25,18 +25,23 @@ public sealed class HostsCommandTests
         (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Hosts +4 hosts, reached by 2 processes\r?$", text);
-        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records\r?$", text);
-        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\S+) +(\d.*?(?:process|processes)) +(\d.*?) +(\d+)\r?$").Select(match =>
-            $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value.TrimEnd()} | {match.Groups[5].Value}")];
+        Assert.Matches(@"(?m)^  Host +Scope +Processes +Connections +Ports +Records\r?$", text);
+        string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +(\S+) +(\S+ · PID \d+(?: and \d+ more)?) +(\d+ (?:TCP|UDP) \S+) +(\d.*?) +(\d+)\r?$")
+            .Select(match => $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value} | "
+                + $"{match.Groups[5].Value.TrimEnd()} | {match.Groups[6].Value}")];
+
+        // Each names who reached it: the busiest there, the updater's three records to 142.250.1.1 before the browser's two,
+        // and how many more.
         Assert.Equal(
             [
-                "142.250.1.1 | - | 2 TCP connections from 2 processes | 443 and 8443 | 5",
-                "142.250.1.10 | - | 1 TCP connection from 1 process | 443 | 1",
-                "2001:db8::1 | - | 1 TCP connection from 1 process | 443 | 1",
-                "8.8.8.8 | - | 1 UDP flow from 1 process | 53 | 1",
+                "142.250.1.1 | - | updater.exe · PID 310 and 1 more | 2 TCP connections | 443 and 8443 | 5",
+                "142.250.1.10 | - | browser.exe · PID 300 | 1 TCP connection | 443 | 1",
+                "2001:db8::1 | - | updater.exe · PID 310 | 1 TCP connection | 443 | 1",
+                "8.8.8.8 | - | browser.exe · PID 300 | 1 UDP flow | 53 | 1",
             ],
             rows);
-        Assert.Contains("who is at it is not observed", text, Ordinal);
+        Assert.Contains("who is at it is not observed. Processes names the busiest process whose connections ran there and how many "
+            + "more there are; icat hosts <directory> --address <address> lists every one.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
         // As many as asked, saying how many more there are.
         (code, text, _) = await Run("hosts", session.Path, "--limit", "2");
@@ -48,7 +53,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v6", "records", 4, 2), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v7", "records", 4, 2), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString(), root.GetProperty("hosts").GetInt32(), root.GetProperty("processes").GetInt32()));
         JsonElement busiest = root.GetProperty("listed")[0];
         Assert.Equal(("142.250.1.1", 2, 0, 2, 5L), (busiest.GetProperty("address").GetString(), busiest.GetProperty("tcpConnections").GetInt32(),
@@ -56,6 +61,9 @@ public sealed class HostsCommandTests
         Assert.Equal([443, 8443], busiest.GetProperty("ports").EnumerateArray().Select(port => port.GetInt32()));
         Assert.Equal(JsonValueKind.Null, busiest.GetProperty("scope").ValueKind);
         Assert.Equal(JsonValueKind.Null, busiest.GetProperty("transfers").ValueKind);
+        Assert.Equal([("updater.exe · PID 310", 3L), ("browser.exe · PID 300", 2L)], busiest.GetProperty("reachedBy").EnumerateArray()
+            .Select(reach => (reach.GetProperty("name").GetString(), reach.GetProperty("records").GetInt64())));
+        Assert.All(busiest.GetProperty("reachedBy").EnumerateArray(), reach => Assert.True(Guid.TryParse(reach.GetProperty("process").GetString(), out _)));
 
         // A limit that is no count of hosts is refused.
         (code, _, said) = await Run("hosts", session.Path, "--limit", "0");
@@ -72,7 +80,7 @@ public sealed class HostsCommandTests
         scoped.Store.ReleaseSegmentReaders();
         (code, text, _) = await Run("hosts", scoped.Path);
         Assert.Equal(InterCatExitCode.Success, code);
-        Assert.Matches(@"(?m)^  239\.255\.255\.250 +multicast +1 UDP flow from 1 process +1900 +1\r?$", text);
+        Assert.Matches(@"(?m)^  239\.255\.255\.250 +multicast +PID 320 +1 UDP flow +1900 +1\r?$", text);
         (code, text, _) = await Run("hosts", scoped.Path, "--json");
         Assert.Equal("multicast", JsonDocument.Parse(text).RootElement.GetProperty("listed")[0].GetProperty("scope").GetString());
 
@@ -87,6 +95,47 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", local.Path);
         Assert.Equal(InterCatExitCode.Success, code);
         Assert.Contains("No process of this session reached another host", text, Ordinal);
+    }
+
+    [Fact(DisplayName = "R18: icat hosts and icat overview name who reached each host, the busiest there first and how many more, one that reached it over both transports once")]
+    public async Task IcatHostsNamesWhoReachedEachHost()
+    {
+        // agent.exe reached 10.0.0.9 over TCP and over UDP, two records each, and sync.exe over TCP, three records.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Apps\agent.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 410, 2) with { ResourceName = @"C:\Apps\sync.exe", SessionRelativeTicks = 110 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 100, 400, 3).Between("192.168.1.10:52000", "10.0.0.9:443") with { SessionRelativeTicks = 200 },
+            Transfer(21, ObservationKind.Send, AccountingSide.SendSide, 100, 400, 4).Between("192.168.1.10:52000", "10.0.0.9:443") with { SessionRelativeTicks = 210 },
+            Transfer(22, ObservationKind.Send, AccountingSide.SendSide, 40, 400, 5).Between("192.168.1.10:61000", "10.0.0.9:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 220 },
+            Transfer(23, ObservationKind.Send, AccountingSide.SendSide, 40, 400, 6).Between("192.168.1.10:61000", "10.0.0.9:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 230 },
+            Transfer(24, ObservationKind.Send, AccountingSide.SendSide, 100, 410, 7).Between("192.168.1.10:53000", "10.0.0.9:443") with { SessionRelativeTicks = 240 },
+            Transfer(25, ObservationKind.Send, AccountingSide.SendSide, 100, 410, 8).Between("192.168.1.10:53000", "10.0.0.9:443") with { SessionRelativeTicks = 250 },
+            Transfer(26, ObservationKind.Send, AccountingSide.SendSide, 100, 410, 9).Between("192.168.1.10:53000", "10.0.0.9:443") with { SessionRelativeTicks = 260 },
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        // The agent's four records, over both transports, are more than the sync's three: it is named, once, and one more.
+        (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  10\.0\.0\.9 +private +agent\.exe · PID 400 and 1 more +2 TCP connections and 1 UDP flow +53 and 443 +7\r?$", text);
+        (code, text, _) = await Run("hosts", session.Path, "--json");
+        Assert.Equal(InterCatExitCode.Success, code);
+        JsonElement host = Assert.Single(JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray());
+        Assert.Equal([("agent.exe · PID 400", 4L), ("sync.exe · PID 410", 3L)], host.GetProperty("reachedBy").EnumerateArray()
+            .Select(reach => (reach.GetProperty("name").GetString(), reach.GetProperty("records").GetInt64())));
+        Assert.Equal(2, host.GetProperty("processes").GetInt32());
+
+        // The overview's busiest hosts name them so, and say where every host and who reached it are listed.
+        (code, text, said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Busiest other host +Processes +Connections +Ports +Records\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.9 +agent\.exe · PID 400 and 1 more +2 TCP connections and 1 UDP flow +53 and 443 +7\r?$", text);
+        Assert.Contains("1 other host in all, counted by address; who is at them is not observed. icat hosts <directory> lists every "
+            + "one, and with --address <address> every process that reached one.", Regex.Replace(text, @"\s+", " "), Ordinal);
     }
 
     [Fact(DisplayName = "R18: icat hosts --address lists the processes that reached an address, whole or begun up to a dot or colon, at a port or any address at a port, as the window's search finds them")]
@@ -164,20 +213,33 @@ public sealed class HostsCommandTests
         // The accepted connection is said at the service's own port, never at the host's port 50000, which the host chose.
         (InterCatExitCode code, string text, string said) = await Run("hosts", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Accepted here +Records\r?$", text);
-        Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +1 TCP connection from 1 process +- +1 at 3389 +2\r?$", text);
-        Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +1 TCP connection from 1 process +443 +- +2\r?$", text);
+        Assert.Matches(@"(?m)^  Host +Scope +Processes +Connections +Ports +Accepted here +Records\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +svchost\.exe · PID 300 +1 TCP connection +- +1 at 3389 +2\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +svchost\.exe · PID 300 +1 TCP connection +443 +- +2\r?$", text);
         Assert.DoesNotMatch(@"\b50000\b", text);
         Assert.Contains("Accepted here counts the TCP connections a process of this session accepted from the host", text, Ordinal);
 
-        // As JSON, how many each process connected and accepted, and its own ports the accepted ones arrived at.
-        (code, text, _) = await Run("hosts", session.Path, "--json");
-        Assert.Equal(InterCatExitCode.Success, code);
-        JsonElement[] listed = [.. JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()];
-        Assert.Equal(
-            [("10.0.0.5", 0, 1, "3389", ""), ("10.0.0.6", 1, 0, "", "443")],
-            listed.Select(host => (host.GetProperty("address").GetString(), host.GetProperty("connected").GetInt32(),
-                host.GetProperty("accepted").GetInt32(), Ports(host.GetProperty("acceptedPorts")), Ports(host.GetProperty("ports")))));
+        // Ranked by bytes, each host is counted alike: the accepted connection at the service's port, none at the host's.
+        (code, text, said) = await Run("hosts", session.Path, "--rank-by", "bytes-sent");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Host +Scope +Processes +Connections +Ports +Accepted here +Records +Sent +Received\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.6 +private +svchost\.exe · PID 300 +1 TCP connection +443 +- +2 +100 B +no receives\r?$", text);
+        Assert.Matches(@"(?m)^  10\.0\.0\.5 +private +svchost\.exe · PID 300 +1 TCP connection +- +1 at 3389 +2 +no sends +100 B\r?$", text);
+        Assert.DoesNotMatch(@"\b50000\b", text);
+
+        // As JSON, how many each process connected and accepted, and its own ports the accepted ones arrived at, under any
+        // ranking.
+        foreach (string[] ranking in new[] { Array.Empty<string>(), ["--rank-by", "bytes-sent-and-received"] })
+        {
+            (code, text, _) = await Run(["hosts", session.Path, "--json", .. ranking]);
+            Assert.Equal(InterCatExitCode.Success, code);
+            JsonElement[] listed = [.. JsonDocument.Parse(text).RootElement.GetProperty("listed").EnumerateArray()];
+            Assert.Equal(
+                [("10.0.0.5", 0, 1, "3389", ""), ("10.0.0.6", 1, 0, "", "443")],
+                listed.Select(host => (host.GetProperty("address").GetString(), host.GetProperty("connected").GetInt32(),
+                    host.GetProperty("accepted").GetInt32(), Ports(host.GetProperty("acceptedPorts")), Ports(host.GetProperty("ports"))))
+                    .OrderBy(host => host.Item1, StringComparer.Ordinal));
+        }
 
         // Who reached an address says the same, process by process.
         (code, text, _) = await Run("hosts", session.Path, "--address", "10.0.0.5");
@@ -232,6 +294,7 @@ public sealed class HostsCommandTests
         Assert.Contains("[--investigation <file>] [--json]", text, Ordinal);
         Assert.Contains("142.250.1.1:443 or [2001:db8::1]:443", text, Ordinal);
         Assert.Contains("process accepted connections from a host, how many and at which of its own ports.", text, Ordinal);
+        Assert.Contains("process whose connections there hold the most records and how many more reached it.", text, Ordinal);
         Assert.Contains("or which accepted connections at that port of their own", text, Ordinal);
         Assert.All(text.Split('\n'), line => Assert.True(line.TrimEnd().Length <= 104, line));
 
@@ -284,7 +347,7 @@ public sealed class HostsCommandTests
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Ranked by +bytes sent, as this machine's end of their connections measured them; hosts whose transfers "
             + @"stated no size follow, then those that made none\r?$", text);
-        Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Sent +Received\r?$", text);
+        Assert.Matches(@"(?m)^  Host +Scope +Processes +Connections +Ports +Records +Sent +Received\r?$", text);
         string[] rows = [.. Regex.Matches(text, @"(?m)^  (\S+) +-  .*? +(\d+) +([\d,]+ B) +(no receives)\r?$").Select(match =>
             $"{match.Groups[1].Value} | {match.Groups[2].Value} | {match.Groups[3].Value} | {match.Groups[4].Value}")];
         Assert.Equal(
@@ -300,7 +363,7 @@ public sealed class HostsCommandTests
         (code, text, _) = await Run("hosts", session.Path, "--rank-by", "bytes-sent-and-received", "--json");
         Assert.Equal(InterCatExitCode.Success, code);
         JsonElement root = JsonDocument.Parse(text).RootElement;
-        Assert.Equal(("other-hosts-v6", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
+        Assert.Equal(("other-hosts-v7", "bytes-sent-and-received"), (root.GetProperty("contract").GetString(),
             root.GetProperty("rankedBy").GetString()));
         JsonElement transfers = root.GetProperty("listed")[0].GetProperty("transfers");
         Assert.Equal((5L, 500L, 0L, 0L), (transfers.GetProperty("sends").GetInt64(), transfers.GetProperty("sentBytes").GetInt64(),
@@ -330,7 +393,7 @@ public sealed class HostsCommandTests
             // resolver's, which no member captured, for none.
             (InterCatExitCode code, string text, string said) = await Run("hosts", demo.ClientSession, "--investigation", demo.WorkspacePath);
             Assert.True(code == InterCatExitCode.Success, said);
-            Assert.Matches(@"(?m)^  Host +Scope +Connections +Ports +Records +Candidate other ends\r?$", text);
+            Assert.Matches(@"(?m)^  Host +Scope +Processes +Connections +Ports +Records +Candidate other ends\r?$", text);
             Assert.Matches(@"(?m)^  10\.0\.0\.20 +private +.* 80 +demo server: api\.exe · PID 5100 and files\.exe · PID 5300\r?$", text);
             Assert.Matches(@"(?m)^  10\.0\.0\.53 +private +.* 12 +none\r?$", text);
             Assert.Contains("never an established join", text, Ordinal);

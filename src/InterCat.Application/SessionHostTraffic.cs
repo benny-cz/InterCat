@@ -62,8 +62,10 @@ public static class SessionHostTraffic
     /// <summary>
     /// Every host <paramref name="links"/> reached, with what its connections carried, ranked by <paramref name="metric"/>:
     /// those whose transfers measured it first, the largest first; then those whose transfers stated no size; then those
-    /// that made none; ties by records, then connections, then address. Within <paramref name="interval"/> (workspace
-    /// ticks) when one is given, where a connection, and a host, with no record in it is not listed.
+    /// that made none; ties by records, then connections, then address. Each host is counted as the census counts it -
+    /// its connections made and accepted, and their ports - so a byte ranking lists what a records ranking does. Within
+    /// <paramref name="interval"/> (workspace ticks) when one is given, where a connection, and a host, with no record in it
+    /// is not listed.
     /// </summary>
     public static IReadOnlyList<HostTraffic> Of(
         SessionStore store,
@@ -97,7 +99,14 @@ public static class SessionHostTraffic
                     host.Select(pair => pair.Connection.Holder.Id).Distinct().Count(),
                     host.Sum(pair => pair.Summary.Records))
                 {
-                    Ports = [.. host.Select(pair => PortOf(pair.Summary.RemoteEndpoint)).OfType<ushort>().Distinct().Order()],
+                    // As the census counts them: an accepted connection at its process's own port, which it listened at,
+                    // and any other at the host's port, where it ran to.
+                    Ports = [.. host.Where(pair => pair.Summary.Opening != ConnectionOpening.Accepted)
+                        .Select(pair => PortOf(pair.Summary.RemoteEndpoint)).OfType<ushort>().Distinct().Order()],
+                    Connected = host.Count(pair => pair.Summary.Opening == ConnectionOpening.Connected),
+                    Accepted = host.Count(pair => pair.Summary.Opening == ConnectionOpening.Accepted),
+                    AcceptedPorts = [.. host.Where(pair => pair.Summary.Opening == ConnectionOpening.Accepted)
+                        .Select(pair => PortOf(pair.Summary.LocalEndpoint)).OfType<ushort>().Distinct().Order()],
                 },
                 host.Sum(pair => pair.Summary.Sends),
                 host.Sum(pair => pair.Summary.SentBytes),
