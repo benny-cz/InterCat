@@ -34,6 +34,14 @@ public sealed class DirectionTextTests
         Assert.Equal("Direction: display order only, not who initiated or sent", DirectionText.Line(Mechanism.Tcp, 0, 0, 2, "a", "b"));
         Assert.Equal("Direction: display order only; each end's RPC rows say which calls and which served",
             DirectionText.Line(Mechanism.Rpc, 0, 0, 0, "a", "b"));
+
+        // RPC calls whose links name their callers: which end called the other, in all of its calls, or each way counted.
+        Assert.Equal("Direction: a called b", DirectionText.Line(Mechanism.Rpc, 1, 0, 1, "a", "b"));
+        Assert.Equal("Direction: b called a, in all 3 of its calls", DirectionText.Line(Mechanism.Rpc, 0, 3, 1, "a", "b"));
+        Assert.Equal("Direction: a called b in 2 calls, b called a in 1 call", DirectionText.Line(Mechanism.Rpc, 2, 1, 1, "a", "b"));
+        Assert.Equal("b called a", DirectionText.Spoken(0, 4, "a", "b", Mechanism.Rpc));
+        Assert.Equal("each called the other", DirectionText.Spoken(1, 4, "a", "b", Mechanism.Rpc));
+        Assert.Equal("a connected to b", DirectionText.Spoken(1, 0, "a", "b", Mechanism.Udp));
     }
 
     [Fact(DisplayName = "§6.8: a set of processes made and accepted its members' connections together, as each member's whole session counts them, and a card says nothing where the capture saw none of theirs open")]

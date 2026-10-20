@@ -279,9 +279,11 @@ public static class SessionOverviewProjector
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1
         // §5c): from the links a persisted overview kept, or followed here when it kept none. A session without ALPC
         // reads nothing for them, so its first view opens no segment on their account.
+        // Links an overview kept before it kept their callers (overview-index-v1 minor 6) say nothing of who called, and an
+        // overview never changes an answer: their calls are followed again, as where it kept no links.
         bool alpc = RpcPeerEdges.Collected(store.Root, manifest, coverage);
         RpcPeerEdge[] rpc = !alpc ? []
-            : counted.RpcLinks is { } kept ? [.. RpcPeerEdges.Of(kept, policy)]
+            : counted.RpcLinks is { } kept && RpcPeerEdges.NameCallers(kept) ? [.. RpcPeerEdges.Of(kept, policy)]
             : [.. RpcPeerEdges.Of(derivation.RpcPeers(store.Root, Segments(), clock, Fields(), cancellationToken), policy)];
         edges = [.. edges, .. rpc.Select(edge => new CommunicationEdge(
             edge.Key, edge.First, edge.Second, Mechanism.Rpc, edge.Records, null, edge.Strength)
@@ -289,6 +291,10 @@ public static class SessionOverviewProjector
             // Its own key opens the calls its links join, at both ends: the links are kept as counts, never as a list.
             Rule = RelationRule.RpcCallPeer,
             Evidence = [edge.Key],
+
+            // Which end called: a call's client made it, as a connection's connecting end made that, and the other served it.
+            SourceConnected = (int)Math.Min(edge.FirstCalls, int.MaxValue),
+            TargetConnected = (int)Math.Min(edge.SecondCalls, int.MaxValue),
         })];
 
         // Why the graph draws what it draws, and none: where the transport records went and whether RPC calls could be
@@ -344,7 +350,8 @@ public static class SessionOverviewProjector
                     + "link them are its evidence, not a second count.",
             }),
             "An edge's source and target are a stable display order, not a claim about direction: which process made its "
-                + "connections is said only where the capture saw them open (relations-v1 section 5), and nothing says "
+                + "connections is said only where the capture saw them open (relations-v1 section 5), which called which over "
+                + "RPC only where each call was linked to the call that served it (operations-v1 section 5c), and nothing says "
                 + "which sent data. Edge record counts include observations from both ends and are not whole-session totals.",
             coverage is null
                 ? "The timeline counts observed rows only. This legacy generation publishes no coverage ledger, "

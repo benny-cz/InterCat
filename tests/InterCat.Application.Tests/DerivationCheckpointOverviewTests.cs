@@ -355,11 +355,29 @@ public sealed class DerivationCheckpointOverviewTests
             session.Store.Current!.SessionId);
         RpcPeerLinkTotal total = Assert.Single(kept.RpcLinks!);
         Assert.Equal((RelationStrength.Correlated, 8L), (total.Strength, total.Records));
+
+        // And which of the pair made the two calls, as the edge drawn from it says: its source is the pair's first.
+        Assert.Equal((derived.SourceId, derived.TargetId), (total.First, total.Second));
+        Assert.Equal(((long)derived.SourceConnected, (long)derived.TargetConnected), (total.FirstCalls, total.SecondCalls));
+        Assert.Equal(2, total.FirstCalls + total.SecondCalls);
         SessionDerivationCache.Clear();
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         CommunicationEdge drawn = Assert.Single(SessionOverviewProjector.Project(reopened).Edges, edge => edge.Mechanism == Mechanism.Rpc);
         Assert.Equal(0, reopened.SegmentReaderCache.Entries);
         Assert.Equal(derived, drawn);
+
+        // Links kept before their callers were, as a minor-5 overview keeps them, say nothing of who called: the first view
+        // follows the calls through the segments again and draws the same edge, callers and all.
+        byte[] current = SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(session.Store.Current!)!,
+            SessionOverviewIndex.MaximumBytes);
+        byte[] minorFive = current[..^16];
+        minorFive[10] = 5;
+        Assert.Equal(0, Assert.Single(SessionOverviewIndex.Read(minorFive, session.Store.Current!.SessionId).Counts.RpcLinks!).FirstCalls);
+        PublishIndexes(session.Store, withCheckpoint: true, minorFive);
+        SessionDerivationCache.Clear();
+        SessionStore older = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
+        Assert.Equal(derived, Assert.Single(SessionOverviewProjector.Project(older).Edges, edge => edge.Mechanism == Mechanism.Rpc));
+        Assert.NotEqual(0, older.SegmentReaderCache.Entries);
 
         // A capture that collected no ALPC keeps no links at all.
         using var plain = new TemporarySession();
@@ -388,8 +406,8 @@ public sealed class DerivationCheckpointOverviewTests
         var second = new ProcessInstanceId(Guid.Parse("22222222-0000-4000-8000-000000000002"));
         RpcPeerLinkTotal[] links =
         [
-            new(first, second, RelationStrength.Correlated, 8),
-            new(first, second, RelationStrength.Candidate, 3),
+            new(first, second, RelationStrength.Correlated, 8) { FirstCalls = 2 },
+            new(first, second, RelationStrength.Candidate, 3) { SecondCalls = 1 },
         ];
         byte[] Written(OverviewCounts written)
         {
@@ -401,6 +419,12 @@ public sealed class DerivationCheckpointOverviewTests
         byte[] bytes = Written(counts with { RpcLinks = links });
         Assert.Equal(links, SessionOverviewIndex.Read(bytes, manifest.SessionId).Counts.RpcLinks);
 
+        // A minor-5 overview, as revisions 545 to 660 wrote it, ends before each link's callers, and its links name none.
+        byte[] minorFive = bytes[..^(16 * links.Length)];
+        minorFive[10] = 5;
+        Assert.Equal(links.Select(link => link with { FirstCalls = 0, SecondCalls = 0 }),
+            SessionOverviewIndex.Read(minorFive, manifest.SessionId).Counts.RpcLinks!);
+
         // A minor-0 overview, as revisions 163 to 228 wrote it, ends with its minimap and keeps no links: this build's ends
         // with a flag for links, another for lane bytes and another for process bytes after it, and the eight bytes of the
         // rows read before its extent.
@@ -410,13 +434,17 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Null(earlier.RpcLinks);
         Assert.Equal(counts.Main!.Tallies(), earlier.Main!.Tallies());
 
-        // A link at a strength no link has, out of order, or joining an instance to itself is refused.
+        // A link at a strength no link has, out of order, joining an instance to itself, whose ends made no call, or more calls
+        // than it holds records, or fewer than none, is refused.
         foreach (RpcPeerLinkTotal[] damaged in new[]
         {
-            new[] { new RpcPeerLinkTotal(first, second, RelationStrength.Direct, 8) },
+            new[] { new RpcPeerLinkTotal(first, second, RelationStrength.Direct, 8) { FirstCalls = 1 } },
             [links[1], links[0]],
-            [new RpcPeerLinkTotal(second, first, RelationStrength.Correlated, 8)],
-            [new RpcPeerLinkTotal(first, first, RelationStrength.Correlated, 8)],
+            [new RpcPeerLinkTotal(second, first, RelationStrength.Correlated, 8) { FirstCalls = 1 }],
+            [new RpcPeerLinkTotal(first, first, RelationStrength.Correlated, 8) { FirstCalls = 1 }],
+            [new RpcPeerLinkTotal(first, second, RelationStrength.Correlated, 8)],
+            [new RpcPeerLinkTotal(first, second, RelationStrength.Correlated, 8) { FirstCalls = 5, SecondCalls = 4 }],
+            [new RpcPeerLinkTotal(first, second, RelationStrength.Correlated, 8) { FirstCalls = 2, SecondCalls = -1 }],
         })
         {
             Assert.Contains("an RPC link", Assert.Throws<InvalidDataException>(
@@ -636,7 +664,8 @@ public sealed class DerivationCheckpointOverviewTests
         Assert.Equal(CheckpointOutcome.Published, SessionCheckpoints.Publish(session.Store, Committed).Outcome);
         SessionManifestV1 manifest = session.Store.Current!;
         byte[] written = SessionSegments.ReadVerified(session.Store.Root, SessionOverviewIndex.NamedBy(manifest)!, SessionOverviewIndex.MaximumBytes);
-        Assert.Equal(5, BitConverter.ToUInt16(written, 10));
+        // This build writes minor 6, whose callers follow only RPC links, which this session keeps none of.
+        Assert.Equal(6, BitConverter.ToUInt16(written, 10));
         OverviewProcessBytes kept = SessionOverviewIndex.Read(written, manifest.SessionId).Counts.ProcessBytes!;
         Assert.True(kept.CoversUdp);
         SessionByteMeasures read = SessionByteRanking.Measure(session.Store, null);

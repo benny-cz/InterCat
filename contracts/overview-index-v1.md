@@ -1,7 +1,7 @@
 # InterCat overview index v1
 
 Status: **implemented** in plan revision 163; minor 1 in revision 229, minor 2 in revision 289, minor 3 in revision
-292, minor 4 in revision 445, minor 5 in revision 545. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
+292, minor 4 in revision 445, minor 5 in revision 545, minor 6 in revision 661. It is the top level of §12.1 S4's pyramid: the whole-session overview a generation's first view draws, persisted
 beside its derivation checkpoint (`contracts/derivation-checkpoint-v1.md`). With both, opening a finished session opens
 no segment before the first view. Its processes and relationships come from the checkpoint, and its timeline, mechanism
 lanes and minimap from these counts. Deeper levels are the per-segment tiles of revision 158, built from a segment's
@@ -79,6 +79,13 @@ Minor 5 (plan revision 545) changes no byte of the layout: its process bytes kee
 connection's, as the graph draws both (`relations-v1` §5e). An earlier overview's kept TCP's alone, so a reader uses
 them only for a session with no paired UDP flow, and reads the segments for one with a flow.
 
+Since minor 6 (plan revision 661), each RPC link total also holds **which end called**: how many of its links' calls
+the pair's first instance made, each served by the second, and how many the second made, each served by the first. A
+link joins the call its client made to the call that served it, so every call has one caller, and the graph says which
+process called which, as it says which connected to which. An earlier overview's links name no caller, so a reader
+does not use them: it follows the calls through the segments again, as where none were kept, since an overview never
+changes an answer.
+
 ## 2. Files and publication
 
 The dependency kind is `Index` (store-v1 code 4), under the name:
@@ -96,7 +103,7 @@ segment. A generation names at most one.
 Little-endian throughout, with derivation-checkpoint-v1's `str8` and `guid`. An overview is at most 16 MiB.
 
 ```text
-overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 4,
+overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 6,
              session guid, derivedGeneration i64 (>= 1),
              mainBound u16 (= 64), minimapBound u16 (= 2000),
              count u32, (name str8, length i64, digest str8)*   ; covered observation segments, ascending by name
@@ -123,6 +130,9 @@ overview   = "ICATOVRV" (8 ASCII bytes), major u16 = 1, minor u16 = 4,
               count u32, (channel str8, holder guid, strength u8, bytes)*]
                   ; ascending by (channel, holder "N" form)
              beforeExtent i64 (0 <= beforeExtent <= rows - untimed)           ; minor 4 and later
+             [(firstCalls i64, secondCalls i64)*]                               ; minor 6 and later
+                  ; only where hasRpcLinks is 1: one entry per RPC link, in the links' order; each value >= 0, and
+                  ; 1 <= firstCalls + secondCalls <= the link's records
 
 bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
              receivedBytes i64, receivedMeasured i64, receivedUnmeasured i64,
@@ -131,7 +141,8 @@ bytes      = sentBytes i64, sentMeasured i64, sentUnmeasured i64,
 
 A minor-0 overview ends after its minimap, or after `hasExtent` when it is 0, and holds no RPC links; a minor-1 overview
 ends after them and holds no lane bytes; a minor-2 overview ends after those and holds no process bytes; a minor-3
-overview ends after those and counts no row before its extent. Each is read as before. A link's strength is `EN-RelationStrength`'s
+overview ends after those and counts no row before its extent; a minor-5 overview ends after `beforeExtent`, and its
+links name no caller. Each is read as before. A link's strength is `EN-RelationStrength`'s
 `Correlated`, `Candidate` or `Conflicting`.
 
 A reader refuses an overview whose bytes do not hash to its recorded digest. It also refuses one where:
@@ -148,7 +159,8 @@ A reader refuses an overview whose bytes do not hash to its recorded digest. It 
 - the main or minimap counts, with the rows before the extent, do not add up to the timed rows; there is no extent
   while some row is timed; or more rows are counted before the extent than are timed;
 - an RPC link names an empty identity or the same instance twice, puts its pair or its links out of order, has a
-  strength a link cannot have, holds no record, or there are more than 1,000,000 of them;
+  strength a link cannot have, holds no record, or there are more than 1,000,000 of them; or, since minor 6, its ends
+  made no call, fewer than none, or more calls than the link holds records;
 - a lane's bytes lie in a column outside the main columns, or in one that counts no record of their mechanism (an
   overview with no extent has no columns, so it holds none); are out of order; hold a value below zero, or bytes on a
   side no contribution measured; or hold no contribution at all;

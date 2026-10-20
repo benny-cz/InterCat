@@ -305,7 +305,7 @@ public static class WorkspaceRowBuilder
                     : DirectionText.Glyph(edge.SourceConnected, edge.TargetConnected),
                 DirectionLine = DirectionText.Line(edge.Mechanism, edge.SourceConnected, edge.TargetConnected,
                     edge.Evidence.Count, source, target),
-                SpokenDirection = DirectionText.Spoken(edge.SourceConnected, edge.TargetConnected, source, target),
+                SpokenDirection = DirectionText.Spoken(edge.SourceConnected, edge.TargetConnected, source, target, edge.Mechanism),
             });
         }
 

@@ -356,12 +356,17 @@ public sealed record CommunicationEdge(
 
     /// <summary>
     /// How many of its connections the source made to the target, as the capture saw their ends open - a connect at the
-    /// source's end, or an accept at the target's (`contracts/relations-v1.md` §5). None for a UDP flow, which nothing
-    /// opens, and for a process connected to itself.
+    /// source's end, or an accept at the target's (`contracts/relations-v1.md` §5). Of an RPC relationship, how many of
+    /// the calls its links join the source made, each served by the target (`contracts/operations-v1.md` §5c), none where
+    /// its links were kept without their callers. None for a UDP flow, which nothing opens, and for a process connected to
+    /// itself.
     /// </summary>
     public int SourceConnected { get; init; }
 
-    /// <summary>How many of its connections the target made to the source, as <see cref="SourceConnected"/> counts them.</summary>
+    /// <summary>
+    /// How many of its connections the target made to the source, or of an RPC relationship's calls the target made, as
+    /// <see cref="SourceConnected"/> counts them.
+    /// </summary>
     public int TargetConnected { get; init; }
 
     /// <summary>

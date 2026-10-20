@@ -1058,14 +1058,15 @@
                 </StackPanel>
               </Border>
               <TextBlock Text="DIRECTION" Classes="eyebrow" Margin="0,6,0,0" />
-              <!-- Which process made a relationship's connections, where the capture saw them open (relations-v1 §5). -->
+              <!-- Which process made a relationship's connections, where the capture saw them open (relations-v1 §5), or
+                   its RPC calls, where each was linked to the call that served it (operations-v1 §5c). -->
               <Border Classes="card" Padding="9" CornerRadius="7" Background="{DynamicResource Surface.Elevated}">
                 <Grid x:Name="DirectionKey" ColumnDefinitions="36,*" ColumnSpacing="10"
-                      AutomationProperties.Name="Arrowhead: at the process or host its connections were made to, at both ends where each connected to the other, and none where the capture saw no connection open">
+                      AutomationProperties.Name="Arrowhead: at the process or host its connections were made to, or at the process that served its RPC calls, at both ends where each did so to the other, and none where the capture saw neither">
                   <local:DirectionKeySample VerticalAlignment="Top" Margin="0,2,0,0" />
                   <StackPanel Grid.Column="1">
                     <TextBlock Text="Arrowhead" />
-                    <TextBlock Text="at the process or host connected to · both ends where each connected to the other · none where none was seen opening"
+                    <TextBlock Text="at the process or host connected to, or called over RPC · both ends where each did so to the other · none where neither was seen"
                                Classes="muted" FontSize="11" TextWrapping="Wrap" />
                   </StackPanel>
                 </Grid>

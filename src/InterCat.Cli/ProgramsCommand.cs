@@ -206,10 +206,13 @@ internal static class ProgramsCommand
                 $"{pairs.Count - limit:N0} more, quieter; --limit {pairs.Count:N0} lists every one."));
         }
 
+        bool calls = pairs.Any(pair => pair.Mechanisms.Contains(Mechanism.Rpc));
         ConsoleUi.Note("Each program is counted by its executable, and one named at both ends is its own processes connecting to "
-            + "each other. An arrow points at the program connected to, where the capture saw the connections open, ⇄ joins "
-            + "two that each connected to the other, and two joined by \"and\" were seen opening none. Processes counts those "
-            + "at either end, and records are both ends'. icat channels <directory> names each connection's two processes.");
+            + "each other. An arrow points at the program connected to, where the capture saw the connections open"
+            + (calls ? ", or called, where an RPC call was linked to the call that served it" : string.Empty)
+            + ", ⇄ joins two that each " + (calls ? "did so to" : "connected to") + " the other, and two joined by \"and\" were "
+            + "seen opening none. Processes counts those at either end, and records are both ends'. icat channels <directory> "
+            + "names each connection's two processes.");
         return InterCatExitCode.Success;
     }
 

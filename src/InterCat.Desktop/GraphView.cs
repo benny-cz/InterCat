@@ -302,8 +302,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// An edge as its magnitude says: a stroke of its thickness in the evidence pattern, or, when what it carried was not
     /// measured, §6.6's unmeasured band in the same hue and pattern; and an arrowhead at the end its connections ran to
     /// where the capture saw them open - at both ends where they ran both ways, at neither where it saw none open
-    /// (`contracts/relations-v1.md` §5), or on an edge to the other hosts, at the host its processes connected to and at the
-    /// process that accepted from it (§5d). <paramref name="sourceReach"/> and <paramref name="targetReach"/> are how far
+    /// (`contracts/relations-v1.md` §5) - or, on an RPC edge, at the process that served its calls, each linked to the call
+    /// that served it (`contracts/operations-v1.md` §5c), or on an edge to the other hosts, at the host its processes
+    /// connected to and at the process that accepted from it (§5d). <paramref name="sourceReach"/> and <paramref name="targetReach"/> are how far
     /// the nodes at its ends reach along it, which an arrowhead stands just off; each head drawn is kept in
     /// <paramref name="heads"/>, which labels keep clear of where they can.
     /// </summary>

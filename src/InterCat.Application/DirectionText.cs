@@ -14,17 +14,18 @@ public static class DirectionText
     /// <summary>
     /// The line a card and an explanation state: "Direction: client.exe · PID 100 connected to server.exe · PID 200",
     /// "..., in all 4 of its connections" where there were more, each way counted where they went both ways or some opened
-    /// unseen; display order only where none was seen to open, as for a UDP flow, which nothing opens, and for RPC calls,
-    /// whose ends' rows say which called.
+    /// unseen; display order only where none was seen to open, as for a UDP flow, which nothing opens. Of RPC calls, which
+    /// end called the other (<see cref="Calls"/>).
     /// </summary>
-    /// <param name="fromSource">How many of its connections <paramref name="source"/> made.</param>
+    /// <param name="fromSource">How many of its connections <paramref name="source"/> made, or of its RPC calls.</param>
     /// <param name="fromTarget">How many <paramref name="target"/> made.</param>
-    /// <param name="connections">How many it holds, opened where the capture saw it or not.</param>
+    /// <param name="connections">How many it holds, opened where the capture saw it or not; an RPC relationship's calls
+    /// are its two ends' together.</param>
     public static string Line(Mechanism mechanism, int fromSource, int fromTarget, int connections, string source, string target)
     {
         if (mechanism == Mechanism.Rpc)
         {
-            return "Direction: display order only; each end's RPC rows say which calls and which served";
+            return Calls(fromSource, fromTarget, source, target);
         }
 
         if (fromSource + fromTarget == 0)
@@ -52,6 +53,26 @@ public static class DirectionText
                 fromTarget > 0 ? $"{target} connected to {source} in " + CountText.Of(fromTarget, "connection") : null,
             }.OfType<string>())
             + (unseen > 0 ? "; the capture saw " + CountText.Of(unseen, "connection") + " open neither way" : string.Empty);
+    }
+
+    /// <summary>
+    /// An RPC relationship's direction line: which end called the other, as each call's link to the call that served it
+    /// says (`contracts/operations-v1.md` §5c) - "Direction: caller.exe · PID 400 called services.exe · PID 700, in all 2
+    /// of its calls", each way counted where both called - and display order only where no call of it names its caller.
+    /// </summary>
+    private static string Calls(int fromSource, int fromTarget, string source, string target)
+    {
+        int calls = fromSource + fromTarget;
+        if (calls == 0)
+        {
+            return "Direction: display order only; each end's RPC rows say which calls and which served";
+        }
+
+        string all = calls > 1 ? string.Create(CultureInfo.CurrentCulture, $", in all {calls:N0} of its calls") : string.Empty;
+        return fromTarget == 0 ? $"Direction: {source} called {target}{all}"
+            : fromSource == 0 ? $"Direction: {target} called {source}{all}"
+            : $"Direction: {source} called {target} in " + CountText.Of(fromSource, "call") + $", {target} called {source} in "
+                + CountText.Of(fromTarget, "call");
     }
 
     /// <summary>
@@ -118,11 +139,22 @@ public static class DirectionText
     /// The same as a screen reader says it within a row's name: "client.exe · PID 100 connected to server.exe · PID 200",
     /// or "each connected to the other"; null where none was seen to open, so the name says nothing of it.
     /// </summary>
-    public static string? Spoken(int fromSource, int fromTarget, string source, string target) => (fromSource > 0, fromTarget > 0) switch
+    public static string? Spoken(int fromSource, int fromTarget, string source, string target) =>
+        Spoken(fromSource, fromTarget, source, target, Mechanism.Tcp);
+
+    /// <summary>
+    /// The same of a relationship over <paramref name="mechanism"/>: of RPC calls, "caller.exe · PID 400 called
+    /// services.exe · PID 700", or "each called the other".
+    /// </summary>
+    public static string? Spoken(int fromSource, int fromTarget, string source, string target, Mechanism mechanism)
     {
-        (true, false) => $"{source} connected to {target}",
-        (false, true) => $"{target} connected to {source}",
-        (true, true) => "each connected to the other",
-        _ => null,
-    };
+        string verb = mechanism == Mechanism.Rpc ? "called" : "connected to";
+        return (fromSource > 0, fromTarget > 0) switch
+        {
+            (true, false) => $"{source} {verb} {target}",
+            (false, true) => $"{target} {verb} {source}",
+            (true, true) => $"each {verb} the other",
+            _ => null,
+        };
+    }
 }

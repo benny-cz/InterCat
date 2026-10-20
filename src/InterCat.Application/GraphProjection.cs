@@ -202,14 +202,15 @@ public sealed record GraphDisplayEdge(
 
     /// <summary>
     /// How many of the connections drawn here the source's processes made to the target's, as the capture saw them open
-    /// (`contracts/relations-v1.md` §5): summed over the relationships drawn here, each oriented as the edge is. On an edge
-    /// to the other hosts, those its processes made by a connect to the hosts (§5d).
+    /// (`contracts/relations-v1.md` §5): summed over the relationships drawn here, each oriented as the edge is. On an RPC
+    /// edge, how many of its linked calls the source's processes made, each served by the target's. On an edge to the other
+    /// hosts, those its processes made by a connect to the hosts (§5d).
     /// </summary>
     public int MadeFromSource { get; init; }
 
     /// <summary>
-    /// How many of the connections drawn here the target's processes made to the source's; on an edge to the other hosts,
-    /// those the source's processes accepted from the hosts.
+    /// How many of the connections drawn here the target's processes made to the source's, or of an RPC edge's calls the
+    /// target's made; on an edge to the other hosts, those the source's processes accepted from the hosts.
     /// </summary>
     public int MadeFromTarget { get; init; }
 

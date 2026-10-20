@@ -298,10 +298,16 @@ public sealed class RpcScopeTests
         Assert.Contains(card.Lines, line => line.StartsWith("Linked RPC call records: 8", StringComparison.Ordinal));
         Assert.Contains("Rule: rpc-call-peer, version 1 · evidence: the calls its links join, by key", card.Lines);
         Assert.Contains("Bytes: none · an RPC call carries no size", card.Lines);
-        Assert.Contains("Direction: display order only; each end's RPC rows say which calls and which served", card.Lines);
         Assert.Contains("Double-click opens the calls its links join", card.Lines);
-        Assert.Contains("caller.exe", card.Title, StringComparison.Ordinal);
-        Assert.Contains("services.exe", card.Title, StringComparison.Ordinal);
+
+        // The caller made both calls the services host served: the card, its arrowhead and its row in the relationship table
+        // say so, the caller named first.
+        Assert.Contains("Direction: caller.exe · PID 400 called services.exe · PID 1960, in all 2 of its calls", card.Lines);
+        Assert.Equal("caller.exe · PID 400 → services.exe · PID 1960", card.Title);
+        Assert.Equal(2, drawn.MadeFromSource + drawn.MadeFromTarget);
+        RelationshipRow called = Assert.Single(workspace.Relationships, candidate => candidate.Key == Assert.Single(drawn.Relationships));
+        Assert.Equal(("caller.exe · PID 400", "→", "services.exe · PID 1960"), (called.Source, called.Direction, called.Target));
+        Assert.Equal("caller.exe · PID 400 called services.exe · PID 1960", called.SpokenDirection);
 
         // What the view says it draws names the linked calls, not TCP alone.
         Assert.Equal(OverviewWorkspace.LinkedCallsDisclosure, OverviewWorkspace.DisclosureFor(workspace.Snapshot));
@@ -342,7 +348,7 @@ public sealed class RpcScopeTests
         Assert.Equal(relationship.Key, workspace.HighlightedEdgeKey);
         await workspace.HighlightReady;
         Assert.Equal(8, workspace.TimelineHighlightBuckets!.Sum(bucket => bucket.ObservationCount));
-        Assert.Equal($"{row.Source} ↔ {row.Target}", workspace.TimelineHighlightName);
+        Assert.Equal($"{row.Source} → {row.Target}", workspace.TimelineHighlightName);
 
         // The inspector counts its calls' records, which carry no size, and E lists them, read by its key.
         Assert.Equal(("Selected relationship", "8 linked RPC call records · an RPC call carries no size"),

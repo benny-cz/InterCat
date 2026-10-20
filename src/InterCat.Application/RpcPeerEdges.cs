@@ -8,14 +8,32 @@ namespace InterCat.Application;
 /// One RPC edge of the graph: two process instances a served call joins, and the call records at its two ends that an
 /// interval holds, or all of them.
 /// </summary>
-internal sealed record RpcPeerEdge(string Key, ProcessInstanceId First, ProcessInstanceId Second, long Records, RelationStrength Strength);
+internal sealed record RpcPeerEdge(string Key, ProcessInstanceId First, ProcessInstanceId Second, long Records, RelationStrength Strength)
+{
+    /// <summary>How many of the calls its links join the first made, each served by the second.</summary>
+    public long FirstCalls { get; init; }
+
+    /// <summary>How many the second made, each served by the first.</summary>
+    public long SecondCalls { get; init; }
+}
 
 /// <summary>
 /// The links between one pair of process instances at one strength, whatever the evidence policy: what a persisted
 /// overview keeps so a first view reads no segment (`contracts/overview-index-v1.md` §3), and what an evidence policy then
 /// admits or leaves out. The pair is in the overview's stable display order.
 /// </summary>
-internal sealed record RpcPeerLinkTotal(ProcessInstanceId First, ProcessInstanceId Second, RelationStrength Strength, long Records);
+internal sealed record RpcPeerLinkTotal(ProcessInstanceId First, ProcessInstanceId Second, RelationStrength Strength, long Records)
+{
+    /// <summary>
+    /// How many of these links' calls the first made, each served by the second: a link joins the call its client made to
+    /// the call that served it (`contracts/operations-v1.md` §5c). None for links read from an overview kept before its
+    /// minor 6, which kept no caller (`contracts/overview-index-v1.md` §3): there neither end is known to have called.
+    /// </summary>
+    public long FirstCalls { get; init; }
+
+    /// <summary>How many the second made, each served by the first.</summary>
+    public long SecondCalls { get; init; }
+}
 
 /// <summary>
 /// The graph's RPC edges: the process instances a served RPC call joins, drawn when the capture collected ALPC to follow
@@ -70,20 +88,26 @@ internal static class RpcPeerEdges
                     pair.Key.First,
                     pair.Key.Second,
                     pair.Sum(total => total.Records),
-                    pair.Max(total => total.Strength))),
+                    pair.Max(total => total.Strength))
+                {
+                    FirstCalls = pair.Sum(total => total.FirstCalls),
+                    SecondCalls = pair.Sum(total => total.SecondCalls),
+                }),
         ];
     }
 
     /// <summary>
-    /// Every link's records by instance pair and strength, before any evidence policy: a link is correlated evidence at
-    /// best, and as weak as the weaker binding of its two calls; a link one of whose calls binds to no instance joins no
-    /// pair. Only links holding a record <paramref name="native"/> holds count, when it is given.
+    /// Every link's records by instance pair and strength, before any evidence policy, and how many of its calls each end
+    /// of the pair made: a link is correlated evidence at best, and as weak as the weaker binding of its two calls; a link
+    /// one of whose calls binds to no instance joins no pair. Only links holding a record <paramref name="native"/> holds
+    /// count, when it is given.
     /// </summary>
     public static IReadOnlyList<RpcPeerLinkTotal> Totals(RpcPeerIndex peers, TimeRange? native = null)
     {
         ArgumentNullException.ThrowIfNull(peers);
         IReadOnlyList<ProcessInstance> instances = peers.Calls.Processes.Instances;
-        var totals = new Dictionary<(ProcessInstanceId First, ProcessInstanceId Second, RelationStrength Strength), long>();
+        var totals = new Dictionary<(ProcessInstanceId First, ProcessInstanceId Second, RelationStrength Strength),
+            (long Records, long FirstCalls, long SecondCalls)>();
         foreach (RpcCallLink link in peers.Links())
         {
             if (!link.Client.IsBound || !link.Server.IsBound)
@@ -102,11 +126,13 @@ internal static class RpcPeerEdges
                 Math.Max((int)link.Client.Strength, (int)link.Server.Strength));
             ProcessInstanceId client = instances[link.Client.Instance].Id;
             ProcessInstanceId server = instances[link.Server.Instance].Id;
-            (ProcessInstanceId, ProcessInstanceId) pair = string.CompareOrdinal(client.ToString(), server.ToString()) <= 0
-                ? (client, server)
-                : (server, client);
+
+            // The pair in display order, and which of it made the call: its client, whose call the other's served.
+            bool clientFirst = string.CompareOrdinal(client.ToString(), server.ToString()) <= 0;
+            (ProcessInstanceId, ProcessInstanceId) pair = clientFirst ? (client, server) : (server, client);
             (ProcessInstanceId, ProcessInstanceId, RelationStrength) key = (pair.Item1, pair.Item2, strength);
-            totals[key] = totals.GetValueOrDefault(key) + records;
+            (long Records, long FirstCalls, long SecondCalls) sum = totals.GetValueOrDefault(key);
+            totals[key] = (sum.Records + records, sum.FirstCalls + (clientFirst ? 1 : 0), sum.SecondCalls + (clientFirst ? 0 : 1));
         }
 
         return
@@ -115,8 +141,22 @@ internal static class RpcPeerEdges
                 .OrderBy(total => total.Key.First.ToString(), StringComparer.Ordinal)
                 .ThenBy(total => total.Key.Second.ToString(), StringComparer.Ordinal)
                 .ThenBy(total => total.Key.Strength)
-                .Select(total => new RpcPeerLinkTotal(total.Key.First, total.Key.Second, total.Key.Strength, total.Value)),
+                .Select(total => new RpcPeerLinkTotal(total.Key.First, total.Key.Second, total.Key.Strength, total.Value.Records)
+                {
+                    FirstCalls = total.Value.FirstCalls,
+                    SecondCalls = total.Value.SecondCalls,
+                }),
         ];
+    }
+
+    /// <summary>
+    /// Whether every one of <paramref name="links"/> names which end made its calls, as each this build keeps does; links
+    /// read from an overview kept before its minor 6 name none (`contracts/overview-index-v1.md` §3).
+    /// </summary>
+    public static bool NameCallers(IReadOnlyList<RpcPeerLinkTotal> links)
+    {
+        ArgumentNullException.ThrowIfNull(links);
+        return links.All(link => link.FirstCalls + link.SecondCalls > 0);
     }
 
     public static string KeyOf(ProcessInstanceId first, ProcessInstanceId second) => $"{KeyPrefix}{first}:{second}";

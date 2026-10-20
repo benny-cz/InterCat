@@ -30,6 +30,9 @@ public sealed class RpcPeerEdgesTests
         Assert.Equal((8L, (long?)null, RelationStrength.Correlated), (edge.ObservationCount, edge.KnownBytes, edge.Strength));
         Assert.Equal(new HashSet<ProcessInstanceId> { client, host }, [edge.SourceId, edge.TargetId]);
 
+        // The caller made both calls, and the process that served them none, whichever end the edge names first.
+        Assert.Equal((2, 0), edge.SourceId == client ? (edge.SourceConnected, edge.TargetConnected) : (edge.TargetConnected, edge.SourceConnected));
+
         // It names the rule that linked its calls, and rests on its own key, which opens them.
         Assert.Equal((RelationRule.RpcCallPeer, RpcPeerIndex.PeerRule), (edge.Rule, edge.Rule.ToString()));
         Assert.Equal([edge.Key], edge.Evidence);

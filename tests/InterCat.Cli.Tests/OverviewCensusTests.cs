@@ -178,6 +178,26 @@ public sealed class OverviewCensusTests
             + "made its connections is said only where the capture saw them open", Regex.Replace(text, @"\s+", " "), Ordinal);
     }
 
+    [Fact(DisplayName = "§6.8: icat overview names an RPC relationship by the process that made its calls first, and says an arrow points at the one called")]
+    public async Task IcatOverviewSaysWhoCalled()
+    {
+        // PID 400's calls linked through ALPC to the calls PID 1960 served them with.
+        using var session = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Publish(session.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string text, string said) = await Run("overview", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  PID 400 → PID 1960 +RPC +8\r?$", text);
+        Assert.Contains("1 relationship in all. An arrow points at the process connected to, where the capture saw the "
+            + "connections open, or called, where an RPC call was linked to the call that served it, and ⇄ joins two that each "
+            + "did so to the other; two joined by \"and\" were seen opening none. Records are both ends'.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("which called which over RPC only where each call was linked to the call that served it",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
+    }
+
     [Fact(DisplayName = "§6.3: icat overview sums the relationships of programs that run several processes by the two programs at their ends, each pair named by who connected to whom")]
     public async Task IcatOverviewListsTheBusiestPairsOfPrograms()
     {

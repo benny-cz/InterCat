@@ -142,10 +142,11 @@ internal static class SessionOverviewIndex
     /// <summary>
     /// Minor 1 adds the RPC link totals after the counts, minor 2 each overview column's bytes per mechanism after them,
     /// minor 3 each process's and TCP channel end's bytes after those, minor 4 how many timed rows were read before the
-    /// extent begins, and minor 5 keeps each UDP flow's ends beside each TCP connection's, as the graph draws both (§3);
-    /// an earlier overview holds what its minor did and is still read.
+    /// extent begins, minor 5 keeps each UDP flow's ends beside each TCP connection's, as the graph draws both, and minor 6
+    /// how many of each RPC link's calls each end of its pair made, last (§3); an earlier overview holds what its minor did
+    /// and is still read.
     /// </summary>
-    private const ushort Minor = 5;
+    private const ushort Minor = 6;
 
     /// <summary>The most RPC link totals an overview holds: far more instance pairs than a session draws.</summary>
     private const int MaximumRpcLinks = 1_000_000;
@@ -314,6 +315,17 @@ internal static class SessionOverviewIndex
 
         // Minor 4: the timed rows read before the extent begins, which a session that released an interval keeps.
         writer.I64(counts.BeforeExtent);
+
+        // Minor 6: how many of each RPC link's calls each end of its pair made, in the links' order, where links were kept.
+        if (counts.RpcLinks is { } called)
+        {
+            foreach (RpcPeerLinkTotal link in called)
+            {
+                writer.I64(link.FirstCalls);
+                writer.I64(link.SecondCalls);
+            }
+        }
+
         writer.Flush();
         return writer.Written;
     }
@@ -427,6 +439,7 @@ internal static class SessionOverviewIndex
             OverviewLaneBytes? untimedBytes = minor >= 2 ? ReadLaneBytes(reader, main: null) : null;
             OverviewProcessBytes? untimedKept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
             long untimedBefore = minor >= 4 ? reader.I64() : 0;
+            untimedLinks = minor >= 6 && untimedLinks is not null ? ReadCallers(reader, untimedLinks) : untimedLinks;
             reader.RequireEnd();
             return rows == withoutTime && untimedBefore == 0
                 ? (new(rows, withoutTime, null, null, null) { RpcLinks = untimedLinks, LaneBytes = untimedBytes, ProcessBytes = untimedKept },
@@ -497,6 +510,7 @@ internal static class SessionOverviewIndex
         OverviewLaneBytes? laneBytes = minor >= 2 ? ReadLaneBytes(reader, main) : null;
         OverviewProcessBytes? kept = minor >= 3 ? ReadProcessBytes(reader, coversUdp: minor >= 5) : null;
         long beforeExtent = minor >= 4 ? reader.I64() : 0;
+        links = minor >= 6 && links is not null ? ReadCallers(reader, links) : links;
         reader.RequireEnd();
         if (beforeExtent < 0 || beforeExtent > timed)
         {
@@ -679,6 +693,30 @@ internal static class SessionOverviewIndex
         }
 
         return links.AsReadOnly();
+    }
+
+    /// <summary>
+    /// Minor 6's callers (§3): for each RPC link <paramref name="links"/> read, in their order, how many of its calls each
+    /// end of its pair made - none below zero, one call at least, and no more calls than the link holds records, since
+    /// each call holds some. An earlier overview keeps none, and its links name no caller.
+    /// </summary>
+    private static System.Collections.ObjectModel.ReadOnlyCollection<RpcPeerLinkTotal> ReadCallers(
+        IndexFileReader reader, IReadOnlyList<RpcPeerLinkTotal> links)
+    {
+        var called = new List<RpcPeerLinkTotal>(links.Count);
+        foreach (RpcPeerLinkTotal link in links)
+        {
+            long first = reader.I64();
+            long second = reader.I64();
+            if (first < 0 || second < 0 || first > link.Records || second > link.Records - first || first + second == 0)
+            {
+                throw reader.Invalid("an RPC link's ends made no call, or more calls than the link holds records.");
+            }
+
+            called.Add(link with { FirstCalls = first, SecondCalls = second });
+        }
+
+        return called.AsReadOnly();
     }
 
     private static int CompareLinks(RpcPeerLinkTotal before, ProcessInstanceId first, ProcessInstanceId second, RelationStrength strength)

@@ -137,9 +137,14 @@ internal static class OverviewCommand
                     .Take(5)
                     .Select(edge => (IReadOnlyList<string>)
                         [Joined(edge, nodes), MechanismText.Name(edge.Mechanism), ConsoleUi.Count(edge.ObservationCount)])]);
+            // RPC calls are said only where the graph draws some: who called is known where a call was linked to the call
+            // that served it (operations-v1 section 5c).
+            bool calls = overview.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
             ConsoleUi.Note(CountText.Of(overview.Edges.Count, "relationship") + " in all. An arrow points at the process "
-                + "connected to, where the capture saw the connections open, and ⇄ joins two that each connected to the other; "
-                + "two joined by \"and\" were seen opening none. Records are both ends'.");
+                + "connected to, where the capture saw the connections open"
+                + (calls ? ", or called, where an RPC call was linked to the call that served it" : string.Empty)
+                + ", and ⇄ joins two that each " + (calls ? "did so to" : "connected to") + " the other; two joined by \"and\" "
+                + "were seen opening none. Records are both ends'.");
 
             // The same relationships summed by the programs at their ends, as the graph's edges between groups sum them:
             // which programs talk to which on a busy machine, however many processes each runs. Where no two programs
