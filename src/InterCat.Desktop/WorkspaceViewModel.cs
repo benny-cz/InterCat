@@ -5326,6 +5326,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     {
         int from = ladder.Depth;
         ladder.RecordInterval(selectedInterval);
+
+        // The row a way down goes through is the one its rung is left with, which forward chooses again once a crumb has
+        // passed it by; E's goes through none, and leaves the rung with the row chosen there (§6.7).
+        ladder.RecordChosenRow(descent.Target.Level == DetailLevel.Evidence ? ChosenRowKey : descent.Target.Key);
         if (!ladder.TryDescend(descent, out _))
         {
             return false;
@@ -5477,7 +5481,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool Ascend()
     {
         ladder.RecordInterval(selectedInterval);
-        ladder.RecordChosenRecord(ChosenEvidenceKey);
+        ladder.RecordChosenRow(ChosenRowKey);
         NavigationState left = ladder.Current;
         if (!ladder.TryAscend(out NavigationState restored))
         {
@@ -5491,12 +5495,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ArriveFrom(left);
 
         // The row the rung was opened from is selected again, so the way back lands where the way down began and the
-        // keyboard can take the next row from there (§3.2) - or, where the way down began in an aggregate's list, the
-        // aggregate and the process chosen there. E from a cell began at no row: its records' owner is not chosen.
-        if (!IsEvidenceRung && !fromCell && left.Focus is { } opened
-            && RungRows.FirstOrDefault(row => string.Equals(row.Key, opened.Key, StringComparison.Ordinal)) is { } row)
+        // keyboard can take the next row from there (§3.2) - once the rung lists it, where it reads its rows after it is
+        // shown, as a connection to another host - or, where the way down began in an aggregate's list, the aggregate and
+        // the process chosen there. E from a cell began at no row: its records' owner is not chosen.
+        if (!IsEvidenceRung && !fromCell && left.Focus is { } opened)
         {
-            SelectedRung = row;
+            ChooseRowAgain(opened.Key);
         }
 
         ResumeMemberOrigin();
@@ -5511,7 +5515,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public void ReturnTo(int depth)
     {
         ladder.RecordInterval(selectedInterval);
-        ladder.RecordChosenRecord(ChosenEvidenceKey);
+        ladder.RecordChosenRow(ChosenRowKey);
         NavigationState left = ladder.Current;
         int from = ladder.Depth;
         if (ladder.TryReturnTo(depth, out NavigationState restored))
@@ -5581,21 +5585,47 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
-        // E comes back with the record chosen there when it was left, once its records are listed again (§6.7).
+        // The rung comes back with the row chosen there when it was left (§6.7): E's record once its records are listed
+        // again, another rung's at once where it lists it, or once it reads its rows.
         if (entered.Level == DetailLevel.Evidence)
         {
-            pendingEvidenceKey = entered.RecordWhenLeft;
+            pendingEvidenceKey = entered.RowWhenLeft;
         }
 
         KeepCellWayBack();
         ResumeIntervalOf(entered);
         AfterNavigation();
+        if (entered.Level != DetailLevel.Evidence && entered.RowWhenLeft is { } chosen)
+        {
+            ChooseRowAgain(chosen);
+        }
+
         ResumeCellOrigin();
         return true;
     }
 
-    /// <summary>The record chosen on E, or the one it is still to choose once its records are listed; none elsewhere.</summary>
-    private string? ChosenEvidenceKey => IsEvidenceRung ? SelectedRung?.Key ?? pendingEvidenceKey : null;
+    /// <summary>
+    /// The row chosen at this rung - on E its record - or the one it is still to choose once it lists its rows, which
+    /// forward to the rung chooses again.
+    /// </summary>
+    private string? ChosenRowKey => SelectedRung?.Key ?? (IsEvidenceRung ? pendingEvidenceKey : pendingRungKey);
+
+    /// <summary>
+    /// Chooses the row <paramref name="key"/> names at the rung a way back or forward came to: at once where the rung lists
+    /// it, or, at a rung that reads its rows after it is shown, once it lists them, as a restored view's row is chosen.
+    /// </summary>
+    private void ChooseRowAgain(string key)
+    {
+        if (RungRows.FirstOrDefault(row => string.Equals(row.Key, key, StringComparison.Ordinal)) is { } row)
+        {
+            SelectedRung = row;
+        }
+        else if (ladder.Current.Level is DetailLevel.ProcessInstance or DetailLevel.Channel)
+        {
+            pendingRungKey = key;
+            pendingDescribesRow = true;
+        }
+    }
 
     /// <summary>
     /// Brings back the analysis interval a rung had when it was left, through the one selection source, so the brush,

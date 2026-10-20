@@ -424,7 +424,7 @@ public sealed class LadderProperties
         }
     }
 
-    [Theory(DisplayName = "§6.7: a rung comes back with the interval the user had on it when they left it, by any way back, and forward with the record chosen on it")]
+    [Theory(DisplayName = "§6.7: a rung comes back with the interval the user had on it when they left it, by any way back, and forward with the row chosen on it")]
     [MemberData(nameof(Seeds))]
     public void ARungComesBackWithTheIntervalItWasLeftWith(int seed)
     {
@@ -453,7 +453,7 @@ public sealed class LadderProperties
                     LadderProjection.DescentFor(row, ladder.Current, interval ?? ladder.Current.Viewport), out _));
             }
 
-            // Every way back up brings each rung's interval back: an ascent, or a crumb straight to it. The record chosen on
+            // Every way back up brings each rung's interval back: an ascent, or a crumb straight to it. The row chosen on
             // each rung left is kept for forward, as nothing the rung shows.
             var leftBelow = new List<TimeRange?>();
             var chosenBelow = new List<string?>();
@@ -462,9 +462,9 @@ public sealed class LadderProperties
                 TimeRange? here = random.Next(3) == 0 ? null : Viewport(random, snapshot.Extent);
                 ladder.RecordInterval(here);
                 leftBelow.Insert(0, here);
-                string? chosen = random.Next(3) == 0 ? null : $"record-{random.Next(4)}";
+                string? chosen = random.Next(3) == 0 ? null : $"row-{random.Next(4)}";
                 long revision = ladder.Revision;
-                ladder.RecordChosenRecord(chosen);
+                ladder.RecordChosenRow(chosen);
                 Assert.Equal(revision, ladder.Revision);
                 chosenBelow.Insert(0, chosen);
                 NavigationState restored;
@@ -481,12 +481,12 @@ public sealed class LadderProperties
                 Assert.Equal(leftWith[ladder.Depth], restored.IntervalWhenLeft);
             }
 
-            // Going forward again brings back the interval each rung had when the climb left it, and the record chosen there.
+            // Going forward again brings back the interval each rung had when the climb left it, and the row chosen there.
             Assert.Equal(leftBelow.Count, ladder.Forward.Count);
             for (int step = 0; ladder.TryGoForward(out NavigationState entered); step++)
             {
                 Assert.Equal(leftBelow[step], entered.IntervalWhenLeft);
-                Assert.Equal(chosenBelow[step], entered.RecordWhenLeft);
+                Assert.Equal(chosenBelow[step], entered.RowWhenLeft);
             }
         }
     }

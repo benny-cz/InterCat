@@ -60,10 +60,10 @@ public sealed record NavigationState
     public TimeRange? IntervalWhenLeft { get; init; }
 
     /// <summary>
-    /// The record the user had chosen on this rung when they last left it, by its key, so forward to it chooses that
-    /// record again (section 6.7). Null when none was chosen; only an evidence rung lists records.
+    /// The row the user had chosen on this rung when they last left it, by its key - an evidence rung's record, another's
+    /// group, process or channel - so forward to it chooses that row again (section 6.7). Null when none was chosen.
     /// </summary>
-    public string? RecordWhenLeft { get; init; }
+    public string? RowWhenLeft { get; init; }
 
     /// <summary>The rung as a breadcrumb crumb: the level, and what is selected at it.</summary>
     public string Crumb => Focus is { } focus
@@ -280,14 +280,14 @@ public sealed class DetailLadder
     }
 
     /// <summary>
-    /// Records on the current rung the record the user has chosen there, by its key, just before they leave it, so forward
-    /// to it chooses that record again. Like the interval, it changes nothing the rung shows.
+    /// Records on the current rung the row the user has chosen there, by its key, just before they leave it, so forward to
+    /// it chooses that row again. Like the interval, it changes nothing the rung shows.
     /// </summary>
-    public void RecordChosenRecord(string? key)
+    public void RecordChosenRow(string? key)
     {
-        if (!string.Equals(Current.RecordWhenLeft, key, StringComparison.Ordinal))
+        if (!string.Equals(Current.RowWhenLeft, key, StringComparison.Ordinal))
         {
-            rungs[^1] = Current with { RecordWhenLeft = key };
+            rungs[^1] = Current with { RowWhenLeft = key };
         }
     }
 

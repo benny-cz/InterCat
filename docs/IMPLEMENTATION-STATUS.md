@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 637 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 638 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 638 — every rung comes back with its row, by Esc and by forward alike (§3.2, §6.7):**
+  - Forward to a rung other than E chose no row, and Esc back from E taken from a row a process rung reads after it is
+    shown - a connection to another host - came back to none. A rung now records the row it is left with, the row a
+    way down goes through included, and forward and the way back both choose it again, once the rung lists it where it
+    reads its rows later.
+  - Debug and Release each ran 2,612 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    eight mutations were caught: forward choosing no row on a rung other than E, or none it reads later, or one not
+    described as it was; a way down recording no row, or the row chosen rather than the one it goes through; Esc not
+    waiting for a row read later; a rung left before reading its rows losing the row it was still to choose; and the
+    ladder recording no row.
 
 - **Revision 637 — Page Down and Page Up move the keyboard through a list; a path wraps between its folders (§6.7, §6.8, R15):**
   - A live pass at the smallest window found Page Down and Page Up only scrolling a list's rows, the keyboard left on

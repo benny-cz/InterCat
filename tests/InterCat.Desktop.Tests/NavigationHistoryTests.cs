@@ -1,6 +1,7 @@
 using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Desktop;
+using InterCat.Desktop.Presentation;
 using InterCat.Domain;
 using InterCat.Storage;
 using Xunit;
@@ -105,6 +106,107 @@ public sealed class NavigationHistoryTests
         Assert.Equal(caption, workspace.TimelineCaption);
         Assert.False(workspace.CanGoForward);
         Assert.Equal("Nothing to go forward to (Alt+Right)", workspace.ForwardLabel);
+    });
+
+    [Fact(DisplayName = "§6.7: going forward re-enters a rung with the row chosen there when it was left - at once, or once the rung reads its rows - and with none where none was")]
+    public void GoingForwardChoosesTheRowTheRungWasLeftWith() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, RowsReachingAnotherHost());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        string process = client.Id.ToString();
+
+        // At the group, its process chosen and left by Esc: forward chooses it again, and the process with it.
+        DescendTo(workspace, client.GroupKey);
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == process);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.GoForward());
+        Assert.Equal((process, client), (workspace.SelectedRung?.Key, workspace.SelectedProcess));
+
+        // At the process, a row it reads after it is shown - its connection to another host - is chosen, and E lists its
+        // records; the breadcrumb up to the machine passes the group and the process by.
+        DescendTo(workspace, process);
+        string[] shown = [.. workspace.RungRows.Select(row => row.Key)];
+        await workspace.ConnectionsReady;
+        RungRow later = workspace.RungRows.First(row => !shown.Contains(row.Key));
+        workspace.SelectedRung = later;
+        Assert.Same(later, workspace.DescribedRow);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        workspace.ReturnTo(0);
+
+        // Forward comes to the group with the process its way down went through, to the process with the connection once it
+        // reads its rows again, described in the inspector as it was, and to E.
+        Assert.True(workspace.GoForward());
+        Assert.Equal(process, workspace.SelectedRung?.Key);
+        Assert.True(workspace.GoForward());
+        Assert.Null(workspace.SelectedRung);
+        await workspace.ConnectionsReady;
+        Assert.Equal((later.Key, later.Key), (workspace.SelectedRung?.Key, workspace.DescribedRow?.Key));
+        Assert.True(workspace.GoForward());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.IsEvidenceRung);
+
+        // Left again before it has read its rows, the process rung keeps the row it was still to choose.
+        Assert.True(workspace.Ascend());
+        Assert.Null(workspace.SelectedRung);
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.GoForward());
+        await workspace.ConnectionsReady;
+        Assert.Equal(later.Key, workspace.SelectedRung?.Key);
+
+        // Left with no row chosen, the process rung is entered again by forward with none, its rows read or not.
+        workspace.SelectedRung = null;
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.GoForward());
+        await workspace.ConnectionsReady;
+        Assert.Null(workspace.SelectedRung);
+
+        // A relationship opened from the machine runs the ladder through its process's group and the process: each rung is
+        // left with the row the way went through, which forward chooses once the breadcrumb has passed them by.
+        workspace.ReturnTo(0);
+        workspace.SelectedRelationship = Assert.Single(workspace.Relationships);
+        Assert.True(workspace.OpenSelectedRelationship());
+        string?[] path = [.. workspace.CaptureNavigation().Breadcrumb.Select(rung => rung.Focus?.Key)];
+        workspace.ReturnTo(0);
+        Assert.True(workspace.GoForward());
+        Assert.Equal(path[2], workspace.SelectedRung?.Key);
+        Assert.True(workspace.GoForward());
+        await workspace.ConnectionsReady;
+        Assert.Equal(path[3], workspace.SelectedRung?.Key);
+    });
+
+    [Fact(DisplayName = "§3.2: Esc back from E taken from a row its rung reads after it is shown - a connection to another host - chooses the row once the rung lists it again, unless another is chosen first")]
+    public void TheWayBackWaitsForARowReadLater() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, RowsReachingAnotherHost());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        RungRow paired = Assert.Single(workspace.RungRows);
+        await workspace.ConnectionsReady;
+        RungRow later = Assert.Single(workspace.RungRows, row => row.Key != paired.Key);
+
+        // E lists the connection's records; back from them the rung reads its rows again, and the connection is chosen
+        // and described once it lists it, where the way back chose nothing.
+        workspace.SelectedRung = later;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        Assert.Null(workspace.SelectedRung);
+        await workspace.ConnectionsReady;
+        Assert.Equal((later.Key, later.Key), (workspace.SelectedRung?.Key, workspace.DescribedRow?.Key));
+
+        // A row chosen before then is the one chosen.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == paired.Key);
+        await workspace.ConnectionsReady;
+        Assert.Equal(paired.Key, workspace.SelectedRung?.Key);
     });
 
     [Fact(DisplayName = "§6.7: a descent elsewhere or a removed filter ends forward history; the next rung is always named")]
@@ -213,6 +315,16 @@ public sealed class NavigationHistoryTests
         }),
         Timed(Transfer(4_000, ObservationKind.Send, AccountingSide.SendSide, 3, 300, 8_000)
             .Between("127.0.0.1:50001", "127.0.0.1:9090")),
+    ];
+
+    /// <summary>
+    /// <see cref="Rows"/>, and the client's one send to another host, a connection its process rung reads after it is shown.
+    /// </summary>
+    private static ObservationRowV1[] RowsReachingAnotherHost() =>
+    [
+        .. Rows(),
+        Timed(Transfer(4_100, ObservationKind.Send, AccountingSide.SendSide, 5, 100, 8_100)
+            .Between("192.168.1.5:50002", "93.184.216.34:443")),
     ];
 
     /// <summary>A row whose session time is its reading in workspace ticks, so the timeline can place it.</summary>
