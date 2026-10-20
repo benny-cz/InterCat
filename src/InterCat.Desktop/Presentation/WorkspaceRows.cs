@@ -63,8 +63,10 @@ public sealed record RelationshipRow(
     public string Opens { get; init; } = string.Empty;
 
     /// <summary>
-    /// The mark between its ends: "→" where the source made its connections, "←" where the target did, "⇄" where each did,
-    /// and none where the capture saw none open (<see cref="DirectionText.Glyph"/>), as the graph's arrowheads say.
+    /// The mark between its ends: "→" where the end named first made its connections - a relationship names its maker
+    /// first where only one end made them - "←" where the end named second did, as on an edge to other hosts, which names
+    /// its process first, "⇄" where each did, and none where the capture saw none open (<see cref="DirectionText.Glyph"/>),
+    /// as the graph's arrowheads say.
     /// </summary>
     public string Direction { get; init; } = string.Empty;
 
@@ -250,7 +252,9 @@ public static class WorkspaceRowBuilder
 
     /// <summary>
     /// The relationship table's rows, each end named with its PID, since one executable's instances otherwise read as the
-    /// same row; the most observed first, as a busy machine's table is read for who talks most, then by key. Where
+    /// same row, and the end that made its connections first where the capture saw only one make them, as `icat overview`
+    /// names them, so one program's processes each connecting to another read alike row by row; each way or neither,
+    /// display order. The most observed first, as a busy machine's table is read for who talks most, then by key. Where
     /// <paramref name="bytesOf"/> is given, as for a real session, whose overview sums no bytes, it says each
     /// relationship's bytes: what was read as sent across it, or why that is not known, rather than calling them unknown.
     /// </summary>
@@ -271,10 +275,11 @@ public static class WorkspaceRowBuilder
             FamilyTokens tokens = ThemePalette.TokensFor(mode, ThemePalette.FamilyOf(edge.Mechanism));
             string source = names.GetValueOrDefault(edge.SourceId, "unknown process");
             string target = names.GetValueOrDefault(edge.TargetId, "unknown process");
+            bool targetMade = edge.TargetConnected > 0 && edge.SourceConnected == 0;
             rows.Add(new(
                 edge.SourceId,
-                source,
-                target,
+                targetMade ? target : source,
+                targetMade ? source : target,
                 tokens.Label,
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
@@ -287,8 +292,10 @@ public static class WorkspaceRowBuilder
                 Key = edge.Key,
                 Opens = Opens(snapshot, edge),
 
-                // Who made its connections, as its edge's arrowheads and card say: each of its channels is one.
-                Direction = DirectionText.Glyph(edge.SourceConnected, edge.TargetConnected),
+                // Who made its connections, as its edge's arrowheads and card say: each of its channels is one. The maker
+                // named first, its mark points on.
+                Direction = targetMade ? DirectionText.Glyph(edge.TargetConnected, edge.SourceConnected)
+                    : DirectionText.Glyph(edge.SourceConnected, edge.TargetConnected),
                 DirectionLine = DirectionText.Line(edge.Mechanism, edge.SourceConnected, edge.TargetConnected,
                     edge.Evidence.Count, source, target),
                 SpokenDirection = DirectionText.Spoken(edge.SourceConnected, edge.TargetConnected, source, target),

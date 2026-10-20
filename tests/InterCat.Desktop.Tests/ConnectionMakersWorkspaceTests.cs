@@ -61,13 +61,19 @@ public sealed class ConnectionMakersWorkspaceTests
             RelationshipRow chosen = Assert.Single(workspace.Relationships);
             workspace.SelectedRelationship = chosen;
 
-            // The client alone connected: an arrow from it, whichever end the row names first; each way, both; none seen, none.
+            // The client alone connected: named first, an arrow from it, whichever end the graph draws first; each way, both;
+            // none seen, none.
             string mark = said switch
             {
                 null => "↔",
                 "each connected to the other" => "⇄",
-                _ => chosen.Source == Client ? "→" : "←",
+                _ => "→",
             };
+            if (mark == "→")
+            {
+                Assert.Equal(Client, chosen.Source);
+            }
+
             Assert.Equal($"{chosen.Source} {mark} {chosen.Target}", workspace.SelectionTitle);
             Assert.Equal(string.Join(" · ", new[] { "TCP", said, chosen.Evidence + " evidence" }.OfType<string>()),
                 workspace.SelectionSubtitle);
@@ -88,7 +94,7 @@ public sealed class ConnectionMakersWorkspaceTests
         }
 
         // The one connection the client made is one channel, highlighted under the name with its arrow.
-        Assert.Matches(@"^client\.exe · PID 100 → server\.exe · PID 200$|^server\.exe · PID 200 ← client\.exe · PID 100$", highlighted[1]);
+        Assert.Equal("client.exe · PID 100 → server.exe · PID 200", highlighted[1]);
     });
 
     [Fact(DisplayName = "§6.3: a process's card counts the connections it made and accepted as the capture saw them open, and the rest of the machine's leaves theirs to their own rungs")]

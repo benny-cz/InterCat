@@ -77,13 +77,14 @@ public sealed class RelationshipExplanationTests
         Assert.Equal("p1.exe · PID 100 ⇄ p2.exe · PID 200", both.Name);
         Assert.Contains(", each connected to the other, 10 observations, ", both.AccessibleName, StringComparison.Ordinal);
 
-        // The target alone: the mark points back at the source, and the name says the target connected.
+        // The target alone: it is named first, as the end that made the connections, the mark pointing on at the source.
         RelationshipRow back = Row("tcp:b");
-        Assert.Equal(("←", "Direction: p3.exe · PID 300 connected to p1.exe · PID 100, in all 2 of its connections"),
+        Assert.Equal(("→", "Direction: p3.exe · PID 300 connected to p1.exe · PID 100, in all 2 of its connections"),
             (back.Direction, back.DirectionLine));
         Assert.Contains(", p3.exe · PID 300 connected to p1.exe · PID 100, 10 observations, ", back.AccessibleName,
             StringComparison.Ordinal);
-        Assert.Equal("p1.exe · PID 100 ← p3.exe · PID 300", back.Name);
+        Assert.Equal("p3.exe · PID 300 → p1.exe · PID 100", back.Name);
+        Assert.StartsWith("p3.exe · PID 300 and p1.exe · PID 100 over ", back.AccessibleName, StringComparison.Ordinal);
 
         // None seen opening: no mark, display order only, and nothing said of it aloud.
         RelationshipRow flow = Row("udp:a");

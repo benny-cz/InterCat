@@ -83,9 +83,10 @@ public sealed class RelationshipExplanationWindowTests
                 Assert.Equal(row.DirectionLine, ToolTip.GetTip(mark));
             }
 
-            // The client's connect points at the server, whichever end the row names first; the other client's was not seen.
+            // The client's connect points at the server, the client named first whichever end the graph draws first; the other
+            // client's was not seen.
             RelationshipRow made = table.Items.OfType<RelationshipRow>().Single(row => row.Direction.Length > 0);
-            Assert.Equal(made.Source.StartsWith("client", StringComparison.Ordinal) ? "→" : "←", made.Direction);
+            Assert.Equal(("→", true), (made.Direction, made.Source.StartsWith("client", StringComparison.Ordinal)));
             Assert.Equal("Direction: client.exe · PID 100 connected to server.exe · PID 200", made.DirectionLine);
             Assert.Equal(string.Empty, table.Items.OfType<RelationshipRow>().Single(row => row != made).Direction);
 
