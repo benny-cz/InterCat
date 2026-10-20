@@ -52,6 +52,18 @@ public sealed class ConnectionsInspectorWindowTests
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id);
         Dispatch();
         Assert.Equal("0 made · 1 accepted, as the capture saw them open", connections.Text);
+
+        // Beneath them, the processes it talked with: each on a line of its own, marked from its side, over what it carried,
+        // and who connected said in words for a screen reader.
+        ItemsControl peers = window.GetControl<ItemsControl>("PeersList");
+        Assert.True(peers.IsEffectivelyVisible);
+        Assert.Equal("Its relationships, the busiest first", window.GetControl<TextBlock>("PeersHeadingText").Text);
+        Assert.Equal(["← client.exe · PID 100", "1 accepted · TCP · 3 records"],
+            peers.GetRealizedContainers().SelectMany(container => container.GetVisualDescendants().OfType<TextBlock>())
+                .Select(text => text.Text));
+        Assert.Equal("Its relationships, the busiest first: client.exe · PID 100 connected to it: 1 accepted, TCP, 3 records",
+            AutomationProperties.GetName(peers));
+        Assert.False(window.GetControl<TextBlock>("PeersMoreText").IsEffectivelyVisible);
         Save(window, "connections-inspector-1456x939.png");
 
         // Nothing chosen, nothing said.
@@ -73,6 +85,7 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal("Relationships by program: client.exe connected to server.exe: 1 relationship, 3 records",
             AutomationProperties.GetName(programs));
         Assert.False(window.GetControl<TextBlock>("ProgramsMoreText").IsEffectivelyVisible);
+        Assert.False(window.GetControl<ItemsControl>("PeersList").IsEffectivelyVisible);
         window.Close();
     }
 

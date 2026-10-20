@@ -944,6 +944,24 @@
                   <TextBlock x:Name="ProgramsMoreText" Text="{Binding ProgramsMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsProgramsMore}" />
                 </StackPanel>
+                <!-- §6.3: which processes a chosen process talked with, and who connected, from its side as its connections
+                     above count them: on a busy machine otherwise read off the graph edge by edge or the table row by row. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsPeers}">
+                  <TextBlock x:Name="PeersHeadingText" Text="{Binding PeersHeading}" Classes="muted" TextWrapping="Wrap" />
+                  <ItemsControl x:Name="PeersList" ItemsSource="{Binding SelectionPeers}"
+                                AutomationProperties.Name="{Binding SpokenSelectionPeers}">
+                    <ItemsControl.ItemTemplate>
+                      <DataTemplate x:DataType="pres:PeerRow">
+                        <StackPanel Margin="0,0,0,4" Spacing="1">
+                          <TextBlock Text="{Binding Peer}" TextWrapping="Wrap" />
+                          <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                        </StackPanel>
+                      </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                  </ItemsControl>
+                  <TextBlock x:Name="PeersMoreText" Text="{Binding PeersMore}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsPeersMore}" />
+                </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">

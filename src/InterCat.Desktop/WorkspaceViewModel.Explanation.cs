@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Application;
 using InterCat.Desktop.Presentation;
 using InterCat.Domain;
@@ -118,6 +119,90 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the inspector names the programs the selected program's processes talked with.</summary>
     public bool ShowsPrograms => SelectionPrograms.Count > 0;
 
+    /// <summary>The most relationships the inspector names for a chosen process, the busiest.</summary>
+    internal const int PeersNamed = 5;
+
+    /// <summary>
+    /// The selected process's relationships over the whole session, the busiest first, each by the process at its other end,
+    /// marked from the selected process's side as its own count of connections made and accepted reads them - "→" where it
+    /// made a relationship's connections, "←" where the other end did, "⇄" where each did, none where the capture saw none
+    /// open - with what it made and accepted, its mechanism and records: "← node.exe · PID 3808", "1 accepted · TCP · 10
+    /// records". Of RPC calls, the calls it made and those it served. Which processes a busy one talks to, and who connected,
+    /// is otherwise read off the graph edge by edge or the relationship table row by row. Empty for any other selection.
+    /// </summary>
+    public IReadOnlyList<PeerRow> SelectionPeers => selectedProcess is { } selected
+        ? [.. PeersOfSelection().Take(PeersNamed).Select(edge => PeerRowOf(edge, selected.Id))]
+        : [];
+
+    /// <summary>The process at a relationship's other end from the selected one, as a caption names it.</summary>
+    private string PeerName(CommunicationEdge edge, ProcessInstanceId selected)
+    {
+        ProcessInstanceId other = edge.SourceId == selected ? edge.TargetId : edge.SourceId;
+        return (wholeSnapshot.Processes.FirstOrDefault(process => process.Id == other)?.NameWithPid ?? "a process")
+            + (other == selected ? " (itself)" : string.Empty);
+    }
+
+    /// <summary>How many more relationships the selected process has than the inspector names.</summary>
+    public string PeersMore => PeersOfSelection().Count - PeersNamed is > 0 and var more
+        ? "and " + Spoken.Count(more, "more relationship", "more relationships")
+        : string.Empty;
+
+    /// <summary>Whether more relationships than the inspector names are said to be left out.</summary>
+    public bool ShowsPeersMore => PeersMore.Length > 0;
+
+    /// <summary>The heading over them, saying under a brush that they are the whole session's.</summary>
+    public string PeersHeading => "Its relationships, the busiest first" + (appliedInterval is null ? string.Empty : " · whole session");
+
+    /// <summary>All of it as a screen reader hears it, who connected said in words.</summary>
+    public string SpokenSelectionPeers => SelectionPeers is { Count: > 0 } rows
+        ? PeersHeading.Replace(" · ", ", over the ", StringComparison.Ordinal) + ": "
+            + string.Join("; ", rows.Select(row => row.Spoken)) + (ShowsPeersMore ? "; " + PeersMore : string.Empty)
+        : string.Empty;
+
+    /// <summary>Whether the inspector names the processes the selected process talked with.</summary>
+    public bool ShowsPeers => SelectionPeers.Count > 0;
+
+    /// <summary>Its relationships, the most records first, ties by the other end's name, then by key.</summary>
+    private IReadOnlyList<CommunicationEdge> PeersOfSelection() => ShowsLineage && selectedProcess is { } selected
+        ? [.. wholeSnapshot.Edges
+            .Where(edge => edge.SourceId == selected.Id || edge.TargetId == selected.Id)
+            .OrderByDescending(edge => edge.ObservationCount)
+            .ThenBy(edge => PeerName(edge, selected.Id), StringComparer.OrdinalIgnoreCase)
+            .ThenBy(edge => edge.Key, StringComparer.Ordinal)]
+        : [];
+
+    /// <summary>One of the selected process's relationships from its side: the other end, who made what, and what it carried.</summary>
+    private PeerRow PeerRowOf(CommunicationEdge edge, ProcessInstanceId selected)
+    {
+        bool first = edge.SourceId == selected;
+        string peer = PeerName(edge, selected);
+        long made = first ? edge.SourceConnected : edge.TargetConnected;
+        long accepted = first ? edge.TargetConnected : edge.SourceConnected;
+        bool calls = edge.Mechanism == Mechanism.Rpc;
+        string detail = string.Join(" · ", new[]
+        {
+            made == 0 ? null
+                : calls ? Spoken.Count(made, "call") + " made"
+                : string.Create(CultureInfo.CurrentCulture, $"{made:N0} made"),
+            accepted == 0 ? null
+                : calls ? Spoken.Count(accepted, "call") + " served"
+                : string.Create(CultureInfo.CurrentCulture, $"{accepted:N0} accepted"),
+            MechanismText.Name(edge.Mechanism),
+            Spoken.Count(edge.ObservationCount, "record"),
+        }.OfType<string>());
+        string verb = calls ? "called" : "connected to";
+        string said = (made > 0, accepted > 0) switch
+        {
+            (true, false) => $"it {verb} {peer}",
+            (false, true) => $"{peer} {verb} it",
+            (true, true) => $"it and {peer} each {verb} the other",
+            _ => peer,
+        };
+        string glyph = DirectionText.Glyph((int)Math.Min(made, int.MaxValue), (int)Math.Min(accepted, int.MaxValue));
+        return new PeerRow((glyph.Length > 0 ? glyph + " " : string.Empty) + peer, detail,
+            said + ": " + detail.Replace(" · ", ", ", StringComparison.Ordinal));
+    }
+
     private IReadOnlyList<ProgramPair> ProgramsOfSelection()
     {
         if (GroupingExplanation.Length == 0 || SelectedGroup is not { Kind: LaneGrouping.Executable } program)
@@ -222,5 +307,10 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ProgramsMore));
         OnPropertyChanged(nameof(ShowsProgramsMore));
         OnPropertyChanged(nameof(ShowsPrograms));
+        OnPropertyChanged(nameof(SelectionPeers));
+        OnPropertyChanged(nameof(SpokenSelectionPeers));
+        OnPropertyChanged(nameof(PeersMore));
+        OnPropertyChanged(nameof(ShowsPeersMore));
+        OnPropertyChanged(nameof(ShowsPeers));
     }
 }

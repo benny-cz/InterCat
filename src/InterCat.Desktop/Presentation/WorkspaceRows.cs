@@ -165,6 +165,13 @@ public sealed record MemberRow(ProcessInstanceId Process, string Name, string De
 public sealed record ProgramPairRow(string Pair, string Counts, string Spoken);
 
 /// <summary>
+/// One relationship of a chosen process, as the inspector lists it (§6.3): the process at its other end, marked from the
+/// chosen process's side as its own connection count reads - "← node.exe · PID 3808", the other end connected to it - what
+/// it carried - "1 accepted · TCP · 10 records" - and both read aloud, who connected said in words.
+/// </summary>
+public sealed record PeerRow(string Peer, string Detail, string Spoken);
+
+/// <summary>
 /// A timeline cell as a table row, carrying the same counts and the same coverage state; or a run of consecutive cells
 /// holding no record, of one coverage state, as one row spanning them.
 /// </summary>

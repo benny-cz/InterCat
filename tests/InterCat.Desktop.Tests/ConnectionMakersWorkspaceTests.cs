@@ -362,6 +362,134 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.False(bySession.ShowsPrograms);
     });
 
+    [Fact(DisplayName = "§6.3: a chosen process's inspector names the processes it talked with, the busiest first, each marked from its side as its own connections count them, and RPC calls as made or served")]
+    public void AChosenProcessNamesTheProcessesItTalkedWith() => SingleThreadedContext.Run(async () =>
+    {
+        // browser.exe's PID 300 connects to the server twice; its PID 301 and the server each connect to the other once; the
+        // server connects to five more programs once each, and sends a resolver a datagram, which opens nothing; the
+        // resolver connects to itself, as a self-pipe does.
+        string[] others = ["alpha", "beta", "gamma", "delta", "epsilon"];
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 301, 2) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 110 },
+            Lifecycle(3, ObservationKind.Create, 600, 3) with { ResourceName = @"C:\Apps\resolver.exe", SessionRelativeTicks = 120 },
+            Lifecycle(4, ObservationKind.Create, 400, 4) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 130 },
+            .. others.Select((name, index) => Lifecycle(5 + index, ObservationKind.Create, 500 + index, (ulong)(5 + index))
+                with { ResourceName = $@"C:\Apps\{name}.exe", SessionRelativeTicks = 140 + index }),
+            .. Connection(20, 300, 400, "127.0.0.1:50000", "127.0.0.1:8080"),
+            .. Connection(30, 300, 400, "127.0.0.1:50001", "127.0.0.1:8080"),
+            .. Connection(40, 301, 400, "127.0.0.1:50002", "127.0.0.1:8080"),
+            .. Connection(50, 400, 301, "127.0.0.1:50003", "127.0.0.1:9222"),
+            .. others.SelectMany((_, index) => Connection(70 + (10 * index), 400, 500 + index, $"127.0.0.1:{51000 + index}",
+                $"127.0.0.1:{7000 + index}")),
+            .. Connection(120, 600, 600, "127.0.0.1:52000", "127.0.0.1:52001"),
+            Datagram(130, ObservationKind.Send, AccountingSide.SendSide, 400),
+            Datagram(131, ObservationKind.Receive, AccountingSide.ReceiveSide, 600),
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        using var workspace = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session.Path, overview.SessionId, overview.Generation));
+        await workspace.LayoutReady;
+        // What the inspector last heard of them, so a binding is never left reading a stale list or heading.
+        var heard = new List<int>();
+        var headings = new List<string>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.SelectionPeers))
+            {
+                heard.Add(workspace.SelectionPeers.Count);
+            }
+            else if (changed.PropertyName == nameof(WorkspaceViewModel.PeersHeading))
+            {
+                headings.Add(workspace.PeersHeading);
+            }
+        };
+
+        // Nothing chosen, nothing named.
+        Assert.False(workspace.ShowsPeers);
+        Assert.Empty(workspace.SelectionPeers);
+
+        // The server: the browser's PID 300 connected to it twice, it and PID 301 each to the other, then the five it connected
+        // to, the busiest first and ties by name, three of its eight left counted.
+        workspace.SelectProcess(Process(workspace, 400).Id);
+        Assert.True(workspace.ShowsPeers);
+        Assert.Equal(
+            [
+                ("← browser.exe · PID 300", "2 accepted · TCP · 8 records"),
+                ("⇄ browser.exe · PID 301", "1 made · 1 accepted · TCP · 8 records"),
+                ("→ alpha.exe · PID 500", "1 made · TCP · 4 records"),
+                ("→ beta.exe · PID 501", "1 made · TCP · 4 records"),
+                ("→ delta.exe · PID 503", "1 made · TCP · 4 records"),
+            ],
+            workspace.SelectionPeers.Select(row => (row.Peer, row.Detail)));
+        Assert.Equal(5, heard[^1]);
+        Assert.Equal("and 3 more relationships", workspace.PeersMore);
+        Assert.True(workspace.ShowsPeersMore);
+        Assert.Equal("Its relationships, the busiest first: browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records; "
+            + "it and browser.exe · PID 301 each connected to the other: 1 made, 1 accepted, TCP, 8 records; it connected to "
+            + "alpha.exe · PID 500: 1 made, TCP, 4 records; it connected to beta.exe · PID 501: 1 made, TCP, 4 records; it "
+            + "connected to delta.exe · PID 503: 1 made, TCP, 4 records; and 3 more relationships", workspace.SpokenSelectionPeers);
+
+        // The resolver's flow opened nothing, and its connection to itself is drawn with no arrowhead, as its edge's card says
+        // display order only: neither row is marked or says a count of connections.
+        workspace.SelectProcess(Process(workspace, 600).Id);
+        Assert.Equal(
+            [
+                ("resolver.exe · PID 600 (itself)", "TCP · 4 records", "resolver.exe · PID 600 (itself): TCP, 4 records"),
+                ("server.exe · PID 400", "UDP · 2 records", "server.exe · PID 400: UDP, 2 records"),
+            ],
+            workspace.SelectionPeers.Select(row => (row.Peer, row.Detail, row.Spoken)));
+        Assert.False(workspace.ShowsPeersMore);
+
+        // Under a brush they are still the whole session's, and say so.
+        workspace.SelectProcess(Process(workspace, 400).Id);
+        workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
+        await workspace.IntervalReady;
+        Assert.Equal("Its relationships, the busiest first · whole session", workspace.PeersHeading);
+        Assert.Equal(workspace.PeersHeading, headings[^1]);
+        Assert.StartsWith("Its relationships, the busiest first, over the whole session: browser.exe · PID 300 connected to it",
+            workspace.SpokenSelectionPeers, StringComparison.Ordinal);
+
+        // A program is not a process: it names programs.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.False(workspace.ShowsPeers);
+        Assert.Equal(0, heard[^1]);
+
+        // At the server's own rung a connection chosen among its rows is what the inspector describes, and the server's
+        // relationships give way to it.
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows.Single();
+        Assert.True(workspace.Descend());
+        workspace.SelectedRung = workspace.RungRows.First(row => row.Label.Contains("browser.exe", StringComparison.Ordinal));
+        Assert.NotNull(workspace.DescribedRow);
+        Assert.False(workspace.ShowsPeers);
+        Assert.Equal(0, heard[^1]);
+
+        // Of RPC calls, those it made and those it served.
+        using var calls = new TemporarySession();
+        (ObservationRowV1[] rows, SourceFieldRowV1[] fields) = LinkedRpcCalls();
+        Publish(calls.Store, rows, fields: fields, coverage: RpcLedger(alpc: true));
+        SessionOverviewBundle called = SessionOverviewProjector.Project(calls.Store);
+        using var rpc = new WorkspaceViewModel(OverviewWorkspace.From(called), called.GraphIdentity,
+            new SessionEvidenceSource(calls.Path, called.SessionId, called.Generation));
+        await rpc.LayoutReady;
+        rpc.SelectProcess(Process(rpc, 400).Id);
+        Assert.Equal(("→ PID 1960", "2 calls made · RPC · 8 records"), (rpc.SelectionPeers[0].Peer, rpc.SelectionPeers[0].Detail));
+        rpc.SelectProcess(Process(rpc, 1960).Id);
+        Assert.Equal(("← PID 400", "2 calls served · RPC · 8 records", "PID 400 called it: 2 calls served, RPC, 8 records"),
+            (rpc.SelectionPeers[0].Peer, rpc.SelectionPeers[0].Detail, rpc.SelectionPeers[0].Spoken));
+
+        static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
+            workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
+
+        // A datagram from the server's port 61000 to the resolver's port 53, as either end records it.
+        static ObservationRowV1 Datagram(long ticks, ObservationKind kind, AccountingSide side, int owner) =>
+            Transfer(ticks, kind, side, 40, owner, (ulong)ticks).Between("127.0.0.1:61000", "127.0.0.1:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = ticks * 100 };
+    });
+
     /// <summary>One TCP connection <paramref name="maker"/> made to <paramref name="taker"/>, opened, and a send across it.</summary>
     private static ObservationRowV1[] Connection(long ticks, int maker, int taker, string from, string to) =>
     [

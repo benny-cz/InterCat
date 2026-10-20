@@ -7042,12 +7042,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         OnPropertyChanged(nameof(OffersRungCandidates));
         OnPropertyChanged(nameof(EvidenceSummary));
 
-        // The selection's connections, and the programs a program's processes talked with, are the whole session's, which
-        // the inspector says under a brush and not without one; an aggregate's processes are listed by their records over
-        // the scope shown.
+        // The selection's connections, the programs a program's processes talked with and a process's relationships are the
+        // whole session's, which the inspector says under a brush and not without one; an aggregate's processes are listed by
+        // their records over the scope shown.
         OnPropertyChanged(nameof(SelectionConnections));
         OnPropertyChanged(nameof(ProgramsHeading));
         OnPropertyChanged(nameof(SpokenSelectionPrograms));
+        OnPropertyChanged(nameof(PeersHeading));
+        OnPropertyChanged(nameof(SpokenSelectionPeers));
         RaiseMemberListChanged();
 
         // A byte ranking follows the scope: its bytes are read for the new one unless they came with its counts. So do a
