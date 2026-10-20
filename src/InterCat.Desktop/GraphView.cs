@@ -119,6 +119,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     private readonly List<Rect> drawnHeads = [];
     private readonly Dictionary<GraphDisplayNode, string> details = new(ReferenceEqualityComparer.Instance);
     private readonly Dictionary<GraphDisplayNode, string> names = new(ReferenceEqualityComparer.Instance);
+    private readonly HashSet<GraphDisplayNode> repeats = new(ReferenceEqualityComparer.Instance);
     private readonly List<string> placedLabelNames = [];
     private GraphDisplay? traversalFor;
     private IReadOnlyList<GraphDisplayNode> traversal = [];
@@ -1462,7 +1463,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             if (!points.TryGetValue(node.Key, out Point point)) continue;
             (TextLayout name, TextLayout? detail) = LabelText(node, detailForProcesses, display);
             Size alone = new(name.Width, name.Height);
-            requests.Add(new(index, node.Key, point, radii[node.Key], LabelRank(node), alone,
+            requests.Add(new(index, node.Key, point, radii[node.Key], LabelRank(node, repeats), alone,
                 detail is null ? alone : new(Math.Max(name.Width, detail.Width), name.Height + detail.Height)));
         }
 
@@ -1594,7 +1595,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         placed.Clear();
         boxes.Clear();
-        for (int rank = 0; rank < 3 && budget > 0; rank++)
+        for (int rank = 0; rank < 4 && budget > 0; rank++)
         {
             for (int index = 0; index < order.Count && budget > 0; index++)
             {
@@ -1800,14 +1801,43 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
 
     /// <summary>
     /// A name's rank among those drawn with nothing chosen: Other hosts', the hub every connection to another host meets
-    /// at, whose second line says how many processes reached one; then an aggregate's; then a process's.
+    /// at, whose second line says how many processes reached one; then an aggregate's; then a process's whose name no node
+    /// named before it bears, the busiest of a program's first; then one whose name is drawn already (<paramref
+    /// name="repeats"/>), so a busy machine's names say which programs are there before they say one twice.
     /// </summary>
-    private static int LabelRank(GraphDisplayNode node) => node.Kind switch
+    internal static int LabelRank(GraphDisplayNode node, IReadOnlySet<GraphDisplayNode> repeats) => node.Kind switch
     {
         GraphNodeKind.OtherHosts => 0,
-        GraphNodeKind.Process => 2,
+        GraphNodeKind.Process => repeats.Contains(node) ? 3 : 2,
         _ => 1,
     };
+
+    /// <summary>
+    /// The processes of <paramref name="order"/> whose name another node bears before them: an aggregate's, or a busier
+    /// process's, in the keyboard's order, which is the busiest first.
+    /// </summary>
+    internal static void FindRepeats(IReadOnlyList<GraphDisplayNode> order, GraphDisplay display, HashSet<GraphDisplayNode> repeats)
+    {
+        ArgumentNullException.ThrowIfNull(order);
+        ArgumentNullException.ThrowIfNull(repeats);
+        repeats.Clear();
+        var named = new HashSet<string>(StringComparer.Ordinal);
+        foreach (GraphDisplayNode node in order)
+        {
+            if (node.Kind != GraphNodeKind.Process)
+            {
+                named.Add(DrawnName(node, display));
+            }
+        }
+
+        foreach (GraphDisplayNode node in order)
+        {
+            if (node.Kind == GraphNodeKind.Process && !named.Add(DrawnName(node, display)))
+            {
+                repeats.Add(node);
+            }
+        }
+    }
 
     /// <summary>The name a node is drawn with (<see cref="DrawnName"/>), formatted once per node of the drawing shown.</summary>
     private string NameOf(GraphDisplayNode node, GraphDisplay display)
@@ -1842,6 +1872,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             traversal = Traversal(display);
             details.Clear();
             names.Clear();
+            FindRepeats(traversal, display, repeats);
         }
 
         return traversal;

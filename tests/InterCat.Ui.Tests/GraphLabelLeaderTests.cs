@@ -306,6 +306,48 @@ public sealed class GraphLabelLeaderTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: a heavy machine's graph names each program it draws before it names one twice, an aggregate's name counting")]
+    public async Task EachProgramIsNamedBeforeOneIsNamedTwice()
+    {
+        // Its names went to the busiest processes whatever they repeated: Code.exe and node.exe eight times each, while
+        // lsass.exe, services.exe and six more went unnamed.
+        using var session = new TemporarySession();
+        Publish(session.Store, HeavyMachine());
+        var window = new MainWindow { Width = 1440, Height = 900 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            _ = Settle(window);
+
+            // In the keyboard's order, the busiest first, a process whose name an aggregate or a busier process bears ranks
+            // after every process whose name it is the first to bear - as on the busy machine, where one chrome.exe
+            // process is drawn beside the node its group's eleven others are drawn as.
+            GraphDisplay display = workspace.GraphDisplay;
+            IReadOnlyList<GraphDisplayNode> order = GraphView.Traversal(display);
+            Assert.NotEmpty(RanksRepeatsLast(display));
+            using var busy = new TemporarySession();
+            Publish(busy.Store, BusyMachine());
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(busy.Store);
+            using var busiest = new WorkspaceViewModel(OverviewWorkspace.From(overview), overview.GraphIdentity);
+            Assert.Contains(RanksRepeatsLast(busiest.GraphDisplay),
+                node => busiest.GraphDisplay.Nodes.Any(other => other.Kind == GraphNodeKind.Group && other.Label == node.Label));
+
+            string[] programs = [.. order.Where(node => node.Kind == GraphNodeKind.Process).Select(node => node.Label).Distinct()];
+            Assert.Equal(19, programs.Length);
+            string[] unnamed = [.. programs.Where(program => !graph.PlacedLabelNames.Contains(program))];
+            Assert.True(unnamed.Length <= 3, string.Join(", ", unnamed));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3: an opened group's own processes are named by their PIDs, as its table names them, and its peers by their programs")]
     public async Task AnOpenedGroupsProcessesAreNamedByTheirPids()
     {
@@ -462,6 +504,28 @@ public sealed class GraphLabelLeaderTests
 
     /// <summary>A pixel of a name's letters: the text's light ink, near white.</summary>
     /// <summary>
+    /// Each process of <paramref name="display"/> ranked by its name: after every other where an aggregate or a busier
+    /// process bears that name already, in the keyboard's order, and among them where it is the first to bear it; the
+    /// processes ranked last.
+    /// </summary>
+    private static HashSet<GraphDisplayNode> RanksRepeatsLast(GraphDisplay display)
+    {
+        IReadOnlyList<GraphDisplayNode> order = GraphView.Traversal(display);
+        var repeats = new HashSet<GraphDisplayNode>(ReferenceEqualityComparer.Instance);
+        GraphView.FindRepeats(order, display, repeats);
+        var drawn = new HashSet<string>(order.Where(node => node.Kind != GraphNodeKind.Process)
+            .Select(node => GraphView.DrawnName(node, display)), StringComparer.Ordinal);
+        foreach (GraphDisplayNode process in order.Where(node => node.Kind == GraphNodeKind.Process))
+        {
+            bool repeated = !drawn.Add(GraphView.DrawnName(process, display));
+            Assert.Equal(repeated, repeats.Contains(process));
+            Assert.Equal(repeated ? 3 : 2, GraphView.LabelRank(process, repeats));
+        }
+
+        return repeats;
+    }
+
+    /// <summary>
     /// Each letter of every name drawn in <paramref name="frame"/> ringed by its halo, at its corners too, never beside an
     /// edge's ink; how many names an edge passes beneath.
     /// </summary>
@@ -536,6 +600,238 @@ public sealed class GraphLabelLeaderTests
     /// endpoint mapper, SQL Server, PostgreSQL and node.exe dev servers accept connections at; the web, from a dozen
     /// programs, a LAN's SMB and RDP, and DNS, mDNS, SSDP and a call over UDP.
     /// </summary>
+    /// <summary>A heavily used Windows machine: system hubs, browsers, chat, an editor with its servers, a database and its apps.</summary>
+    internal static ObservationRowV1[] HeavyMachine()
+    {
+        var rows = new List<ObservationRowV1>();
+        var random = new Random(645);
+        ulong ordinal = 1;
+        long tick = 1;
+        int port = 50000;
+        void Process(int pid, string image) =>
+            rows.Add(Lifecycle(tick++, ObservationKind.Create, pid, ordinal++) with { ResourceName = image });
+
+        void Loopback(int client, int server, int serverPort, int transfers)
+        {
+            string local = $"127.0.0.1:{port++}";
+            string remote = $"127.0.0.1:{serverPort}";
+            rows.Add(Transfer(tick++, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, client, ordinal++).Between(local, remote));
+            rows.Add(Transfer(tick++, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, server, ordinal++).Between(remote, local));
+            for (int index = 0; index < transfers; index++)
+            {
+                rows.Add(Transfer(tick++, ObservationKind.Send, AccountingSide.SendSide, 200 + random.Next(3000), client, ordinal++).Between(local, remote));
+                rows.Add(Transfer(tick++, ObservationKind.Receive, AccountingSide.ReceiveSide, 200 + random.Next(3000), server, ordinal++).Between(remote, local));
+            }
+        }
+
+        void Out(int pid, string remote, int transfers)
+        {
+            string local = $"192.168.1.10:{port++}";
+            rows.Add(Transfer(tick++, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, pid, ordinal++).Between(local, remote));
+            for (int index = 0; index < transfers; index++)
+            {
+                rows.Add(Transfer(tick++, ObservationKind.Send, AccountingSide.SendSide, 500 + random.Next(9000), pid, ordinal++).Between(local, remote));
+            }
+        }
+
+        void Udp(int pid, string remote, int sends)
+        {
+            string local = $"192.168.1.10:{port++}";
+            for (int index = 0; index < sends; index++)
+            {
+                rows.Add(Transfer(tick++, ObservationKind.Send, AccountingSide.SendSide, 60, pid, ordinal++).Between(local, remote)
+                    with { Mechanism = Mechanism.Udp, EventId = 42 });
+            }
+        }
+
+        string Remote() => $"{20 + random.Next(180)}.{random.Next(256)}.{random.Next(256)}.{1 + random.Next(250)}:443";
+
+        Process(4, @"C:\Windows\System32\ntoskrnl.exe");
+        Process(700, @"C:\Windows\System32\lsass.exe");
+        Process(720, @"C:\Windows\System32\services.exe");
+        int[] svchost = [.. Enumerable.Range(0, 80).Select(index => 1000 + (4 * index))];
+        foreach (int pid in svchost)
+        {
+            Process(pid, @"C:\Windows\System32\svchost.exe");
+        }
+
+        int[] chrome = [.. Enumerable.Range(0, 35).Select(index => 3000 + (4 * index))];
+        foreach (int pid in chrome)
+        {
+            Process(pid, @"C:\Program Files\Google\Chrome\Application\chrome.exe");
+        }
+
+        int[] edge = [.. Enumerable.Range(0, 20).Select(index => 3400 + (4 * index))];
+        foreach (int pid in edge)
+        {
+            Process(pid, @"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe");
+        }
+
+        int[] teams = [.. Enumerable.Range(0, 6).Select(index => 3600 + (4 * index))];
+        foreach (int pid in teams)
+        {
+            Process(pid, @"C:\Users\me\AppData\Local\Microsoft\Teams\ms-teams.exe");
+        }
+
+        int[] code = [.. Enumerable.Range(0, 8).Select(index => 3700 + (4 * index))];
+        foreach (int pid in code)
+        {
+            Process(pid, @"C:\Users\me\AppData\Local\Programs\Microsoft VS Code\Code.exe");
+        }
+
+        int[] node = [.. Enumerable.Range(0, 10).Select(index => 3800 + (4 * index))];
+        foreach (int pid in node)
+        {
+            Process(pid, @"C:\Program Files\nodejs\node.exe");
+        }
+
+        int[] python = [.. Enumerable.Range(0, 4).Select(index => 3900 + (4 * index))];
+        foreach (int pid in python)
+        {
+            Process(pid, @"C:\Python312\python.exe");
+        }
+
+        int[] postgres = [.. Enumerable.Range(0, 8).Select(index => 4000 + (4 * index))];
+        foreach (int pid in postgres)
+        {
+            Process(pid, @"C:\Program Files\PostgreSQL\16\bin\postgres.exe");
+        }
+
+        Process(4100, @"C:\Program Files\Docker\Docker\resources\com.docker.backend.exe");
+        Process(4104, @"C:\Program Files\Docker\Docker\resources\vpnkit.exe");
+        Process(4108, @"C:\Windows\System32\wslrelay.exe");
+        Process(4200, @"C:\Users\me\AppData\Local\Microsoft\OneDrive\OneDrive.exe");
+        Process(4204, @"C:\ProgramData\Microsoft\Windows Defender\Platform\MsMpEng.exe");
+        Process(4208, @"C:\Windows\SystemApps\SearchHost.exe");
+        Process(4212, @"C:\Windows\explorer.exe");
+        Process(4216, @"C:\Windows\System32\spoolsv.exe");
+        Process(4220, @"C:\Users\me\AppData\Roaming\Spotify\Spotify.exe");
+        Process(4224, @"C:\Users\me\AppData\Roaming\Zoom\bin\Zoom.exe");
+        Process(4228, @"C:\Program Files\Microsoft Office\root\Office16\OUTLOOK.EXE");
+        int[] quiet = [.. Enumerable.Range(0, 70).Select(index => 5000 + (4 * index))];
+        string[] quietImages = [@"C:\Windows\System32\conhost.exe", @"C:\Windows\System32\RuntimeBroker.exe", @"C:\Windows\System32\dllhost.exe", @"C:\Windows\System32\backgroundTaskHost.exe", @"C:\Windows\System32\taskhostw.exe"];
+        for (int index = 0; index < quiet.Length; index++)
+        {
+            Process(quiet[index], quietImages[index % quietImages.Length]);
+        }
+
+        // System hubs: a few svchost instances accept from many; lsass from the services.
+        int[] hubs = [svchost[0], svchost[1], svchost[2], svchost[3], svchost[4], svchost[5]];
+        int[] clients = [.. svchost.Skip(6).Take(40), .. chrome.Take(4), .. edge.Take(3), 4212, 4216, 4208, 4204, .. teams.Take(2), .. code.Take(2)];
+        foreach (int client in clients)
+        {
+            Loopback(client, hubs[random.Next(hubs.Length)], 135, 1 + random.Next(3));
+        }
+
+        foreach (int client in svchost.Skip(46).Take(12).Append(720))
+        {
+            Loopback(client, 700, 49668, 2);
+        }
+
+        // Browsers: renderers to the browser process, which reaches the web; edge the same.
+        foreach (int renderer in chrome.Skip(1))
+        {
+            Loopback(renderer, chrome[0], 9222, 1 + random.Next(4));
+        }
+
+        foreach (int renderer in edge.Skip(1))
+        {
+            Loopback(renderer, edge[0], 9223, 1 + random.Next(3));
+        }
+
+        for (int index = 0; index < 40; index++)
+        {
+            Out(chrome[0], Remote(), 1 + random.Next(5));
+        }
+
+        for (int index = 0; index < 15; index++)
+        {
+            Out(edge[0], Remote(), 1 + random.Next(4));
+        }
+
+        // Chat and meetings: Teams' processes to its main, and out.
+        foreach (int pid in teams.Skip(1))
+        {
+            Loopback(pid, teams[0], 7000, 2);
+        }
+
+        for (int index = 0; index < 8; index++)
+        {
+            Out(teams[0], Remote(), 2);
+        }
+
+        Out(4224, "52.81.4.10:443", 6);
+        Udp(4224, "52.81.4.11:8801", 20);
+
+        // The editor and its servers, a dev stack against a database.
+        foreach (int pid in code.Skip(1))
+        {
+            Loopback(pid, code[0], 7100, 1);
+        }
+
+        for (int index = 0; index < node.Length; index++)
+        {
+            Loopback(code[index % code.Length], node[index], 7200 + index, 2 + random.Next(3));
+        }
+
+        foreach (int pid in python)
+        {
+            Loopback(pid, postgres[0], 5432, 3);
+        }
+
+        foreach (int pid in node.Take(4))
+        {
+            Loopback(pid, postgres[0], 5432, 3);
+        }
+
+        foreach (int pid in postgres.Skip(1))
+        {
+            Loopback(postgres[0], pid, 6000 + pid, 1);
+        }
+
+        Loopback(4100, 4104, 7300, 3);
+        Loopback(4108, 4100, 7301, 3);
+        Loopback(node[0], 4100, 2375, 2);
+
+        // Sync, protection, search and music out to the internet; DNS from many.
+        for (int index = 0; index < 6; index++)
+        {
+            Out(4200, Remote(), 3);
+        }
+
+        for (int index = 0; index < 4; index++)
+        {
+            Out(4204, Remote(), 2);
+        }
+
+        for (int index = 0; index < 3; index++)
+        {
+            Out(4208, Remote(), 1);
+        }
+
+        for (int index = 0; index < 5; index++)
+        {
+            Out(4220, Remote(), 4);
+        }
+
+        for (int index = 0; index < 4; index++)
+        {
+            Out(4228, Remote(), 2);
+        }
+
+        foreach (int pid in svchost.Skip(60).Take(10))
+        {
+            Out(pid, Remote(), 1);
+        }
+
+        foreach (int pid in svchost.Take(3).Concat(chrome.Take(1)).Concat(edge.Take(1)))
+        {
+            Udp(pid, "192.168.1.1:53", 4);
+        }
+
+        return [.. rows.Select(row => row with { NativeTicks = row.NativeTicks * 20_000, SessionRelativeTicks = row.NativeTicks * 2_000_000 })];
+    }
+
     internal static ObservationRowV1[] BusyMachine()
     {
         var rows = new List<ObservationRowV1>();
