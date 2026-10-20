@@ -209,6 +209,39 @@ public sealed class NavigationHistoryTests
         Assert.Equal(paired.Key, workspace.SelectedRung?.Key);
     });
 
+    [Fact(DisplayName = "§3.2: the breadcrumb up lands where the way down from its rung began, as Esc does - on the row the way went through, once the rung lists it")]
+    public void TheBreadcrumbUpChoosesTheRowTheWayWentThrough() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, RowsReachingAnotherHost());
+        using WorkspaceViewModel workspace = Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        DescendTo(workspace, client.GroupKey);
+        DescendTo(workspace, client.Id.ToString());
+        RungRow paired = Assert.Single(workspace.RungRows);
+        await workspace.ConnectionsReady;
+        RungRow later = Assert.Single(workspace.RungRows, row => row.Key != paired.Key);
+        workspace.SelectedRung = later;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+
+        // The crumb to the process: its connection to another host, once the rung reads its rows again.
+        workspace.ReturnTo(2);
+        Assert.Null(workspace.SelectedRung);
+        await workspace.ConnectionsReady;
+        Assert.Equal(later.Key, workspace.SelectedRung?.Key);
+
+        // The crumb to the machine: the group the way went through, as Esc twice from the process chooses it.
+        workspace.ReturnTo(0);
+        Assert.Equal((client.GroupKey, client.GroupKey), (workspace.SelectedRung?.Key, workspace.SelectedGroup?.Key));
+        Assert.True(workspace.GoForward());
+        Assert.True(workspace.GoForward());
+        Assert.True(workspace.Ascend());
+        Assert.Equal(client.Id.ToString(), workspace.SelectedRung?.Key);
+        Assert.True(workspace.Ascend());
+        Assert.Equal(client.GroupKey, workspace.SelectedRung?.Key);
+    });
+
     [Fact(DisplayName = "§6.7: a descent elsewhere or a removed filter ends forward history; the next rung is always named")]
     public void ADescentElsewhereOrARemovedFilterEndsForwardHistory()
     {
@@ -271,16 +304,17 @@ public sealed class NavigationHistoryTests
         }
 
         // A generation without the process: the way forward stops at the group above it, and says nothing about a
-        // rung nobody is looking at.
+        // rung nobody is looking at - nor about the process, the breadcrumb back having chosen the group the way went
+        // through, as Esc does.
         string process = saved.Forward![1].Focus!.Value.Key;
+        Assert.Equal(saved.Forward[0].Focus!.Value.Key, saved.SelectedRungKey);
         WorkspaceSnapshot without = source with
         {
             Processes = [.. source.Processes.Where(node => node.Id.ToString() != process)],
             Edges = [.. source.Edges.Where(edge => edge.SourceId.ToString() != process && edge.TargetId.ToString() != process)],
         };
         using var thinner = new WorkspaceViewModel(without, "session:one:generation:3");
-        Assert.Equal("The selected process is no longer in the session, so nothing is selected.",
-            thinner.RestoreNavigation(saved));
+        Assert.Null(thinner.RestoreNavigation(saved));
         Assert.Equal($"Forward to {deepest[1]} (Alt+Right)", thinner.ForwardLabel);
         Assert.True(thinner.GoForward());
         Assert.False(thinner.CanGoForward);

@@ -207,13 +207,14 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Back at the rung where a way down from an aggregate's list began, chooses the aggregate and the process in its list
     /// again and asks the keyboard to its row (§3.2), each time a way back arrives there; a climb past it keeps it for the
-    /// way forward. That rung no longer drawing the aggregate, or the aggregate the process, lets it go.
+    /// way forward. That rung no longer drawing the aggregate, or the aggregate the process, lets it go. Whether it chose
+    /// them.
     /// </summary>
-    private void ResumeMemberOrigin()
+    private bool ResumeMemberOrigin()
     {
         if (memberOrigin is not { } origin || ladder.Depth != origin.Depth)
         {
-            return;
+            return false;
         }
 
         // Only a way down that replaced it could stand another rung at its depth; the rung is checked all the same.
@@ -222,13 +223,14 @@ public sealed partial class WorkspaceViewModel
             || graphDisplay.Node(origin.Aggregate) is not { } aggregate || !aggregate.Members.Contains(origin.Member))
         {
             memberOrigin = null;
-            return;
+            return false;
         }
 
         SelectGraphNode(origin.Aggregate);
         ChosenMemberRow = MemberRows.FirstOrDefault(listed => listed.Process == origin.Member);
         MembersAsked++;
         OnPropertyChanged(nameof(MembersAsked));
+        return true;
     }
 
     /// <summary>

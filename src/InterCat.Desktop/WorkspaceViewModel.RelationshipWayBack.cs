@@ -56,14 +56,14 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// At a rung a way down with a relationship, or an edge to other hosts, chosen began, chooses it again and asks for
     /// the keyboard to go to its row, where the rung is still the one it began at and its table lists it; otherwise
-    /// that way back is let go.
+    /// that way back is let go. Whether it chose it.
     /// </summary>
-    private void ResumeRelationshipOrigin()
+    private bool ResumeRelationshipOrigin()
     {
         int kept = relationshipOrigins.FindIndex(origin => origin.Depth == ladder.Depth);
         if (kept < 0)
         {
-            return;
+            return false;
         }
 
         // A relationship opened from below the machine rung is opened along the ladder from its top, so the rung at that
@@ -73,7 +73,7 @@ public sealed partial class WorkspaceViewModel
             || TableRows.FirstOrDefault(row => string.Equals(row.Key, origin.Relationship, StringComparison.Ordinal)) is not { } row)
         {
             relationshipOrigins.RemoveAt(kept);
-            return;
+            return false;
         }
 
         // An edge to other hosts is chosen with its source, which the way back may have selected already.
@@ -84,5 +84,6 @@ public sealed partial class WorkspaceViewModel
 
         RelationshipAsked++;
         OnPropertyChanged(nameof(RelationshipAsked));
+        return true;
     }
 }

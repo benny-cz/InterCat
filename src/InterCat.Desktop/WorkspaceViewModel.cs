@@ -5503,8 +5503,8 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ChooseRowAgain(opened.Key);
         }
 
-        ResumeMemberOrigin();
-        ResumeRelationshipOrigin();
+        _ = ResumeMemberOrigin();
+        _ = ResumeRelationshipOrigin();
         ResumeCellOrigin();
         ResumeCellRecordOrigin();
         ResumeIntervalRowOrigin();
@@ -5524,12 +5524,18 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             ResumeIntervalOf(restored);
             ArriveFrom(left);
 
+            // A crumb up lands where the way down from its rung began, as Esc does: on the aggregate's process or the
+            // relationship a way down began at, or else on the row the rung was left with, once it lists it (§3.2, §6.7).
             // The rung shown now, its crumb chosen again, is no way back: what has been chosen there since stays chosen, a
             // cell included.
             if (ladder.Depth < from)
             {
-                ResumeMemberOrigin();
-                ResumeRelationshipOrigin();
+                bool member = ResumeMemberOrigin();
+                bool relationship = ResumeRelationshipOrigin();
+                if (!member && !relationship && !IsEvidenceRung && restored.RowWhenLeft is { } row)
+                {
+                    ChooseRowAgain(row);
+                }
             }
 
             ResumeCellOrigin();
