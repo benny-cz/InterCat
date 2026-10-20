@@ -55,6 +55,8 @@ public enum GraphNodeKind
 /// <summary>
 /// Workspace-owned graph compaction settings (§6.3). The defaults are deliberately below the layout engine's hard
 /// safety caps: projection keeps a graph legible; layout caps protect the worker from malformed or un-compacted input.
+/// The node budget is what the design pane holds apart at §6.3's radii: about a hundred discs, which §19.4's separation
+/// parts on the densest machine measured, where twice as many overlapped in more than two hundred pairs.
 /// </summary>
 /// <param name="HostOnlyDrawn">
 /// How many processes whose only drawn activity is their connections to other hosts are drawn on their own, the busiest
@@ -66,7 +68,7 @@ public enum GraphNodeKind
 /// </param>
 public sealed record GraphDisplayBudget(int Nodes, int Edges, int CollapseThreshold, int HostOnlyDrawn = 8, int HostsDrawn = 8)
 {
-    public static GraphDisplayBudget Default { get; } = new(200, 500, 25, 8, 8);
+    public static GraphDisplayBudget Default { get; } = new(100, 500, 25, 8, 8);
 
     public void Validate()
     {

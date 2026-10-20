@@ -358,14 +358,14 @@ public sealed class AggregateMembersWorkspaceTests
     [Fact(DisplayName = "§6.3: Other processes, folded for the graph's budget, lists its processes with their relationships")]
     public void OtherProcessesListsTheirRelationships() => SingleThreadedContext.Run(async () =>
     {
-        // Two hundred and ten programs of one process each, related in pairs, the later the busier: past the graph's budget
-        // of nodes the least active fold into Other processes.
-        ProcessGroup[] groups = [.. Enumerable.Range(0, 210)
+        // A hundred and ten programs of one process each, related in pairs, the later the busier: past the graph's budget
+        // of a hundred nodes the eleven least active fold into Other processes.
+        ProcessGroup[] groups = [.. Enumerable.Range(0, 110)
             .Select(index => new ProcessGroup($"g{index:D3}", $"app{index:D3}.exe", LaneGrouping.Executable))];
         ProcessNode[] processes = [.. groups.Select((group, index) => new ProcessNode(
             new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), 1_000 + index, $"app{index:D3}.exe", "test",
             group.Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new MechanismCount(Mechanism.Tcp, 2 + index)] })];
-        CommunicationEdge[] pairs = [.. Enumerable.Range(0, 105).Select(pair => new CommunicationEdge($"pair-{pair}",
+        CommunicationEdge[] pairs = [.. Enumerable.Range(0, 55).Select(pair => new CommunicationEdge($"pair-{pair}",
             processes[2 * pair].Id, processes[(2 * pair) + 1].Id, Mechanism.Tcp, 1 + pair, null, RelationStrength.Direct)
         {
             Rule = RelationRule.TransportEndpoint,
@@ -425,18 +425,18 @@ public sealed class AggregateMembersWorkspaceTests
     });
 
     [Theory(DisplayName = "§6.3: a group too large to draw whole folds its least active members into Other members, which says so, and its relationships, beside any that have none")]
-    [InlineData(0, "221 processes of this group not drawn on their own, its least active · 111 relationships, 110 among themselves. They are listed below.")]
-    [InlineData(2, "223 processes of this group not drawn on their own: 2 without a relationship, the rest its least active · 111 relationships, 110 among themselves. They are listed below.")]
+    [InlineData(0, "121 processes of this group not drawn on their own, its least active · 61 relationships, 60 among themselves. They are listed below.")]
+    [InlineData(2, "123 processes of this group not drawn on their own: 2 without a relationship, the rest its least active · 61 relationships, 60 among themselves. They are listed below.")]
     public void OtherMembersSaysWhatItFolds(int quiet, string described) => SingleThreadedContext.Run(async () =>
     {
-        // big.exe's 420 processes related in pairs, the later the busier, and any that relate to nothing: opened, its 199
-        // busiest are drawn, to the graph's budget of 200 nodes, and the rest folded - 110 pairs whole and one member of the
-        // 111th, whose other is drawn.
+        // big.exe's 220 processes related in pairs, the later the busier, and any that relate to nothing: opened, its 99
+        // busiest are drawn, to the graph's budget of 100 nodes, and the rest folded - 60 pairs whole and one member of the
+        // 61st, whose other is drawn.
         ProcessGroup big = new("big", "big.exe", LaneGrouping.Executable);
-        ProcessNode[] processes = [.. Enumerable.Range(0, 420 + quiet).Select(index => new ProcessNode(
+        ProcessNode[] processes = [.. Enumerable.Range(0, 220 + quiet).Select(index => new ProcessNode(
             new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{index:D12}")), 1_000 + index, "big.exe", "test",
             big.Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new MechanismCount(Mechanism.Tcp, 2 + index)] })];
-        CommunicationEdge[] pairs = [.. Enumerable.Range(0, 210).Select(pair => new CommunicationEdge($"pair-{pair}",
+        CommunicationEdge[] pairs = [.. Enumerable.Range(0, 110).Select(pair => new CommunicationEdge($"pair-{pair}",
             processes[2 * pair].Id, processes[(2 * pair) + 1].Id, Mechanism.Tcp, 1 + pair, null, RelationStrength.Direct)
         {
             Rule = RelationRule.TransportEndpoint,

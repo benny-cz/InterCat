@@ -213,6 +213,39 @@ public sealed class GraphLayoutTests
         Assert.InRange(pair.Average(node => positions[node.Key].X), 0.35, 0.65);
     }
 
+    [Fact(DisplayName = "§6.3: a wide machine opens within the display budget, no disc hiding another at the design pane")]
+    public void AWideMachineOpensWithNoDiscHidden()
+    {
+        // Eighty programs of one to five processes each, three hundred relationships between processes picked at random.
+        ProcessGroup[] programs = [.. Enumerable.Range(0, 80)
+            .Select(index => new ProcessGroup($"wide-{index}", $"wide{index}.exe", LaneGrouping.Executable))];
+        ProcessNode[] processes = [.. programs
+            .SelectMany((program, index) => Enumerable.Repeat(program, 1 + (index * 7 % 5)))
+            .Select((program, index) => Numbered(1_000 + index) with { GroupKey = program.Key })];
+        var random = new Random(641);
+        CommunicationEdge[] edges = [.. Enumerable.Range(0, 300)
+            .Select(index => (Index: index, Client: processes[random.Next(processes.Length)], Server: processes[random.Next(processes.Length)]))
+            .Where(pair => pair.Client.Id != pair.Server.Id)
+            .Select(pair => Weighted($"wide-{pair.Index}", pair.Client, pair.Server, 2 + (pair.Index % 7)))];
+        GraphDisplay display = GraphProjection.Project(Workspace(programs, processes, edges));
+        Assert.InRange(display.Nodes.Count, 2, GraphDisplayBudget.Default.Nodes);
+
+        // Where the drawing is densest two discs may touch, but none stands over another's centre, where it is aimed at.
+        IReadOnlyDictionary<string, GraphPoint> positions = GraphLayout.ComputeDisplay("wide", display).Positions;
+        long scale = GraphEncoding.NodeScale(display);
+        for (int i = 0; i < display.Nodes.Count; i++)
+        {
+            for (int j = i + 1; j < display.Nodes.Count; j++)
+            {
+                GraphDisplayNode one = display.Nodes[i];
+                GraphDisplayNode other = display.Nodes[j];
+                double larger = Math.Max(GraphEncoding.NodeRadius(one, scale), GraphEncoding.NodeRadius(other, scale)) / 250;
+                double distance = Distance(positions[one.Key], positions[other.Key]);
+                Assert.True(distance >= larger, $"{one.Key} and {other.Key} stand {distance:F4} apart, one over the other's centre");
+            }
+        }
+    }
+
     private static readonly ProcessGroup[] Programs = [.. Enumerable.Range(0, 12)
         .Select(index => new ProcessGroup($"program-{index}", $"program{index}.exe", LaneGrouping.Executable))];
 
