@@ -1,3 +1,4 @@
+using System.Text.Json;
 using InterCat.Analysis.Tests;
 using InterCat.Domain;
 using InterCat.Storage;
@@ -34,6 +35,26 @@ public sealed class CallListingTests : IDisposable
     }
 
     public void Dispose() => session.Dispose();
+
+    [Fact(DisplayName = "R18: icat processes --pid says a process's RPC call records, which no transport record holds, and where its calls are listed with their other ends")]
+    public async Task AProcesssDetailPointsToItsCalls()
+    {
+        // The caller's three calls, a start and a stop each, beside its saying it made no transport record.
+        (InterCatExitCode code, string caller, string said) = await Run("processes", session.Path, "--pid", "400");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  RPC +6 call records; icat operations <directory> --pid 400 lists its calls, each with the process at its "
+            + @"other end\r?$", caller);
+        Assert.Contains("It made no transport send or receive record in this session", caller, StringComparison.Ordinal);
+
+        // The JSON counts them for the PID asked about, and for no other.
+        (_, string json, _) = await Run("processes", session.Path, "--pid", "1960", "--json");
+        using JsonDocument document = JsonDocument.Parse(json);
+        JsonElement[] instances = [.. document.RootElement.GetProperty("instances").EnumerateArray()];
+        Assert.Equal(6, instances.Single(instance => instance.GetProperty("process").GetProperty("processId").GetInt32() == 1_960)
+            .GetProperty("rpcRecords").GetInt64());
+        Assert.All(instances.Where(instance => instance.GetProperty("process").GetProperty("processId").GetInt32() != 1_960),
+            instance => Assert.Equal(JsonValueKind.Null, instance.GetProperty("rpcRecords").ValueKind));
+    }
 
     [Fact(DisplayName = "R18: icat operations lists a process's calls, each with its other end named as its group's is")]
     public async Task AProcessCallsNameTheirOtherEnds()

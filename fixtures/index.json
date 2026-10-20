@@ -2095,6 +2095,7 @@
         "R18: icat package of a released session says what its source had released, and the package's readers say so too",
         "R18: icat pin, channels, exchanges, checkpoint and profiles refuse what they cannot read, naming what they expect",
         "R18: icat processes --pid lists the other hosts an instance's connections ran to, by address, the most bytes first, its own connections alone",
+        "R18: icat processes --pid says a process's RPC call records, which no transport record holds, and where its calls are listed with their other ends",
         "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path",
         "R18: icat programs lists every pair of programs the session's relationships join, the busiest first, as many as asked",
         "R18: icat programs says no program talked with another where no relationship joins two processes",

@@ -84,6 +84,13 @@ internal sealed record ProcessActivityDocument
     /// </summary>
     public IReadOnlyList<ProcessHostDocument>? OtherHosts { get; init; }
 
+    /// <summary>
+    /// Its own RPC call records the evidence policy admits, whose calls `icat operations` lists with the process at each
+    /// one's other end, when one PID was asked about; null otherwise, as <see cref="Peers"/> is. A call is no transport
+    /// record, so <see cref="Peers"/> holds none of them.
+    /// </summary>
+    public long? RpcRecords { get; init; }
+
     /// <summary>How many instances held its PID in the capture; its <c>lifecycleEpoch</c> says which of them it was.</summary>
     public required int PidHolders { get; init; }
 
@@ -284,6 +291,8 @@ internal static class ProcessesCommand
                             Peers = Peers(store, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)), policy, records.Clock, cancellationToken),
                             OtherHosts = OtherHosts(store, projected.HostLinks, new ProcessInstanceId(Guid.Parse(item.Process.InstanceId)),
                                 policy, cancellationToken),
+                            RpcRecords = nodes[new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))].Activity
+                                .Where(count => count.Mechanism == Mechanism.Rpc).Sum(count => count.Records),
                         }),
                 ],
             };
@@ -730,6 +739,13 @@ internal static class ProcessesCommand
             _ => Connections(item, string.Empty) + ", as the capture saw them open",
         });
 
+        // Its RPC calls, which no transport record holds: icat operations lists each, with the process at its other end.
+        if (item.RpcRecords is > 0 and var calls)
+        {
+            ConsoleUi.Field("RPC", CountText.Of(calls, "call record") + string.Create(CultureInfo.InvariantCulture,
+                $"; icat operations <directory> --pid {process.ProcessId} lists its calls, each with the process at its other end"));
+        }
+
         if (item.Peers is not { } peers)
         {
             return;
@@ -845,7 +861,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      count of none where the capture saw nothing is not read as no activity.");
         ConsoleUi.Line("      --pid shows each instance of one PID in full: the instance id a process filter");
         ConsoleUi.Line("      takes, its image path and parent, what it sent to and received from each process");
-        ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}), and each other host its");
-        ConsoleUi.Line("      connections ran to, by address, the most bytes first.");
+        ConsoleUi.Line($"      at the other end ({TransportRelationIndex.RelationRule}), each other host its");
+        ConsoleUi.Line("      connections ran to, by address, the most bytes first, and its RPC call records, whose");
+        ConsoleUi.Line("      calls icat operations lists with the process at each one's other end.");
     }
 }

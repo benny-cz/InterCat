@@ -566,12 +566,15 @@ public sealed class CommandLineTests : IDisposable
         // A receiver sent its sender nothing, which reads as none beside the bytes it received from it.
         Assert.Matches(@"(?m)^  PID 100 \(image not witnessed\) +none +64 B\r?$", (await Run("processes", tcp.Path, "--pid", "200")).Output);
 
-        // One that made no transport record at all says so, which is not proof it was idle.
+        // One that made no transport record at all says so, which is not proof it was idle, and one that made no RPC call
+        // says nothing of RPC.
         using var quiet = new TemporarySession();
         Publish(quiet.Store, [Lifecycle(10, ObservationKind.Create, 400, 1) with { ResourceName = @"C:\Tools\idle.exe" }]);
         quiet.Store.ReleaseSegmentReaders();
+        string idleDetail = (await Run("processes", quiet.Path, "--pid", "400")).Output;
         Assert.Contains("It made no transport send or receive record in this session, which is not proof it sent or received "
-            + "nothing.", (await Run("processes", quiet.Path, "--pid", "400")).Output, StringComparison.Ordinal);
+            + "nothing.", idleDetail, StringComparison.Ordinal);
+        Assert.DoesNotContain("icat operations", idleDetail, StringComparison.Ordinal);
     }
 
     /// <summary>
