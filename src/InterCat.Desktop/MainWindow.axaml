@@ -882,7 +882,7 @@
                      E lists, in the evidence rung's words - so a dense mark is read without leaving the rung. They come
                      before how the cell was counted, which is longer and read less often. -->
                 <StackPanel x:Name="CellRecordsPanel" Spacing="3" IsVisible="{Binding ListsCellRecords}">
-                  <TextBlock x:Name="CellRecordsHeadingText" Text="{Binding CellRecordsHeading}" Classes="muted" />
+                  <TextBlock x:Name="CellRecordsHeadingText" Text="{Binding CellRecordsHeading}" Classes="muted" TextWrapping="Wrap" />
                   <!-- A listed record opens in E, selected there, as a ranked row opens its rung: Enter or a double click. -->
                   <ListBox x:Name="CellRecordsList" ItemsSource="{Binding CellRecordRows}" Background="Transparent"
                            BorderThickness="0" DoubleTapped="OpenCellRecord" ScrollViewer.BringIntoViewOnFocusChange="False"
@@ -915,7 +915,7 @@
                   <TextBlock x:Name="CellExplanationText" Text="{Binding CellExplanation}" TextWrapping="Wrap" />
                 </StackPanel>
                 <StackPanel Spacing="3" IsVisible="{Binding ShowsEvidenceLine}">
-                  <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />
+                  <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" TextWrapping="Wrap" />
                   <TextBlock x:Name="EvidenceSummaryText" Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>
                 <!-- §6.8: who opened the selected process's or group's connections, as its card counts them, here where a
@@ -928,7 +928,9 @@
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">
-                  <TextBlock Text="{Binding ExplanationHeading}" Classes="muted" />
+                  <!-- Its headings wrap as its words do: "How its processes are grouped" is wider than the inspector at its
+                       narrowest. -->
+                  <TextBlock Text="{Binding ExplanationHeading}" Classes="muted" TextWrapping="Wrap" />
                   <TextBlock x:Name="ExplanationText" Text="{Binding Explanation}" TextWrapping="Wrap" />
                   <!-- What it says was left out, one action away: counted, as candidates, wherever the session is counted. -->
                   <!-- Its words wrap: the inspector is narrower than they are long at its narrowest. -->
@@ -951,7 +953,7 @@
                              AutomationProperties.Name="{Binding ChildrenText, StringFormat='Started {0}'}" />
                 </StackPanel>
                 <StackPanel Spacing="3">
-                  <TextBlock Text="{Binding LevelBadge}" Classes="muted" />
+                  <TextBlock Text="{Binding LevelBadge}" Classes="muted" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding LevelSummary}" TextWrapping="Wrap"
                              AutomationProperties.Name="What the current level accounts for" />
                 </StackPanel>

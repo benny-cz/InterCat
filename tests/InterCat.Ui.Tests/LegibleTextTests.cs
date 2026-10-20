@@ -66,12 +66,14 @@ public sealed class LegibleTextTests
             cut.AddRange(CutOff(window, $"{rail}, machine"));
 
             // Down every rung to a channel, whose rung has no rows and offers its records' step beside the reason, then to
-            // the records themselves.
+            // the records themselves; each row chosen before it is opened, as the inspector then explains it under its own
+            // headings.
             Channel channel = workspace.Snapshot.Channels.Single();
             ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
             foreach (string key in new[] { client.GroupKey, client.Id.ToString(), channel.Key })
             {
                 workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == key);
+                cut.AddRange(CutOff(window, $"{rail}, {workspace.LevelBadge}, {key} chosen"));
                 Assert.True(workspace.Descend());
                 cut.AddRange(CutOff(window, $"{rail}, {workspace.LevelBadge}"));
             }
