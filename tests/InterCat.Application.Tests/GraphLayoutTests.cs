@@ -136,6 +136,98 @@ public sealed class GraphLayoutTests
         Assert.True(Farthest(redrawn) > 0.1, $"A new drawing moved the nodes drawn before at most {Farthest(redrawn):F3}.");
     }
 
+    [Fact(DisplayName = "§6.3: a dense component's discs stand apart, each clear of every other by the clearance, where the pane has room")]
+    public void ADenseComponentsDiscsStandApart()
+    {
+        GraphDisplay display = Dense(60);
+        GraphDisplayLayout layout = GraphLayout.ComputeDisplay("dense", display);
+        AssertApart(display, layout.Positions, Clearance);
+    }
+
+    [Fact(DisplayName = "§6.3: discs part round a pinned node, which keeps its place")]
+    public void DiscsPartRoundAPin()
+    {
+        GraphDisplay display = Dense(60);
+        var pin = new GraphPoint(0.5, 0.5);
+        GraphDisplayLayout layout = GraphLayout.ComputeDisplay("dense", display,
+            pins: new Dictionary<string, GraphPoint> { [display.Nodes[0].Key] = pin });
+        Assert.Equal(pin, layout.Positions[display.Nodes[0].Key]);
+        AssertApart(display, layout.Positions, Clearance);
+    }
+
+    [Fact(DisplayName = "§6.3: discs that join a settled drawing make room round the nodes drawn before, which give way only a little")]
+    public void JoiningDiscsMakeRoomRoundTheNodesDrawnBefore()
+    {
+        // A third as many again join a dense drawing, each related to three of its nodes.
+        GraphDisplay seen = Dense(60);
+        GraphDisplayLayout before = GraphLayout.ComputeDisplay("generation-1", seen);
+        GraphDisplay grown = Dense(80);
+        GraphDisplayLayout after = GraphLayout.ComputeDisplay("generation-2", grown, before.Positions, settled: true);
+        AssertApart(grown, after.Positions, 0);
+        Assert.All(seen.Nodes, node => Assert.InRange(Distance(before.Positions[node.Key], after.Positions[node.Key]), 0, 0.3));
+
+        // A new drawing of the same graph lets them give way as a new node does, and parts every disc by the clearance.
+        AssertApart(grown, GraphLayout.ComputeDisplay("generation-2", grown, before.Positions).Positions, Clearance);
+    }
+
+    [Fact(DisplayName = "§19.4: the first frame is where the layout starts, the nodes drawn before at their places, neither relaxed nor parted")]
+    public void TheFirstFrameIsNotParted()
+    {
+        GraphDisplay display = Dense(60);
+        Dictionary<string, GraphPoint> previous = GraphLayout.ComputeDisplay("dense", display).Positions
+            .ToDictionary(entry => entry.Key, entry => entry.Value);
+        previous[display.Nodes[1].Key] = previous[display.Nodes[0].Key];
+        IReadOnlyDictionary<string, GraphPoint> first = GraphLayout.SeedDisplay("dense-2", display, previous);
+        Assert.All(previous, entry =>
+        {
+            Assert.Equal(entry.Value.X, first[entry.Key].X, 12);
+            Assert.Equal(entry.Value.Y, first[entry.Key].Y, 12);
+        });
+    }
+
+    /// <summary>Space a layout keeps between two discs beyond their radii, in drawn units, TUNABLE.</summary>
+    private const double Clearance = 0.03;
+
+    private static readonly int[] RingSteps = [7, 17, 29];
+
+    /// <summary>
+    /// <paramref name="count"/> processes of twelve programs, the first sixty each related to three others round their ring
+    /// at varied weights, and any more each related to three of them: relaxation alone settles them nearer than their
+    /// discs are wide.
+    /// </summary>
+    private static GraphDisplay Dense(int count)
+    {
+        ProcessGroup[] programs = [.. Enumerable.Range(0, 12)
+            .Select(index => new ProcessGroup($"program-{index}", $"program{index}.exe", LaneGrouping.Executable))];
+        ProcessNode[] processes = [.. Enumerable.Range(0, count).Select(index => new ProcessNode(
+            new ProcessInstanceId(Guid.Parse(GuidFrom(100 + index))), 4_000 + (4 * index), $"Process {index}", "test",
+            programs[index % programs.Length].Key, 0.5, 0.5, CoverageState.Covered) { Activity = [new(Mechanism.Tcp, 5)] })];
+        CommunicationEdge[] edges = [.. Enumerable.Range(0, count).SelectMany(index => RingSteps.Select(step => new CommunicationEdge(
+            $"ring-{index}-{step}", processes[index].Id, processes[(index + step) % 60].Id, Mechanism.Tcp, 1 + (index * step % 13),
+            null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] }))];
+        return GraphProjection.Project(Workspace(programs, processes, edges));
+    }
+
+    /// <summary>
+    /// No two of <paramref name="display"/>'s discs, at the radii the pane draws them - §6.3's logical pixels, 250 to a
+    /// drawn unit at the design pane's height - nearer than both radii and <paramref name="clearance"/>.
+    /// </summary>
+    private static void AssertApart(GraphDisplay display, IReadOnlyDictionary<string, GraphPoint> positions, double clearance)
+    {
+        long scale = GraphEncoding.NodeScale(display);
+        for (int i = 0; i < display.Nodes.Count; i++)
+        {
+            for (int j = i + 1; j < display.Nodes.Count; j++)
+            {
+                GraphDisplayNode one = display.Nodes[i];
+                GraphDisplayNode other = display.Nodes[j];
+                double apart = ((GraphEncoding.NodeRadius(one, scale) + GraphEncoding.NodeRadius(other, scale)) / 250) + clearance;
+                double distance = Distance(positions[one.Key], positions[other.Key]);
+                Assert.True(distance >= apart - 1e-3, $"{one.Key} and {other.Key} stand {distance:F4} apart of {apart:F4}");
+            }
+        }
+    }
+
     private static CommunicationEdge Related(string key, ProcessNode source, ProcessNode target) =>
         new(key, source.Id, target.Id, Mechanism.Tcp, 10, null, RelationStrength.Direct) { Rule = RelationRule.TransportEndpoint, Evidence = [] };
 

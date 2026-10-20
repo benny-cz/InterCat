@@ -29,10 +29,11 @@ public sealed record GraphDisplayLayout(
 
 /// <summary>
 /// The presentation layout of a process graph (§19.4): relationship first. Related nodes relax by a bounded,
-/// deterministic force-directed pass, so a hub and its peers form a star and unrelated components stand apart; a node
-/// with no drawn edge is parked in a row of its own, never across an edge. Its input order, thread count and wall-clock
-/// time cannot change its output: nodes and edges are sorted, and new nodes are seeded from a hash of the graph identity.
-/// A later query result can apply this layout only when its graph identity still matches (R7).
+/// deterministic force-directed pass, so a hub and its peers form a star and unrelated components stand apart, and discs
+/// still overlapping are then spread and parted, so no node hides another; a node with no drawn edge is parked in a row of
+/// its own, never across an edge. Its input order, thread count and wall-clock time cannot change its output: nodes and
+/// edges are sorted, and new nodes are seeded from a hash of the graph identity. A later query result can apply this
+/// layout only when its graph identity still matches (R7).
 /// </summary>
 public static class GraphLayout
 {
@@ -70,6 +71,21 @@ public static class GraphLayout
     private const double Clearance = 0.03;
 
     private const double Collision = 4;
+
+    /// <summary>The most rounds in which discs relaxation left overlapping are parted, where the region has the room.</summary>
+    private const int SeparationRounds = 100;
+
+    /// <summary>
+    /// How readily a node drawn before, and held there, gives way to a disc it overlaps, against a new node's whole: a
+    /// new node makes room round what the person has seen.
+    /// </summary>
+    private const double HeldGive = 0.1;
+
+    /// <summary>
+    /// How much more room than a square each the spread gives overlapping discs, so the pushes that follow have space to
+    /// part those still too near.
+    /// </summary>
+    private const double SpreadRoom = 1.5;
 
     /// <summary>Fruchterman-Reingold's C: the ideal distance is C·√(area / related nodes).</summary>
     private const double IdealDistanceScale = 0.75;
@@ -447,6 +463,13 @@ public static class GraphLayout
             }
         }
 
+        if (iterations > 0)
+        {
+            double[] give = [.. Enumerable.Range(0, count)
+                .Select(i => fixedNode[i] ? 0 : anchored[i] ? Math.Max(freedom, HeldGive) : 1)];
+            Separate(ordered, hash, give, x, y, left, right, top, bottom, cancellationToken);
+        }
+
         var positions = new Dictionary<string, GraphPoint>(count, StringComparer.Ordinal);
         for (int i = 0; i < count; i++)
         {
@@ -455,6 +478,120 @@ public static class GraphLayout
         }
 
         return (new ReadOnlyDictionary<string, GraphPoint>(positions), Energy(x, y, links, repelling, ideal));
+    }
+
+    /// <summary>
+    /// Parts the discs relaxation left overlapping, so no node hides another (§6.3). A dense component settles closer
+    /// than its discs are wide, its many relationships outpulling the push between discs, with the pane's width unused.
+    /// So where two are too near, the nodes that may move first widen about the drawing's middle as far as their discs
+    /// need room and the region allows, each keeping its order left to right. Then each pair still nearer than their radii
+    /// and the clearance is pushed apart along the line between them, round after round, until none is or the rounds run
+    /// out where the region has no more room; the pushes take the discs down where the width was not enough. Each moves
+    /// by its <paramref name="give"/>: a pinned or parked node not at all, a node drawn before and held there a little. A
+    /// drawing with no two discs too near is left as relaxation placed it.
+    /// </summary>
+    private static void Separate(
+        LayoutNode[] ordered,
+        ulong[] hash,
+        double[] give,
+        double[] x,
+        double[] y,
+        double left,
+        double right,
+        double top,
+        double bottom,
+        CancellationToken cancellationToken)
+    {
+        if (!Part(apply: false))
+        {
+            return;
+        }
+
+        Spread();
+        for (int round = 0; round < SeparationRounds && Part(apply: true); round++)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+        }
+
+        // One pass over every pair: whether any two discs that may move are nearer than their radii and the clearance,
+        // each such pair pushed apart where it applies.
+        bool Part(bool apply)
+        {
+            bool parted = false;
+            for (int i = 0; i < ordered.Length; i++)
+            {
+                for (int j = i + 1; j < ordered.Length; j++)
+                {
+                    double shares = give[i] + give[j];
+                    double apart = ordered[i].Radius + ordered[j].Radius + Clearance;
+                    double vx = x[i] - x[j];
+                    double vy = y[i] - y[j];
+                    if (shares <= 0 || Math.Abs(vx) >= apart || Math.Abs(vy) >= apart)
+                    {
+                        continue;
+                    }
+
+                    double distance = Math.Sqrt((vx * vx) + (vy * vy));
+                    if (distance >= apart - 1e-4)
+                    {
+                        continue;
+                    }
+
+                    if (!apply)
+                    {
+                        return true;
+                    }
+
+                    // Coincident discs part in a direction fixed by their hashes, as in relaxation.
+                    double angle = (hash[i] ^ hash[j]) % 3600 / 3600d * 2 * Math.PI;
+                    (double ux, double uy) = distance < 1e-6 ? (Math.Cos(angle), Math.Sin(angle)) : (vx / distance, vy / distance);
+                    double overlap = (apart - distance) / shares;
+                    Move(i, x[i] + (ux * overlap * give[i]), y[i] + (uy * overlap * give[i]));
+                    Move(j, x[j] - (ux * overlap * give[j]), y[j] - (uy * overlap * give[j]));
+                    parted = true;
+                }
+            }
+
+            return parted;
+        }
+
+        // The nodes that may move span a box, and their discs need a square each, as wide as the disc and the clearance,
+        // half again over. Where the box, padded by half a square all round, holds less, it widens about its middle as far
+        // as the region lets it: the pane is wide, and a dense drawing settles about as tall as it is broad.
+        void Spread()
+        {
+            int[] moving = [.. Enumerable.Range(0, ordered.Length).Where(i => give[i] > 0)];
+            if (moving.Length < 2)
+            {
+                return;
+            }
+
+            double need = SpreadRoom * moving.Sum(i => Math.Pow((2 * ordered[i].Radius) + Clearance, 2));
+            double pad = moving.Average(i => (2 * ordered[i].Radius) + Clearance);
+            double minX = moving.Min(i => x[i]);
+            double spanX = moving.Max(i => x[i]) - minX;
+            double spanY = moving.Max(i => y[i]) - moving.Min(i => y[i]);
+            double wide = Math.Min((need / (spanY + pad)) - pad, right - left);
+            if (spanX <= 1e-9 || wide <= spanX)
+            {
+                return;
+            }
+
+            double fromX = Math.Max(left, Math.Min(minX + ((spanX - wide) / 2), right - wide));
+            foreach (int i in moving)
+            {
+                Move(i, x[i] + ((fromX + ((x[i] - minX) / spanX * wide) - x[i]) * give[i]), y[i]);
+            }
+        }
+
+        void Move(int node, double toX, double toY)
+        {
+            if (give[node] > 0)
+            {
+                x[node] = Math.Clamp(toX, left, right);
+                y[node] = Math.Clamp(toY, top, bottom);
+            }
+        }
     }
 
     /// <summary>
