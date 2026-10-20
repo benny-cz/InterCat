@@ -203,8 +203,41 @@ public sealed class WorkspaceSearchTests
             HostLinks = [new(relay.Id, Mechanism.Tcp, [new("10.0.0.1", 1, 1)], RelationStrength.Direct)],
         }, "10.0.0.1");
         Assert.Equal([relay.Id.ToString(), tool.Id.ToString()], both.Hits.Select(found => found.Key));
-        Assert.Equal(["Process instance of app.exe · 1 TCP connection to 1 matching address", "Process instance of app.exe"],
+        Assert.Equal(["Process instance of app.exe · 1 TCP connection to 1 matching address", "Process instance of app.exe · no relationship"],
             both.Hits.Select(found => found.Detail));
+    }
+
+    [Fact(DisplayName = "§6.7: a process a name finds says what tells it apart from its program's other instances - its relationships and the connections it made and accepted - and its program only where its name does not say it")]
+    public void AProcessANameFindsSaysWhatTellsItApart()
+    {
+        ProcessGroup host = new(@"executable:C:\WINDOWS\SYSTEM32\SVCHOST.EXE", "svchost.exe", LaneGrouping.Executable);
+        ProcessGroup unknown = new(ProcessGroup.UnwitnessedExecutableKey, "Executable not witnessed", LaneGrouping.Executable);
+        ProcessNode busy = Process(1, 1008, "svchost.exe", host.Key, (Mechanism.Tcp, 40)) with { ConnectionsMade = 3, ConnectionsAccepted = 1 };
+        ProcessNode one = Process(2, 1004, "svchost.exe", host.Key, (Mechanism.Tcp, 20)) with { ConnectionsMade = 1 };
+        ProcessNode quiet = Process(3, 1016, "svchost.exe", host.Key, (Mechanism.Tcp, 10));
+        ProcessNode server = Process(5, 1020, "svchost.exe", host.Key, (Mechanism.Tcp, 5)) with { ConnectionsAccepted = 11 };
+        ProcessNode unnamed = Process(4, 812, "PID 812", unknown.Key, (Mechanism.Tcp, 5));
+        CommunicationEdge Edge(ProcessNode source, ProcessNode target) => new($"tcp:{source.ProcessId}:{target.ProcessId}", source.Id,
+            target.Id, Mechanism.Tcp, 2, null, RelationStrength.Correlated) { Rule = RelationRule.TransportEndpoint, Evidence = ["e"] };
+        WorkspaceSnapshot snapshot = new("Search", new TimeRange(0, 10), [host, unknown], [busy, one, quiet, unnamed, server],
+            [Edge(busy, one), Edge(unnamed, busy), Edge(server, server)], [], [], [], [])
+        {
+            ConnectionOpensRecorded = true,
+        };
+
+        // The busiest first, each by its relationships and the connections it made and accepted, each count where there are
+        // some; one that made and accepted none says only its relationships, and one connected to itself counts that once.
+        Assert.Equal(
+            ["2 relationships · 3 connections made, 1 accepted", "1 relationship · 1 connection made", "No relationship",
+                "1 relationship · 11 connections accepted"],
+            WorkspaceSearch.Find(snapshot, "svchost").Hits.Where(hit => hit.Kind == SearchHitKind.Process).Select(hit => hit.Detail));
+
+        // Its program said where its name does not say it.
+        Assert.Equal("Process instance of Executable not witnessed · 1 relationship",
+            Assert.Single(WorkspaceSearch.Find(snapshot, "812").Hits).Detail);
+
+        // A session that records no connection's open says nothing of connections made or accepted.
+        Assert.Equal("2 relationships", WorkspaceSearch.Find(snapshot with { ConnectionOpensRecorded = false }, "1008").Hits[0].Detail);
     }
 
     [Fact(DisplayName = "§6.7: a process is found by an endpoint it reached, an address whole at one of its ports, or by a port alone at any address, its hit never repeating either")]

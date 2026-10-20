@@ -68,6 +68,18 @@ public static class WorkspaceSearch
 
         int? pid = PidIn(text);
         ILookup<ProcessInstanceId, HostLink> reached = snapshot.HostLinks.ToLookup(link => link.Process);
+
+        // How many relationships each process is an end of: what, with its connections, tells a program's many instances
+        // apart where a name finds them all.
+        Dictionary<ProcessInstanceId, int> related = [];
+        foreach (CommunicationEdge edge in snapshot.Edges)
+        {
+            related[edge.SourceId] = related.GetValueOrDefault(edge.SourceId) + 1;
+            if (edge.TargetId != edge.SourceId)
+            {
+                related[edge.TargetId] = related.GetValueOrDefault(edge.TargetId) + 1;
+            }
+        }
         var candidates = new List<(int Rank, SearchHit Hit)>();
         foreach (ProcessGroup group in snapshot.Groups)
         {
@@ -88,10 +100,15 @@ public static class WorkspaceSearch
             string groupName = groups.TryGetValue(process.GroupKey, out ProcessGroup? group) ? group.Name : process.GroupKey;
 
             // Found by an address its connections ran to, a process says what reached it, never the address (P16): the
-            // person typed it, and the process's rung lists each connection with its endpoints.
+            // person typed it, and the process's rung lists each connection with its endpoints. Found by its name, it says
+            // what tells it apart from its program's other instances. Its program is said only where its name does not
+            // say it: two of one name in different folders, or one whose executable was never witnessed.
             bool byReach = byAddress >= 0 && (byName < 0 || byAddress < byName);
+            string apart = byReach ? reach! : Apart(process, related.GetValueOrDefault(process.Id), snapshot.ConnectionOpensRecorded);
             candidates.Add((byReach ? byAddress : byName, new(SearchHitKind.Process, process.Id.ToString(), process.NameWithPid,
-                $"Process instance of {groupName}" + (byReach ? " · " + reach : string.Empty),
+                string.Equals(groupName, process.Name, StringComparison.OrdinalIgnoreCase)
+                    ? char.ToUpperInvariant(apart[0]) + apart[1..]
+                    : $"Process instance of {groupName} · {apart}",
                 process.Records,
                 [process.GroupKey, process.Id.ToString()])));
         }
@@ -126,6 +143,29 @@ public static class WorkspaceSearch
             .Select(candidate => candidate.Hit)
             .Take(limit)];
         return new(text, ranked, candidates.Count);
+    }
+
+    /// <summary>
+    /// What tells a process apart from its program's other instances in a hit: the relationships it is an end of, and the
+    /// TCP connections it made and accepted where the session records any connection's open, each said where there are
+    /// some - "6 relationships · 3 connections made, 2 accepted", "11 relationships · 11 connections accepted", "no
+    /// relationship".
+    /// </summary>
+    private static string Apart(ProcessNode process, int relationships, bool opensRecorded)
+    {
+        string related = relationships == 0 ? "no relationship" : Count(relationships, "relationship", "relationships");
+        (long made, long accepted) = opensRecorded ? (process.ConnectionsMade, process.ConnectionsAccepted) : (0, 0);
+        string? connections = (made > 0, accepted > 0) switch
+        {
+            (true, true) => Count(made, "connection", "connections") + string.Create(CultureInfo.CurrentCulture, $" made, {accepted:N0} accepted"),
+            (true, false) => Count(made, "connection", "connections") + " made",
+            (false, true) => Count(accepted, "connection", "connections") + " accepted",
+            _ => null,
+        };
+        return connections is null ? related : related + " · " + connections;
+
+        static string Count(long count, string one, string many) =>
+            string.Create(CultureInfo.CurrentCulture, $"{count:N0} {(count == 1 ? one : many)}");
     }
 
     /// <summary>

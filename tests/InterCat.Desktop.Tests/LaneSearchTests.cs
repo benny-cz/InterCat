@@ -111,7 +111,7 @@ public sealed class LaneSearchTests
         Assert.Contains(" · 10 process lanes, 5 found by the search · ", workspace.TimelineCaption, StringComparison.Ordinal);
         Assert.Equal(5, workspace.SearchResults.Count);
         Assert.All(workspace.SearchResults, row => Assert.Equal(
-            "Process instance of pool.exe · 1 TCP connection to 1 matching address", row.Hit.Detail));
+            "1 TCP connection to 1 matching address", row.Hit.Detail));
 
         // Up to a dot it marks every lane whose connections reached an address it begins.
         workspace.SearchText = "10.9.8";
