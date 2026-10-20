@@ -2149,6 +2149,14 @@ public sealed class InvestigationWindowTests
             WaitFor(() => window.View is not null);
             CultureInfo culture = CultureInfo.CurrentCulture;
 
+            // With none, the notes list says in its place what a note is and how one is written.
+            window.ShowTab(3);
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            TextBlock absent = Named<TextBlock>(window, "Why the notes list holds none");
+            Assert.True(absent.IsEffectivelyVisible);
+            Assert.Equal("No note yet. Add a note… writes one: about the whole investigation, or pinned at an instant of a session.",
+                absent.Text);
+
             // A note pinned at beta's 100 µs reads where the investigation's time places it.
             InvestigationNoteWindow dialog = window.NoteDialog(reword: false)!;
             dialog.Show(window);
@@ -2168,6 +2176,7 @@ public sealed class InvestigationWindowTests
             await window.RefreshAsync();
             InvestigationNoteRow row = Assert.Single(window.View!.Notes);
             Assert.Equal("Beta's datagrams begin", row.Text);
+            Assert.False(absent.IsVisible);
             Assert.StartsWith($"pinned at session {Short(b)}'s {0.0001m.ToString("0.000######", culture)} s, the investigation's "
                 + $"{1.0001m.ToString("0.000######", culture)} s within ±", row.Where, StringComparison.Ordinal);
             window.ShowTab(3);
@@ -2191,6 +2200,7 @@ public sealed class InvestigationWindowTests
             window.SelectNote(0);
             await window.RemoveSelectedNoteAsync();
             Assert.Empty(window.View!.Notes);
+            Assert.True(absent.IsVisible);
             Assert.Equal(3, InvestigationWorkspace.Read(workspace).Notes.Count);
             window.Close();
         }
@@ -2349,8 +2359,15 @@ public sealed class InvestigationWindowTests
             WaitFor(() => window.View is not null);
             window.ShowTab(1);
             Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+
+            // Until they are looked for, the list says in its place what it will hold.
+            TextBlock unsought = Named<TextBlock>(window, "What the candidate joins list will hold");
+            Assert.True(unsought.IsEffectivelyVisible);
+            Assert.StartsWith("None looked for yet. Find candidate joins reads every session's connections", unsought.Text,
+                StringComparison.Ordinal);
             await window.FindCandidatesAsync();
             Render(window);
+            Assert.False(unsought.IsVisible);
 
             // No connection mirrors another, and both captures covered both mechanisms: no caution, and the notes say why the
             // absence means something.

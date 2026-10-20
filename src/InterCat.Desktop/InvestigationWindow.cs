@@ -95,6 +95,30 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
     private readonly Button rewordNote = new() { Content = "Reword…", IsEnabled = false };
     private readonly Button removeNote = new() { Content = "Remove", IsEnabled = false };
     private readonly Button showNote = new() { Content = "Show on the timeline", IsEnabled = false };
+    /// <summary>
+    /// What the notes list holds none of, said in its place where an empty box said nothing: what a note is and how one
+    /// is written.
+    /// </summary>
+    private readonly TextBlock notesAbsent = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Margin = new Thickness(10, 8),
+        Classes = { "muted" },
+        Text = "No note yet. Add a note… writes one: about the whole investigation, or pinned at an instant of a session.",
+    };
+
+    /// <summary>What the candidate joins list will hold, said in its place until candidate joins are first looked for.</summary>
+    private readonly TextBlock candidatesAbsent = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        FontSize = 12,
+        Margin = new Thickness(10, 8),
+        Classes = { "muted" },
+        Text = "None looked for yet. Find candidate joins reads every session's connections and lists here each join it "
+            + "proposes, with its evidence, for you to accept or reject.",
+    };
+
     private readonly TextBlock notesIntro = new()
     {
         TextWrapping = TextWrapping.Wrap,
@@ -186,6 +210,8 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         AutomationProperties.SetHelpText(withdraw, "Withdraw the selected session's alignment");
         AutomationProperties.SetHelpText(oneHost, "Say whether the selected session's host is one host with another");
         AutomationProperties.SetName(notesList, "Notes on this investigation; press Enter to show a pinned one on the timeline");
+        AutomationProperties.SetName(notesAbsent, "Why the notes list holds none");
+        AutomationProperties.SetName(candidatesAbsent, "What the candidate joins list will hold");
         AutomationProperties.SetName(addNote, "Add a note, pinned at the timeline's chosen column when there is one");
         AutomationProperties.SetName(rewordNote, "Reword the selected note");
         AutomationProperties.SetName(removeNote, "Remove the selected note");
@@ -404,7 +430,11 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         candidatesHeader.Children.Add(candidateSummary);
         candidatesHeader.Children.Add(translations);
         candidatesHeader.Children.Add(find);
-        var candidatesList = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = candidates, Padding = new Thickness(2) };
+        var candidatesList = new Border
+        {
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(2),
+            Child = new Grid { Children = { candidates, candidatesAbsent } },
+        };
         var decisions = new WrapPanel { HorizontalAlignment = HorizontalAlignment.Right };
         foreach (Button button in new[] { acceptJoin, rejectJoin, withdrawJoin })
         {
@@ -466,7 +496,11 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
         }
 
         var notesPage = new Grid { RowDefinitions = new RowDefinitions("Auto,*,Auto"), RowSpacing = 8, Margin = new Thickness(0, 8, 0, 0) };
-        var notesBorder = new Border { BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Child = notesList, Padding = new Thickness(2) };
+        var notesBorder = new Border
+        {
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(6), Padding = new Thickness(2),
+            Child = new Grid { Children = { notesList, notesAbsent } },
+        };
         Grid.SetRow(notesBorder, 1);
         Grid.SetRow(noteActions, 2);
         notesPage.Children.Add(notesIntro);
@@ -856,6 +890,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
                     ?? (view.Members.Count > 0 ? view.Members[0] : null);
                 notesList.ItemsSource = view.Notes;
                 notesList.SelectedItem = view.Notes.FirstOrDefault(row => row.NoteId == noted);
+                notesAbsent.IsVisible = view.Notes.Count == 0;
             }
             finally
             {
@@ -995,6 +1030,7 @@ internal sealed class InvestigationWindow : Window, IDisposable, IChoosingWindow
             if (closed) return;
             int selected = candidates.SelectedIndex;
             Candidates = found;
+            candidatesAbsent.IsVisible = false;
             restating = true;
             try
             {
