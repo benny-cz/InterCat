@@ -913,7 +913,7 @@
                   <TextBlock Text="How this cell was counted" Classes="muted" />
                   <TextBlock x:Name="CellExplanationText" Text="{Binding CellExplanation}" TextWrapping="Wrap" />
                 </StackPanel>
-                <StackPanel Spacing="3">
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsEvidenceLine}">
                   <TextBlock x:Name="EvidenceHeadingText" Text="{Binding EvidenceHeading}" Classes="muted" />
                   <TextBlock x:Name="EvidenceSummaryText" Text="{Binding EvidenceSummary}" TextWrapping="Wrap" />
                 </StackPanel>

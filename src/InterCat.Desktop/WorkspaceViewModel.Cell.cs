@@ -254,16 +254,17 @@ public sealed partial class WorkspaceViewModel
         string plots = count == 0 ? string.Empty
             : bytes is { } metric ? $" Its bar plots their {Phrase(metric)} per second, from those that recorded a size."
             : " Its bar plots their count per second.";
-        string column = KeptCellOf(lane, bucket.Interval) is { } kept
-            ? $"{kept.Column} when it was chosen, a column the timeline no longer draws since it cut its columns afresh"
-            : ColumnWords(lane, zoomed);
+        KeptCell? kept = KeptCellOf(lane, bucket.Interval);
+        string column = kept is null ? "here " + ColumnWords(lane, zoomed) : "here, as the cell was chosen, " + kept.Column;
         string coverage = "Coverage over the cell: " + CoverageStateText.Value(bucket.Coverage)
             + (bucket.Coverage == CoverageState.Covered
                 ? count == 0 ? ", so nothing the capture collects happened here." : "."
                 : count == 0 ? ", so an empty cell is not proof of inactivity, and it is drawn hatched."
                 : ", so it may hold fewer records than happened, and it is drawn hatched.");
-        return $"{held}{plots} Each record counts in the one column whose half-open interval holds its session time, here "
-            + $"{column}; a record without a usable session time counts in none. {coverage}";
+        return $"{held}{plots} Each record counts in the one column whose half-open interval holds its session time, {column}; "
+            + "a record without a usable session time counts in none."
+            + (kept is null ? string.Empty : " The timeline has since cut its columns afresh and no longer draws that one.")
+            + $" {coverage}";
 
         static string Have(int count) => count == 1 ? "has" : "have";
     }

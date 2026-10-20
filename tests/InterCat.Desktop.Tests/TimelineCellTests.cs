@@ -157,8 +157,10 @@ public sealed class TimelineCellTests
         Assert.DoesNotContain(workspace.Snapshot.MechanismLanes.Single(lane => lane.Mechanism == Mechanism.Tcp).Buckets,
             bucket => bucket.Interval == fine.Interval);
         Assert.Equal(fine.Interval, workspace.SelectedInterval);
-        Assert.Equal(chosen.Replace(" here one of this view's own 40;", " here one of this view's own 40 when it was chosen, a "
-            + "column the timeline no longer draws since it cut its columns afresh;", StringComparison.Ordinal), workspace.CellExplanation);
+        Assert.Equal(chosen.Replace(" here one of this view's own 40;", " here, as the cell was chosen, one of this view's own 40;",
+                StringComparison.Ordinal)
+            .Replace(" counts in none.", " counts in none. The timeline has since cut its columns afresh and no longer draws that one.",
+                StringComparison.Ordinal), workspace.CellExplanation);
         string records = Counted(fine.ObservationCount, "record");
         Assert.Equal(("Timeline cell", "TCP lane · " + records), (workspace.SelectionTitle, workspace.SelectionSubtitle));
         Assert.EndsWith(", TCP lane, " + records, workspace.IntervalSpoken, StringComparison.Ordinal);
@@ -950,7 +952,7 @@ public sealed class TimelineCellTests
     ];
 
     /// <summary><paramref name="count"/> instances of pool.exe, each created and then sending ten times across the capture.</summary>
-    private static ObservationRowV1[] Pool(int count) =>
+    internal static ObservationRowV1[] Pool(int count) =>
     [
         .. Enumerable.Range(0, count).SelectMany(index => new[]
         {

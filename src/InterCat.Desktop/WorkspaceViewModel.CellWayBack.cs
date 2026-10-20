@@ -5,9 +5,10 @@ namespace InterCat.Desktop;
 
 /// <summary>
 /// A rung left with a timeline cell chosen (§3.2, §6.8): the rung - its depth, level and focus - and the lane the cell
-/// was chosen in, whose interval the rung brings back when the way back or forward comes to it.
+/// was chosen in, whose interval the rung brings back when the way back or forward comes to it; and whether the way down
+/// was E from the cell itself, which began at no row of the rung.
 /// </summary>
-public sealed record CellOrigin(int Depth, DetailLevel Level, string? Focus, TimelineCellLane Lane);
+public sealed record CellOrigin(int Depth, DetailLevel Level, string? Focus, TimelineCellLane Lane, bool OpenedFromCell = false);
 
 /// <summary>
 /// Where a way down from a record listed beside a cell began (§3.2, §6.4): the rung - its depth, level and focus - and
@@ -51,6 +52,22 @@ public sealed partial class WorkspaceViewModel
         cellOrigins.RemoveAll(kept => kept.Depth == origin.Depth);
         cellOrigins.Add(origin);
     }
+
+    /// <summary>
+    /// Marks the way back kept at <paramref name="depth"/> as E from the cell itself: the way down began at no row, so the
+    /// way back chooses none - not the row of the process whose lane the cell lies in, whose records E listed.
+    /// </summary>
+    private void KeptFromCell(int depth)
+    {
+        int kept = cellOrigins.FindIndex(origin => origin.Depth == depth);
+        if (kept >= 0)
+        {
+            cellOrigins[kept] = cellOrigins[kept] with { OpenedFromCell = true };
+        }
+    }
+
+    /// <summary>Whether the way back to the rung at <paramref name="depth"/> comes to a cell E was taken from.</summary>
+    private bool ComesBackToCell(int depth) => cellOrigins.Exists(origin => origin.Depth == depth && origin.OpenedFromCell);
 
     /// <summary>
     /// Takes the way back to the rung shown, where it was left with a cell chosen, and chooses the cell again where the

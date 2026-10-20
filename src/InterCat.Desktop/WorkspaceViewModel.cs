@@ -4970,6 +4970,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                     TimeBase).Description
             : null;
 
+    private const string NoEvidenceSelected = "No evidence selected";
+
+    /// <summary>
+    /// Whether the inspector's evidence line says anything: not with nothing selected where no rung's records stand in -
+    /// at the evidence rung, whose records E lists beneath the rung's own scope, and in the tour.
+    /// </summary>
+    public bool ShowsEvidenceLine => !string.Equals(EvidenceSummary, NoEvidenceSelected, StringComparison.Ordinal);
+
     /// <summary>
     /// What a sum of drawn relationships' records counts, by the mechanisms among them: "paired TCP observations", "paired
     /// TCP and UDP observations", "paired TCP, UDP and linked RPC call records", "linked RPC call records".
@@ -5044,7 +5052,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
                 : selectedProcess is { } process ? [process.Id] : [];
             if (scope.Count == 0)
             {
-                return RungRecords ?? "No evidence selected";
+                return RungRecords ?? NoEvidenceSelected;
             }
 
             // What the selection made comes first, as the ranked table counts it; what its relationships carry, from both
@@ -5345,8 +5353,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         MemberListOrigin? listed = ChosenMember is { } member ? MemberOriginHere(member.Id) : null;
         RelationshipOrigin? related = SelectedTableRow is { } chosen ? OriginHere(chosen.Key) : null;
         TimeRange viewport = ScopeInterval ?? ladder.Current.Viewport;
-        LadderDescent descent = SelectionEvidenceDescent(viewport) ?? CellEvidenceDescent(viewport)
-            ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
+        int from = ladder.Depth;
+        LadderDescent? selected = SelectionEvidenceDescent(viewport);
+        LadderDescent? fromCell = selected is null ? CellEvidenceDescent(viewport) : null;
+        LadderDescent descent = selected ?? fromCell ?? LadderProjection.EvidenceDescentFor(ladder.Current, viewport);
         if (!TryDescend(descent))
         {
             return false;
@@ -5359,6 +5369,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         AfterNavigation();
+        if (fromCell is not null)
+        {
+            KeptFromCell(from);
+        }
+
         return true;
     }
 
@@ -5442,13 +5457,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         KeepCellWayBack();
+        bool fromCell = ComesBackToCell(ladder.Depth);
         ResumeIntervalOf(restored);
         ArriveFrom(left);
 
         // The row the rung was opened from is selected again, so the way back lands where the way down began and the
         // keyboard can take the next row from there (§3.2) - or, where the way down began in an aggregate's list, the
-        // aggregate and the process chosen there.
-        if (!IsEvidenceRung && left.Focus is { } opened
+        // aggregate and the process chosen there. E from a cell began at no row: its records' owner is not chosen.
+        if (!IsEvidenceRung && !fromCell && left.Focus is { } opened
             && RungRows.FirstOrDefault(row => string.Equals(row.Key, opened.Key, StringComparison.Ordinal)) is { } row)
         {
             SelectedRung = row;
@@ -7208,6 +7224,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new(propertyName));
+        if (propertyName == nameof(EvidenceSummary))
+        {
+            PropertyChanged?.Invoke(this, new(nameof(ShowsEvidenceLine)));
+        }
+
         if (propertyName == nameof(TimelineCaption))
         {
             // The header shows the caption in two parts, so the selection's highlight is said whole however narrow the pane.

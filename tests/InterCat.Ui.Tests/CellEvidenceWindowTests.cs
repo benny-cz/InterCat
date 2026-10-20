@@ -94,6 +94,8 @@ public sealed class CellEvidenceWindowTests
         TimelineBucket cell = DrawnTimeline.Lane(workspace, Mechanism.Udp).Single(bucket => bucket.ObservationCount == 3);
         ListBox records = await Choose(cell);
         Assert.Equal("Enter or a double click opens one in E", window.GetControl<TextBlock>("CellRecordsNoteText").Text);
+        TextBlock evidenceLine = window.GetControl<TextBlock>("EvidenceSummaryText");
+        Assert.True(evidenceLine.IsEffectivelyVisible);
 
         // Enter on the second record opens E with it selected, and E's table has the keyboard on it.
         CellRecordRow second = Assert.IsType<CellRecordRow>(records.Items[1]);
@@ -105,6 +107,10 @@ public sealed class CellEvidenceWindowTests
         Dispatch();
         Assert.Equal(second.Key, workspace.SelectedRung?.Key);
         Assert.True(workspace.HasSelectedEvidence);
+
+        // E describes the record above its own scope, so the inspector's evidence line, with nothing selected to count, is
+        // gone rather than saying so.
+        Assert.False(evidenceLine.IsEffectivelyVisible);
         ListBox rungs = window.GetControl<ListBox>("RungList");
         Assert.Same(workspace.SelectedRung, rungs.SelectedItem);
         Assert.True(rungs.ContainerFromItem(rungs.SelectedItem!)!.IsKeyboardFocusWithin);

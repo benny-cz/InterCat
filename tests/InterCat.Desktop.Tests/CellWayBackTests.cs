@@ -33,7 +33,7 @@ public sealed class CellWayBackTests
         // timeline's name, said as it changes, ends saying it is the cell.
         Assert.True(workspace.ShowEvidence());
         await workspace.EvidenceReady;
-        Assert.Equal(new CellOrigin(0, DetailLevel.Machine, null, new TimelineCellLane(Mechanism: Mechanism.Tcp)),
+        Assert.Equal(new CellOrigin(0, DetailLevel.Machine, null, new TimelineCellLane(Mechanism: Mechanism.Tcp), OpenedFromCell: true),
             Assert.Single(workspace.CaptureNavigation().CellOrigins!));
         var spoken = new List<string?>();
         workspace.PropertyChanged += (_, changed) =>
@@ -210,8 +210,10 @@ public sealed class CellWayBackTests
         await workspace.TimelineDetailReady;
         Assert.DoesNotContain(workspace.TimelineDirectionLanes!.Single(lane => lane.Direction == Direction.Outbound).Buckets,
             bucket => bucket.Interval == sent.Interval);
-        Assert.Equal(explained.Replace(" here one of this view's own 80;", " here one of this view's own 80 when it was chosen, a "
-            + "column the timeline no longer draws since it cut its columns afresh;", StringComparison.Ordinal), workspace.CellExplanation);
+        Assert.Equal(explained.Replace(" here one of this view's own 80;", " here, as the cell was chosen, one of this view's own 80;",
+                StringComparison.Ordinal)
+            .Replace(" counts in none.", " counts in none. The timeline has since cut its columns afresh and no longer draws that one.",
+                StringComparison.Ordinal), workspace.CellExplanation);
     });
 
     [Fact(DisplayName = "§3.2: a cell chosen at a process's rung is not chosen again where the way back comes to another process's rung at that depth")]
@@ -384,5 +386,53 @@ public sealed class CellWayBackTests
         await workspace.CellRecordsReady;
         Assert.Contains(workspace.CellRecordRows, row => row.Key == opened.Key);
         Assert.Equal(0, workspace.CellRecordAsked);
+    });
+
+    [Fact(DisplayName = "§3.2: back from E taken from a cell of a group's process lane, the cell is chosen again and no row, its records listed; a process chosen first is chosen again")]
+    public void TheWayBackFromAProcessLanesCellChoosesNoRow() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TimelineCellTests.Pool(3));
+        using WorkspaceViewModel workspace = TimelineCellTests.Open(session);
+        string group = workspace.Snapshot.Processes.First(node => node.ProcessId == 2_000).GroupKey;
+        TimelineCellTests.DescendTo(workspace, group);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 200);
+        await workspace.TimelineDetailReady;
+        ProcessTimelineLane lane = workspace.ProcessLaneDisplay[0];
+        TimelineBucket cell = lane.Buckets.First(bucket => bucket.ObservationCount > 0);
+        ProcessNode owner = workspace.Snapshot.Processes.Single(node => node.Id == lane.ProcessId);
+        workspace.ChooseTimelineCell(cell, ownerLane: owner);
+        await workspace.CellRecordsReady;
+        (string Title, string Subtitle) titled = (workspace.SelectionTitle, workspace.SelectionSubtitle);
+        string explained = workspace.CellExplanation;
+        Assert.Equal("Timeline cell", titled.Title);
+
+        // E lists the process's records in it, beneath its own scope, with no line of its own for nothing selected; back
+        // from them the cell is chosen again and no row with it - not the process's, whose records they were - so the
+        // inspector is the cell's and its records are listed.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.StartsWith($"Records owned by {owner.NameWithPid}", workspace.EvidenceScopeText, StringComparison.Ordinal);
+        Assert.False(workspace.ShowsEvidenceLine);
+        workspace.SelectProcess(owner.Id);
+        Assert.True(workspace.ShowsEvidenceLine);
+        workspace.ClearSelection();
+        Assert.False(workspace.ShowsEvidenceLine);
+        Assert.True(workspace.Ascend());
+        await workspace.TimelineDetailReady;
+        await workspace.CellRecordsReady;
+        Assert.Null(workspace.SelectedRung);
+        Assert.Equal(titled, (workspace.SelectionTitle, workspace.SelectionSubtitle));
+        Assert.Equal(cell.ObservationCount, workspace.CellRecordRows.Count);
+        Assert.True(workspace.ShowsEvidenceLine);
+
+        // With the process chosen first, E lists what it selects, and back from it the process is chosen again with the cell.
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Key == owner.Id.ToString());
+        workspace.ChooseTimelineCell(cell, ownerLane: owner);
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.TimelineDetailReady;
+        Assert.Equal((owner.Id.ToString(), explained), (workspace.SelectedRung?.Key, workspace.CellExplanation));
     });
 }

@@ -109,8 +109,10 @@ public sealed class EvidenceReleaseRecordingTests
             releasableChunks: () => long.MaxValue,
             heldChunkLimit: 3);
 
-        // A follow that keeps up never lets the evidence hold as many chunks as it may.
-        Assert.False(result.FollowStalled);
+        // A follow that keeps up never lets the evidence hold as many chunks as it may; where it stalls, the release that
+        // failed says why.
+        Assert.False(result.FollowStalled, $"The follow stalled after {result.ReleasedChunks} chunks released of "
+            + $"{result.Publications} published: {result.ReleaseProblem ?? "no release failed"}.");
         Assert.False(result.JournalQuotaReached);
         Assert.Equal(30_000, result.JournaledRecords);
         Assert.True(result.ReleasedChunks >= 29, $"It released {result.ReleasedChunks} chunks.");
