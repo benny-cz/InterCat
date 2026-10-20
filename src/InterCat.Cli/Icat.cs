@@ -200,8 +200,9 @@ internal static class Icat
         ConsoleUi.Line();
         ConsoleUi.Line("  icat channels <directory> [--process <instance-guid> [--one-sided]] [--page-size <1-200>]");
         ConsoleUi.Line("                [--cursor <token>] [--json]");
-        ConsoleUi.Line("      Bounded pages of paired TCP and UDP channels, including sessions above the overview cap;");
-        ConsoleUi.Line("      --one-sided lists a process's connections whose other end no record holds.");
+        ConsoleUi.Line("      Bounded pages of paired TCP and UDP channels, including sessions above the overview cap,");
+        ConsoleUi.Line("      each by the processes at its ends and which connected to which; --one-sided lists a");
+        ConsoleUi.Line("      process's connections whose other end no record holds.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat evidence <directory> [--channel <paired-channel-key>] [--owner-process <instance-guid>]");
         ConsoleUi.Line("                [--interval <start:end>] [--page-size <1-200>] [--cursor <token>] [--json]");

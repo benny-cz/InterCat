@@ -28,6 +28,13 @@ public sealed record SessionChannelPage(
     /// seen at all, which the ledger says and a count of none never does. Empty on a page that asks for a restart.
     /// </summary>
     public IReadOnlyList<MechanismCoverage> Coverage { get; init; } = [];
+
+    /// <summary>
+    /// The processes at the ends of the page's channels, by instance id as `icat processes` prints it, each named as the
+    /// overview names its node - "client.exe · PID 100", a reused PID's holders told apart - so a page says who is at each
+    /// end by itself (§7.1). Empty on a page that asks for a restart.
+    /// </summary>
+    public IReadOnlyDictionary<string, string> ProcessNames { get; init; } = new Dictionary<string, string>();
 }
 
 public static class SessionChannelQuery
@@ -92,8 +99,18 @@ public static class SessionChannelQuery
         Channel[] channels = [.. admitted.Skip(offset).Take(count)
             .Select(relation => SessionOverviewProjector.ProjectChannel(relation, (relation.Mechanism == Mechanism.Udp ? udp : tcp).State))];
         int next = offset + count;
+
+        // Who holds each end of the page's channels, named as the overview names them.
+        Dictionary<ProcessInstanceId, ProcessInstance> instances = processes.Instances.ToDictionary(instance => instance.Id);
+        Dictionary<string, string> names = channels
+            .SelectMany(channel => new[] { channel.FirstHolder, channel.SecondHolder })
+            .OfType<ProcessInstanceId>()
+            .Distinct()
+            .Where(instances.ContainsKey)
+            .ToDictionary(id => id.ToString(), id => ProcessNode.NameWithPidOf(instances[id], processes.InstancesOf(instances[id].ProcessId)),
+                StringComparer.Ordinal);
         return new(identity, manifest.SessionId, manifest.Generation, processScope, admitted.Length, Array.AsReadOnly(channels),
-            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat) { Coverage = [tcp, udp] };
+            next < admitted.Length ? Cursor(identity, next) : null, false, null, Caveat) { Coverage = [tcp, udp], ProcessNames = names };
     }
 
     private static string Identity(SessionManifestV1 manifest, ProcessInstanceId? scope, EvidencePolicy policy)

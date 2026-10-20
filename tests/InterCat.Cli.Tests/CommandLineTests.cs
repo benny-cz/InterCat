@@ -1141,7 +1141,11 @@ public sealed class CommandLineTests : IDisposable
             + "correlated. Open before the capture and after it. Coverage over the session: unknown.", paired);
         (InterCatExitCode code, string text, string said) = await Run("channels", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Contains($"  {channel.Key} · TCP · {channel.Name} · 2 observed records{Environment.NewLine}    {paired}{Environment.NewLine}", text,
+
+        // Named by the processes at its ends, neither seen opening it, then its key, then how it was paired.
+        Assert.Contains($"  PID 200 and PID 100 · TCP · :8080 ↔ :50000 on 127.0.0.1 · 2 observed records{Environment.NewLine}"
+            + $"    {channel.Key}{Environment.NewLine}    {paired}{Environment.NewLine}", text, StringComparison.Ordinal);
+        Assert.Contains("Use icat evidence <directory> --channel <key> for a channel's exact rows, by the key beneath its name.", text,
             StringComparison.Ordinal);
     }
 

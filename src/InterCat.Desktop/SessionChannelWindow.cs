@@ -194,7 +194,7 @@ internal sealed class SessionChannelWindow : Window, IDisposable
             }
 
             currentChannels = page.Channels;
-            rows.ItemsSource = currentChannels.Select(Describe).ToArray();
+            rows.ItemsSource = currentChannels.Select(channel => Describe(channel, page.ProcessNames)).ToArray();
             rows.SelectedIndex = currentChannels.Count > 0 ? 0 : -1;
             nextCursor = page.NextCursor;
 
@@ -269,16 +269,14 @@ internal sealed class SessionChannelWindow : Window, IDisposable
     }
 
     /// <summary>
-    /// A channel as the list reads it: the processes at its two ends, first end first, then its endpoints compacted and
-    /// its records - "queue.exe · PID 29632 ↔ worker.exe · PID 66820 · :2711 ↔ :2756 on 127.0.0.1 · 128 records".
+    /// A channel as the list reads it, as `icat channels` does: the processes at its two ends, the one that made it first
+    /// with an arrow at the one it connected to, its transport and endpoints in the same order, and its records - "queue.exe
+    /// · PID 29632 → worker.exe · PID 66820 · TCP · :2711 → :2756 on 127.0.0.1 · 128 records". A process the window does not
+    /// list is named as the page names it.
     /// </summary>
-    private string Describe(Channel channel)
-    {
-        string first = channel.FirstHolder is { } firstHolder ? processName(firstHolder) ?? "an unlisted process" : "an unknown process";
-        string second = channel.SecondHolder is { } secondHolder ? processName(secondHolder) ?? "an unlisted process" : "an unknown process";
-        return $"{first} ↔ {second} · {MechanismText.Name(channel.Mechanism)} · {ChannelNames.Compact(channel.Name)} · "
-            + Spoken.Count(channel.ObservationCount, "record");
-    }
+    private string Describe(Channel channel, IReadOnlyDictionary<string, string> named) =>
+        ChannelNames.Ends(channel, id => processName(id) ?? named.GetValueOrDefault(id.ToString()))
+            + " · " + Spoken.Count(channel.ObservationCount, "record");
 
     /// <summary>The channel the user chose, which the workspace opens at its evidence rung.</summary>
     private void ChooseSelected()

@@ -74,6 +74,19 @@ public sealed record ProcessNode(
         ? $"{PidLabel} · {Role} · {CollectorText.Label(role)}"
         : $"{PidLabel} · {Role}";
 
+    /// <summary>
+    /// An instance as its node's <see cref="NameWithPid"/> names it, where no node is at hand, as on a page of channels:
+    /// <paramref name="holders"/> is how many instances held its PID in the capture.
+    /// </summary>
+    public static string NameWithPidOf(ProcessInstance instance, int holders)
+    {
+        ArgumentNullException.ThrowIfNull(instance);
+        string name = instance.ImageName ?? PidName(instance.ProcessId);
+        string label = PidLabelOf(instance.ProcessId, (int)instance.LifecycleEpoch, holders);
+        return string.Equals(name, PidName(instance.ProcessId), StringComparison.Ordinal) ? label
+            : string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{name} · {label}");
+    }
+
     /// <summary>The name an instance gets when no executable was witnessed for it.</summary>
     public static string PidName(int processId) =>
         string.Create(System.Globalization.CultureInfo.InvariantCulture, $"PID {processId}");

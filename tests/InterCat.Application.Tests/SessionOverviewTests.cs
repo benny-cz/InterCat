@@ -83,6 +83,50 @@ public sealed class SessionOverviewTests
         Assert.Empty(newer.Channels);
     }
 
+    [Fact(DisplayName = "§7.1: a page of channels names the processes at its ends as the overview names them, a reused PID's holders apart")]
+    public void AChannelPageNamesItsEndsAsTheOverviewDoes()
+    {
+        // client.exe, PID 100, connects to the server and exits, and another client.exe holds PID 100 after it and connects
+        // again, its records bound only as candidates: they could be late records of the first.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(10, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Apps\client.exe", SessionRelativeTicks = 1_000 },
+            Lifecycle(12, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 1_200 },
+            Transfer(20, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3).Between(ClientEnd, ServerEnd)
+                with { SessionRelativeTicks = 2_000 },
+            Transfer(21, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between(ServerEnd, ClientEnd)
+                with { SessionRelativeTicks = 2_100 },
+            Transfer(22, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 5).Between(ClientEnd, ServerEnd) with { SessionRelativeTicks = 2_200 },
+            Transfer(23, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 200, 6).Between(ServerEnd, ClientEnd)
+                with { SessionRelativeTicks = 2_300 },
+            Lifecycle(30, ObservationKind.Exit, 100, 7) with { SessionRelativeTicks = 3_000 },
+            Lifecycle(40, ObservationKind.Create, 100, 8) with { ResourceName = @"C:\Apps\client.exe", SessionRelativeTicks = 4_000 },
+            Transfer(50, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 9).Between("127.0.0.1:50001", ServerEnd)
+                with { SessionRelativeTicks = 5_000 },
+            Transfer(51, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 10).Between(ServerEnd, "127.0.0.1:50001")
+                with { SessionRelativeTicks = 5_100 },
+        ]);
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        SessionChannelPage page = SessionChannelQuery.Read(session.Store);
+        Channel channel = Assert.Single(page.Channels);
+
+        // The page names exactly its channel's two ends, each as its node is named.
+        Assert.Equal(
+            new[] { channel.FirstHolder!.Value, channel.SecondHolder!.Value }
+                .ToDictionary(id => id.ToString(), id => overview.Nodes.Single(node => node.Id == id).NameWithPid),
+            page.ProcessNames);
+        Assert.Equal("client.exe · PID 100 #1 → server.exe · PID 200 · TCP · :50000 → :8080 on 127.0.0.1",
+            ChannelNames.Ends(channel, id => page.ProcessNames.GetValueOrDefault(id.ToString())));
+
+        // Where candidates are admitted, the later holder's channel is listed too, and its holder numbered as its node is.
+        SessionOverviewBundle candidates = SessionOverviewProjector.Project(session.Store, EvidencePolicy.IncludeCandidates);
+        SessionChannelPage both = SessionChannelQuery.Read(session.Store, policy: EvidencePolicy.IncludeCandidates);
+        Assert.Equal(2, both.Channels.Count);
+        Assert.Equal(candidates.Nodes.ToDictionary(node => node.Id.ToString(), node => node.NameWithPid), both.ProcessNames);
+        Assert.Equal(["client.exe · PID 100 #1", "client.exe · PID 100 #2", "server.exe · PID 200"], both.ProcessNames.Values.Order());
+    }
+
     [Fact(DisplayName = "R7: one leased generation yields a stable graph and exact graph-eligible counts")]
     public void OneGenerationProjectsStableOverview()
     {

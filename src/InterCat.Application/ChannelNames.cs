@@ -10,6 +10,9 @@ public static class ChannelNames
 {
     public const string Separator = " ↔ ";
 
+    /// <summary>What joins a connection's two ends where the capture saw which made it: an arrow at the end connected to.</summary>
+    public const string Made = " → ";
+
     /// <summary>The characters each endpoint keeps in an abbreviated name; an IPv4 endpoint always fits.</summary>
     public const int AbbreviatedEndpointLength = 24;
 
@@ -18,6 +21,31 @@ public static class ChannelNames
         ArgumentNullException.ThrowIfNull(firstEndpoint);
         ArgumentNullException.ThrowIfNull(secondEndpoint);
         return firstEndpoint + Separator + secondEndpoint;
+    }
+
+    /// <summary>
+    /// A paired channel as a list of them reads it (§7.1, R5): the processes at its two ends, the one that made the
+    /// connection first with an arrow at the one it connected to, as the overview names a relationship's, or joined by
+    /// "and" where the capture saw neither open it, as for a UDP flow; then its transport, and its endpoints in the same
+    /// order, compacted - "client.exe · PID 100 → server.exe · PID 200 · TCP · :50000 → :8080 on 127.0.0.1".
+    /// <paramref name="nameOf"/> names a process, or gives null for one it cannot.
+    /// </summary>
+    public static string Ends(Channel channel, Func<ProcessInstanceId, string?> nameOf)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        ArgumentNullException.ThrowIfNull(nameOf);
+
+        // The end the connection was made from leads: its endpoint, which its maker held, is one of the name's two.
+        int split = channel.Name.IndexOf(Separator, StringComparison.Ordinal);
+        bool made = channel.ConnectedFrom is not null && split > 0;
+        bool swap = made && string.Equals(channel.Name[(split + Separator.Length)..], channel.ConnectedFrom, StringComparison.Ordinal);
+        string first = Named(swap ? channel.SecondHolder : channel.FirstHolder);
+        string second = Named(swap ? channel.FirstHolder : channel.SecondHolder);
+        string endpoints = Compact(channel.Name, swap);
+        return first + (made ? Made : " and ") + second + " · " + MechanismText.Name(channel.Mechanism) + " · "
+            + (made ? endpoints.Replace(Separator, Made, StringComparison.Ordinal) : endpoints);
+
+        string Named(ProcessInstanceId? holder) => holder is { } id ? nameOf(id) ?? "an unlisted process" : "an unknown process";
     }
 
     /// <summary>

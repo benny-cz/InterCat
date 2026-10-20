@@ -48,8 +48,8 @@ public sealed class PairedUdpCommandTests
         // of each transport.
         (code, text, said) = await Run("channels", session.Path);
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Contains($"  {flow.Key} · UDP · {flow.Name} · 4 observed records{Environment.NewLine}    "
-            + ChannelPairingText.Explain(flow) + Environment.NewLine, text, Ordinal);
+        Assert.Contains($"  resolver.exe · PID 200 and client.exe · PID 100 · UDP · :53 ↔ :61000 on 127.0.0.1 · 4 observed records"
+            + $"{Environment.NewLine}    {flow.Key}{Environment.NewLine}    " + ChannelPairingText.Explain(flow) + Environment.NewLine, text, Ordinal);
         Assert.Contains("A datagram flow, which no record opens or closes.", ChannelPairingText.Explain(flow), Ordinal);
         Assert.Contains("Admitted paired TCP and UDP channels", text, OrdinalIgnoreCase);
         Assert.Contains("TCP's coverage over the session is unknown", text, Ordinal);

@@ -29,6 +29,10 @@ public sealed class ChannelBrowserWindowTests
         [
             Lifecycle(1, ObservationKind.Inventory, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
             Lifecycle(2, ObservationKind.Inventory, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 200 },
+            Transfer(8, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 8)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 800 },
+            Transfer(9, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 9)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 900 },
             Transfer(10, ObservationKind.Send, AccountingSide.SendSide, 64, 100, 10)
                 .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 1_000 },
             Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 64, 200, 11)
@@ -36,6 +40,7 @@ public sealed class ChannelBrowserWindowTests
         ]);
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
         WorkspaceSnapshot snapshot = OverviewWorkspace.From(overview);
+        const string Row = "client.exe · PID 100 → server.exe · PID 200 · TCP · :50000 → :8080 on 127.0.0.1 · 4 records";
         var owner = new Window { Width = 400, Height = 300 };
         owner.Show();
         using var browser = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null,
@@ -52,10 +57,9 @@ public sealed class ChannelBrowserWindowTests
             await Task.Delay(20);
         }
 
-        // The server's port sorts first, so its end is named first; the transport and the endpoints follow, compacted, then
-        // the records.
-        Assert.Equal("server.exe · PID 200 ↔ client.exe · PID 100 · TCP · :8080 ↔ :50000 on 127.0.0.1 · 2 records",
-            Assert.IsType<string>(Assert.Single(list.Items)));
+        // The client connected to the server, so it is named first, an arrow at the server; the transport and the endpoints
+        // follow in that order, compacted, then the records.
+        Assert.Equal(Row, Assert.IsType<string>(Assert.Single(list.Items)));
         Assert.Equal("Paired channels. Enter shows the selected channel's source records.", AutomationProperties.GetName(list));
         Assert.Equal("InterCat · Paired channels", browser.Title);
 
@@ -82,9 +86,18 @@ public sealed class ChannelBrowserWindowTests
             browser.GetVisualDescendants().OfType<TextBlock>().Single(block =>
                 block.Text?.StartsWith("Only paired TCP", StringComparison.Ordinal) == true).Text, StringComparison.Ordinal);
 
-        // Escape closes the browser with no channel chosen, as it cancels InterCat's prompts.
+        // Escape closes the browser with no channel chosen, as it cancels InterCat's prompts. Given no names, it names each
+        // process as its page does.
         using var again = new SessionChannelWindow(session.Path, overview.SessionId, overview.Generation, null, null);
         Task<Channel?> cancelled = again.ShowDialog<Channel?>(owner);
+        ListBox unnamed = again.GetVisualDescendants().OfType<ListBox>().Single();
+        for (int wait = 0; wait < 250 && unnamed.ItemCount == 0; wait++)
+        {
+            Dispatch();
+            await Task.Delay(20);
+        }
+
+        Assert.Equal(Row, Assert.IsType<string>(Assert.Single(unnamed.Items)));
         Dispatch();
         again.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         Dispatch();
