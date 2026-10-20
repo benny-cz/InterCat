@@ -88,7 +88,7 @@ public sealed class LabelPlacementTests
         Assert.Equal((new Rect(5, 23, 40, 14), false), (placed.Box, placed.Whole));
     }
 
-    [Fact(DisplayName = "§6.3: names keep room between them where a slot leaves it, so two never read as one, and stand nearer only where no slot does")]
+    [Fact(DisplayName = "§6.3: names keep room between them where a slot leaves it, so two never read as one, and stand nearer only where no slot does - never against one")]
     public void NamesKeepRoomBetweenThem()
     {
         // Side by side, the right node's name below would stand against the left's - "chrome.exechrome.exe" - so it is
@@ -99,10 +99,17 @@ public sealed class LabelPlacementTests
         Assert.Equal([("left", new Rect(40, 43, 40, 14)), ("right", new Rect(80, 3, 40, 14))],
             roomy.Select(label => (label.Key, label.Box)));
 
-        // In a pane with no other slot it still takes the one below, since a name near another is better than none.
+        // In a pane with no other slot, the one below would stand against the left's name, reading as one word with it:
+        // the right node goes unnamed, a name near another being better than none, but not one against it.
         List<LabelPlacement> tight = Place(new Rect(40, 40, 80, 20), order, 2, [], null, points, radii);
-        Assert.Equal([("left", new Rect(40, 43, 40, 14)), ("right", new Rect(80, 43, 40, 14))],
-            tight.Select(label => (label.Key, label.Box)));
+        Assert.Equal([("left", new Rect(40, 43, 40, 14))], tight.Select(label => (label.Key, label.Box)));
+
+        // A word's space further apart, it takes the slot below there, nearer the left's name than names keep.
+        LabelRequest[] apart = [order[0], Request(1, "right", 104, 30, rank: 1)];
+        (points, radii) = Geometry(apart);
+        List<LabelPlacement> near = Place(new Rect(40, 40, 84, 20), apart, 2, [], null, points, radii);
+        Assert.Equal([("left", new Rect(40, 43, 40, 14)), ("right", new Rect(84, 43, 40, 14))],
+            near.Select(label => (label.Key, label.Box)));
     }
 
     [Fact(DisplayName = "§6.3: a chosen name with no slot that keeps its room takes the one it prefers, and an unchosen name it would stand against steps aside")]

@@ -1621,7 +1621,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             if (Fit(pane, request, clearance, points, radii, chosen, heads, mustShow) is not { } taken) continue;
             for (int label = placed.Count - 1; label >= 0; label--)
             {
-                if (placed[label].Chosen || !Crowds(taken.Box, boxes[label])) continue;
+                if (placed[label].Chosen || !Crowds(taken.Box, boxes[label], NameSpacing)) continue;
                 placed.RemoveAt(label);
                 boxes.RemoveAt(label);
             }
@@ -1802,9 +1802,9 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     /// wider rings and diagonal positions let a busy hub still be named when every immediate side is occupied by peers.
     /// A clear label never hides another node or label, nor an arrowhead where a slot clear of every head is left, and
     /// keeps its room from the other names (<see cref="NameSpacing"/>) where a slot leaves it, standing nearer one only
-    /// with <paramref name="crowding"/> where none does. A selected/focused label may fall back to a merely in-pane
-    /// slot, because the user explicitly asked which node has focus (§6.3, R15). Label placement only: it never moves a
-    /// node.
+    /// with <paramref name="crowding"/> where none does, and even then never against one (<see cref="CrowdedSpacing"/>).
+    /// A selected/focused label may fall back to a merely in-pane slot, because the user explicitly asked which node has
+    /// focus (§6.3, R15). Label placement only: it never moves a node.
     /// </summary>
     internal static Rect? FindLabelBox(
         Rect pane,
@@ -1844,7 +1844,8 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         // Clear of every label, node and arrowhead, and nearer its own node than any other, so it is read as that node's;
         // failing that, nearer another node, which a leader then ties to its own (LeaderOf); failing both, the same over a
         // head, since a label over a head is better than none. Each keeps its room from the other names where a slot
-        // leaves it, and else only clears them, since a name close to another is better than none.
+        // leaves it, and else only a word's space, since a name close to another is better than none - but not one
+        // against it, which reads as one word with it.
         for (int pass = 0; pass < 8; pass++)
         {
             bool overHeads = pass >= 4;
@@ -1854,7 +1855,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             for (int i = 0; i < candidateCount; i++)
             {
                 Rect candidate = candidates[i];
-                if (!pane.Contains(candidate) || (spaced ? Crowds(candidate, placed) : Overlaps(candidate, placed))
+                if (!pane.Contains(candidate) || Crowds(candidate, placed, spaced ? NameSpacing : CrowdedSpacing)
                     || (!overHeads && Overlaps(candidate, heads))) continue;
                 (bool coversNode, bool nearerAnother) = Neighbours(candidate, key, point, radius, points, radii);
                 if (!coversNode && (nearerAllowed || !nearerAnother)) return candidate;
@@ -1868,7 +1869,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
             for (int i = 0; i < candidateCount; i++)
             {
                 Rect candidate = candidates[i];
-                if (pane.Contains(candidate) && !(pass == 0 ? Crowds(candidate, placed) : Overlaps(candidate, placed)))
+                if (pane.Contains(candidate) && !Crowds(candidate, placed, pass == 0 ? NameSpacing : CrowdedSpacing))
                 {
                     return candidate;
                 }
@@ -1893,13 +1894,21 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     internal static readonly Thickness NameSpacing = new(6, 2);
 
     /// <summary>
-    /// Whether a name in <paramref name="box"/> would stand nearer one of <paramref name="names"/> than they may.
+    /// The least room kept between two names where a name stands nearer another than <see cref="NameSpacing"/>, the slots
+    /// that keep it taken: a word's space across and a pixel down, so they still never run together as one word -
+    /// "svchost.exeOneDrive.exe" at the smallest window - nor one's line read as the other's.
     /// </summary>
-    private static bool Crowds(Rect box, IReadOnlyList<Rect> names)
+    internal static readonly Thickness CrowdedSpacing = new(4, 1);
+
+    /// <summary>
+    /// Whether a name in <paramref name="box"/> would stand nearer one of <paramref name="names"/> than
+    /// <paramref name="spacing"/> lets it.
+    /// </summary>
+    private static bool Crowds(Rect box, IReadOnlyList<Rect> names, Thickness spacing)
     {
         for (int index = 0; index < names.Count; index++)
         {
-            if (Crowds(box, names[index]))
+            if (Crowds(box, names[index], spacing))
             {
                 return true;
             }
@@ -1908,7 +1917,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return false;
     }
 
-    private static bool Crowds(Rect box, Rect name) => box.Inflate(NameSpacing).Intersects(name);
+    private static bool Crowds(Rect box, Rect name, Thickness spacing) => box.Inflate(spacing).Intersects(name);
 
     /// <summary>Whether <paramref name="box"/> overlaps any of <paramref name="boxes"/>.</summary>
     private static bool Overlaps(Rect box, IReadOnlyList<Rect> boxes)

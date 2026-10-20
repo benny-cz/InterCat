@@ -324,6 +324,54 @@ public sealed class GraphLabelLeaderTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: at the smallest window, where names must stand nearer each other, none stands against another - at the machine, a group or a process rung")]
+    public async Task CrowdedNamesKeepAWordsSpace()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+
+            // The machine, svchost.exe's group and its busiest instance: names nearer each other than they keep where a slot
+            // leaves room - the smallest window's graph has too little - still keep a word's space and a pixel, since two
+            // names against each other read as one - "svchost.exeOneDrive.exe".
+            var wordSpace = new Thickness(4, 1);
+            int crowded = 0;
+            for (int rung = 0; rung < 3; rung++)
+            {
+                await workspace.LayoutReady;
+                _ = Settle(window);
+                IReadOnlyList<Rect> names = graph.PlacedLabels;
+                Assert.NotEmpty(names);
+                for (int one = 0; one < names.Count; one++)
+                {
+                    for (int other = one + 1; other < names.Count; other++)
+                    {
+                        Assert.False(names[one].Inflate(wordSpace).Intersects(names[other]),
+                            $"{workspace.LevelBadge}: {graph.PlacedLabelKeys[one]} {names[one]} stands against "
+                            + $"{graph.PlacedLabelKeys[other]} {names[other]}");
+                        crowded += names[one].Inflate(GraphView.NameSpacing).Intersects(names[other]) ? 1 : 0;
+                    }
+                }
+
+                workspace.SelectedRung = workspace.RungRows[0];
+                Assert.True(rung == 2 || workspace.Descend(), workspace.LevelBadge);
+            }
+
+            Assert.NotEqual(0, crowded);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R15: an aggregate's edge to other hosts chosen in the table, Enter gives the keyboard to its processes in the inspector, as a double click on the edge does")]
     public async Task AnAggregatesEdgeToOtherHostsOpensItsList()
     {

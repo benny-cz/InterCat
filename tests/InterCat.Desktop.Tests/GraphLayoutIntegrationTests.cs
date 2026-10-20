@@ -379,6 +379,36 @@ public sealed class GraphLayoutIntegrationTests
                 $"label covered {entry.Key} at {entry.Value}"));
     }
 
+    [Fact(DisplayName = "§6.3: a name stands nearer another than names keep only where no slot leaves room, and never against one - nor does a name that must be shown, where a slot keeps a word's space")]
+    public void ACrowdedNameKeepsAWordsSpace()
+    {
+        var pane = new Rect(0, 0, 400, 300);
+        var node = new Point(200, 150);
+        var points = new Dictionary<string, Point>(StringComparer.Ordinal) { ["node"] = node, ["other"] = new(200, 129) };
+        var radii = new Dictionary<string, double>(StringComparer.Ordinal) { ["node"] = 10, ["other"] = 5 };
+        Rect below = new(170, 163, 60, 16);
+        Rect above = new(170, 121, 60, 16);
+
+        // Every other slot is under a name, the one above covers the other node, and a name stands against the one below:
+        // no slot is left for a name that may go unshown, as one against another reads as one word with it.
+        Rect[] names = [new(0, 0, 165, 300), new(235, 0, 165, 300), new(170, 0, 60, 116), new(170, 184, 60, 116), new(165, 163, 5, 16)];
+        Assert.Contains(names, name => below.Inflate(GraphView.NameSpacing).Intersects(name));
+        Assert.Contains(names, name => above.Inflate(GraphView.NameSpacing).Intersects(name));
+        Assert.Null(GraphView.FindLabelBox(pane, node, 10, 60, 16, "node", points, radii, names, [], mustShow: false));
+
+        // One that must be shown stands over the other node, nearer the names than they keep, rather than against one.
+        Assert.Equal(above, GraphView.FindLabelBox(pane, node, 10, 60, 16, "node", points, radii, names, [], mustShow: true));
+
+        // Nor does a name stand on another, nearer than a pixel down - its line read as the other's.
+        Rect[] beneath = [names[0], names[1], names[2], new(170, 179, 60, 121)];
+        Assert.Null(GraphView.FindLabelBox(pane, node, 10, 60, 16, "node", points, radii, beneath, [], mustShow: false));
+
+        // A word's space from it, the slot below is one a name may take there, though nearer the names than they keep.
+        names[^1] = new(164, 163, 2, 16);
+        Assert.Contains(names, name => below.Inflate(GraphView.NameSpacing).Intersects(name));
+        Assert.Equal(below, GraphView.FindLabelBox(pane, node, 10, 60, 16, "node", points, radii, names, [], mustShow: false));
+    }
+
     [Fact(DisplayName = "§6.3: a label takes a slot nearer its own node than any other where one is left, before one over an arrowhead, and a name set away from its node, or nearer another, is tied to it by a leader from its rim")]
     public void ALabelReadsAsItsOwnNodes()
     {
