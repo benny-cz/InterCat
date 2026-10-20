@@ -48,7 +48,7 @@ public static class InvestigationTimelineText
                 ? string.Create(culture, $"Session {Short(lane.SessionId)} ({host}): {lane.Records:N0} {(lane.Records == 1 ? "record" : "records")}, ")
                     + (lane.Extent!.Value.EndTicks - 1 <= lane.Extent.Value.StartTicks
                         ? "at " + Seconds(lane.Extent.Value.StartTicks * 100, culture)
-                        : "from " + Seconds(lane.Extent.Value.StartTicks * 100, culture) + " to " + Seconds((lane.Extent.Value.EndTicks - 1) * 100, culture))
+                        : "from " + SessionTimeText.Range(lane.Extent.Value.StartTicks * 100, (lane.Extent.Value.EndTicks - 1) * 100, culture))
                     + $" of the investigation's time, {place}." + Coverage(lane, culture)
                 : $"Session {Short(lane.SessionId)} ({host}): {place}.") + read);
         }

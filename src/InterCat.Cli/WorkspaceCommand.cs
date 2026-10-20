@@ -662,7 +662,7 @@ internal static partial class WorkspaceCommand
         }
 
         WorkspaceView saved = InvestigationWorkspace.SaveView(path, operands[0], new TimeRange(from / 100, to / 100), DateTimeOffset.UtcNow);
-        ConsoleUi.Success($"View '{saved.Name}' saved: {Seconds(from)} to {Seconds(to)} of the investigation's time"
+        ConsoleUi.Success($"View '{saved.Name}' saved: {SessionTimeText.Range(from, to, CultureInfo.CurrentCulture)} of the investigation's time"
             + string.Create(CultureInfo.InvariantCulture, $" (view revision {saved.Revision})."));
         return InterCatExitCode.Success;
     }
@@ -923,7 +923,7 @@ internal static partial class WorkspaceCommand
         ConsoleUi.Heading("Merged time");
         ConsoleUi.Field("Investigation", path);
         ConsoleUi.Field("Interval", view.Interval is { } shown
-            ? $"{Seconds(shown.StartTicks * 100)} to {Seconds(shown.EndTicks * 100)} of the investigation's time, in "
+            ? $"{SessionTimeText.Range(shown.StartTicks * 100, shown.EndTicks * 100, CultureInfo.CurrentCulture)} of the investigation's time, in "
                 + CountText.Of(view.Columns, "column")
             : "none: no session is placed in the investigation's time");
         ConsoleUi.Field("Read", document.SnapshotVector.Count == 0

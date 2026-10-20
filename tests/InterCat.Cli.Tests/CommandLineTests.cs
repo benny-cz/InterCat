@@ -775,8 +775,10 @@ public sealed class CommandLineTests : IDisposable
                 "workspace", "align", workspace, $"{other.Current!.SessionId:N}@0", $"{TestSessions.Session:N}@0", "--within", "1ms");
             Assert.True(aligned == InterCatExitCode.Success, alignSaid);
 
-            (InterCatExitCode saved, _, string viewSaid) = await Run("workspace", "view", workspace, "early", "-5", "10");
+            (InterCatExitCode saved, _, string viewSaid) = await Run("workspace", "view", workspace, "early", "-5", "10.2501");
             Assert.True(saved == InterCatExitCode.Success, viewSaid);
+            Assert.Contains($"View 'early' saved: {(-5m).ToString("F4", CultureInfo.CurrentCulture)} s to "
+                + $"{10.2501m.ToString("F4", CultureInfo.CurrentCulture)} s of the investigation's time", viewSaid, StringComparison.Ordinal);
             (InterCatExitCode unwritten, _, string refusal) = await Run("workspace", "note", workspace, "-> retry storm here");
             Assert.Equal(InterCatExitCode.InvalidInvocation, unwritten);
             Assert.Contains("an operand that starts with a dash follows --", refusal, StringComparison.Ordinal);
@@ -992,15 +994,18 @@ public sealed class CommandLineTests : IDisposable
             (_, IReadOnlyList<string> sentences) = InvestigationTimelineText.Describe(InvestigationWorkspace.Read(workspace), view, System.Globalization.CultureInfo.CurrentCulture);
             (InterCatExitCode code, string text, string said) = await Run("workspace", "timeline", workspace);
             Assert.True(code == InterCatExitCode.Success, said);
-            Assert.Contains("0.0001 s to 0.0005031 s of the investigation's time, in 160 columns", text, StringComparison.Ordinal);
+            Assert.Contains($"{0.0001000m.ToString("F7", System.Globalization.CultureInfo.CurrentCulture)} s to "
+                + $"{0.0005031m.ToString("F7", System.Globalization.CultureInfo.CurrentCulture)} s of the investigation's time, in 160 columns",
+                text, StringComparison.Ordinal);
             Assert.All(sentences, sentence => Assert.Contains("  " + sentence + Environment.NewLine, text, StringComparison.Ordinal));
             Assert.EndsWith("not placed: not aligned to the investigation's time.", sentences[2], StringComparison.Ordinal);
             Assert.EndsWith(", about the whole investigation: The retry storm begins here.", sentences[3], StringComparison.Ordinal);
             Assert.Contains(" Coverage over its 160 columns: ", sentences[0], StringComparison.Ordinal);
 
-            // A lane's records run from its first to its last, each at its own instant: never the tick past the last.
-            Assert.Contains($": 8 records, from {0.0001m.ToString("0.000######", System.Globalization.CultureInfo.CurrentCulture)} s to "
-                + $"{0.000503m.ToString("0.000######", System.Globalization.CultureInfo.CurrentCulture)} s of the investigation's time, ", sentences[0],
+            // A lane's records run from its first to its last, each at its own instant: never the tick past the last; both ends
+            // to one precision, the finer end's.
+            Assert.Contains($": 8 records, from {0.000100m.ToString("F6", System.Globalization.CultureInfo.CurrentCulture)} s to "
+                + $"{0.000503m.ToString("F6", System.Globalization.CultureInfo.CurrentCulture)} s of the investigation's time, ", sentences[0],
                 StringComparison.Ordinal);
             List<TimelineBucket> lane = [.. view.Lanes[0].Buckets];
             int first = lane.FindIndex(bucket => bucket.ObservationCount > 0);
