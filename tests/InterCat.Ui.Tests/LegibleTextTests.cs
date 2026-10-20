@@ -86,6 +86,46 @@ public sealed class LegibleTextTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.8: a path the inspector says wraps between its folders, never after its drive's colon alone, and reads as it is")]
+    public async Task APathWrapsBetweenItsFolders()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, GraphLabelLeaderTests.BusyMachine());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+
+            // svchost.exe's group is said with its path on a line of its own, too long for the inspector at the smallest
+            // window: Unicode's line breaking parts it only after "C:", which stood alone on a line.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "svchost.exe");
+            Avalonia.Threading.Dispatcher.UIThread.RunJobs();
+            _ = window.CaptureRenderedFrame();
+            string path = @"C:\Windows\System32\svchost.exe";
+            Assert.EndsWith(Environment.NewLine + path, workspace.SelectionSubtitle, StringComparison.Ordinal);
+            TextBlock subtitle = window.GetControl<Border>("Inspector").GetVisualDescendants().OfType<TextBlock>()
+                .Single(text => Plain(text.Text) == workspace.SelectionSubtitle);
+            string shown = subtitle.Text!;
+            string[] lines = [.. subtitle.TextLayout.TextLines.Select(line => Plain(shown.Substring(line.FirstTextSourceIndex,
+                Math.Min(line.Length, shown.Length - line.FirstTextSourceIndex))).TrimEnd())];
+            int first = Array.FindIndex(lines, line => line.StartsWith(@"C:\", StringComparison.Ordinal));
+            Assert.True(first > 0 && first < lines.Length - 1, string.Join(" | ", lines));
+            Assert.Equal(path, string.Concat(lines[first..]));
+            Assert.All(lines[first..], line => Assert.True(line.EndsWith('\\') || line == lines[^1], string.Join(" | ", lines)));
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static string Plain(string? text) => (text ?? string.Empty).Replace("\u200B", string.Empty, StringComparison.Ordinal)
+            .Replace("\u2060", string.Empty, StringComparison.Ordinal);
+    }
+
     [AvaloniaFact(DisplayName = "§6.8: at either rail width no capture phase cuts off its card's words, the primary action's wrapping at the narrowest, however long a process's name")]
     public async Task NoCapturePhaseCutsOffText()
     {

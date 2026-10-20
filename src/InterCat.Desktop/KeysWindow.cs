@@ -66,6 +66,7 @@ internal static class WindowKeys
         new("Anywhere", "F5", "show the newest view the capture published, which a paused view or records being read "
             + "hold back"),
         new("Ranked table", "Up or Down", "choose the previous or next row"),
+        new("Ranked table", "Page Up or Page Down", "choose the row a page up or down, as in every list"),
         new("Ranked table", "Ctrl+Up or Ctrl+Down", "move to the previous or next row without choosing it"),
         new("Ranked table", "Ctrl+Space", "add the row's processes to the multi-selection, or take them out"),
         new("Ranked table", "O", "on an RPC call linked to another, open the call at its other end"),
@@ -90,7 +91,8 @@ internal static class WindowKeys
             SpokenKeys = "Left, Right, Home, End, plus, minus or zero",
         },
         new("Relationship table", "Enter", "open the chosen relationship, or edge to other hosts, as a double click on its edge does"),
-        new("Interval table", "Up, Down, Home or End", "choose a moment, which becomes the analysis interval"),
+        new("Interval table", "Up, Down, Page Up, Page Down, Home or End", "choose a moment, which becomes the analysis "
+            + "interval"),
         new("Interval table", "Enter", "list the moment's records"),
         new("Search box", "Enter", "open the chosen hit, or search the port a number offers"),
         new("Search box", "Down", "move to the hits"),

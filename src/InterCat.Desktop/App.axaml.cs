@@ -3,6 +3,7 @@ using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Platform;
 using Avalonia.Threading;
+using InterCat.Desktop.Presentation;
 using InterCat.Desktop.Settings;
 using InterCat.Desktop.Theme;
 
@@ -26,6 +27,9 @@ public sealed partial class App : Avalonia.Application
         // Tokens come from the verified palette, so no view carries a colour literal (section 6.6). The mode follows the
         // operating system's light or dark setting and its high-contrast setting (§26.2), unless the user chose one.
         ApplyTheme();
+
+        // Every list pages by the keyboard as a list on Windows does (R15).
+        ListPages.Register();
     }
 
     public override void OnFrameworkInitializationCompleted()
