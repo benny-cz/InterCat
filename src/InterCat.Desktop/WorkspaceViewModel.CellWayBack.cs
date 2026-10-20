@@ -24,7 +24,8 @@ public sealed record CellRecordOrigin(int Depth, DetailLevel Level, string? Focu
 /// rung was left. Each rung keeps its own, taken when the way comes back to it, so a cell let go there since is not
 /// chosen again later; a way down that begins at a rung or above it is a way of its own, and a newer generation keeps
 /// them. A record opened from the cell's list is a way down from that list: the way back gives the keyboard to it again
-/// once the cell's records are listed, so the next is a key away.
+/// once the cell's records are listed, so the next is a key away - each time the way comes back, forward along it and back
+/// included, as the way back to a relationship's row does.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -94,8 +95,9 @@ public sealed partial class WorkspaceViewModel
         RaiseCellExplanationChanged();
     }
 
-    // Where the latest way down from a record listed beside a cell began, and the record the way back came for until the
-    // cell's records are first listed again, another interval is chosen or the view navigates.
+    // Where the latest way down from a record listed beside a cell began, until a way down of its own from that rung or
+    // above it, or a way back to another rung at its depth; and the record the way back came for until the cell's records
+    // are first listed again, another interval is chosen or the view navigates.
     private CellRecordOrigin? cellRecordOrigin;
     private string? askedCellRecord;
 
@@ -110,7 +112,8 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// At the rung a way down from a cell's listed record began, asks for the keyboard to go back to that record where the
-    /// cell's records, listed again, hold it; at another rung at that depth the way back is let go.
+    /// cell's records, listed again, hold it, keeping the way back for the next time it comes there; at another rung at
+    /// that depth the way back is let go.
     /// </summary>
     private void ResumeCellRecordOrigin()
     {
@@ -119,9 +122,9 @@ public sealed partial class WorkspaceViewModel
             return;
         }
 
-        cellRecordOrigin = null;
         if (ladder.Current.Level != origin.Level || !string.Equals(ladder.Current.Focus?.Key, origin.Focus, StringComparison.Ordinal))
         {
+            cellRecordOrigin = null;
             return;
         }
 

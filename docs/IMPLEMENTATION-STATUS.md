@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 634 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 635 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,16 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 635 — forward along a way down and back again comes where the first way came (§3.2, §6.7):**
+  - Esc gave the keyboard back to a record opened from a cell's list only once, and Alt+Right to E chose no record.
+    The way back now holds until a way down of its own, as the other ways back do, and forward to E chooses the record
+    chosen there when it was left; a record opened and left before E listed it is no longer chosen by a later E.
+  - Debug and Release each ran 2,600 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    ten mutations were caught: the way back spent when taken, kept for another rung at its depth, or that rung not
+    checked; forward to E choosing no record; an ascent or the breadcrumb leaving E without recording its record;
+    the record E was still to choose not recorded, or outliving E; and the ladder recording no record, or recording
+    only one already recorded.
 
 - **Revision 634 — the way back from a moment the interval table lists gives the keyboard back to its row (§3.2, R15):**
   - A live pass stepping and resizing by keyboard on the busy machine found that Enter on an interval-table row, which

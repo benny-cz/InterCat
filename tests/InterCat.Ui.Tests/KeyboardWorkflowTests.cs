@@ -100,6 +100,20 @@ public sealed class KeyboardWorkflowTests
         Assert.Equal(Assert.IsType<CellRecordRow>(records.Items[0]).Key, Assert.IsType<CellRecordRow>(records.SelectedItem).Key);
         Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
 
+        // Alt+Right goes forward to the record in E again, and Esc back gives it the keyboard again, as the first time.
+        Press(window, PhysicalKey.ArrowRight, RawInputModifiers.Alt);
+        Assert.True(workspace.IsEvidenceRung, workspace.LevelBadge);
+        await workspace.EvidenceReady;
+        Dispatch();
+        Assert.Equal(second.Key, workspace.SelectedRung?.Key);
+        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
+        Press(window, PhysicalKey.Escape);
+        Assert.Equal("L2 · PROCESS", workspace.LevelBadge);
+        await workspace.CellRecordsReady;
+        Dispatch();
+        Assert.True(records.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(second.Key, Assert.IsType<CellRecordRow>(records.SelectedItem).Key);
+
         // T shows the tables over the panes: F6 goes from the ranked table to the relationship table, then to the interval
         // table on the row for the moment, and round to the ranked table.
         Press(window, PhysicalKey.T);

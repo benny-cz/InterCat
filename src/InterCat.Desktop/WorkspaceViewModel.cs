@@ -5477,6 +5477,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public bool Ascend()
     {
         ladder.RecordInterval(selectedInterval);
+        ladder.RecordChosenRecord(ChosenEvidenceKey);
         NavigationState left = ladder.Current;
         if (!ladder.TryAscend(out NavigationState restored))
         {
@@ -5510,6 +5511,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
     public void ReturnTo(int depth)
     {
         ladder.RecordInterval(selectedInterval);
+        ladder.RecordChosenRecord(ChosenEvidenceKey);
         NavigationState left = ladder.Current;
         int from = ladder.Depth;
         if (ladder.TryReturnTo(depth, out NavigationState restored))
@@ -5579,12 +5581,21 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             return false;
         }
 
+        // E comes back with the record chosen there when it was left, once its records are listed again (§6.7).
+        if (entered.Level == DetailLevel.Evidence)
+        {
+            pendingEvidenceKey = entered.RecordWhenLeft;
+        }
+
         KeepCellWayBack();
         ResumeIntervalOf(entered);
         AfterNavigation();
         ResumeCellOrigin();
         return true;
     }
+
+    /// <summary>The record chosen on E, or the one it is still to choose once its records are listed; none elsewhere.</summary>
+    private string? ChosenEvidenceKey => IsEvidenceRung ? SelectedRung?.Key ?? pendingEvidenceKey : null;
 
     /// <summary>
     /// Brings back the analysis interval a rung had when it was left, through the one selection source, so the brush,
@@ -5660,6 +5671,13 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         selectedRung = null;
         pendingRungKey = null;
         selectedCrumb = null;
+
+        // A record E is still to choose once its records are listed is that E's alone, kept for forward to it as the rung
+        // was left: any other rung shown lets it go, so a later E chooses none it was not asked for.
+        if (ladder.Current.Level != DetailLevel.Evidence)
+        {
+            pendingEvidenceKey = null;
+        }
 
         // A chosen cell is a place in the rung's lanes, which the rung left takes with it, keeping the way back to it; a
         // record a way back came for is the rung left's too.

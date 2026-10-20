@@ -279,7 +279,7 @@ public sealed class CellWayBackTests
         Assert.Equal(explained, workspace.CellExplanation);
     });
 
-    [Fact(DisplayName = "§3.2: the way back from a record opened from a cell's list asks for the keyboard on it once the cell's records are listed again, by Esc or the breadcrumb, and E again before then lets it go")]
+    [Fact(DisplayName = "§3.2: the way back from a record opened from a cell's list asks for the keyboard on it once the cell's records are listed again, by Esc, forward and back, or the breadcrumb, and E again before then lets it go")]
     public void TheWayBackFromAListedRecordAsksForIt() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -301,12 +301,65 @@ public sealed class CellWayBackTests
         Assert.Equal((1, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
         Assert.Contains(workspace.AskedCellRecordRow!, workspace.CellRecordRows);
 
-        // E from the cell itself is no way down from the list: back from it, nothing is asked for.
-        Assert.True(workspace.ShowEvidence());
+        // The way back holds: forward to E chooses the record chosen there when it was left, and back asks again for the
+        // one the way down began at, the cell chosen again with it.
+        Assert.Equal(new CellRecordOrigin(0, DetailLevel.Machine, null, second.Key), workspace.CaptureNavigation().RecordOrigin);
+        Assert.True(workspace.GoForward());
         await workspace.EvidenceReady;
+        Assert.Equal(second.Key, workspace.SelectedRung?.Key);
+        workspace.SelectedRung = workspace.RungRows.First(row => row.Key != second.Key);
+        string chosen = workspace.SelectedRung!.Key;
         Assert.True(workspace.Ascend());
         await workspace.CellRecordsReady;
-        Assert.Equal(1, workspace.CellRecordAsked);
+        Assert.Equal((2, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.True(workspace.GoForward());
+        await workspace.EvidenceReady;
+        Assert.Equal(chosen, workspace.SelectedRung?.Key);
+        workspace.SelectedRung = workspace.RungRows.First(row => row.Key == second.Key);
+        workspace.ReturnTo(0);
+        await workspace.CellRecordsReady;
+        Assert.Equal((3, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.True(workspace.GoForward());
+        await workspace.EvidenceReady;
+        Assert.Equal(second.Key, workspace.SelectedRung?.Key);
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal((4, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+
+        // E from the cell itself is no way down from the list: back from it, nothing is asked for, and forward to it
+        // again chooses no record, none having been chosen there.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Null(workspace.SelectedRung);
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal(4, workspace.CellRecordAsked);
+        Assert.True(workspace.GoForward());
+        await workspace.EvidenceReady;
+        Assert.Null(workspace.SelectedRung);
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal(4, workspace.CellRecordAsked);
+
+        // Left before E has listed its records, the record it is to choose is kept for forward all the same; and E from
+        // the cell itself after such a way back chooses none.
+        Assert.True(workspace.OpenCellRecord(workspace.CellRecordRows.Single(row => row.Key == second.Key)));
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.GoForward());
+        await workspace.EvidenceReady;
+        Assert.Equal(second.Key, workspace.SelectedRung?.Key);
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal((5, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.True(workspace.OpenCellRecord(workspace.CellRecordRows.Single(row => row.Key == second.Key)));
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.Contains(workspace.RungRows, row => row.Key == second.Key);
+        Assert.Null(workspace.SelectedRung);
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal(5, workspace.CellRecordAsked);
 
         // The breadcrumb back asks for it too; E again before the records are listed lets it go.
         CellRecordRow first = workspace.CellRecordRows[0];
@@ -314,7 +367,7 @@ public sealed class CellWayBackTests
         await workspace.EvidenceReady;
         workspace.ReturnTo(0);
         await workspace.CellRecordsReady;
-        Assert.Equal((2, first.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.Equal((6, first.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
         Assert.True(workspace.OpenCellRecord(workspace.CellRecordRows[0]));
         await workspace.EvidenceReady;
         Assert.True(workspace.Ascend());
@@ -322,10 +375,10 @@ public sealed class CellWayBackTests
         await workspace.EvidenceReady;
         Assert.True(workspace.Ascend());
         await workspace.CellRecordsReady;
-        Assert.Equal(2, workspace.CellRecordAsked);
+        Assert.Equal(6, workspace.CellRecordAsked);
     });
 
-    [Fact(DisplayName = "§3.2: a newer generation keeps the way back to a cell's listed record; another interval chosen before it is listed again, or a way down of its own from above its rung, lets it go")]
+    [Fact(DisplayName = "§3.2: a newer generation keeps the way back to a cell's listed record; another rung at its depth, another interval chosen before it is listed again, or a way down of its own from above its rung, lets it go")]
     public void AWayOfItsOwnLetsAListedRecordGo() => SingleThreadedContext.Run(async () =>
     {
         using var session = new TemporarySession();
@@ -356,6 +409,19 @@ public sealed class CellWayBackTests
             await next.TimelineDetailReady;
             await next.CellRecordsReady;
             Assert.Equal((1, opened.Key), (next.CellRecordAsked, next.AskedCellRecordRow?.Key));
+        }
+
+        // A way back kept for another rung at its depth - a process that rung no longer stands for - is let go there.
+        using (WorkspaceViewModel next = TimelineCellTests.Open(session))
+        {
+            next.RequestTimelineDetail(next.Snapshot.Extent, 80);
+            Assert.Null(next.RestoreNavigation(saved with { RecordOrigin = saved.RecordOrigin! with { Focus = "elsewhere" } }));
+            Assert.True(next.Ascend());
+            await next.TimelineDetailReady;
+            await next.CellRecordsReady;
+            Assert.Contains(next.CellRecordRows, row => row.Key == opened.Key);
+            Assert.Equal(0, next.CellRecordAsked);
+            Assert.Null(next.CaptureNavigation().RecordOrigin);
         }
 
         // Another interval chosen before they are listed lets it go, even with the moment chosen again.
