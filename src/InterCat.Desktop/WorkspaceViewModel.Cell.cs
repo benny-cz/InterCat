@@ -529,6 +529,7 @@ public sealed partial class WorkspaceViewModel
                 : cellRecordRows.Count > 0 ? "Enter or a double click opens one in E"
                 : string.Empty;
             RaiseCellRecordsChanged();
+            OfferAskedCellRecord(listed: true);
         }
         catch (OperationCanceledException) when (query.IsCancellationRequested)
         {
@@ -542,6 +543,7 @@ public sealed partial class WorkspaceViewModel
                 cellRecordRows = [];
                 cellRecordsNote = "They could not be read: " + exception.Message;
                 RaiseCellRecordsChanged();
+                OfferAskedCellRecord(listed: true);
             }
         }
     }
@@ -730,8 +732,10 @@ public sealed partial class WorkspaceViewModel
         }
 
         pendingEvidenceKey = row.Key;
+        var origin = new CellRecordOrigin(ladder.Depth, ladder.Current.Level, ladder.Current.Focus?.Key, row.Key);
         if (ShowEvidence())
         {
+            cellRecordOrigin = origin;
             return true;
         }
 

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 630 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 631 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 631 — the way back from a record opened from a cell's list gives the keyboard back to it (§3.2, §6.4, R15):**
+  - Enter on a record listed beside a cell opened E with the keyboard on it, and Esc came back with the keyboard on
+    the ranked table. The way back, by Esc or the breadcrumb, now gives it to that record once the cell's records are
+    listed again, so the next is a key away; a newer generation keeps the way back, and another interval, a navigation
+    or a way down of its own lets it go.
+  - Debug and Release each ran 2,596 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    thirteen mutations were caught: no way back kept from the list; none taken by Esc or the breadcrumb; one kept
+    past a way down of its own, a navigation or another interval; one given up before the records are wanted or
+    while they are read, or never offered once they are; a newer generation not given it or not restoring it; and
+    the window neither focusing the record nor choosing it.
 
 - **Revision 630 — the way back to a clicked timeline cell chooses it again (§3.2, §6.8):**
   - Esc or the breadcrumb back from E, a listed record or Enter brought back the cell's interval but not the cell: the

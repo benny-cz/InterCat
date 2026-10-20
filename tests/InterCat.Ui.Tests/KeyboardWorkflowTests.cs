@@ -87,13 +87,17 @@ public sealed class KeyboardWorkflowTests
         Assert.Equal(second.Key, workspace.SelectedRung?.Key);
         Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
 
-        // Esc comes back to the process with the moment kept, the keyboard on its table, from which Shift+F6 goes round to
-        // the inspector.
+        // Esc comes back to the process with the moment kept and, once its records are listed again, the keyboard on the
+        // record it opened, where the way down began: Up takes the one before.
         Press(window, PhysicalKey.Escape);
         Assert.Equal("L2 · PROCESS", workspace.LevelBadge);
         Assert.Equal(moment, workspace.SelectedInterval);
-        Assert.True(rail.IsKeyboardFocusWithin, Focused(window));
-        Press(window, PhysicalKey.F6, RawInputModifiers.Shift);
+        await workspace.CellRecordsReady;
+        Dispatch();
+        Assert.True(records.IsKeyboardFocusWithin, Focused(window));
+        Assert.Equal(second.Key, Assert.IsType<CellRecordRow>(records.SelectedItem).Key);
+        Press(window, PhysicalKey.ArrowUp);
+        Assert.Equal(Assert.IsType<CellRecordRow>(records.Items[0]).Key, Assert.IsType<CellRecordRow>(records.SelectedItem).Key);
         Assert.True(inspector.IsKeyboardFocusWithin, Focused(window));
 
         // T shows the tables over the panes: F6 goes from the ranked table to the relationship table, then to the interval

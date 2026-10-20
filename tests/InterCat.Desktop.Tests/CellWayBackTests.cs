@@ -276,4 +276,113 @@ public sealed class CellWayBackTests
         await workspace.TimelineDetailReady;
         Assert.Equal(explained, workspace.CellExplanation);
     });
+
+    [Fact(DisplayName = "§3.2: the way back from a record opened from a cell's list asks for the keyboard on it once the cell's records are listed again, by Esc or the breadcrumb, and E again before then lets it go")]
+    public void TheWayBackFromAListedRecordAsksForIt() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TimelineCellTests.Rows());
+        using WorkspaceViewModel workspace = TimelineCellTests.Open(session);
+        workspace.RequestTimelineDetail(new TimeRange(10, 60), 2);
+        await workspace.TimelineDetailReady;
+        workspace.ChooseTimelineCell(TimelineCellTests.Lane(workspace, Mechanism.Tcp)[0], Mechanism.Tcp);
+        await workspace.CellRecordsReady;
+        CellRecordRow second = workspace.CellRecordRows[1];
+
+        // Opened from the list, E lists it selected; Esc comes back to the cell and, once its records are listed again,
+        // asks for the keyboard on it.
+        Assert.True(workspace.OpenCellRecord(second));
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        Assert.Equal(0, workspace.CellRecordAsked);
+        await workspace.CellRecordsReady;
+        Assert.Equal((1, second.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.Contains(workspace.AskedCellRecordRow!, workspace.CellRecordRows);
+
+        // E from the cell itself is no way down from the list: back from it, nothing is asked for.
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal(1, workspace.CellRecordAsked);
+
+        // The breadcrumb back asks for it too; E again before the records are listed lets it go.
+        CellRecordRow first = workspace.CellRecordRows[0];
+        Assert.True(workspace.OpenCellRecord(first));
+        await workspace.EvidenceReady;
+        workspace.ReturnTo(0);
+        await workspace.CellRecordsReady;
+        Assert.Equal((2, first.Key), (workspace.CellRecordAsked, workspace.AskedCellRecordRow?.Key));
+        Assert.True(workspace.OpenCellRecord(workspace.CellRecordRows[0]));
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.CellRecordsReady;
+        Assert.Equal(2, workspace.CellRecordAsked);
+    });
+
+    [Fact(DisplayName = "§3.2: a newer generation keeps the way back to a cell's listed record; another interval chosen before it is listed again, or a way down of its own from above its rung, lets it go")]
+    public void AWayOfItsOwnLetsAListedRecordGo() => SingleThreadedContext.Run(async () =>
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, TimelineCellTests.Rows());
+        using WorkspaceViewModel workspace = TimelineCellTests.Open(session);
+        ProcessNode client = workspace.Snapshot.Processes.Single(node => node.ProcessId == 100);
+        workspace.RequestTimelineDetail(workspace.Snapshot.Extent, 80);
+        TimelineCellTests.DescendTo(workspace, client.GroupKey);
+        TimelineCellTests.DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+
+        // A moment of the process's rung lists its records, and one is opened from the list.
+        TimelineBucket moment = workspace.TimelineDetail!.Buckets.First(bucket => bucket.ObservationCount > 0);
+        workspace.ChooseTimelineCell(moment);
+        await workspace.CellRecordsReady;
+        CellRecordRow opened = workspace.CellRecordRows[0];
+        Assert.True(workspace.OpenCellRecord(opened));
+        await workspace.EvidenceReady;
+
+        // Restored at E in a newer generation, Esc asks for it once the moment's records are listed again.
+        WorkspaceNavigationMemento saved = workspace.CaptureNavigation();
+        Assert.Equal(new CellRecordOrigin(2, DetailLevel.ProcessInstance, client.Id.ToString(), opened.Key), saved.RecordOrigin);
+        using (WorkspaceViewModel next = TimelineCellTests.Open(session))
+        {
+            next.RequestTimelineDetail(next.Snapshot.Extent, 80);
+            Assert.Null(next.RestoreNavigation(saved));
+            Assert.True(next.Ascend());
+            await next.TimelineDetailReady;
+            await next.CellRecordsReady;
+            Assert.Equal((1, opened.Key), (next.CellRecordAsked, next.AskedCellRecordRow?.Key));
+        }
+
+        // Another interval chosen before they are listed lets it go, even with the moment chosen again.
+        using (WorkspaceViewModel next = TimelineCellTests.Open(session))
+        {
+            next.RequestTimelineDetail(next.Snapshot.Extent, 80);
+            Assert.Null(next.RestoreNavigation(saved));
+            Assert.True(next.Ascend());
+            next.SelectInterval(next.Snapshot.Extent);
+            next.SelectInterval(moment.Interval);
+            await next.TimelineDetailReady;
+            await next.CellRecordsReady;
+            Assert.Contains(next.CellRecordRows, row => row.Key == opened.Key);
+            Assert.Equal(0, next.CellRecordAsked);
+        }
+
+        // The breadcrumb up past its rung keeps it for that rung; a way down of its own from above, over the same moment,
+        // lets it go, so the way back from E there asks for nothing.
+        workspace.ReturnTo(0);
+        workspace.SelectInterval(moment.Interval);
+        TimelineCellTests.DescendTo(workspace, client.GroupKey);
+        TimelineCellTests.DescendTo(workspace, client.Id.ToString());
+        await workspace.TimelineDetailReady;
+        Assert.True(workspace.ShowEvidence());
+        await workspace.EvidenceReady;
+        Assert.True(workspace.Ascend());
+        await workspace.TimelineDetailReady;
+        await workspace.CellRecordsReady;
+        Assert.Contains(workspace.CellRecordRows, row => row.Key == opened.Key);
+        Assert.Equal(0, workspace.CellRecordAsked);
+    });
 }

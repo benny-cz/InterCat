@@ -82,6 +82,7 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// <param name="CellOrigins">
 /// Each rung left with a timeline cell chosen, and that cell, which the way back and forward come to (§3.2).
 /// </param>
+/// <param name="RecordOrigin">Where the latest way down from a cell's listed record began, which the way back comes to (§3.2).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -109,7 +110,8 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<RelationshipOrigin>? RelationshipOrigins = null,
     string? ChosenHostEdge = null,
     bool DescribesRow = false,
-    IReadOnlyList<CellOrigin>? CellOrigins = null);
+    IReadOnlyList<CellOrigin>? CellOrigins = null,
+    CellRecordOrigin? RecordOrigin = null);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1679,7 +1681,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         scalesEachLane, reachedWith, chosenCell, ReadsWallClock, ChosenMemberRow?.Process, ListedChoice(), memberOrigin,
         selectedRelationship?.Key, chosenProcesses.Count > 0 ? [.. chosenProcesses] : null,
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
-        cellOrigins.Count > 0 ? [.. cellOrigins] : null);
+        cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1835,6 +1837,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         relationshipOrigins.AddRange(saved.RelationshipOrigins ?? []);
         cellOrigins.Clear();
         cellOrigins.AddRange(saved.CellOrigins ?? []);
+        cellRecordOrigin = saved.RecordOrigin;
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -5298,10 +5301,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         }
 
         // A way down from the rung where one from an aggregate's list began, or from above it, is a way of its own: the
-        // way back follows it, not the list's (§3.2), nor a relationship's kept for that rung or one below it.
+        // way back follows it, not the list's (§3.2), nor a relationship's kept for that rung or one below it, nor a
+        // cell's listed record's.
         if (memberOrigin is { } origin && from <= origin.Depth)
         {
             memberOrigin = null;
+        }
+
+        if (cellRecordOrigin is { } listed && from <= listed.Depth)
+        {
+            cellRecordOrigin = null;
         }
 
         ForgetWaysBackFrom(from);
@@ -5448,6 +5457,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         ResumeMemberOrigin();
         ResumeRelationshipOrigin();
         ResumeCellOrigin();
+        ResumeCellRecordOrigin();
         return true;
     }
 
@@ -5472,6 +5482,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             }
 
             ResumeCellOrigin();
+            if (ladder.Depth < from)
+            {
+                ResumeCellRecordOrigin();
+            }
         }
     }
 
@@ -5601,9 +5615,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         pendingRungKey = null;
         selectedCrumb = null;
 
-        // A chosen cell is a place in the rung's lanes, which the rung left takes with it, keeping the way back to it.
+        // A chosen cell is a place in the rung's lanes, which the rung left takes with it, keeping the way back to it; a
+        // record a way back came for is the rung left's too.
         KeepCellWayBack();
         chosenCell = null;
+        askedCellRecord = null;
 
         // The process a rung was reached with is its context, not a choice made there: an opened channel is described
         // over it until another is chosen.
@@ -7154,6 +7170,12 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             || ShowsProcessLanes && changed.ProcessId != selectedProcess?.Id))
         {
             chosenCell = null;
+        }
+
+        // A record a way back came for is a record of the interval it came back to.
+        if (changed.Interval != selectedInterval)
+        {
+            askedCellRecord = null;
         }
 
         selectedInterval = changed.Interval;

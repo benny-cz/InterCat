@@ -2582,6 +2582,19 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         }
     }, Avalonia.Threading.DispatcherPriority.Loaded);
 
+    /// <summary>
+    /// Gives the keyboard back to the record a cell lists that a way down began from, once the way back has listed it
+    /// again (§3.2): chosen there, so Down takes the next and Enter opens it.
+    /// </summary>
+    private void FocusAskedCellRecord() => Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+    {
+        if (!closed && DataContext is WorkspaceViewModel { AskedCellRecordRow: { } row } && CellRecordsList.Items.Contains(row))
+        {
+            CellRecordsList.SelectedItem = row;
+            _ = FocusRow(CellRecordsList, row);
+        }
+    }, Avalonia.Threading.DispatcherPriority.Loaded);
+
     private void OpenListedMember(object? sender, TappedEventArgs eventArgs)
     {
         if (DataContext is WorkspaceViewModel viewModel)
@@ -4751,6 +4764,11 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.RelationshipAsked))
         {
             FocusChosenRelationship();
+        }
+
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.CellRecordAsked))
+        {
+            FocusAskedCellRecord();
         }
 
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ReadsWallClock))
