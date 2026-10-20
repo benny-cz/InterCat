@@ -341,6 +341,32 @@ public sealed class GraphLabelLeaderTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: at the smallest window Other hosts is named before the aggregates round it, each of which is named too")]
+    public async Task OtherHostsIsNamedFirst()
+    {
+        // Named after every aggregate, as the keyboard reaches it, Other hosts found each slot round it taken by theirs.
+        using var session = new TemporarySession();
+        Publish(session.Store, BusyMachine());
+        var window = new MainWindow { Width = 1080, Height = 700 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: session.Path,
+                Overview: SessionOverviewProjector.Project(session.Store)), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            GraphView graph = window.GetControl<GraphView>("GraphSurface");
+            _ = Settle(window);
+            Assert.Contains(workspace.GraphDisplay.OtherHosts!.Key, graph.PlacedLabelKeys);
+            Assert.All(workspace.GraphDisplay.Nodes.Where(node => node.Kind != GraphNodeKind.Process),
+                node => Assert.Contains(node.Key, graph.PlacedLabelKeys));
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "§6.3: at the smallest window, where names must stand nearer each other, none stands against another - at the machine, a group or a process rung")]
     public async Task CrowdedNamesKeepAWordsSpace()
     {

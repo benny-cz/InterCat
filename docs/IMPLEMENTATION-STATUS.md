@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-20 · Plan revision: 644 · Branch: `main`
+Updated: 2026-10-20 · Plan revision: 645 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -97,6 +97,15 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 645 — Other hosts is named before the aggregates round it (§6.3):**
+  - A live pass over a heavy machine shaped as one is - system hubs, two browsers, an editor and its servers, a
+    database and its users, 255 processes - opened in 0.16 s and drew 72 nodes with no disc over another. At the
+    smallest window Other hosts went unnamed, the aggregates round it having taken each slot first; it is now named
+    before them, and every aggregate still is.
+  - Debug and Release each ran 2,629 tests with revision 473's 93 failures and 4 skips, and nothing else failed. All
+    three mutations were caught: Other hosts ranked with the aggregates again, processes named before aggregates,
+    and processes left unranked.
 
 - **Revision 644 — an edge passing beneath a name breaks round its letters' corners too (§6.3):**
   - At 1920 × 1080 an edge two pixels above "chrome.exe" showed through the halo by nearly half at a letter's corner,

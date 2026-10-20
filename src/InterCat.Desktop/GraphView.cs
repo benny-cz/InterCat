@@ -1569,7 +1569,7 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
     {
         placed.Clear();
         boxes.Clear();
-        for (int rank = 0; rank < 2 && budget > 0; rank++)
+        for (int rank = 0; rank < 3 && budget > 0; rank++)
         {
             for (int index = 0; index < order.Count && budget > 0; index++)
             {
@@ -1770,8 +1770,16 @@ public sealed class GraphView : Control, IHoverCardSource, ICustomHitTest
         return Math.Sqrt((dx * dx) + (dy * dy)) - radius;
     }
 
-    /// <summary>A name's rank among those drawn with nothing chosen: an aggregate's, then a process's.</summary>
-    private static int LabelRank(GraphDisplayNode node) => node.Kind != GraphNodeKind.Process ? 0 : 1;
+    /// <summary>
+    /// A name's rank among those drawn with nothing chosen: Other hosts', the hub every connection to another host meets
+    /// at, whose second line says how many processes reached one; then an aggregate's; then a process's.
+    /// </summary>
+    private static int LabelRank(GraphDisplayNode node) => node.Kind switch
+    {
+        GraphNodeKind.OtherHosts => 0,
+        GraphNodeKind.Process => 2,
+        _ => 1,
+    };
 
     /// <summary>A node's second label line, formatted once per node of the drawing shown.</summary>
     private string DetailOf(GraphDisplayNode node)
