@@ -1074,11 +1074,15 @@ public sealed partial class SessionTileIndexTests
         ], processes, relations, CancellationToken.None, stated: derivation with { Fingerprint = new byte[32] }));
         store.ReleaseSegmentReaders();
 
-        // A zoom still counts from the tiles; a brush and a group's lanes count from the segments, the same as their rows.
+        // A zoom still counts from the tiles; a group's byte lanes, a brush and a group's lanes count from the segments, the
+        // same as their rows.
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(Expected(rows, whole, 20), Drawn(SessionTimelineQuery.Detail(viewer, whole, 20, Kinds)));
         Assert.Equal(0, viewer.SegmentReaderCache.Entries);
         Bound bound = Bind(store);
+        ProcessInstanceId[] members = [.. bound.Processes.Instances.Select(instance => instance.Id)];
+        string[] owned = OwnerBytes(viewer, whole, 20, 20, members, EvidencePolicy.IncludeCorrelated);
+        Assert.Equal(SessionSegments.Names(published).Count, viewer.SegmentReaderCache.Entries);
         Assert.Equal(Counted(bound, whole, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(viewer, whole)));
         Assert.Equal(SessionSegments.Names(published).Count, viewer.SegmentReaderCache.Entries);
         var group = new TimelineFocus(null, [.. bound.Processes.Instances.Select(instance => instance.Id)]);
@@ -1094,6 +1098,7 @@ public sealed partial class SessionTileIndexTests
         SessionStore later = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(Counted(bound, whole, EvidencePolicy.IncludeCorrelated), Stated(SessionIntervalQuery.Count(later, whole)));
         Assert.Equal(lanes, Focused(SessionTimelineQuery.Focused(later, whole, 20, group)));
+        Assert.Equal(owned, OwnerBytes(later, whole, 20, 20, members, EvidencePolicy.IncludeCorrelated));
         Assert.Equal(0, later.SegmentReaderCache.Entries);
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(store, Committed).Outcome);
         store.ReleaseSegmentReaders();

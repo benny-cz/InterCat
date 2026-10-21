@@ -4,7 +4,8 @@ Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 i
 minor 4 in revision 701, minor 5 in revision 704 and minor 6 in revision 706; a group's lanes count from it since
 revision 458, a process's direction rows since revision 459, a channel's ends since revision 460, every query from a
 level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its byte sums since
-revision 704, and a brush's bytes by process and channel end from its byte tallies since revision 706. It holds
+revision 704, a brush's bytes by process and channel end from its byte tallies since revision 706, and a group's
+byte lanes from them since revision 707. It holds
 §12.1 S4's deeper levels, beneath the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
@@ -19,7 +20,8 @@ A zoom of a finished session counts each segment from these. It counts a tile wh
 column, and reads a tile's children, or a finest tile's records, only where a column boundary falls among them. A zoom's
 byte lanes add up a tile's byte sums the same way, and read its records' measures only where a boundary falls among
 them. A brush counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's
-tallies, and a brush ranked by bytes measures it so, adding such a tile's bytes from its byte tallies. An owner
+tallies, and a brush ranked by bytes measures it so, adding such a tile's bytes from its byte tallies, as a group's
+lanes under a byte ranking add up a tile's in each column its records fall in. An owner
 focus - a group's or one process's - counts its records, lanes and directions the same way per column, and so does a
 channel's focus its records and its two ends' lanes. Over a level spanning the segments, each counts that level's tiles
 first, whole where it can, and the segments only beneath the ranges of its finest tiles it could not. So none opens a
@@ -115,9 +117,11 @@ index it publishes keep their bytes; one keeping none is read as this says.
 Since minor 6, each tile, at every level, also keeps its timed records' measures tallied: for each owner key, channel key
 and accounting side its records state - 0 among the keys, for a record bound to no instance or to no channel - how many
 measured their bytes, how many declared a size they did not record, and the bytes they measured. A wider tile's byte
-tallies are its children's, summed. A section keeps them wherever it keeps its byte sums, whatever their size: where a
-tile's records each have an owner and a channel of their own, they hold an entry for nearly each, and cost a brush
-about what reading its records would.
+tallies are its children's, summed. A section keeping byte sums keeps byte tallies, and a tile keeps them as it keeps
+its tallies: where they take at most a third of the bytes of the records beneath it, their measures left out. Where a
+narrow tile's records each have an owner and a channel of their own, its byte tallies would hold an entry for nearly
+each record, and a query measures it from its children or its records, which cost it at most three times what those
+byte tallies would have.
 
 They hold what a brush ranked by bytes measures (`SessionByteRanking`): each record's bytes counted for the instance its
 owner binds to, where the evidence policy admits the binding's strength, which its owner key carries; and, where the
@@ -623,6 +627,34 @@ bytes, from a half to a fifth of the extent, took 3.0 ms the first time and 1.9 
 first time and 29 to 513 ms after reading their segments' rows (§12's budget is 250 ms); at 1,000,000 records in four
 segments, 53.9 ms the first time and 1.9 to 31.0 ms after, against 437 ms and 19 to 226 ms.
 
+### A group's byte lanes
+
+A group's process lanes under a byte ranking (§6.2) measure what reading every row measures
+(`SessionIntervalByteQuery.MeasureByOwner`): in each of the view's columns, every timed record's transport-observed bytes,
+for the machine row; and in each of the lanes' columns - the view's, or fewer and wider over the same interval past §6.2's
+cell budget - the bytes of each record whose owner binds to a process with a lane, where the evidence policy admits the
+binding, in that process's lane. They add up from the index under the conditions a brush ranked by bytes measures from
+it, and each segment from its top level down:
+
+- a tile none of whose records lies in the columns' interval is passed over;
+- a tile all of whose records fall in one column of the view's and one of the lanes', and that keeps byte tallies, adds
+  each entry to the machine row there, and an entry of a process with a lane whose binding's strength the policy admits
+  to that lane there;
+- any other tile gives way to its children, or, at the finest level, to its records, each added as its row would be.
+
+A record is placed by its tick, as a column reads a row's time, so a segment holding an untimed record or one before the
+capture's epoch is added from its tiles too; one whose section keeps no byte tallies, or whose readings go backwards, has
+its rows read. Over a level spanning the segments that keeps byte tallies, the lanes add its tiles first and the sections
+beneath only the ranges it leaves, each section by a worker of its own. That is exactly what reading every row measures.
+
+At 10,000,000 records of the scale gate's generator in forty segments, a reopened session's 40-process group in 2,000
+columns, its lanes in 500, over the whole extent and nineteen quarters of it, took 641 ms the first time and 68 ms at
+the median after, at most 142 ms, against 2,366 ms the first time and 114 ms at the median, at most 163 ms, reading its
+rows; in 256 columns, lanes and all, 141 ms the first time and 51 ms at the median, at most 109 ms, against 195, 73 and
+90 ms. The generator's records take turns among 200 connections record by record, so only tiles of thousands of records
+keep byte tallies, and the tile a column boundary falls in has its records read: a burstier capture's narrower tiles keep
+theirs.
+
 ### An owner focus
 
 An owner focus - a group's, or one process's - counts the records whose owner binds to one of its members, where the
@@ -719,9 +751,9 @@ across a boundary, and a focus counts the sections as before (§5).
   segments the interval meets. So does a focus on the whole session's records of one source direction, which no tally
   holds apart. A focus on its records of one mechanism alone is what the zoom's own counts hold of it, and since
   revision 461 is taken from them.
-- The bytes of an owner's or a channel's records apart in columns - a group's lanes or a process's direction rows under
-  a byte ranking, a channel's bytes - which the byte tallies hold by tile but no focus counts from at this version. Each
-  reads its rows from the segments its interval meets.
+- The bytes of a process's records by source direction - its direction rows under a byte ranking - which the byte
+  tallies do not hold apart, and a channel's bytes in columns, which no focus adds from them at this version. Each reads
+  its rows from the segments its interval meets.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.
 - Spanning tiles narrower than a focus's columns where they are many. The level's finest tiles are at most 2,048, so a

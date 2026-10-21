@@ -129,7 +129,8 @@ public sealed class ScaleGateTests
                     + "reported beside it. Every timeline query counts 2,000 columns, the most a view asks, which counts "
                     + "a column per device pixel of its plot. At a 40-process group the group's 40 process lanes are "
                     + "counted in the same pass, in the 500 columns the 20,000-cell bound allows (revision 210); at the "
-                    + "busiest connection, its two ends' lanes.",
+                    + "busiest connection, its two ends' lanes. Under a byte ranking the group's lanes measure their bytes in the "
+                    + "same columns.",
                 "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it "
                     + "includes counting the interval's records per process, edge and channel. Ranked by bytes, a brush "
                     + "measures the interval's bytes per process and channel end before the rungs' rows are ranked by them.",
@@ -260,6 +261,12 @@ public sealed class ScaleGateTests
         });
         result["processLanesCounted"] = lanes;
         result["processLaneColumnsAt2000Columns"] = laneColumns;
+
+        // L1 under a byte ranking: the same group's process lanes measure their bytes in the same columns, with every
+        // record's in the machine row's.
+        ProcessInstanceId[] members = [.. focus.OwnerProcesses];
+        result["timelineL1BytesAt2000Columns"] = Distribution(TimelineBudgetMs, viewports, viewport =>
+            Assert.Equal(members.Length, SessionIntervalByteQuery.MeasureByOwner(store, viewport, Columns, laneColumns, members).Lanes.Count));
 
         // L3: the busiest connection's two ends, each with what it sent and what it received apart, at the window's widest
         // request.

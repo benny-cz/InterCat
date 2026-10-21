@@ -214,16 +214,20 @@ public sealed partial class SessionTileIndexTests
 
         TimeRange whole = Extent(rows);
         TimeRange brush = new(whole.StartTicks + 3_001, whole.EndTicks - 2_999);
+        Bound bound = Bind(twin.Store);
+        ProcessInstanceId[] group = [.. bound.Processes.Instances.Take(3).Select(instance => instance.Id)];
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(LaneBytes(twin.Store, whole, 64), LaneBytes(reopened, whole, 64));
         Assert.Equal(IntervalBytes(twin.Store, whole, 64), IntervalBytes(reopened, whole, 64));
         Assert.Equal(Brushed(twin.Store, brush, EvidencePolicy.IncludeCorrelated), Brushed(reopened, brush, EvidencePolicy.IncludeCorrelated));
+        Assert.Equal(
+            OwnerBytes(twin.Store, brush, 64, 16, group, EvidencePolicy.IncludeCorrelated),
+            OwnerBytes(reopened, brush, 64, 16, group, EvidencePolicy.IncludeCorrelated));
         Assert.Equal(1, reopened.SegmentReaderCache.Entries);
 
         // Its records count as before: a zoom's counts open no segment, nor does a brush.
         reopened.ReleaseSegmentReaders();
         Assert.Equal(Expected(rows, whole, 64), Drawn(SessionTimelineQuery.Detail(reopened, whole, 64, Kinds)));
-        Bound bound = Bind(twin.Store);
         Assert.Equal(Counted(bound, whole, EvidencePolicy.DirectOnly), Stated(SessionIntervalQuery.Count(reopened, whole, EvidencePolicy.DirectOnly)));
         Assert.Equal(0, reopened.SegmentReaderCache.Entries);
         Assert.Null(SessionDerivationCache.For(reopened.Current!).TilesProblem);

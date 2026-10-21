@@ -326,9 +326,8 @@ public static class SessionIntervalByteQuery
         SessionManifestV1 manifest = lease.Manifest;
         SourceClockDescriptor clock = SessionSegments.SourceClock(store.Root, manifest)
             ?? throw new InvalidDataException("This generation names no source clock, so its intervals cannot be placed.");
-        FocusRows rows = FocusRows.Resolve(store, manifest, new GenerationSegments(store, manifest, clock),
-            new TimelineFocus(null, owners), policy, cancellationToken);
-        SegmentReaderV1[] segments = SessionNativeInterval.Segments(store, manifest, interval, clock);
+        var generation = new GenerationSegments(store, manifest, clock);
+        FocusRows rows = FocusRows.Resolve(store, manifest, generation, new TimelineFocus(null, owners), policy, cancellationToken);
         int[] laneOf = rows.LanesOf(owners);
         var machine = new TimelineColumns(interval, columns, tallyMechanisms: false);
         var lanes = new TimelineColumns(interval, laneColumns, tallyMechanisms: false);
@@ -336,14 +335,21 @@ public static class SessionIntervalByteQuery
         int laneCount = lanes.Counts.Count;
 
         // The machine row's columns and one slot per lane and column, lane by lane, each with one more for every row
-        // outside them.
-        var total = new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
-        SegmentPasses.Run(
-            segments,
-            () => new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1),
-            (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
-            total.Add,
+        // outside them. A finished session's lanes add up from its tile index's byte tallies, opening no segment
+        // (tile-index-v1 minor 6).
+        LaneByteTally? total = PersistedOwners(store, manifest, generation, rows, laneOf, owners.Count, machine, lanes, policy,
             cancellationToken);
+        if (total is null)
+        {
+            total = new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1);
+            SegmentPasses.Run(
+                SessionNativeInterval.Segments(store, manifest, interval, clock),
+                () => new LaneByteTally(machineCount + 1, (owners.Count * laneCount) + 1),
+                (segment, tally) => MeasureOwners(segment, machine, lanes, rows, laneOf, owners.Count, tally, cancellationToken),
+                total.Add,
+                cancellationToken);
+        }
+
         return new(manifest.SessionId, manifest.Generation, interval,
             new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval, IntervalByteScope.Whole,
                 Array.AsReadOnly([.. Enumerable.Range(0, machineCount).Select(total.Machine.Of)])),
@@ -351,6 +357,122 @@ public static class SessionIntervalByteQuery
                 new SessionIntervalByteMeasures(manifest.SessionId, manifest.Generation, interval,
                     new IntervalByteScope { Owner = owner },
                     Array.AsReadOnly([.. Enumerable.Range(0, laneCount).Select(column => total.Lanes.Of((lane * laneCount) + column))])))]));
+    }
+
+    /// <summary>
+    /// A group's lanes from the tile index the generation's checkpoint published (`contracts/tile-index-v1.md` minor 6): a
+    /// tile's byte tallies whole wherever its records fall in one column of the machine row's and one of the lanes', and its
+    /// records only where a boundary of either falls among them. Where a level spans the segments and keeps byte tallies, its
+    /// tiles are added first, and the sections only beneath the ranges it leaves; each section by a worker of its own. A
+    /// segment whose readings go backwards, or whose section keeps no byte tallies, has its rows measured; no other segment
+    /// is opened. Null when the generation names no tile index of minor 6, or one without a section of each of its
+    /// segments, or one whose bindings are not this derivation's; and when a part of it could not be read, which is said
+    /// once, and the index is not read again for the generation. The lanes are then measured from the segments, and are the
+    /// same.
+    /// </summary>
+    private static LaneByteTally? PersistedOwners(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        GenerationSegments generation,
+        FocusRows rows,
+        int[] laneOf,
+        int laneTotal,
+        TimelineColumns machine,
+        TimelineColumns lanes,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { Minor: >= SessionTileIndex.ByteTalliedMinor } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes)
+            || !tiles.Derivation.Matches(rows.Processes ?? generation.Processes(cancellationToken), generation.Relations(cancellationToken)))
+        {
+            return null;
+        }
+
+        TimeRange interval = machine.Interval;
+        bool[] admitted = SessionTileIndex.AdmittedStrengths(policy);
+        int machineSlots = machine.Counts.Count + 1;
+        int laneSlots = (laneTotal * lanes.Counts.Count) + 1;
+        var total = new LaneByteTally(machineSlots, laneSlots);
+        try
+        {
+            // Where a level spans the segments and keeps byte tallies, its tiles add up first, and the sections beneath only
+            // the ranges of its finest tiles it leaves.
+            List<(TileSection Section, List<TimeRange> Ranges)>? beneath = null;
+            using (TileReading spanning = tiles.Read(store.Root))
+            {
+                if (tiles.SpansExactly(segments) && spanning.Spanning().KeepsByteTallies)
+                {
+                    beneath = spanning.Beneath(spanning.SpanMeasureGroup(Into(total), cancellationToken));
+                }
+            }
+
+            if (beneath is not null)
+            {
+                SegmentPasses.Run(
+                    beneath,
+                    () => (Reading: tiles.Read(store.Root), Tally: new LaneByteTally(machineSlots, laneSlots)),
+                    (met, worker) =>
+                    {
+                        GroupByteLanes into = Into(worker.Tally);
+                        foreach (TimeRange range in met.Ranges)
+                        {
+                            // A level spanning the segments tallies their bytes only where every section beneath it does.
+                            if (!worker.Reading.MeasureGroup(met.Section, range, into, cancellationToken))
+                            {
+                                throw SessionTileIndex.Invalid(
+                                    $"the level spanning its segments tallies bytes {met.Section.Entry.Describe} does not keep.");
+                            }
+                        }
+                    },
+                    worker =>
+                    {
+                        worker.Reading.Dispose();
+                        total.Add(worker.Tally);
+                    },
+                    cancellationToken);
+                return total;
+            }
+
+            StoreDependency[] met;
+            using (TileReading headers = tiles.Read(store.Root))
+            {
+                met = [.. segments.Where(segment => headers.Section(segment.Name) is { First: { } first, Last: { } last }
+                    && last >= interval.StartTicks && first < interval.EndTicks)];
+            }
+
+            SegmentPasses.Run(
+                met,
+                () => (Reading: tiles.Read(store.Root), Tally: new LaneByteTally(machineSlots, laneSlots)),
+                (segment, worker) =>
+                {
+                    if (!worker.Reading.MeasureGroup(worker.Reading.Section(segment.Name), interval, Into(worker.Tally), cancellationToken))
+                    {
+                        MeasureOwners(SessionSegments.Open(store, manifest, segment.Name), machine, lanes, rows, laneOf, laneTotal,
+                            worker.Tally, cancellationToken);
+                    }
+                },
+                worker =>
+                {
+                    worker.Reading.Dispose();
+                    total.Add(worker.Tally);
+                },
+                cancellationToken);
+            return total;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+
+        GroupByteLanes Into(LaneByteTally tally) => new(machine, lanes, laneOf, admitted, tally.Machine, tally.Lanes);
     }
 
     /// <summary>One worker's bytes: the machine row's columns, and every lane's.</summary>

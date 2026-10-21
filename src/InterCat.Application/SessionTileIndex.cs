@@ -3236,6 +3236,62 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
+    /// Measures the transport-observed bytes of <paramref name="section"/>'s timed records inside <paramref name="range"/>,
+    /// a part of <paramref name="lanes"/>' interval, into a group's byte lanes, as the lanes measure their rows
+    /// (<see cref="SessionIntervalByteQuery.MeasureByOwner"/>): each record's in the machine row's column holding its
+    /// reading, and each whose owner binds to an instance with a lane, where the policy admits the binding, in that lane's
+    /// column too. A tile adds its byte tallies whole wherever its records fall in one column of the machine row's and one
+    /// of the lanes', and a finest tile's records are read where a boundary of either falls among them. The caller has
+    /// checked that the file's bindings are its own. False, measuring nothing, for a segment whose readings go backwards
+    /// and meet the range, or whose section keeps no byte tallies: its rows are read instead.
+    /// </summary>
+    public bool MeasureGroup(TileSection section, TimeRange range, GroupByteLanes lanes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(lanes);
+        if (section.First is not { } first || section.Last is not { } last
+            || last < range.StartTicks || first >= range.EndTicks)
+        {
+            return true;
+        }
+
+        if (!section.Ordered || !section.KeepsByteTallies)
+        {
+            return false;
+        }
+
+        (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, range, null);
+        int top = section.Levels - 1;
+        RangeMeasureGroup(section, top, 0, section.TileCount(top), lanes, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Measures the spanning section's tiles inside <paramref name="lanes"/>' interval into them, as
+    /// <see cref="MeasureGroup"/> measures a segment's: a tile whole from its byte tallies wherever its records fall in one
+    /// column of the machine row's and one of the lanes', and its children where a boundary falls among them. Returns the
+    /// ranges of its finest tiles it could not measure whole, which the sections beneath them measure (<see cref="Beneath"/>).
+    /// The caller has checked that the section keeps byte tallies.
+    /// </summary>
+    public TileRemainders SpanMeasureGroup(GroupByteLanes lanes, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(lanes);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        TimeRange interval = lanes.Machine.Interval;
+        if (spanning.Last < interval.StartTicks || spanning.First >= interval.EndTicks)
+        {
+            return left;
+        }
+
+        (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, interval, left);
+        int top = spanning.Levels - 1;
+        RangeMeasureGroup(spanning, top, 0, spanning.TileCount(top), lanes, cancellationToken);
+        remainders = null;
+        return left;
+    }
+
+    /// <summary>
     /// Counts the records of <paramref name="section"/>'s segment that an owner focus holds into its columns,
     /// <paramref name="focused"/>, each member's into its lane of <paramref name="lanes"/>, and each by its direction into
     /// its row of <paramref name="directions"/>, as a focus counts its rows (<see cref="FocusRows"/>): every timed record
@@ -4056,6 +4112,133 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
+    /// Measures the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a group's byte
+    /// lanes: each whole from its byte tallies that falls in one column of the machine row's and of the lanes', the children
+    /// of each that does not or keeps none, and the records of a finest one - or, of the spanning section's, its range, left
+    /// to the sections beneath it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void RangeMeasureGroup(
+        TileSection section, int level, int from, int end, GroupByteLanes lanes, CancellationToken cancellationToken)
+    {
+        TimelineColumns machine = lanes.Machine;
+        TimeRange interval = machine.Interval;
+        TimeRange range = within;
+        TileBlock? block = null;
+        int blockIndex = -1;
+        for (int position = from; position < end; position++)
+        {
+            if (position / SessionTileIndex.TilesPerBlock != blockIndex)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                blockIndex = position / SessionTileIndex.TilesPerBlock;
+                block = file.Block(stream, section, level, blockIndex);
+            }
+
+            int tile = position % SessionTileIndex.TilesPerBlock;
+            long low = block!.Lows[tile];
+            long high = block.Highs[tile];
+            if (low >= range.EndTicks)
+            {
+                return;
+            }
+
+            if (high < range.StartTicks)
+            {
+                continue;
+            }
+
+            // A tile lying in one column of the machine row's and one of the lanes' adds its byte tallies there whole, or
+            // where it keeps none its children's or its records' bytes, without looking up each one's column.
+            int column = -1;
+            int laneColumn = -1;
+            if (low >= range.StartTicks && high < range.EndTicks)
+            {
+                if (lastColumn < 0 || low < lastStart || low >= lastEnd)
+                {
+                    lastColumn = machine.ColumnOf(low)!.Value;
+                    TimeRange bounds = TimelineColumns.IntervalOf(interval, machine.Counts.Count, lastColumn);
+                    (lastStart, lastEnd) = (bounds.StartTicks, bounds.EndTicks);
+                }
+
+                bool whole = high < lastEnd;
+                if (whole && !lanes.SharesColumns)
+                {
+                    if (lastLaneColumn < 0 || low < lastLaneStart || low >= lastLaneEnd)
+                    {
+                        lastLaneColumn = lanes.Lanes.ColumnOf(low)!.Value;
+                        TimeRange bounds = TimelineColumns.IntervalOf(interval, lanes.Lanes.Counts.Count, lastLaneColumn);
+                        (lastLaneStart, lastLaneEnd) = (bounds.StartTicks, bounds.EndTicks);
+                    }
+
+                    whole = high < lastLaneEnd;
+                }
+
+                if (whole)
+                {
+                    (column, laneColumn) = (lastColumn, lanes.SharesColumns ? lastColumn : lastLaneColumn);
+                    if (AddGroupByteTallies(section, level, block, position, lanes, column, laneColumn))
+                    {
+                        remainders?.Counted();
+                        continue;
+                    }
+                }
+            }
+
+            if (level > 0)
+            {
+                RangeMeasureGroup(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], lanes,
+                    cancellationToken);
+                continue;
+            }
+
+            if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(range.StartTicks, low), Math.Min(range.EndTicks, high + 1));
+                continue;
+            }
+
+            var records = new RecordCursor(this, section, block, position);
+            while (records.Next(out long reading, out _, out _, out _, out uint owner, out _))
+            {
+                if (records.Side == 0 || (column < 0 && !range.Contains(reading)))
+                {
+                    continue;
+                }
+
+                int at = column >= 0 ? column : machine.ColumnOf(reading)!.Value;
+                int laneAt = column >= 0 ? laneColumn : lanes.SharesColumns ? at : lanes.Lanes.ColumnOf(reading)!.Value;
+                lanes.Add(owner, records.Side, at, laneAt, records.Value);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds one tile's records' bytes to a group's byte lanes whole, in one column of the machine row's and one of the
+    /// lanes', from its byte tallies. False, adding nothing, for a tile that keeps none, whose children or records are
+    /// measured instead.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private bool AddGroupByteTallies(
+        TileSection section, int level, TileBlock block, int position, GroupByteLanes lanes, int column, int laneColumn)
+    {
+        if (!ReadByteTallies(section, level, block, position, RecordsIn(section, block, position)))
+        {
+            TilesUntallied++;
+            return false;
+        }
+
+        TilesOfTalliesRead++;
+        for (int entry = 0; entry < byteEntries; entry++)
+        {
+            lanes.Add(byteOwners[entry], byteSides[entry], column, laneColumn, byteTotals[entry], byteMeasured[entry],
+                byteUnmeasured[entry]);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Adds one tile's records to a brush's tally whole: all of them observed, each bound owner's the policy admits to its
     /// instance by mechanism, and each drawn channel's to it. False, adding nothing, for a tile that keeps no owner or no
     /// channel tallies, whose children or records are counted instead.
@@ -4834,6 +5017,85 @@ internal sealed class ByteLanes
     /// <summary>Each of <paramref name="section"/>'s mechanism slots' lane, -1 for one no lane sums.</summary>
     public int[] LanesOf(TileSection section) =>
         [.. section.Mechanisms.Select(mechanism => (int)mechanism < laneOfCode.Length ? laneOfCode[(int)mechanism] : -1)];
+}
+
+/// <summary>
+/// A group's byte lanes while they are added from a tile index (`contracts/tile-index-v1.md` minor 6): every record's
+/// bytes in the machine row's columns, and the bytes of each whose owner binds to an instance with a lane, under a strength
+/// the policy admits, in that lane's columns, which are the machine row's or fewer and wider over the same interval.
+/// </summary>
+internal sealed class GroupByteLanes
+{
+    private readonly int[] laneOf;
+    private readonly bool[] admitted;
+    private readonly int laneColumns;
+
+    /// <param name="machine">The machine row's columns.</param>
+    /// <param name="lanes">The lanes' columns, over the same interval.</param>
+    /// <param name="laneOf">Each instance's lane, -1 for one with none.</param>
+    /// <param name="admitted">Whether the policy admits an owner bound with each strength an owner key can hold.</param>
+    /// <param name="machineBytes">A slot for each machine column, then one nothing is added to.</param>
+    /// <param name="laneBytes">A slot for each lane's every column, lane by lane, then one nothing is added to.</param>
+    public GroupByteLanes(
+        TimelineColumns machine,
+        TimelineColumns lanes,
+        int[] laneOf,
+        bool[] admitted,
+        TransportByteTally machineBytes,
+        TransportByteTally laneBytes)
+    {
+        ArgumentNullException.ThrowIfNull(machine);
+        ArgumentNullException.ThrowIfNull(lanes);
+        ArgumentNullException.ThrowIfNull(laneOf);
+        ArgumentNullException.ThrowIfNull(admitted);
+        ArgumentNullException.ThrowIfNull(machineBytes);
+        ArgumentNullException.ThrowIfNull(laneBytes);
+        Machine = machine;
+        Lanes = lanes;
+        this.laneOf = laneOf;
+        this.admitted = admitted;
+        laneColumns = lanes.Counts.Count;
+        SharesColumns = laneColumns == machine.Counts.Count;
+        MachineBytes = machineBytes;
+        LaneBytes = laneBytes;
+    }
+
+    public TimelineColumns Machine { get; }
+
+    public TimelineColumns Lanes { get; }
+
+    /// <summary>Whether the lanes' columns are the machine row's.</summary>
+    public bool SharesColumns { get; }
+
+    public TransportByteTally MachineBytes { get; }
+
+    public TransportByteTally LaneBytes { get; }
+
+    /// <summary>Adds one record's measure: the bytes it measured, or -1 for a size it declared and did not record.</summary>
+    public void Add(uint owner, int side, int column, int laneColumn, long value)
+    {
+        if (value < 0)
+        {
+            Add(owner, side, column, laneColumn, 0, 0, 1);
+        }
+        else
+        {
+            Add(owner, side, column, laneColumn, value, 1, 0);
+        }
+    }
+
+    /// <summary>
+    /// Adds what the records of one owner key and accounting side measured in one machine column and one lane column: their
+    /// bytes, how many measured them and how many declared a size they did not record.
+    /// </summary>
+    public void Add(uint owner, int side, int column, int laneColumn, long total, long measured, long unmeasured)
+    {
+        MachineBytes.Add(column, side, total, measured, unmeasured);
+        if (owner != 0 && admitted[owner & 7] && laneOf[(int)(owner >> 3) - 1] is >= 0 and int lane)
+        {
+            LaneBytes.Add((lane * laneColumns) + laneColumn, side, total, measured, unmeasured);
+        }
+    }
 }
 
 /// <summary>

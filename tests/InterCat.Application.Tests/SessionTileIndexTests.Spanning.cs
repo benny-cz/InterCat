@@ -274,6 +274,7 @@ public sealed partial class SessionTileIndexTests
     [InlineData(4)]
     [InlineData(5)]
     [InlineData(6)]
+    [InlineData(7)]
     public void ADamagedSpanningSectionIsRefused(int damage)
     {
         // Each case's session differs from the others', so no two share a manifest, nor what its derivations keep.
@@ -304,7 +305,7 @@ public sealed partial class SessionTileIndexTests
 
         // Opening it checks only its directory; the query reading the damaged part refuses the index and counts from the
         // segments' rows what it would have counted: a brush, a zoom's byte lanes, which alone read the byte sums, or a
-        // brush's bytes, which alone read the byte tallies.
+        // brush's bytes or a group's byte lanes, which alone read the byte tallies.
         TimeRange whole = Extent(rows);
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Bound bound = Bind(session.Store);
@@ -316,8 +317,19 @@ public sealed partial class SessionTileIndexTests
         {
             using var twin = new TemporarySession();
             _ = Publish(twin.Store, rows, rowsPerSegment: 600);
-            Assert.Equal(LaneBytes(twin.Store, whole, 3), LaneBytes(reopened, whole, 3));
-            Assert.Equal(Brushed(twin.Store, whole, EvidencePolicy.DirectOnly), Brushed(reopened, whole, EvidencePolicy.DirectOnly));
+            if (damage < 7)
+            {
+                Assert.Equal(LaneBytes(twin.Store, whole, 3), LaneBytes(reopened, whole, 3));
+                Assert.Equal(Brushed(twin.Store, whole, EvidencePolicy.DirectOnly), Brushed(reopened, whole, EvidencePolicy.DirectOnly));
+            }
+            else
+            {
+                ProcessInstanceId[] group = [.. bound.Processes.Instances.Take(2).Select(instance => instance.Id)];
+                Assert.Equal(
+                    OwnerBytes(twin.Store, whole, 1, 1, group, EvidencePolicy.DirectOnly),
+                    OwnerBytes(reopened, whole, 1, 1, group, EvidencePolicy.DirectOnly));
+            }
+
             twin.Store.ReleaseSegmentReaders();
         }
 
@@ -488,6 +500,8 @@ public sealed partial class SessionTileIndexTests
         string path = PathOf(session);
         (TransportBytes[] lanes, TransportBytes[] interval) = (LaneBytes(store, whole, 70), IntervalBytes(store, whole, 70));
         string[] brushed = Brushed(store, half, EvidencePolicy.IncludeCorrelated);
+        ProcessInstanceId[] group = [.. Bind(store).Processes.Instances.Take(2).Select(instance => instance.Id)];
+        string[] owned = OwnerBytes(store, half, 70, 35, group, EvidencePolicy.IncludeCorrelated);
 
         // The same file as revision 460, 701 or 704 wrote it: no byte tallies, before minor 5 no byte sums or measures, and
         // at minor 3 a directory ending after the segments' sections.
@@ -502,6 +516,8 @@ public sealed partial class SessionTileIndexTests
         Assert.Equal(lanes, LaneBytes(viewer, whole, 70));
         Assert.Equal(interval, IntervalBytes(viewer, whole, 70));
         Assert.Equal(minor >= 5, viewer.SegmentReaderCache.Entries == 0);
+        Assert.Equal(owned, OwnerBytes(viewer, half, 70, 35, group, EvidencePolicy.IncludeCorrelated));
+        Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
         Assert.Equal(brushed, Brushed(viewer, half, EvidencePolicy.IncludeCorrelated));
         Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
         Assert.Null(SessionDerivationCache.For(viewer.Current!).TilesProblem);
