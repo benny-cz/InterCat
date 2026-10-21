@@ -2305,6 +2305,12 @@ public sealed partial class SessionStore
     }
 
     /// <summary>
+    /// How many times a generation is acquired while a writer's publications change the pointer beneath the reader, before
+    /// what kept it from verifying is said.
+    /// </summary>
+    private const int MaximumAcquisitions = 3;
+
+    /// <summary>
     /// The columns a cached reader keeps when the cache trims: session time and mechanism, which every projection's time
     /// tiles read (S4). Every other column is read, and checked, again when a query next asks for it.
     /// </summary>
@@ -2321,25 +2327,48 @@ public sealed partial class SessionStore
         SessionManifestV1? verified = null,
         bool hashContents = true)
     {
-        Unverified? currentProblem = TryAcquire(
-            directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, measurements, verified, hashContents);
-        if (currentProblem is null)
+        for (int attempt = 1; ; attempt++)
         {
-            return (manifest, false, null);
-        }
+            Unverified? currentProblem = TryAcquire(
+                directory, SessionPointerV1.FileName, out SessionManifestV1? manifest, out SessionPointerV1? pointed, measurements,
+                verified, hashContents);
+            if (currentProblem is null)
+            {
+                return (manifest, false, null);
+            }
 
-        Unverified? previousProblem = TryAcquire(
-            directory, SessionPointerV1.PreviousFileName, out manifest, measurements, hashContents: hashContents);
-        if (previousProblem is null && manifest is not null)
-        {
-            return (manifest, true, currentProblem.Reason);
-        }
+            // A writer publishing while the pointer was read - the session's first generation, which a reader opening it
+            // empty can meet, or one replacing the generation it named - leaves it reading otherwise, or, where a platform
+            // refuses an open while a file is replaced, unreadable for an instant: the generation it names is acquired again
+            // before the one kept to fall back to is.
+            if (attempt < MaximumAcquisitions)
+            {
+                SessionPointerV1? now = Read<SessionPointerV1>(directory, SessionPointerV1.FileName);
+                if (now != pointed)
+                {
+                    continue;
+                }
 
-        // A session whose pointer names nothing is empty; one whose pointer names something that does
-        // not verify, with no usable last-known-good, is refused rather than silently reset.
-        return Exists(directory, SessionPointerV1.FileName) || Exists(directory, SessionPointerV1.PreviousFileName)
-            ? throw new InvalidDataException(NoGenerationVerifies(directory, currentProblem, previousProblem))
-            : (null, false, null);
+                if (now is null && Exists(directory, SessionPointerV1.FileName))
+                {
+                    Thread.Sleep(5 * attempt);
+                    continue;
+                }
+            }
+
+            Unverified? previousProblem = TryAcquire(
+                directory, SessionPointerV1.PreviousFileName, out manifest, measurements, hashContents: hashContents);
+            if (previousProblem is null && manifest is not null)
+            {
+                return (manifest, true, currentProblem.Reason);
+            }
+
+            // A session whose pointer names nothing is empty; one whose pointer names something that does
+            // not verify, with no usable last-known-good, is refused rather than silently reset.
+            return Exists(directory, SessionPointerV1.FileName) || Exists(directory, SessionPointerV1.PreviousFileName)
+                ? throw new InvalidDataException(NoGenerationVerifies(directory, currentProblem, previousProblem))
+                : (null, false, null);
+        }
     }
 
     /// <summary>
@@ -2369,10 +2398,24 @@ public sealed partial class SessionStore
         out SessionManifestV1? manifest,
         DependencyMeasurements? measurements,
         SessionManifestV1? verified = null,
+        bool hashContents = true) =>
+        TryAcquire(directory, pointerName, out manifest, out _, measurements, verified, hashContents);
+
+    /// <summary>
+    /// Acquires the generation the pointer <paramref name="pointerName"/> names, saying what kept it from verifying; and
+    /// the pointer as it was read, null when it could not be.
+    /// </summary>
+    private static Unverified? TryAcquire(
+        IOwnedDirectory directory,
+        string pointerName,
+        out SessionManifestV1? manifest,
+        out SessionPointerV1? pointer,
+        DependencyMeasurements? measurements,
+        SessionManifestV1? verified = null,
         bool hashContents = true)
     {
         manifest = null;
-        SessionPointerV1? pointer = Read<SessionPointerV1>(directory, pointerName);
+        pointer = Read<SessionPointerV1>(directory, pointerName);
         if (pointer is null)
         {
             return new(pointerName, $"'{pointerName}' is missing or unreadable");

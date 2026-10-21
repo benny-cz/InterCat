@@ -935,6 +935,7 @@
         "I15: a published segment from before minor 1 is read whole and checked by its trailer",
         "I15: a published segment opens by its header, directories and time column, and reads a column when first asked",
         "I15: a published segment whose length changed since its generation recorded it is not read",
+        "I15: a reader that meets the pointer while a writer publishes acquires the generation it names once it reads whole, and one that stays unreadable is refused",
         "I15: a release nothing can rebuild is carried by every later generation, and a manifest that carries none is as it was",
         "I15: a release whose boundary falls inside the first batch releases nothing",
         "I15: a reopened session acquires the generation its pointer names",

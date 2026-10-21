@@ -609,6 +609,44 @@ public sealed class SessionStoreTests
         Assert.Contains("segment-0001.icats", refused.Message, StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "I15: a reader that meets the pointer while a writer publishes acquires the generation it names once it reads whole, and one that stays unreadable is refused")]
+    public void APointerMetWhileItIsPublishedIsReadAgain()
+    {
+        using var session = new TemporarySession();
+        _ = Publish(session.Store, ("segment-0001.icats", "first"));
+
+        // The pointer unreadable the first time it is opened, as a publication replacing it can leave it for an instant:
+        // read again, it names the generation, which is acquired.
+        var meeting = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(session.Path), failures: 1);
+        SessionStore opened = SessionStore.OpenExisting(meeting);
+        Assert.Equal(1, opened.Current!.Generation);
+        Assert.False(opened.Recovery.RolledBackToLastKnownGood);
+        Assert.Equal(3, meeting.PointerOpens);
+
+        // A second generation, and a pointer that reads unreadable twice, once more as it is read again: the second
+        // acquisition takes it, rather than the generation kept to fall back to.
+        _ = Publish(session.Store, ("segment-0002.icats", "second"));
+        var twice = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(session.Path), failures: 2);
+        SessionStore viewed = SessionStore.OpenForViewing(twice);
+        Assert.Equal((2L, false), (viewed.Current!.Generation, viewed.Recovery.RolledBackToLastKnownGood));
+        Assert.Equal(3, twice.PointerOpens);
+
+        // A pointer that stays unreadable is what it is after three acquisitions: the generation kept is fallen back to.
+        var stays = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(session.Path), failures: int.MaxValue);
+        SessionStore fallen = SessionStore.OpenExisting(stays);
+        Assert.Equal((1L, true), (fallen.Current!.Generation, fallen.Recovery.RolledBackToLastKnownGood));
+        Assert.Equal(5, stays.PointerOpens);
+
+        using var alone = new TemporarySession();
+        _ = Publish(alone.Store, ("segment-0001.icats", "first"));
+        var unreadable = new UnreadablePointerDirectory(LocalOwnedDirectory.Open(alone.Path), failures: int.MaxValue);
+        Assert.Equal(
+            $"This session cannot be read, because no generation of it verifies: '{SessionPointerV1.FileName}' is missing or "
+            + "unreadable. No earlier generation is kept to fall back to. Its files are left as they are.",
+            Assert.Throws<InvalidDataException>(() => SessionStore.OpenExisting(unreadable)).Message);
+        Assert.Equal(5, unreadable.PointerOpens);
+    }
+
     [Fact(DisplayName = "I15: a session no generation of which verifies is refused naming what is wrong once, and is left as it is")]
     public void ASessionNoGenerationOfWhichVerifiesSaysWhyOnce()
     {
@@ -1122,6 +1160,34 @@ public sealed class SessionStoreTests
         public FileStream OpenOwnedFile(string name, FileMode mode, FileAccess access, FileShare share, FileOptions options)
         {
             Opened.Add(name);
+            return inner.OpenOwnedFile(name, mode, access, share, options);
+        }
+
+        public void ReplaceOwnedFile(string sourceName, string destinationName) =>
+            inner.ReplaceOwnedFile(sourceName, destinationName);
+
+        public bool RemoveOwnedFile(string name) => inner.RemoveOwnedFile(name);
+
+        public IReadOnlyDictionary<string, OwnedFileFacts>? DescribeOwnedFiles() => inner.DescribeOwnedFiles();
+    }
+
+    /// <summary>
+    /// Fails the first <c>failures</c> opens of the current pointer, as a reader can meet it while a publication replaces it,
+    /// counting every open of it; everything else is the real directory's.
+    /// </summary>
+    private sealed class UnreadablePointerDirectory(IOwnedDirectory inner, int failures) : IOwnedDirectory
+    {
+        public int PointerOpens { get; private set; }
+
+        public string Path => inner.Path;
+
+        public FileStream OpenOwnedFile(string name, FileMode mode, FileAccess access, FileShare share, FileOptions options)
+        {
+            if (name == SessionPointerV1.FileName && ++PointerOpens <= failures)
+            {
+                throw new IOException("Simulated: the pointer is being replaced.");
+            }
+
             return inner.OpenOwnedFile(name, mode, access, share, options);
         }
 
