@@ -20,9 +20,6 @@ internal static class PortsCommand
 
     private const int DefaultLimit = 50;
 
-    /// <summary>The most programs a listener's cell names of those whose processes connected to it; past it, they are counted.</summary>
-    private const int ProgramsNamed = 3;
-
     public static Task<InterCatExitCode> RunAsync(CommandLine command, CancellationToken cancellationToken) =>
         Task.FromResult(Run(command, cancellationToken));
 
@@ -203,32 +200,12 @@ internal static class PortsCommand
     }
 
     /// <summary>
-    /// Who connected to a listener, in a cell, each with the connections it made there: the processes of the capture - one
-    /// named, several counted with the programs they ran - other hosts, one by its address, and processes on this machine
-    /// the capture did not observe: "34 from 34 processes of chrome.exe", "13 from 13 processes of svchost.exe and
-    /// services.exe · 1 from 10.0.0.6".
+    /// Who connected to a listener, in a cell, each with the connections it made there (<see cref="ListenerText.From"/>):
+    /// "34 from 34 processes of chrome.exe", "13 from 13 processes of svchost.exe and services.exe · 1 from 10.0.0.6".
     /// </summary>
-    private static string From(PortListener listener, Names names) => string.Join(" · ", new[]
-    {
-        listener.Connectors.Count switch
-        {
-            0 => null,
-            1 => ConsoleUi.Count(listener.FromProcesses) + " from " + names.Named(listener.Connectors[0].Process)
-                + (listener.Connectors[0].Process.Id == listener.Process.Id ? " (itself)" : string.Empty),
-            var count => ConsoleUi.Count(listener.FromProcesses) + " from "
-                + string.Create(CultureInfo.CurrentCulture, $"{count:N0} processes of ")
-                + names.Programs(listener.Connectors),
-        },
-        listener.Hosts.Count switch
-        {
-            0 => null,
-            1 => ConsoleUi.Count(listener.FromHosts) + " from " + listener.Hosts[0].Address,
-            var count => ConsoleUi.Count(listener.FromHosts) + " from " + CountText.Of(count, "host"),
-        },
-        listener.FromUnseenLocalEnds > 0
-            ? ConsoleUi.Count(listener.FromUnseenLocalEnds) + " from unobserved processes on this machine"
-            : null,
-    }.OfType<string>());
+    private static string From(PortListener listener, Names names) => string.Join(" · ", ListenerText
+        .From(listener, names.Named, names.Program)
+        .Select(part => ConsoleUi.Count(part.Connections) + " from " + part.Who));
 
     private static void PrintHelp()
     {
@@ -253,21 +230,10 @@ internal static class PortsCommand
             ? CollectorText.Named(node)
             : string.Create(CultureInfo.InvariantCulture, $"PID {process.ProcessId}");
 
-        /// <summary>
-        /// The programs the processes that connected ran, the most connections first, then by name: named where there are
-        /// few - "chrome.exe", "svchost.exe and services.exe" - else counted, "7 programs".
-        /// </summary>
-        public string Programs(IReadOnlyList<PortConnector> connectors)
-        {
-            string[] named = [.. connectors
-                .GroupBy(connector => nodes.TryGetValue(connector.Process.Id, out ProcessNode? node)
-                    ? groups[node.GroupKey].Name
-                    : Named(connector.Process), StringComparer.Ordinal)
-                .OrderByDescending(program => program.Sum(connector => connector.Connections))
-                .ThenBy(program => program.Key, StringComparer.OrdinalIgnoreCase)
-                .Select(program => program.Key)];
-            return named.Length <= ProgramsNamed ? WorkspaceLayout.Series(named) : CountText.Of(named.Length, "program");
-        }
+        /// <summary>The program a process ran, as the overview groups it, or the process itself where it holds none.</summary>
+        public string Program(ProcessInstance process) => nodes.TryGetValue(process.Id, out ProcessNode? node)
+            ? groups[node.GroupKey].Name
+            : Named(process);
 
         /// <summary>A process as the JSON names it: its PID, program and instance.</summary>
         public object Described(ProcessInstance process) => new

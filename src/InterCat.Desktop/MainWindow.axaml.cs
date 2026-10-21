@@ -661,6 +661,14 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     break;
                 }
 
+                if (ListenersList.IsKeyboardFocusWithin)
+                {
+                    // Enter on one of the listening ports chooses the process that accepted its connections; the keyboard
+                    // goes to what its inspector lists of who connected.
+                    e.Handled = ChooseSelectedListener(viewModel);
+                    break;
+                }
+
                 if (CellRecordsList.IsKeyboardFocusWithin)
                 {
                     // Enter on a chosen cell's record opens it in E, selected there (§6.4), rather than descending.
@@ -750,8 +758,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                 break;
             case Key.Escape:
                 // A drag in progress is cancelled where it began (§6.7); with none, Esc comes back along the latest hop to a
-                // relationship's or a pair of programs' other end, the keyboard on the row left by, and else ascends as the
-                // ladder's back does.
+                // relationship's or a pair of programs' other end, or to a listening port's process, the keyboard on the row
+                // left by, and else ascends as the ladder's back does.
                 if (!(TimelineSurface.CancelDrag() || MinimapSurface.CancelDrag() || GraphSurface.CancelDrag()))
                 {
                     if (viewModel.ComeBackFromPeer() is { } left)
@@ -772,6 +780,17 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                             {
                                 _ = FocusRow(ProgramsList, ProgramsList.Items.OfType<ProgramPairRow>()
                                     .FirstOrDefault(row => string.Equals(row.OtherKey, leftProgram, StringComparison.Ordinal)));
+                            }
+                        });
+                    }
+                    else if (viewModel.ComeBackFromListener() is { } leftPort)
+                    {
+                        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+                        {
+                            if (!closed)
+                            {
+                                _ = FocusRow(ListenersList, ListenersList.Items.OfType<ListenerRow>()
+                                    .FirstOrDefault(row => row.Port == leftPort.Port && row.Process == leftPort.Process));
                             }
                         });
                     }
@@ -1027,6 +1046,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             .FirstOrDefault(listed => string.Equals(listed.OtherKey, pair.OtherKey, StringComparison.Ordinal)),
         ReachedHostRow host => list.Items.OfType<ReachedHostRow>()
             .FirstOrDefault(listed => string.Equals(listed.Address, host.Address, StringComparison.Ordinal)),
+        ListenerRow port => list.Items.OfType<ListenerRow>()
+            .FirstOrDefault(listed => listed.Port == port.Port && listed.Process == port.Process),
         _ => null,
     };
 
@@ -2763,6 +2784,46 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         ReachedHostRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ReachedHostRow
             ?? ReachedHostsList.SelectedItem as ReachedHostRow;
         return row is not null && viewModel.FindReachedHost(row);
+    }
+
+    private void ToggleListeners(object? sender, RoutedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel && viewModel.ToggleListeners())
+        {
+            FocusFirstUnnamed(ListenersList, WorkspaceViewModel.ListenersNamed);
+        }
+    }
+
+    private void ChooseListedListener(object? sender, TappedEventArgs eventArgs)
+    {
+        if (DataContext is WorkspaceViewModel viewModel)
+        {
+            ChooseSelectedListener(viewModel);
+        }
+    }
+
+    /// <summary>
+    /// Chooses the process that accepted the connections of the listening port the keyboard is on, or else the one selected,
+    /// and gives the keyboard to what its inspector lists of who connected - its relationships, or else the other hosts that
+    /// connected to it - so who used a port is a key away (§6.3). False when there is none.
+    /// </summary>
+    internal bool ChooseSelectedListener(WorkspaceViewModel viewModel)
+    {
+        ListenerRow? row = (FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ListenerRow
+            ?? ListenersList.SelectedItem as ListenerRow;
+        if (row is null || !viewModel.ChooseListener(row))
+        {
+            return false;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (!closed && !FocusRow(PeersList) && !FocusRow(ReachedHostsList))
+            {
+                KeepKeyboard();
+            }
+        });
+        return true;
     }
 
     private void TogglePrograms(object? sender, RoutedEventArgs eventArgs)

@@ -159,6 +159,26 @@ public sealed record ReachedHostRow(string Address, string Detail) : IAccessible
 }
 
 /// <summary>
+/// One of the ports the session's processes accepted TCP connections at, as the inspector lists them while it describes
+/// nothing (§6.3): the port, in a column of its own as netstat sets it, beside the process that accepted connections there
+/// and how many it accepted and who connected, and the row read whole.
+/// </summary>
+public sealed record ListenerRow(string Listener, string Detail, string Spoken) : IAccessibleRow
+{
+    /// <summary>The port, the process's own, which the connections it accepted arrived at.</summary>
+    public ushort Port { get; init; }
+
+    /// <summary>The port as its column shows it.</summary>
+    public string PortText => Port.ToString(CultureInfo.InvariantCulture);
+
+    /// <summary>The process that accepted connections at it, which Enter or a double click on the row chooses.</summary>
+    public ProcessInstanceId Process { get; init; }
+
+    /// <summary>The row read aloud: who accepted how many where, from whom, and what Enter on it does.</summary>
+    public string AccessibleName => $"{Spoken}. Press Enter to choose that process.";
+}
+
+/// <summary>
 /// A process an aggregate counts, as the inspector lists it beneath the aggregate's description (§6.3): its name and PID,
 /// then its records over the scope shown, its relationships and its connections to other hosts.
 /// </summary>

@@ -92,6 +92,8 @@ public sealed record ChannelEndOption(int? End, string Label) : IAccessibleRow
 /// The process, by its instance, or the program, by its group's key, whose other hosts the inspector listed whole, as
 /// asked (§6.3).
 /// </param>
+/// <param name="ListenerHop">The way down from the inspector's listening ports, which Esc comes back along (§6.3).</param>
+/// <param name="ListenersListedWhole">Whether the inspector listed every listening port, as asked (§6.3).</param>
 public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<NavigationState> Breadcrumb,
     ProcessInstanceId? SelectedProcess,
@@ -126,7 +128,9 @@ public sealed record WorkspaceNavigationMemento(
     IReadOnlyList<ProgramHop>? ProgramHops = null,
     ProcessInstanceId? PeersListedWhole = null,
     string? ProgramsListedWhole = null,
-    string? ReachedHostsListedWhole = null);
+    string? ReachedHostsListedWhole = null,
+    ListenerHop? ListenerHop = null,
+    bool ListenersListedWhole = false);
 
 /// <summary>
 /// What one publication's ranking counted: the visible range it followed and the interval counts it showed, with the
@@ -1713,7 +1717,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         relationshipOrigins.Count > 0 ? [.. relationshipOrigins] : null, ChosenHostEdgeRow()?.Key, DescribedRow is not null,
         cellOrigins.Count > 0 ? [.. cellOrigins] : null, cellRecordOrigin, intervalRowOrigin,
         peerHops.Count > 0 ? [.. peerHops] : null, programHops.Count > 0 ? [.. programHops] : null, peersListedWhole,
-        programsListedWhole, reachedHostsListedWhole);
+        programsListedWhole, reachedHostsListedWhole, listenerHop, listenersListedWhole);
 
     /// <summary>
     /// Replays stable focus keys against this generation, never a row index. If an entity vanished, stops at the
@@ -1878,12 +1882,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         peerHops.AddRange(saved.PeerHops ?? []);
         programHops.Clear();
         programHops.AddRange(saved.ProgramHops ?? []);
+        listenerHop = saved.ListenerHop;
 
         // A list of relationships, pairs or other hosts asked for whole stays whole, its process or program chosen again or
         // not.
         peersListedWhole = saved.PeersListedWhole;
         programsListedWhole = saved.ProgramsListedWhole;
         reachedHostsListedWhole = saved.ReachedHostsListedWhole;
+        listenersListedWhole = saved.ListenersListedWhole;
 
         // A relationship chosen, or processes chosen together, are chosen again as far as this generation holds them.
         if (saved.SelectedRelationshipKey is { } relationship)
@@ -7385,6 +7391,11 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         else if (propertyName == nameof(SelectedRelationship))
         {
             RaiseTableChoice();
+        }
+        else if (propertyName == nameof(SelectionTitle))
+        {
+            // The machine's listening ports are listed while the inspector describes nothing (§6.3).
+            PropertyChanged?.Invoke(this, new(nameof(ShowsListeners)));
         }
         else if (propertyName == nameof(HasSelectedProcessLane))
         {

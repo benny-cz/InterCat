@@ -44,6 +44,9 @@ public static class WorkspaceCollectors
             Operations = operations,
             Evidence = [.. snapshot.Evidence.Where(mark => keptOperations.Contains(mark.OperationKey))],
             HostLinks = [.. snapshot.HostLinks.Where(link => !aside.Contains(link.Process))],
+
+            // A listener of InterCat's own goes with it; one it connected to keeps its count, as the process's own does.
+            Listeners = [.. snapshot.Listeners.Where(listener => !aside.Contains(listener.Process.Id))],
             SetAside = own,
         };
     }

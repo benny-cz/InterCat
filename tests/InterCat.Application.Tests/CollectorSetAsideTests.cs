@@ -82,6 +82,58 @@ public sealed class CollectorSetAsideTests
         Assert.Equal(whole.RowsNoProcessHolds, scoped.RowsNoProcessHolds);
     }
 
+    [Fact(DisplayName = "§19.5: a listening port of InterCat's own is set aside with its process, and one it connected to keeps its count")]
+    public void AListeningPortOfInterCatsOwnIsSetAside()
+    {
+        // The client connects to the broker's port 8080, and the broker to tool.exe's 9000: the broker is InterCat's own, the
+        // client, whose creation time was not read, is not.
+        using var session = new TemporarySession();
+        ObservationRowV1 broker = Lifecycle(1, ObservationKind.Create, 4120, 1) with
+        {
+            ResourceName = @"C:\Program Files\InterCat\intercat-broker.exe", SessionRelativeTicks = 100,
+        };
+        Publish(session.Store,
+        [
+            broker,
+            Lifecycle(2, ObservationKind.Create, 7008, 2) with { ResourceName = @"C:\Program Files\InterCat\InterCat.exe", SessionRelativeTicks = 200 },
+            Lifecycle(3, ObservationKind.Create, 5000, 3) with { ResourceName = @"C:\Tools\tool.exe", SessionRelativeTicks = 300 },
+            Transfer(4, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 7008, 4).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 400 },
+            Transfer(5, ObservationKind.Send, AccountingSide.SendSide, 8, 7008, 5).Between("127.0.0.1:50000", "127.0.0.1:8080")
+                with { SessionRelativeTicks = 410 },
+            Transfer(6, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 4120, 6).Between("127.0.0.1:8080", "127.0.0.1:50000")
+                with { SessionRelativeTicks = 420 },
+            Transfer(7, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 4120, 7).Between("127.0.0.1:50001", "127.0.0.1:9000")
+                with { SessionRelativeTicks = 500 },
+            Transfer(8, ObservationKind.Send, AccountingSide.SendSide, 8, 4120, 8).Between("127.0.0.1:50001", "127.0.0.1:9000")
+                with { SessionRelativeTicks = 510 },
+            Transfer(9, ObservationKind.Receive, AccountingSide.ReceiveSide, 8, 5000, 9).Between("127.0.0.1:9000", "127.0.0.1:50001")
+                with { SessionRelativeTicks = 520 },
+        ],
+            fields: [Field(broker, SourceField.ProcessCreateTime, CollectorBrokerCreated.ToFileTime())],
+            collectors: new CollectorIdentitiesV1
+            {
+                Contract = CollectorIdentitiesV1.ContractName,
+                CaptureId = Capture.Value,
+                Processes =
+                [
+                    new() { Role = CollectorRole.Broker, ProcessId = 4120, CreatedUtc = CollectorBrokerCreated },
+                    new() { Role = CollectorRole.Client, ProcessId = 7008 },
+                ],
+            });
+        WorkspaceSnapshot whole = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+        Assert.Equal([(8080, "intercat-broker.exe", "InterCat.exe"), (9000, "tool.exe", "intercat-broker.exe")],
+            whole.Listeners.Select(listener => ((int)listener.Port, listener.Process.ImageName,
+                Assert.Single(listener.Connectors).Process.ImageName)));
+
+        // Set aside, the broker's port goes with it; tool.exe's stays whole, the broker still named as who connected to it, as
+        // tool.exe's own count of the connections it accepted still holds the broker's.
+        WorkspaceSnapshot aside = WorkspaceCollectors.SetAside(whole);
+        PortListener kept = Assert.Single(aside.Listeners);
+        Assert.Equal((9000, 1L, "intercat-broker.exe"), ((int)kept.Port, kept.Accepted, Assert.Single(kept.Connectors).Process.ImageName));
+        Assert.Equal(1, aside.Processes.Single(process => process.ProcessId == 5000).ConnectionsAccepted);
+    }
+
     [Fact(DisplayName = "§19.5: an export of a view with InterCat's own set aside counts them beside its rows, in JSON, CSV and the redacted report")]
     public void AnExportCountsWhatItSetAside()
     {

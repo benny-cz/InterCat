@@ -144,6 +144,13 @@ public sealed record SessionOverviewBundle(
     /// draws to its Other hosts node (§6.3). Empty for an overview no session was projected for.
     /// </summary>
     public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
+
+    /// <summary>
+    /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, counted
+    /// as each process's <see cref="ProcessNode.ConnectionsAccepted"/> is (<see cref="ConnectionOpens.Listeners"/>): the
+    /// session's listening ports, as `icat ports` lists them. Empty for an overview no session was projected for.
+    /// </summary>
+    public IReadOnlyList<PortListener> Listeners { get; init; } = [];
 }
 
 /// <summary>
@@ -467,6 +474,7 @@ public static class SessionOverviewProjector
             Census = census,
             ConnectionOpensRecorded = ConnectionOpens.Recorded(relations),
             HostLinks = hostLinks,
+            Listeners = ConnectionOpens.Listeners(relations, policy),
             Collectors = collectors,
             IntervalCoverage = coverage is { HoldsRecordsOutsideItsEpochs: true }
                 ? Array.AsReadOnly([.. SessionCoverage.ByMechanism(coverage with { HoldsRecordsOutsideItsEpochs = false })])

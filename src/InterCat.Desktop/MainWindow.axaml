@@ -1048,6 +1048,57 @@
                     <TextBlock Text="{Binding ReachedHostsToggleLabel}" TextWrapping="Wrap" />
                   </Button>
                 </StackPanel>
+                <!-- §6.3: with nothing chosen on the machine rung, the ports its processes accepted connections at, each with
+                     the process that accepted them and who connected, as icat ports lists them: which process served at
+                     which port, and for whom, otherwise read each process's card in turn. Enter or a double click on one
+                     chooses that process, whose inspector says with whom; Esc comes back to the port. -->
+                <StackPanel Spacing="3" IsVisible="{Binding ShowsListeners}">
+                  <TextBlock x:Name="ListenersHeadingText" Text="{Binding ListenersHeading}" Classes="muted"
+                             TextWrapping="Wrap" />
+                  <ListBox x:Name="ListenersList" ItemsSource="{Binding ListenerRows}" Background="Transparent"
+                           BorderThickness="0" DoubleTapped="ChooseListedListener"
+                           ScrollViewer.VerticalScrollBarVisibility="Disabled" ScrollViewer.BringIntoViewOnFocusChange="False"
+                           AutomationProperties.Name="{Binding ListenersListName}" Grid.IsSharedSizeScope="True">
+                    <!-- Five at most, or a hundred asked for, laid out whole within the inspector's own scroll. -->
+                    <ListBox.ItemsPanel>
+                      <ItemsPanelTemplate>
+                        <StackPanel />
+                      </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
+                    <ListBox.Styles>
+                      <Style Selector="ListBoxItem">
+                        <Setter Property="Padding" Value="6,3" />
+                        <Setter Property="MinHeight" Value="0" />
+                      </Style>
+                    </ListBox.Styles>
+                    <ListBox.ItemTemplate>
+                      <!-- The port in a column of its own, every row's as wide and its digits to the right, as netstat
+                           sets it, and beside it the process that accepted there and who connected. -->
+                      <DataTemplate x:DataType="pres:ListenerRow">
+                        <Grid Margin="0,1">
+                          <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" SharedSizeGroup="ListenerPort" />
+                            <ColumnDefinition Width="*" />
+                          </Grid.ColumnDefinitions>
+                          <TextBlock Text="{Binding PortText}" Margin="0,0,10,0" FontWeight="SemiBold"
+                                     HorizontalAlignment="Right" />
+                          <StackPanel Grid.Column="1" Spacing="1">
+                            <TextBlock Text="{Binding Listener}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
+                          </StackPanel>
+                        </Grid>
+                      </DataTemplate>
+                    </ListBox.ItemTemplate>
+                  </ListBox>
+                  <TextBlock x:Name="ListenersMoreText" Text="{Binding ListenersMore}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsListenersMore}" />
+                  <!-- Every port on request, the busiest first, and the busiest few again. -->
+                  <Button x:Name="ListenersToggleButton" Click="ToggleListeners" HorizontalAlignment="Left"
+                          Margin="0,2,0,0" IsVisible="{Binding OffersListenersToggle}"
+                          AutomationProperties.Name="{Binding ListenersToggleLabel}">
+                    <TextBlock Text="{Binding ListenersToggleLabel}" TextWrapping="Wrap" />
+                  </Button>
+                </StackPanel>
                 <!-- §6.8: a process's or a channel's numbers are one action from the rule behind them - how a process's
                      records were bound to it, and what the evidence policy left out, or how a channel's ends were paired. -->
                 <StackPanel Spacing="3" IsVisible="{Binding HasExplanation}">

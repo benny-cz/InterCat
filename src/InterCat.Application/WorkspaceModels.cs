@@ -708,6 +708,13 @@ public sealed record WorkspaceSnapshot(
     public IReadOnlyList<HostLink> HostLinks { get; init; } = [];
 
     /// <summary>
+    /// The ports the session's processes accepted TCP connections at, each with who connected, the busiest first, over the
+    /// whole session under the policy the snapshot was projected under (<see cref="ConnectionOpens.Listeners"/>): its
+    /// listening ports. Empty for a snapshot not projected from a session.
+    /// </summary>
+    public IReadOnlyList<PortListener> Listeners { get; init; } = [];
+
+    /// <summary>
     /// Whether the session records any connection's open, so that a process whose <see cref="ProcessNode.ConnectionsMade"/>
     /// and <see cref="ProcessNode.ConnectionsAccepted"/> are none made and accepted none, rather than ones the capture could
     /// not have seen (R21). False for a snapshot not projected from a session.
