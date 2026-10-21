@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 682 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 683 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,21 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 683 — the command line says at which port relationships' connections arrived (§6.3, §6.8, R18):**
+  - icat overview's busiest relationships and pairs of programs and icat programs say "TCP at 9222", a pair's ports
+    together; icat processes --pid says each end's connections at the ports they arrived at, "1 made to 135", "1
+    accepted at 9223", in its JSON as madeToPorts and acceptedPorts; icat programs --json lists a pair's
+    acceptedPorts, and a chosen program's pairs in the inspector say what they ran over.
+  - Debug and Release each ran 2,684 tests with revision 473's 93 failures and 4 skips, and nothing else failed;
+    icat processes --pid's test now reads each end's connections at the ports they arrived at in its table and JSON,
+    null where no open is recorded, icat overview's and icat programs' tests read a relationship's and a pair's
+    ports, a new test lists a pair seen opening none without them, and a pair's words are tested with one port,
+    several and a mechanism after them. All thirty mutations were caught: an end's ports swapped, dropped or left
+    out of its JSON, its connections made counted as accepted, a one-sided connection's port read at its own end or
+    dropped, a pair's ports dropped, unsaid or said for UDP, the comma after a list of them misplaced, said alone or
+    without its "and", the overview's, icat programs' and icat processes' cells and notes without them or saying
+    them where none are said, the JSON's ports or their null, and the inspector's pairs without what they ran over.
 
 - **Revision 682 — a relationship says at which port its connections arrived (§6.3, §6.8, §7.4):**
   - From the same openings its made counts read, at the end that accepted each: the relationship table and a chosen

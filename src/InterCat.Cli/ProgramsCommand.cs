@@ -151,6 +151,7 @@ internal static class ProgramsCommand
                     pair.Relationships,
                     pair.Processes,
                     Mechanisms = pair.Mechanisms.Select(MechanismText.Name),
+                    pair.AcceptedPorts,
                     pair.Records,
                     pair.FirstConnected,
                     pair.SecondConnected,
@@ -211,8 +212,12 @@ internal static class ProgramsCommand
             + "each other. An arrow points at the program connected to, where the capture saw the connections open"
             + (calls ? ", or called, where an RPC call was linked to the call that served it" : string.Empty)
             + ", ⇄ joins two that each " + (calls ? "did so to" : "connected to") + " the other, and two joined by \"and\" were "
-            + "seen opening none. Processes counts those at either end, and records are both ends'. icat channels <directory> "
-            + "names each connection's two processes.");
+            + "seen opening none. "
+            + (pairs.Take(limit).Any(pair => pair.AcceptedPorts.Count > 0)
+                ? "Over names the ports the connections arrived at, at the program connected to. "
+                : string.Empty)
+            + "Processes counts those at either end, and records are both ends'. icat channels <directory> names each "
+            + "connection's two processes.");
         return InterCatExitCode.Success;
     }
 

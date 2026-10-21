@@ -49,8 +49,29 @@ public sealed record ProgramPair(
         _ => $"{First.Name} and {Second.Name}",
     };
 
-    /// <summary>What they ran over, in words: "TCP", "TCP and UDP".</summary>
-    public string Over => WorkspaceLayout.Series([.. Mechanisms.Select(MechanismText.Name)]);
+    /// <summary>
+    /// The ports their connections arrived at, at the end that accepted each, each once, the lowest first: their
+    /// relationships' (<see cref="CommunicationEdge.AcceptedPorts"/>) together.
+    /// </summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+
+    /// <summary>
+    /// What they ran over, in words, TCP with the ports its connections arrived at: "TCP at 135", "UDP", "TCP at 135 and
+    /// UDP". A list of ports says "and" itself, so the last mechanism after one is set apart by a comma: "TCP at 80 and
+    /// 443, and UDP".
+    /// </summary>
+    public string Over
+    {
+        get
+        {
+            string[] parts = [.. Mechanisms.Select(mechanism => mechanism == Mechanism.Tcp
+                ? DirectionText.Over(mechanism, AcceptedPorts)
+                : MechanismText.Name(mechanism))];
+            return parts.Length > 1 && parts[0].Contains(" and ", StringComparison.Ordinal)
+                ? string.Join(", ", parts[..^1]) + ", and " + parts[^1]
+                : WorkspaceLayout.Series(parts);
+        }
+    }
 }
 
 /// <summary>
@@ -100,6 +121,7 @@ public static class ProgramPairs
             tally.Processes.Add(edge.TargetId);
             tally.OneConnected += ordered ? edge.SourceConnected : edge.TargetConnected;
             tally.OtherConnected += ordered ? edge.TargetConnected : edge.SourceConnected;
+            tally.Ports.UnionWith(edge.AcceptedPorts);
         }
 
         return [.. pairs.Values
@@ -126,6 +148,8 @@ public static class ProgramPairs
 
         public HashSet<ProcessInstanceId> Processes { get; } = [];
 
+        public SortedSet<ushort> Ports { get; } = [];
+
         public long OneConnected { get; set; }
 
         public long OtherConnected { get; set; }
@@ -138,14 +162,18 @@ public static class ProgramPairs
         {
             if (one.Key == other.Key)
             {
-                return new(one, one, Relationships, Processes.Count, Records, [.. Mechanisms], OneConnected + OtherConnected, 0);
+                return new(one, one, Relationships, Processes.Count, Records, [.. Mechanisms], OneConnected + OtherConnected, 0)
+                {
+                    AcceptedPorts = [.. Ports],
+                };
             }
 
             bool swap = OtherConnected > OneConnected
                 || (OtherConnected == OneConnected && string.Compare(other.Name, one.Name, StringComparison.OrdinalIgnoreCase) < 0);
-            return swap
-                ? new(other, one, Relationships, Processes.Count, Records, [.. Mechanisms], OtherConnected, OneConnected)
-                : new(one, other, Relationships, Processes.Count, Records, [.. Mechanisms], OneConnected, OtherConnected);
+            return (swap
+                ? new ProgramPair(other, one, Relationships, Processes.Count, Records, [.. Mechanisms], OtherConnected, OneConnected)
+                : new ProgramPair(one, other, Relationships, Processes.Count, Records, [.. Mechanisms], OneConnected, OtherConnected))
+                with { AcceptedPorts = [.. Ports] };
         }
     }
 }

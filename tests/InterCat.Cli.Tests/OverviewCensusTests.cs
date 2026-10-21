@@ -156,12 +156,13 @@ public sealed class OverviewCensusTests
         // The busiest first, each arrow pointing at the process connected to whichever end the graph draws first, both
         // ways where each connected, and "and" where neither was seen to.
         Assert.Matches(@"(?m)^  Busiest relationship +Over +Records\r?$", text);
-        Assert.Matches(@"(?m)^  client\.exe · PID 100 → server\.exe · PID 200 +TCP +7\r?$", text);
-        Assert.Matches(@"(?m)^  (helper\.exe · PID 300 ⇄ server\.exe · PID 200|server\.exe · PID 200 ⇄ helper\.exe · PID 300) +TCP +6\r?$", text);
+        Assert.Matches(@"(?m)^  client\.exe · PID 100 → server\.exe · PID 200 +TCP at 8080 +7\r?$", text);
+        Assert.Matches(@"(?m)^  (helper\.exe · PID 300 ⇄ server\.exe · PID 200|server\.exe · PID 200 ⇄ helper\.exe · PID 300) +TCP at 8080 and 9000 +6\r?$", text);
         Assert.Matches(@"(?m)^  (client\.exe · PID 100 and helper\.exe · PID 300|helper\.exe · PID 300 and client\.exe · PID 100) +TCP +2\r?$", text);
         Assert.Contains("3 relationships in all. An arrow points at the process connected to, where the capture saw the "
             + "connections open, and ⇄ joins two that each connected to the other; two joined by \"and\" were seen opening "
-            + "none. Records are both ends'.", Regex.Replace(text, @"\s+", " "), Ordinal);
+            + "none. Records are both ends'. Over names the ports the connections arrived at, at the process connected to.",
+            Regex.Replace(text, @"\s+", " "), Ordinal);
         Assert.True(text.IndexOf("client.exe · PID 100 → server.exe", Ordinal) < text.IndexOf(" ⇄ ", Ordinal));
 
         // Each two of its programs share one relationship, which that table names, so none sums them.
@@ -210,6 +211,7 @@ public sealed class OverviewCensusTests
             + "connections open, or called, where an RPC call was linked to the call that served it, and ⇄ joins two that each "
             + "did so to the other; two joined by \"and\" were seen opening none. Records are both ends'.",
             Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.DoesNotContain("Over names the ports", text, Ordinal);
         Assert.Contains("which called which over RPC only where each call was linked to the call that served it",
             Regex.Replace(text, @"\s+", " "), Ordinal);
     }
@@ -267,8 +269,8 @@ public sealed class OverviewCensusTests
 
         // The busiest first: the browser's two processes to the server, then the browser's own two to each other.
         Assert.Matches(@"(?m)^  Busiest pair of programs +Relationships +Processes +Over +Records\r?$", text);
-        Assert.Matches(@"(?m)^  browser\.exe → server\.exe +2 +3 +TCP +6\r?$", text);
-        Assert.Matches(@"(?m)^  browser\.exe → browser\.exe +1 +2 +TCP +3\r?$", text);
+        Assert.Matches(@"(?m)^  browser\.exe → server\.exe +2 +3 +TCP at 8080 +6\r?$", text);
+        Assert.Matches(@"(?m)^  browser\.exe → browser\.exe +1 +2 +TCP at 9222 +3\r?$", text);
         Assert.True(text.IndexOf("browser.exe → server.exe", Ordinal) < text.IndexOf("browser.exe → browser.exe", Ordinal));
         Assert.Contains("2 pairs of programs in all, each program by its executable: one named at both ends is its own processes "
             + "connecting to each other. Arrows and records read as above, and Processes counts those at either end. icat programs "

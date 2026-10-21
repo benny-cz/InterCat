@@ -142,14 +142,17 @@ internal static class OverviewCommand
         Dictionary<ProcessInstanceId, ProcessNode> nodes = overview.Nodes.ToDictionary(node => node.Id);
         if (overview.Edges.Count > 0)
         {
+            CommunicationEdge[] busiestEdges = [.. overview.Edges
+                .OrderByDescending(edge => edge.ObservationCount)
+                .ThenBy(edge => edge.Key, StringComparer.Ordinal)
+                .Take(5)];
             ConsoleUi.Table(
                 ["Busiest relationship", "Over", "Records"],
-                [.. overview.Edges
-                    .OrderByDescending(edge => edge.ObservationCount)
-                    .ThenBy(edge => edge.Key, StringComparer.Ordinal)
-                    .Take(5)
-                    .Select(edge => (IReadOnlyList<string>)
-                        [Joined(edge, nodes), MechanismText.Name(edge.Mechanism), ConsoleUi.Count(edge.ObservationCount)])]);
+                [.. busiestEdges.Select(edge => (IReadOnlyList<string>)
+                    [
+                        Joined(edge, nodes), DirectionText.Over(edge.Mechanism, edge.AcceptedPorts),
+                        ConsoleUi.Count(edge.ObservationCount),
+                    ])]);
             // RPC calls are said only where the graph draws some: who called is known where a call was linked to the call
             // that served it (operations-v1 section 5c).
             bool calls = overview.Edges.Any(edge => edge.Mechanism == Mechanism.Rpc);
@@ -157,7 +160,10 @@ internal static class OverviewCommand
                 + "connected to, where the capture saw the connections open"
                 + (calls ? ", or called, where an RPC call was linked to the call that served it" : string.Empty)
                 + ", and ⇄ joins two that each " + (calls ? "did so to" : "connected to") + " the other; two joined by \"and\" "
-                + "were seen opening none. Records are both ends'.");
+                + "were seen opening none. Records are both ends'."
+                + (busiestEdges.Any(edge => edge.AcceptedPorts.Count > 0)
+                    ? " Over names the ports the connections arrived at, at the process connected to."
+                    : string.Empty));
 
             // The same relationships summed by the programs at their ends, as the graph's edges between groups sum them:
             // which programs talk to which on a busy machine, however many processes each runs. Where no two programs

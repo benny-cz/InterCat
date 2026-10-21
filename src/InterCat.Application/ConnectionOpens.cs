@@ -119,45 +119,50 @@ public static class ConnectionOpens
     public static IReadOnlyList<PeerConnections> With(TransportRelationIndex relations, EvidencePolicy policy, ProcessInstanceId instance)
     {
         ArgumentNullException.ThrowIfNull(relations);
-        var peers = new Dictionary<ProcessInstanceId, (ProcessInstance Peer, long Made, long Accepted)>();
+        var peers = new Dictionary<ProcessInstanceId, PeerTally>();
         foreach (TransportRelation relation in relations.Relations.Where(relation => Counted(relation, policy, null)))
         {
             (ProcessInstance connected, ProcessInstance accepted) = relation.Opening == RelationOpening.FirstConnected
                 ? (relation.First, relation.Second)
                 : (relation.Second, relation.First);
+            ushort? arrived = AcceptingPort(relation);
             if (connected.Id == instance)
             {
-                Tally(accepted, 1, 0);
+                TallyOf(accepted).Add(made: true, arrived);
             }
 
             if (accepted.Id == instance)
             {
-                Tally(connected, 0, 1);
+                TallyOf(connected).Add(made: false, arrived);
             }
         }
 
-        long made = 0;
-        long acceptedUnheld = 0;
+        // Those whose other end no record holds arrived at the other host's port where the instance made them, and at its own
+        // where it accepted them.
+        var unheld = new PeerTally(null);
         foreach (TransportConnection connection in relations.OneSided
             .Where(connection => connection.Holder.Id == instance && Counted(connection, policy, null)))
         {
             bool connected = connection.Opening == ConnectionOpening.Connected;
-            made += connected ? 1 : 0;
-            acceptedUnheld += connected ? 0 : 1;
+            unheld.Add(connected, PortOf(connected ? connection.RemoteEndpoint : connection.LocalEndpoint));
         }
 
         return
         [
             .. peers.Values
-                .OrderBy(entry => entry.Peer.Id.ToString(), StringComparer.Ordinal)
-                .Select(entry => new PeerConnections(entry.Peer, entry.Made, entry.Accepted)),
-            .. made + acceptedUnheld > 0 ? [new PeerConnections(null, made, acceptedUnheld)] : Array.Empty<PeerConnections>(),
+                .OrderBy(tally => tally.Peer!.Id.ToString(), StringComparer.Ordinal)
+                .Select(tally => tally.Connections()),
+            .. unheld.Made + unheld.Accepted > 0 ? [unheld.Connections()] : Array.Empty<PeerConnections>(),
         ];
 
-        void Tally(ProcessInstance peer, long madeTo, long acceptedFrom)
+        PeerTally TallyOf(ProcessInstance peer)
         {
-            (ProcessInstance Peer, long Made, long Accepted) held = peers.GetValueOrDefault(peer.Id, (peer, 0, 0));
-            peers[peer.Id] = (peer, held.Made + madeTo, held.Accepted + acceptedFrom);
+            if (!peers.TryGetValue(peer.Id, out PeerTally? tally))
+            {
+                peers[peer.Id] = tally = new PeerTally(peer);
+            }
+
+            return tally;
         }
     }
 
@@ -199,6 +204,40 @@ public static class ConnectionOpens
         (long Made, long Accepted) held = counts.GetValueOrDefault(process);
         counts[process] = (held.Made + made, held.Accepted + accepted);
     }
+
+    /// <summary>The connections one instance made to one end and accepted from it, and the ports they arrived at.</summary>
+    private sealed class PeerTally(ProcessInstance? peer)
+    {
+        private readonly SortedSet<ushort> madePorts = [];
+        private readonly SortedSet<ushort> acceptedPorts = [];
+
+        public ProcessInstance? Peer => peer;
+
+        public long Made { get; private set; }
+
+        public long Accepted { get; private set; }
+
+        /// <summary>One connection the instance made to this end, or accepted from it, and the port it arrived at.</summary>
+        public void Add(bool made, ushort? port)
+        {
+            if (made)
+            {
+                Made++;
+            }
+            else
+            {
+                Accepted++;
+            }
+
+            if (port is { } arrived)
+            {
+                _ = (made ? madePorts : acceptedPorts).Add(arrived);
+            }
+        }
+
+        public PeerConnections Connections() =>
+            new(peer, Made, Accepted) { MadePorts = [.. madePorts], AcceptedPorts = [.. acceptedPorts] };
+    }
 }
 
 /// <summary>
@@ -207,4 +246,17 @@ public static class ConnectionOpens
 /// is the process there, or null for its connections whose other end no record holds - a remote host's, or a process the
 /// capture did not observe - which no process is at.
 /// </summary>
-public sealed record PeerConnections(ProcessInstance? Peer, long Made, long Accepted);
+public sealed record PeerConnections(ProcessInstance? Peer, long Made, long Accepted)
+{
+    /// <summary>
+    /// The ports at that end the connections the instance made to it arrived at, each once, the lowest first: the ports it
+    /// connected to there - for those whose other end no record holds, other hosts' ports.
+    /// </summary>
+    public IReadOnlyList<ushort> MadePorts { get; init; } = [];
+
+    /// <summary>
+    /// The instance's own ports the connections it accepted from that end arrived at, each once, the lowest first: the
+    /// ports it listened at for them.
+    /// </summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+}

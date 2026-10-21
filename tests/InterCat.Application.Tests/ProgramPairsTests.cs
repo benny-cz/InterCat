@@ -23,16 +23,17 @@ public sealed class ProgramPairsTests
         ProcessNode server = Node(4, 200, Server), agent = Node(5, 300, Agent), zeta = Node(6, 400, Zeta);
         CommunicationEdge[] edges =
         [
-            // Two of the browser's processes connected to the server, one drawn from each end.
-            Edge(browser, server, Mechanism.Tcp, 10, fromSource: 2, fromTarget: 0),
-            Edge(server, tab, Mechanism.Tcp, 6, fromSource: 0, fromTarget: 1),
+            // Two of the browser's processes connected to the server, one drawn from each end, at its 8080 and its 443.
+            Edge(browser, server, Mechanism.Tcp, 10, fromSource: 2, fromTarget: 0) with { AcceptedPorts = [8080] },
+            Edge(server, tab, Mechanism.Tcp, 6, fromSource: 0, fromTarget: 1) with { AcceptedPorts = [443, 8080] },
 
-            // Its tab and its worker connected to its main process, each drawn from a different end.
-            Edge(tab, browser, Mechanism.Tcp, 4, fromSource: 1, fromTarget: 0),
-            Edge(browser, worker, Mechanism.Tcp, 4, fromSource: 0, fromTarget: 1),
+            // Its tab and its worker connected to its main process's 9222, each drawn from a different end.
+            Edge(tab, browser, Mechanism.Tcp, 4, fromSource: 1, fromTarget: 0) with { AcceptedPorts = [9222] },
+            Edge(browser, worker, Mechanism.Tcp, 4, fromSource: 0, fromTarget: 1) with { AcceptedPorts = [9222] },
 
-            // The server connected to the agent twice and the agent to the server once, and a UDP flow joins them too.
-            Edge(agent, server, Mechanism.Tcp, 3, fromSource: 1, fromTarget: 2),
+            // The server connected to the agent's 7000 twice and the agent to the server's 135 once, and a UDP flow joins
+            // them too.
+            Edge(agent, server, Mechanism.Tcp, 3, fromSource: 1, fromTarget: 2) with { AcceptedPorts = [135, 7000] },
             Edge(server, agent, Mechanism.Udp, 2, fromSource: 0, fromTarget: 0),
 
             // A flow nothing opens, as many records as the agent and the server share, over one relationship.
@@ -50,7 +51,14 @@ public sealed class ProgramPairsTests
 
         // The processes at either end: the browser's two and the server; the browser's three; one each.
         Assert.Equal([3, 3, 2, 2], pairs.Select(pair => pair.Processes));
-        Assert.Equal(["TCP", "TCP", "TCP and UDP", "UDP"], pairs.Select(pair => pair.Over));
+        // What they ran over, TCP at the ports their connections arrived at, each once, the lowest first: a list of them
+        // set apart by a comma from the mechanism after it.
+        Assert.Equal([[443, 8080], [9222], [135, 7000], []], pairs.Select(pair => pair.AcceptedPorts));
+        Assert.Equal(["TCP at 443 and 8080", "TCP at 9222", "TCP at 135 and 7000, and UDP", "UDP"], pairs.Select(pair => pair.Over));
+        Assert.Equal("TCP at 135 and UDP", (pairs[2] with { AcceptedPorts = [135] }).Over);
+        Assert.Equal("TCP and UDP", (pairs[2] with { AcceptedPorts = [] }).Over);
+        Assert.Equal("TCP at 80 and 443, UDP, and Named pipe",
+            (pairs[2] with { AcceptedPorts = [80, 443], Mechanisms = [Mechanism.Tcp, Mechanism.Udp, Mechanism.NamedPipe] }).Over);
 
         // The connections each program's processes made, the maker's first: a program's own all its own.
         Assert.Equal([(3L, 0L), (2L, 0L), (2L, 1L), (0L, 0L)], pairs.Select(pair => (pair.FirstConnected, pair.SecondConnected)));

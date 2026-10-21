@@ -101,12 +101,12 @@ public sealed class ConnectionsInspectorWindowTests
         Dispatch();
         Assert.True(programs.IsEffectivelyVisible);
         Assert.Equal("Relationships by program", window.GetControl<TextBlock>("ProgramsHeadingText").Text);
-        Assert.Equal(["helper.exe → server.exe", "1 relationship · 4 records", "client.exe → server.exe",
-            "1 relationship · 3 records"], Texts(programs));
+        Assert.Equal(["helper.exe → server.exe", "1 relationship · TCP at 8080 · 4 records", "client.exe → server.exe",
+            "1 relationship · TCP at 8080 · 3 records"], Texts(programs));
         Assert.Equal("Relationships by program; Enter on one chooses the program at its other end",
             AutomationProperties.GetName(programs));
-        Assert.Equal("client.exe connected to server.exe: 1 relationship, 3 records. Press Enter to choose the program at its "
-            + "other end.", AutomationProperties.GetName(programs.ContainerFromIndex(1)!));
+        Assert.Equal("client.exe connected to server.exe: 1 relationship, TCP at 8080, 3 records. Press Enter to choose the "
+            + "program at its other end.", AutomationProperties.GetName(programs.ContainerFromIndex(1)!));
         Assert.False(window.GetControl<TextBlock>("ProgramsMoreText").IsEffectivelyVisible);
         Assert.False(window.GetControl<ListBox>("PeersList").IsEffectivelyVisible);
 
@@ -118,7 +118,7 @@ public sealed class ConnectionsInspectorWindowTests
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatch();
         Assert.Equal(("client.exe", "client.exe"), (workspace.SelectedGroup?.Name, workspace.SelectedRung?.Label));
-        Assert.Equal(["client.exe → server.exe", "1 relationship · 3 records"], Texts(programs));
+        Assert.Equal(["client.exe → server.exe", "1 relationship · TCP at 8080 · 3 records"], Texts(programs));
         Assert.Same(programs.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
         window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
         Dispatch();
@@ -165,8 +165,8 @@ public sealed class ConnectionsInspectorWindowTests
             ListBox programs = window.GetControl<ListBox>("ProgramsList");
             workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
             Dispatch();
-            Assert.Equal(["helper.exe → server.exe", "1 relationship · 4 records", "client.exe → server.exe",
-                "1 relationship · 3 records"], Texts(programs));
+            Assert.Equal(["helper.exe → server.exe", "1 relationship · TCP at 8080 · 4 records", "client.exe → server.exe",
+                "1 relationship · TCP at 8080 · 3 records"], Texts(programs));
             Assert.True(programs.ContainerFromIndex(1)!.Focus());
             Dispatch();
             window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
@@ -190,8 +190,8 @@ public sealed class ConnectionsInspectorWindowTests
             window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
             Dispatch();
             Assert.Equal(("server.exe", "server.exe"), (next.SelectedGroup?.Name, next.SelectedRung?.Label));
-            Assert.Equal(["client.exe → server.exe", "1 relationship · 5 records", "helper.exe → server.exe",
-                "1 relationship · 4 records"], Texts(programs));
+            Assert.Equal(["client.exe → server.exe", "1 relationship · TCP at 8080 · 5 records", "helper.exe → server.exe",
+                "1 relationship · TCP at 8080 · 4 records"], Texts(programs));
             Assert.Same(programs.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
         }
         finally

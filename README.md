@@ -95,10 +95,10 @@ icat workspace show <new-folder>/demo.icat-workspace
 icat capture <new-session-folder> --duration 60
 icat capture <new-session-folder> --profile rpc-peers
 
-# Read a session: its graph and timeline, which processes and programs connected to which, its paired channels and
-# their records, the other hosts it reached and which processes reached each, its processes, the connections each
-# made and accepted and the ports of its own it accepted them at - one process's with each process at the other end,
-# with --pid - and its RPC calls.
+# Read a session: its graph and timeline, which processes and programs connected to which and at which ports, its
+# paired channels and their records, the other hosts it reached and which processes reached each, its processes, the
+# connections each made and accepted and the ports of its own it accepted them at - one process's with each process
+# at the other end, with --pid - and its RPC calls.
 icat overview <session>
 icat programs <session> --program svchost.exe
 icat channels <session>

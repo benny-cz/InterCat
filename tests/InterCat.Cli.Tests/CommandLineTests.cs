@@ -502,8 +502,9 @@ public sealed class CommandLineTests : IDisposable
         {
             JsonElement end = Assert.Single(Assert.Single(json.RootElement.GetProperty("instances").EnumerateArray())
                 .GetProperty("peers").EnumerateArray());
-            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null),
-                (end.GetProperty("connectionsMade").ValueKind, end.GetProperty("connectionsAccepted").ValueKind));
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null),
+                (end.GetProperty("connectionsMade").ValueKind, end.GetProperty("connectionsAccepted").ValueKind,
+                    end.GetProperty("madeToPorts").ValueKind, end.GetProperty("acceptedPorts").ValueKind));
         }
 
         Assert.Matches(@"(?m)^  Other end +Sent to +Received from\r?$", (await Run("processes", unopened.Path, "--pid", "100")).Output);
@@ -594,22 +595,23 @@ public sealed class CommandLineTests : IDisposable
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Connections +0 made · 2 accepted at port 8080, as the capture saw them open\r?$", server);
         Assert.Matches(@"(?m)^  Other end +Connections +Sent to +Received from\r?$", server);
-        Assert.Matches(@"(?m)^  PID 100 client\.exe +1 accepted +none +8 B\r?$", server);
-        Assert.Matches(@"(?m)^  PID 500 probe\.exe +1 accepted +none +none\r?$", server);
+        Assert.Matches(@"(?m)^  PID 100 client\.exe +1 accepted at 8080 +none +8 B\r?$", server);
+        Assert.Matches(@"(?m)^  PID 500 probe\.exe +1 accepted at 8080 +none +none\r?$", server);
         Assert.Contains("  Connections are those it made to each end and those it accepted from each, as the capture saw them open, "
-            + "and add up to its own above.\n", server.ReplaceLineEndings("\n"), StringComparison.Ordinal);
+            + "and add up to its own above. Their ports are where they arrived: the end's for those it made, its own for those "
+            + "it accepted.\n", server.ReplaceLineEndings("\n"), StringComparison.Ordinal);
 
         // The client made one to the server and one to another host, whose end no record holds, and its datagram flow to the
         // resolver opened none.
         string client = (await Run("processes", session.Path, "--pid", "100")).Output;
-        Assert.Matches(@"(?m)^  PID 200 server\.exe +1 made +8 B +none\r?$", client);
+        Assert.Matches(@"(?m)^  PID 200 server\.exe +1 made to 8080 +8 B +none\r?$", client);
         Assert.Matches(@"(?m)^  PID 300 resolver\.exe +- +4 B +none\r?$", client);
-        Assert.Matches(@"(?m)^  not in the capture \(remote or unobserved\) +1 made +none +none\r?$", client);
+        Assert.Matches(@"(?m)^  not in the capture \(remote or unobserved\) +1 made to 443 +none +none\r?$", client);
         Assert.Contains("and add up to its own above; - where it saw none of theirs open, as of a UDP flow, which nothing opens.",
             client, StringComparison.Ordinal);
 
         // A process connected to itself made the connection and accepted it, at its own row.
-        Assert.Matches(@"(?m)^  PID 400 pipe\.exe \(itself\) +1 made · 1 accepted +1 B +1 B\r?$",
+        Assert.Matches(@"(?m)^  PID 400 pipe\.exe \(itself\) +1 made to 52001 · 1 accepted at 52001 +1 B +1 B\r?$",
             (await Run("processes", session.Path, "--pid", "400")).Output);
 
         // One whose ends opened nothing has no such column, and its datagrams to another host are the end not observed.
@@ -630,6 +632,24 @@ public sealed class CommandLineTests : IDisposable
             JsonElement[] ends = [.. instance.GetProperty("peers").EnumerateArray()];
             Assert.Equal((node.ConnectionsMade, node.ConnectionsAccepted),
                 (ends.Sum(end => end.GetProperty("connectionsMade").GetInt64()), ends.Sum(end => end.GetProperty("connectionsAccepted").GetInt64())));
+
+            // And the ports each end's connections arrived at: there for those it made, its own for those it accepted.
+            string[] ports = pid switch
+            {
+                100 => ["- | 443 | ", "200 | 8080 | ", "300 |  | "],
+                200 => ["100 |  | 8080", "500 |  | 8080"],
+                300 => ["- |  | ", "100 |  | "],
+                400 => ["400 | 52001 | 52001"],
+                _ => ["- |  | ", "200 | 8080 | "],
+            };
+            Assert.Equal(ports,
+                ends.Select(end => string.Join(" | ",
+                    end.GetProperty("peer") is { ValueKind: JsonValueKind.Object } peer
+                        ? peer.GetProperty("processId").GetInt32().ToString(CultureInfo.InvariantCulture)
+                        : "-",
+                    string.Join(", ", end.GetProperty("madeToPorts").EnumerateArray().Select(port => port.GetInt32())),
+                    string.Join(", ", end.GetProperty("acceptedPorts").EnumerateArray().Select(port => port.GetInt32()))))
+                    .Order(StringComparer.Ordinal));
         }
 
     }

@@ -28,17 +28,19 @@ public sealed class ProgramsCommandTests
         Assert.Matches(@"(?m)^  Pairs +3 pairs of programs, among 3 programs\r?$", text);
         Assert.Matches(@"(?m)^  Pair of programs +Relationships +Processes +Over +Records\r?$", text);
         Assert.Equal(
-            ["browser.exe → server.exe | 3 | 4 | TCP | 12", "browser.exe → browser.exe | 2 | 3 | TCP | 8",
-                "server.exe → helper.exe | 1 | 2 | TCP | 4"],
+            ["browser.exe → server.exe | 3 | 4 | TCP at 8080 | 12", "browser.exe → browser.exe | 2 | 3 | TCP at 9222 | 8",
+                "server.exe → helper.exe | 1 | 2 | TCP at 7000 | 4"],
             Rows(text));
         Assert.Contains("Each program is counted by its executable, and one named at both ends is its own processes connecting "
             + "to each other.", Regex.Replace(text, @"\s+", " "), Ordinal);
+        Assert.Contains("seen opening none. Over names the ports the connections arrived at, at the program connected to. "
+            + "Processes counts", Regex.Replace(text, @"\s+", " "), Ordinal);
         Assert.DoesNotContain("more, quieter", text, Ordinal);
 
         // As many as asked, and how many more there are.
         (code, text, said) = await Run("programs", session.Path, "--limit", "1");
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Equal(["browser.exe → server.exe | 3 | 4 | TCP | 12"], Rows(text));
+        Assert.Equal(["browser.exe → server.exe | 3 | 4 | TCP at 8080 | 12"], Rows(text));
         Assert.Contains("2 more, quieter; --limit 3 lists every one.", text, Ordinal);
         (code, text, said) = await Run("programs", session.Path, "--limit", "3");
         Assert.True(code == InterCatExitCode.Success, said);
@@ -61,6 +63,7 @@ public sealed class ProgramsCommandTests
             first.GetProperty("records").GetInt64(), first.GetProperty("firstConnected").GetInt32(),
             first.GetProperty("secondConnected").GetInt32()));
         Assert.Equal(["TCP"], first.GetProperty("mechanisms").EnumerateArray().Select(mechanism => mechanism.GetString()));
+        Assert.Equal([8080], first.GetProperty("acceptedPorts").EnumerateArray().Select(port => port.GetInt32()));
     }
 
     [Fact(DisplayName = "R18: icat programs --program lists the pairs one program is in, named as listed, by its executable's file name with or without its extension, or by its path")]
@@ -78,7 +81,8 @@ public sealed class ProgramsCommandTests
             Assert.Matches(@"(?m)^  Program +server\.exe · 1 process\r?$", text);
             Assert.Matches(@"(?m)^  Executable +C:\\Apps\\server\.exe\r?$", text);
             Assert.Matches(@"(?m)^  Talked with +2 other programs\r?$", text);
-            Assert.Equal(["browser.exe → server.exe | 3 | 4 | TCP | 12", "server.exe → helper.exe | 1 | 2 | TCP | 4"], Rows(text));
+            Assert.Equal(["browser.exe → server.exe | 3 | 4 | TCP at 8080 | 12", "server.exe → helper.exe | 1 | 2 | TCP at 7000 | 4"],
+                Rows(text));
         }
 
         // A program whose processes connected to each other too says so.
@@ -141,6 +145,28 @@ public sealed class ProgramsCommandTests
         Assert.DoesNotContain("Pair of programs", text, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat programs names no port where the capture saw none of a pair's connections open")]
+    public async Task IcatProgramsNamesNoPortWhereNoOpenWasSeen()
+    {
+        // The browser's send reached the server, whose receive recorded it, and neither end was seen opening the connection.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 300, 1) with { ResourceName = @"C:\Apps\browser.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 400, 2) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 110 },
+            .. Connection(20, 300, 400, "127.0.0.1:50000", "127.0.0.1:8080").Skip(2),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        (InterCatExitCode code, string text, string said) = await Run("programs", session.Path);
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Equal(["browser.exe and server.exe | 1 | 2 | TCP | 2"], Rows(text));
+        Assert.DoesNotContain("Over names the ports", text, Ordinal);
+        (code, text, said) = await Run("programs", session.Path, "--json");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Empty(JsonDocument.Parse(text).RootElement.GetProperty("listed")[0].GetProperty("acceptedPorts").EnumerateArray());
+    }
+
     /// <summary>
     /// Three of browser.exe's processes each connect to the server, and two of them to the first; the server connects to
     /// the helper. idle.exe and two git.exe, in different folders, have no relationship.
@@ -178,7 +204,7 @@ public sealed class ProgramsCommandTests
 
     /// <summary>The table's rows, each pair with its relationships, processes, what they ran over and their records.</summary>
     private static string[] Rows(string text) =>
-        [.. Regex.Matches(text, @"(?m)^  (\S+ (?:→|⇄|and) \S+) +(\d+) +(\d+) +(\S+(?: and \S+)?) +(\d+)\r?$")
+        [.. Regex.Matches(text, @"(?m)^  (\S+ (?:→|⇄|and) \S+) +(\d+) +(\d+) +(\S+(?: \S+)*) +(\d+)\r?$")
             .Select(match => string.Join(" | ", match.Groups.Values.Skip(1).Select(group => group.Value)))];
 
     private static async Task<(InterCatExitCode Code, string Output, string Error)> Run(params string[] args)

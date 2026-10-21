@@ -107,15 +107,15 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// The selected program's relationships summed by the program at each end, as `icat overview` sums them
     /// (<see cref="ProgramPairs"/>), the busiest first: each named first by the program whose processes made its
-    /// connections - "svchost.exe → lsass.exe", "12 relationships · 72 records" - its own processes connecting to each
-    /// other among them, over the whole session. Which programs a busy one's processes talk to is otherwise read off the
+    /// connections - "svchost.exe → lsass.exe", "12 relationships · TCP at 135 · 72 records" - its own processes connecting
+    /// to each other among them, over the whole session. Which programs a busy one's processes talk to is otherwise read off the
     /// graph edge by edge. Empty for any other selection, a group of processes by their session, and a program none of
     /// whose processes has a relationship.
     /// </summary>
     public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection()
         .Take(ListsAllPrograms ? ProgramPairsListed : ProgramPairsNamed).Select(pair =>
     {
-        string counts = RelationshipCount(pair.Relationships) + " · " + Spoken.Count(pair.Records, "record");
+        string counts = string.Join(" · ", RelationshipCount(pair.Relationships), pair.Over, Spoken.Count(pair.Records, "record"));
         string other = string.Equals(pair.First.Key, selectedGroupKey, StringComparison.Ordinal) ? pair.Second.Key : pair.First.Key;
         return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal))
         {

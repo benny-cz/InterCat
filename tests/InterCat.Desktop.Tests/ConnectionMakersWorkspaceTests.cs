@@ -351,13 +351,14 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.False(workspace.ShowsPrograms);
         Assert.Empty(workspace.SelectionPrograms);
 
-        // The browser's processes connected to the server three times, and to each other twice.
+        // The browser's processes connected to the server three times, and to each other twice, each at the port their
+        // connections arrived at.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "browser.exe");
         Assert.True(workspace.ShowsPrograms);
         Assert.Equal(
             [
-                ("browser.exe → server.exe", "3 relationships · 12 records"),
-                ("browser.exe → browser.exe", "2 relationships · 8 records"),
+                ("browser.exe → server.exe", "3 relationships · TCP at 8080 · 12 records"),
+                ("browser.exe → browser.exe", "2 relationships · TCP at 9222 · 8 records"),
             ],
             workspace.SelectionPrograms.Select(row => (row.Pair, row.Counts)));
         Assert.Equal(2, heard[^1]);
@@ -369,9 +370,9 @@ public sealed class ConnectionMakersWorkspaceTests
         // processes' pair goes nowhere, and says no Enter.
         Assert.Equal(
             [
-                "browser.exe connected to server.exe: 3 relationships, 12 records. Press Enter to choose the program at its "
-                    + "other end.",
-                "browser.exe connected to browser.exe: 2 relationships, 8 records",
+                "browser.exe connected to server.exe: 3 relationships, TCP at 8080, 12 records. Press Enter to choose the "
+                    + "program at its other end.",
+                "browser.exe connected to browser.exe: 2 relationships, TCP at 9222, 8 records",
             ],
             workspace.SelectionPrograms.Select(row => row.AccessibleName));
         Assert.Equal("Relationships by program; Enter on one chooses the program at its other end", workspace.ProgramsListName);
@@ -382,9 +383,9 @@ public sealed class ConnectionMakersWorkspaceTests
             ["browser.exe → server.exe", "server.exe → alpha.exe", "server.exe → beta.exe", "server.exe → delta.exe",
                 "server.exe → epsilon.exe"],
             workspace.SelectionPrograms.Select(row => row.Pair));
-        Assert.Equal("1 relationship · 4 records", workspace.SelectionPrograms[^1].Counts);
-        Assert.Equal("server.exe connected to epsilon.exe: 1 relationship, 4 records. Press Enter to choose the program at its "
-            + "other end.", workspace.SelectionPrograms[^1].AccessibleName);
+        Assert.Equal("1 relationship · TCP at 7004 · 4 records", workspace.SelectionPrograms[^1].Counts);
+        Assert.Equal("server.exe connected to epsilon.exe: 1 relationship, TCP at 7004, 4 records. Press Enter to choose the "
+            + "program at its other end.", workspace.SelectionPrograms[^1].AccessibleName);
 
         // A button offers the sixth: every pair on request, and the busiest five again.
         Assert.True(workspace.OffersProgramsToggle);

@@ -170,6 +170,18 @@ internal sealed record ProcessPeerDocument
 
     /// <summary>How many this end made to the instance, which it accepted, as <see cref="ConnectionsMade"/> counts them.</summary>
     public long? ConnectionsAccepted { get; init; }
+
+    /// <summary>
+    /// The ports at this end the connections the instance made to it arrived at, each once, the lowest first - for the end
+    /// not observed, other hosts' ports. Null where the session records no connection's open.
+    /// </summary>
+    public IReadOnlyList<ushort>? MadeToPorts { get; init; }
+
+    /// <summary>
+    /// The instance's own ports the connections it accepted from this end arrived at, as <see cref="MadeToPorts"/> holds
+    /// them.
+    /// </summary>
+    public IReadOnlyList<ushort>? AcceptedPorts { get; init; }
 }
 
 /// <summary>
@@ -615,6 +627,8 @@ internal static class ProcessesCommand
                     Receives = Records(entry.Value.Received),
                     ConnectionsMade = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.Made ?? 0,
                     ConnectionsAccepted = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.Accepted ?? 0,
+                    MadeToPorts = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.MadePorts ?? [],
+                    AcceptedPorts = openings is null ? null : opened.GetValueOrDefault(entry.Key)?.AcceptedPorts ?? [],
                 }),
         ];
     }
@@ -917,7 +931,10 @@ internal static class ProcessesCommand
                             : peer.Unresolved == nameof(ProcessBindingReason.PeerNotObserved)
                                 ? "not in the capture (remote or unobserved)"
                                 : "unresolved: " + BindingText.Reason(Enum.Parse<ProcessBindingReason>(peer.Unresolved!)),
-                        .. opened ? [Opened(peer.ConnectionsMade ?? 0, peer.ConnectionsAccepted ?? 0)] : Array.Empty<string>(),
+                        .. opened
+                            ? [Opened(peer.ConnectionsMade ?? 0, peer.ConnectionsAccepted ?? 0, peer.MadeToPorts ?? [],
+                                peer.AcceptedPorts ?? [])]
+                            : Array.Empty<string>(),
                         Bytes(peer.SentTo, peer.Sends, "none"),
                         Bytes(peer.ReceivedFrom, peer.Receives, "none"),
                     ]),
@@ -927,7 +944,8 @@ internal static class ProcessesCommand
                 ConsoleUi.Note("Connections are those it made to each end and those it accepted from each, as the capture saw them "
                     + "open, and add up to its own above" + (peers.Any(peer => peer.ConnectionsMade + peer.ConnectionsAccepted == 0)
                         ? "; - where it saw none of theirs open, as of a UDP flow, which nothing opens."
-                        : "."));
+                        : ".")
+                    + " Their ports are where they arrived: the end's for those it made, its own for those it accepted.");
             }
         }
 
@@ -1022,16 +1040,20 @@ internal static class ProcessesCommand
     };
 
     /// <summary>
-    /// The connections an instance made to one end and accepted from it: "2 made", "1 accepted", "1 made · 1 accepted", or
-    /// "-" where the capture saw none of theirs open.
+    /// The connections an instance made to one end and accepted from it, each with the ports it arrived at where known: "2
+    /// made to 8080", "1 accepted at 52001", "1 made to 52001 · 1 accepted at 52001", or "-" where the capture saw none of
+    /// theirs open.
     /// </summary>
-    private static string Opened(long made, long accepted) => (made, accepted) switch
-    {
-        (0, 0) => "-",
-        (_, 0) => $"{ConsoleUi.Count(made)} made",
-        (0, _) => $"{ConsoleUi.Count(accepted)} accepted",
-        _ => $"{ConsoleUi.Count(made)} made · {ConsoleUi.Count(accepted)} accepted",
-    };
+    private static string Opened(long made, long accepted, IReadOnlyList<ushort> madeTo, IReadOnlyList<ushort> acceptedAt) =>
+        string.Join(" · ", new[]
+        {
+            made == 0 ? null : ConsoleUi.Count(made) + " made" + Ports(" to ", madeTo),
+            accepted == 0 ? null : ConsoleUi.Count(accepted) + " accepted" + Ports(" at ", acceptedAt),
+        }.OfType<string>()) is { Length: > 0 } said ? said : "-";
+
+    /// <summary>Ports after the words leading to them, numbers alone: " to 80 and 443"; empty where there are none.</summary>
+    private static string Ports(string words, IReadOnlyList<ushort> ports) =>
+        ports.Count == 0 ? string.Empty : words + HostLinkText.PortNumbers(ports);
 
     private static string Words(string pascal) =>
         string.Concat(pascal.Select((character, index) =>
