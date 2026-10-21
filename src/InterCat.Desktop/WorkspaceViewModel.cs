@@ -5731,6 +5731,10 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
     public void SelectInterval(TimeRange interval) => selection.SelectInterval(interval);
 
+    /// <summary>
+    /// Lets go of everything chosen - a node, a ranked row, a relationship, processes chosen together, a time range - as Esc
+    /// does on the machine rung, so the inspector then describes what the rung itself holds.
+    /// </summary>
     public void ClearSelection()
     {
         pendingRungKey = null;
@@ -5740,6 +5744,16 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         chosenProcesses.Clear();
         graphSelection = null;
         ForgetRelationship();
+
+        // The ranked table's row goes with the choice it made, before a brush let go restates the rows, which would choose
+        // it again: a row still chosen there read as chosen while the inspector said nothing was.
+        if (selectedRung is not null)
+        {
+            selectedRung = null;
+            describesRow = false;
+            OnPropertyChanged(nameof(SelectedRung));
+        }
+
         selection.Clear();
         RaiseGraphSelectionChanged();
     }

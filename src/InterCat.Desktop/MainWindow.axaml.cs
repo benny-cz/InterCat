@@ -152,6 +152,10 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     // Whether the ranked table owns the keyboard as far as the user is concerned (FollowKeyboardOwner).
     private bool railOwnsKeyboard;
 
+    // The ranked row Esc last let go with the rest of the choice, by its key, which the table gives the keyboard to while it
+    // has no row chosen (KeepRailKeyboard).
+    private string? rowLetGo;
+
     // The control that last had the keyboard in each pane F6 visits, which it gives the keyboard back to (FocusPane).
     private readonly Dictionary<Control, InputElement> paneKeyboard = [];
 
@@ -797,6 +801,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
                     }
                     else
                     {
+                        // On the machine rung the ranked row goes with the rest of the choice; the keyboard stays on it.
+                        rowLetGo = viewModel.SelectedRung?.Key;
                         _ = viewModel.Ascend();
 
                         // A choice let go takes the inspector's lists of what it held, and the row the keyboard was on goes
@@ -938,7 +944,8 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     }
 
     /// <summary>
-    /// Gives the keyboard back to the ranked table's selected row, or its first, once rebuilt rows are laid out. A rung
+    /// Gives the keyboard back to the ranked table's selected row - or, with none chosen, the one Esc let go with the rest of
+    /// the choice - or its first, once rebuilt rows are laid out. A rung
     /// change rebuilds the table, and so do rows arriving for the same rung - a process's RPC channels, the next page of
     /// records - and the row that had the keyboard goes with them; while the table owns the keyboard, the new rows get
     /// it back, so the next arrow and Enter act on the rung the user is on (§3.2, R15).
@@ -963,7 +970,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             return;
         }
 
-        object? row = RungList.SelectedItem ?? RungList.Items[0];
+        object? row = RungList.SelectedItem
+            ?? RungList.Items.OfType<RungRow>().FirstOrDefault(item => string.Equals(item.Key, rowLetGo, StringComparison.Ordinal))
+            ?? RungList.Items[0];
         if (row is null) return;
         RungList.ScrollIntoView(row);
         if (RungList.ContainerFromItem(row) is Control container)

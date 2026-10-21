@@ -167,6 +167,29 @@ public sealed class LadderKeyboardTests
         Assert.Single(viewModel.Crumbs);
     }
 
+    [AvaloniaFact(DisplayName = "§6.7: Esc on the machine rung lets go of the ranked row with the rest of the choice, the keyboard staying on it")]
+    public void EscOnTheMachineLetsGoOfTheRankedRow()
+    {
+        (Window window, WorkspaceViewModel viewModel) = Open();
+        ListBox list = window.GetControl<ListBox>("RungList");
+        viewModel.SelectedRung = viewModel.RungRows[0];
+        Settle(window);
+        Assert.True(list.ContainerFromIndex(0)!.Focus());
+
+        // Esc says nothing is chosen, and the table no longer shows the row as chosen: the keyboard stays on it, so Down
+        // chooses the one after it.
+        window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal("Nothing selected", viewModel.SelectionTitle);
+        Assert.Null(viewModel.SelectedRung);
+        Assert.Null(list.SelectedItem);
+        Assert.Same(list.ContainerFromIndex(0), TopLevel.GetTopLevel(list)!.FocusManager!.GetFocusedElement());
+        window.KeyPressQwerty(PhysicalKey.ArrowDown, RawInputModifiers.None);
+        Settle(window);
+        Assert.Equal(viewModel.RungRows[1].Key, viewModel.SelectedRung?.Key);
+        window.Close();
+    }
+
     [AvaloniaFact(DisplayName = "§3.2: after Enter or Escape the new rung's table keeps the keyboard, so the next arrow and Enter act on it")]
     public void TheKeyboardStaysOnTheRailAcrossRungs()
     {

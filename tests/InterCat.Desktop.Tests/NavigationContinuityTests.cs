@@ -30,6 +30,27 @@ public sealed class NavigationContinuityTests
         Assert.False(workspace.IsSearching);
     }
 
+    [Fact(DisplayName = "§6.7: letting go of the choice on the machine rung lets go of the ranked row it made, said to the table")]
+    public void LettingGoOfTheChoiceLetsGoOfTheRankedRow()
+    {
+        using var workspace = new WorkspaceViewModel(SyntheticWorkspace.Create(), "session:one:generation:1");
+        var said = new List<string?>();
+        workspace.PropertyChanged += (_, changed) =>
+        {
+            if (changed.PropertyName == nameof(WorkspaceViewModel.SelectedRung))
+            {
+                said.Add(workspace.SelectedRung?.Key);
+            }
+        };
+
+        workspace.SelectedRung = workspace.RungRows[0];
+        Assert.NotEqual("Nothing selected", workspace.SelectionTitle);
+        Assert.False(workspace.Ascend());
+        Assert.Equal("Nothing selected", workspace.SelectionTitle);
+        Assert.Null(workspace.SelectedRung);
+        Assert.Null(said[^1]);
+    }
+
     [Fact(DisplayName = "R7: a newer generation keeps the relationship chosen, and says once when the session no longer holds it")]
     public void ANewerGenerationKeepsTheRelationshipChosen()
     {

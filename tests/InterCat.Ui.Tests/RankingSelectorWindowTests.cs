@@ -231,12 +231,14 @@ public sealed class RankingSelectorWindowTests
         Assert.Equal(chosen, workspace.SelectedRung?.Key);
         Assert.Equal(chosen, Assert.IsType<RungRow>(rail.SelectedItem).Key);
 
-        // Letting the brush go restates them with the whole session's counts, and the choice stays still.
+        // Letting the brush go with the rest of the choice, as Esc does, restates them with the whole session's counts, and
+        // the rail lets the row go with the choice it made.
         workspace.ClearSelection();
         await workspace.IntervalReady;
         Dispatch();
         Assert.Null(workspace.SelectedInterval);
-        Assert.Equal(chosen, Assert.IsType<RungRow>(rail.SelectedItem).Key);
+        Assert.Null(rail.SelectedItem);
+        Assert.Equal("Nothing selected", workspace.SelectionTitle);
         window.Close();
     }
 
