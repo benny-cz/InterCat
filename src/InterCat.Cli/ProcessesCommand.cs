@@ -22,6 +22,12 @@ internal sealed record ProcessesDocument
     /// </summary>
     public required string RankedBy { get; init; }
 
+    /// <summary>
+    /// The port of their own the instances listed accepted connections at, as `--port` named it, whoever connected; null
+    /// where every instance is listed.
+    /// </summary>
+    public int? Port { get; init; }
+
     public required ProcessesSummaryDocument Summary { get; init; }
 
     /// <summary>
@@ -217,6 +223,7 @@ internal static class ProcessesCommand
 
         string? topOption = command.TakeOption("--top");
         string? pidOption = command.TakeOption("--pid");
+        string? portOption = command.TakeOption("--port");
         string? rankOption = command.TakeOption("--rank-by");
         string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
@@ -263,9 +270,32 @@ internal static class ProcessesCommand
             pid = parsed;
         }
 
+        // One port's listeners, as the window's search for a port alone finds them: a port, after a colon or not.
+        ushort? port = null;
+        if (portOption is not null)
+        {
+            if (!ushort.TryParse(portOption.StartsWith(':') ? portOption[1..] : portOption, NumberStyles.None,
+                    CultureInfo.InvariantCulture, out ushort parsed) || parsed == 0)
+            {
+                ConsoleUi.Failure($"--port takes a port, a number from 1 to 65535 - 135 or :135 - and '{portOption}' is not one.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            if (pid is not null)
+            {
+                ConsoleUi.Failure("--port lists the instances that accepted connections at a port; --pid shows each instance of one "
+                    + "PID in full.");
+                return InterCatExitCode.InvalidInvocation;
+            }
+
+            port = parsed;
+        }
+
         // The list is ranked by what --rank-by names, in icat export's and icat hosts' words; one PID's detail is not a list.
+        // One port's listeners are ranked by the connections each accepted unless it names another.
         RankingMetric? rankBy = rankOption switch
         {
+            null when port is not null => RankingMetric.ConnectionsAccepted,
             null or "bytes-sent-and-received" => RankingMetric.EndpointBytes,
             "records" => RankingMetric.Records,
             "bytes-sent" => RankingMetric.BytesSent,
@@ -320,6 +350,13 @@ internal static class ProcessesCommand
 
         // Each instance as the inspector explains it: the overview's own projection under the same policy (R18).
         SessionOverviewBundle projected = SessionOverviewProjector.Project(store, policy, cancellationToken: cancellationToken);
+        if (port is { } asked && !projected.ConnectionOpensRecorded)
+        {
+            ConsoleUi.Failure($"This session records no connection's open, so which instances accepted connections at port {asked} "
+                + "is unknown rather than none.");
+            return InterCatExitCode.PermissionOrCapabilityFailure;
+        }
+
         if (rankBy is RankingMetric.ConnectionsMade or RankingMetric.ConnectionsAccepted && !projected.ConnectionOpensRecorded)
         {
             ConsoleUi.Failure($"This session records no connection's open, so how many connections each instance made or accepted "
@@ -330,6 +367,15 @@ internal static class ProcessesCommand
         Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
         ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound,
             projected.ConnectionOpensRecorded, rankBy.Value);
+        if (port is { } listened)
+        {
+            // Those whose accepted connections arrived at the port, whoever connected: the ports each process's card names.
+            document = document with
+            {
+                Port = listened,
+                Instances = [.. document.Instances.Where(item => item.AcceptedPorts?.Contains(listened) == true)],
+            };
+        }
         if (pid is { } selected)
         {
             ConsoleUi.Progress($"Finding what each instance of PID {selected} exchanged data with, and who connected to whom.");
@@ -685,6 +731,12 @@ internal static class ProcessesCommand
             ConsoleUi.Field("Ranked by", RankedWords(document.RankedBy));
         }
 
+        // One port's listeners say which port they are listed for.
+        if (document.Port is { } port)
+        {
+            ConsoleUi.Field("Accepted at", string.Create(CultureInfo.InvariantCulture, $"port {port}, whoever connected"));
+        }
+
         // What the capture covered, in the words icat metric uses of the same answer: a count is only as complete as the
         // capture was, and an instance's count of none for a mechanism it did not collect is no proof of inactivity (R21).
         if (coverage is { Length: > 0 })
@@ -703,8 +755,11 @@ internal static class ProcessesCommand
         ConsoleUi.Line();
         if (shown.Count == 0)
         {
-            ConsoleUi.Line(pid is { } missing
-                ? $"  No instance of PID {missing} is in this session's evidence."
+            ConsoleUi.Line(pid is { } missing ? $"  No instance of PID {missing} is in this session's evidence."
+                : document.Port is { } unheld
+                    ? string.Create(CultureInfo.InvariantCulture, $"  No instance accepted a connection at port {unheld}. icat hosts ")
+                        + string.Create(CultureInfo.InvariantCulture, $"<directory> --address :{unheld} lists the processes whose ")
+                        + "connections ran to that port at another host."
                 : "  No process instance is in this session's evidence.");
         }
         else
@@ -1012,7 +1067,7 @@ internal static class ProcessesCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--evidence-policy <name>]");
+        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--port <n>] [--evidence-policy <name>]");
         ConsoleUi.Line("                 [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received");
         ConsoleUi.Line("                            |connections-made|connections-accepted]");
         ConsoleUi.Line("                 [--output <path>] [--overwrite] [--json]");
@@ -1032,5 +1087,7 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      made to each and accepted from each, each other host its connections ran to, by");
         ConsoleUi.Line("      address, the most bytes first, and its RPC call records, whose calls icat operations");
         ConsoleUi.Line("      lists with the process at each one's other end.");
+        ConsoleUi.Line("      --port lists the instances that accepted connections at that port of their own, whoever");
+        ConsoleUi.Line("      connected - its own machine's processes or other hosts - the most connections first.");
     }
 }

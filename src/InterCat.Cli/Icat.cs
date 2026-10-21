@@ -304,12 +304,13 @@ internal static class Icat
         ConsoleUi.Line("      --peer <instance> on one process at the other end, and --between <instances>");
         ConsoleUi.Line("      --and <instances> on the records connecting two sets (icat metric --help lists them).");
         ConsoleUi.Line();
-        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--rank-by <ranking>] [--json]");
+        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--port <n>] [--rank-by <ranking>] [--json]");
         ConsoleUi.Line("      Lists the process instances the session's evidence supports, with each one's");
         ConsoleUi.Line("      lifetime, records, connections made and accepted, and transport bytes, the most bytes");
         ConsoleUi.Line("      first unless --rank-by names records, bytes-sent, bytes-received, connections-made or");
         ConsoleUi.Line("      connections-accepted; --pid shows one in full: the processes and other hosts it");
-        ConsoleUi.Line("      exchanged data with, and who connected to whom. A reused PID is two instances.");
+        ConsoleUi.Line("      exchanged data with, and who connected to whom; --port those that accepted connections");
+        ConsoleUi.Line("      at that port of their own. A reused PID is two instances.");
         ConsoleUi.Line();
         ConsoleUi.Line("  icat operations <directory> [--pid <id>] [--interface <uuid>] [--calls <n>] [--json]");
         ConsoleUi.Line("      Lists the RPC calls: each start paired with its stop by activity id, grouped by process,");

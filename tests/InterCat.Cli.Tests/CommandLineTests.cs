@@ -509,6 +509,81 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  Other end +Sent to +Received from\r?$", (await Run("processes", unopened.Path, "--pid", "100")).Output);
     }
 
+    [Fact(DisplayName = "§5.2: icat processes --port lists the instances that accepted connections at that port of their own, whoever connected, the most first, and refuses what names no port")]
+    public async Task IcatProcessesListsWhoAcceptedAtAPort()
+    {
+        using TemporarySession session = ConnectingProcesses();
+
+        // The server accepted the client's and the probe's connections at 8080, ranked by connections accepted.
+        (InterCatExitCode code, string text, string said) = await Run("processes", session.Path, "--port", "8080");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Ranked by +connections accepted, the most first, then connections made\r?$", text);
+        Assert.Matches(@"(?m)^  Accepted at +port 8080, whoever connected\r?$", text);
+        Assert.Matches(@"(?m)^  200 +server\.exe .* 0 made · 2 accepted at 8080 +", text);
+        Assert.DoesNotMatch(@"(?m)^  (100|300|400|500) ", text);
+
+        // After a colon alike; the pipe accepted its own connection at 52001.
+        (code, text, said) = await Run("processes", session.Path, "--port", ":52001");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  400 +pipe\.exe .* 1 made · 1 accepted at 52001 +", text);
+        Assert.DoesNotMatch(@"(?m)^  200 ", text);
+
+        // A port the client only connected to, at another host, lists none and says where those are read.
+        (code, text, said) = await Run("processes", session.Path, "--port", "443");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("No instance accepted a connection at port 443. icat hosts <directory> --address :443 lists the processes "
+            + "whose connections ran to that port at another host.", Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
+
+        // As JSON, the port named and the listeners alone, ranked as asked.
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--port", "8080", "--json")).Output))
+        {
+            Assert.Equal((8080, "connections-accepted"),
+                (json.RootElement.GetProperty("port").GetInt32(), json.RootElement.GetProperty("rankedBy").GetString()));
+            Assert.Equal([200], json.RootElement.GetProperty("instances").EnumerateArray()
+                .Select(item => item.GetProperty("process").GetProperty("processId").GetInt32()));
+        }
+
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--port", "8080", "--rank-by", "records",
+            "--json")).Output))
+        {
+            Assert.Equal("records", json.RootElement.GetProperty("rankedBy").GetString());
+        }
+
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--json")).Output))
+        {
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("port").ValueKind);
+        }
+
+        // What names no port, or a port beside one PID's detail, is refused.
+        foreach (string asked in new[] { "0", "65536", "x", "-1" })
+        {
+            (code, _, said) = await Run("processes", session.Path, "--port", asked);
+            Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+            Assert.Contains($"--port takes a port, a number from 1 to 65535 - 135 or :135 - and '{asked}' is not one.", said,
+                StringComparison.Ordinal);
+        }
+
+        (code, _, said) = await Run("processes", session.Path, "--port", "8080", "--pid", "200");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--port lists the instances that accepted connections at a port; --pid shows each instance of one PID in full.",
+            said, StringComparison.Ordinal);
+
+        // A session that records no connection's open cannot say who accepted any.
+        using var unopened = new TemporarySession();
+        Publish(unopened.Store,
+            [Transfer(12, ObservationKind.Send, AccountingSide.SendSide, 8, 100, 12).Between("127.0.0.1:50000", "127.0.0.1:8080")]);
+        unopened.Store.ReleaseSegmentReaders();
+        (code, _, said) = await Run("processes", unopened.Path, "--port", "8080");
+        Assert.Equal(InterCatExitCode.PermissionOrCapabilityFailure, code);
+        Assert.Contains("This session records no connection's open, so which instances accepted connections at port 8080 is unknown "
+            + "rather than none.", Regex.Replace(said, @"\s+", " "), StringComparison.Ordinal);
+
+        // Its help says what it takes.
+        (_, text, _) = await Run("processes", "--help");
+        Assert.Contains("--port lists the instances that accepted connections at that port of their own, whoever connected",
+            Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
+    }
+
     [Fact(DisplayName = "§5.2: icat processes --pid says who connected to whom end by end, adding up to the instance's own count: with itself, with an end it sent nothing to, and with ends no record holds")]
     public async Task AProcesssDetailSaysWhoConnectedEndByEnd()
     {

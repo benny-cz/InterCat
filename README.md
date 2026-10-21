@@ -110,6 +110,7 @@ icat hosts <session> --program svchost.exe
 icat evidence <session> --host 10.0.0.20
 icat processes <session> --rank-by connections-accepted
 icat processes <session> --pid <pid>
+icat processes <session> --port 135
 icat operations <session>
 
 # Share it.

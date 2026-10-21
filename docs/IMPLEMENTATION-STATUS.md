@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 679 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 680 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 680 — `icat processes --port` lists the instances that accepted connections at a port of their own (§5.2, §6.7, R18):**
+  - Whoever connected, as the window's port search finds them, ranked by connections accepted unless `--rank-by` names
+    another measure; a port none accepted at points to `icat hosts --address`, and the JSON names the port.
+  - Debug and Release each ran 2,681 tests with revision 473's 93 failures and 4 skips, and nothing else failed; a
+    new test lists the server by 8080 and the self-connected process by :52001, none and where to read them by a
+    port only connected to, the JSON's port, its ranking and null without one, refuses four values that name no port
+    and the option beside --pid, and says a session recording no open cannot tell. All ten mutations were caught:
+    every instance listed, the JSON's port unnamed, the list ranked by bytes, a colon refused, port 0 accepted, the
+    option allowed beside --pid or where no open is recorded, the Accepted at line, the empty list's words and the
+    help's line left out.
 
 - **Revision 679 — `icat processes`' and `icat overview`'s tables say where each process accepted its connections (§5.2, R18):**
   - The Connections cell names the ports of its own each accepted at - "7 made · 8 accepted at 5432" - so a ranking by
