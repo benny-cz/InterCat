@@ -552,7 +552,7 @@ public sealed class OtherHostsGraphTests
         Assert.Equal(1, GraphProjection.Project(kept).OtherHosts!.ConnectedProcesses);
     }
 
-    [Fact(DisplayName = "§6.3: connections to other hosts are said as a process's rung lists them: TCP connections to hosts and UDP flows with them")]
+    [Fact(DisplayName = "§6.3: connections to other hosts are said as a process's rung lists them: TCP connections to hosts, from them or with them, which way the capture saw them go, and UDP flows with them")]
     public void ConnectionsToOtherHostsAreSaidAsTheRungListsThem()
     {
         ProcessNode one = Node(1, "g");
@@ -581,6 +581,21 @@ public sealed class OtherHostsGraphTests
         Assert.Equal("accepted here at ports 445 and 3389", HostLinkText.Accepted([accepting, flows]));
         Assert.Equal("1 accepted here at port 445", HostLinkText.Accepted([mixed]));
         Assert.Equal(string.Empty, HostLinkText.Accepted([flows]));
+
+        // And which way they went as far as the capture saw: from the hosts where it saw every one accepted, with them where
+        // it saw some, and to them otherwise - those seen opening neither way said as most are, made by the processes -
+        // several processes' alike; UDP flows, which nothing opens, with them.
+        HostLink accepted = new(two.Id, Mechanism.Tcp,
+            [new HostAddress("203.0.113.1", 1, 1) { Accepted = 1, AcceptedPorts = [445] }], RelationStrength.Direct);
+        Assert.Equal("2 TCP connections from 1 host", HostLinkText.Reach(accepting));
+        Assert.Equal("3 TCP connections with 2 hosts", HostLinkText.Reach(mixed));
+        Assert.Equal("3 TCP connections from 1 host to 2 processes", HostLinkText.Reach(Mechanism.Tcp, [accepting, accepted]));
+        Assert.Equal("4 TCP connections between 2 processes and 2 hosts", HostLinkText.Reach(Mechanism.Tcp, [mixed, accepted]));
+        Assert.Equal("5 TCP connections between 2 processes and 3 hosts",
+            HostLinkText.Reach(Mechanism.Tcp, [accepting, Link(two, Mechanism.Tcp, 3, 2, 3)]));
+        Assert.Equal("5 UDP flows from 2 processes with 2 hosts",
+            HostLinkText.Reach(Mechanism.Udp, [flows, Link(two, Mechanism.Udp, 2, 2, 2)]));
+        Assert.Equal("2 TCP connections from 1 host · 3 UDP flows with 1 host", HostLinkText.Line([flows, accepting]));
 
         // A line says TCP before UDP, one process's with its hosts and several processes' by how many made them.
         Assert.Equal("3 TCP connections to 2 hosts · 5 UDP flows with 3 hosts",

@@ -978,11 +978,12 @@ public sealed class OtherHostsWorkspaceTests
             Direction("10.0.0.5"));
         Assert.Equal($"Direction: 10.0.0.6 connected to {Service}", Direction("10.0.0.6"));
 
-        // Under a brush its card still counts the whole session's connections, and says so where it counts them.
+        // Under a brush its card still counts the whole session's connections, and says so where it counts them: with the
+        // hosts, since it made one and accepted two.
         workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 150));
         await workspace.IntervalReady;
         IReadOnlyList<string> brushed = workspace.DescribeGraphHover(workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key)!.Lines;
-        Assert.Equal("Other hosts: 3 TCP connections to 2 hosts · whole session", brushed[1]);
+        Assert.Equal("Other hosts: 3 TCP connections with 2 hosts · whole session", brushed[1]);
         Assert.Equal("Connections: 1 made · 2 accepted at ports 445 and 3389, as the capture saw them open · whole session", brushed[2]);
         Assert.EndsWith(" · brushed interval", brushed[3], StringComparison.Ordinal);
     });

@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 684 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 685 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 685 — other hosts' words say which way the connections went (§6.3, §6.8, R18):**
+  - To the hosts where none was seen accepted, from them where every one was - the demo server's "2 TCP connections
+    from 1 host to 2 processes", which said "to 1 host" - and with them, or between processes and hosts, where both;
+    UDP flows stay with their hosts. Found by a live pass over the demo after icat ports.
+  - Debug and Release each ran 2,686 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    wording test now says one process's and several processes' TCP connections to, from and with other hosts, and
+    UDP flows with them, and the overview's, an aggregate's process rows' and a brushed card's tests read the
+    accepted connections from their host and a process's both ways with its hosts. All eight mutations were caught:
+    every connection said to the hosts, none said from them, UDP flows given a way, one process's accepted or mixed
+    connections said to its hosts, several processes' from the hosts said from the processes or between them unsaid,
+    and several processes' UDP flows said between them.
 
 - **Revision 684 — icat ports lists the ports a session's processes accepted connections at, and who connected (§6.3, §7.4, R18):**
   - Each port with the process that accepted connections there, how many, and who connected - processes of the

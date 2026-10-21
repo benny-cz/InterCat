@@ -199,7 +199,7 @@ internal static class OverviewCommand
                 .Take(5)];
             bool accepted = holders.Any(links => links.Any(link => link.Addresses.Any(address => address.Accepted > 0)));
             ConsoleUi.Table(
-                ["Process", "Connections to other hosts", .. accepted ? ["Accepted here"] : Array.Empty<string>()],
+                ["Process", "Connections with other hosts", .. accepted ? ["Accepted here"] : Array.Empty<string>()],
                 [.. holders.Select(links => (IReadOnlyList<string>)
                 [
                     CollectorText.Named(nodes[links.Key]), HostLinkText.Line(links),

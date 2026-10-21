@@ -41,7 +41,7 @@ public sealed class OverviewCensusTests
         // The processes with connections to other hosts, as the window draws them to Other hosts: the browser's one
         // connection, none of them accepted, so no column says so.
         Assert.Matches(@"(?m)^  Other hosts +1 TCP connection to 1 host\r?$", text);
-        Assert.Matches(@"(?m)^  Process +Connections to other hosts\r?$", text);
+        Assert.Matches(@"(?m)^  Process +Connections with other hosts\r?$", text);
         Assert.Matches(@"(?m)^ *browser\.exe · PID 300 +1 TCP connection to 1 host\r?$", text);
 
         // And the hosts they ran to, the busiest first, by address, with who reached each and over what, the ports at it and
@@ -80,7 +80,7 @@ public sealed class OverviewCensusTests
         Assert.True(code == InterCatExitCode.Success, said);
         Assert.Matches(@"(?m)^  Relationships +1\r?$", text);
         Assert.DoesNotContain("No TCP connection was seen", text, Ordinal);
-        Assert.DoesNotContain("Connections to other hosts", text, Ordinal);
+        Assert.DoesNotContain("Connections with other hosts", text, Ordinal);
         Assert.DoesNotContain("RPC peers", text, Ordinal);
 
         // One that also holds RPC calls no capture linked says how to draw them, as the window's graph does.
@@ -182,8 +182,8 @@ public sealed class OverviewCensusTests
             + "ports they accepted connections at, and who connected to each.", Regex.Replace(text, @"\s+", " "), Ordinal);
 
         // The server accepted its connection from another host, at its own 445, which its row and the host's say.
-        Assert.Matches(@"(?m)^  Process +Connections to other hosts +Accepted here\r?$", text);
-        Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection to 1 host +1 at 445\r?$", text);
+        Assert.Matches(@"(?m)^  Process +Connections with other hosts +Accepted here\r?$", text);
+        Assert.Matches(@"(?m)^  server\.exe · PID 200 +1 TCP connection from 1 host +1 at 445\r?$", text);
         Assert.Matches(@"(?m)^  Busiest other host +Processes +Connections +Ports +Accepted here +Records\r?$", text);
         Assert.Matches(@"(?m)^  10\.0\.0\.6 +server\.exe · PID 200 +1 TCP connection +- +1 at 445 +2\r?$", text);
 

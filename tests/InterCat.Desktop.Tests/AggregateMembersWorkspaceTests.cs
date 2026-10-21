@@ -38,7 +38,7 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Equal(
             [
                 ("program1.exe · PID 101", "4 records · 1 TCP connection to 1 host"),
-                ("program0.exe · PID 100", "3 records · 1 TCP connection to 1 host · accepted here at port 445"),
+                ("program0.exe · PID 100", "3 records · 1 TCP connection from 1 host · accepted here at port 445"),
             ],
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));
         Assert.Equal("program1.exe · PID 101, 4 records · 1 TCP connection to 1 host. Press E to list its records, or Enter to "
@@ -327,7 +327,7 @@ public sealed class AggregateMembersWorkspaceTests
         Assert.Contains(nameof(WorkspaceViewModel.MemberRows), restated);
         Assert.Equal(
             [
-                ("program0.exe · PID 100", "1 record · 1 TCP connection to 1 host · accepted here at port 445 · whole session"),
+                ("program0.exe · PID 100", "1 record · 1 TCP connection from 1 host · accepted here at port 445 · whole session"),
                 ("program1.exe · PID 101", "1 record · 1 TCP connection to 1 host · whole session"),
             ],
             workspace.MemberRows.Select(row => (row.Name, row.Detail)));

@@ -13,26 +13,57 @@ public static class HostLinkText
     public static string Connections(Mechanism mechanism, long count) =>
         CountText.Of(count, mechanism == Mechanism.Udp ? "UDP flow" : "TCP connection");
 
-    /// <summary>One process's connections over one transport: "42 TCP connections to 17 hosts", "5 UDP flows with 3 hosts".</summary>
+    /// <summary>
+    /// One process's connections over one transport, which way they went as far as the capture saw them open: "42 TCP
+    /// connections to 17 hosts" where it saw none accepted from them, "2 TCP connections from 1 host" where it saw every
+    /// one accepted, "12 TCP connections with 3 hosts" where it saw some accepted, and "5 UDP flows with 3 hosts", which
+    /// nothing opens.
+    /// </summary>
     public static string Reach(HostLink link)
     {
         ArgumentNullException.ThrowIfNull(link);
-        return Connections(link.Mechanism, link.Connections)
-            + (link.Mechanism == Mechanism.Udp ? " with " : " to ") + CountText.Of(link.Hosts, "host");
+        string hosts = CountText.Of(link.Hosts, "host");
+        return Connections(link.Mechanism, link.Connections) + WayOf(link.Mechanism, [link]) switch
+        {
+            Way.To => " to " + hosts,
+            Way.From => " from " + hosts,
+            _ => " with " + hosts,
+        };
     }
 
     /// <summary>
-    /// Several processes' connections over one transport: "120 TCP connections from 12 processes to 40 hosts", "5 UDP
-    /// flows from 2 processes with 3 hosts". A host two of them reached is one host.
+    /// Several processes' connections over one transport, which way they went as one process's are said: "120 TCP
+    /// connections from 12 processes to 40 hosts", "4 TCP connections from 2 hosts to 3 processes", "9 TCP connections
+    /// between 3 processes and 5 hosts", "5 UDP flows from 2 processes with 3 hosts". A host two of them reached is one
+    /// host.
     /// </summary>
     public static string Reach(Mechanism mechanism, IReadOnlyCollection<HostLink> links)
     {
         ArgumentNullException.ThrowIfNull(links);
-        int hosts = links.SelectMany(link => link.Addresses).Select(address => address.Address)
-            .Distinct(StringComparer.Ordinal).Count();
-        return Connections(mechanism, links.Sum(link => (long)link.Connections)) + " from "
-            + CountText.Of(links.Select(link => link.Process).Distinct().Count(), "process", "processes")
-            + (mechanism == Mechanism.Udp ? " with " : " to ") + CountText.Of(hosts, "host");
+        string hosts = CountText.Of(links.SelectMany(link => link.Addresses).Select(address => address.Address)
+            .Distinct(StringComparer.Ordinal).Count(), "host");
+        string processes = CountText.Of(links.Select(link => link.Process).Distinct().Count(), "process", "processes");
+        return Connections(mechanism, links.Sum(link => (long)link.Connections)) + WayOf(mechanism, links) switch
+        {
+            Way.To => $" from {processes} to {hosts}",
+            Way.From => $" from {hosts} to {processes}",
+            _ when mechanism == Mechanism.Udp => $" from {processes} with {hosts}",
+            _ => $" between {processes} and {hosts}",
+        };
+    }
+
+    /// <summary>
+    /// Which way a set of connections to other hosts went, as far as the capture saw them open: TCP connections to them
+    /// where it saw none accepted from them - those it saw opening neither way said as most are, made by the processes -
+    /// from them where it saw every one accepted, and both ways otherwise; a UDP flow, which nothing opens, neither.
+    /// </summary>
+    private static Way WayOf(Mechanism mechanism, IReadOnlyCollection<HostLink> links)
+    {
+        long accepted = links.SelectMany(link => link.Addresses).Sum(address => (long)address.Accepted);
+        return mechanism == Mechanism.Udp ? Way.Both
+            : accepted == 0 ? Way.To
+            : accepted == links.Sum(link => (long)link.Connections) ? Way.From
+            : Way.Both;
     }
 
     /// <summary>
@@ -196,4 +227,12 @@ public static class HostLinkText
 
     /// <summary>The same on one line, its transports apart: "42 TCP connections to 17 hosts · 5 UDP flows with 3 hosts".</summary>
     public static string Line(IEnumerable<HostLink> links) => string.Join(" · ", Parts(links));
+
+    /// <summary>Which way connections to other hosts went: made to them, accepted from them, or both or neither.</summary>
+    private enum Way
+    {
+        To,
+        From,
+        Both,
+    }
 }
