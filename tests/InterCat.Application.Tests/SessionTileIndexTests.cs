@@ -16,7 +16,7 @@ namespace InterCat.Application.Tests;
 /// from the derivation cache, which tests running beside these could otherwise push the generation out of.
 /// </summary>
 [Collection(SharedDerivationCache.Name)]
-public sealed class SessionTileIndexTests
+public sealed partial class SessionTileIndexTests
 {
     private static readonly Mechanism[] Kinds = [Mechanism.Tcp, Mechanism.Udp, Mechanism.NamedPipe, Mechanism.Rpc];
 

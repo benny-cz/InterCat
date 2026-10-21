@@ -186,8 +186,8 @@ public static class SessionCheckpoints
     /// readable operation index keeping its exchanges and a readable tile index, each covering exactly the segments it
     /// names. A checkpoint written before revision 166 holds no activity, which a reopen would count from every segment,
     /// so it is replaced, and so is a generation published before revision 440, which names no operation index, 441, whose
-    /// index keeps no exchanges, 456, which names no tile index, or 457, whose tile index keeps no bindings - or keeps them
-    /// under a derivation other than the checkpoint's.
+    /// index keeps no exchanges, 456, which names no tile index, 457, whose tile index keeps no bindings - or keeps them
+    /// under a derivation other than the checkpoint's - or 701, whose tile index keeps no level spanning its segments.
     /// </summary>
     private static bool IsCurrent(
         IOwnedDirectory directory,
@@ -218,7 +218,7 @@ public static class SessionCheckpoints
                     saved.Processes) is { KeepsExchanges: true } kept
                 && kept.Covers(SessionOverviewIndex.ObservationSegments(manifest), SessionOverviewIndex.FieldSegments(manifest))
                 && SessionTileIndex.NamedBy(manifest) is { } tiles
-                && SessionTileIndex.Open(directory, tiles, manifest.SessionId) is { } file
+                && SessionTileIndex.Open(directory, tiles, manifest.SessionId) is { Minor: >= SessionTileIndex.Minor } file
                 && file.Segments.Count == segments.Length
                 && SessionOverviewIndex.ObservationSegments(manifest).All(file.Describes)
                 && file.Derivation.Matches(saved.Processes, saved.Relations);

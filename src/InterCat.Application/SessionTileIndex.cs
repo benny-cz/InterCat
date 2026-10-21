@@ -70,12 +70,38 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 3 keeps each record's end of its channel beside its direction, and each tile's owner and channel tallies apart,
-    /// its channels by mechanism, direction and end; minor 2, revision 459's, kept each record's direction and tallied
-    /// owners by it; minor 1, revision 457's, kept each tile's tallies and each record's owner and channel; minor 0, revision
-    /// 456's, kept none of these.
+    /// Minor 4 keeps a level spanning the generation's segments after their sections; minor 3, revision 460's, keeps each
+    /// record's end of its channel beside its direction, and each tile's owner and channel tallies apart, its channels by
+    /// mechanism, direction and end; minor 2, revision 459's, kept each record's direction and tallied owners by it; minor 1,
+    /// revision 457's, kept each tile's tallies and each record's owner and channel; minor 0, revision 456's, kept none of
+    /// these. Minor 3 is still read, its segments' sections counted, and published again with the level spanning them.
     /// </summary>
-    private const ushort Minor = 3;
+    internal const ushort Minor = 4;
+
+    /// <summary>The earliest minor read: its sections hold every binding, direction and end a query counts.</summary>
+    private const ushort EarliestReadMinor = 3;
+
+    /// <summary>
+    /// The most finest tiles a level spanning segments has: its width is the narrowest power of ten, no narrower than any
+    /// segment's finest tiles, that spans the generation's timed readings in at most this many.
+    /// </summary>
+    internal const long MaximumSpanningTiles = 2_048;
+
+    /// <summary>A level spanning segments has at most one finest tile for each this many of the timed records it spans.</summary>
+    internal const long RecordsPerSpanningTile = 256;
+
+    /// <summary>
+    /// The most tally entries the finest tiles of a level spanning segments hold while it is written, about 24 MB: past it,
+    /// its tiles are made ten times wider, which sums the entries of a process or a channel each of them holds, and where
+    /// no width spanning more than one tile keeps them within it, the index keeps no such level.
+    /// </summary>
+    internal const long MaximumSpanningEntries = 2_097_152;
+
+    /// <summary>The bytes of a spanning section's header but its mechanisms and its levels.</summary>
+    private const int SpanningHeaderBytes = 78;
+
+    /// <summary>The bytes of one extent of a spanning section: the section's place, earliest and latest reading, records.</summary>
+    private const int ExtentBytes = 28;
 
     /// <summary>The direction code a kind holds for an `EN-Direction` code of 7 or more, which no direction is.</summary>
     private const int DirectionPastCodes = 7;
@@ -202,9 +228,11 @@ internal static class SessionTileIndex
     /// <summary>
     /// Writes the tiles of <paramref name="segments"/>, generation <paramref name="derivedGeneration"/>'s observation
     /// segments, with their records' bindings under <paramref name="processes"/> and <paramref name="relations"/>, in the
-    /// canonical order of tile-index-v1: its header, a section per segment by name, the directory and the footer.
-    /// <paramref name="stated"/> is what the directory says the bindings are, which only a test of a stale derivation
-    /// states otherwise.
+    /// canonical order of tile-index-v1: its header, a section per segment by name, the section of the level spanning
+    /// them where they keep one, the directory and the footer. <paramref name="stated"/> is what the directory says the
+    /// bindings are, which only a test of a stale derivation states otherwise, and <paramref name="spanningEntries"/> the
+    /// most tally entries the spanning level's finest tiles hold while they are summed, which only a test of that bound
+    /// lowers.
     /// </summary>
     /// <returns>How many bytes were written.</returns>
     public static long Write(
@@ -215,7 +243,8 @@ internal static class SessionTileIndex
         ProcessInstanceIndex processes,
         TransportRelationIndex relations,
         CancellationToken cancellationToken,
-        TileDerivation? stated = null)
+        TileDerivation? stated = null,
+        long spanningEntries = MaximumSpanningEntries)
     {
         ArgumentNullException.ThrowIfNull(destination);
         ArgumentNullException.ThrowIfNull(segments);
@@ -245,12 +274,15 @@ internal static class SessionTileIndex
         entries.I32(derivation.Instances);
         entries.I32(derivation.Channels);
         entries.Raw(derivation.Fingerprint);
-        foreach ((StoreDependency dependency, SegmentReaderV1 reader) in segments
-            .OrderBy(segment => segment.Dependency.Name, StringComparer.Ordinal))
+        (StoreDependency Dependency, SegmentReaderV1 Reader)[] ordered =
+            [.. segments.OrderBy(segment => segment.Dependency.Name, StringComparer.Ordinal)];
+        SpanningLevel? spanning = SpanningLevel.Plan([.. ordered.Select(segment => segment.Reader)], spanningEntries,
+            cancellationToken);
+        foreach ((StoreDependency dependency, SegmentReaderV1 reader) in ordered)
         {
             cancellationToken.ThrowIfCancellationRequested();
             long offset = writer.Written;
-            WriteSection(writer, reader, processes, relations, cancellationToken);
+            WriteSection(writer, reader, processes, relations, spanning, cancellationToken);
             entries.Str8(dependency.Name);
             entries.I64(dependency.LengthBytes);
             entries.Str8(dependency.Digest);
@@ -258,6 +290,16 @@ internal static class SessionTileIndex
             entries.I64(writer.Written - offset);
         }
 
+        // The level spanning the segments follows their sections, and the directory says where it lies, or that there is none.
+        long spanningOffset = writer.Written;
+        if (spanning is { Abandoned: false })
+        {
+            spanning.Write(writer, cancellationToken);
+        }
+
+        bool spans = writer.Written > spanningOffset;
+        entries.I64(spans ? spanningOffset : 0);
+        entries.I64(writer.Written - spanningOffset);
         entries.Flush();
         long directoryOffset = writer.Written;
         byte[] listed = directory.ToArray();
@@ -278,13 +320,15 @@ internal static class SessionTileIndex
     /// One segment's section: its header; its levels from the finest up, block by block; the records of its finest tiles,
     /// block by block; and every tile's owner tallies, then every tile's channel tallies, each level by level and block by
     /// block. A segment whose timed readings go backwards, or that has none, keeps no tiles: a zoom or a brush reads the
-    /// first's rows, and the second has none.
+    /// first's rows, and the second has none. Its tiles are summed into <paramref name="spanning"/>'s, where a level spans
+    /// the segments.
     /// </summary>
     private static void WriteSection(
         IndexFileWriter writer,
         SegmentReaderV1 segment,
         ProcessInstanceIndex processes,
         TransportRelationIndex relations,
+        SpanningLevel? spanning,
         CancellationToken cancellationToken)
     {
         SegmentTimeTiles tiles = SegmentTimeTiles.Of(segment, cancellationToken);
@@ -306,18 +350,11 @@ internal static class SessionTileIndex
             levels = Levels(segment, tiles, mechanisms, owners, channels, ends.Buffer, cancellationToken);
             records = Records(segment, tiles, mechanisms, levels[0], owners, channels, ends.Buffer, cancellationToken);
             (ownerTallies, channelTallies) = Tallies(levels, cancellationToken);
+            spanning?.Add(levels, mechanisms, tiles.Width, cancellationToken);
         }
 
-        int tileBytes = TileBytes(mechanisms.Length);
         int headerBytes = SectionHeaderBytes + (2 * mechanisms.Length) + (12 * levels.Count);
-        long[] levelOffsets = new long[levels.Count];
-        long next = headerBytes;
-        for (int level = 0; level < levels.Count; level++)
-        {
-            levelOffsets[level] = next;
-            next += LevelBytes(levels[level].Count, tileBytes);
-        }
-
+        (long[] levelOffsets, long next) = LevelOffsets(levels, mechanisms.Length, headerBytes);
         byte[] head = new byte[headerBytes];
         var at = new SpanWriter(head);
         at.I32(tiles.Rows);
@@ -347,7 +384,37 @@ internal static class SessionTileIndex
         at.I64(channelTallies.Length);
         Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
         writer.Raw(head);
+        WriteBlocks(writer, levels, mechanisms.Length, cancellationToken);
+        writer.Raw(records);
+        writer.Raw(ownerTallies);
+        writer.Raw(channelTallies);
+    }
 
+    /// <summary>
+    /// Where each of <paramref name="levels"/> begins when the first begins at <paramref name="first"/>, the finest first,
+    /// each after the one before, and where the last ends.
+    /// </summary>
+    private static (long[] Offsets, long End) LevelOffsets(List<Level> levels, int mechanisms, long first)
+    {
+        int tileBytes = TileBytes(mechanisms);
+        long[] offsets = new long[levels.Count];
+        long next = first;
+        for (int level = 0; level < levels.Count; level++)
+        {
+            offsets[level] = next;
+            next += LevelBytes(levels[level].Count, tileBytes);
+        }
+
+        return (offsets, next);
+    }
+
+    /// <summary>
+    /// A section's levels, from the finest up, each a block of <see cref="TilesPerBlock"/> tiles after another: each tile's
+    /// readings, links, children, tally links and counts, and each block's trailer and checksum.
+    /// </summary>
+    private static void WriteBlocks(IndexFileWriter writer, List<Level> levels, int mechanisms, CancellationToken cancellationToken)
+    {
+        int tileBytes = TileBytes(mechanisms);
         byte[] block = new byte[(TilesPerBlock * tileBytes) + BlockTrailerBytes];
         for (int level = 0; level < levels.Count; level++)
         {
@@ -365,9 +432,9 @@ internal static class SessionTileIndex
                     into.I32(tilesOf.Children[tile]);
                     into.I32(tilesOf.OwnerLinks[tile]);
                     into.I32(tilesOf.ChannelLinks[tile]);
-                    for (int slot = 0; slot < mechanisms.Length; slot++)
+                    for (int slot = 0; slot < mechanisms; slot++)
                     {
-                        into.I32(tilesOf.Counts[(tile * mechanisms.Length) + slot]);
+                        into.I32(tilesOf.Counts[(tile * mechanisms) + slot]);
                     }
                 }
 
@@ -380,10 +447,6 @@ internal static class SessionTileIndex
                 writer.Raw(block.AsSpan(0, length + 4));
             }
         }
-
-        writer.Raw(records);
-        writer.Raw(ownerTallies);
-        writer.Raw(channelTallies);
     }
 
     /// <summary>
@@ -755,7 +818,7 @@ internal static class SessionTileIndex
             throw Invalid(string.Create(CultureInfo.InvariantCulture, $"it is version {major}, and this build reads version {Major}."));
         }
 
-        if (minor < Minor)
+        if (minor < EarliestReadMinor)
         {
             throw Invalid(string.Create(CultureInfo.InvariantCulture,
                 $"it is minor {minor}, written before a tile index kept its records' bindings, directions and ends; a checkpoint publishes it again."));
@@ -800,7 +863,7 @@ internal static class SessionTileIndex
             throw Invalid("its directory names more instances or channels than a binding packs.");
         }
 
-        var entries = new Dictionary<string, TileSectionEntry>(StringComparer.Ordinal);
+        var entries = new List<TileSectionEntry>();
         long end = HeaderLength;
         string? previous = null;
         for (int index = 0; index < sections; index++)
@@ -810,7 +873,7 @@ internal static class SessionTileIndex
             string digest = reader.Str8();
             long offset = reader.I64();
             long length = reader.I64();
-            if (previous is not null && string.CompareOrdinal(previous, name) >= 0)
+            if (name.Length == 0 || (previous is not null && string.CompareOrdinal(previous, name) >= 0))
             {
                 throw Invalid("its directory does not list its segments once each, by name.");
             }
@@ -820,9 +883,28 @@ internal static class SessionTileIndex
                 throw Invalid($"its directory places the section of '{name}' outside its sections.");
             }
 
-            entries.Add(name, new(name, segmentLength, digest, offset, length));
+            entries.Add(new(name, segmentLength, digest, offset, length));
             end = offset + length;
             previous = name;
+        }
+
+        // Since minor 4 the directory ends saying where the level spanning the segments lies, after their sections, or
+        // that there is none.
+        TileSectionEntry? spanning = null;
+        if (minor >= Minor)
+        {
+            long offset = reader.I64();
+            long length = reader.I64();
+            if (length == 0 ? offset != 0 : offset != end || length < SpanningHeaderBytes || offset + length > directoryOffset)
+            {
+                throw Invalid("its directory places the level spanning its segments outside its sections.");
+            }
+
+            if (length > 0)
+            {
+                spanning = new(string.Empty, 0, string.Empty, offset, length);
+                end = offset + length;
+            }
         }
 
         reader.RequireEnd();
@@ -831,8 +913,8 @@ internal static class SessionTileIndex
             throw Invalid("bytes lie between its last section and its directory.");
         }
 
-        return new TileIndexFile(dependency, derivedGeneration,
-            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries);
+        return new TileIndexFile(dependency, derivedGeneration, minor,
+            new TileDerivation(bindingRule, relationRule, instances, channels, fingerprint), entries, spanning);
     }
 
     internal static byte[] Read(FileStream stream, long offset, int length)
@@ -880,7 +962,7 @@ internal static class SessionTileIndex
     internal static TileSection ReadSection(FileStream stream, TileSectionEntry entry)
     {
         byte[] bytes = Read(stream, entry.Offset, (int)Math.Min(entry.Length, MaximumSectionHeaderBytes));
-        var at = new SpanReader(bytes, entry.Name);
+        var at = new SpanReader(bytes, entry.Describe);
         int rows = at.I32();
         int untimed = at.I32();
         byte flags = at.U8();
@@ -951,6 +1033,109 @@ internal static class SessionTileIndex
 
         return new TileSection(entry, rows, untimed, ordered, timed ? first : null, timed ? last : null, width, kinds,
             counts, offsets, recordsOffset, ownersOffset, channelsOffset);
+    }
+
+    /// <summary>
+    /// The spanning section's header and the extents of the sections it spans, read and checked once: what it spans, where
+    /// each of its parts lies, and, for each of the directory's <paramref name="sections"/> sections holding a timed record,
+    /// its place, earliest and latest reading and how many timed records it holds.
+    /// </summary>
+    internal static TileSection ReadSpanning(FileStream stream, TileSectionEntry entry, int sections)
+    {
+        byte[] bytes = Read(stream, entry.Offset, (int)Math.Min(entry.Length, SpanningHeaderBytes + (2 * 256) + (12 * MaximumLevels)));
+        var at = new SpanReader(bytes, entry.Describe);
+        int spanned = at.I32();
+        int timedSections = at.I32();
+        long records = at.I64();
+        long first = at.I64();
+        long last = at.I64();
+        long width = at.I64();
+        int mechanisms = at.U8();
+        var kinds = new Mechanism[mechanisms];
+        for (int slot = 0; slot < mechanisms; slot++)
+        {
+            kinds[slot] = (Mechanism)at.U16();
+            if (!Enum.IsDefined(kinds[slot]) || (slot > 0 && kinds[slot] <= kinds[slot - 1]))
+            {
+                throw Invalid("the spanning section names its mechanisms out of order or names one no build defines.");
+            }
+        }
+
+        int levels = at.U8();
+        if (levels > MaximumLevels)
+        {
+            throw Invalid("the spanning section has more levels than its tiles need.");
+        }
+
+        var counts = new int[levels];
+        var offsets = new long[levels];
+        for (int level = 0; level < levels; level++)
+        {
+            counts[level] = at.I32();
+            offsets[level] = at.I64();
+        }
+
+        long ownersOffset = at.I64();
+        long ownersLength = at.I64();
+        long channelsOffset = at.I64();
+        long channelsLength = at.I64();
+        int headerLength = at.Position + 4;
+        Check(bytes.AsSpan(0, headerLength), "the header of the spanning section");
+        long extentsLength = ((long)timedSections * ExtentBytes) + 4;
+        if (spanned != sections || timedSections < 2 || timedSections > sections || records < timedSections || first > last
+            || !IsPowerOfTen(width) || mechanisms == 0 || levels == 0 || headerLength + extentsLength > entry.Length)
+        {
+            throw Invalid("the header of the spanning section does not lay out its section.");
+        }
+
+        // Each section holding a timed record, in the directory's order, within what the level spans and adding up to it.
+        byte[] listed = Read(stream, entry.Offset + headerLength, (int)extentsLength);
+        Check(listed, "the extents of the spanning section");
+        var extents = new TileExtent[timedSections];
+        long summed = 0;
+        for (int index = 0; index < timedSections; index++)
+        {
+            ReadOnlySpan<byte> extent = listed.AsSpan(index * ExtentBytes);
+            extents[index] = new(
+                BinaryPrimitives.ReadInt32LittleEndian(extent),
+                BinaryPrimitives.ReadInt64LittleEndian(extent[4..]),
+                BinaryPrimitives.ReadInt64LittleEndian(extent[12..]),
+                BinaryPrimitives.ReadInt64LittleEndian(extent[20..]));
+            if (extents[index].Section < (index == 0 ? 0 : extents[index - 1].Section + 1) || extents[index].Section >= sections
+                || extents[index].First > extents[index].Last || extents[index].First < first || extents[index].Last > last
+                || extents[index].Records < 1 || extents[index].Records > records - summed)
+            {
+                throw Invalid("the spanning section states an extent of a section it does not span.");
+            }
+
+            summed += extents[index].Records;
+        }
+
+        if (summed != records || extents.Min(extent => extent.First) != first || extents.Max(extent => extent.Last) != last)
+        {
+            throw Invalid("the spanning section's extents do not add up to what it spans.");
+        }
+
+        long next = headerLength + extentsLength;
+        int tileBytes = TileBytes(mechanisms);
+        bool laidOut = true;
+        for (int level = 0; laidOut && level < levels; level++)
+        {
+            laidOut = counts[level] > 0 && offsets[level] == next
+                && (level > 0 || counts[level] <= MaximumSpanningTiles + 1)
+                && (level == 0 || counts[level] <= counts[level - 1])
+                && (level == levels - 1 ? counts[level] <= TopLevelTiles : counts[level] > TopLevelTiles);
+            next += LevelBytes(counts[level], tileBytes);
+        }
+
+        if (!laidOut || ownersOffset != next || ownersLength < 0 || channelsOffset != ownersOffset + ownersLength
+            || channelsLength < 0 || channelsOffset + channelsLength != entry.Length)
+        {
+            throw Invalid("the header of the spanning section does not lay out its section.");
+        }
+
+        return new TileSection(entry, 0, 0, ordered: true, first, last, width, kinds, counts, offsets, ownersOffset, ownersOffset,
+            channelsOffset, extents, records);
     }
 
     private static bool IsPowerOfTen(long value)
@@ -1041,6 +1226,430 @@ internal static class SessionTileIndex
         public int[] ChannelTalliesEnd { get; } = new int[(count + TilesPerBlock - 1) / TilesPerBlock];
     }
 
+    /// <summary>
+    /// The level spanning a generation's segments while it is written (tile-index-v1 §1): its finest tiles, each the sum of
+    /// every segment's tile as wide as it is that holds the same readings - its counts, the bytes of its records and its
+    /// owner and channel tallies - and the extent of each section holding a timed record. Its width is planned before the
+    /// sections are written, and made ten times wider while its finest tiles hold more tally entries than its bound.
+    /// </summary>
+    private sealed class SpanningLevel
+    {
+        private readonly long budget;
+        private SortedDictionary<long, SpanTile> tiles = [];
+        private long entries;
+
+        private SpanningLevel(long width, long budget, int sections, (int Section, long First, long Last, long Records)[] extents)
+        {
+            Width = width;
+            this.budget = budget;
+            Sections = sections;
+            Extents = extents;
+            First = extents.Min(extent => extent.First);
+            Last = extents.Max(extent => extent.Last);
+            Records = extents.Sum(extent => extent.Records);
+        }
+
+        /// <summary>A finest tile's width in presentation ticks, a power of ten.</summary>
+        public long Width { get; private set; }
+
+        /// <summary>Whether no width kept its finest tiles' entries within the bound: the index then keeps no such level.</summary>
+        public bool Abandoned { get; private set; }
+
+        /// <summary>How many sections the directory lists, every one of which the level spans.</summary>
+        public int Sections { get; }
+
+        /// <summary>Each section holding a timed record, by its place in the directory: its earliest and latest reading, and how many.</summary>
+        public (int Section, long First, long Last, long Records)[] Extents { get; }
+
+        /// <summary>The earliest timed reading of any section.</summary>
+        public long First { get; }
+
+        /// <summary>The latest timed reading of any section.</summary>
+        public long Last { get; }
+
+        /// <summary>How many timed records the sections hold.</summary>
+        public long Records { get; }
+
+        /// <summary>
+        /// The level spanning <paramref name="ordered"/>, a generation's segments in the directory's order, before their
+        /// tiles are summed into it; null when fewer than two of them hold a timed record, or when one's timed readings go
+        /// backwards, which keeps no tiles.
+        /// </summary>
+        public static SpanningLevel? Plan(SegmentReaderV1[] ordered, long budget, CancellationToken cancellationToken)
+        {
+            var extents = new List<(int Section, long First, long Last, long Records)>();
+            long width = 1;
+            for (int section = 0; section < ordered.Length; section++)
+            {
+                SegmentTimeTiles tiles = SegmentTimeTiles.Of(ordered[section], cancellationToken);
+                if (tiles.First is not { } first || tiles.Last is not { } last)
+                {
+                    continue;
+                }
+
+                if (!tiles.Ordered)
+                {
+                    return null;
+                }
+
+                extents.Add((section, first, last, tiles.Rows - tiles.Untimed));
+                width = Math.Max(width, tiles.Width);
+            }
+
+            if (extents.Count < 2)
+            {
+                return null;
+            }
+
+            // The narrowest power of ten, no narrower than any segment's finest tiles, spanning the readings in at most
+            // MaximumSpanningTiles tiles and one for each RecordsPerSpanningTile records.
+            long most = Math.Clamp(extents.Sum(extent => extent.Records) / RecordsPerSpanningTile, 1, MaximumSpanningTiles);
+            Int128 span = (Int128)extents.Max(extent => extent.Last) - extents.Min(extent => extent.First) + 1;
+            try
+            {
+                while (span > (Int128)most * width)
+                {
+                    width = checked(width * 10);
+                }
+            }
+            catch (OverflowException)
+            {
+                return null;
+            }
+
+            return new(width, budget, ordered.Length, [.. extents]);
+        }
+
+        /// <summary>
+        /// Sums one segment's tiles into the finest: its level as wide as they are, built above its top where they are wider,
+        /// each tile into the one holding the same readings. Past the bound, the finest are made ten times wider until their
+        /// entries are within it; where no width spanning more than one tile keeps them within it, the level is given up.
+        /// </summary>
+        public void Add(List<Level> levels, Mechanism[] mechanisms, long finestWidth, CancellationToken cancellationToken)
+        {
+            if (Abandoned)
+            {
+                return;
+            }
+
+            try
+            {
+                Level level = levels[0];
+                long width = finestWidth;
+                for (int above = 1; width < Width; above++)
+                {
+                    level = above < levels.Count ? levels[above] : Widen(level, mechanisms.Length);
+                    width = checked(width * 10);
+                }
+
+                for (int tile = 0; tile < level.Count; tile++)
+                {
+                    if ((tile & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
+                    if (!tiles.TryGetValue(level.Indexes[tile], out SpanTile? into))
+                    {
+                        tiles.Add(level.Indexes[tile], into = new());
+                    }
+
+                    entries -= into.Entries;
+                    into.Add(level, tile, mechanisms);
+                    entries += into.Entries;
+                }
+
+                while (entries > budget)
+                {
+                    if ((Int128)Last - First + 1 <= Width)
+                    {
+                        Abandon();
+                        return;
+                    }
+
+                    Coarsen();
+                }
+            }
+            catch (OverflowException)
+            {
+                // A count past what a tile's word holds: the index keeps no level spanning these segments.
+                Abandon();
+            }
+        }
+
+        /// <summary>
+        /// The spanning section: its header and the sections' extents, each followed by its checksum; its levels, from its
+        /// finest tiles up to the first that one block holds, block by block; and every tile's owner tallies, then every
+        /// tile's channel tallies, as a segment's section keeps them. It keeps no records: a query counts a finest tile it
+        /// cannot count whole from the sections beneath it. Nothing is written where a sum overflows what the file holds.
+        /// </summary>
+        public void Write(IndexFileWriter writer, CancellationToken cancellationToken)
+        {
+            Mechanism[] mechanisms;
+            List<Level> levels;
+            byte[] ownerTallies;
+            byte[] channelTallies;
+            try
+            {
+                // Its mechanisms are those its tiles count, in code order.
+                bool[] present = new bool[TimelineColumns.MechanismCodes];
+                foreach (SpanTile tile in tiles.Values)
+                {
+                    for (int code = 0; code < present.Length; code++)
+                    {
+                        present[code] |= tile.Counts[code] > 0;
+                    }
+                }
+
+                mechanisms = [.. Enumerable.Range(0, present.Length).Where(code => present[code]).Select(code => (Mechanism)code)];
+                int[] slotOf = SlotsOf(mechanisms);
+                var finest = new Level(tiles.Count, mechanisms.Length);
+                int at = 0;
+                foreach ((long index, SpanTile tile) in tiles)
+                {
+                    finest.Lows[at] = tile.Low;
+                    finest.Highs[at] = tile.High;
+                    finest.Indexes[at] = index;
+                    finest.RecordBytes[at] = tile.RecordBytes;
+                    for (int slot = 0; slot < mechanisms.Length; slot++)
+                    {
+                        finest.Counts[(at * mechanisms.Length) + slot] = tile.Counts[(int)mechanisms[slot]];
+                    }
+
+                    finest.Tallies[at++] = tile.Tallies(slotOf);
+                }
+
+                levels = [finest];
+                while (levels[^1].Count > TopLevelTiles && levels.Count < MaximumLevels)
+                {
+                    levels.Add(Above(levels[^1], mechanisms.Length));
+                }
+
+                (ownerTallies, channelTallies) = Tallies(levels, cancellationToken);
+            }
+            catch (OverflowException)
+            {
+                return;
+            }
+
+            int headerBytes = SpanningHeaderBytes + (2 * mechanisms.Length) + (12 * levels.Count);
+            int extentsBytes = (Extents.Length * ExtentBytes) + 4;
+            (long[] levelOffsets, long next) = LevelOffsets(levels, mechanisms.Length, headerBytes + extentsBytes);
+            byte[] head = new byte[headerBytes];
+            var into = new SpanWriter(head);
+            into.I32(Sections);
+            into.I32(Extents.Length);
+            into.I64(Records);
+            into.I64(First);
+            into.I64(Last);
+            into.I64(Width);
+            into.U8((byte)mechanisms.Length);
+            foreach (Mechanism mechanism in mechanisms)
+            {
+                into.U16((ushort)mechanism);
+            }
+
+            into.U8((byte)levels.Count);
+            for (int level = 0; level < levels.Count; level++)
+            {
+                into.I32(levels[level].Count);
+                into.I64(levelOffsets[level]);
+            }
+
+            into.I64(next);
+            into.I64(ownerTallies.Length);
+            into.I64(next + ownerTallies.Length);
+            into.I64(channelTallies.Length);
+            Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
+            writer.Raw(head);
+
+            byte[] extents = new byte[extentsBytes];
+            var listed = new SpanWriter(extents);
+            foreach ((int section, long first, long last, long records) in Extents)
+            {
+                listed.I32(section);
+                listed.I64(first);
+                listed.I64(last);
+                listed.I64(records);
+            }
+
+            Crc32C.Write(extents.AsSpan(extentsBytes - 4), Crc32C.Compute(extents.AsSpan(0, extentsBytes - 4)));
+            writer.Raw(extents);
+            WriteBlocks(writer, levels, mechanisms.Length, cancellationToken);
+            writer.Raw(ownerTallies);
+            writer.Raw(channelTallies);
+        }
+
+        /// <summary>
+        /// The level ten times wider than <paramref name="below"/>, a segment's top or one built above it, with the bytes of
+        /// the records beneath each of its tiles.
+        /// </summary>
+        private static Level Widen(Level below, int mechanisms)
+        {
+            Level level = Above(below, mechanisms);
+            for (int tile = 0; tile < level.Count; tile++)
+            {
+                for (int child = level.Links[tile]; child < level.Links[tile] + level.Children[tile]; child++)
+                {
+                    level.RecordBytes[tile] += below.RecordBytes[child];
+                }
+            }
+
+            return level;
+        }
+
+        /// <summary>Makes the finest tiles ten times wider: each the sum of the ten it holds.</summary>
+        private void Coarsen()
+        {
+            Width = checked(Width * 10);
+            var wider = new SortedDictionary<long, SpanTile>();
+            foreach ((long index, SpanTile tile) in tiles)
+            {
+                long parent = SegmentTimeTiles.FloorDivide(index, 10);
+                if (wider.TryGetValue(parent, out SpanTile? into))
+                {
+                    into.Absorb(tile);
+                }
+                else
+                {
+                    wider.Add(parent, tile);
+                }
+            }
+
+            tiles = wider;
+            entries = tiles.Values.Sum(tile => (long)tile.Entries);
+        }
+
+        private void Abandon()
+        {
+            tiles.Clear();
+            entries = 0;
+            Abandoned = true;
+        }
+    }
+
+    /// <summary>
+    /// One finest tile of a level spanning segments while it is summed: its earliest and latest reading, its counts by
+    /// mechanism code, the bytes of the records beneath it, and its owner and channel tallies, each a key - an owner's key or
+    /// a channel's number, a mechanism's code and a direction or a kind - in increasing order, with a count.
+    /// </summary>
+    private sealed class SpanTile
+    {
+        private ulong[] ownerKeys = [];
+        private int[] ownerCounts = [];
+        private ulong[] channelKeys = [];
+        private int[] channelCounts = [];
+
+        public long Low { get; private set; } = long.MaxValue;
+
+        public long High { get; private set; } = long.MinValue;
+
+        public long RecordBytes { get; private set; }
+
+        public int[] Counts { get; } = new int[TimelineColumns.MechanismCodes];
+
+        /// <summary>How many owner and channel entries it holds.</summary>
+        public int Entries => ownerKeys.Length + channelKeys.Length;
+
+        /// <summary>Adds one segment's tile of <paramref name="level"/>, whose slots are of <paramref name="mechanisms"/>.</summary>
+        public void Add(Level level, int tile, Mechanism[] mechanisms)
+        {
+            (Low, High) = (Math.Min(Low, level.Lows[tile]), Math.Max(High, level.Highs[tile]));
+            RecordBytes += level.RecordBytes[tile];
+            for (int slot = 0; slot < mechanisms.Length; slot++)
+            {
+                int code = (int)mechanisms[slot];
+                Counts[code] = checked(Counts[code] + level.Counts[(tile * mechanisms.Length) + slot]);
+            }
+
+            TileTallies tallies = level.Tallies[tile];
+            ulong[] owners = new ulong[tallies.Owners.Length];
+            for (int entry = 0; entry < owners.Length; entry++)
+            {
+                owners[entry] = Key(tallies.Owners[entry], (int)mechanisms[tallies.Slots[entry]], tallies.Directions[entry]);
+            }
+
+            ulong[] channels = new ulong[tallies.Channels.Length];
+            for (int entry = 0; entry < channels.Length; entry++)
+            {
+                channels[entry] = Key((uint)tallies.Channels[entry], (int)mechanisms[tallies.ChannelSlots[entry]], tallies.ChannelKinds[entry]);
+            }
+
+            (ownerKeys, ownerCounts) = Merge(ownerKeys, ownerCounts, owners, tallies.OwnerCounts);
+            (channelKeys, channelCounts) = Merge(channelKeys, channelCounts, channels, tallies.ChannelCounts);
+        }
+
+        /// <summary>Adds another finest tile, whose readings lie beside these: what making the tiles wider sums.</summary>
+        public void Absorb(SpanTile other)
+        {
+            (Low, High) = (Math.Min(Low, other.Low), Math.Max(High, other.High));
+            RecordBytes += other.RecordBytes;
+            for (int code = 0; code < Counts.Length; code++)
+            {
+                Counts[code] = checked(Counts[code] + other.Counts[code]);
+            }
+
+            (ownerKeys, ownerCounts) = Merge(ownerKeys, ownerCounts, other.ownerKeys, other.ownerCounts);
+            (channelKeys, channelCounts) = Merge(channelKeys, channelCounts, other.channelKeys, other.channelCounts);
+        }
+
+        /// <summary>Its tallies as a section's tile keeps them, each mechanism by its slot of <paramref name="slotOf"/>.</summary>
+        public TileTallies Tallies(int[] slotOf) => new(
+            [.. ownerKeys.Select(key => (uint)(key >> 16))],
+            [.. ownerKeys.Select(key => (byte)slotOf[(int)(key >> 8) & 0xFF])],
+            [.. ownerKeys.Select(key => (byte)(key & 0xFF))],
+            ownerCounts,
+            [.. channelKeys.Select(key => (int)(key >> 16))],
+            [.. channelKeys.Select(key => (byte)slotOf[(int)(key >> 8) & 0xFF])],
+            [.. channelKeys.Select(key => (byte)(key & 0xFF))],
+            channelCounts);
+
+        /// <summary>An entry's key: an owner's key or a channel's number, then a mechanism's code, then a direction or a kind.</summary>
+        private static ulong Key(uint value, int code, byte kind) => ((ulong)value << 16) | ((ulong)code << 8) | kind;
+
+        /// <summary>Two runs of entries in key order as one, the counts of a key both hold summed.</summary>
+        private static (ulong[] Keys, int[] Counts) Merge(ulong[] keys, int[] counts, ulong[] added, int[] addedCounts)
+        {
+            if (added.Length == 0)
+            {
+                return (keys, counts);
+            }
+
+            if (keys.Length == 0)
+            {
+                return (added, addedCounts);
+            }
+
+            ulong[] mergedKeys = new ulong[keys.Length + added.Length];
+            int[] mergedCounts = new int[mergedKeys.Length];
+            int a = 0;
+            int b = 0;
+            int at = 0;
+            for (; a < keys.Length || b < added.Length; at++)
+            {
+                if (b == added.Length || (a < keys.Length && keys[a] < added[b]))
+                {
+                    mergedKeys[at] = keys[a];
+                    mergedCounts[at] = counts[a++];
+                }
+                else if (a == keys.Length || added[b] < keys[a])
+                {
+                    mergedKeys[at] = added[b];
+                    mergedCounts[at] = addedCounts[b++];
+                }
+                else
+                {
+                    mergedKeys[at] = keys[a];
+                    mergedCounts[at] = checked(counts[a++] + addedCounts[b++]);
+                }
+            }
+
+            if (at < mergedKeys.Length)
+            {
+                Array.Resize(ref mergedKeys, at);
+                Array.Resize(ref mergedCounts, at);
+            }
+
+            return (mergedKeys, mergedCounts);
+        }
+    }
+
     /// <summary>Little-endian fields into a buffer.</summary>
     private ref struct SpanWriter(Span<byte> bytes)
     {
@@ -1069,7 +1678,7 @@ internal static class SessionTileIndex
     }
 
     /// <summary>Little-endian fields out of a buffer, refusing one that runs past it.</summary>
-    internal ref struct SpanReader(ReadOnlySpan<byte> bytes, string section)
+    internal ref struct SpanReader(ReadOnlySpan<byte> bytes, string what)
     {
         private readonly ReadOnlySpan<byte> bytes = bytes;
 
@@ -1087,7 +1696,7 @@ internal static class SessionTileIndex
         {
             if (Position + count > bytes.Length)
             {
-                throw Invalid($"the section of '{section}' ends inside its header.");
+                throw Invalid($"{what} ends inside its header.");
             }
 
             ReadOnlySpan<byte> taken = bytes.Slice(Position, count);
@@ -1118,9 +1727,15 @@ internal sealed record TileDerivation(string BindingRule, string RelationRule, i
     }
 }
 
-/// <summary>Where one segment's section lies, and the segment it describes, as the directory lists it.</summary>
+/// <summary>
+/// Where one segment's section lies, and the segment it describes, as the directory lists it; or, named by no segment,
+/// where the level spanning them lies.
+/// </summary>
 internal sealed record TileSectionEntry(string Name, long SegmentLength, string SegmentDigest, long Offset, long Length)
 {
+    /// <summary>The section as a refusal names it.</summary>
+    public string Describe => Name.Length == 0 ? "the spanning section" : $"the section of '{Name}'";
+
     /// <summary>Whether the section describes exactly <paramref name="segment"/>: its name, length and digest.</summary>
     public bool Describes(StoreDependency segment) =>
         string.Equals(segment.Name, Name, StringComparison.Ordinal)
@@ -1129,9 +1744,16 @@ internal sealed record TileSectionEntry(string Name, long SegmentLength, string 
 }
 
 /// <summary>
-/// One segment's tiles as its section's header states them. Its levels are read a block at a time, each block checked,
-/// its finest tiles' records only where a column boundary or a brush's end falls among them, and a tile's tallies only
-/// where a brush counts it whole.
+/// A section a level spanning segments spans, as it states it: the section's place in the directory, its earliest and
+/// latest timed reading, and how many timed records it holds.
+/// </summary>
+internal readonly record struct TileExtent(int Section, long First, long Last, long Records);
+
+/// <summary>
+/// One segment's tiles as its section's header states them, or the tiles of the level spanning every segment. Its levels
+/// are read a block at a time, each block checked, its finest tiles' records only where a column boundary or a brush's
+/// end falls among them, and a tile's tallies only where a brush counts it whole. The spanning section keeps no records:
+/// a finest tile of it a query cannot count whole is counted from the sections its readings meet.
 /// </summary>
 internal sealed class TileSection(
     TileSectionEntry entry,
@@ -1146,9 +1768,24 @@ internal sealed class TileSection(
     long[] offsets,
     long recordsOffset,
     long ownersOffset,
-    long channelsOffset)
+    long channelsOffset,
+    TileExtent[]? extents = null,
+    long spanned = 0)
 {
+    // The extents by earliest reading, and the latest reading among each and those before it: the sections a range meets
+    // are found among those whose earliest reading is before its end, back to where none before reaches its start.
+    private readonly (TileExtent[] ByFirst, long[] LatestBefore) sorted = Sorted(extents ?? []);
+
     public TileSectionEntry Entry { get; } = entry;
+
+    /// <summary>Whether it is the level spanning every segment, which keeps no records.</summary>
+    public bool Spanning => extents is not null;
+
+    /// <summary>For the spanning section, each section it spans that holds a timed record, in the directory's order.</summary>
+    public IReadOnlyList<TileExtent> Extents { get; } = extents ?? [];
+
+    /// <summary>For the spanning section, how many timed records it spans.</summary>
+    public long Spanned { get; } = spanned;
 
     public int Rows { get; } = rows;
 
@@ -1203,6 +1840,53 @@ internal sealed class TileSection(
 
     /// <summary>The bytes of channel tallies the section holds, their checksums among them.</summary>
     internal long ChannelTalliesLength => Entry.Length - channelsOffset;
+
+    /// <summary>
+    /// For the spanning section, the sections it spans that hold a timed reading in <paramref name="range"/>, in the
+    /// directory's order.
+    /// </summary>
+    internal List<TileExtent> Meeting(TimeRange range)
+    {
+        (TileExtent[] byFirst, long[] latestBefore) = sorted;
+        int low = 0;
+        int high = byFirst.Length;
+        while (low < high)
+        {
+            int middle = low + ((high - low) / 2);
+            if (byFirst[middle].First < range.EndTicks)
+            {
+                low = middle + 1;
+            }
+            else
+            {
+                high = middle;
+            }
+        }
+
+        var meeting = new List<TileExtent>();
+        for (int index = low - 1; index >= 0 && latestBefore[index] >= range.StartTicks; index--)
+        {
+            if (byFirst[index].Last >= range.StartTicks)
+            {
+                meeting.Add(byFirst[index]);
+            }
+        }
+
+        meeting.Sort((one, other) => one.Section.CompareTo(other.Section));
+        return meeting;
+    }
+
+    private static (TileExtent[] ByFirst, long[] LatestBefore) Sorted(TileExtent[] extents)
+    {
+        TileExtent[] byFirst = [.. extents.OrderBy(extent => extent.First).ThenBy(extent => extent.Section)];
+        long[] latestBefore = new long[byFirst.Length];
+        for (int index = 0; index < byFirst.Length; index++)
+        {
+            latestBefore[index] = index == 0 ? byFirst[0].Last : Math.Max(latestBefore[index - 1], byFirst[index].Last);
+        }
+
+        return (byFirst, latestBefore);
+    }
 }
 
 /// <summary>One checked block of a level: its tiles' readings, links, children, tally links and counts.</summary>
@@ -1247,18 +1931,29 @@ internal sealed class TileIndexFile
     private const int MaximumCachedBlocks = 16_384;
 
     private readonly Dictionary<string, TileSectionEntry> entries;
+    private readonly TileSectionEntry[] ordered;
+    private readonly TileSectionEntry? spanningEntry;
     private readonly Dictionary<string, TileSection> sections = new(StringComparer.Ordinal);
     private readonly Dictionary<(string Section, int Level, int Block), TileBlock> blocks = [];
     private readonly Lock gate = new();
+    private TileSection? spanning;
     private int blocksDecoded;
 
     internal TileIndexFile(
-        StoreDependency dependency, long derivedGeneration, TileDerivation derivation, Dictionary<string, TileSectionEntry> entries)
+        StoreDependency dependency,
+        long derivedGeneration,
+        int minor,
+        TileDerivation derivation,
+        IReadOnlyList<TileSectionEntry> entries,
+        TileSectionEntry? spanning)
     {
         Dependency = dependency;
         DerivedGeneration = derivedGeneration;
+        Minor = minor;
         Derivation = derivation;
-        this.entries = entries;
+        ordered = [.. entries];
+        this.entries = entries.ToDictionary(entry => entry.Name, StringComparer.Ordinal);
+        spanningEntry = spanning;
     }
 
     public StoreDependency Dependency { get; }
@@ -1266,11 +1961,17 @@ internal sealed class TileIndexFile
     /// <summary>The generation whose segments it describes.</summary>
     public long DerivedGeneration { get; }
 
+    /// <summary>The minor version it was written as: 3 keeps no level spanning its segments, and is published again.</summary>
+    public int Minor { get; }
+
     /// <summary>What it says its records' bindings were made under: a brush counts its tallies only for that derivation.</summary>
     public TileDerivation Derivation { get; }
 
     /// <summary>The segments it holds a section of, by name.</summary>
     public IReadOnlyCollection<string> Segments => entries.Keys;
+
+    /// <summary>Whether it keeps a level spanning its segments.</summary>
+    public bool Spans => spanningEntry is not null;
 
     /// <summary>How many blocks were read from the file and checked, rather than found already read: what a zoom costs.</summary>
     internal int BlocksDecoded => Volatile.Read(ref blocksDecoded);
@@ -1278,6 +1979,16 @@ internal sealed class TileIndexFile
     /// <summary>Whether it holds a section describing exactly <paramref name="segment"/>.</summary>
     public bool Describes(StoreDependency segment) =>
         entries.TryGetValue(segment.Name, out TileSectionEntry? entry) && entry.Describes(segment);
+
+    /// <summary>
+    /// Whether it keeps a level spanning exactly <paramref name="segments"/>: a section describing each of them and of no
+    /// other segment, so the level's tiles count their records and no others.
+    /// </summary>
+    public bool SpansExactly(IReadOnlyCollection<StoreDependency> segments)
+    {
+        ArgumentNullException.ThrowIfNull(segments);
+        return spanningEntry is not null && entries.Count == segments.Count && segments.All(Describes);
+    }
 
     /// <summary>Opens the file for one query's reads; every read it makes is checked.</summary>
     public TileReading Read(IOwnedDirectory directory)
@@ -1304,6 +2015,52 @@ internal sealed class TileIndexFile
         }
     }
 
+    /// <summary>
+    /// The section of the level spanning the segments, read and checked once: its header, its extents, and its top block,
+    /// whose counts must add up to the records it spans.
+    /// </summary>
+    internal TileSection Spanning(FileStream stream)
+    {
+        lock (gate)
+        {
+            if (spanning is not null)
+            {
+                return spanning;
+            }
+        }
+
+        TileSectionEntry entry = spanningEntry ?? throw new InvalidOperationException("The tile index keeps no level spanning its segments.");
+        TileSection read = SessionTileIndex.ReadSpanning(stream, entry, ordered.Length);
+        int top = read.Levels - 1;
+        TileBlock block = Block(stream, read, top, 0);
+        if (block.Counts.Sum(count => (long)count) != read.Spanned)
+        {
+            throw SessionTileIndex.Invalid("the spanning section's tiles do not count the records it spans.");
+        }
+
+        lock (gate)
+        {
+            return spanning ??= read;
+        }
+    }
+
+    /// <summary>
+    /// The section of the segment <paramref name="extent"/> names, which the spanning section spans: its timed readings,
+    /// their extent and their count as the spanning section states them, and tiles it keeps.
+    /// </summary>
+    internal TileSection Spanned(FileStream stream, TileExtent extent)
+    {
+        TileSectionEntry entry = ordered[extent.Section];
+        TileSection section = Section(stream, entry.Name);
+        if (!section.Ordered || section.Levels == 0 || section.First != extent.First || section.Last != extent.Last
+            || section.Rows - section.Untimed != extent.Records)
+        {
+            throw SessionTileIndex.Invalid($"the spanning section does not state the extent of {entry.Describe}.");
+        }
+
+        return section;
+    }
+
     internal TileBlock Block(FileStream stream, TileSection section, int level, int block)
     {
         (string, int, int) key = (section.Entry.Name, level, block);
@@ -1321,7 +2078,7 @@ internal sealed class TileIndexFile
         if (!SessionTileIndex.Matches(bytes))
         {
             throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
-                $"block {block} of level {level} of the section of '{section.Entry.Name}'"));
+                $"block {block} of level {level} of {section.Entry.Describe}"));
         }
 
         int tiles = (length - SessionTileIndex.BlockTrailerBytes) / section.TileBytes;
@@ -1359,25 +2116,33 @@ internal sealed class TileIndexFile
 
             // A tile holds a record, follows the one before it in time and, wider than the finest, the children after the
             // ones before it; a finest tile's records, and every tile's owner and channel tallies, follow the ones before it.
+            // A finest tile of the spanning section keeps no records, and its readings lie within one tile of its width,
+            // after the one before it's.
             bool valid = decoded.Lows[tile] <= decoded.Highs[tile] && sum > 0
                 && decoded.OwnerLinks[tile] >= 0 && decoded.ChannelLinks[tile] >= 0
                 && (tile == 0 || (decoded.Lows[tile] > decoded.Highs[tile - 1]
                     && decoded.OwnerLinks[tile] > decoded.OwnerLinks[tile - 1]
                     && decoded.ChannelLinks[tile] > decoded.ChannelLinks[tile - 1]))
-                && (level == 0
-                    ? decoded.Children[tile] == 0 && decoded.Links[tile] >= 0
-                        && (tile == 0 || decoded.Links[tile] >= decoded.Links[tile - 1] + 5)
-                    : decoded.Children[tile] is >= 1 and <= 10 && decoded.Links[tile] >= 0
+                && (level > 0
+                    ? decoded.Children[tile] is >= 1 and <= 10 && decoded.Links[tile] >= 0
                         && (long)decoded.Links[tile] + decoded.Children[tile] <= lower
-                        && (tile == 0 || decoded.Links[tile] == decoded.Links[tile - 1] + decoded.Children[tile - 1]));
+                        && (tile == 0 || decoded.Links[tile] == decoded.Links[tile - 1] + decoded.Children[tile - 1])
+                    : section.Spanning
+                        ? decoded.Children[tile] == 0 && decoded.Links[tile] == 0
+                            && SegmentTimeTiles.FloorDivide(decoded.Lows[tile], section.Width)
+                                == SegmentTimeTiles.FloorDivide(decoded.Highs[tile], section.Width)
+                            && (tile == 0 || SegmentTimeTiles.FloorDivide(decoded.Lows[tile], section.Width)
+                                > SegmentTimeTiles.FloorDivide(decoded.Highs[tile - 1], section.Width))
+                        : decoded.Children[tile] == 0 && decoded.Links[tile] >= 0
+                            && (tile == 0 || decoded.Links[tile] >= decoded.Links[tile - 1] + 5));
             if (!valid)
             {
                 throw Bad("a tile it does not lay out");
             }
         }
 
-        if ((level == 0 && (decoded.RecordsEnd <= decoded.Links[^1] || decoded.RecordsEnd + 4L > section.RecordsLength))
-            || (level > 0 && decoded.RecordsEnd != 0))
+        if ((level == 0 && !section.Spanning && (decoded.RecordsEnd <= decoded.Links[^1] || decoded.RecordsEnd + 4L > section.RecordsLength))
+            || ((level > 0 || section.Spanning) && decoded.RecordsEnd != 0))
         {
             throw Bad("records it places outside the section");
         }
@@ -1399,7 +2164,7 @@ internal sealed class TileIndexFile
         }
 
         InvalidDataException Bad(string what) => SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
-            $"block {block} of level {level} of the section of '{section.Entry.Name}' holds {what}."));
+            $"block {block} of level {level} of {section.Entry.Describe} holds {what}."));
     }
 }
 
@@ -1443,6 +2208,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private long lastLaneStart;
     private long lastLaneEnd;
 
+    // The part of the columns' interval a zoom or a focus counts: all of it, or a range the spanning section left to a
+    // segment's section.
+    private TimeRange within;
+
+    // While a query counts the spanning section, the ranges of its finest tiles it could not count whole; null while it
+    // counts a segment's section.
+    private TileRemainders? remainders;
+
     public void Dispose() => stream.Dispose();
 
     /// <summary>What the file says its records' owners and channels were bound under.</summary>
@@ -1463,6 +2236,35 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// <summary>The section of the segment <paramref name="name"/>, which the file must hold.</summary>
     public TileSection Section(string name) => file.Section(stream, name);
 
+    /// <summary>The section of the level spanning the segments, which the file must keep (<see cref="TileIndexFile.Spans"/>).</summary>
+    public TileSection Spanning() => file.Spanning(stream);
+
+    /// <summary>
+    /// The sections beneath the ranges <paramref name="left"/> holds, which the spanning section could not count whole: each
+    /// section holding a timed reading in one of them, in the directory's order, with the ranges it is to count, and each
+    /// checked against what the spanning section states of it.
+    /// </summary>
+    public List<(TileSection Section, List<TimeRange> Ranges)> Beneath(TileRemainders left)
+    {
+        ArgumentNullException.ThrowIfNull(left);
+        TileSection spanning = Spanning();
+        var meeting = new SortedDictionary<int, (TileExtent Extent, List<TimeRange> Ranges)>();
+        foreach (TimeRange range in left.Ranges)
+        {
+            foreach (TileExtent extent in spanning.Meeting(range))
+            {
+                if (!meeting.TryGetValue(extent.Section, out (TileExtent Extent, List<TimeRange> Ranges) known))
+                {
+                    meeting.Add(extent.Section, known = (extent, []));
+                }
+
+                known.Ranges.Add(range);
+            }
+        }
+
+        return [.. meeting.Values.Select(met => (file.Spanned(stream, met.Extent), met.Ranges))];
+    }
+
     /// <summary>
     /// Counts the timed records of <paramref name="section"/>'s segment inside <paramref name="columns"/>' interval into
     /// them: a tile whole wherever its records fall in one column, its children where a boundary falls among them, and a
@@ -1471,11 +2273,21 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// </summary>
     public bool CountInto(TileSection section, TimelineColumns columns, CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(columns);
+        return CountInto(section, columns, columns.Interval, cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the timed records of <paramref name="section"/>'s segment inside <paramref name="range"/>, a part of
+    /// <paramref name="columns"/>' interval, into them, as <see cref="CountInto(TileSection, TimelineColumns, CancellationToken)"/>
+    /// counts the whole: what the spanning section left to the sections beneath it.
+    /// </summary>
+    public bool CountInto(TileSection section, TimelineColumns columns, TimeRange range, CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(section);
         ArgumentNullException.ThrowIfNull(columns);
-        TimeRange interval = columns.Interval;
         if (section.First is not { } first || section.Last is not { } last
-            || last < interval.StartTicks || first >= interval.EndTicks)
+            || last < range.StartTicks || first >= range.EndTicks)
         {
             return true;
         }
@@ -1485,10 +2297,32 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return false;
         }
 
-        lastColumn = -1;
+        (lastColumn, within, remainders) = (-1, range, null);
         int top = section.Levels - 1;
         Range(section, top, 0, section.TileCount(top), columns, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Counts the spanning section's tiles inside <paramref name="columns"/>' interval into them: a tile whole wherever its
+    /// records fall in one column, and its children where a boundary falls among them. Returns the ranges of its finest
+    /// tiles a boundary falls among, which the sections beneath them count (<see cref="Beneath"/>).
+    /// </summary>
+    public TileRemainders SpanInto(TimelineColumns columns, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(columns);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        if (spanning.Last < columns.Interval.StartTicks || spanning.First >= columns.Interval.EndTicks)
+        {
+            return left;
+        }
+
+        (lastColumn, within, remainders) = (-1, columns.Interval, left);
+        int top = spanning.Levels - 1;
+        Range(spanning, top, 0, spanning.TileCount(top), columns, cancellationToken);
+        remainders = null;
+        return left;
     }
 
     /// <summary>
@@ -1522,10 +2356,37 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return false;
         }
 
+        remainders = null;
         int top = section.Levels - 1;
         var brush = new Brush(interval, SessionTileIndex.AdmittedStrengths(policy), slotOfChannel, tally);
         RangeInterval(section, top, 0, section.TileCount(top), brush, cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Counts the spanning section's tiles inside <paramref name="interval"/> into <paramref name="tally"/> as
+    /// <see cref="CountInterval"/> counts a segment's: a tile whole from its tallies wherever its records all lie in the
+    /// interval, and its children where one of the interval's ends falls among them or it keeps no tallies. Returns the
+    /// ranges of its finest tiles it could not count whole, which the sections beneath them count (<see cref="Beneath"/>).
+    /// </summary>
+    public TileRemainders SpanInterval(
+        TimeRange interval, EvidencePolicy policy, int[] slotOfChannel, IntervalTally tally, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(slotOfChannel);
+        ArgumentNullException.ThrowIfNull(tally);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        if (spanning.Last < interval.StartTicks || spanning.First >= interval.EndTicks)
+        {
+            return left;
+        }
+
+        remainders = left;
+        int top = spanning.Levels - 1;
+        var brush = new Brush(interval, SessionTileIndex.AdmittedStrengths(policy), slotOfChannel, tally);
+        RangeInterval(spanning, top, 0, spanning.TileCount(top), brush, cancellationToken);
+        remainders = null;
+        return left;
     }
 
     /// <summary>
@@ -1550,12 +2411,34 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         EvidencePolicy policy,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(focused);
+        return CountGroup(section, focused.Interval, focused, lanes, directions, members, laneOf, mechanism, direction, policy,
+            cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the records of <paramref name="section"/>'s segment inside <paramref name="range"/>, a part of
+    /// <paramref name="focused"/>'s interval, that an owner focus holds, as the overload without a range counts the whole:
+    /// what the spanning section left to the sections beneath it.
+    /// </summary>
+    public bool CountGroup(
+        TileSection section,
+        TimeRange range,
+        TimelineColumns focused,
+        TimelineColumns[]? lanes,
+        TimelineColumns[]? directions,
+        bool[] members,
+        int[]? laneOf,
+        Mechanism? mechanism,
+        Direction? direction,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(section);
         ArgumentNullException.ThrowIfNull(focused);
         ArgumentNullException.ThrowIfNull(members);
-        TimeRange interval = focused.Interval;
         if (section.First is not { } first || section.Last is not { } last
-            || last < interval.StartTicks || first >= interval.EndTicks)
+            || last < range.StartTicks || first >= range.EndTicks)
         {
             return true;
         }
@@ -1565,12 +2448,46 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return false;
         }
 
-        (lastColumn, lastLaneColumn) = (-1, -1);
+        (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, range, null);
         int top = section.Levels - 1;
-        var group = new Group(focused, lanes, lanes is null || lanes[0].Counts.Count == focused.Counts.Count, directions, members,
-            laneOf, mechanism, direction, SessionTileIndex.AdmittedStrengths(policy));
-        RangeGroup(section, top, 0, section.TileCount(top), group, cancellationToken);
+        RangeGroup(section, top, 0, section.TileCount(top),
+            GroupOf(focused, lanes, directions, members, laneOf, mechanism, direction, policy), cancellationToken);
         return true;
+    }
+
+    /// <summary>
+    /// Counts the spanning section's tiles inside <paramref name="focused"/>'s interval into an owner focus, as
+    /// <see cref="CountGroup(TileSection, TimelineColumns, TimelineColumns[], TimelineColumns[], bool[], int[], Mechanism?, Direction?, EvidencePolicy, CancellationToken)"/>
+    /// counts a segment's: a tile whole from its owner tallies wherever its records fall in one column of the focus and one
+    /// of the lanes', and its children where a boundary falls among them or it keeps none. Returns the ranges of its finest
+    /// tiles it could not count whole, which the sections beneath them count (<see cref="Beneath"/>).
+    /// </summary>
+    public TileRemainders SpanGroup(
+        TimelineColumns focused,
+        TimelineColumns[]? lanes,
+        TimelineColumns[]? directions,
+        bool[] members,
+        int[]? laneOf,
+        Mechanism? mechanism,
+        Direction? direction,
+        EvidencePolicy policy,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(focused);
+        ArgumentNullException.ThrowIfNull(members);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        if (spanning.Last < focused.Interval.StartTicks || spanning.First >= focused.Interval.EndTicks)
+        {
+            return left;
+        }
+
+        (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, focused.Interval, left);
+        int top = spanning.Levels - 1;
+        RangeGroup(spanning, top, 0, spanning.TileCount(top),
+            GroupOf(focused, lanes, directions, members, laneOf, mechanism, direction, policy), cancellationToken);
+        remainders = null;
+        return left;
     }
 
     /// <summary>
@@ -1593,12 +2510,31 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         int? end,
         CancellationToken cancellationToken)
     {
+        ArgumentNullException.ThrowIfNull(focused);
+        return CountChannel(section, focused.Interval, focused, ends, channel, mechanism, direction, end, cancellationToken);
+    }
+
+    /// <summary>
+    /// Counts the records of <paramref name="section"/>'s segment inside <paramref name="range"/>, a part of
+    /// <paramref name="focused"/>'s interval, that a channel focus holds, as the overload without a range counts the whole:
+    /// what the spanning section left to the sections beneath it.
+    /// </summary>
+    public bool CountChannel(
+        TileSection section,
+        TimeRange range,
+        TimelineColumns focused,
+        SessionTimelineQuery.ChannelEndColumns[]? ends,
+        int channel,
+        Mechanism? mechanism,
+        Direction? direction,
+        int? end,
+        CancellationToken cancellationToken)
+    {
         ArgumentNullException.ThrowIfNull(section);
         ArgumentNullException.ThrowIfNull(focused);
         ArgumentOutOfRangeException.ThrowIfNegative(channel);
-        TimeRange interval = focused.Interval;
         if (section.First is not { } first || section.Last is not { } last
-            || last < interval.StartTicks || first >= interval.EndTicks)
+            || last < range.StartTicks || first >= range.EndTicks)
         {
             return true;
         }
@@ -1608,22 +2544,69 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return false;
         }
 
-        lastColumn = -1;
+        (lastColumn, within, remainders) = (-1, range, null);
         int top = section.Levels - 1;
         RangeChannel(section, top, 0, section.TileCount(top), new(focused, ends, channel, mechanism, direction, end), cancellationToken);
         return true;
     }
 
     /// <summary>
+    /// Counts the spanning section's tiles inside <paramref name="focused"/>'s interval into a channel focus, as
+    /// <see cref="CountChannel(TileSection, TimelineColumns, SessionTimelineQuery.ChannelEndColumns[], int, Mechanism?, Direction?, int?, CancellationToken)"/>
+    /// counts a segment's: a tile whole from its channel tallies wherever its records fall in one column, and its children
+    /// where a boundary falls among them or it keeps none. Returns the ranges of its finest tiles it could not count whole,
+    /// which the sections beneath them count (<see cref="Beneath"/>).
+    /// </summary>
+    public TileRemainders SpanChannel(
+        TimelineColumns focused,
+        SessionTimelineQuery.ChannelEndColumns[]? ends,
+        int channel,
+        Mechanism? mechanism,
+        Direction? direction,
+        int? end,
+        CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(focused);
+        ArgumentOutOfRangeException.ThrowIfNegative(channel);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        if (spanning.Last < focused.Interval.StartTicks || spanning.First >= focused.Interval.EndTicks)
+        {
+            return left;
+        }
+
+        (lastColumn, within, remainders) = (-1, focused.Interval, left);
+        int top = spanning.Levels - 1;
+        RangeChannel(spanning, top, 0, spanning.TileCount(top), new(focused, ends, channel, mechanism, direction, end), cancellationToken);
+        remainders = null;
+        return left;
+    }
+
+    /// <summary>What an owner focus counts and into what, its lanes sharing its columns where they are as many.</summary>
+    private static Group GroupOf(
+        TimelineColumns focused,
+        TimelineColumns[]? lanes,
+        TimelineColumns[]? directions,
+        bool[] members,
+        int[]? laneOf,
+        Mechanism? mechanism,
+        Direction? direction,
+        EvidencePolicy policy) =>
+        new(focused, lanes, lanes is null || lanes[0].Counts.Count == focused.Counts.Count, directions, members, laneOf, mechanism,
+            direction, SessionTileIndex.AdmittedStrengths(policy));
+
+    /// <summary>
     /// Counts the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a group's focus:
     /// each whole from its tallies that falls in one column of the focus and of its lanes, the children of each that does
-    /// not or keeps no tallies, and the records of a finest one.
+    /// not or keeps no tallies, and the records of a finest one - or, of the spanning section's, its range, left to the
+    /// sections beneath it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void RangeGroup(TileSection section, int level, int from, int end, Group group, CancellationToken cancellationToken)
     {
         TimelineColumns focused = group.Focused;
         TimeRange interval = focused.Interval;
+        TimeRange range = within;
         TileBlock? block = null;
         int blockIndex = -1;
         for (int position = from; position < end; position++)
@@ -1638,12 +2621,12 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             int tile = position % SessionTileIndex.TilesPerBlock;
             long low = block!.Lows[tile];
             long high = block.Highs[tile];
-            if (low >= interval.EndTicks)
+            if (low >= range.EndTicks)
             {
                 return;
             }
 
-            if (high < interval.StartTicks)
+            if (high < range.StartTicks)
             {
                 continue;
             }
@@ -1652,7 +2635,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             // it keeps none from its children, or its records, without looking up each one's column.
             int column = -1;
             int laneColumn = -1;
-            if (low >= interval.StartTicks && high < interval.EndTicks)
+            if (low >= range.StartTicks && high < range.EndTicks)
             {
                 if (lastColumn < 0 || low < lastStart || low >= lastEnd)
                 {
@@ -1682,6 +2665,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                     (column, laneColumn) = (lastColumn, group.LanesShareColumns ? lastColumn : lastLaneColumn);
                     if (AddGroupTallies(section, level, block, position, group, column, laneColumn))
                     {
+                        remainders?.Counted();
                         continue;
                     }
                 }
@@ -1693,11 +2677,17 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                 continue;
             }
 
+            if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(range.StartTicks, low), Math.Min(range.EndTicks, high + 1));
+                continue;
+            }
+
             var records = new RecordCursor(this, section, block, position);
             while (records.Next(out long reading, out int slot, out int direction, out _, out uint owner, out _))
             {
                 if (owner == 0 || !group.Admitted[owner & 7] || !group.Members[(owner >> 3) - 1]
-                    || (column < 0 && !interval.Contains(reading)))
+                    || (column < 0 && !range.Contains(reading)))
                 {
                     continue;
                 }
@@ -1724,13 +2714,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// <summary>
     /// Counts the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a channel's focus:
     /// each whole from its tallies that falls in one column, the children of each that does not or keeps no tallies, and
-    /// the records of a finest one.
+    /// the records of a finest one - or, of the spanning section's, its range, left to the sections beneath it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void RangeChannel(TileSection section, int level, int from, int end, Channel focus, CancellationToken cancellationToken)
     {
         TimelineColumns focused = focus.Focused;
         TimeRange interval = focused.Interval;
+        TimeRange range = within;
         uint key = (uint)focus.Number + 1;
         TileBlock? block = null;
         int blockIndex = -1;
@@ -1746,12 +2737,12 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             int tile = position % SessionTileIndex.TilesPerBlock;
             long low = block!.Lows[tile];
             long high = block.Highs[tile];
-            if (low >= interval.EndTicks)
+            if (low >= range.EndTicks)
             {
                 return;
             }
 
-            if (high < interval.StartTicks)
+            if (high < range.StartTicks)
             {
                 continue;
             }
@@ -1759,7 +2750,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             // A tile lying in one column counts there whole: from its tallies, or where it keeps none from its children, or
             // its records, without looking up each one's column.
             int column = -1;
-            if (low >= interval.StartTicks && high < interval.EndTicks)
+            if (low >= range.StartTicks && high < range.EndTicks)
             {
                 if (lastColumn < 0 || low < lastStart || low >= lastEnd)
                 {
@@ -1773,6 +2764,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                     column = lastColumn;
                     if (AddChannelTallies(section, level, block, position, focus, column))
                     {
+                        remainders?.Counted();
                         continue;
                     }
                 }
@@ -1784,10 +2776,16 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                 continue;
             }
 
+            if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(range.StartTicks, low), Math.Min(range.EndTicks, high + 1));
+                continue;
+            }
+
             var records = new RecordCursor(this, section, block, position);
             while (records.Next(out long reading, out int slot, out int direction, out int side, out _, out uint channel))
             {
-                if (channel == key && (column >= 0 || interval.Contains(reading)))
+                if (channel == key && (column >= 0 || range.Contains(reading)))
                 {
                     CountChannelRecords(focus, column >= 0 ? column : focused.ColumnOf(reading)!.Value, section.Mechanisms[slot],
                         direction, side, 1);
@@ -1824,13 +2822,15 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
     /// <summary>
     /// Counts the tiles of one level from <paramref name="from"/> to before <paramref name="end"/>, in time order: each
-    /// whole that falls in one column, the children of each that does not, and the records of a finest one that does not.
+    /// whole that falls in one column, the children of each that does not, and the records of a finest one that does not -
+    /// or, of the spanning section's, its range, left to the sections beneath it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void Range(
         TileSection section, int level, int from, int end, TimelineColumns columns, CancellationToken cancellationToken)
     {
         TimeRange interval = columns.Interval;
+        TimeRange range = within;
         TileBlock? block = null;
         int blockIndex = -1;
         for (int position = from; position < end; position++)
@@ -1845,17 +2845,17 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             int tile = position % SessionTileIndex.TilesPerBlock;
             long low = block!.Lows[tile];
             long high = block.Highs[tile];
-            if (low >= interval.EndTicks)
+            if (low >= range.EndTicks)
             {
                 return;
             }
 
-            if (high < interval.StartTicks)
+            if (high < range.StartTicks)
             {
                 continue;
             }
 
-            if (low >= interval.StartTicks && high < interval.EndTicks)
+            if (low >= range.StartTicks && high < range.EndTicks)
             {
                 if (lastColumn < 0 || low < lastStart || low >= lastEnd)
                 {
@@ -1875,6 +2875,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                         }
                     }
 
+                    remainders?.Counted();
                     continue;
                 }
             }
@@ -1883,14 +2884,18 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 Range(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], columns, cancellationToken);
             }
+            else if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(range.StartTicks, low), Math.Min(range.EndTicks, high + 1));
+            }
             else
             {
                 var records = new RecordCursor(this, section, block, position);
                 while (records.Next(out long reading, out int slot, out _, out _, out _, out _))
                 {
-                    if (columns.ColumnOf(reading) is { } column)
+                    if (range.Contains(reading))
                     {
-                        columns.Add(column, section.Mechanisms[slot]);
+                        columns.Add(columns.ColumnOf(reading)!.Value, section.Mechanisms[slot]);
                     }
                 }
             }
@@ -1900,7 +2905,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// <summary>
     /// Counts the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a brush's tally:
     /// each whole from its tallies that lies in the interval, the children of each that one of its ends falls among, and
-    /// the records of a finest one that one does.
+    /// the records of a finest one that one does - or, of the spanning section's, its range, left to the sections beneath
+    /// it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
     private void RangeInterval(TileSection section, int level, int from, int end, Brush brush, CancellationToken cancellationToken)
@@ -1936,6 +2942,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             // records are.
             if (low >= interval.StartTicks && high < interval.EndTicks && AddTallies(section, level, block, position, brush))
             {
+                remainders?.Counted();
                 continue;
             }
 
@@ -1943,6 +2950,12 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             {
                 RangeInterval(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], brush,
                     cancellationToken);
+                continue;
+            }
+
+            if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(interval.StartTicks, low), Math.Min(interval.EndTicks, high + 1));
                 continue;
             }
 
@@ -2222,7 +3235,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// <summary>The refusal of one tile's owner or channel tallies, <paramref name="what"/>, that are not the tile's.</summary>
     private static InvalidDataException Bad(TileSection section, int level, int position, string what) =>
         SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
-            $"the {what} of tile {position} of level {level} of the section of '{section.Entry.Name}' are not the tile's."));
+            $"the {what} of tile {position} of level {level} of {section.Entry.Describe} are not the tile's."));
 
     /// <summary>
     /// The bytes of the owner or the channel tallies, <paramref name="what"/>, of block <paramref name="index"/> of a level:
@@ -2246,7 +3259,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         if (!SessionTileIndex.Matches(read))
         {
             throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
-                $"the {what} of block {index} of level {level} of the section of '{section.Entry.Name}'"));
+                $"the {what} of block {index} of level {level} of {section.Entry.Describe}"));
         }
 
         (blocks.Bytes[level], blocks.Indexes[level]) = (read, index);
@@ -2281,7 +3294,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         if (!SessionTileIndex.Matches(recordsBytes.AsSpan(offset, end - start + 4)))
         {
             throw SessionTileIndex.Mismatch(string.Create(CultureInfo.InvariantCulture,
-                $"the records of tile {position} of the section of '{section.Entry.Name}'"));
+                $"the records of tile {position} of {section.Entry.Describe}"));
         }
 
         return end - start;
@@ -2423,7 +3436,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         }
 
         private readonly InvalidDataException Bad() => SessionTileIndex.Invalid(string.Create(CultureInfo.InvariantCulture,
-            $"the records of tile {position} of the section of '{section.Entry.Name}' are not the tile's."));
+            $"the records of tile {position} of {section.Entry.Describe} are not the tile's."));
     }
 
     /// <summary>LEB128 values out of a run of bytes, refusing one that runs past it or overflows.</summary>
@@ -2462,5 +3475,38 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         private static InvalidDataException Short() =>
             SessionTileIndex.Invalid("a tile's records or tallies end inside a value.");
+    }
+}
+
+/// <summary>
+/// The ranges of a spanning section's finest tiles a query could not count whole - where a column boundary or one of its
+/// interval's ends falls among their records, or they keep none of the tallies it counts - in time order, each to be
+/// counted from the sections beneath it (<see cref="TileReading.Beneath"/>). Ranges with no tile counted whole between
+/// them are one: the readings between two such tiles are none, since every record is in one tile.
+/// </summary>
+internal sealed class TileRemainders
+{
+    private readonly List<TimeRange> ranges = [];
+    private bool adjoins;
+
+    /// <summary>The ranges, in time order.</summary>
+    public IReadOnlyList<TimeRange> Ranges => ranges;
+
+    /// <summary>A tile was counted whole: the next range does not adjoin the last.</summary>
+    public void Counted() => adjoins = false;
+
+    /// <summary>Adds a finest tile's range, from <paramref name="start"/> to before <paramref name="end"/>.</summary>
+    public void Add(long start, long end)
+    {
+        if (adjoins)
+        {
+            ranges[^1] = new(ranges[^1].StartTicks, end);
+        }
+        else
+        {
+            ranges.Add(new(start, end));
+        }
+
+        adjoins = true;
     }
 }

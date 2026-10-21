@@ -444,7 +444,8 @@ public static class SessionTimelineQuery
 
     /// <summary>
     /// The whole timeline from the tiles the generation's checkpoint persisted (`contracts/tile-index-v1.md`), opening no
-    /// segment but one whose readings go backwards, which keeps none and has its rows read; null when the generation names
+    /// segment but one whose readings go backwards, which keeps none and has its rows read; where a level spans the
+    /// segments, from its tiles first and the sections only beneath the ranges it leaves. Null when the generation names
     /// no tile index, or one without a section of each of its segments, or one a part of which could not be read: that is
     /// said once, the index is not read again for the generation, and the timeline is counted from its segments instead.
     /// </summary>
@@ -467,6 +468,23 @@ public static class SessionTimelineQuery
         {
             using TileReading reading = tiles.Read(store.Root);
             var counted = new TimelineColumns(interval, columns, tallyMechanisms: true);
+
+            // Where a level spans the segments, its tiles count whole wherever they fall in one column, and the segments'
+            // sections count only the ranges of its finest tiles a column boundary falls among.
+            if (tiles.SpansExactly(segments))
+            {
+                TileRemainders left = reading.SpanInto(counted, cancellationToken);
+                foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
+                {
+                    foreach (TimeRange range in ranges)
+                    {
+                        _ = reading.CountInto(section, counted, range, cancellationToken);
+                    }
+                }
+
+                return counted;
+            }
+
             foreach (StoreDependency segment in segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -493,10 +511,11 @@ public static class SessionTimelineQuery
     /// lanes, from its channel tallies; each of the mechanism, the direction and the end <paramref name="focus"/> names.
     /// A tile counts from its tallies where its records fall in one column of the focus's and one of the lanes', and from
     /// its records where a boundary falls among them, opening no segment but one whose readings go backwards, which keeps
-    /// no tiles and has its rows read. Null when the generation names no tile index, or one without a section of each of
-    /// its segments, or one whose bindings are not this derivation's; and when a part of it could not be read, which is
-    /// said once, and the index is not read again for the generation. The focus is then counted from its segments' rows,
-    /// and counts the same.
+    /// no tiles and has its rows read. Where a level spans the segments, its tiles are counted first, and the sections only
+    /// beneath the ranges it leaves, each by a worker of its own. Null when the generation names no tile index, or one
+    /// without a section of each of its segments, or one whose bindings are not this derivation's; and when a part of it
+    /// could not be read, which is said once, and the index is not read again for the generation. The focus is then counted
+    /// from its segments' rows, and counts the same.
     /// </summary>
     private static FocusTally? PersistedFocus(
         SessionStore store,
@@ -534,6 +553,45 @@ public static class SessionTimelineQuery
         var total = new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation);
         try
         {
+            // Where a level spans the segments, its tiles count whole from their tallies wherever they fall in one column of
+            // the focus and of its lanes, and the sections beneath count only the ranges of its finest tiles it leaves.
+            if (tiles.SpansExactly(segments))
+            {
+                List<(TileSection Section, List<TimeRange> Ranges)> beneath;
+                using (TileReading spanning = tiles.Read(store.Root))
+                {
+                    TileRemainders left = rows.Channel is { } spanned
+                        ? spanning.SpanChannel(total.Focused, total.Ends, spanned, focus.Mechanism, focus.Direction, focus.End,
+                            cancellationToken)
+                        : spanning.SpanGroup(total.Focused, total.Lanes, total.Directions, rows.Members!, laneOf, focus.Mechanism,
+                            focus.Direction, policy, cancellationToken);
+                    beneath = spanning.Beneath(left);
+                }
+
+                SegmentPasses.Run(
+                    beneath,
+                    () => (Reading: tiles.Read(store.Root), Tally: new FocusTally(interval, columns, laneCount, laneColumns, directionLanes, endRelation)),
+                    (met, worker) =>
+                    {
+                        foreach (TimeRange range in met.Ranges)
+                        {
+                            _ = rows.Channel is { } channel
+                                ? worker.Reading.CountChannel(met.Section, range, worker.Tally.Focused, worker.Tally.Ends, channel,
+                                    focus.Mechanism, focus.Direction, focus.End, cancellationToken)
+                                : worker.Reading.CountGroup(met.Section, range, worker.Tally.Focused, worker.Tally.Lanes,
+                                    worker.Tally.Directions, rows.Members!, laneOf, focus.Mechanism, focus.Direction, policy,
+                                    cancellationToken);
+                        }
+                    },
+                    worker =>
+                    {
+                        worker.Reading.Dispose();
+                        total.Add(worker.Tally);
+                    },
+                    cancellationToken);
+                return total;
+            }
+
             StoreDependency[] met;
             using (TileReading headers = tiles.Read(store.Root))
             {

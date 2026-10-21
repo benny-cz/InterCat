@@ -856,6 +856,8 @@
         "I14: a finished session keeps each overview column's bytes per mechanism, and a reopen's lanes under a byte ranking open no segment",
         "I14: a finished session keeps each process's and channel end's bytes, and a reopen's whole-session byte ranking opens no segment and measures as a read does under every policy",
         "I14: a generation published before tile indexes is counted from its segments, and gains one when its checkpoint is published",
+        "I14: a level spanning a section of a segment the generation does not name is not counted: each query counts the segments' own sections",
+        "I14: a minor 3 tile index, which keeps no level spanning its segments, is counted from its sections, and a checkpoint publishes it again with one",
         "I14: a released session's persisted overview begins where every record is kept, and one counted from before the boundary is counted again",
         "I14: a reopened HTTP session takes its exchanges from its operation index: its first listing, page and spans open no segment, and answer as a grouping of every segment does",
         "I14: a reopened RPC session takes its calls and their other ends from its operation index: its first call ranking, listing and spans open no segment, and answer as a derivation of every segment does",
@@ -1116,6 +1118,7 @@
       ],
       "I4": [
         "I4: a burst of a thousand records filling two tiles is counted from their records exactly, by a zoom and by a brush",
+        "I4: a damaged spanning section is refused, never misread: the query counts from the segments' rows instead",
         "I4: a damaged tile index is refused, never misread: the zoom counts from the segments' rows instead",
         "I4: a focus narrowed to a code no direction is reads its rows, which a tile index does not keep apart, and counts what they count",
         "I4: a focus on the whole session's records of one mechanism counts what its rows count from the whole timeline's own counts, and opens no segment the whole does not; narrowed to a direction too, it reads its rows",
@@ -1128,7 +1131,10 @@
         "I4: a reopened session's channel counts its focus and each end's lanes from its persisted tiles exactly as its rows do, narrowed to a mechanism, a direction or an end, under every policy, and opens no segment",
         "I4: a reopened session's group or process counts its focus, each member's lane and its direction rows from its persisted tiles exactly as its rows do, under every policy, and opens no segment",
         "I4: a reopened session's zooms count from its persisted tiles exactly what its rows count, and open no segment",
+        "I4: a section counts only its records in a range it is given within the columns' interval, and ranges that cut the interval count what it does",
         "I4: a segment whose session times go backwards has no tiles and is counted row by row",
+        "I4: a spanning section whose checksums hold but whose parts do not agree is refused: the query counts from the segments' rows instead",
+        "I4: a spanning section whose extents are not its sections' is refused where a range it leaves reads one",
         "I4: an overview's RPC links read back as written, a minor-0 overview keeps none, and damaged links are refused",
         "I4: an overview's lane bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
         "I4: an overview's process bytes read back as written, an earlier overview keeps none, and damaged ones are refused",
@@ -1137,6 +1143,7 @@
         "I4: damaged tallies are refused, never counted: the brush counts from the segments' rows instead",
         "I4: every eligible point belongs to exactly one bucket",
         "I4: every minimap column is a union of whole tiles of every segment, so the minimap reads no row",
+        "I4: over many segments, a zoom, a brush, a group's lanes and a channel's ends count from the level spanning them exactly what their rows count, under every policy, and open no segment",
         "I4: the covered extent contains the requested one, including the final observation"
       ],
       "I5": [
@@ -2164,7 +2171,14 @@
         "S3: a group's focus counts a tile whole from its tallies wherever it falls in one column of the view's and one of its lanes', and reads records only where a boundary of either falls among them",
         "S3: a tile keeps each part of its tallies where it takes a third of the bytes of its records, and a brush counts it from them",
         "S3: a tile whose tallies would take more than a third of the bytes of its records keeps none, and a brush counts it from its children or records, exactly",
-        "S3: a zoom counts from persisted tiles in proportion to its view: whole tiles where its columns hold them, records only where a column boundary falls among them"
+        "S3: a zoom counts from persisted tiles in proportion to its view: whole tiles where its columns hold them, records only where a column boundary falls among them",
+        "S3: over a hundred segments, a brush counts the spanning level's tiles whole and reads a segment's section only at its ends, and a zoom only where a column boundary falls"
+      ],
+      "S2": [
+        "S2: past its bound, the spanning level's finest tiles are made ten times wider until their tally entries fit, and where none do it is given up; a zoom, a brush and a focus count the same either way"
+      ],
+      "S4": [
+        "S4: a level spans the segments only where two or more hold a timed record and none's readings go backwards, and only a minor 4 index is current"
       ]
     },
     "uncovered": {

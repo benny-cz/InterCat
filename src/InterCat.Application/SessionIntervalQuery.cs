@@ -164,7 +164,8 @@ public static class SessionIntervalQuery
     /// <summary>
     /// The brush's counts from the tile index the generation's checkpoint published (`contracts/tile-index-v1.md` §4): each
     /// tile its interval holds whole from its tallies, and the records of the tiles its ends fall among, opening no segment
-    /// but one whose readings go backwards, which keeps no tiles and has its rows read. Null when the generation names no
+    /// but one whose readings go backwards, which keeps no tiles and has its rows read. Where a level spans the segments,
+    /// its tiles are counted first, and the segments' sections only beneath the ranges it leaves. Null when the generation names no
     /// tile index, or one without a section of each of its segments, or one whose bindings are not this derivation's, which
     /// a later checkpoint publishes again; and when a part of it could not be read, which is said once, and the index is
     /// not read again for the generation. The brush then counts from its segments, and counts the same.
@@ -197,6 +198,23 @@ public static class SessionIntervalQuery
         try
         {
             using TileReading reading = tiles.Read(store.Root);
+
+            // Where a level spans the segments, its tiles the interval holds whole count from their tallies, and the
+            // segments' sections count only what it leaves: its finest tiles an end falls among, or that keep none.
+            if (tiles.SpansExactly(segments))
+            {
+                TileRemainders left = reading.SpanInterval(interval, policy, slotOfChannel, tally, cancellationToken);
+                foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
+                {
+                    foreach (TimeRange range in ranges)
+                    {
+                        _ = reading.CountInterval(section, range, policy, slotOfChannel, tally, cancellationToken);
+                    }
+                }
+
+                return tally;
+            }
+
             foreach (StoreDependency segment in segments)
             {
                 cancellationToken.ThrowIfCancellationRequested();
