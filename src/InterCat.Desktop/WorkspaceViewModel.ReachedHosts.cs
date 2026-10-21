@@ -57,11 +57,19 @@ public sealed partial class WorkspaceViewModel
     public bool ShowsReachedHosts => HostsOfSelection().Hosts.Count > 0;
 
     /// <summary>
-    /// The heading over them, a process's or a program's processes', saying under a brush that they are the whole
-    /// session's.
+    /// The heading over them, a process's or a program's processes' - those that connected to it where it accepted every
+    /// connection - saying under a brush that they are the whole session's.
     /// </summary>
-    public string ReachedHostsHeading => (ShowsLineage ? "Other hosts it reached" : "Other hosts its processes reached")
-        + ", the busiest first" + (appliedInterval is null ? string.Empty : " · whole session");
+    public string ReachedHostsHeading
+    {
+        get
+        {
+            IReadOnlyList<OtherHost> hosts = HostsOfSelection().Hosts;
+            return HostLinkText.HostsHeading(ShowsLineage ? "it" : "its processes", hosts.Sum(host => (long)host.Accepted),
+                    hosts.Sum(host => (long)host.TcpConnections + host.UdpFlows))
+                + ", the busiest first" + (appliedInterval is null ? string.Empty : " · whole session");
+        }
+    }
 
     /// <summary>
     /// The list as a screen reader names it: what it holds and what Enter on a row does. Each row says itself whole as the

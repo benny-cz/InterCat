@@ -954,7 +954,9 @@ internal static class ProcessesCommand
         // them, its own connections alone.
         if (item.OtherHosts is { Count: > 0 } hosts)
         {
-            ConsoleUi.Line("  Other hosts it reached, the most bytes sent and received first; who is at an address is not observed:");
+            ConsoleUi.Line("  " + HostLinkText.HostsHeading("it", hosts.Sum(host => (long)host.Accepted),
+                    hosts.Sum(host => (long)host.TcpConnections + host.UdpFlows))
+                + ", the most bytes sent and received first; who is at an address is not observed:");
             bool accepting = hosts.Take(HostsListed).Any(host => host.Accepted > 0);
             ConsoleUi.Table(
                 ["Host", "Scope", "Connections", "Ports", .. accepting ? ["Accepted here"] : Array.Empty<string>(), "Records", "Sent",

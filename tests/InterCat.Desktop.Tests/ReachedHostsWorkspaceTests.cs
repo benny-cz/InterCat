@@ -189,6 +189,47 @@ public sealed class ReachedHostsWorkspaceTests
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 
+    [Fact(DisplayName = "§6.3: a chosen process or program whose connections other hosts all opened lists them as the hosts that connected to it")]
+    public void HostsThatOnlyConnectedAreHeadedSo() => SingleThreadedContext.Run(async () =>
+    {
+        // server.exe accepted a connection from each of two hosts and made none; dns.exe accepted one and sent a datagram to
+        // another host, a flow it did not accept.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(2, ObservationKind.Create, 300, 5) with { ResourceName = @"C:\Apps\dns.exe", SessionRelativeTicks = 110 },
+            Transfer(30, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 6).Between("192.168.1.10:853", "10.0.0.8:50002")
+                with { SessionRelativeTicks = 400 },
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 7).Between("192.168.1.10:53000", "10.0.0.53:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42, SessionRelativeTicks = 500 },
+            Lifecycle(1, ObservationKind.Create, 200, 1) with { ResourceName = @"C:\Apps\server.exe", SessionRelativeTicks = 100 },
+            Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2).Between("192.168.1.10:445", "10.0.0.6:50000")
+                with { SessionRelativeTicks = 200 },
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 3).Between("192.168.1.10:445", "10.0.0.6:50000")
+                with { SessionRelativeTicks = 210 },
+            Transfer(20, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4).Between("192.168.1.10:3389", "10.0.0.7:50001")
+                with { SessionRelativeTicks = 300 },
+        ]);
+        using WorkspaceViewModel workspace = Open(session, 1);
+        await workspace.LayoutReady;
+
+        workspace.SelectProcess(Process(workspace, 200).Id);
+        Assert.Equal("Other hosts that connected to it, the busiest first", workspace.ReachedHostsHeading);
+        Assert.Equal("Other hosts that connected to it, the busiest first; Enter on one finds the processes that reached it",
+            workspace.ReachedHostsListName);
+        Assert.Equal(
+            [
+                "10.0.0.6 | private · 1 TCP connection · accepted here at port 445 · 2 records",
+                "10.0.0.7 | private · 1 TCP connection · accepted here at port 3389 · 1 record",
+            ],
+            workspace.ReachedHostRows.Select(row => row.Address + " | " + row.Detail));
+        workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.Equal("Other hosts that connected to its processes, the busiest first", workspace.ReachedHostsHeading);
+        workspace.ClearSelection();
+        workspace.SelectProcess(Process(workspace, 300).Id);
+        Assert.Equal("Other hosts it reached, the busiest first", workspace.ReachedHostsHeading);
+    });
+
     /// <summary>
     /// client.exe's PID 100 connects to 203.0.113.1's port 443 twice and sends on each, to 198.51.100.7's port 80 once and
     /// sends, and to 52.0.0.1, .2 and .3 once each; it accepts a connection from 10.0.0.5 at its port 3389 and receives on

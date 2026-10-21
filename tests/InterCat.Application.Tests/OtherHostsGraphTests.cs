@@ -613,6 +613,15 @@ public sealed class OtherHostsGraphTests
             HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 2, 4) { Connected = 2 }));
         Assert.Equal("2 TCP connections", HostLinkText.Reached(new OtherHost("203.0.113.1", 2, 0, 1, 4) { Accepted = 2 }, false));
 
+        // A list of the hosts is headed by those its process reached, or those that connected to it where every one was
+        // accepted from them: one accepted beside some made, or beside a UDP flow, is said apart in its row.
+        Assert.Equal("Other hosts it reached", HostLinkText.HostsHeading("it", 0, 5));
+        Assert.Equal("Other hosts it reached", HostLinkText.HostsHeading("it", 1, 3));
+        Assert.Equal("Other hosts it reached", HostLinkText.HostsHeading("it", 0, 0));
+        Assert.Equal("Other hosts that connected to it", HostLinkText.HostsHeading("it", 2, 2));
+        Assert.Equal("Other hosts that connected to its processes", HostLinkText.HostsHeading("its processes", 3, 3));
+        Assert.Equal("Other hosts its processes reached", HostLinkText.HostsHeading("its processes", 0, 3));
+
         // A line says TCP before UDP, one process's with its hosts and several processes' by how many made them.
         Assert.Equal("3 TCP connections to 2 hosts · 5 UDP flows with 3 hosts",
             HostLinkText.Line([Link(one, Mechanism.Udp, 5, 3, 9), Link(one, Mechanism.Tcp, 3, 2, 4)]));

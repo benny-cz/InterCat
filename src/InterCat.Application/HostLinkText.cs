@@ -252,6 +252,19 @@ public static class HostLinkText
             .Select(transport => one ? Reach(transport.First()) : Reach(transport.Key, [.. transport]))];
     }
 
+    /// <summary>
+    /// What a list of the other hosts a process's, or a program's processes', connections ran to is headed: "Other hosts it
+    /// reached", or "Other hosts that connected to it" where the capture saw every one of the
+    /// <paramref name="connections"/> - TCP connections and UDP flows alike - <paramref name="accepted"/> from them;
+    /// <paramref name="subject"/> is who held them, "it" or "its processes". Those accepted beside some made are said apart
+    /// in the list, at the ports they arrived at.
+    /// </summary>
+    public static string HostsHeading(string subject, long accepted, long connections)
+    {
+        ArgumentNullException.ThrowIfNull(subject);
+        return accepted > 0 && accepted == connections ? "Other hosts that connected to " + subject : $"Other hosts {subject} reached";
+    }
+
     /// <summary>The same on one line, its transports apart: "42 TCP connections to 17 hosts · 5 UDP flows with 3 hosts".</summary>
     public static string Line(IEnumerable<HostLink> links) => string.Join(" · ", Parts(links));
 

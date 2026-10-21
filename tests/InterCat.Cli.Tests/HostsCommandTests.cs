@@ -549,6 +549,30 @@ public sealed class HostsCommandTests
         Assert.Contains("--rank-by ranks the hosts; --address lists the processes that reached one", said, Ordinal);
     }
 
+    [Fact(DisplayName = "R18: icat processes --pid heads an instance's other hosts by those that connected to it only where it accepted every connection with them")]
+    public async Task AnInstancesOtherHostsAreHeadedByWhichWayTheyConnected()
+    {
+        // server.exe accepted a connection from another host and made none; dns.exe accepted one and sent a datagram to
+        // another host, a flow it did not accept.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 200, 1) with { ResourceName = @"C:\Apps\server.exe" },
+            Lifecycle(2, ObservationKind.Create, 300, 2) with { ResourceName = @"C:\Apps\dns.exe" },
+            Transfer(10, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 3).Between("192.168.1.10:445", "10.0.0.6:50000"),
+            Transfer(11, ObservationKind.Receive, AccountingSide.ReceiveSide, 100, 200, 4).Between("192.168.1.10:445", "10.0.0.6:50000"),
+            Transfer(20, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 300, 5).Between("192.168.1.10:853", "10.0.0.8:50001"),
+            Transfer(30, ObservationKind.Send, AccountingSide.SendSide, 32, 300, 6).Between("192.168.1.10:53000", "10.0.0.53:53")
+                with { Mechanism = Mechanism.Udp, EventId = 42 },
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        Assert.Contains("  Other hosts that connected to it, the most bytes sent and received first; who is at an address is not "
+            + "observed:", (await Run("processes", session.Path, "--pid", "200")).Output.ReplaceLineEndings("\n"), Ordinal);
+        Assert.Contains("  Other hosts it reached, the most bytes sent and received first; who is at an address is not observed:",
+            (await Run("processes", session.Path, "--pid", "300")).Output.ReplaceLineEndings("\n"), Ordinal);
+    }
+
     [Fact(DisplayName = "R18: icat hosts --investigation names each host's candidate other ends in the investigation's other captures, and refuses an investigation it cannot use")]
     public async Task IcatHostsNamesCandidateOtherEnds()
     {
@@ -576,6 +600,10 @@ public sealed class HostsCommandTests
             Assert.Equal(0, listed[1].GetProperty("candidateOtherEnds").GetArrayLength());
             Assert.Equal(JsonValueKind.Null, JsonDocument.Parse((await Run("hosts", demo.ClientSession, "--json")).Output).RootElement
                 .GetProperty("listed")[0].GetProperty("candidateOtherEnds").ValueKind);
+
+            // The server's api accepted its one connection with another host, which icat processes --pid heads so.
+            Assert.Contains("  Other hosts that connected to it, the most bytes sent and received first; who is at an address is "
+                + "not observed:", (await Run("processes", demo.ServerSession, "--pid", "5100")).Output.ReplaceLineEndings("\n"), Ordinal);
 
             // An investigation the session is no member of, a file that is none, and beside --address, are refused.
             using var stranger = new TemporarySession();
