@@ -153,7 +153,8 @@ public sealed partial class WorkspaceViewModel
         IReadOnlyList<(long Connections, string Who)> from = ListenerText.From(listener, ProcessNamed, ProgramOf);
         string[] parts = from is [var only] ? ["from " + only.Who]
             : [.. from.Select(part => string.Create(CultureInfo.CurrentCulture, $"{part.Connections:N0} from {part.Who}"))];
-        return new ListenerRow(process,
+        // The row shows the process with its PID kept to its number, so a narrow inspector never breaks "PID" from it.
+        return new ListenerRow(process.Replace("PID ", "PID\u00A0", StringComparison.Ordinal),
             from.Count == 1 ? $"{accepted} accepted {parts[0]}" : string.Join(" · ", [accepted + " accepted", .. parts]),
             $"{process} accepted {accepted} at port {port}" + string.Concat(parts.Select(part => ", " + part)))
         {

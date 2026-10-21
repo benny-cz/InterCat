@@ -45,11 +45,11 @@ public sealed class ListeningPortsWindowTests
         Assert.Equal("6 listening ports, the busiest first", window.GetControl<TextBlock>("ListenersHeadingText").Text);
         Assert.Equal(
             [
-                "8080", "server.exe · PID 200", "2 connections accepted from 2 processes of client.exe and helper.exe",
-                "445", "files.exe · PID 600", "1 connection accepted from 10.0.0.7",
-                "8443", "server.exe · PID 200", "1 connection accepted from 10.0.0.6",
-                "9001", "server.exe · PID 200", "1 connection accepted from 10.0.0.8",
-                "9002", "server.exe · PID 200", "1 connection accepted from 10.0.0.8",
+                "8080", "server.exe · PID\u00A0200", "2 connections accepted from 2 processes of client.exe and helper.exe",
+                "445", "files.exe · PID\u00A0600", "1 connection accepted from 10.0.0.7",
+                "8443", "server.exe · PID\u00A0200", "1 connection accepted from 10.0.0.6",
+                "9001", "server.exe · PID\u00A0200", "1 connection accepted from 10.0.0.8",
+                "9002", "server.exe · PID\u00A0200", "1 connection accepted from 10.0.0.8",
             ],
             Texts(ports));
         Assert.Equal("6 listening ports, the busiest first: the ports this machine's processes accepted connections at; Enter "
@@ -63,6 +63,12 @@ public sealed class ListeningPortsWindowTests
         double[] edges = [.. Enumerable.Range(0, 5).Select(index => ports.ContainerFromIndex(index)!
             .GetVisualDescendants().OfType<TextBlock>().ElementAt(1).TranslatePoint(default, ports)!.Value.X)];
         Assert.All(edges, edge => Assert.Equal(edges[0], edge, 0.5));
+
+        // Who connected runs beneath both, from the port's edge, so a narrow inspector does not stack it a word to a line.
+        TextBlock[] first = [.. ports.ContainerFromIndex(0)!.GetVisualDescendants().OfType<TextBlock>()];
+        Assert.Equal(first[0].TranslatePoint(default, ports)!.Value.X, first[2].TranslatePoint(default, ports)!.Value.X, 0.5);
+        Assert.True(first[2].TranslatePoint(default, ports)!.Value.Y
+            >= first[1].TranslatePoint(new Point(0, first[1].Bounds.Height), ports)!.Value.Y);
         Save(window, "listening-ports-1456x939.png");
 
         // Enter on the server's 8080 chooses the server, the list going with the choice, and the keyboard goes to its

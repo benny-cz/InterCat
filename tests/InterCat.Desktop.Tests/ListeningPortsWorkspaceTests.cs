@@ -47,11 +47,11 @@ public sealed class ListeningPortsWorkspaceTests
             + "on one chooses the process that accepted them", workspace.ListenersListName);
         Assert.Equal(
             [
-                "7000 | helper.exe · PID 300 | 5 connections accepted · 4 from 4 processes of 4 programs · 1 from 10.0.0.6",
-                "8080 | server.exe · PID 200 | 4 connections accepted from 3 processes of probe.exe, client.exe and helper.exe",
-                "8443 | server.exe · PID 200 | 4 connections accepted from 3 hosts",
-                "9000 | server.exe · PID 200 | 4 connections accepted from unobserved processes on this machine",
-                "8080 | probe.exe · PID 500 | 1 connection accepted from client.exe · PID 100",
+                "7000 | helper.exe · PID\u00A0300 | 5 connections accepted · 4 from 4 processes of 4 programs · 1 from 10.0.0.6",
+                "8080 | server.exe · PID\u00A0200 | 4 connections accepted from 3 processes of probe.exe, client.exe and helper.exe",
+                "8443 | server.exe · PID\u00A0200 | 4 connections accepted from 3 hosts",
+                "9000 | server.exe · PID\u00A0200 | 4 connections accepted from unobserved processes on this machine",
+                "8080 | probe.exe · PID\u00A0500 | 1 connection accepted from client.exe · PID 100",
             ],
             workspace.ListenerRows.Select(Said));
         Assert.Equal("helper.exe · PID 300 accepted 5 connections at port 7000, 4 from 4 processes of 4 programs, 1 from "
@@ -66,7 +66,7 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.Equal("Show all 6 listening ports", workspace.ListenersToggleLabel);
         Assert.True(workspace.ToggleListeners());
         Assert.True(workspace.ListsAllListeners);
-        Assert.Equal("52011 | pipe.exe · PID 400 | 1 connection accepted from pipe.exe · PID 400 (itself)",
+        Assert.Equal("52011 | pipe.exe · PID\u00A0400 | 1 connection accepted from pipe.exe · PID 400 (itself)",
             Said(workspace.ListenerRows[5]));
         Assert.Equal(6, heard[^1]);
         Assert.Equal("Show the busiest 5", workspace.ListenersToggleLabel);
@@ -209,7 +209,7 @@ public sealed class ListeningPortsWorkspaceTests
         {
             await workspace.LayoutReady;
             Assert.Equal("1 listening port", workspace.ListenersHeading);
-            Assert.Equal("445 | server.exe · PID 200 | 1 connection accepted from 10.0.0.6", Said(workspace.ListenerRows.Single()));
+            Assert.Equal("445 | server.exe · PID\u00A0200 | 1 connection accepted from 10.0.0.6", Said(workspace.ListenerRows.Single()));
             Assert.False(workspace.OffersListenersToggle);
         }
 
@@ -242,7 +242,10 @@ public sealed class ListeningPortsWorkspaceTests
     private static ProcessNode Process(WorkspaceViewModel workspace, int pid) =>
         workspace.Snapshot.Processes.Single(process => process.ProcessId == pid);
 
-    /// <summary>A listening port's row as the inspector shows it: its port's column, then its process and who connected.</summary>
+    /// <summary>
+    /// A listening port's row as the inspector shows it: its port's column, then its process, its PID kept to its number by a
+    /// no-break space, and who connected.
+    /// </summary>
     private static string Said(ListenerRow row) => $"{row.PortText} | {row.Listener} | {row.Detail}";
 
     /// <summary>

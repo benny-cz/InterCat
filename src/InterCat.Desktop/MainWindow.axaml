@@ -1073,19 +1073,19 @@
                     </ListBox.Styles>
                     <ListBox.ItemTemplate>
                       <!-- The port in a column of its own, every row's as wide and its digits to the right, as netstat
-                           sets it, and beside it the process that accepted there and who connected. -->
+                           sets it, beside the process that accepted there; who connected beneath both, the row's whole
+                           width, so a narrow inspector does not stack it a word to a line. -->
                       <DataTemplate x:DataType="pres:ListenerRow">
-                        <Grid Margin="0,1">
+                        <Grid Margin="0,1" RowDefinitions="Auto,Auto">
                           <Grid.ColumnDefinitions>
                             <ColumnDefinition Width="Auto" SharedSizeGroup="ListenerPort" />
                             <ColumnDefinition Width="*" />
                           </Grid.ColumnDefinitions>
                           <TextBlock Text="{Binding PortText}" Margin="0,0,10,0" FontWeight="SemiBold"
                                      HorizontalAlignment="Right" />
-                          <StackPanel Grid.Column="1" Spacing="1">
-                            <TextBlock Text="{Binding Listener}" TextWrapping="Wrap" />
-                            <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="12" TextWrapping="Wrap" />
-                          </StackPanel>
+                          <TextBlock Grid.Column="1" Text="{Binding Listener}" TextWrapping="Wrap" />
+                          <TextBlock Grid.Row="1" Grid.ColumnSpan="2" Text="{Binding Detail}" Classes="muted" FontSize="12"
+                                     Margin="0,1,0,0" TextWrapping="Wrap" />
                         </Grid>
                       </DataTemplate>
                     </ListBox.ItemTemplate>
