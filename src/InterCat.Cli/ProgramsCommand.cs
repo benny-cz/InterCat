@@ -54,7 +54,7 @@ internal static class ProgramsCommand
         string? asked = programText?.Trim();
         if (asked is { Length: 0 })
         {
-            ConsoleUi.Failure("--program takes a program's name as icat programs lists it - svchost.exe - or its executable's path.");
+            ConsoleUi.Failure(BlankRefusal);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -83,20 +83,36 @@ internal static class ProgramsCommand
             return List(pairs, null, 0, path, limit, json);
         }
 
-        ProcessGroup[] named = Named(overview.Groups, asked);
-        if (named.Length != 1)
+        if (One(overview.Groups, asked, out string? refusal) is not { } program)
         {
-            ConsoleUi.Failure(named.Length == 0
-                ? $"No program of this session is named {asked}: a program is named by its executable's file name, as icat programs "
-                    + "lists it, or by the executable's path."
-                : $"--program {asked} names {named.Length} programs - "
-                    + WorkspaceLayout.Series([.. named.Select(group => group.Name)]) + " - so name one as they are listed.");
+            ConsoleUi.Failure(refusal!);
             return InterCatExitCode.InvalidInvocation;
         }
 
-        ProcessGroup program = named[0];
         return List([.. pairs.Where(pair => pair.First.Key == program.Key || pair.Second.Key == program.Key)], program,
             overview.Nodes.Count(node => node.GroupKey == program.Key), path, limit, json);
+    }
+
+    /// <summary>What a command taking --program says of a name that is blank, which names no program.</summary>
+    internal const string BlankRefusal =
+        "--program takes a program's name as icat programs lists it - svchost.exe - or its executable's path.";
+
+    /// <summary>
+    /// The one program <paramref name="asked"/> names, as <see cref="Named"/> finds it, for a command that takes --program;
+    /// null where it names none or several, and <paramref name="refusal"/> says which and how to name one.
+    /// </summary>
+    internal static ProcessGroup? One(IReadOnlyList<ProcessGroup> groups, string asked, out string? refusal)
+    {
+        ProcessGroup[] named = Named(groups, asked);
+        refusal = named.Length switch
+        {
+            1 => null,
+            0 => $"No program of this session is named {asked}: a program is named by its executable's file name, as icat "
+                + "programs lists it, or by the executable's path.",
+            _ => $"--program {asked} names {named.Length} programs - "
+                + WorkspaceLayout.Series([.. named.Select(group => group.Name)]) + " - so name one as they are listed.",
+        };
+        return refusal is null ? named[0] : null;
     }
 
     /// <summary>

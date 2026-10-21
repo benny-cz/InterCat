@@ -88,7 +88,7 @@ internal static class HostsCommand
         string? asked = programText?.Trim();
         if (asked is { Length: 0 })
         {
-            ConsoleUi.Failure("--program takes a program's name as icat programs lists it - svchost.exe - or its executable's path.");
+            ConsoleUi.Failure(ProgramsCommand.BlankRefusal);
             return InterCatExitCode.InvalidInvocation;
         }
 
@@ -119,18 +119,12 @@ internal static class HostsCommand
             // One program's hosts are those its processes' connections ran to, as its inspector in the window lists them.
             if (asked is not null)
             {
-                ProcessGroup[] named = ProgramsCommand.Named(overview.Groups, asked);
-                if (named.Length != 1)
+                program = ProgramsCommand.One(overview.Groups, asked, out string? refusal);
+                if (program is null)
                 {
-                    ConsoleUi.Failure(named.Length == 0
-                        ? $"No program of this session is named {asked}: a program is named by its executable's file name, as icat "
-                            + "programs lists it, or by the executable's path."
-                        : $"--program {asked} names {named.Length} programs - "
-                            + WorkspaceLayout.Series([.. named.Select(group => group.Name)]) + " - so name one as they are listed.");
+                    ConsoleUi.Failure(refusal!);
                     return InterCatExitCode.InvalidInvocation;
                 }
-
-                program = named[0];
             }
 
             HashSet<ProcessInstanceId>? members = program is null ? null

@@ -586,6 +586,81 @@ public sealed class CommandLineTests : IDisposable
             Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
     }
 
+    [Fact(DisplayName = "§5.2: icat processes --program lists one program's instances alone, at a port of their own with --port, and refuses a program it cannot name")]
+    public async Task IcatProcessesListsOneProgramsInstances()
+    {
+        // Two svc.exe instances accept the client's connections, at 135 and 445; other.exe accepts one at 135 as well.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Apps\client.exe" },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Windows\svc.exe" },
+            Lifecycle(3, ObservationKind.Create, 201, 3) with { ResourceName = @"C:\Windows\svc.exe" },
+            Lifecycle(4, ObservationKind.Create, 300, 4) with { ResourceName = @"C:\Apps\other.exe" },
+            .. Opened(10, 100, "127.0.0.1:50000", 200, "127.0.0.1:135"),
+            .. Opened(20, 100, "127.0.0.1:50001", 201, "127.0.0.1:445"),
+            .. Opened(30, 100, "127.0.0.1:50002", 300, "127.0.0.1:135"),
+        ]);
+        session.Store.ReleaseSegmentReaders();
+
+        // The program's two instances alone, under a field that names it and counts them.
+        (InterCatExitCode code, string text, string said) = await Run("processes", session.Path, "--program", "svc.exe");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  Program +svc\.exe · 2 processes\r?$", text);
+        Assert.Matches(@"(?m)^  200 +svc\.exe ", text);
+        Assert.Matches(@"(?m)^  201 +svc\.exe ", text);
+        Assert.DoesNotMatch(@"(?m)^  (100|300) ", text);
+
+        // With --port, those of them that accepted connections at it; where none did, it says so by the program's name.
+        (code, text, said) = await Run("processes", session.Path, "--program", "svc.exe", "--port", "135");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Matches(@"(?m)^  200 +svc\.exe .* 0 made · 1 accepted at 135 +", text);
+        Assert.DoesNotMatch(@"(?m)^  (201|300) ", text);
+        (code, text, said) = await Run("processes", session.Path, "--program", "svc.exe", "--port", "8080");
+        Assert.True(code == InterCatExitCode.Success, said);
+        Assert.Contains("No instance of svc.exe accepted a connection at port 8080.", Regex.Replace(text, @"\s+", " "),
+            StringComparison.Ordinal);
+
+        // As JSON, the program named and counted, and its instances alone; without --program, no program.
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--program", "svc.exe", "--json")).Output))
+        {
+            JsonElement program = json.RootElement.GetProperty("program");
+            Assert.Equal(("svc.exe", @"C:\Windows\svc.exe", 2), (program.GetProperty("name").GetString(),
+                program.GetProperty("path").GetString(), program.GetProperty("processes").GetInt32()));
+            Assert.Equal([200, 201], json.RootElement.GetProperty("instances").EnumerateArray()
+                .Select(item => item.GetProperty("process").GetProperty("processId").GetInt32()).Order());
+        }
+
+        using (JsonDocument json = JsonDocument.Parse((await Run("processes", session.Path, "--json")).Output))
+        {
+            Assert.Equal(JsonValueKind.Null, json.RootElement.GetProperty("program").ValueKind);
+        }
+
+        // A program the session does not hold, no name at all, or a program beside one PID's detail, is refused.
+        (code, _, said) = await Run("processes", session.Path, "--program", "nothing.exe");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("No program of this session is named nothing.exe", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("processes", session.Path, "--program", " ");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program takes a program's name as icat programs lists it", said, StringComparison.Ordinal);
+        (code, _, said) = await Run("processes", session.Path, "--program", "svc.exe", "--pid", "200");
+        Assert.Equal(InterCatExitCode.InvalidInvocation, code);
+        Assert.Contains("--program lists one program's instances; --pid shows each instance of one PID in full.", said,
+            StringComparison.Ordinal);
+
+        // Its help says what it takes.
+        (_, text, _) = await Run("processes", "--help");
+        Assert.Contains("--program lists one program's instances alone", Regex.Replace(text, @"\s+", " "), StringComparison.Ordinal);
+
+        // One TCP connection the maker opened to the taker, which accepted it, and a send across it.
+        static ObservationRowV1[] Opened(long at, int maker, string from, int taker, string to) =>
+        [
+            Transfer(at, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, maker, (ulong)at).Between(from, to),
+            Transfer(at + 1, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, taker, (ulong)at + 1).Between(to, from),
+            Transfer(at + 2, ObservationKind.Send, AccountingSide.SendSide, 8, maker, (ulong)at + 2).Between(from, to),
+        ];
+    }
+
     [Fact(DisplayName = "§5.2: icat processes --pid says who connected to whom end by end, adding up to the instance's own count: with itself, with an end it sent nothing to, and with ends no record holds")]
     public async Task AProcesssDetailSaysWhoConnectedEndByEnd()
     {

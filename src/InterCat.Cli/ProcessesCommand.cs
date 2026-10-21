@@ -28,6 +28,12 @@ internal sealed record ProcessesDocument
     /// </summary>
     public int? Port { get; init; }
 
+    /// <summary>
+    /// The program whose instances are listed, as `--program` named it, with how many instances of it the session holds;
+    /// null where every program's are listed.
+    /// </summary>
+    public ProcessesProgramDocument? Program { get; init; }
+
     public required ProcessesSummaryDocument Summary { get; init; }
 
     /// <summary>
@@ -40,6 +46,14 @@ internal sealed record ProcessesDocument
     public required IReadOnlyList<ProcessActivityDocument> Instances { get; init; }
     public required IReadOnlyList<ProcessUnattributedDocument> Unattributed { get; init; }
     public required IReadOnlyList<string> Caveats { get; init; }
+}
+
+/// <summary>The program `icat processes --program` lists the instances of: its name as icat programs lists it, and its path.</summary>
+internal sealed record ProcessesProgramDocument
+{
+    public required string Name { get; init; }
+    public required string? Path { get; init; }
+    public required int Processes { get; init; }
 }
 
 internal sealed record ProcessesSummaryDocument
@@ -236,6 +250,7 @@ internal static class ProcessesCommand
         string? topOption = command.TakeOption("--top");
         string? pidOption = command.TakeOption("--pid");
         string? portOption = command.TakeOption("--port");
+        string? programOption = command.TakeOption("--program");
         string? rankOption = command.TakeOption("--rank-by");
         string? policyOption = command.TakeOption("--evidence-policy");
         string? outputOption = command.TakeOption("--output");
@@ -301,6 +316,15 @@ internal static class ProcessesCommand
             }
 
             port = parsed;
+        }
+
+        // One program's instances, as its rung in the window lists them: named as icat programs lists it, or by its path.
+        string? programAsked = programOption?.Trim();
+        if (programAsked is { Length: 0 } || (programAsked is not null && pid is not null))
+        {
+            ConsoleUi.Failure(programAsked is { Length: 0 } ? ProgramsCommand.BlankRefusal
+                : "--program lists one program's instances; --pid shows each instance of one PID in full.");
+            return InterCatExitCode.InvalidInvocation;
         }
 
         // The list is ranked by what --rank-by names, in icat export's and icat hosts' words; one PID's detail is not a list.
@@ -376,6 +400,17 @@ internal static class ProcessesCommand
             return InterCatExitCode.PermissionOrCapabilityFailure;
         }
 
+        ProcessGroup? program = null;
+        if (programAsked is not null)
+        {
+            program = ProgramsCommand.One(projected.Groups, programAsked, out string? refusal);
+            if (program is null)
+            {
+                ConsoleUi.Failure(refusal!);
+                return InterCatExitCode.InvalidInvocation;
+            }
+        }
+
         Dictionary<ProcessInstanceId, ProcessNode> nodes = projected.Nodes.ToDictionary(node => node.Id);
         ProcessesDocument document = Describe(full, records, sent, received, policy, nodes, projected.Collectors.Unfound,
             projected.ConnectionOpensRecorded, rankBy.Value);
@@ -386,6 +421,17 @@ internal static class ProcessesCommand
             {
                 Port = listened,
                 Instances = [.. document.Instances.Where(item => item.AcceptedPorts?.Contains(listened) == true)],
+            };
+        }
+
+        if (program is not null)
+        {
+            // Those its grouping binds to it, by their executable, as the window's rung for it lists them.
+            HashSet<ProcessInstanceId> members = [.. projected.Nodes.Where(node => node.GroupKey == program.Key).Select(node => node.Id)];
+            document = document with
+            {
+                Program = new() { Name = program.Name, Path = program.Detail, Processes = members.Count },
+                Instances = [.. document.Instances.Where(item => members.Contains(new ProcessInstanceId(Guid.Parse(item.Process.InstanceId))))],
             };
         }
         if (pid is { } selected)
@@ -745,10 +791,15 @@ internal static class ProcessesCommand
             ConsoleUi.Field("Ranked by", RankedWords(document.RankedBy));
         }
 
-        // One port's listeners say which port they are listed for.
+        // One port's listeners say which port they are listed for, and one program's instances whose they are.
         if (document.Port is { } port)
         {
             ConsoleUi.Field("Accepted at", string.Create(CultureInfo.InvariantCulture, $"port {port}, whoever connected"));
+        }
+
+        if (document.Program is { } program)
+        {
+            ConsoleUi.Field("Program", program.Name + " · " + CountText.Of(program.Processes, "process", "processes"));
         }
 
         // What the capture covered, in the words icat metric uses of the same answer: a count is only as complete as the
@@ -771,7 +822,8 @@ internal static class ProcessesCommand
         {
             ConsoleUi.Line(pid is { } missing ? $"  No instance of PID {missing} is in this session's evidence."
                 : document.Port is { } unheld
-                    ? string.Create(CultureInfo.InvariantCulture, $"  No instance accepted a connection at port {unheld}. icat hosts ")
+                    ? (document.Program is { } named ? $"  No instance of {named.Name}" : "  No instance")
+                        + string.Create(CultureInfo.InvariantCulture, $" accepted a connection at port {unheld}. icat hosts ")
                         + string.Create(CultureInfo.InvariantCulture, $"<directory> --address :{unheld} lists the processes whose ")
                         + "connections ran to that port at another host, and icat ports <directory> the ports its processes "
                         + "accepted connections at."
@@ -1092,7 +1144,8 @@ internal static class ProcessesCommand
 
     private static void PrintHelp()
     {
-        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--port <n>] [--evidence-policy <name>]");
+        ConsoleUi.Line("  icat processes <directory> [--top <n>] [--pid <id>] [--port <n>] [--program <name>]");
+        ConsoleUi.Line("                 [--evidence-policy <name>]");
         ConsoleUi.Line("                 [--rank-by records|bytes-sent|bytes-received|bytes-sent-and-received");
         ConsoleUi.Line("                            |connections-made|connections-accepted]");
         ConsoleUi.Line("                 [--output <path>] [--overwrite] [--json]");
@@ -1115,5 +1168,8 @@ internal static class ProcessesCommand
         ConsoleUi.Line("      --port lists the instances that accepted connections at that port of their own, whoever");
         ConsoleUi.Line("      connected - its own machine's processes or other hosts - the most connections first;");
         ConsoleUi.Line("      icat ports lists every port they accepted at.");
+        ConsoleUi.Line("      --program lists one program's instances alone, named as icat programs lists it -");
+        ConsoleUi.Line("      svchost.exe - or by its executable's path, as the window lists them with the program");
+        ConsoleUi.Line("      opened. With --port, those of them that accepted connections at that port.");
     }
 }
