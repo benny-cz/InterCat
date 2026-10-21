@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 681 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 682 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,17 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 682 — a relationship says at which port its connections arrived (§6.3, §6.8, §7.4):**
+  - From the same openings its made counts read, at the end that accepted each: the relationship table and a chosen
+    relationship say "TCP at 8080", its edge's card begins so, and a chosen process's relationships say "2 accepted ·
+    TCP at 8080 · 8 records". The command line's tables are next.
+  - Debug and Release each ran 2,683 tests with revision 473's 93 failures and 4 skips, and nothing else failed; the
+    chosen relationship's test now reads where its connections arrived in its row, subtitle and edge card for a
+    one-way, a both-ways and an unopened relationship, and the inspector's relationship rows say it in the view
+    model and the window, spoken too. All nine mutations were caught: a relationship's ports dropped, counted for a
+    process connected to itself, repeated or reversed, read at the connecting end, and left out of the peers' words,
+    the table's cell, the edge's card or the peer rows.
 
 - **Revision 681 — live pass over listening ports and the port search; a channel's hit names who connected to whom (§6.7, §6.3):**
   - The ports and the port search held on the heavy machine; a channel's hit, titled "Channel", is now titled by the

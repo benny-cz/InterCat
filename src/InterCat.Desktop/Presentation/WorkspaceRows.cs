@@ -325,7 +325,8 @@ public static class WorkspaceRowBuilder
                 edge.SourceId,
                 targetMade ? target : source,
                 targetMade ? source : target,
-                tokens.Label,
+                // What it ran over, and where its connections arrived: "TCP at 8080".
+                tokens.Label + (edge.AcceptedPorts.Count == 0 ? string.Empty : " at " + HostLinkText.PortNumbers(edge.AcceptedPorts)),
                 tokens.Glyph,
                 edge.ObservationCount.ToString("N0", CultureInfo.CurrentCulture),
                 bytesOf is null ? DescribeBytes(edge.KnownBytes) : bytesOf(edge),

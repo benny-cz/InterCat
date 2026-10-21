@@ -276,6 +276,10 @@ public static class SessionOverviewProjector
                     : group.Count(relation => ConnectedBy(relation) == group.Key.Pair.First),
                 TargetConnected = group.Key.Pair.First == group.Key.Pair.Second ? 0
                     : group.Count(relation => ConnectedBy(relation) == group.Key.Pair.Second),
+
+                // Where those connections arrived: the port each connected to, at the end that accepted it.
+                AcceptedPorts = group.Key.Pair.First == group.Key.Pair.Second ? []
+                    : [.. group.Select(ConnectionOpens.AcceptingPort).OfType<ushort>().Distinct().Order()],
             })];
 
         // The processes a served RPC call joins, when the capture collected ALPC to follow calls through (operations-v1

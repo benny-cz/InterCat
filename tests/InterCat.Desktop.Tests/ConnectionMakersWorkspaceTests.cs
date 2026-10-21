@@ -66,12 +66,14 @@ public sealed class ConnectionMakersWorkspaceTests
     public void TheInspectorSaysWhoConnectedForAChosenRelationship() => SingleThreadedContext.Run(async () =>
     {
         var highlighted = new List<string?>();
-        foreach ((ObservationRowV1[] rows, string? said) in new (ObservationRowV1[], string?)[]
+        // Each says where its connections arrived beside what it ran over: the server's 8080, and the client's 9000 too where
+        // the server connected to it; none where none was seen opening.
+        foreach ((ObservationRowV1[] rows, string? said, string over) in new (ObservationRowV1[], string?, string)[]
         {
-            (OneWay(), $"{Client} connected to {Server}"),
-            (OneWay()[..^3], $"{Client} connected to {Server}"),
-            (Mixed(), "each connected to the other"),
-            (Unseen(), null),
+            (OneWay(), $"{Client} connected to {Server}", "TCP at 8080"),
+            (OneWay()[..^3], $"{Client} connected to {Server}", "TCP at 8080"),
+            (Mixed(), "each connected to the other", "TCP at 8080 and 9000"),
+            (Unseen(), null, "TCP"),
         })
         {
             using var session = new TemporarySession();
@@ -97,7 +99,10 @@ public sealed class ConnectionMakersWorkspaceTests
             }
 
             Assert.Equal($"{chosen.Source} {mark} {chosen.Target}", workspace.SelectionTitle);
-            Assert.Equal(string.Join(" · ", new[] { "TCP", said, chosen.Evidence + " evidence" }.OfType<string>()),
+            Assert.Equal(over, chosen.Mechanism);
+            Assert.StartsWith(over + " · ", workspace.DescribeGraphHover(Assert.Single(workspace.GraphDisplay.Edges).Key)!.Lines[0],
+                StringComparison.Ordinal);
+            Assert.Equal(string.Join(" · ", new[] { over, said, chosen.Evidence + " evidence" }.OfType<string>()),
                 workspace.SelectionSubtitle);
             Assert.Equal(("How it was derived", chosen.Explanation), (workspace.ExplanationHeading, workspace.Explanation));
             Assert.StartsWith("Correlated evidence, derived by transport-endpoint-relation", workspace.Explanation, StringComparison.Ordinal);
@@ -719,11 +724,11 @@ public sealed class ConnectionMakersWorkspaceTests
         Assert.True(workspace.ShowsPeers);
         Assert.Equal(
             [
-                ("← browser.exe · PID 300", "2 accepted · TCP · 8 records"),
-                ("⇄ browser.exe · PID 301", "1 made · 1 accepted · TCP · 8 records"),
-                ("→ alpha.exe · PID 500", "1 made · TCP · 4 records"),
-                ("→ beta.exe · PID 501", "1 made · TCP · 4 records"),
-                ("→ delta.exe · PID 503", "1 made · TCP · 4 records"),
+                ("← browser.exe · PID 300", "2 accepted · TCP at 8080 · 8 records"),
+                ("⇄ browser.exe · PID 301", "1 made · 1 accepted · TCP at 8080 and 9222 · 8 records"),
+                ("→ alpha.exe · PID 500", "1 made · TCP at 7000 · 4 records"),
+                ("→ beta.exe · PID 501", "1 made · TCP at 7001 · 4 records"),
+                ("→ delta.exe · PID 503", "1 made · TCP at 7003 · 4 records"),
             ],
             workspace.SelectionPeers.Select(row => (row.Peer, row.Detail)));
         Assert.Equal(5, heard[^1]);
@@ -731,14 +736,14 @@ public sealed class ConnectionMakersWorkspaceTests
         // Each row says itself whole as the keyboard reaches it, who connected in words, and what Enter on it does.
         Assert.Equal(
             [
-                "browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records",
-                "it and browser.exe · PID 301 each connected to the other: 1 made, 1 accepted, TCP, 8 records",
-                "it connected to alpha.exe · PID 500: 1 made, TCP, 4 records",
-                "it connected to beta.exe · PID 501: 1 made, TCP, 4 records",
-                "it connected to delta.exe · PID 503: 1 made, TCP, 4 records",
+                "browser.exe · PID 300 connected to it: 2 accepted, TCP at 8080, 8 records",
+                "it and browser.exe · PID 301 each connected to the other: 1 made, 1 accepted, TCP at 8080 and 9222, 8 records",
+                "it connected to alpha.exe · PID 500: 1 made, TCP at 7000, 4 records",
+                "it connected to beta.exe · PID 501: 1 made, TCP at 7001, 4 records",
+                "it connected to delta.exe · PID 503: 1 made, TCP at 7003, 4 records",
             ],
             workspace.SelectionPeers.Select(row => row.Spoken));
-        Assert.Equal("browser.exe · PID 300 connected to it: 2 accepted, TCP, 8 records. Press Enter to choose the process at "
+        Assert.Equal("browser.exe · PID 300 connected to it: 2 accepted, TCP at 8080, 8 records. Press Enter to choose the process at "
             + "its other end.", workspace.SelectionPeers[0].AccessibleName);
         Assert.Equal("Its relationships, the busiest first; Enter on one chooses the process at its other end",
             workspace.PeersListName);

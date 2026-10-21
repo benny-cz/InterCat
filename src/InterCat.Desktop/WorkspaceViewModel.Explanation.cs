@@ -400,7 +400,7 @@ public sealed partial class WorkspaceViewModel
             accepted == 0 ? null
                 : calls ? Spoken.Count(accepted, "call") + " served"
                 : string.Create(CultureInfo.CurrentCulture, $"{accepted:N0} accepted"),
-            MechanismText.Name(edge.Mechanism),
+            DirectionText.Over(edge.Mechanism, edge.AcceptedPorts),
             Spoken.Count(edge.ObservationCount, "record"),
         }.OfType<string>());
         string verb = calls ? "called" : "connected to";

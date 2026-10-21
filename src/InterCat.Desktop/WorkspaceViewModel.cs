@@ -4469,9 +4469,14 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
             semantics = $"Basis: source observations · unit: observations · domain: paired {transport} transport evidence · "
                 + "accounting: not applicable to a count; both witnessed endpoints contribute";
         }
+        // Where its connections arrived, at the ends that accepted them, as its relationships' rows in the table say.
+        ushort[] arrived = [.. Snapshot.Edges.Where(edge => relationships.Contains(edge.Key))
+            .SelectMany(edge => edge.AcceptedPorts).Distinct().Order()];
         var lines = new List<string>
         {
-            $"{ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(drawn.Mechanism)).Label} · {DescribeStrength(drawn.Strength)} evidence · "
+            ThemePalette.TokensFor(ThemeResources.CurrentMode, ThemePalette.FamilyOf(drawn.Mechanism)).Label
+                + (arrived.Length == 0 ? string.Empty : " at " + HostLinkText.PortNumbers(arrived))
+                + $" · {DescribeStrength(drawn.Strength)} evidence · "
                 + Counted(drawn.Relationships.Count, "relationship", "relationships") + " · "
                 + Counted(channels.Length, "channel", "channels"),
         };

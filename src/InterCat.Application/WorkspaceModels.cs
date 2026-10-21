@@ -376,6 +376,14 @@ public sealed record CommunicationEdge(
     public int TargetConnected { get; init; }
 
     /// <summary>
+    /// The ports its connections arrived at, at the end that accepted each, each once, the lowest first: where the source's
+    /// connections to the target arrived at the target, and the target's at the source - a server's 8080 for a client's
+    /// connections to it. None for a UDP flow or RPC calls, which no connection opens, for connections the capture saw open
+    /// neither way, and for a process connected to itself, as <see cref="SourceConnected"/> counts none of its own.
+    /// </summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
+
+    /// <summary>
     /// Two relationships are one when each of their fields is, their evidence compared key by key: one generation read
     /// twice yields equal relationships (R7), though each read builds its own list.
     /// </summary>
@@ -391,6 +399,7 @@ public sealed record CommunicationEdge(
         && Rule == other.Rule
         && SourceConnected == other.SourceConnected
         && TargetConnected == other.TargetConnected
+        && AcceptedPorts.SequenceEqual(other.AcceptedPorts)
         && Evidence.SequenceEqual(other.Evidence, StringComparer.Ordinal);
 
     public override int GetHashCode() => HashCode.Combine(Key, SourceId, TargetId, Mechanism, ObservationCount, KnownBytes, Strength,

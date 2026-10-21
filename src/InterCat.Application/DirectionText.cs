@@ -122,6 +122,17 @@ public static class DirectionText
     }
 
     /// <summary>
+    /// What a relationship ran over and where its connections arrived, at the end that accepted each: "TCP at 8080", "TCP at
+    /// 80 and 443", past three the rest counted; the mechanism alone where none was seen arriving, as for a UDP flow or RPC
+    /// calls (<see cref="CommunicationEdge.AcceptedPorts"/>).
+    /// </summary>
+    public static string Over(Mechanism mechanism, IReadOnlyList<ushort> acceptedPorts)
+    {
+        ArgumentNullException.ThrowIfNull(acceptedPorts);
+        return MechanismText.Name(mechanism) + (acceptedPorts.Count == 0 ? string.Empty : " at " + HostLinkText.PortNumbers(acceptedPorts));
+    }
+
+    /// <summary>
     /// The processes' own ports the connections a set of them accepted arrived at, each once, the lowest first: the ports
     /// they listened at, as each process's <see cref="ProcessNode.AcceptedPorts"/> holds them.
     /// </summary>

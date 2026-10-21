@@ -59,10 +59,8 @@ public static class ConnectionOpens
         var ports = new Dictionary<ProcessInstanceId, SortedSet<ushort>>();
         foreach (TransportRelation relation in relations.Relations.Where(relation => Counted(relation, policy, null)))
         {
-            (ProcessInstance accepting, string endpoint) = relation.Opening == RelationOpening.FirstConnected
-                ? (relation.Second, relation.SecondEndpoint)
-                : (relation.First, relation.FirstEndpoint);
-            AddPort(accepting.Id, endpoint);
+            AddPort(relation.Opening == RelationOpening.FirstConnected ? relation.Second.Id : relation.First.Id,
+                AcceptingEndpoint(relation)!);
         }
 
         foreach (TransportConnection connection in relations.OneSided.Where(connection =>
@@ -75,9 +73,7 @@ public static class ConnectionOpens
 
         void AddPort(ProcessInstanceId instance, string endpoint)
         {
-            // An endpoint as the source names it: an address, then a colon and the port - "[::1]:8080" for IPv6.
-            if (endpoint.LastIndexOf(':') is > 0 and var colon
-                && ushort.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out ushort port))
+            if (PortOf(endpoint) is { } port)
             {
                 if (!ports.TryGetValue(instance, out SortedSet<ushort>? held))
                 {
@@ -88,6 +84,31 @@ public static class ConnectionOpens
             }
         }
     }
+
+    /// <summary>
+    /// The port a paired connection arrived at, at the end that accepted it, where the capture saw which end made it: the
+    /// port its connecting end connected to. Null where it saw neither, or both, open it.
+    /// </summary>
+    public static ushort? AcceptingPort(TransportRelation relation)
+    {
+        ArgumentNullException.ThrowIfNull(relation);
+        return AcceptingEndpoint(relation) is { } endpoint ? PortOf(endpoint) : null;
+    }
+
+    /// <summary>The accepting end's own endpoint of a paired connection whose opening the capture saw; null otherwise.</summary>
+    private static string? AcceptingEndpoint(TransportRelation relation) => relation.Opening switch
+    {
+        RelationOpening.FirstConnected => relation.SecondEndpoint,
+        RelationOpening.SecondConnected => relation.FirstEndpoint,
+        _ => null,
+    };
+
+    /// <summary>An endpoint's port as the source names it: an address, then a colon and the port - "[::1]:8080" for IPv6.</summary>
+    private static ushort? PortOf(string endpoint) =>
+        endpoint.LastIndexOf(':') is > 0 and var colon
+            && ushort.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out ushort port)
+            ? port
+            : null;
 
     /// <summary>
     /// One instance's connections made and accepted under <paramref name="policy"/>, as <see cref="Count"/> counts them over

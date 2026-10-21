@@ -54,11 +54,11 @@ public sealed class ConnectionsInspectorWindowTests
         ListBox peers = window.GetControl<ListBox>("PeersList");
         Assert.True(peers.IsEffectivelyVisible);
         Assert.Equal("Its relationships, the busiest first", window.GetControl<TextBlock>("PeersHeadingText").Text);
-        Assert.Equal(["← helper.exe · PID 300", "1 accepted · TCP · 4 records", "← client.exe · PID 100",
-            "1 accepted · TCP · 3 records"], Texts(peers));
+        Assert.Equal(["← helper.exe · PID 300", "1 accepted · TCP at 8080 · 4 records", "← client.exe · PID 100",
+            "1 accepted · TCP at 8080 · 3 records"], Texts(peers));
         Assert.Equal("Its relationships, the busiest first; Enter on one chooses the process at its other end",
             AutomationProperties.GetName(peers));
-        Assert.Equal("client.exe · PID 100 connected to it: 1 accepted, TCP, 3 records. Press Enter to choose the process at its "
+        Assert.Equal("client.exe · PID 100 connected to it: 1 accepted, TCP at 8080, 3 records. Press Enter to choose the process at its "
             + "other end.", AutomationProperties.GetName(peers.ContainerFromIndex(1)!));
         Assert.False(window.GetControl<TextBlock>("PeersMoreText").IsEffectivelyVisible);
         Save(window, "connections-inspector-1456x939.png");
@@ -70,7 +70,7 @@ public sealed class ConnectionsInspectorWindowTests
         window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
         Dispatch();
         Assert.Equal(100, workspace.SelectedProcess?.ProcessId);
-        Assert.Equal(["→ server.exe · PID 200", "1 made · TCP · 3 records"], Texts(peers));
+        Assert.Equal(["→ server.exe · PID 200", "1 made · TCP at 8080 · 3 records"], Texts(peers));
         Assert.Same(peers.ContainerFromIndex(0), window.FocusManager?.GetFocusedElement());
 
         // Esc comes back: the server chosen again, the keyboard on the relationship it was left by; Esc again, with no hop
@@ -292,7 +292,7 @@ public sealed class ConnectionsInspectorWindowTests
             Dispatch();
             Assert.Equal(["→ peer0.exe · PID 2000", "→ peer5.exe · PID 2005"], next.SelectionPeers.Take(2).Select(row => row.Peer));
             Assert.Same(peers.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
-            Assert.Equal("1 made · TCP · 3 records", Focused(window)?.Detail);
+            Assert.Equal("1 made · TCP at 8005 · 3 records", Focused(window)?.Detail);
 
             // So does a program's pair: peer6's, last, listed second once the hub sent it twice more.
             ListBox programs = window.GetControl<ListBox>("ProgramsList");

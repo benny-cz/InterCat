@@ -1236,7 +1236,8 @@
                            HorizontalAlignment="Center" ToolTip.Tip="{Binding DirectionLine}" />
                 <TextBlock Grid.Column="3" Margin="0,0,8,0" Text="{Binding Target}"
                            TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Target}" />
-                <TextBlock Grid.Column="4" Text="{Binding Mechanism}" Classes="muted" />
+                <TextBlock x:Name="RelationshipMechanism" Grid.Column="4" Margin="0,0,8,0" Text="{Binding Mechanism}" Classes="muted"
+                           TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Mechanism}" />
                 <TextBlock Grid.Column="5" Text="{Binding KnownBytes}" />
                 <TextBlock Grid.Column="6" Text="{Binding Evidence}" Classes="muted" ToolTip.Tip="{Binding Explanation}" />
               </Grid>
