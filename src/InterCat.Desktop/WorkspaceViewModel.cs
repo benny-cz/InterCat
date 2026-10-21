@@ -4242,7 +4242,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : DescribedRow is { } row ? row.Source.Label
         : HasMultiSelection ? ProcessSetFilter.Label(chosenProcesses.Count)
         : SelectedCluster is { } cluster ? cluster.Label
-        : SelectedGroup is { } group ? group.Name
+        : DescribedGroup is { } group ? group.Name
         : DescribesOpened ? OpenedTitle!
         : selectedProcess is null ? IntervalTitle ?? "Nothing selected" : selectedProcess.Name;
 
@@ -4256,7 +4256,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
         : DescribedRow is { } row ? DescribeRow(row)
         : HasMultiSelection ? DescribeChosen()
         : SelectedCluster is { } cluster ? DescribeCluster(cluster)
-        : SelectedGroup is { } group ? DescribeGroup(group)
+        : DescribedGroup is { } group ? DescribeGroup(group)
         : DescribesOpened ? OpenedSubtitle
         : selectedProcess is null
             ? IntervalSubtitle ?? "Choose a node, a ranked row or a timeline cell."

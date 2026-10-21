@@ -102,18 +102,18 @@ internal static class WindowKeys
         new("Search hits", "Enter", "open the chosen hit, or search the port a number offers"),
         new("Search hits", "Esc", "clear the search, and give the keyboard back to the search box"),
         new("Inspector", "Enter", "on one of a chosen cell's records, open it among the level's records, chosen there"),
-        new("Inspector", "Enter", "on a host Other hosts lists, or one a chosen process or program reached, find the "
-            + "processes that reached it, as searching its address does"),
+        new("Inspector", "Enter", "on a host Other hosts lists, or one a chosen process or a chosen or opened program "
+            + "reached, find the processes that reached it, as searching its address does"),
         new("Inspector", "E", "with a host Other hosts lists chosen, list the records of every connection to it"),
         new("Inspector", "Enter", "on a process an aggregate lists - No relationships, Other hosts only, Other processes or "
             + "Other members - open it, as Enter on a process drawn on its own does"),
         new("Inspector", "E", "with a process an aggregate lists chosen, list its records"),
         new("Inspector", "Enter", "on one of a chosen process's relationships, choose the process at its other end, whose own "
             + "the list then holds"),
-        new("Inspector", "Enter", "on one of a chosen program's pairs of programs, choose the program at its other end, whose "
-            + "own the list then holds"),
-        new("Inspector", "Enter", "on one of the listening ports listed with nothing or a program chosen, choose the process "
-            + "that accepted its connections"),
+        new("Inspector", "Enter", "on one of a chosen or opened program's pairs of programs, choose the program at its other "
+            + "end, whose own the list then holds"),
+        new("Inspector", "Enter", "on one of the listening ports listed - the machine's with nothing chosen, a program's "
+            + "chosen or opened - choose the process that accepted its connections"),
         new("Inspector", "Esc", "after Enter on a relationship, a pair of programs or a listening port, choose again the "
             + "process or program it was chosen from, or nothing, the keyboard back on that row"),
         new("A level's records", "Enter", "show the chosen record as the capture recorded it"),

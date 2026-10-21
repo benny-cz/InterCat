@@ -91,7 +91,7 @@ public sealed partial class WorkspaceViewModel
         ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: ")
             + (ShowsLineage && selectedProcess is { } selected
                 ? string.Create(CultureInfo.CurrentCulture, $"icat processes --pid {selected.ProcessId} --json lists them all")
-                : $"icat hosts --program {CommandArgument.Of(SelectedGroup?.Name ?? string.Empty)} lists them all")
+                : $"icat hosts --program {CommandArgument.Of(DescribedGroup?.Name ?? string.Empty)} lists them all")
         : string.Empty;
 
     /// <summary>Whether the list says what it leaves out with every host asked for.</summary>
@@ -143,10 +143,10 @@ public sealed partial class WorkspaceViewModel
 
     /// <summary>
     /// What the inspector lists the other hosts of: the selected process, by its instance, while its own are described, or
-    /// the selected program, by its group's key, while its grouping is; null for any other selection.
+    /// the described program, chosen or opened, by its group's key, while its grouping is; null for any other selection.
     /// </summary>
     private string? SelectionHostsKey => ShowsLineage && selectedProcess is { } selected ? selected.Id.ToString()
-        : GroupingExplanation.Length > 0 && SelectedGroup is { } group ? group.Key
+        : GroupingExplanation.Length > 0 && DescribedGroup is { } group ? group.Key
         : null;
 
     /// <summary>

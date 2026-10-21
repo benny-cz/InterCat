@@ -37,11 +37,11 @@ public sealed partial class WorkspaceViewModel
         : string.Empty;
 
     /// <summary>
-    /// How the selected executable group was formed and counted: by which executable, the rule that bound its members'
-    /// records, and what the evidence policy left out of its total. Empty unless one group of a real session is the
-    /// selection; the tour's groups illustrate, and no rule formed them.
+    /// How the described executable group was formed and counted: by which executable, the rule that bound its members'
+    /// records, and what the evidence policy left out of its total. Empty unless the inspector describes one group of a
+    /// real session, chosen or opened; the tour's groups illustrate, and no rule formed them.
     /// </summary>
-    public string GroupingExplanation => realOverview && SelectedGroup is { } group && !HasMultiSelection
+    public string GroupingExplanation => realOverview && DescribedGroup is { } group && !HasMultiSelection
         && SelectedCluster is null && DescribedRow is null && selectedRelationship is null
         ? WorkspaceRowBuilder.ExplainGrouping(group, [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key)])
         : string.Empty;
@@ -69,7 +69,7 @@ public sealed partial class WorkspaceViewModel
         get
         {
             HashSet<ProcessInstanceId>? members = ShowsLineage && selectedProcess is { } selected ? [selected.Id]
-                : GroupingExplanation.Length > 0 && SelectedGroup is { } group
+                : GroupingExplanation.Length > 0 && DescribedGroup is { } group
                     ? [.. wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key).Select(process => process.Id)]
                     : null;
             if (members is null)
@@ -112,27 +112,27 @@ public sealed partial class WorkspaceViewModel
     /// graph edge by edge. Empty for any other selection, a group of processes by their session, and a program none of
     /// whose processes has a relationship.
     /// </summary>
-    public IReadOnlyList<ProgramPairRow> SelectionPrograms => [.. ProgramsOfSelection()
-        .Take(ListsAllPrograms ? ProgramPairsListed : ProgramPairsNamed).Select(pair =>
-    {
-        string counts = string.Join(" · ", RelationshipCount(pair.Relationships), pair.Over, Spoken.Count(pair.Records, "record"));
-        string other = string.Equals(pair.First.Key, selectedGroupKey, StringComparison.Ordinal) ? pair.Second.Key : pair.First.Key;
-        return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal))
+    public IReadOnlyList<ProgramPairRow> SelectionPrograms => DescribedGroup?.Key is not { } described ? []
+        : [.. ProgramsOfSelection().Take(ListsAllPrograms ? ProgramPairsListed : ProgramPairsNamed).Select(pair =>
         {
-            OtherKey = other,
-            Itself = string.Equals(other, selectedGroupKey, StringComparison.Ordinal),
-        };
-    })];
+            string counts = string.Join(" · ", RelationshipCount(pair.Relationships), pair.Over, Spoken.Count(pair.Records, "record"));
+            string other = string.Equals(pair.First.Key, described, StringComparison.Ordinal) ? pair.Second.Key : pair.First.Key;
+            return new ProgramPairRow(pair.Joined, counts, pair.Spoken + ": " + counts.Replace(" · ", ", ", StringComparison.Ordinal))
+            {
+                OtherKey = other,
+                Itself = string.Equals(other, described, StringComparison.Ordinal),
+            };
+        })];
 
-    /// <summary>Whether the inspector lists every pair of the selected program, as asked, rather than the busiest few.</summary>
-    public bool ListsAllPrograms => selectedGroupKey is { } program
+    /// <summary>Whether the inspector lists every pair of the described program, as asked, rather than the busiest few.</summary>
+    public bool ListsAllPrograms => DescribedGroup?.Key is { } program
         && string.Equals(programsListedWhole, program, StringComparison.Ordinal);
 
     /// <summary>
     /// What the list leaves out with every pair asked for, past the most it lists, and where every one is read; empty
     /// otherwise, where the button that asks for them says how many there are.
     /// </summary>
-    public string ProgramsMore => ListsAllPrograms && SelectedGroup is { } program
+    public string ProgramsMore => ListsAllPrograms && DescribedGroup is { } program
         && ProgramsOfSelection().Count - ProgramPairsListed is > 0 and var more
         ? string.Create(CultureInfo.CurrentCulture, $"{more:N0} more, quieter: icat programs --program {CommandArgument.Of(program.Name)} lists them all")
         : string.Empty;
@@ -161,7 +161,7 @@ public sealed partial class WorkspaceViewModel
             return false;
         }
 
-        programsListedWhole = ListsAllPrograms ? null : selectedGroupKey;
+        programsListedWhole = ListsAllPrograms ? null : DescribedGroup?.Key;
         RaiseListedWhole();
         return ListsAllPrograms;
     }
@@ -180,15 +180,15 @@ public sealed partial class WorkspaceViewModel
     public bool ShowsPrograms => SelectionPrograms.Count > 0;
 
     /// <summary>
-    /// Chooses the program at the other end of one of the selected program's pairs, as choosing its ranked row does, so
-    /// which programs talked with which can be walked a pair at a time: its own pairs are then listed, and
-    /// <see cref="ComeBackFromProgram"/> chooses again the one it was chosen from. False for the program's own processes
+    /// Chooses the program at the other end of one of the described program's pairs, chosen or opened, as choosing its
+    /// ranked row does, so which programs talked with which can be walked a pair at a time: its own pairs are then listed,
+    /// and <see cref="ComeBackFromProgram"/> comes back to the one it was chosen from. False for the program's own processes
     /// connecting to each other, which goes nowhere.
     /// </summary>
     public bool ChooseProgram(ProgramPairRow row)
     {
         ArgumentNullException.ThrowIfNull(row);
-        if (selectedGroupKey is not { } from || string.Equals(from, row.OtherKey, StringComparison.Ordinal))
+        if (DescribedGroup?.Key is not { } from || string.Equals(from, row.OtherKey, StringComparison.Ordinal))
         {
             return false;
         }
@@ -204,9 +204,10 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Comes back along the latest hop made from the inspector's pairs of programs, as Esc does before it climbs the
     /// ladder: where the program the hop chose is still the one chosen, on the rung it was chosen at, the program it was
-    /// chosen from is chosen again, and the key of the one left is returned, whose row in its list the keyboard goes back
-    /// to. A hop the selection or the ladder has since moved away from, or one from a program a newer generation no longer
-    /// holds, is forgotten, every earlier one with it, and null returned.
+    /// chosen from is chosen again - or nothing, where that is the program the rung opened, which the inspector then
+    /// describes - and the key of the one left is returned, whose row in its list the keyboard goes back to. A hop the
+    /// selection or the ladder has since moved away from, or one from a program a newer generation no longer holds, is
+    /// forgotten, every earlier one with it, and null returned.
     /// </summary>
     public string? ComeBackFromProgram()
     {
@@ -223,7 +224,7 @@ public sealed partial class WorkspaceViewModel
         }
 
         programHops.RemoveAt(programHops.Count - 1);
-        SelectGroup(latest.From, syncRow: true);
+        ReturnToGroup(latest.From);
         return latest.To;
     }
 
@@ -423,7 +424,7 @@ public sealed partial class WorkspaceViewModel
 
     private IReadOnlyList<ProgramPair> ProgramsOfSelection()
     {
-        if (GroupingExplanation.Length == 0 || SelectedGroup is not { Kind: LaneGrouping.Executable } program)
+        if (GroupingExplanation.Length == 0 || DescribedGroup is not { Kind: LaneGrouping.Executable } program)
         {
             return [];
         }
@@ -504,7 +505,7 @@ public sealed partial class WorkspaceViewModel
             return wholeSnapshot.Processes.FirstOrDefault(process => process.Id == selected.Id)?.WithheldRecords ?? 0;
         }
 
-        return GroupingExplanation.Length > 0 && SelectedGroup is { } group
+        return GroupingExplanation.Length > 0 && DescribedGroup is { } group
             ? wholeSnapshot.Processes.Where(process => process.GroupKey == group.Key).Sum(process => process.WithheldRecords)
             : 0;
     }

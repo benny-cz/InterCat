@@ -178,6 +178,57 @@ public sealed class ListeningPortsWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "§6.3: a program's rung describes the program it opened, its ports listed; Esc from a port's process comes back to the port, and Esc again climbs back to the program chosen")]
+    public async Task AProgramsRungListsItsPortsAndEscClimbsBack()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Rows());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Recording, "Recording", "A published generation.",
+                SessionPath: session.Path, Overview: SessionOverviewProjector.Project(session.Store)));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox ports = window.GetControl<ListBox>("ListenersList");
+
+            // The server's program opened: nothing is chosen at its rung, whose inspector names the program and lists its
+            // processes' ports, as choosing it did a rung up.
+            workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+            Assert.True(workspace.Descend());
+            await workspace.LayoutReady;
+            Dispatch();
+            Assert.Equal(("server.exe", null), (workspace.SelectionTitle, workspace.SelectedGroup?.Name));
+            Assert.True(ports.IsEffectivelyVisible);
+            Assert.Equal("5 listening ports of its processes, the busiest first",
+                window.GetControl<TextBlock>("ListenersHeadingText").Text);
+            Save(window, "opened-program-1456x939.png");
+
+            // Enter on its 8443 chooses its process; Esc comes back to the program described, the keyboard on the port.
+            Assert.True(ports.ContainerFromIndex(1)!.Focus());
+            Dispatch();
+            window.KeyPressQwerty(PhysicalKey.Enter, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(200, workspace.SelectedProcess?.ProcessId);
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Equal(("server.exe", null, null), (workspace.SelectionTitle, workspace.SelectedProcess, workspace.SelectedGroup));
+            Assert.Same(ports.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+
+            // Esc again climbs back to the machine, where the program is chosen, as the way down went through it.
+            window.KeyPressQwerty(PhysicalKey.Escape, RawInputModifiers.None);
+            Dispatch();
+            Assert.Single(workspace.Crumbs);
+            Assert.Equal("server.exe", workspace.SelectedGroup?.Name);
+        }
+        finally
+        {
+            window.Close();
+        }
+    }
+
     [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the keyboard on the listening port it was on, wherever the newer counts list it")]
     public async Task ANewerGenerationKeepsTheKeyboardOnItsPort()
     {

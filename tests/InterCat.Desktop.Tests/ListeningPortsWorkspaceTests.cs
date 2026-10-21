@@ -79,8 +79,7 @@ public sealed class ListeningPortsWorkspaceTests
         Assert.Equal(5, heard[^1]);
 
         // Anything chosen but a program takes the list away, and letting it go brings it back: a process, Other hosts, a
-        // relationship, processes chosen together and a time range, and a program whose processes accepted nothing; so does
-        // a rung below the machine's.
+        // relationship, processes chosen together and a time range, and a program whose processes accepted nothing.
         Action[] choices =
         [
             () => workspace.SelectProcess(Process(workspace, 100).Id),
@@ -105,12 +104,22 @@ public sealed class ListeningPortsWorkspaceTests
             Assert.True(shown[^1]);
         }
 
+        // A rung below the machine's lists the machine's no longer: a program's, with nothing chosen there, lists its own
+        // processes' as it describes the program it opened, and a process's lists none.
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "server.exe");
+        Assert.True(workspace.Descend());
+        workspace.ClearSelection();
+        Assert.Equal(("server.exe", "3 listening ports of its processes, the busiest first"),
+            (workspace.SelectionTitle, workspace.ListenersHeading));
+        workspace.SelectedRung = workspace.RungRows.Single();
         Assert.True(workspace.Descend());
         workspace.ClearSelection();
         Assert.Equal("Nothing selected", workspace.SelectionTitle);
         Assert.False(workspace.ShowsListeners);
-        Assert.True(workspace.Ascend());
+        while (workspace.Ascend())
+        {
+        }
+
         workspace.ClearSelection();
         Assert.True(workspace.ShowsListeners);
     });

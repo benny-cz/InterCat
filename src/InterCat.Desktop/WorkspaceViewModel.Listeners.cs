@@ -7,12 +7,12 @@ using InterCat.Domain;
 namespace InterCat.Desktop;
 
 /// <summary>
-/// Listening ports in the inspector (§6.3): the session's while it describes nothing on the machine rung, and a chosen
-/// program's processes' while it describes the program - each port they accepted TCP connections at, with the process that
-/// accepted them, how many and who connected, the busiest first, as `icat ports` lists them. A machine's servers, or which
-/// of a program's processes served at which port and for whom, otherwise took each process's card in turn. Enter on one
-/// chooses the process that accepted its connections, whose inspector then says with whom, and Esc comes back to the list -
-/// nothing chosen again, or the program - with the keyboard on that port.
+/// Listening ports in the inspector (§6.3): the session's while it describes nothing on the machine rung, and a program's
+/// processes' while it describes the program, chosen or opened - each port they accepted TCP connections at, with the
+/// process that accepted them, how many and who connected, the busiest first, as `icat ports` lists them. A machine's
+/// servers, or which of a program's processes served at which port and for whom, otherwise took each process's card in
+/// turn. Enter on one chooses the process that accepted its connections, whose inspector then says with whom, and Esc comes
+/// back to the list - nothing chosen again, or the program - with the keyboard on that port.
 /// </summary>
 public sealed partial class WorkspaceViewModel
 {
@@ -175,8 +175,9 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// Comes back along the way down made from the listening ports, as Esc does before it climbs the ladder: where the
     /// process it chose is still the one chosen, on the rung it was chosen at, what the list was listed for is chosen again
-    /// - nothing, or the program, where this generation still holds it - and the hop is returned, whose row the keyboard
-    /// goes back to. A hop the selection or the ladder has since moved away from is let go, and null returned.
+    /// - nothing, or the program, where this generation still holds it, unless it is the program the rung opened, which
+    /// nothing chosen describes - and the hop is returned, whose row the keyboard goes back to. A hop the selection or the
+    /// ladder has since moved away from is let go, and null returned.
     /// </summary>
     public ListenerHop? ComeBackFromListener()
     {
@@ -198,7 +199,7 @@ public sealed partial class WorkspaceViewModel
                 return null;
             }
 
-            SelectGroup(program, syncRow: true);
+            ReturnToGroup(program);
             return hop;
         }
 
@@ -207,12 +208,13 @@ public sealed partial class WorkspaceViewModel
     }
 
     /// <summary>
-    /// Whose listening ports the inspector lists: the machine's, an empty key, while it describes nothing on the machine
-    /// rung, or a chosen program's, by its group's key, while it describes the program; null for any other selection.
+    /// Whose listening ports the inspector lists: a program's, by its group's key, while it describes the program, chosen
+    /// or opened, or the machine's, an empty key, while it describes nothing on the machine rung; null for any other
+    /// selection.
     /// </summary>
-    private string? ListenerScope => ladder.Current.Level != DetailLevel.Machine ? null
-        : DescribesNothing ? string.Empty
-        : GroupingExplanation.Length > 0 && SelectedGroup is { Kind: LaneGrouping.Executable } program ? program.Key
+    private string? ListenerScope =>
+        GroupingExplanation.Length > 0 && DescribedGroup is { Kind: LaneGrouping.Executable } program ? program.Key
+        : ladder.Current.Level == DetailLevel.Machine && DescribesNothing ? string.Empty
         : null;
 
     /// <summary>The listening ports of a scope, the busiest first: the machine's every one, or a program's processes'.</summary>

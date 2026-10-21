@@ -47,7 +47,8 @@ its other end, so a chain of connections is walked a key at a time, and Esc walk
 program's inspector lists the other hosts it reached as well, by address, and Enter on one finds every process that
 reached it. With nothing chosen, the inspector lists the ports the machine's processes accepted connections at, the
 busiest first, each with who connected, as icat ports does, and a chosen program's inspector its processes'; Enter on
-one chooses the process that accepted them, and Esc comes back to the port.
+one chooses the process that accepted them, and Esc comes back to the port. Opened, a program keeps its description:
+with nothing chosen on its level, the inspector names it and lists its pairs, hosts and ports as choosing it did.
 
 **The timeline** counts every observed record by mechanism, process, source direction and channel end. Brush an interval
 to rank within it, zoom into it, or read it on the capture machine's wall clock.
