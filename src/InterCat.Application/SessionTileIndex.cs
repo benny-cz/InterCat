@@ -34,6 +34,12 @@ internal static class SessionTileIndex
     /// <summary>The first minor whose tiles keep their records' bytes, and whose records keep each one's measure.</summary>
     internal const ushort SummedMinor = 5;
 
+    /// <summary>
+    /// The first minor whose tiles keep their records' bytes tallied by what each record binds to: its owner, its channel
+    /// and its accounting side, so a brush measures its processes' and channel ends' bytes from whole tiles.
+    /// </summary>
+    internal const ushort ByteTalliedMinor = 6;
+
     /// <summary>The most levels a section has: a finest tile one tick wide, and eighteen decades above it.</summary>
     internal const int MaximumLevels = 20;
 
@@ -51,9 +57,9 @@ internal static class SessionTileIndex
 
     /// <summary>
     /// The bytes of a section's header but its mechanisms and its levels: 87 before minor 5, whose header says where its
-    /// byte sums lie.
+    /// byte sums lie, and 103 before minor 6, whose header says where its byte tallies lie.
     /// </summary>
-    private const int SectionHeaderBytes = 103;
+    private const int SectionHeaderBytes = 119;
 
     /// <summary>The longest a section's header can be, with every mechanism and level a section may name.</summary>
     private const int MaximumSectionHeaderBytes = SectionHeaderBytes + (2 * 256) + (12 * MaximumLevels);
@@ -70,15 +76,16 @@ internal static class SessionTileIndex
     private const ushort Major = 1;
 
     /// <summary>
-    /// Minor 5 keeps each tile's transport-observed bytes by mechanism and accounting side, and each record's measure;
-    /// minor 4, revision 701's, keeps a level spanning the generation's segments after their sections; minor 3, revision
-    /// 460's, keeps each record's end of its channel beside its direction, and each tile's owner and channel tallies apart,
-    /// its channels by mechanism, direction and end; minor 2, revision 459's, kept each record's direction and tallied owners
-    /// by it; minor 1, revision 457's, kept each tile's tallies and each record's owner and channel; minor 0, revision 456's,
-    /// kept none of these. Minors 3 and 4 are still read, their records counted and their bytes read from the segments, and
-    /// are published again.
+    /// Minor 6 keeps each tile's transport-observed bytes tallied by owner, channel and accounting side; minor 5, revision
+    /// 704's, keeps each tile's transport-observed bytes by mechanism and accounting side, and each record's measure; minor
+    /// 4, revision 701's, keeps a level spanning the generation's segments after their sections; minor 3, revision 460's,
+    /// keeps each record's end of its channel beside its direction, and each tile's owner and channel tallies apart, its
+    /// channels by mechanism, direction and end; minor 2, revision 459's, kept each record's direction and tallied owners by
+    /// it; minor 1, revision 457's, kept each tile's tallies and each record's owner and channel; minor 0, revision 456's,
+    /// kept none of these. Minors 3 to 5 are still read, what they keep counted and summed from them and the rest read from
+    /// the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 5;
+    internal const ushort Minor = 6;
 
     /// <summary>The earliest minor read: its sections hold every binding, direction and end a query counts.</summary>
     private const ushort EarliestReadMinor = 3;
@@ -98,15 +105,16 @@ internal static class SessionTileIndex
     /// <summary>
     /// The most tally entries the finest tiles of a level spanning segments hold while it is written, about 24 MB: past it,
     /// its tiles are made ten times wider, which sums the entries of a process or a channel each of them holds, and where
-    /// no width spanning more than one tile keeps them within it, the index keeps no such level.
+    /// no width spanning more than one tile keeps them within it, the index keeps no such level. As many byte tally entries
+    /// again, about 64 MB, are held beside them; past that the level keeps no byte tallies.
     /// </summary>
     internal const long MaximumSpanningEntries = 2_097_152;
 
     /// <summary>
     /// The bytes of a spanning section's header but its mechanisms and its levels: 78 at minor 4, before it said where its
-    /// byte sums lie.
+    /// byte sums lie, and 94 at minor 5, before it said where its byte tallies lie.
     /// </summary>
-    private const int SpanningHeaderBytes = 94;
+    private const int SpanningHeaderBytes = 110;
 
     /// <summary>The bytes of one extent of a spanning section: the section's place, earliest and latest reading, records.</summary>
     private const int ExtentBytes = 28;
@@ -348,6 +356,7 @@ internal static class SessionTileIndex
         byte[] ownerTallies = [];
         byte[] channelTallies = [];
         byte[] byteSums = [];
+        byte[] byteTallies = [];
         if (usable)
         {
             PackedOwners owners = SegmentBindings.OwnersOf(segment, processes);
@@ -362,7 +371,7 @@ internal static class SessionTileIndex
             bool summed = Summable(segment, cancellationToken);
             levels = Levels(segment, tiles, mechanisms, owners, channels, ends.Buffer, summed, cancellationToken);
             records = Records(segment, tiles, mechanisms, levels[0], owners, channels, ends.Buffer, summed, cancellationToken);
-            (ownerTallies, channelTallies, byteSums) = Tallies(levels, summed, cancellationToken);
+            (ownerTallies, channelTallies, byteSums, byteTallies) = Tallies(levels, summed, summed, cancellationToken);
             spanning?.Add(levels, mechanisms, tiles.Width, summed, cancellationToken);
         }
 
@@ -397,6 +406,8 @@ internal static class SessionTileIndex
         at.I64(channelTallies.Length);
         at.I64(next + records.Length + ownerTallies.Length + channelTallies.Length);
         at.I64(byteSums.Length);
+        at.I64(next + records.Length + ownerTallies.Length + channelTallies.Length + byteSums.Length);
+        at.I64(byteTallies.Length);
         Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
         writer.Raw(head);
         WriteBlocks(writer, levels, mechanisms.Length, cancellationToken);
@@ -404,6 +415,7 @@ internal static class SessionTileIndex
         writer.Raw(ownerTallies);
         writer.Raw(channelTallies);
         writer.Raw(byteSums);
+        writer.Raw(byteTallies);
     }
 
     /// <summary>
@@ -455,10 +467,12 @@ internal static class SessionTileIndex
                     }
 
                     into.I32(tilesOf.SumLinks[tile]);
+                    into.I32(tilesOf.ByteLinks[tile]);
                 }
 
-                // A block says where its byte sums, its records and its tallies end, so each is read and checked without the
-                // next block.
+                // A block says where its byte tallies, its byte sums, its records and its tallies end, so each is read and
+                // checked without the next block.
+                into.I32(tilesOf.ByteTalliesEnd[first / TilesPerBlock]);
                 into.I32(tilesOf.SumsEnd[first / TilesPerBlock]);
                 into.I32(level == 0 ? tilesOf.RecordsEnd[first / TilesPerBlock] : 0);
                 into.I32(tilesOf.OwnerTalliesEnd[first / TilesPerBlock]);
@@ -495,6 +509,7 @@ internal static class SessionTileIndex
         var ownerCounts = new Dictionary<(uint Owner, byte Slot, byte Direction), int>();
         var channelCounts = new Dictionary<(int Number, byte Slot, byte Kind), int>();
         var sums = new SumsBuilder(mechanisms.Length);
+        var byteTallies = new ByteTalliesBuilder();
         for (int tile = 0; tile < tiles.Count; tile++)
         {
             if ((tile & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
@@ -509,10 +524,12 @@ internal static class SessionTileIndex
 
             // A tile's tallies count its timed records alone, as its counts do: a bound owner by its key and the record's
             // mechanism and direction, a known channel by its number and the record's mechanism, direction and end. Its sums
-            // add up the bytes of the same records by mechanism and accounting side.
+            // add up the bytes of the same records by mechanism and accounting side, and its byte tallies by what each binds
+            // to: its owner, its channel and its side, none being one too.
             ownerCounts.Clear();
             channelCounts.Clear();
             sums.Clear();
+            byteTallies.Clear();
             (int firstRow, int endRow) = tiles.RowsOf(tile);
             for (int row = firstRow; row < endRow; row++)
             {
@@ -538,11 +555,13 @@ internal static class SessionTileIndex
                 if (summed && MeasureOf(domains, sides, values, row) is { Side: > 0 } measure)
                 {
                     sums.Add(slot, measure.Side, measure.Value);
+                    byteTallies.Add(OwnerKey(owners.Raw(row)), ChannelKey(channels.Raw(row)), measure.Side, measure.Value);
                 }
             }
 
             finest.Tallies[tile] = TileTallies.Of(ownerCounts, channelCounts);
             finest.Sums[tile] = sums.Build();
+            finest.ByteTallies[tile] = byteTallies.Build();
         }
 
         var levels = new List<Level> { finest };
@@ -573,6 +592,7 @@ internal static class SessionTileIndex
         var ownerCounts = new Dictionary<(uint Owner, byte Slot, byte Direction), int>();
         var channelCounts = new Dictionary<(int Number, byte Slot, byte Kind), int>();
         var sums = new SumsBuilder(mechanisms);
+        var byteTallies = new ByteTalliesBuilder();
         for (int parent = 0; parent < parents.Count; parent++)
         {
             int first = parents[parent];
@@ -585,9 +605,11 @@ internal static class SessionTileIndex
             ownerCounts.Clear();
             channelCounts.Clear();
             sums.Clear();
+            byteTallies.Clear();
             for (int child = first; child < end; child++)
             {
                 sums.Add(below.Sums[child]);
+                byteTallies.Add(below.ByteTallies[child]);
                 for (int slot = 0; slot < mechanisms; slot++)
                 {
                     level.Counts[(parent * mechanisms) + slot] = checked(
@@ -610,6 +632,7 @@ internal static class SessionTileIndex
 
             level.Tallies[parent] = TileTallies.Of(ownerCounts, channelCounts);
             level.Sums[parent] = sums.Build();
+            level.ByteTallies[parent] = byteTallies.Build();
         }
 
         return level;
@@ -696,11 +719,15 @@ internal static class SessionTileIndex
     /// over the one before (the first's over none), its mechanism's slot times 32 plus its kind, and its count. A tile's byte
     /// sums, at most four entries a mechanism, are always kept where the section keeps any: how many entries, then for each,
     /// in order of mechanism and side, its mechanism's slot times 4 plus its accounting side less one, how many of its
-    /// records measured their bytes, how many declared a size they did not record, and the bytes they measured. The tiles'
-    /// links and each block's ends are set as they are written.
+    /// records measured their bytes, how many declared a size they did not record, and the bytes they measured. Where
+    /// <paramref name="tallyBytes"/>, a tile's byte tallies are kept as its tallies are, where they take at most a third of
+    /// the bytes of the records beneath it: how many entries plus one, then for each, in order of owner key, channel key and
+    /// side, its owner key's increase over the one before (the first's over none), its channel key's increase over the one
+    /// before where its owner key is the one before's and otherwise its channel key, times 4, plus its accounting side less
+    /// one, and its three sums. The tiles' links and each block's ends are set as they are written.
     /// </summary>
-    private static (byte[] Owners, byte[] Channels, byte[] Sums) Tallies(
-        List<Level> levels, bool summed, CancellationToken cancellationToken)
+    private static (byte[] Owners, byte[] Channels, byte[] Sums, byte[] Bytes) Tallies(
+        List<Level> levels, bool summed, bool tallyBytes, CancellationToken cancellationToken)
     {
         // What lies beneath each wider tile: its children's records.
         for (int level = 1; level < levels.Count; level++)
@@ -719,6 +746,7 @@ internal static class SessionTileIndex
         var owners = new MemoryStream();
         var channels = new MemoryStream();
         var sums = new MemoryStream();
+        var bytes = new MemoryStream();
         var kept = new MemoryStream();
         Span<byte> encoded = stackalloc byte[40];
         foreach (Level level in levels)
@@ -726,6 +754,7 @@ internal static class SessionTileIndex
             int ownersStart = checked((int)owners.Length);
             int channelsStart = checked((int)channels.Length);
             int sumsStart = checked((int)sums.Length);
+            int bytesStart = checked((int)bytes.Length);
             for (int tile = 0; tile < level.Count; tile++)
             {
                 if ((tile & 255) == 0) cancellationToken.ThrowIfCancellationRequested();
@@ -773,6 +802,32 @@ internal static class SessionTileIndex
                     }
                 }
 
+                if (tallyBytes)
+                {
+                    TileByteTallies tileBytes = level.ByteTallies[tile];
+                    level.ByteLinks[tile] = checked((int)bytes.Length);
+                    kept.SetLength(0);
+                    kept.Write(encoded[..Unsigned(encoded, (ulong)tileBytes.Keys.Length + 1)]);
+                    uint ownerBefore = 0;
+                    uint channelBefore = 0;
+                    for (int entry = 0; entry < tileBytes.Keys.Length; entry++)
+                    {
+                        ulong key = tileBytes.Keys[entry];
+                        uint owner = TileByteTallies.OwnerOf(key);
+                        uint channel = TileByteTallies.ChannelOf(key);
+                        ulong placed = owner == ownerBefore ? channel - channelBefore : channel;
+                        int length = Unsigned(encoded, owner - ownerBefore);
+                        length += Unsigned(encoded[length..], (placed << 2) + (ulong)(TileByteTallies.SideOf(key) - 1));
+                        length += Unsigned(encoded[length..], (ulong)tileBytes.Measured[entry]);
+                        length += Unsigned(encoded[length..], (ulong)tileBytes.Unmeasured[entry]);
+                        length += Unsigned(encoded[length..], (ulong)tileBytes.Totals[entry]);
+                        kept.Write(encoded[..length]);
+                        (ownerBefore, channelBefore) = (owner, channel);
+                    }
+
+                    Keep(bytes, kept, level.RecordBytes[tile]);
+                }
+
                 if (tile % TilesPerBlock == TilesPerBlock - 1 || tile == level.Count - 1)
                 {
                     level.OwnerTalliesEnd[tile / TilesPerBlock] = Close(owners, ref ownersStart);
@@ -781,11 +836,16 @@ internal static class SessionTileIndex
                     {
                         level.SumsEnd[tile / TilesPerBlock] = Close(sums, ref sumsStart);
                     }
+
+                    if (tallyBytes)
+                    {
+                        level.ByteTalliesEnd[tile / TilesPerBlock] = Close(bytes, ref bytesStart);
+                    }
                 }
             }
         }
 
-        return (owners.ToArray(), channels.ToArray(), sums.ToArray());
+        return (owners.ToArray(), channels.ToArray(), sums.ToArray(), bytes.ToArray());
 
         // A tile's tallies where they take at most a third of the bytes beneath it, else a single zero.
         static void Keep(MemoryStream into, MemoryStream kept, long beneath)
@@ -940,16 +1000,18 @@ internal static class SessionTileIndex
     }
 
     /// <summary>
-    /// A tile's bytes at <paramref name="minor"/>: its readings, links, children, tally links and counts, and since minor 5
-    /// where its byte sums begin.
+    /// A tile's bytes at <paramref name="minor"/>: its readings, links, children, tally links and counts, since minor 5
+    /// where its byte sums begin, and since minor 6 where its byte tallies begin.
     /// </summary>
-    internal static int TileBytes(int mechanisms, int minor) => (minor >= SummedMinor ? 36 : 32) + (4 * mechanisms);
+    internal static int TileBytes(int mechanisms, int minor) =>
+        (minor >= ByteTalliedMinor ? 40 : minor >= SummedMinor ? 36 : 32) + (4 * mechanisms);
 
     /// <summary>
-    /// The fixed bytes of a block after its tiles at <paramref name="minor"/>: since minor 5, where its byte sums end; where
-    /// its records end, where its owner tallies end, where its channel tallies end; its checksum.
+    /// The fixed bytes of a block after its tiles at <paramref name="minor"/>: since minor 6, where its byte tallies end;
+    /// since minor 5, where its byte sums end; where its records end, where its owner tallies end, where its channel tallies
+    /// end; its checksum.
     /// </summary>
-    internal static int TrailerBytes(int minor) => minor >= SummedMinor ? 20 : 16;
+    internal static int TrailerBytes(int minor) => minor >= ByteTalliedMinor ? 24 : minor >= SummedMinor ? 20 : 16;
 
     private static long LevelBytes(int tiles, int tileBytes, int trailerBytes) =>
         ((long)tiles * tileBytes) + ((long)((tiles + TilesPerBlock - 1) / TilesPerBlock) * trailerBytes);
@@ -1175,8 +1237,10 @@ internal static class SessionTileIndex
         long channelsOffset = at.I64();
         long channelsLength = at.I64();
 
-        // Since minor 5 the byte sums follow the channel tallies, and end where the section does: none where it keeps none.
+        // Since minor 5 the byte sums follow the channel tallies, and since minor 6 the byte tallies follow them and end where
+        // the section does: none where it keeps none.
         (long sumsOffset, long sumsLength) = minor >= SummedMinor ? (at.I64(), at.I64()) : (channelsOffset + channelsLength, 0);
+        (long bytesOffset, long bytesLength) = minor >= ByteTalliedMinor ? (at.I64(), at.I64()) : (sumsOffset + sumsLength, 0);
         int headerLength = at.Position + 4;
         Check(bytes.AsSpan(0, headerLength), $"the header of the section of '{entry.Name}'");
         bool ordered = (flags & Ordered) != 0;
@@ -1189,7 +1253,7 @@ internal static class SessionTileIndex
             && (usable
                 ? levels > 0 && mechanisms > 0
                 : levels == 0 && mechanisms == 0 && recordsLength == 0 && ownersLength == 0 && channelsLength == 0
-                    && sumsLength == 0);
+                    && sumsLength == 0 && bytesLength == 0);
         for (int level = 0; laidOut && level < levels; level++)
         {
             laidOut = counts[level] > 0 && offsets[level] == next
@@ -1205,13 +1269,16 @@ internal static class SessionTileIndex
             || ownersOffset != recordsOffset + recordsLength || ownersLength < 0
             || channelsOffset != ownersOffset + ownersLength || channelsLength < 0
             || sumsOffset != channelsOffset + channelsLength || sumsLength < 0
-            || sumsOffset + sumsLength != entry.Length)
+            || bytesOffset != sumsOffset + sumsLength || bytesLength < 0 || bytesOffset + bytesLength != entry.Length
+
+            // A segment's section tallies its bytes by binding where it keeps them, and only there.
+            || (minor >= ByteTalliedMinor && (sumsLength > 0) != (bytesLength > 0)))
         {
             throw Invalid($"the header of the section of '{entry.Name}' does not lay out its section.");
         }
 
         return new TileSection(entry, minor, rows, untimed, ordered, timed ? first : null, timed ? last : null, width, kinds,
-            counts, offsets, recordsOffset, ownersOffset, channelsOffset, sumsOffset);
+            counts, offsets, recordsOffset, ownersOffset, channelsOffset, sumsOffset, bytesOffset);
     }
 
     /// <summary>
@@ -1259,6 +1326,7 @@ internal static class SessionTileIndex
         long channelsOffset = at.I64();
         long channelsLength = at.I64();
         (long sumsOffset, long sumsLength) = minor >= SummedMinor ? (at.I64(), at.I64()) : (channelsOffset + channelsLength, 0);
+        (long bytesOffset, long bytesLength) = minor >= ByteTalliedMinor ? (at.I64(), at.I64()) : (sumsOffset + sumsLength, 0);
         int headerLength = at.Position + 4;
         Check(bytes.AsSpan(0, headerLength), "the header of the spanning section");
         long extentsLength = ((long)timedSections * ExtentBytes) + 4;
@@ -1308,21 +1376,25 @@ internal static class SessionTileIndex
             next += LevelBytes(counts[level], tileBytes, TrailerBytes(minor));
         }
 
+        // The level keeps byte tallies only where it keeps byte sums: it can keep sums alone, where too many entries or a sum
+        // past what one holds would have taken its byte tallies.
         if (!laidOut || ownersOffset != next || ownersLength < 0 || channelsOffset != ownersOffset + ownersLength
             || channelsLength < 0 || sumsOffset != channelsOffset + channelsLength || sumsLength < 0
-            || sumsOffset + sumsLength != entry.Length)
+            || bytesOffset != sumsOffset + sumsLength || bytesLength < 0 || bytesOffset + bytesLength != entry.Length
+            || (bytesLength > 0 && sumsLength == 0))
         {
             throw Invalid("the header of the spanning section does not lay out its section.");
         }
 
         return new TileSection(entry, minor, 0, 0, ordered: true, first, last, width, kinds, counts, offsets, ownersOffset,
-            ownersOffset, channelsOffset, sumsOffset, extents, records);
+            ownersOffset, channelsOffset, sumsOffset, bytesOffset, extents, records);
     }
 
     /// <summary>
     /// The bytes of a spanning section's header but its mechanisms and its levels, as <paramref name="minor"/> lays it out.
     /// </summary>
-    private static int SpanningHeaderLength(int minor) => minor >= SummedMinor ? SpanningHeaderBytes : SpanningHeaderBytes - 16;
+    private static int SpanningHeaderLength(int minor) =>
+        minor >= ByteTalliedMinor ? SpanningHeaderBytes : minor >= SummedMinor ? SpanningHeaderBytes - 16 : SpanningHeaderBytes - 32;
 
     private static bool IsPowerOfTen(long value)
     {
@@ -1421,6 +1493,15 @@ internal static class SessionTileIndex
 
         /// <summary>Where each block's byte sums end, before their checksum; 0 where its section keeps none.</summary>
         public int[] SumsEnd { get; } = new int[(count + TilesPerBlock - 1) / TilesPerBlock];
+
+        /// <summary>Each tile's records' bytes, tallied by owner, channel and accounting side; none where its section keeps none.</summary>
+        public TileByteTallies[] ByteTallies { get; } = [.. Enumerable.Repeat(TileByteTallies.None, count)];
+
+        /// <summary>Each tile's byte tallies, in bytes into the byte tallies; 0 where its section keeps none.</summary>
+        public int[] ByteLinks { get; } = new int[count];
+
+        /// <summary>Where each block's byte tallies end, before their checksum; 0 where its section keeps none.</summary>
+        public int[] ByteTalliesEnd { get; } = new int[(count + TilesPerBlock - 1) / TilesPerBlock];
     }
 
     /// <summary>
@@ -1504,6 +1585,65 @@ internal static class SessionTileIndex
     }
 
     /// <summary>
+    /// One tile's records' bytes tallied by what each binds to (tile-index-v1 §1, minor 6), in key order: for each owner key,
+    /// channel key and accounting side its records state, how many measured their bytes, how many declared a size they did
+    /// not record, and the bytes they measured. An owner key or a channel key of 0 is a record bound to none, so a tile's
+    /// byte tallies hold every byte its byte sums do.
+    /// </summary>
+    internal sealed record TileByteTallies(ulong[] Keys, long[] Measured, long[] Unmeasured, long[] Totals)
+    {
+        public static TileByteTallies None { get; } = new([], [], [], []);
+
+        /// <summary>An entry's key: the owner key, then the channel key, then the accounting side, in that order of weight.</summary>
+        public static ulong Key(uint owner, uint channel, int side) => ((ulong)owner << 32) | ((ulong)channel << 3) | (uint)side;
+
+        public static uint OwnerOf(ulong key) => (uint)(key >> 32);
+
+        public static uint ChannelOf(ulong key) => (uint)(key >> 3) & ChannelMask;
+
+        public static int SideOf(ulong key) => (int)(key & 7);
+    }
+
+    /// <summary>A tile's byte tallies while they are added up: its records' measures, or its children's tallies.</summary>
+    private sealed class ByteTalliesBuilder
+    {
+        private readonly Dictionary<ulong, (long Measured, long Unmeasured, long Total)> entries = [];
+
+        public void Clear() => entries.Clear();
+
+        /// <summary>Adds one record's measure: the bytes it measured, or a size it declared and did not record.</summary>
+        public void Add(uint owner, uint channel, int side, long? value)
+        {
+            ulong key = TileByteTallies.Key(owner, channel, side);
+            (long measured, long unmeasured, long total) = entries.GetValueOrDefault(key);
+            entries[key] = value is { } bytes ? (measured + 1, unmeasured, checked(total + bytes)) : (measured, unmeasured + 1, total);
+        }
+
+        /// <summary>Adds a child's byte tallies.</summary>
+        public void Add(TileByteTallies tallies)
+        {
+            for (int entry = 0; entry < tallies.Keys.Length; entry++)
+            {
+                (long measured, long unmeasured, long total) = entries.GetValueOrDefault(tallies.Keys[entry]);
+                entries[tallies.Keys[entry]] = (measured + tallies.Measured[entry], unmeasured + tallies.Unmeasured[entry],
+                    checked(total + tallies.Totals[entry]));
+            }
+        }
+
+        public TileByteTallies Build()
+        {
+            if (entries.Count == 0)
+            {
+                return TileByteTallies.None;
+            }
+
+            ulong[] keys = [.. entries.Keys.Order()];
+            return new(keys, [.. keys.Select(key => entries[key].Measured)], [.. keys.Select(key => entries[key].Unmeasured)],
+                [.. keys.Select(key => entries[key].Total)]);
+        }
+    }
+
+    /// <summary>
     /// The level spanning a generation's segments while it is written (tile-index-v1 §1): its finest tiles, each the sum of
     /// every segment's tile as wide as it is that holds the same readings - its counts, the bytes of its records and its
     /// owner and channel tallies - and the extent of each section holding a timed record. Its width is planned before the
@@ -1514,6 +1654,7 @@ internal static class SessionTileIndex
         private readonly long budget;
         private SortedDictionary<long, SpanTile> tiles = [];
         private long entries;
+        private long byteEntries;
 
         private SpanningLevel(long width, long budget, int sections, (int Section, long First, long Last, long Records)[] extents)
         {
@@ -1537,6 +1678,14 @@ internal static class SessionTileIndex
         /// it holds.
         /// </summary>
         public bool Summed { get; private set; } = true;
+
+        /// <summary>
+        /// Whether its tiles keep their records' bytes tallied by owner, channel and side: only where they keep their bytes,
+        /// no sum passes what it holds, and its finest tiles hold no more byte tally entries than its bound, once they are as
+        /// wide as their tallies make them. Past that they are not made wider for them: they keep none, and a brush measures
+        /// the sections beneath.
+        /// </summary>
+        public bool ByteTallied { get; private set; } = true;
 
         /// <summary>How many sections the directory lists, every one of which the level spans.</summary>
         public int Sections { get; }
@@ -1646,6 +1795,17 @@ internal static class SessionTileIndex
                     {
                         Unsum();
                     }
+
+                    if (ByteTallied)
+                    {
+                        byteEntries -= into.ByteEntries;
+                        if (!into.AddByteTallies(level.ByteTallies[tile]))
+                        {
+                            UntallyBytes();
+                        }
+
+                        byteEntries += into.ByteEntries;
+                    }
                 }
 
                 while (entries > budget)
@@ -1657,6 +1817,12 @@ internal static class SessionTileIndex
                     }
 
                     Coarsen();
+                }
+
+                // Past the bound its tiles keep no byte tallies, rather than being made wider for them.
+                if (byteEntries > budget)
+                {
+                    UntallyBytes();
                 }
             }
             catch (OverflowException)
@@ -1680,6 +1846,7 @@ internal static class SessionTileIndex
             byte[] ownerTallies;
             byte[] channelTallies;
             byte[] byteSums;
+            byte[] byteTallies;
             try
             {
                 // Its mechanisms are those its tiles count, in code order.
@@ -1708,6 +1875,7 @@ internal static class SessionTileIndex
                     }
 
                     finest.Sums[at] = tile.Sums(slotOf);
+                    finest.ByteTallies[at] = tile.ByteTallies();
                     finest.Tallies[at++] = tile.Tallies(slotOf);
                 }
 
@@ -1717,7 +1885,7 @@ internal static class SessionTileIndex
                     levels.Add(Above(levels[^1], mechanisms.Length));
                 }
 
-                (ownerTallies, channelTallies, byteSums) = Tallies(levels, Summed, cancellationToken);
+                (ownerTallies, channelTallies, byteSums, byteTallies) = Tallies(levels, Summed, Summed && ByteTallied, cancellationToken);
             }
             catch (OverflowException)
             {
@@ -1754,6 +1922,8 @@ internal static class SessionTileIndex
             into.I64(channelTallies.Length);
             into.I64(next + ownerTallies.Length + channelTallies.Length);
             into.I64(byteSums.Length);
+            into.I64(next + ownerTallies.Length + channelTallies.Length + byteSums.Length);
+            into.I64(byteTallies.Length);
             Crc32C.Write(head.AsSpan(headerBytes - 4), Crc32C.Compute(head.AsSpan(0, headerBytes - 4)));
             writer.Raw(head);
 
@@ -1773,6 +1943,7 @@ internal static class SessionTileIndex
             writer.Raw(ownerTallies);
             writer.Raw(channelTallies);
             writer.Raw(byteSums);
+            writer.Raw(byteTallies);
         }
 
         /// <summary>
@@ -1799,6 +1970,7 @@ internal static class SessionTileIndex
             Width = checked(Width * 10);
             var wider = new SortedDictionary<long, SpanTile>();
             bool summed = Summed;
+            bool tallied = ByteTallied;
             foreach ((long index, SpanTile tile) in tiles)
             {
                 long parent = SegmentTimeTiles.FloorDivide(index, 10);
@@ -1806,6 +1978,7 @@ internal static class SessionTileIndex
                 {
                     into.Absorb(tile);
                     summed = summed && into.AbsorbSums(tile);
+                    tallied = tallied && into.AbsorbByteTallies(tile);
                 }
                 else
                 {
@@ -1815,9 +1988,15 @@ internal static class SessionTileIndex
 
             tiles = wider;
             entries = tiles.Values.Sum(tile => (long)tile.Entries);
+            byteEntries = tiles.Values.Sum(tile => (long)tile.ByteEntries);
             if (!summed)
             {
                 Unsum();
+            }
+
+            if (!tallied)
+            {
+                UntallyBytes();
             }
         }
 
@@ -1825,6 +2004,7 @@ internal static class SessionTileIndex
         {
             tiles.Clear();
             entries = 0;
+            byteEntries = 0;
             Abandoned = true;
         }
 
@@ -1837,6 +2017,25 @@ internal static class SessionTileIndex
                 foreach (SpanTile tile in tiles.Values)
                 {
                     tile.DropSums();
+                }
+            }
+
+            UntallyBytes();
+        }
+
+        /// <summary>
+        /// Keeps no byte tallies in its tiles: they keep no bytes, a sum passed what it holds, or their entries passed what it
+        /// allows.
+        /// </summary>
+        private void UntallyBytes()
+        {
+            if (ByteTallied)
+            {
+                ByteTallied = false;
+                byteEntries = 0;
+                foreach (SpanTile tile in tiles.Values)
+                {
+                    tile.DropByteTallies();
                 }
             }
         }
@@ -1860,6 +2059,9 @@ internal static class SessionTileIndex
         private long[]? measured;
         private long[]? unmeasured;
 
+        // Its records' bytes tallied by owner key, channel key and side, in key order, while its level keeps them.
+        private TileByteTallies bytes = TileByteTallies.None;
+
         public long Low { get; private set; } = long.MaxValue;
 
         public long High { get; private set; } = long.MinValue;
@@ -1870,6 +2072,9 @@ internal static class SessionTileIndex
 
         /// <summary>How many owner and channel entries it holds.</summary>
         public int Entries => ownerKeys.Length + channelKeys.Length;
+
+        /// <summary>How many byte tally entries it holds.</summary>
+        public int ByteEntries => bytes.Keys.Length;
 
         /// <summary>Adds one segment's tile of <paramref name="level"/>, whose slots are of <paramref name="mechanisms"/>.</summary>
         public void Add(Level level, int tile, Mechanism[] mechanisms)
@@ -1975,6 +2180,72 @@ internal static class SessionTileIndex
 
         /// <summary>Keeps no byte sums.</summary>
         public void DropSums() => (totals, measured, unmeasured) = (null, null, null);
+
+        /// <summary>Adds one segment's tile's byte tallies; false where a sum passes what it holds.</summary>
+        public bool AddByteTallies(TileByteTallies added) => MergeBytes(added);
+
+        /// <summary>Adds another finest tile's byte tallies, as <see cref="Absorb"/> adds its counts; false where a sum overflows.</summary>
+        public bool AbsorbByteTallies(SpanTile other) => MergeBytes(other.bytes);
+
+        /// <summary>Keeps no byte tallies.</summary>
+        public void DropByteTallies() => bytes = TileByteTallies.None;
+
+        /// <summary>Its byte tallies as a section's tile keeps them; their keys name no mechanism, so they need no slots.</summary>
+        public TileByteTallies ByteTallies() => bytes;
+
+        /// <summary>Two runs of byte tally entries in key order as one, the sums of a key both hold added; false where one overflows.</summary>
+        private bool MergeBytes(TileByteTallies added)
+        {
+            if (added.Keys.Length == 0)
+            {
+                return true;
+            }
+
+            if (bytes.Keys.Length == 0)
+            {
+                bytes = added;
+                return true;
+            }
+
+            int count = bytes.Keys.Length + added.Keys.Length;
+            var merged = new TileByteTallies(new ulong[count], new long[count], new long[count], new long[count]);
+            int a = 0;
+            int b = 0;
+            int at = 0;
+            try
+            {
+                for (; a < bytes.Keys.Length || b < added.Keys.Length; at++)
+                {
+                    if (b == added.Keys.Length || (a < bytes.Keys.Length && bytes.Keys[a] < added.Keys[b]))
+                    {
+                        (merged.Keys[at], merged.Measured[at], merged.Unmeasured[at], merged.Totals[at]) =
+                            (bytes.Keys[a], bytes.Measured[a], bytes.Unmeasured[a], bytes.Totals[a]);
+                        a++;
+                    }
+                    else if (a == bytes.Keys.Length || added.Keys[b] < bytes.Keys[a])
+                    {
+                        (merged.Keys[at], merged.Measured[at], merged.Unmeasured[at], merged.Totals[at]) =
+                            (added.Keys[b], added.Measured[b], added.Unmeasured[b], added.Totals[b]);
+                        b++;
+                    }
+                    else
+                    {
+                        (merged.Keys[at], merged.Measured[at], merged.Unmeasured[at], merged.Totals[at]) = (bytes.Keys[a],
+                            checked(bytes.Measured[a] + added.Measured[b]), checked(bytes.Unmeasured[a] + added.Unmeasured[b]),
+                            checked(bytes.Totals[a] + added.Totals[b]));
+                        a++;
+                        b++;
+                    }
+                }
+            }
+            catch (OverflowException)
+            {
+                return false;
+            }
+
+            bytes = at == count ? merged : new(merged.Keys[..at], merged.Measured[..at], merged.Unmeasured[..at], merged.Totals[..at]);
+            return true;
+        }
 
         /// <summary>
         /// Its byte sums as a section's tile keeps them, each mechanism by its slot of <paramref name="slotOf"/>: in code
@@ -2186,6 +2457,7 @@ internal sealed class TileSection(
     long ownersOffset,
     long channelsOffset,
     long sumsOffset,
+    long bytesOffset,
     TileExtent[]? extents = null,
     long spanned = 0)
 {
@@ -2240,7 +2512,14 @@ internal sealed class TileSection(
     /// Whether its tiles keep their records' transport-observed bytes, and its records each one's measure: since minor 5,
     /// where reading its segment's rows measures them without refusing one.
     /// </summary>
-    internal bool KeepsBytes => Minor >= SessionTileIndex.SummedMinor && Entry.Length > sumsOffset;
+    internal bool KeepsBytes => Minor >= SessionTileIndex.SummedMinor && SumsLength > 0;
+
+    /// <summary>
+    /// Whether its tiles keep their records' bytes tallied by owner, channel and side, so a brush measures its processes'
+    /// and channel ends' bytes from them: since minor 6, where it keeps its bytes, though the level spanning the segments can
+    /// keep its sums alone.
+    /// </summary>
+    internal bool KeepsByteTallies => Minor >= SessionTileIndex.ByteTalliedMinor && ByteTalliesLength > 0;
 
     /// <summary>Whether its records each carry a measure, as minor 5's do, of none where its section keeps no bytes.</summary>
     internal bool RecordsMeasure => Minor >= SessionTileIndex.SummedMinor;
@@ -2275,7 +2554,13 @@ internal sealed class TileSection(
     internal long SumsAt => Entry.Offset + sumsOffset;
 
     /// <summary>The bytes of byte sums the section holds, their checksums among them; none where it keeps no bytes.</summary>
-    internal long SumsLength => Entry.Length - sumsOffset;
+    internal long SumsLength => bytesOffset - sumsOffset;
+
+    /// <summary>Where the tiles' byte tallies begin in the file.</summary>
+    internal long ByteTalliesAt => Entry.Offset + bytesOffset;
+
+    /// <summary>The bytes of byte tallies the section holds, their checksums among them; none where it keeps none.</summary>
+    internal long ByteTalliesLength => Entry.Length - bytesOffset;
 
     /// <summary>
     /// For the spanning section, the sections it spans that hold a timed reading in <paramref name="range"/>, in the
@@ -2358,6 +2643,12 @@ internal sealed class TileBlock
 
     /// <summary>Where its tiles' byte sums end within the section's byte sums, before their checksum; 0 where it keeps none.</summary>
     public required int SumsEnd { get; init; }
+
+    /// <summary>Where each tile's byte tallies begin within the section's byte tallies; 0 where it keeps none.</summary>
+    public required int[] ByteLinks { get; init; }
+
+    /// <summary>Where its tiles' byte tallies end within the section's byte tallies, before their checksum; 0 where it keeps none.</summary>
+    public required int ByteTalliesEnd { get; init; }
 }
 
 /// <summary>
@@ -2526,6 +2817,7 @@ internal sealed class TileIndexFile
         int tiles = (length - section.TrailerBytes) / section.TileBytes;
         int mechanisms = section.Mechanisms.Length;
         bool measures = section.RecordsMeasure;
+        bool tallied = section.Minor >= SessionTileIndex.ByteTalliedMinor;
         var decoded = new TileBlock
         {
             Lows = new long[tiles],
@@ -2537,6 +2829,8 @@ internal sealed class TileIndexFile
             Counts = new int[tiles * mechanisms],
             SumLinks = new int[tiles],
             SumsEnd = measures ? BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(length - 20)) : 0,
+            ByteLinks = new int[tiles],
+            ByteTalliesEnd = tallied ? BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(length - 24)) : 0,
             RecordsEnd = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(length - 16)),
             OwnerTalliesEnd = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(length - 12)),
             ChannelTalliesEnd = BinaryPrimitives.ReadInt32LittleEndian(bytes.AsSpan(length - 8)),
@@ -2560,6 +2854,7 @@ internal sealed class TileIndexFile
             }
 
             decoded.SumLinks[tile] = measures ? BinaryPrimitives.ReadInt32LittleEndian(at[(32 + (4 * mechanisms))..]) : 0;
+            decoded.ByteLinks[tile] = tallied ? BinaryPrimitives.ReadInt32LittleEndian(at[(36 + (4 * mechanisms))..]) : 0;
 
             // A tile holds a record, follows the one before it in time and, wider than the finest, the children after the
             // ones before it; a finest tile's records, and every tile's owner and channel tallies, follow the ones before it.
@@ -2613,6 +2908,23 @@ internal sealed class TileIndexFile
         if (!sumsLaidOut)
         {
             throw Bad("byte sums it places outside the section");
+        }
+
+        // So are its byte tallies, where its section keeps them.
+        bool talliesLaidOut = section.KeepsByteTallies
+            ? decoded.ByteLinks[0] >= 0 && decoded.ByteTalliesEnd > decoded.ByteLinks[^1]
+                && decoded.ByteTalliesEnd + 4L <= section.ByteTalliesLength
+            : decoded.ByteTalliesEnd == 0 && decoded.ByteLinks[0] == 0;
+        for (int tile = 1; talliesLaidOut && tile < tiles; tile++)
+        {
+            talliesLaidOut = section.KeepsByteTallies
+                ? decoded.ByteLinks[tile] > decoded.ByteLinks[tile - 1]
+                : decoded.ByteLinks[tile] == 0;
+        }
+
+        if (!talliesLaidOut)
+        {
+            throw Bad("byte tallies it places outside the section");
         }
 
         lock (gate)
@@ -2673,6 +2985,16 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private long[] sumMeasured = new long[16];
     private long[] sumUnmeasured = new long[16];
     private int sumEntries;
+
+    // The last tile's byte tallies read and checked, in buffers each read reuses, and the last block of them, per level.
+    private readonly TallyBlocks byteBlocks = new();
+    private uint[] byteOwners = new uint[64];
+    private uint[] byteChannels = new uint[64];
+    private byte[] byteSides = new byte[64];
+    private long[] byteMeasured = new long[64];
+    private long[] byteUnmeasured = new long[64];
+    private long[] byteTotals = new long[64];
+    private int byteEntries;
 
     // The column of a group's lanes the last tile counted whole fell in, kept as the focus's own is.
     private int lastLaneColumn = -1;
@@ -2856,6 +3178,59 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         int top = spanning.Levels - 1;
         var brush = new Brush(interval, SessionTileIndex.AdmittedStrengths(policy), slotOfChannel, tally);
         RangeInterval(spanning, top, 0, spanning.TileCount(top), brush, cancellationToken);
+        remainders = null;
+        return left;
+    }
+
+    /// <summary>
+    /// Measures the transport-observed bytes of <paramref name="section"/>'s timed records inside
+    /// <paramref name="interval"/> into <paramref name="measuring"/>, as a ranking measures a brush's rows
+    /// (<see cref="SessionByteRanking"/>): each record's to the instance its owner binds to where the policy admits it, or
+    /// apart, and each of a drawn channel's to the end its owner holds - a tile whole from its byte tallies wherever its
+    /// records all lie in the interval, and a finest tile's records where one of the interval's ends falls among them. The
+    /// caller has checked that the file's bindings are its own. False, measuring nothing, for a segment whose readings go
+    /// backwards and meet the interval, or whose section keeps no byte tallies: its rows are read instead.
+    /// </summary>
+    public bool MeasureInterval(TileSection section, TimeRange interval, ByteMeasuring measuring, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(section);
+        ArgumentNullException.ThrowIfNull(measuring);
+        if (section.First is not { } first || section.Last is not { } last
+            || last < interval.StartTicks || first >= interval.EndTicks)
+        {
+            return true;
+        }
+
+        if (!section.Ordered || !section.KeepsByteTallies)
+        {
+            return false;
+        }
+
+        remainders = null;
+        int top = section.Levels - 1;
+        RangeMeasure(section, top, 0, section.TileCount(top), interval, measuring, cancellationToken);
+        return true;
+    }
+
+    /// <summary>
+    /// Measures the spanning section's tiles inside <paramref name="interval"/> into <paramref name="measuring"/>, as
+    /// <see cref="MeasureInterval"/> measures a segment's: a tile whole from its byte tallies wherever its records all lie
+    /// in the interval, and its children where one of the interval's ends falls among them or it keeps none. Returns the
+    /// ranges of its finest tiles it could not measure whole, which the sections beneath them measure (<see cref="Beneath"/>).
+    /// </summary>
+    public TileRemainders SpanMeasure(TimeRange interval, ByteMeasuring measuring, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(measuring);
+        TileSection spanning = Spanning();
+        var left = new TileRemainders();
+        if (spanning.Last < interval.StartTicks || spanning.First >= interval.EndTicks)
+        {
+            return left;
+        }
+
+        remainders = left;
+        int top = spanning.Levels - 1;
+        RangeMeasure(spanning, top, 0, spanning.TileCount(top), interval, measuring, cancellationToken);
         remainders = null;
         return left;
     }
@@ -3592,6 +3967,95 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
+    /// Measures the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a brush's bytes:
+    /// each whole from its byte tallies that lies in the interval, the children of each that one of its ends falls among,
+    /// and the records of a finest one that one does - or, of the spanning section's, its range, left to the sections
+    /// beneath it.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private void RangeMeasure(
+        TileSection section, int level, int from, int end, TimeRange interval, ByteMeasuring measuring, CancellationToken cancellationToken)
+    {
+        TileBlock? block = null;
+        int blockIndex = -1;
+        for (int position = from; position < end; position++)
+        {
+            if (position / SessionTileIndex.TilesPerBlock != blockIndex)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                blockIndex = position / SessionTileIndex.TilesPerBlock;
+                block = file.Block(stream, section, level, blockIndex);
+            }
+
+            int tile = position % SessionTileIndex.TilesPerBlock;
+            long low = block!.Lows[tile];
+            long high = block.Highs[tile];
+            if (low >= interval.EndTicks)
+            {
+                return;
+            }
+
+            if (high < interval.StartTicks)
+            {
+                continue;
+            }
+
+            // A tile its interval holds whole is measured from its byte tallies, or, where it keeps none, as its children or
+            // its records are.
+            if (low >= interval.StartTicks && high < interval.EndTicks && AddByteTallies(section, level, block, position, measuring))
+            {
+                remainders?.Counted();
+                continue;
+            }
+
+            if (level > 0)
+            {
+                RangeMeasure(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], interval, measuring,
+                    cancellationToken);
+                continue;
+            }
+
+            if (section.Spanning)
+            {
+                remainders!.Add(Math.Max(interval.StartTicks, low), Math.Min(interval.EndTicks, high + 1));
+                continue;
+            }
+
+            var records = new RecordCursor(this, section, block, position);
+            while (records.Next(out long reading, out _, out _, out _, out uint owner, out uint channel))
+            {
+                if (records.Side > 0 && interval.Contains(reading))
+                {
+                    measuring.Add(owner, channel, records.Side, records.Value);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Adds one tile's records' bytes to a brush's whole, from its byte tallies. False, adding nothing, for a tile that keeps
+    /// none, whose children or records are measured instead.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private bool AddByteTallies(TileSection section, int level, TileBlock block, int position, ByteMeasuring measuring)
+    {
+        if (!ReadByteTallies(section, level, block, position, RecordsIn(section, block, position)))
+        {
+            TilesUntallied++;
+            return false;
+        }
+
+        TilesOfTalliesRead++;
+        for (int entry = 0; entry < byteEntries; entry++)
+        {
+            measuring.Add(byteOwners[entry], byteChannels[entry], byteSides[entry], byteTotals[entry], byteMeasured[entry],
+                byteUnmeasured[entry]);
+        }
+
+        return true;
+    }
+
+    /// <summary>
     /// Adds one tile's records to a brush's tally whole: all of them observed, each bound owner's the policy admits to its
     /// instance by mechanism, and each drawn channel's to it. False, adding nothing, for a tile that keeps no owner or no
     /// channel tallies, whose children or records are counted instead.
@@ -3710,6 +4174,87 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         }
 
         return records;
+    }
+
+    /// <summary>
+    /// Reads one tile's byte tallies into the byte buffers, checked against the tile as they are read: in order of owner key,
+    /// channel key and side, each key none or within the derivation's instances and channels; no entry measuring no record
+    /// or more than the tile's <paramref name="records"/>, nor bytes where no record measured them, nor more records in all
+    /// than the tile holds; nothing after the last. False, reading no entry, for a tile that keeps none. Its block's byte
+    /// tallies are checked against their checksum once.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveOptimization)]
+    private bool ReadByteTallies(TileSection section, int level, TileBlock block, int position, long records)
+    {
+        int tile = position % SessionTileIndex.TilesPerBlock;
+        int start = block.ByteLinks[0];
+        byte[] bytes = TalliesOf(byteBlocks, section, level, position / SessionTileIndex.TilesPerBlock, section.ByteTalliesAt,
+            start, block.ByteTalliesEnd, "byte tallies");
+        var at = new VarintReader(bytes, block.ByteLinks[tile] - start,
+            (tile + 1 < block.ByteLinks.Length ? block.ByteLinks[tile + 1] : block.ByteTalliesEnd) - start);
+        ulong entries = at.Next();
+        if (entries == 0)
+        {
+            return at.AtEnd ? false : throw Bad(section, level, position, "byte tallies");
+        }
+
+        ulong lastOwner = ((ulong)file.Derivation.Instances << 3) | 7;
+        ulong lastChannel = (ulong)file.Derivation.Channels;
+
+        // Each entry's owner key over the one before's; its channel key over the one before's under the same owner key, and
+        // otherwise itself; and its side.
+        byteEntries = 0;
+        long counted = 0;
+        ulong owner = 0;
+        ulong channel = 0;
+        ulong previous = 0;
+        for (ulong entry = 0; entry < entries - 1; entry++)
+        {
+            ulong increase = at.Next();
+            ulong placed = at.Next();
+            ulong measured = at.Next();
+            ulong unmeasured = at.Next();
+            ulong total = at.Next();
+            if (increase > lastOwner || (placed >> 2) > lastChannel)
+            {
+                throw Bad(section, level, position, "byte tallies");
+            }
+
+            owner += increase;
+            channel = increase == 0 ? channel + (placed >> 2) : placed >> 2;
+            ulong key = (owner << 32) | (channel << 3) | ((placed & 3) + 1);
+            if (owner is > 0 and < 8 || owner > lastOwner || channel > lastChannel || (entry > 0 && key <= previous)
+                || (measured == 0 && unmeasured == 0) || measured > (ulong)records || unmeasured > (ulong)records
+                || (measured == 0 && total != 0) || total > long.MaxValue)
+            {
+                throw Bad(section, level, position, "byte tallies");
+            }
+
+            counted += (long)(measured + unmeasured);
+            if (counted > records)
+            {
+                throw Bad(section, level, position, "byte tallies");
+            }
+
+            previous = key;
+            if (byteEntries == byteOwners.Length)
+            {
+                Array.Resize(ref byteOwners, byteEntries * 2);
+                Array.Resize(ref byteChannels, byteEntries * 2);
+                Array.Resize(ref byteSides, byteEntries * 2);
+                Array.Resize(ref byteMeasured, byteEntries * 2);
+                Array.Resize(ref byteUnmeasured, byteEntries * 2);
+                Array.Resize(ref byteTotals, byteEntries * 2);
+            }
+
+            (byteOwners[byteEntries], byteChannels[byteEntries], byteSides[byteEntries]) =
+                ((uint)owner, (uint)channel, (byte)((placed & 3) + 1));
+            (byteMeasured[byteEntries], byteUnmeasured[byteEntries], byteTotals[byteEntries]) =
+                ((long)measured, (long)unmeasured, (long)total);
+            byteEntries++;
+        }
+
+        return at.AtEnd ? true : throw Bad(section, level, position, "byte tallies");
     }
 
     /// <summary>
@@ -4180,6 +4725,81 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         private static InvalidDataException Short() =>
             SessionTileIndex.Invalid("a tile's records or tallies end inside a value.");
+    }
+}
+
+/// <summary>
+/// What a brush's bytes are measured into from a tile index (`contracts/tile-index-v1.md` minor 6), as a ranking measures
+/// them from rows (<see cref="SessionByteRanking"/>): each record's bytes to the instance its owner binds to where the
+/// policy admits the binding, or to the slot after the instances, as unattributed; and each record of a drawn channel to
+/// the end of it its admitted owner holds, the first where one process holds both.
+/// </summary>
+internal sealed class ByteMeasuring
+{
+    private readonly bool[] admitted;
+    private readonly int[] slotOfChannel;
+    private readonly int[] first;
+    private readonly int[] second;
+    private readonly int instances;
+
+    /// <param name="admitted">Whether the policy admits an owner bound with each strength an owner key can hold.</param>
+    /// <param name="slotOfChannel">Each channel's drawn slot, -1 for one the policy does not draw.</param>
+    /// <param name="first">For each drawn slot, the place of the instance holding its first end.</param>
+    /// <param name="second">For each drawn slot, the place of the instance holding its second end.</param>
+    /// <param name="processes">Each instance's bytes, then a slot of the unattributed.</param>
+    /// <param name="ends">Each drawn slot's first end's bytes then its second's, then a slot nothing is added to.</param>
+    public ByteMeasuring(
+        bool[] admitted, int[] slotOfChannel, int[] first, int[] second, TransportByteTally processes, TransportByteTally ends)
+    {
+        ArgumentNullException.ThrowIfNull(admitted);
+        ArgumentNullException.ThrowIfNull(slotOfChannel);
+        ArgumentNullException.ThrowIfNull(first);
+        ArgumentNullException.ThrowIfNull(second);
+        ArgumentNullException.ThrowIfNull(processes);
+        ArgumentNullException.ThrowIfNull(ends);
+        this.admitted = admitted;
+        this.slotOfChannel = slotOfChannel;
+        this.first = first;
+        this.second = second;
+        instances = processes.Slots - 1;
+        Processes = processes;
+        Ends = ends;
+    }
+
+    public TransportByteTally Processes { get; }
+
+    public TransportByteTally Ends { get; }
+
+    /// <summary>Adds one record's measure: the bytes it measured, or -1 for a size it declared and did not record.</summary>
+    public void Add(uint owner, uint channel, int side, long value)
+    {
+        if (value < 0)
+        {
+            Add(owner, channel, side, 0, 0, 1);
+        }
+        else
+        {
+            Add(owner, channel, side, value, 1, 0);
+        }
+    }
+
+    /// <summary>
+    /// Adds what the records of one owner key, channel key and accounting side measured: their bytes, how many measured
+    /// them and how many declared a size they did not record.
+    /// </summary>
+    public void Add(uint owner, uint channel, int side, long total, long measured, long unmeasured)
+    {
+        bool bound = owner != 0 && admitted[owner & 7];
+        int instance = bound ? (int)(owner >> 3) - 1 : instances;
+        Processes.Add(instance, side, total, measured, unmeasured);
+        if (bound && channel != 0 && channel <= (uint)slotOfChannel.Length && slotOfChannel[channel - 1] is >= 0 and int slot)
+        {
+            int end = instance == first[slot] ? slot * 2 : instance == second[slot] ? (slot * 2) + 1 : -1;
+            if (end >= 0)
+            {
+                Ends.Add(end, side, total, measured, unmeasured);
+            }
+        }
     }
 }
 

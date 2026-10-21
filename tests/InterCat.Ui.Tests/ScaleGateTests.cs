@@ -131,7 +131,8 @@ public sealed class ScaleGateTests
                     + "counted in the same pass, in the 500 columns the 20,000-cell bound allows (revision 210); at the "
                     + "busiest connection, its two ends' lanes.",
                 "Ranking is the bounded graph projection and the top 100 rows of the machine and group rungs; brushed, it "
-                    + "includes counting the interval's records per process, edge and channel.",
+                    + "includes counting the interval's records per process, edge and channel. Ranked by bytes, a brush "
+                    + "measures the interval's bytes per process and channel end before the rungs' rows are ranked by them.",
             },
             ["sessions"] = sessions,
         };
@@ -285,6 +286,15 @@ public sealed class ScaleGateTests
             WorkspaceSnapshot scoped = OverviewWorkspace.WithinInterval(snapshot, counts);
             _ = GraphProjection.Rescope(whole, snapshot, scoped);
             _ = LadderProjection.Project(scoped, root).Rows.Take(100).ToList();
+        });
+
+        // Brushed and ranked by bytes sent: the interval's bytes measured per process and channel end, then the top 100 rows
+        // of the machine and group rungs ranked by them.
+        result["rankingBrushedByBytes"] = Distribution(RankingBudgetMs, brushes, brush =>
+        {
+            WorkspaceSnapshot measured = OverviewWorkspace.WithBytes(snapshot, SessionByteRanking.Measure(store, brush));
+            _ = LadderProjection.Project(measured, root, RankingMetric.BytesSent).Rows.Take(100).ToList();
+            _ = LadderProjection.Project(measured, ladder.Current, RankingMetric.BytesSent).Rows.Take(100).ToList();
         });
         Retain("brushed");
 

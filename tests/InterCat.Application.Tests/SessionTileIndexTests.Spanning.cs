@@ -234,7 +234,7 @@ public sealed partial class SessionTileIndexTests
         using (var one = Published(Shifts(2, 3_000)))
         {
             TileIndexFile file = FileOf(one);
-            Assert.Equal((5, false), (file.Minor, file.Spans));
+            Assert.Equal((6, false), (file.Minor, file.Spans));
         }
 
         // Two segments, the second holding no timed record.
@@ -273,6 +273,7 @@ public sealed partial class SessionTileIndexTests
     [InlineData(3)]
     [InlineData(4)]
     [InlineData(5)]
+    [InlineData(6)]
     public void ADamagedSpanningSectionIsRefused(int damage)
     {
         // Each case's session differs from the others', so no two share a manifest, nor what its derivations keep.
@@ -287,7 +288,7 @@ public sealed partial class SessionTileIndexTests
         }
 
         string path = PathOf(session);
-        int headerLength = 94 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
+        int headerLength = 110 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
         (long at, string why) = damage switch
         {
             0 => (offset + 5, "the header of the spanning section does not match its checksum"),
@@ -295,12 +296,15 @@ public sealed partial class SessionTileIndexTests
             2 => (spanning.BlockAt(spanning.Levels - 1, 0).Offset + 2, $"block 0 of level {spanning.Levels - 1} of the spanning section does not match its checksum"),
             3 => (spanning.OwnerTalliesAt + spanning.OwnerTalliesLength - 2, "of the spanning section does not match its checksum"),
             4 => (spanning.ChannelTalliesAt + spanning.ChannelTalliesLength - 2, "of the spanning section does not match its checksum"),
-            _ => (offset + length - 2, "the byte sums of block 0 of level 0 of the spanning section does not match its checksum"),
+            5 => (spanning.SumsAt + spanning.SumsLength - 2, "the byte sums of block 0 of level 0 of the spanning section does not match its checksum"),
+            _ => (offset + length - 2, "the byte tallies of block 0 of level 0 of the spanning section does not match its checksum"),
         };
+        Assert.True(spanning.KeepsByteTallies);
         Flip(path, at);
 
         // Opening it checks only its directory; the query reading the damaged part refuses the index and counts from the
-        // segments' rows what it would have counted: a brush, or a zoom's byte lanes, which alone read the byte sums.
+        // segments' rows what it would have counted: a brush, a zoom's byte lanes, which alone read the byte sums, or a
+        // brush's bytes, which alone read the byte tallies.
         TimeRange whole = Extent(rows);
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Bound bound = Bind(session.Store);
@@ -313,6 +317,7 @@ public sealed partial class SessionTileIndexTests
             using var twin = new TemporarySession();
             _ = Publish(twin.Store, rows, rowsPerSegment: 600);
             Assert.Equal(LaneBytes(twin.Store, whole, 3), LaneBytes(reopened, whole, 3));
+            Assert.Equal(Brushed(twin.Store, whole, EvidencePolicy.DirectOnly), Brushed(reopened, whole, EvidencePolicy.DirectOnly));
             twin.Store.ReleaseSegmentReaders();
         }
 
@@ -338,7 +343,7 @@ public sealed partial class SessionTileIndexTests
 
         string path = PathOf(session);
         byte[] bytes = File.ReadAllBytes(path);
-        int headerLength = 94 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
+        int headerLength = 110 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
         int extents = (int)offset + headerLength;
         int length = (spanning.Extents.Count * 28) + 4;
         BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(extents + 28 + 12), spanning.Extents[1].Last - 1);
@@ -377,7 +382,7 @@ public sealed partial class SessionTileIndexTests
         string path = PathOf(session);
         byte[] bytes = File.ReadAllBytes(path);
         int header = (int)offset;
-        int headerLength = 94 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
+        int headerLength = 110 + (2 * spanning.Mechanisms.Length) + (12 * spanning.Levels);
         int extents = header + headerLength;
         int extentsLength = (spanning.Extents.Count * 28) + 4;
         string why;
@@ -469,22 +474,25 @@ public sealed partial class SessionTileIndexTests
         session.Store.ReleaseSegmentReaders();
     }
 
-    [Theory(DisplayName = "I14: a minor 3 or 4 tile index, which keeps no byte sums and at minor 3 no level spanning its segments, is counted from as before, its byte lanes read from the segments, and a checkpoint publishes it again with both")]
+    [Theory(DisplayName = "I14: a minor 3, 4 or 5 tile index, which keeps no byte tallies, before minor 5 no byte sums and at minor 3 no level spanning its segments, is counted from as before, what it does not keep read from the segments, and a checkpoint publishes it again with all of them")]
     [InlineData(3)]
     [InlineData(4)]
+    [InlineData(5)]
     public void AnEarlierTileIndexIsPublishedAgain(int minor)
     {
         ObservationRowV1[] rows = Shifts(3, 7_000 + minor);
         TimeRange whole = Extent(rows);
+        TimeRange half = new(whole.StartTicks + (whole.SpanTicks / 4), whole.EndTicks - (whole.SpanTicks / 4));
         using var session = Published(rows, rowsPerSegment: 700);
         SessionStore store = session.Store;
         string path = PathOf(session);
         (TransportBytes[] lanes, TransportBytes[] interval) = (LaneBytes(store, whole, 70), IntervalBytes(store, whole, 70));
+        string[] brushed = Brushed(store, half, EvidencePolicy.IncludeCorrelated);
 
-        // The same file as revision 460 or 701 wrote it: no byte sums or measures, and at minor 3 a directory ending after
-        // the segments' sections.
+        // The same file as revision 460, 701 or 704 wrote it: no byte tallies, before minor 5 no byte sums or measures, and
+        // at minor 3 a directory ending after the segments' sections.
         Republish(session, tiles: content => content.Write(Earlier(File.ReadAllBytes(path), (ushort)minor)));
-        Assert.Equal((minor, minor == 4), (FileOf(session).Minor, FileOf(session).Spans));
+        Assert.Equal((minor, minor >= 4), (FileOf(session).Minor, FileOf(session).Spans));
         store.ReleaseSegmentReaders();
         Bound bound = Bind(store);
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
@@ -493,6 +501,8 @@ public sealed partial class SessionTileIndexTests
         Assert.Equal(0, viewer.SegmentReaderCache.Entries);
         Assert.Equal(lanes, LaneBytes(viewer, whole, 70));
         Assert.Equal(interval, IntervalBytes(viewer, whole, 70));
+        Assert.Equal(minor >= 5, viewer.SegmentReaderCache.Entries == 0);
+        Assert.Equal(brushed, Brushed(viewer, half, EvidencePolicy.IncludeCorrelated));
         Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
         Assert.Null(SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
@@ -500,7 +510,7 @@ public sealed partial class SessionTileIndexTests
         // Not current: the next checkpoint publishes it again, spanning its segments and keeping their bytes.
         CheckpointPublication again = SessionCheckpoints.Publish(store, Committed);
         Assert.True(again.Outcome == CheckpointOutcome.Published, again.Reason);
-        Assert.Equal((5, true), (FileOf(session).Minor, FileOf(session).Spans));
+        Assert.Equal((6, true), (FileOf(session).Minor, FileOf(session).Spans));
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(store, Committed).Outcome);
         store.ReleaseSegmentReaders();
     }
@@ -550,6 +560,8 @@ public sealed partial class SessionTileIndexTests
                 Assert.Equal(LaneBytes(twin.Store, whole, columns), LaneBytes(reopened, whole, columns));
             }
 
+            Assert.Equal(Brushed(twin.Store, whole, EvidencePolicy.AllIncludingConflicting),
+                Brushed(reopened, whole, EvidencePolicy.AllIncludingConflicting));
             Assert.Equal(0, reopened.SegmentReaderCache.Entries);
             reopened.ReleaseSegmentReaders();
         }
@@ -580,20 +592,20 @@ public sealed partial class SessionTileIndexTests
     }
 
     /// <summary>
-    /// A minor 5 tile index as an earlier <paramref name="minor"/> kept it: each section's header without where its byte
-    /// sums lie, its tiles without their link to them, its blocks' trailers without where they end, its records without
-    /// their measures, and no byte sums; at minor 4 its spanning section the same way, and at minor 3 none, its directory
-    /// ending after the sections.
+    /// A minor 6 tile index as an earlier <paramref name="minor"/> kept it: at minor 5 each section's header without where
+    /// its byte tallies lie, its tiles without their link to them, its blocks' trailers without where they end, and no
+    /// byte tallies; at minors 3 and 4 the same of its byte sums too, and its records without their measures; at minor 4
+    /// its spanning section the same way, and at minor 3 none, its directory ending after the sections.
     /// </summary>
-    private static byte[] Earlier(byte[] bytes, ushort minor) => Rewritten(bytes, minor, _ => true, unsumSpanning: true);
+    private static byte[] Earlier(byte[] bytes, ushort minor) => Rewritten(bytes, minor, _ => false, unsumSpanning: false);
 
     /// <summary>
-    /// A minor 5 tile index whose sections <paramref name="unsum"/> chooses, and its spanning section where
-    /// <paramref name="unsumSpanning"/>, keep no bytes, as a section reading its rows refuses keeps none: no byte sums, each
-    /// tile's link to them and each block's end of them zero, and each record's measure none.
+    /// A minor 6 tile index whose sections <paramref name="unsum"/> chooses, and its spanning section where
+    /// <paramref name="unsumSpanning"/>, keep no bytes, as a section reading its rows refuses keeps none: no byte sums or
+    /// byte tallies, each tile's links to them and each block's ends of them zero, and each record's measure none.
     /// </summary>
     private static byte[] Unsummed(byte[] bytes, Func<int, bool> unsum, bool unsumSpanning) =>
-        Rewritten(bytes, 5, unsum, unsumSpanning);
+        Rewritten(bytes, 6, unsum, unsumSpanning);
 
     private static byte[] Rewritten(byte[] bytes, ushort minor, Func<int, bool> unsum, bool unsumSpanning)
     {
@@ -618,7 +630,7 @@ public sealed partial class SessionTileIndexTests
             int length = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(at + 8));
             listed.Write(bytes.AsSpan(nameAt, at - nameAt));
             byte[] kept = bytes.AsSpan(offset, length).ToArray();
-            byte[] made = minor < 5 || unsum(section) ? RewrittenSection(kept, spanning: false, keepLayout: minor >= 5) : kept;
+            byte[] made = minor < 6 || unsum(section) ? RewrittenSection(kept, spanning: false, minor, summed: !unsum(section)) : kept;
             WriteI64(listed, output.Length);
             WriteI64(listed, made.Length);
             output.Write(made);
@@ -630,7 +642,8 @@ public sealed partial class SessionTileIndexTests
         if (minor >= 4)
         {
             byte[]? kept = spanningLength == 0 ? null : bytes.AsSpan(spanningOffset, spanningLength).ToArray();
-            byte[]? made = kept is null || (minor >= 5 && !unsumSpanning) ? kept : RewrittenSection(kept, spanning: true, keepLayout: minor >= 5);
+            byte[]? made = kept is null || (minor >= 6 && !unsumSpanning) ? kept
+                : RewrittenSection(kept, spanning: true, minor, summed: !unsumSpanning);
             WriteI64(listed, made is null ? 0 : output.Length);
             WriteI64(listed, made?.Length ?? 0);
             output.Write(made ?? []);
@@ -654,11 +667,13 @@ public sealed partial class SessionTileIndexTests
     }
 
     /// <summary>
-    /// One minor 5 section, or the spanning section, keeping no bytes: at minor 5's layout where
-    /// <paramref name="keepLayout"/>, its links and ends of byte sums zero and each record's measure none; otherwise as
-    /// minor 4 laid it out. See <see cref="Rewritten"/>.
+    /// One minor 6 section, or the spanning section, as <paramref name="minor"/> lays it out, keeping its bytes where
+    /// <paramref name="summed"/> and the minor keeps any: at minor 6 a section keeping none has its tiles' links and its
+    /// blocks' ends of byte sums and byte tallies zero, and each record's measure none; minor 5 keeps no byte tallies, nor
+    /// a place for them in its header, tiles and blocks; minors 3 and 4 keep no measures, byte sums or byte tallies, nor a
+    /// place for them. See <see cref="Rewritten"/>.
     /// </summary>
-    private static byte[] RewrittenSection(byte[] section, bool spanning, bool keepLayout)
+    private static byte[] RewrittenSection(byte[] section, bool spanning, int minor, bool summed)
     {
         int at = spanning ? 4 + 4 + 8 + 8 + 8 + 8 : 4 + 4 + 1 + 8 + 8 + 8;
         int mechanisms = section[at];
@@ -674,15 +689,19 @@ public sealed partial class SessionTileIndexTests
             at += 12;
         }
 
+        // A minor 6 header's parts: the records, where a segment's section keeps them, then the owner and channel tallies,
+        // the byte sums and the byte tallies, each where it begins and how long it is.
         int regionsAt = at;
-        long[] regions = [.. Enumerable.Range(0, spanning ? 6 : 8).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
+        long[] regions = [.. Enumerable.Range(0, spanning ? 8 : 10).Select(field => BinaryPrimitives.ReadInt64LittleEndian(section.AsSpan(at + (8 * field))))];
         int headerLength = at + (8 * regions.Length) + 4;
         int extentsLength = spanning ? (BinaryPrimitives.ReadInt32LittleEndian(section.AsSpan(4)) * 28) + 4 : 0;
-        int tileBytes = 36 + (4 * mechanisms);
-        int linkBytes = keepLayout ? 0 : 4;
+        int tileBytes = 40 + (4 * mechanisms);
+        int keptTileBytes = (minor >= 6 ? 40 : minor >= 5 ? 36 : 32) + (4 * mechanisms);
+        int parts = spanning ? 0 : 2;
+        bool keepsBytes = summed && minor >= 5;
 
-        // The records, each without its measure, or with none, tile by tile, each with its checksum, and where each tile's
-        // begin.
+        // The records, each with its measure where it keeps bytes, none where it keeps none at minor 5 or 6, and without one
+        // before; tile by tile, each with its checksum, and where each tile's begin.
         var records = new MemoryStream();
         int[] links = [];
         if (!spanning && levels > 0)
@@ -692,7 +711,7 @@ public sealed partial class SessionTileIndexTests
             int[] oldLinks = new int[counts[0]];
             for (int tile = 0; tile < counts[0]; tile++)
             {
-                long tileAt = offsets[0] + ((long)(tile / SessionTileIndex.TilesPerBlock) * ((SessionTileIndex.TilesPerBlock * tileBytes) + 20))
+                long tileAt = offsets[0] + ((long)(tile / SessionTileIndex.TilesPerBlock) * ((SessionTileIndex.TilesPerBlock * tileBytes) + 24))
                     + ((tile % SessionTileIndex.TilesPerBlock) * tileBytes);
                 oldLinks[tile] = BinaryPrimitives.ReadInt32LittleEndian(section.AsSpan((int)tileAt + 16));
             }
@@ -711,12 +730,17 @@ public sealed partial class SessionTileIndexTests
                         WriteLeb(records, ReadLeb(section, ref read));
                     }
 
-                    if (ReadLeb(section, ref read) > 4)
+                    ulong measure = ReadLeb(section, ref read);
+                    ulong measured = measure > 4 ? ReadLeb(section, ref read) : 0;
+                    if (keepsBytes)
                     {
-                        _ = ReadLeb(section, ref read);
+                        WriteLeb(records, measure);
+                        if (measure > 4)
+                        {
+                            WriteLeb(records, measured);
+                        }
                     }
-
-                    if (keepLayout)
+                    else if (minor >= 5)
                     {
                         WriteLeb(records, 0);
                     }
@@ -728,26 +752,26 @@ public sealed partial class SessionTileIndexTests
             }
         }
 
-        // The levels: each tile without its link to its byte sums, or with it zero, and each block's trailer without where
-        // its byte sums end, or with it zero.
+        // The levels: each tile with its links to its byte sums and byte tallies as the minor keeps them, and each block's
+        // trailer with where they end the same way.
         var blocks = new MemoryStream();
         long[] newOffsets = new long[levels];
-        int newHeaderLength = headerLength - (keepLayout ? 0 : 16);
+        int newHeaderLength = headerLength - (minor >= 6 ? 0 : minor >= 5 ? 16 : 32);
         for (int level = 0; level < levels; level++)
         {
             newOffsets[level] = newHeaderLength + extentsLength + blocks.Length;
             for (int first = 0; first < counts[level]; first += SessionTileIndex.TilesPerBlock)
             {
                 int tiles = Math.Min(SessionTileIndex.TilesPerBlock, counts[level] - first);
-                int blockAt = (int)offsets[level] + ((first / SessionTileIndex.TilesPerBlock) * ((SessionTileIndex.TilesPerBlock * tileBytes) + 20));
+                int blockAt = (int)offsets[level] + ((first / SessionTileIndex.TilesPerBlock) * ((SessionTileIndex.TilesPerBlock * tileBytes) + 24));
                 var block = new MemoryStream();
                 int recordsEnd = 0;
                 for (int tile = 0; tile < tiles; tile++)
                 {
-                    byte[] kept = section.AsSpan(blockAt + (tile * tileBytes), tileBytes - linkBytes).ToArray();
-                    if (keepLayout)
+                    byte[] kept = section.AsSpan(blockAt + (tile * tileBytes), keptTileBytes).ToArray();
+                    if (!keepsBytes && minor >= 5)
                     {
-                        BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan(tileBytes - 4), 0);
+                        kept.AsSpan(32 + (4 * mechanisms)).Clear();
                     }
 
                     if (level == 0 && !spanning)
@@ -760,17 +784,20 @@ public sealed partial class SessionTileIndexTests
                     block.Write(kept);
                 }
 
-                byte[] words = section.AsSpan(blockAt + (tiles * tileBytes) + 4, 12).ToArray();
+                // The trailer's ends of byte tallies and byte sums, then its records', owner tallies' and channel tallies'.
+                byte[] ends = section.AsSpan(blockAt + (tiles * tileBytes), 8).ToArray();
+                byte[] words = section.AsSpan(blockAt + (tiles * tileBytes) + 8, 12).ToArray();
                 if (level == 0 && !spanning)
                 {
                     BinaryPrimitives.WriteInt32LittleEndian(words, recordsEnd);
                 }
 
-                if (keepLayout)
+                if (!keepsBytes)
                 {
-                    block.Write(new byte[4]);
+                    ends.AsSpan().Clear();
                 }
 
+                block.Write(ends.AsSpan(minor >= 6 ? 0 : minor >= 5 ? 4 : 8));
                 block.Write(words);
                 byte[] checksum = new byte[4];
                 Crc32C.Write(checksum, Crc32C.Compute(block.GetBuffer().AsSpan(0, (int)block.Length)));
@@ -779,12 +806,13 @@ public sealed partial class SessionTileIndexTests
             }
         }
 
-        // The header, its levels and parts placed anew, its byte sums none.
+        // The header, its levels and parts placed anew: its byte sums and byte tallies where it keeps them.
         long next0 = newHeaderLength + extentsLength + blocks.Length;
-        int tallies = spanning ? 0 : 2;
-        long ownersLength = regions[tallies + 1];
-        long channelsLength = regions[tallies + 3];
-        int ownersAt = (int)regions[tallies];
+        long ownersLength = regions[parts + 1];
+        long channelsLength = regions[parts + 3];
+        long sumsLength = keepsBytes ? regions[parts + 5] : 0;
+        long talliesLength = keepsBytes && minor >= 6 ? regions[parts + 7] : 0;
+        int ownersAt = (int)regions[parts];
         byte[] header = section.AsSpan(0, newHeaderLength).ToArray();
         for (int level = 0; level < levels; level++)
         {
@@ -799,9 +827,14 @@ public sealed partial class SessionTileIndexTests
 
         long ownersStart = next0 + (spanning ? 0 : records.Length);
         fields.AddRange([ownersStart, ownersLength, ownersStart + ownersLength, channelsLength]);
-        if (keepLayout)
+        if (minor >= 5)
         {
-            fields.AddRange([ownersStart + ownersLength + channelsLength, 0]);
+            fields.AddRange([ownersStart + ownersLength + channelsLength, sumsLength]);
+        }
+
+        if (minor >= 6)
+        {
+            fields.AddRange([ownersStart + ownersLength + channelsLength + sumsLength, talliesLength]);
         }
 
         for (int field = 0; field < fields.Count; field++)
@@ -811,7 +844,9 @@ public sealed partial class SessionTileIndexTests
 
         Crc32C.Write(header.AsSpan(newHeaderLength - 4), Crc32C.Compute(header.AsSpan(0, newHeaderLength - 4)));
         return [.. header, .. section.AsSpan(headerLength, extentsLength), .. blocks.ToArray(), .. records.ToArray(),
-            .. section.AsSpan(ownersAt, (int)(ownersLength + channelsLength))];
+            .. section.AsSpan(ownersAt, (int)(ownersLength + channelsLength)),
+            .. section.AsSpan((int)regions[parts + 4], (int)sumsLength),
+            .. section.AsSpan((int)regions[parts + 6], (int)talliesLength)];
     }
 
     private static void WriteI64(Stream into, long value)

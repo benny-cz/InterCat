@@ -207,13 +207,17 @@ public sealed partial class SessionTileIndexTests
         using (TileReading reading = file.Read(session.Store.Root))
         {
             Assert.Equal([true, false, true], SessionSegments.Names(session.Store.Current!).Select(name => reading.Section(name).KeepsBytes));
+            Assert.Equal([true, false, true], SessionSegments.Names(session.Store.Current!).Select(name => reading.Section(name).KeepsByteTallies));
             Assert.False(reading.Spanning().KeepsBytes);
+            Assert.False(reading.Spanning().KeepsByteTallies);
         }
 
         TimeRange whole = Extent(rows);
+        TimeRange brush = new(whole.StartTicks + 3_001, whole.EndTicks - 2_999);
         SessionStore reopened = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
         Assert.Equal(LaneBytes(twin.Store, whole, 64), LaneBytes(reopened, whole, 64));
         Assert.Equal(IntervalBytes(twin.Store, whole, 64), IntervalBytes(reopened, whole, 64));
+        Assert.Equal(Brushed(twin.Store, brush, EvidencePolicy.IncludeCorrelated), Brushed(reopened, brush, EvidencePolicy.IncludeCorrelated));
         Assert.Equal(1, reopened.SegmentReaderCache.Entries);
 
         // Its records count as before: a zoom's counts open no segment, nor does a brush.
@@ -269,7 +273,7 @@ public sealed partial class SessionTileIndexTests
             case 1:
                 // The top block's second tile's sums begin where its first's do.
                 (long at, int length) = section.BlockAt(top, 0);
-                int link = section.TileBytes - 4;
+                int link = section.TileBytes - 8;
                 BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan((int)at + section.TileBytes + link), block.SumLinks[0]);
                 Seal((int)at, length);
                 why = $"block 0 of level {top} of the section of '{name}' holds byte sums it places outside the section.";

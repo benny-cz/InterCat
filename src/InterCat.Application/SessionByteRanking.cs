@@ -148,9 +148,6 @@ public static class SessionByteRanking
         ProcessInstanceIndex processes = generation.Processes(cancellationToken);
         TransportRelationIndex relations = generation.Relations(cancellationToken);
         TimeRange? native = interval is { } presentation ? RankingScope.NativeInterval(clock, presentation) : null;
-        SegmentReaderV1[] segments = native is { } readings
-            ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
-            : interval is null ? generation.All : [];
 
         // The channels the overview draws, each with a dense slot and the instance holding each of its ends.
         int instances = processes.Instances.Count;
@@ -174,10 +171,22 @@ public static class SessionByteRanking
         }
 
         // One slot per instance, then one for every row no instance takes under the policy; one per channel end, then
-        // one for every row at no drawn end. An interval no reading can fall in holds nothing, and no segment is read.
+        // one for every row at no drawn end. An interval no reading can fall in holds nothing, and no segment is read. A
+        // finished session's interval is measured from its tile index's byte tallies, opening no segment (tile-index-v1
+        // minor 6).
         var total = new Tallies(instances + 1, (drawn.Count * 2) + 1);
-        if (interval is null || native is not null)
+        if (interval is { } brush && native is { } within
+            && PersistedMeasures(store, manifest, clock, brush, within, policy, processes, relations, slotOfChannel, drawn,
+                cancellationToken)
+                is { } tiled)
         {
+            total = tiled;
+        }
+        else if (interval is null || native is not null)
+        {
+            SegmentReaderV1[] segments = native is { } readings
+                ? SessionNativeInterval.Segments(store, manifest, (readings.StartTicks, readings.EndTicks))
+                : generation.All;
             SegmentPasses.Run(
                 segments,
                 () => new Tallies(instances + 1, (drawn.Count * 2) + 1),
@@ -538,6 +547,105 @@ public static class SessionByteRanking
         }
     }
 
+    /// <summary>
+    /// A brush's measures from the tile index the generation's checkpoint published (`contracts/tile-index-v1.md` minor 6):
+    /// each tile its interval holds whole from its byte tallies, and the records of the tiles its ends fall among, from the
+    /// level spanning the segments first where it keeps them. A segment whose section keeps no byte tallies, or whose
+    /// readings go backwards, has its rows measured, and so does one a tile could place a record of otherwise than its
+    /// row (<see cref="MeasuredByRows"/>). Null when the generation names no tile index of minor 6, or one without a
+    /// section of each of its segments, or one whose bindings are not this derivation's; and when a part of it could not be
+    /// read, which is said once, and the index is not read again for the generation. The brush is then measured from its
+    /// segments, and measures the same.
+    /// </summary>
+    private static Tallies? PersistedMeasures(
+        SessionStore store,
+        SessionManifestV1 manifest,
+        SourceClockDescriptor clock,
+        TimeRange interval,
+        TimeRange native,
+        EvidencePolicy policy,
+        ProcessInstanceIndex processes,
+        TransportRelationIndex relations,
+        int[] slotOfChannel,
+        List<(string Key, int First, int Second)> drawn,
+        CancellationToken cancellationToken)
+    {
+        SessionDerivation derivation = SessionDerivationCache.For(manifest);
+        if (derivation.PersistedTiles(store.Root) is not { Minor: >= SessionTileIndex.ByteTalliedMinor } tiles)
+        {
+            return null;
+        }
+
+        StoreDependency[] segments = SessionOverviewIndex.ObservationSegments(manifest);
+        if (!segments.All(tiles.Describes) || !tiles.Derivation.Matches(processes, relations))
+        {
+            return null;
+        }
+
+        var total = new Tallies(processes.Instances.Count + 1, (drawn.Count * 2) + 1);
+        var measuring = new ByteMeasuring(SessionTileIndex.AdmittedStrengths(policy), slotOfChannel,
+            [.. drawn.Select(channel => channel.First)], [.. drawn.Select(channel => channel.Second)], total.Processes, total.Ends);
+        try
+        {
+            using TileReading reading = tiles.Read(store.Root);
+            bool[] byRows = [.. segments.Select(segment =>
+                MeasuredByRows(store, manifest, clock, reading.Section(segment.Name), interval))];
+            if (!byRows.Contains(true) && tiles.SpansExactly(segments) && reading.Spanning().KeepsByteTallies)
+            {
+                TileRemainders left = reading.SpanMeasure(interval, measuring, cancellationToken);
+                foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
+                {
+                    foreach (TimeRange range in ranges)
+                    {
+                        // A level spanning the segments tallies their bytes only where every section beneath it does.
+                        if (!reading.MeasureInterval(section, range, measuring, cancellationToken))
+                        {
+                            throw SessionTileIndex.Invalid(
+                                $"the level spanning its segments tallies bytes {section.Entry.Describe} does not keep.");
+                        }
+                    }
+                }
+
+                return total;
+            }
+
+            for (int at = 0; at < segments.Length; at++)
+            {
+                // A segment measured from its rows is opened only where its readings meet the brush's.
+                cancellationToken.ThrowIfCancellationRequested();
+                string name = segments[at].Name;
+                if (byRows[at]
+                    ? SessionNativeInterval.Meets(SessionSegments.NativeRange(store, manifest, name), (native.StartTicks, native.EndTicks))
+                    : !reading.MeasureInterval(reading.Section(name), interval, measuring, cancellationToken))
+                {
+                    MeasureSegment(SessionSegments.Open(store, manifest, name), native, policy, processes, relations, slotOfChannel,
+                        drawn, total);
+                }
+            }
+
+            return total;
+        }
+        catch (Exception exception) when (exception is InvalidDataException or IOException or UnauthorizedAccessException)
+        {
+            derivation.RefuseTiles(exception.Message);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Whether a brush measures <paramref name="section"/>'s segment from its rows rather than its tiles. A brush's bounds
+    /// place a record by the first native reading at or after each (metrics-v1 §5), and a tile by its tick, its
+    /// nanoseconds over 100 truncated toward zero: the two place a record alike but before the capture's epoch, in the tick
+    /// a bound falls in. So a segment is, for a brush starting at or before the epoch, where its section holds a reading
+    /// there and its rows one before it; and wherever it holds an untimed row, which no tile holds and whose native reading
+    /// can still lie in the interval.
+    /// </summary>
+    private static bool MeasuredByRows(
+        SessionStore store, SessionManifestV1 manifest, SourceClockDescriptor clock, TileSection section, TimeRange interval) =>
+        section.Untimed > 0
+        || (interval.StartTicks <= 0 && section.First <= 0
+            && SessionSegments.NativeRange(store, manifest, section.Entry.Name).Min < clock.CaptureEpochNativeTicks);
+
     /// <summary>One worker's sums by process and by channel end, merged once it has no segment left.</summary>
     private sealed class Tallies(int processSlots, int endSlots)
     {
@@ -568,6 +676,9 @@ internal sealed class TransportByteTally(int slots)
     private readonly long[] other = new long[slots];
     private readonly long[] otherMeasured = new long[slots];
     private readonly long[] otherUnmeasured = new long[slots];
+
+    /// <summary>How many slots it keeps.</summary>
+    public int Slots => sent.Length;
 
     /// <summary>Adds one segment's grouped measurement, whose groups are these slots.</summary>
     public void Add(GroupedDomainMeasurement measured)

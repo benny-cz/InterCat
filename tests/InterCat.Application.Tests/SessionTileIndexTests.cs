@@ -1162,7 +1162,7 @@ public sealed partial class SessionTileIndexTests
                 int channelsAt = header + 35 + (2 * section.Mechanisms.Length) + (12 * section.Levels) + 32;
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt)) + 1);
                 BinaryPrimitives.WriteInt64LittleEndian(kept.AsSpan(channelsAt + 8), BinaryPrimitives.ReadInt64LittleEndian(kept.AsSpan(channelsAt + 8)) - 1);
-                (from, checkedLength) = (header, channelsAt + 32 - header);
+                (from, checkedLength) = (header, channelsAt + 48 - header);
                 break;
         }
 

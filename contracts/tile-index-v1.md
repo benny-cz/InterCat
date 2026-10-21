@@ -1,24 +1,25 @@
 # InterCat tile index v1
 
 Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 in revision 459, minor 3 in revision 460,
-minor 4 in revision 701 and minor 5 in revision 704; a group's lanes count from it since revision 458, a process's
-direction rows since revision 459, a channel's ends since revision 460, every query from a level spanning the segments
-since revision 701, and a zoom's byte lanes and an interval's bytes from its byte sums since revision 704. It holds
+minor 4 in revision 701, minor 5 in revision 704 and minor 6 in revision 706; a group's lanes count from it since
+revision 458, a process's direction rows since revision 459, a channel's ends since revision 460, every query from a
+level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its byte sums since
+revision 704, and a brush's bytes by process and channel end from its byte tallies since revision 706. It holds
 §12.1 S4's deeper levels, beneath the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
 - the segment's timeline tiles at decimal levels, each with what its records' owners and channels bind to, tallied, and
-  the bytes its records measured, summed;
+  the bytes its records measured, summed and tallied by owner, channel and side;
 - the readings, mechanisms, directions, ends, bindings and measures of the records of its finest tiles, beside them.
 
 Where two or more segments hold timed records, it keeps a level spanning them as well: the whole generation's tiles, at
-decimal levels, with their counts, tallies and byte sums but no records of their own.
+decimal levels, with their counts, tallies, byte sums and byte tallies but no records of their own.
 
 A zoom of a finished session counts each segment from these. It counts a tile whole wherever its records fall in one
 column, and reads a tile's children, or a finest tile's records, only where a column boundary falls among them. A zoom's
 byte lanes add up a tile's byte sums the same way, and read its records' measures only where a boundary falls among
 them. A brush counts a segment the same way at its two ends, adding a tile its interval holds whole from the tile's
-tallies. An owner
+tallies, and a brush ranked by bytes measures it so, adding such a tile's bytes from its byte tallies. An owner
 focus - a group's or one process's - counts its records, lanes and directions the same way per column, and so does a
 channel's focus its records and its two ends' lanes. Over a level spanning the segments, each counts that level's tiles
 first, whole where it can, and the segments only beneath the ranges of its finest tiles it could not. So none opens a
@@ -109,6 +110,20 @@ its rows, which refuse as they do without an index. A checkpoint measures every 
 (`contracts/overview-index-v1.md` minor 2), and publishes nothing where that refuses a row, so the sections of a tile
 index it publishes keep their bytes; one keeping none is read as this says.
 
+### Byte tallies
+
+Since minor 6, each tile, at every level, also keeps its timed records' measures tallied: for each owner key, channel key
+and accounting side its records state - 0 among the keys, for a record bound to no instance or to no channel - how many
+measured their bytes, how many declared a size they did not record, and the bytes they measured. A wider tile's byte
+tallies are its children's, summed. A section keeps them wherever it keeps its byte sums, whatever their size: where a
+tile's records each have an owner and a channel of their own, they hold an entry for nearly each, and cost a brush
+about what reading its records would.
+
+They hold what a brush ranked by bytes measures (`SessionByteRanking`): each record's bytes counted for the instance its
+owner binds to, where the evidence policy admits the binding's strength, which its owner key carries; and, where the
+brush draws its channel, for that channel's end at that instance. A record whose owner the policy does not admit is
+counted as unattributed, as reading its row counts it.
+
 ### Segments that keep no tiles
 
 A segment whose timed readings ever go backwards keeps no tiles, and a zoom reads its rows. So does one with no timed
@@ -128,8 +143,9 @@ the index keeps a level spanning them all, in a section of its own:
 A tile keeps its earliest and latest reading, how many of its records are of each mechanism the level's records are of,
 and its owner and channel tallies, as a segment's tile does, each part kept where it takes at most a third of the bytes
 of the records beneath it in the segments' sections, their measures left out; and since minor 5, where every section it
-spans keeps its bytes and no sum passes what it holds, its byte sums. It keeps no records: a query counts a finest tile it cannot count whole from the sections whose timed
-readings meet the tile's. The section also states, for each segment's section holding a timed record, its earliest and
+spans keeps its bytes and no sum passes what it holds, its byte sums; and since minor 6, where it keeps its byte sums
+and its finest tiles' byte tallies fit the same bound as their tallies (below), its byte tallies. It keeps no records: a
+query counts a finest tile it cannot count whole from the sections whose timed readings meet the tile's. The section also states, for each segment's section holding a timed record, its earliest and
 latest reading and how many timed records it holds, which find the sections a range meets without reading their headers.
 
 Every tile of a segment is aligned at a power of ten no wider than `W`, so its tile of width `W` - its own, or one summed
@@ -137,7 +153,10 @@ above its top - is exactly what it holds of the spanning tile with the same read
 those, as reading every record would make it. While the level is written, its finest tiles hold at most 2,097,152 tally
 entries, about 24 MB; past that bound they are made ten times wider, which sums each process's and channel's entries,
 until they fit. Where they do not fit even once a tile is as wide as the readings' span, or a count passes what a tile's
-word holds, the index keeps no such level, and every query counts its segments' sections as minor 3 did.
+word holds, the index keeps no such level, and every query counts its segments' sections as minor 3 did. Its finest
+tiles' byte tallies are held to the same 2,097,152 entries once the tiles are as wide as their tallies make them, but
+the tiles are not made wider for them: past the bound, or where a sum passes what it holds, the level keeps no byte
+tallies, and a brush ranked by bytes measures its interval from the segments' sections.
 
 ## 2. Files and publication
 
@@ -165,9 +184,10 @@ A generation that names the other three but no readable tile index of each of it
 includes every generation published before revision 456, an index of minor 0 (revision 456's, which kept no bindings),
 minor 1 (revision 457's, which kept no directions) or minor 2 (revision 459's, which kept no ends), and one whose
 directory states a derivation other than the checkpoint's. An index of minor 3 (revision 460's, which keeps no level
-spanning the segments) or minor 4 (revision 701's, which keeps no byte sums) is read, its records counted from its
-segments' sections or the level spanning them and its bytes measured from the segments' rows, but is not current
-either. Its writer's next publication, or `icat checkpoint`, publishes all four again.
+spanning the segments), minor 4 (revision 701's, which keeps no byte sums) or minor 5 (revision 704's, which keeps no
+byte tallies) is read - its records counted from its segments' sections or the level spanning them, a zoom's byte lanes
+added from its byte sums where it keeps them, and a brush's bytes measured from the segments' rows - but is not
+current either. Its writer's next publication, or `icat checkpoint`, publishes all four again.
 
 At 1,000,000 records of the scale gate's generator in four segments, a tile index took 7.7% of the segments' bytes,
 13.5 bytes a record, and 7.6% at 10,000,000 in forty: what revision 459's took, which kept no ends, since a record's
@@ -190,6 +210,11 @@ bytes with their measures, tiles of a few hundred records would have kept them t
 15.4%. In 400 segments of 2,500 records the index took 58.7% of the segments' bytes, 9.6 MB of its 100 MB the byte sums
 of their narrow tiles, each of which keeps its mechanisms' sides however few its records.
 
+Since minor 6 the same million records' index took 12.7% of the segments' bytes, 22.3 bytes a record: its byte tallies
+took 1.2 MB. Each finest tile of a few hundred records sent and received by a few dozen processes over their
+connections holds an entry for each process, channel and side among them, and a wider tile those of its children,
+merged.
+
 ## 3. Bytes
 
 Little-endian throughout. `str8` is an unsigned byte count followed by that many UTF-8 bytes. `guid` is 16 bytes in
@@ -209,7 +234,7 @@ footer        the last 32 bytes
 |---|---|---|
 | 0 | 8 | magic `ICATTILE` |
 | 8 | 2 | major, 1 |
-| 10 | 2 | minor, 5 |
+| 10 | 2 | minor, 6 |
 | 12 | 4 | reserved, zero |
 | 16 | 16 | session (`guid`) |
 | 32 | 8 | the generation whose segments it describes |
@@ -266,13 +291,16 @@ i64 where the records begin, from the section's start           i64 the records'
 i64 where the owner tallies begin, from the section's start     i64 the owner tallies' length
 i64 where the channel tallies begin, from the section's start   i64 the channel tallies' length
 i64 where the byte sums begin, from the section's start         i64 the byte sums' length
+i64 where the byte tallies begin, from the section's start      i64 the byte tallies' length
 u32 CRC-32C over the header's bytes before it
 ```
 
-A section that keeps no tiles has no mechanisms, no levels, no records, no tallies and no byte sums, and a width of 1.
-The owner tallies begin where the records end, the channel tallies where the owner tallies end and the byte sums where
-the channel tallies end, and the byte sums end where the section does; a section keeping no bytes has none. Minor 3's
-and 4's headers end after the channel tallies' length, and their channel tallies end where the section does.
+A section that keeps no tiles has no mechanisms, no levels, no records, no tallies, no byte sums and no byte tallies,
+and a width of 1. The owner tallies begin where the records end, the channel tallies where the owner tallies end, the
+byte sums where the channel tallies end and the byte tallies where the byte sums end, and the byte tallies end where the
+section does; a section keeping no bytes has neither, and one keeping byte sums keeps byte tallies. Minor 5's header
+ends after the byte sums' length, and its byte sums end where the section does; minor 3's and 4's end after the channel
+tallies' length, and their channel tallies end where the section does.
 
 ### Levels
 
@@ -280,6 +308,8 @@ The levels follow the header, the finest first, each beginning where the one bef
 time order, in blocks of 32; the last block may hold fewer. A block is:
 
 - its tiles;
+- since minor 6, an `i32`: where its tiles' byte tallies end within the byte tallies, before their checksum; zero where
+  the section keeps none;
 - since minor 5, an `i32`: where its tiles' byte sums end within the byte sums, before their checksum; zero where the
   section keeps none;
 - an `i32`: for the finest level, where its last tile's records end within the records, before their checksum; for a
@@ -293,13 +323,14 @@ A tile is:
 ```text
 i64 earliest reading    i64 latest reading    i32 link    i32 children    i32 owner tallies    i32 channel tallies
 m × i32 count, one per mechanism
-i32 byte sums (since minor 5)
+i32 byte sums (since minor 5)    i32 byte tallies (since minor 6)
 ```
 
 For a finest tile, `link` is where its first record begins within the records, and `children` is zero. For a wider
 tile, `link` is the position of its first child in the level below, and `children` is how many it has: 1 to 10, the
-next tiles there. `owner tallies`, `channel tallies` and `byte sums` are where the tile's owner tallies, channel
-tallies and byte sums begin within them; `byte sums` is zero where the section keeps none.
+next tiles there. `owner tallies`, `channel tallies`, `byte sums` and `byte tallies` are where the tile's owner
+tallies, channel tallies, byte sums and byte tallies begin within them; `byte sums` and `byte tallies` are zero where
+the section keeps none.
 
 ### Records
 
@@ -351,6 +382,23 @@ LEB128. A tile's sums are how many entries, then each entry in order of mechanis
 
 A section keeping no bytes has no byte sums.
 
+### Byte tallies
+
+Since minor 6 the byte tallies follow the byte sums, level by level from the finest, as the sums do: for each block of
+a level, that block's tiles' byte tallies in time order, then a CRC-32C over those bytes. Each number is unsigned
+LEB128. A tile's byte tallies are how many entries, plus one, then each entry in order of owner key, then of channel
+key, then of side:
+
+- its owner key's increase over the entry before's (the first entry's over zero, so its key);
+- its channel key - for an entry of the same owner key as the one before, its increase over that entry's - times 4,
+  plus its accounting side's code less one;
+- how many of its records measured their bytes;
+- how many declared a size they did not record;
+- the bytes they measured.
+
+A tile keeping none is a single zero, and a query measures it from its children or its records. A section keeping no
+bytes has no byte tallies.
+
 ### The spanning section
 
 The spanning section begins with its header:
@@ -363,15 +411,17 @@ u8 L: levels        L × (i32 tiles, i64 where the level begins, from the sectio
 i64 where the owner tallies begin, from the section's start     i64 the owner tallies' length
 i64 where the channel tallies begin, from the section's start   i64 the channel tallies' length
 i64 where the byte sums begin, from the section's start         i64 the byte sums' length
+i64 where the byte tallies begin, from the section's start      i64 the byte tallies' length
 u32 CRC-32C over the header's bytes before it
 ```
 
-Minor 4's header ends after the channel tallies' length. Its extents follow: for each segment's section holding a timed record, in the directory's order, its place in the
+Minor 5's header ends after the byte sums' length, and minor 4's after the channel tallies'. Its extents follow: for each segment's section holding a timed record, in the directory's order, its place in the
 directory as an `i32`, its earliest and latest reading and how many timed records it holds as `i64`s, 28 bytes in all;
-then a CRC-32C over them. Its levels follow the extents, and its owner and channel tallies and byte sums its levels,
-laid out as a segment's section lays out its own, but that it keeps no records: a finest tile's `link` and `children`
-are zero, and every block's word for where its records end is zero. The byte sums end where the section does; a level
-keeping no bytes has none, and minor 4's channel tallies end where the section does.
+then a CRC-32C over them. Its levels follow the extents, and its owner and channel tallies, byte sums and byte tallies
+its levels, laid out as a segment's section lays out its own, but that it keeps no records: a finest tile's `link` and
+`children` are zero, and every block's word for where its records end is zero. The byte tallies end where the section
+does. A level keeping no bytes has neither byte sums nor byte tallies, and one keeping byte sums may keep no byte
+tallies (§1); minor 5's byte sums end where the section does, and minor 4's channel tallies.
 
 ## 4. Reading
 
@@ -380,8 +430,8 @@ A tile index carries its own checksums, so it is read by the block and never has
 - its header, footer and directory are checked when it is opened;
 - a section's header when a zoom or a brush first needs it, and the spanning section's header, extents and top block
   when a query first counts it;
-- a block when a zoom or a brush reads it, and a block's owner or channel tallies, or its byte sums, when a query counts
-  one of its tiles from them;
+- a block when a zoom or a brush reads it, and a block's owner or channel tallies, its byte sums or its byte tallies,
+  when a query counts one of its tiles from them;
 - a finest tile's records when a column boundary or a brush's end falls among them. They are read with the records of
   the tiles after them in their block, so a count that reads a block's every tile reads its records once, and each
   tile's are checked as they are counted.
@@ -406,7 +456,9 @@ A reader refuses an index, or a part of it, that:
   - a level below the top of at most 32 tiles, or a top level of more;
   - records longer than 31 bytes for each timed row and 4 for each finest tile;
   - owner tallies that do not begin where the records end, channel tallies that do not begin where the owner tallies
-    end, or byte sums that do not begin where the channel tallies end or end where the section does;
+    end, byte sums that do not begin where the channel tallies end, or byte tallies that do not begin where the byte
+    sums end or end where the section does;
+  - since minor 6, byte sums without byte tallies, or byte tallies without byte sums;
   - flags or mechanisms it does not define;
 - holds a tile that:
   - holds no record;
@@ -417,7 +469,7 @@ A reader refuses an index, or a part of it, that:
 - holds tiles whose owner or channel tallies do not follow one another, or a block whose tallies lie outside the
   section's;
 - holds tiles whose byte sums do not follow one another, or a block whose byte sums lie outside the section's, or, in
-  a section keeping no bytes, a tile or a block placing any;
+  a section keeping no bytes, a tile or a block placing any; and the same of byte tallies;
 - holds records that are not their tile's:
   - its first record is not at the tile's earliest reading;
   - a record lies past the tile's latest;
@@ -433,6 +485,9 @@ A reader refuses an index, or a part of it, that:
 - holds byte sums that are not their tile's: more entries than four for each of the section's mechanisms, entries out
   of order, a mechanism not among the section's, an entry no record measured or declared, more of a mechanism's records
   than the tile holds of it, bytes no record measured or more than a sum holds, or bytes after its last entry;
+- holds byte tallies that are not their tile's: entries out of order, an owner key of 1 to 7, an owner or channel
+  beyond the stated derivation's, an entry no record measured or declared, more records measured or declared than the
+  tile holds, in an entry or in all, bytes no record measured or more than a sum holds, or bytes after its last entry;
 - places a spanning section other than where the last segment's section ends, or ends its sections other than where
   the directory begins;
 - has a spanning section whose header does not lay it out:
@@ -440,8 +495,9 @@ A reader refuses an index, or a part of it, that:
     than extents;
   - an earliest reading after its latest, a width no power of ten, no mechanism or no level;
   - levels laid out other than as a section's are, or more than 2,049 finest tiles;
-  - owner tallies that do not begin where its levels end, or byte sums that do not begin where its channel tallies
-    end or end where the section does;
+  - owner tallies that do not begin where its levels end, byte sums that do not begin where its channel tallies end,
+    byte tallies that do not begin where its byte sums end or end where the section does, or byte tallies without byte
+    sums;
 - states extents out of the directory's order or beyond its sections, outside the readings it spans, of no record, or
   that do not add up to its timed records, its earliest reading and its latest;
 - has a top level whose counts do not add up to the timed records it spans;
@@ -537,6 +593,35 @@ At 10,000,000 records in forty segments, the scale gate's brushed ranking, which
 the graph and the table from the counts, took 6.3 ms the first time and 9.5 ms at the 95th percentile, from 631 and 273
 ms (§12's budget is 250 ms). Since minor 3, whose brush reads a tile's owner and channel tallies, the latter by end and
 direction, it took 14 ms the first time and 14 to 15 ms at the 95th percentile.
+
+### A brush ranked by bytes
+
+A brush ranked by bytes measures what reading every row measures (`SessionByteRanking`, `metrics-v1` §4): inside its
+interval, each process's transport-observed bytes by accounting side, how many of its records measured them and how
+many declared a size they did not record; the same at each end of each paired channel the evidence policy draws; and of
+the records whose owner the policy binds to no instance. It measures from the index only when the index is of minor 6
+and describes every observation segment the generation names, and states the derivation the brush binds with, as a
+brush counts. It then measures each segment from its top level down:
+
+- a tile none of whose records lies in the interval is passed over;
+- a tile all of whose records lie in it and that keeps byte tallies adds them: each entry to the instance its owner key
+  binds where the policy admits the binding's strength, and otherwise to the records no instance takes; and, where the
+  brush draws the entry's channel, to that channel's end at that instance;
+- any other tile gives way to its children, or, at the finest level, to its records, each measured as its row would be.
+
+A brush's bounds place a record by the first native reading at or after each (`metrics-v1` §5), and a record with no
+usable session time still has a native reading in it. A tile places a record by its tick, its nanoseconds over 100
+truncated toward zero, which is the same place but for a record before the capture's epoch in the tick a bound falls in.
+So a segment is measured from its rows where its section keeps no byte tallies, where it holds an untimed record, and,
+for a brush starting at or before the epoch, where its section holds a reading there and its rows a record before the
+epoch; such a segment is opened only where its native readings meet the brush's. Over a level spanning the segments
+that keeps byte tallies, where no segment is measured from its rows, a brush measures the level's tiles first and the
+sections beneath only the ranges it leaves, as a brush counts them. That is exactly what reading every row measures.
+
+At 10,000,000 records of the scale gate's generator in forty segments, a reopened session's ten brushes ranked by
+bytes, from a half to a fifth of the extent, took 3.0 ms the first time and 1.9 to 12.5 ms after, against 1,336 ms the
+first time and 29 to 513 ms after reading their segments' rows (§12's budget is 250 ms); at 1,000,000 records in four
+segments, 53.9 ms the first time and 1.9 to 31.0 ms after, against 437 ms and 19 to 226 ms.
 
 ### An owner focus
 
@@ -634,9 +719,9 @@ across a boundary, and a focus counts the sections as before (§5).
   segments the interval meets. So does a focus on the whole session's records of one source direction, which no tally
   holds apart. A focus on its records of one mechanism alone is what the zoom's own counts hold of it, and since
   revision 461 is taken from them.
-- The bytes of an owner's or a channel's records apart - a group's lanes or a process's direction rows under a byte
-  ranking, a brushed ranking by bytes, a channel's bytes - which no tally keeps. Each reads its rows from the segments
-  its interval meets.
+- The bytes of an owner's or a channel's records apart in columns - a group's lanes or a process's direction rows under
+  a byte ranking, a channel's bytes - which the byte tallies hold by tile but no focus counts from at this version. Each
+  reads its rows from the segments its interval meets.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.
 - Spanning tiles narrower than a focus's columns where they are many. The level's finest tiles are at most 2,048, so a
