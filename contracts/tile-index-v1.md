@@ -1,11 +1,11 @@
 # InterCat tile index v1
 
 Status: **implemented** in plan revision 456, minor 1 in revision 457, minor 2 in revision 459, minor 3 in revision 460,
-minor 4 in revision 701, minor 5 in revision 704 and minor 6 in revision 706; a group's lanes count from it since
-revision 458, a process's direction rows since revision 459, a channel's ends since revision 460, every query from a
-level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its byte sums since
-revision 704, a brush's bytes by process and channel end from its byte tallies since revision 706, and a group's
-byte lanes from them since revision 707. It holds
+minor 4 in revision 701, minor 5 in revision 704, minor 6 in revision 706 and minor 7 in revision 708; a group's lanes
+count from it since revision 458, a process's direction rows since revision 459, a channel's ends since revision 460,
+every query from a level spanning the segments since revision 701, a zoom's byte lanes and an interval's bytes from its
+byte sums since revision 704, a brush's bytes by process and channel end from its byte tallies since revision 706, a
+group's byte lanes from them since revision 707, and a process's byte direction rows since revision 708. It holds
 §12.1 S4's deeper levels, beneath the persisted overview (`contracts/overview-index-v1.md`), which is the top level. For
 each observation segment of a generation, it keeps:
 
@@ -115,7 +115,8 @@ index it publishes keep their bytes; one keeping none is read as this says.
 ### Byte tallies
 
 Since minor 6, each tile, at every level, also keeps its timed records' measures tallied: for each owner key, channel key
-and accounting side its records state - 0 among the keys, for a record bound to no instance or to no channel - how many
+and accounting side its records state - 0 among the keys, for a record bound to no instance or to no channel - and since
+minor 7 each direction code (`EN-Direction`, or 7 for a code of 7 or more, as a record's kind holds it), how many
 measured their bytes, how many declared a size they did not record, and the bytes they measured. A wider tile's byte
 tallies are its children's, summed. A section keeping byte sums keeps byte tallies, and a tile keeps them as it keeps
 its tallies: where they take at most a third of the bytes of the records beneath it, their measures left out. Where a
@@ -126,7 +127,8 @@ byte tallies would have.
 They hold what a brush ranked by bytes measures (`SessionByteRanking`): each record's bytes counted for the instance its
 owner binds to, where the evidence policy admits the binding's strength, which its owner key carries; and, where the
 brush draws its channel, for that channel's end at that instance. A record whose owner the policy does not admit is
-counted as unattributed, as reading its row counts it.
+counted as unattributed, as reading its row counts it. They hold a group's lanes' bytes by process the same way, and
+since minor 7 a process's bytes by the direction its source states, which its direction rows plot.
 
 ### Segments that keep no tiles
 
@@ -188,10 +190,12 @@ A generation that names the other three but no readable tile index of each of it
 includes every generation published before revision 456, an index of minor 0 (revision 456's, which kept no bindings),
 minor 1 (revision 457's, which kept no directions) or minor 2 (revision 459's, which kept no ends), and one whose
 directory states a derivation other than the checkpoint's. An index of minor 3 (revision 460's, which keeps no level
-spanning the segments), minor 4 (revision 701's, which keeps no byte sums) or minor 5 (revision 704's, which keeps no
-byte tallies) is read - its records counted from its segments' sections or the level spanning them, a zoom's byte lanes
-added from its byte sums where it keeps them, and a brush's bytes measured from the segments' rows - but is not
-current either. Its writer's next publication, or `icat checkpoint`, publishes all four again.
+spanning the segments), minor 4 (revision 701's, which keeps no byte sums), minor 5 (revision 704's, which keeps no
+byte tallies) or minor 6 (revision 706's, whose byte tallies hold no direction) is read - its records counted from its
+segments' sections or the level spanning them, a zoom's byte lanes added from its byte sums where it keeps them, a
+brush's bytes and a group's byte lanes from its byte tallies where it keeps them, and what else it does not keep
+measured from the segments' rows - but is not current either. Its writer's next publication, or `icat checkpoint`,
+publishes all four again.
 
 At 1,000,000 records of the scale gate's generator in four segments, a tile index took 7.7% of the segments' bytes,
 13.5 bytes a record, and 7.6% at 10,000,000 in forty: what revision 459's took, which kept no ends, since a record's
@@ -217,7 +221,8 @@ of their narrow tiles, each of which keeps its mechanisms' sides however few its
 Since minor 6 the same million records' index took 12.7% of the segments' bytes, 22.3 bytes a record: its byte tallies
 took 1.2 MB. Each finest tile of a few hundred records sent and received by a few dozen processes over their
 connections holds an entry for each process, channel and side among them, and a wider tile those of its children,
-merged.
+merged. Since minor 7 an entry is of one direction too; a process sends outbound and receives inbound, so its entries
+are as many as before, and the index is the same size.
 
 ## 3. Bytes
 
@@ -238,7 +243,7 @@ footer        the last 32 bytes
 |---|---|---|
 | 0 | 8 | magic `ICATTILE` |
 | 8 | 2 | major, 1 |
-| 10 | 2 | minor, 6 |
+| 10 | 2 | minor, 7 |
 | 12 | 4 | reserved, zero |
 | 16 | 16 | session (`guid`) |
 | 32 | 8 | the generation whose segments it describes |
@@ -391,11 +396,12 @@ A section keeping no bytes has no byte sums.
 Since minor 6 the byte tallies follow the byte sums, level by level from the finest, as the sums do: for each block of
 a level, that block's tiles' byte tallies in time order, then a CRC-32C over those bytes. Each number is unsigned
 LEB128. A tile's byte tallies are how many entries, plus one, then each entry in order of owner key, then of channel
-key, then of side:
+key, then of direction code, then of side:
 
 - its owner key's increase over the entry before's (the first entry's over zero, so its key);
-- its channel key - for an entry of the same owner key as the one before, its increase over that entry's - times 4,
-  plus its accounting side's code less one;
+- its channel key - for an entry of the same owner key as the one before, its increase over that entry's - times 32,
+  plus its direction code times 4, plus its accounting side's code less one. Minor 6's entries hold every direction of
+  an owner key, channel key and side in one: its channel key times 4, plus its side's code less one;
 - how many of its records measured their bytes;
 - how many declared a size they did not record;
 - the bytes they measured.
@@ -627,19 +633,22 @@ bytes, from a half to a fifth of the extent, took 3.0 ms the first time and 1.9 
 first time and 29 to 513 ms after reading their segments' rows (§12's budget is 250 ms); at 1,000,000 records in four
 segments, 53.9 ms the first time and 1.9 to 31.0 ms after, against 437 ms and 19 to 226 ms.
 
-### A group's byte lanes
+### A group's byte lanes and a process's byte direction rows
 
 A group's process lanes under a byte ranking (§6.2) measure what reading every row measures
 (`SessionIntervalByteQuery.MeasureByOwner`): in each of the view's columns, every timed record's transport-observed bytes,
 for the machine row; and in each of the lanes' columns - the view's, or fewer and wider over the same interval past §6.2's
 cell budget - the bytes of each record whose owner binds to a process with a lane, where the evidence policy admits the
-binding, in that process's lane. They add up from the index under the conditions a brush ranked by bytes measures from
-it, and each segment from its top level down:
+binding, in that process's lane. A process's direction rows (`SessionIntervalByteQuery.MeasureByDirection`) measure the
+same machine row, and in the same columns the bytes of each record whose owner binds to the process, where the policy
+admits the binding, in the row of the direction its source states; a direction code no direction is refuses the index,
+as reading the row refuses it. Each adds up from the index under the conditions a brush ranked by bytes measures from
+it - the direction rows only from an index of minor 7 - and each segment from its top level down:
 
 - a tile none of whose records lies in the columns' interval is passed over;
 - a tile all of whose records fall in one column of the view's and one of the lanes', and that keeps byte tallies, adds
-  each entry to the machine row there, and an entry of a process with a lane whose binding's strength the policy admits
-  to that lane there;
+  each entry to the machine row there, and an entry of a process with a lane, or of the process whose rows they are,
+  whose binding's strength the policy admits to that lane, or its direction's row, there;
 - any other tile gives way to its children, or, at the finest level, to its records, each added as its row would be.
 
 A record is placed by its tick, as a column reads a row's time, so a segment holding an untimed record or one before the
@@ -653,7 +662,9 @@ the median after, at most 142 ms, against 2,366 ms the first time and 114 ms at 
 rows; in 256 columns, lanes and all, 141 ms the first time and 51 ms at the median, at most 109 ms, against 195, 73 and
 90 ms. The generator's records take turns among 200 connections record by record, so only tiles of thousands of records
 keep byte tallies, and the tile a column boundary falls in has its records read: a burstier capture's narrower tiles keep
-theirs.
+theirs. The busiest process's direction rows in 2,000 columns took 312 ms the first time and 51 ms at the median after,
+at most 91 ms, against 1,817 ms, 82 and 119 reading its rows; in 256 columns, 112, 51 and 78 ms, against 326, 55 and
+83.
 
 ### An owner focus
 
@@ -751,9 +762,8 @@ across a boundary, and a focus counts the sections as before (§5).
   segments the interval meets. So does a focus on the whole session's records of one source direction, which no tally
   holds apart. A focus on its records of one mechanism alone is what the zoom's own counts hold of it, and since
   revision 461 is taken from them.
-- The bytes of a process's records by source direction - its direction rows under a byte ranking - which the byte
-  tallies do not hold apart, and a channel's bytes in columns, which no focus adds from them at this version. Each reads
-  its rows from the segments its interval meets.
+- A channel's bytes in columns, which no focus adds from the byte tallies at this version. It reads its rows from the
+  segments its interval meets.
 - The tiles of a live generation, which publishes no checkpoint until its writer finishes. Its zooms build each
   segment's tiles from its rows.
 - Spanning tiles narrower than a focus's columns where they are many. The level's finest tiles are at most 2,048, so a

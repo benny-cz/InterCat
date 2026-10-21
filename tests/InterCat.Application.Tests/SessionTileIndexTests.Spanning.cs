@@ -234,7 +234,7 @@ public sealed partial class SessionTileIndexTests
         using (var one = Published(Shifts(2, 3_000)))
         {
             TileIndexFile file = FileOf(one);
-            Assert.Equal((6, false), (file.Minor, file.Spans));
+            Assert.Equal((SessionTileIndex.Minor, false), (file.Minor, file.Spans));
         }
 
         // Two segments, the second holding no timed record.
@@ -486,10 +486,11 @@ public sealed partial class SessionTileIndexTests
         session.Store.ReleaseSegmentReaders();
     }
 
-    [Theory(DisplayName = "I14: a minor 3, 4 or 5 tile index, which keeps no byte tallies, before minor 5 no byte sums and at minor 3 no level spanning its segments, is counted from as before, what it does not keep read from the segments, and a checkpoint publishes it again with all of them")]
+    [Theory(DisplayName = "I14: a minor 3 to 6 tile index, which keeps no byte tallies by direction, before minor 6 no byte tallies, before minor 5 no byte sums and at minor 3 no level spanning its segments, is counted from as before, what it does not keep read from the segments, and a checkpoint publishes it again with all of them")]
     [InlineData(3)]
     [InlineData(4)]
     [InlineData(5)]
+    [InlineData(6)]
     public void AnEarlierTileIndexIsPublishedAgain(int minor)
     {
         ObservationRowV1[] rows = Shifts(3, 7_000 + minor);
@@ -502,11 +503,22 @@ public sealed partial class SessionTileIndexTests
         string[] brushed = Brushed(store, half, EvidencePolicy.IncludeCorrelated);
         ProcessInstanceId[] group = [.. Bind(store).Processes.Instances.Take(2).Select(instance => instance.Id)];
         string[] owned = OwnerBytes(store, half, 70, 35, group, EvidencePolicy.IncludeCorrelated);
+        string[] directed = DirectionBytes(store, half, 70, group[0], EvidencePolicy.IncludeCorrelated);
 
-        // The same file as revision 460, 701 or 704 wrote it: no byte tallies, before minor 5 no byte sums or measures, and
-        // at minor 3 a directory ending after the segments' sections.
+        // The same file as revision 460, 701, 704 or 706 wrote it: no byte tallies by direction, before minor 6 none at all,
+        // before minor 5 no byte sums or measures, and at minor 3 a directory ending after the segments' sections.
         Republish(session, tiles: content => content.Write(Earlier(File.ReadAllBytes(path), (ushort)minor)));
         Assert.Equal((minor, minor >= 4), (FileOf(session).Minor, FileOf(session).Spans));
+        if (minor == 6)
+        {
+            // Its byte tallies hold no direction: no section adds a process's direction rows, which read their rows.
+            using TileReading reading = FileOf(session).Read(store.Root);
+            var directions = new DirectionByteRows(new TimelineColumns(whole, 7, tallyMechanisms: false), 0,
+                SessionTileIndex.AdmittedStrengths(EvidencePolicy.IncludeCorrelated), new(8), new((SessionTimelineQuery.LaneDirections.Count * 7) + 1));
+            Assert.All(SessionSegments.Names(store.Current!), name =>
+                Assert.False(reading.MeasureColumns(reading.Section(name), whole, directions, CancellationToken.None)));
+        }
+
         store.ReleaseSegmentReaders();
         Bound bound = Bind(store);
         SessionStore viewer = SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session.Path));
@@ -517,8 +529,9 @@ public sealed partial class SessionTileIndexTests
         Assert.Equal(interval, IntervalBytes(viewer, whole, 70));
         Assert.Equal(minor >= 5, viewer.SegmentReaderCache.Entries == 0);
         Assert.Equal(owned, OwnerBytes(viewer, half, 70, 35, group, EvidencePolicy.IncludeCorrelated));
-        Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
         Assert.Equal(brushed, Brushed(viewer, half, EvidencePolicy.IncludeCorrelated));
+        Assert.Equal(minor >= 6, viewer.SegmentReaderCache.Entries == 0);
+        Assert.Equal(directed, DirectionBytes(viewer, half, 70, group[0], EvidencePolicy.IncludeCorrelated));
         Assert.NotEqual(0, viewer.SegmentReaderCache.Entries);
         Assert.Null(SessionDerivationCache.For(viewer.Current!).TilesProblem);
         viewer.ReleaseSegmentReaders();
@@ -526,7 +539,7 @@ public sealed partial class SessionTileIndexTests
         // Not current: the next checkpoint publishes it again, spanning its segments and keeping their bytes.
         CheckpointPublication again = SessionCheckpoints.Publish(store, Committed);
         Assert.True(again.Outcome == CheckpointOutcome.Published, again.Reason);
-        Assert.Equal((6, true), (FileOf(session).Minor, FileOf(session).Spans));
+        Assert.Equal((SessionTileIndex.Minor, true), (FileOf(session).Minor, FileOf(session).Spans));
         Assert.Equal(CheckpointOutcome.AlreadyCurrent, SessionCheckpoints.Publish(store, Committed).Outcome);
         store.ReleaseSegmentReaders();
     }
@@ -616,12 +629,12 @@ public sealed partial class SessionTileIndexTests
     private static byte[] Earlier(byte[] bytes, ushort minor) => Rewritten(bytes, minor, _ => false, unsumSpanning: false);
 
     /// <summary>
-    /// A minor 6 tile index whose sections <paramref name="unsum"/> chooses, and its spanning section where
+    /// A tile index of the current minor whose sections <paramref name="unsum"/> chooses, and its spanning section where
     /// <paramref name="unsumSpanning"/>, keep no bytes, as a section reading its rows refuses keeps none: no byte sums or
     /// byte tallies, each tile's links to them and each block's ends of them zero, and each record's measure none.
     /// </summary>
     private static byte[] Unsummed(byte[] bytes, Func<int, bool> unsum, bool unsumSpanning) =>
-        Rewritten(bytes, 6, unsum, unsumSpanning);
+        Rewritten(bytes, SessionTileIndex.Minor, unsum, unsumSpanning);
 
     private static byte[] Rewritten(byte[] bytes, ushort minor, Func<int, bool> unsum, bool unsumSpanning)
     {
@@ -646,7 +659,9 @@ public sealed partial class SessionTileIndexTests
             int length = (int)BinaryPrimitives.ReadInt64LittleEndian(bytes.AsSpan(at + 8));
             listed.Write(bytes.AsSpan(nameAt, at - nameAt));
             byte[] kept = bytes.AsSpan(offset, length).ToArray();
-            byte[] made = minor < 6 || unsum(section) ? RewrittenSection(kept, spanning: false, minor, summed: !unsum(section)) : kept;
+            byte[] made = minor < SessionTileIndex.Minor || unsum(section)
+                ? RewrittenSection(kept, spanning: false, minor, summed: !unsum(section))
+                : kept;
             WriteI64(listed, output.Length);
             WriteI64(listed, made.Length);
             output.Write(made);
@@ -658,7 +673,7 @@ public sealed partial class SessionTileIndexTests
         if (minor >= 4)
         {
             byte[]? kept = spanningLength == 0 ? null : bytes.AsSpan(spanningOffset, spanningLength).ToArray();
-            byte[]? made = kept is null || (minor >= 6 && !unsumSpanning) ? kept
+            byte[]? made = kept is null || (minor >= SessionTileIndex.Minor && !unsumSpanning) ? kept
                 : RewrittenSection(kept, spanning: true, minor, summed: !unsumSpanning);
             WriteI64(listed, made is null ? 0 : output.Length);
             WriteI64(listed, made?.Length ?? 0);
@@ -683,11 +698,11 @@ public sealed partial class SessionTileIndexTests
     }
 
     /// <summary>
-    /// One minor 6 section, or the spanning section, as <paramref name="minor"/> lays it out, keeping its bytes where
-    /// <paramref name="summed"/> and the minor keeps any: at minor 6 a section keeping none has its tiles' links and its
-    /// blocks' ends of byte sums and byte tallies zero, and each record's measure none; minor 5 keeps no byte tallies, nor
-    /// a place for them in its header, tiles and blocks; minors 3 and 4 keep no measures, byte sums or byte tallies, nor a
-    /// place for them. See <see cref="Rewritten"/>.
+    /// One section of the current minor, or the spanning section, as <paramref name="minor"/> lays it out, keeping its bytes
+    /// where <paramref name="summed"/> and the minor keeps any: at minor 6 or later a section keeping none has its tiles'
+    /// links and its blocks' ends of byte sums and byte tallies zero, and each record's measure none; minor 6's byte tallies
+    /// hold every direction in one entry; minor 5 keeps no byte tallies, nor a place for them in its header, tiles and
+    /// blocks; minors 3 and 4 keep no measures, byte sums or byte tallies, nor a place for them. See <see cref="Rewritten"/>.
     /// </summary>
     private static byte[] RewrittenSection(byte[] section, bool spanning, int minor, bool summed)
     {
@@ -715,6 +730,70 @@ public sealed partial class SessionTileIndexTests
         int keptTileBytes = (minor >= 6 ? 40 : minor >= 5 ? 36 : 32) + (4 * mechanisms);
         int parts = spanning ? 0 : 2;
         bool keepsBytes = summed && minor >= 5;
+
+        // Minor 6's byte tallies, where it keeps them: each tile's entries of one owner, channel and side, whatever their
+        // directions, as one, written as minor 6 wrote them, block by block with their checksums; each tile's link to them
+        // and each block's end of them placed anew.
+        int[][] byteLinks = [.. counts.Select(count => new int[count])];
+        int[][] byteEnds = [.. counts.Select(count => new int[(count + SessionTileIndex.TilesPerBlock - 1) / SessionTileIndex.TilesPerBlock])];
+        var undirected = new MemoryStream();
+        bool tallied = keepsBytes && minor >= 6 && regions[parts + 7] > 0;
+        if (tallied && minor == 6)
+        {
+            int talliesAt = (int)regions[parts + 6];
+            for (int level = 0; level < levels; level++)
+            {
+                for (int first = 0; first < counts[level]; first += SessionTileIndex.TilesPerBlock)
+                {
+                    int tiles = Math.Min(SessionTileIndex.TilesPerBlock, counts[level] - first);
+                    int blockAt = (int)offsets[level] + ((first / SessionTileIndex.TilesPerBlock) * ((SessionTileIndex.TilesPerBlock * tileBytes) + 24));
+                    int start = (int)undirected.Length;
+                    for (int tile = 0; tile < tiles; tile++)
+                    {
+                        int link = BinaryPrimitives.ReadInt32LittleEndian(section.AsSpan(blockAt + (tile * tileBytes) + 36 + (4 * mechanisms)));
+                        byteLinks[level][first + tile] = (int)undirected.Length;
+                        int read = talliesAt + link;
+                        ulong entries = ReadLeb(section, ref read);
+                        if (entries == 0)
+                        {
+                            undirected.WriteByte(0);
+                            continue;
+                        }
+
+                        var merged = new SortedDictionary<(ulong Owner, ulong Channel, ulong Side), (ulong Measured, ulong Unmeasured, ulong Total)>();
+                        (ulong owner, ulong channel) = (0, 0);
+                        for (ulong entry = 0; entry < entries - 1; entry++)
+                        {
+                            ulong increase = ReadLeb(section, ref read);
+                            ulong placed = ReadLeb(section, ref read);
+                            (ulong measured, ulong unmeasured, ulong total) = (ReadLeb(section, ref read), ReadLeb(section, ref read), ReadLeb(section, ref read));
+                            owner += increase;
+                            channel = increase == 0 ? channel + (placed >> 5) : placed >> 5;
+                            var key = (owner, channel, placed & 3);
+                            (ulong Measured, ulong Unmeasured, ulong Total) held = merged.GetValueOrDefault(key);
+                            merged[key] = (held.Measured + measured, held.Unmeasured + unmeasured, held.Total + total);
+                        }
+
+                        WriteLeb(undirected, (ulong)merged.Count + 1);
+                        (ulong ownerBefore, ulong channelBefore) = (0, 0);
+                        foreach (((ulong entryOwner, ulong entryChannel, ulong side), (ulong measured, ulong unmeasured, ulong total)) in merged)
+                        {
+                            WriteLeb(undirected, entryOwner - ownerBefore);
+                            WriteLeb(undirected, ((entryOwner == ownerBefore ? entryChannel - channelBefore : entryChannel) << 2) + side);
+                            WriteLeb(undirected, measured);
+                            WriteLeb(undirected, unmeasured);
+                            WriteLeb(undirected, total);
+                            (ownerBefore, channelBefore) = (entryOwner, entryChannel);
+                        }
+                    }
+
+                    byteEnds[level][first / SessionTileIndex.TilesPerBlock] = (int)undirected.Length;
+                    byte[] checksum = new byte[4];
+                    Crc32C.Write(checksum, Crc32C.Compute(undirected.GetBuffer().AsSpan(start, (int)undirected.Length - start)));
+                    undirected.Write(checksum);
+                }
+            }
+        }
 
         // The records, each with its measure where it keeps bytes, none where it keeps none at minor 5 or 6, and without one
         // before; tile by tile, each with its checksum, and where each tile's begin.
@@ -789,6 +868,10 @@ public sealed partial class SessionTileIndexTests
                     {
                         kept.AsSpan(32 + (4 * mechanisms)).Clear();
                     }
+                    else if (tallied && minor == 6)
+                    {
+                        BinaryPrimitives.WriteInt32LittleEndian(kept.AsSpan(36 + (4 * mechanisms)), byteLinks[level][first + tile]);
+                    }
 
                     if (level == 0 && !spanning)
                     {
@@ -812,6 +895,10 @@ public sealed partial class SessionTileIndexTests
                 {
                     ends.AsSpan().Clear();
                 }
+                else if (tallied && minor == 6)
+                {
+                    BinaryPrimitives.WriteInt32LittleEndian(ends, byteEnds[level][first / SessionTileIndex.TilesPerBlock]);
+                }
 
                 block.Write(ends.AsSpan(minor >= 6 ? 0 : minor >= 5 ? 4 : 8));
                 block.Write(words);
@@ -827,7 +914,7 @@ public sealed partial class SessionTileIndexTests
         long ownersLength = regions[parts + 1];
         long channelsLength = regions[parts + 3];
         long sumsLength = keepsBytes ? regions[parts + 5] : 0;
-        long talliesLength = keepsBytes && minor >= 6 ? regions[parts + 7] : 0;
+        long talliesLength = !keepsBytes || minor < 6 ? 0 : minor == 6 ? undirected.Length : regions[parts + 7];
         int ownersAt = (int)regions[parts];
         byte[] header = section.AsSpan(0, newHeaderLength).ToArray();
         for (int level = 0; level < levels; level++)
@@ -862,7 +949,7 @@ public sealed partial class SessionTileIndexTests
         return [.. header, .. section.AsSpan(headerLength, extentsLength), .. blocks.ToArray(), .. records.ToArray(),
             .. section.AsSpan(ownersAt, (int)(ownersLength + channelsLength)),
             .. section.AsSpan((int)regions[parts + 4], (int)sumsLength),
-            .. section.AsSpan((int)regions[parts + 6], (int)talliesLength)];
+            .. (minor == 6 ? undirected.ToArray() : section.AsSpan((int)regions[parts + 6], (int)talliesLength).ToArray())];
     }
 
     private static void WriteI64(Stream into, long value)

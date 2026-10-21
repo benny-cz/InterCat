@@ -40,6 +40,12 @@ internal static class SessionTileIndex
     /// </summary>
     internal const ushort ByteTalliedMinor = 6;
 
+    /// <summary>
+    /// The first minor whose byte tallies keep each record's source direction beside its owner, channel and side, so a
+    /// process's direction rows measure their bytes from whole tiles.
+    /// </summary>
+    internal const ushort DirectedMinor = 7;
+
     /// <summary>The most levels a section has: a finest tile one tick wide, and eighteen decades above it.</summary>
     internal const int MaximumLevels = 20;
 
@@ -85,7 +91,7 @@ internal static class SessionTileIndex
     /// kept none of these. Minors 3 to 5 are still read, what they keep counted and summed from them and the rest read from
     /// the segments, and are published again.
     /// </summary>
-    internal const ushort Minor = 6;
+    internal const ushort Minor = 7;
 
     /// <summary>The earliest minor read: its sections hold every binding, direction and end a query counts.</summary>
     private const ushort EarliestReadMinor = 3;
@@ -555,7 +561,7 @@ internal static class SessionTileIndex
                 if (summed && MeasureOf(domains, sides, values, row) is { Side: > 0 } measure)
                 {
                     sums.Add(slot, measure.Side, measure.Value);
-                    byteTallies.Add(OwnerKey(owners.Raw(row)), ChannelKey(channels.Raw(row)), measure.Side, measure.Value);
+                    byteTallies.Add(OwnerKey(owners.Raw(row)), ChannelKey(channels.Raw(row)), direction, measure.Side, measure.Value);
                 }
             }
 
@@ -817,7 +823,8 @@ internal static class SessionTileIndex
                         uint channel = TileByteTallies.ChannelOf(key);
                         ulong placed = owner == ownerBefore ? channel - channelBefore : channel;
                         int length = Unsigned(encoded, owner - ownerBefore);
-                        length += Unsigned(encoded[length..], (placed << 2) + (ulong)(TileByteTallies.SideOf(key) - 1));
+                        length += Unsigned(encoded[length..], (placed << 5) + ((ulong)TileByteTallies.DirectionOf(key) << 2)
+                            + (ulong)(TileByteTallies.SideOf(key) - 1));
                         length += Unsigned(encoded[length..], (ulong)tileBytes.Measured[entry]);
                         length += Unsigned(encoded[length..], (ulong)tileBytes.Unmeasured[entry]);
                         length += Unsigned(encoded[length..], (ulong)tileBytes.Totals[entry]);
@@ -1594,14 +1601,20 @@ internal static class SessionTileIndex
     {
         public static TileByteTallies None { get; } = new([], [], [], []);
 
-        /// <summary>An entry's key: the owner key, then the channel key, then the accounting side, in that order of weight.</summary>
-        public static ulong Key(uint owner, uint channel, int side) => ((ulong)owner << 32) | ((ulong)channel << 3) | (uint)side;
+        /// <summary>
+        /// An entry's key: the owner key, then the channel key, then the direction code, then the accounting side, in that
+        /// order of weight.
+        /// </summary>
+        public static ulong Key(uint owner, uint channel, int direction, int side) =>
+            ((ulong)owner << 32) | ((ulong)channel << 5) | ((ulong)direction << 2) | (uint)(side - 1);
 
         public static uint OwnerOf(ulong key) => (uint)(key >> 32);
 
-        public static uint ChannelOf(ulong key) => (uint)(key >> 3) & ChannelMask;
+        public static uint ChannelOf(ulong key) => (uint)(key >> 5) & ChannelMask;
 
-        public static int SideOf(ulong key) => (int)(key & 7);
+        public static int DirectionOf(ulong key) => (int)(key >> 2) & 7;
+
+        public static int SideOf(ulong key) => (int)(key & 3) + 1;
     }
 
     /// <summary>A tile's byte tallies while they are added up: its records' measures, or its children's tallies.</summary>
@@ -1612,9 +1625,9 @@ internal static class SessionTileIndex
         public void Clear() => entries.Clear();
 
         /// <summary>Adds one record's measure: the bytes it measured, or a size it declared and did not record.</summary>
-        public void Add(uint owner, uint channel, int side, long? value)
+        public void Add(uint owner, uint channel, int direction, int side, long? value)
         {
-            ulong key = TileByteTallies.Key(owner, channel, side);
+            ulong key = TileByteTallies.Key(owner, channel, direction, side);
             (long measured, long unmeasured, long total) = entries.GetValueOrDefault(key);
             entries[key] = value is { } bytes ? (measured + 1, unmeasured, checked(total + bytes)) : (measured, unmeasured + 1, total);
         }
@@ -2991,6 +3004,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     private uint[] byteOwners = new uint[64];
     private uint[] byteChannels = new uint[64];
     private byte[] byteSides = new byte[64];
+    private byte[] byteDirections = new byte[64];
     private long[] byteMeasured = new long[64];
     private long[] byteUnmeasured = new long[64];
     private long[] byteTotals = new long[64];
@@ -3237,15 +3251,16 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
     /// <summary>
     /// Measures the transport-observed bytes of <paramref name="section"/>'s timed records inside <paramref name="range"/>,
-    /// a part of <paramref name="lanes"/>' interval, into a group's byte lanes, as the lanes measure their rows
-    /// (<see cref="SessionIntervalByteQuery.MeasureByOwner"/>): each record's in the machine row's column holding its
-    /// reading, and each whose owner binds to an instance with a lane, where the policy admits the binding, in that lane's
-    /// column too. A tile adds its byte tallies whole wherever its records fall in one column of the machine row's and one
-    /// of the lanes', and a finest tile's records are read where a boundary of either falls among them. The caller has
-    /// checked that the file's bindings are its own. False, measuring nothing, for a segment whose readings go backwards
-    /// and meet the range, or whose section keeps no byte tallies: its rows are read instead.
+    /// a part of <paramref name="lanes"/>' interval, into their columns, as a group's lanes or a process's direction rows
+    /// measure their rows (<see cref="SessionIntervalByteQuery.MeasureByOwner"/>,
+    /// <see cref="SessionIntervalByteQuery.MeasureByDirection"/>): each record's in the machine row's column holding its
+    /// reading, and each <paramref name="lanes"/> places in a lane, in that lane's column too. A tile adds its byte tallies
+    /// whole wherever its records fall in one column of the machine row's and one of the lanes', and a finest tile's records
+    /// are read where a boundary of either falls among them. The caller has checked that the file's bindings are its own.
+    /// False, measuring nothing, for a segment whose readings go backwards and meet the range, or whose section keeps no
+    /// byte tallies, or none by direction where the lanes are rows by direction: its rows are read instead.
     /// </summary>
-    public bool MeasureGroup(TileSection section, TimeRange range, GroupByteLanes lanes, CancellationToken cancellationToken)
+    public bool MeasureColumns(TileSection section, TimeRange range, ByteColumns lanes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(section);
         ArgumentNullException.ThrowIfNull(lanes);
@@ -3255,25 +3270,25 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             return true;
         }
 
-        if (!section.Ordered || !section.KeepsByteTallies)
+        if (!section.Ordered || !section.KeepsByteTallies || (lanes.Directed && section.Minor < SessionTileIndex.DirectedMinor))
         {
             return false;
         }
 
         (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, range, null);
         int top = section.Levels - 1;
-        RangeMeasureGroup(section, top, 0, section.TileCount(top), lanes, cancellationToken);
+        RangeMeasureColumns(section, top, 0, section.TileCount(top), lanes, cancellationToken);
         return true;
     }
 
     /// <summary>
     /// Measures the spanning section's tiles inside <paramref name="lanes"/>' interval into them, as
-    /// <see cref="MeasureGroup"/> measures a segment's: a tile whole from its byte tallies wherever its records fall in one
+    /// <see cref="MeasureColumns"/> measures a segment's: a tile whole from its byte tallies wherever its records fall in one
     /// column of the machine row's and one of the lanes', and its children where a boundary falls among them. Returns the
     /// ranges of its finest tiles it could not measure whole, which the sections beneath them measure (<see cref="Beneath"/>).
-    /// The caller has checked that the section keeps byte tallies.
+    /// The caller has checked that the section keeps byte tallies, by direction where the lanes are rows by direction.
     /// </summary>
-    public TileRemainders SpanMeasureGroup(GroupByteLanes lanes, CancellationToken cancellationToken)
+    public TileRemainders SpanMeasureColumns(ByteColumns lanes, CancellationToken cancellationToken)
     {
         ArgumentNullException.ThrowIfNull(lanes);
         TileSection spanning = Spanning();
@@ -3286,7 +3301,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
         (lastColumn, lastLaneColumn, within, remainders) = (-1, -1, interval, left);
         int top = spanning.Levels - 1;
-        RangeMeasureGroup(spanning, top, 0, spanning.TileCount(top), lanes, cancellationToken);
+        RangeMeasureColumns(spanning, top, 0, spanning.TileCount(top), lanes, cancellationToken);
         remainders = null;
         return left;
     }
@@ -4112,14 +4127,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     }
 
     /// <summary>
-    /// Measures the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into a group's byte
-    /// lanes: each whole from its byte tallies that falls in one column of the machine row's and of the lanes', the children
-    /// of each that does not or keeps none, and the records of a finest one - or, of the spanning section's, its range, left
-    /// to the sections beneath it.
+    /// Measures the tiles of one level from <paramref name="from"/> to before <paramref name="end"/> into byte columns: each
+    /// whole from its byte tallies that falls in one column of the machine row's and of the lanes', the children of each
+    /// that does not or keeps none, and the records of a finest one - or, of the spanning section's, its range, left to the
+    /// sections beneath it.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private void RangeMeasureGroup(
-        TileSection section, int level, int from, int end, GroupByteLanes lanes, CancellationToken cancellationToken)
+    private void RangeMeasureColumns(
+        TileSection section, int level, int from, int end, ByteColumns lanes, CancellationToken cancellationToken)
     {
         TimelineColumns machine = lanes.Machine;
         TimeRange interval = machine.Interval;
@@ -4177,7 +4192,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                 if (whole)
                 {
                     (column, laneColumn) = (lastColumn, lanes.SharesColumns ? lastColumn : lastLaneColumn);
-                    if (AddGroupByteTallies(section, level, block, position, lanes, column, laneColumn))
+                    if (AddColumnByteTallies(section, level, block, position, lanes, column, laneColumn))
                     {
                         remainders?.Counted();
                         continue;
@@ -4187,7 +4202,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
             if (level > 0)
             {
-                RangeMeasureGroup(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], lanes,
+                RangeMeasureColumns(section, level - 1, block.Links[tile], block.Links[tile] + block.Children[tile], lanes,
                     cancellationToken);
                 continue;
             }
@@ -4199,7 +4214,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             }
 
             var records = new RecordCursor(this, section, block, position);
-            while (records.Next(out long reading, out _, out _, out _, out uint owner, out _))
+            while (records.Next(out long reading, out _, out int direction, out _, out uint owner, out _))
             {
                 if (records.Side == 0 || (column < 0 && !range.Contains(reading)))
                 {
@@ -4208,19 +4223,18 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
 
                 int at = column >= 0 ? column : machine.ColumnOf(reading)!.Value;
                 int laneAt = column >= 0 ? laneColumn : lanes.SharesColumns ? at : lanes.Lanes.ColumnOf(reading)!.Value;
-                lanes.Add(owner, records.Side, at, laneAt, records.Value);
+                lanes.Add(owner, direction, records.Side, at, laneAt, records.Value);
             }
         }
     }
 
     /// <summary>
-    /// Adds one tile's records' bytes to a group's byte lanes whole, in one column of the machine row's and one of the
-    /// lanes', from its byte tallies. False, adding nothing, for a tile that keeps none, whose children or records are
-    /// measured instead.
+    /// Adds one tile's records' bytes to byte columns whole, in one column of the machine row's and one of the lanes', from
+    /// its byte tallies. False, adding nothing, for a tile that keeps none, whose children or records are measured instead.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveOptimization)]
-    private bool AddGroupByteTallies(
-        TileSection section, int level, TileBlock block, int position, GroupByteLanes lanes, int column, int laneColumn)
+    private bool AddColumnByteTallies(
+        TileSection section, int level, TileBlock block, int position, ByteColumns lanes, int column, int laneColumn)
     {
         if (!ReadByteTallies(section, level, block, position, RecordsIn(section, block, position)))
         {
@@ -4231,8 +4245,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         TilesOfTalliesRead++;
         for (int entry = 0; entry < byteEntries; entry++)
         {
-            lanes.Add(byteOwners[entry], byteSides[entry], column, laneColumn, byteTotals[entry], byteMeasured[entry],
-                byteUnmeasured[entry]);
+            lanes.Add(byteOwners[entry], byteDirections[entry], byteSides[entry], column, laneColumn, byteTotals[entry],
+                byteMeasured[entry], byteUnmeasured[entry]);
         }
 
         return true;
@@ -4385,7 +4399,8 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
         ulong lastChannel = (ulong)file.Derivation.Channels;
 
         // Each entry's owner key over the one before's; its channel key over the one before's under the same owner key, and
-        // otherwise itself; and its side.
+        // otherwise itself; since minor 7 its direction code; and its side. Before minor 7 an entry holds every direction.
+        int shift = section.Minor >= SessionTileIndex.DirectedMinor ? 5 : 2;
         byteEntries = 0;
         long counted = 0;
         ulong owner = 0;
@@ -4398,14 +4413,16 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
             ulong measured = at.Next();
             ulong unmeasured = at.Next();
             ulong total = at.Next();
-            if (increase > lastOwner || (placed >> 2) > lastChannel)
+            if (increase > lastOwner || (placed >> shift) > lastChannel)
             {
                 throw Bad(section, level, position, "byte tallies");
             }
 
             owner += increase;
-            channel = increase == 0 ? channel + (placed >> 2) : placed >> 2;
-            ulong key = (owner << 32) | (channel << 3) | ((placed & 3) + 1);
+            channel = increase == 0 ? channel + (placed >> shift) : placed >> shift;
+            int direction = shift == 5 ? (int)(placed >> 2) & 7 : 0;
+            int side = (int)(placed & 3) + 1;
+            ulong key = (owner << 32) | (channel << 5) | ((ulong)direction << 2) | (placed & 3);
             if (owner is > 0 and < 8 || owner > lastOwner || channel > lastChannel || (entry > 0 && key <= previous)
                 || (measured == 0 && unmeasured == 0) || measured > (ulong)records || unmeasured > (ulong)records
                 || (measured == 0 && total != 0) || total > long.MaxValue)
@@ -4425,13 +4442,14 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
                 Array.Resize(ref byteOwners, byteEntries * 2);
                 Array.Resize(ref byteChannels, byteEntries * 2);
                 Array.Resize(ref byteSides, byteEntries * 2);
+                Array.Resize(ref byteDirections, byteEntries * 2);
                 Array.Resize(ref byteMeasured, byteEntries * 2);
                 Array.Resize(ref byteUnmeasured, byteEntries * 2);
                 Array.Resize(ref byteTotals, byteEntries * 2);
             }
 
-            (byteOwners[byteEntries], byteChannels[byteEntries], byteSides[byteEntries]) =
-                ((uint)owner, (uint)channel, (byte)((placed & 3) + 1));
+            (byteOwners[byteEntries], byteChannels[byteEntries], byteDirections[byteEntries], byteSides[byteEntries]) =
+                ((uint)owner, (uint)channel, (byte)direction, (byte)side);
             (byteMeasured[byteEntries], byteUnmeasured[byteEntries], byteTotals[byteEntries]) =
                 ((long)measured, (long)unmeasured, (long)total);
             byteEntries++;
@@ -4714,7 +4732,7 @@ internal sealed class TileReading(TileIndexFile file, FileStream stream) : IDisp
     /// The row of a process's direction rows a record's direction code is counted in; a code no direction is refuses the
     /// index, as reading the record's row refuses it (<see cref="SessionTimelineQuery.DirectionSlot"/>).
     /// </summary>
-    private static int DirectionRow(int code) => SessionTimelineQuery.DirectionSlot(DirectionOf(code));
+    internal static int DirectionRow(int code) => SessionTimelineQuery.DirectionSlot(DirectionOf(code));
 
     /// <summary>The direction a record's direction code is; a code no direction is refuses the index, as reading the row does.</summary>
     private static Direction DirectionOf(int code) => Enum.IsDefined((Direction)code)
@@ -5020,40 +5038,26 @@ internal sealed class ByteLanes
 }
 
 /// <summary>
-/// A group's byte lanes while they are added from a tile index (`contracts/tile-index-v1.md` minor 6): every record's
-/// bytes in the machine row's columns, and the bytes of each whose owner binds to an instance with a lane, under a strength
-/// the policy admits, in that lane's columns, which are the machine row's or fewer and wider over the same interval.
+/// Bytes added from a tile index into columns (`contracts/tile-index-v1.md` §4): every record's in the machine row's
+/// columns, and those of each record its lanes place in one, in that lane's columns, which are the machine row's or fewer
+/// and wider over the same interval.
 /// </summary>
-internal sealed class GroupByteLanes
+internal abstract class ByteColumns
 {
-    private readonly int[] laneOf;
-    private readonly bool[] admitted;
     private readonly int laneColumns;
 
     /// <param name="machine">The machine row's columns.</param>
     /// <param name="lanes">The lanes' columns, over the same interval.</param>
-    /// <param name="laneOf">Each instance's lane, -1 for one with none.</param>
-    /// <param name="admitted">Whether the policy admits an owner bound with each strength an owner key can hold.</param>
     /// <param name="machineBytes">A slot for each machine column, then one nothing is added to.</param>
     /// <param name="laneBytes">A slot for each lane's every column, lane by lane, then one nothing is added to.</param>
-    public GroupByteLanes(
-        TimelineColumns machine,
-        TimelineColumns lanes,
-        int[] laneOf,
-        bool[] admitted,
-        TransportByteTally machineBytes,
-        TransportByteTally laneBytes)
+    protected ByteColumns(TimelineColumns machine, TimelineColumns lanes, TransportByteTally machineBytes, TransportByteTally laneBytes)
     {
         ArgumentNullException.ThrowIfNull(machine);
         ArgumentNullException.ThrowIfNull(lanes);
-        ArgumentNullException.ThrowIfNull(laneOf);
-        ArgumentNullException.ThrowIfNull(admitted);
         ArgumentNullException.ThrowIfNull(machineBytes);
         ArgumentNullException.ThrowIfNull(laneBytes);
         Machine = machine;
         Lanes = lanes;
-        this.laneOf = laneOf;
-        this.admitted = admitted;
         laneColumns = lanes.Counts.Count;
         SharesColumns = laneColumns == machine.Counts.Count;
         MachineBytes = machineBytes;
@@ -5067,35 +5071,101 @@ internal sealed class GroupByteLanes
     /// <summary>Whether the lanes' columns are the machine row's.</summary>
     public bool SharesColumns { get; }
 
+    /// <summary>Whether a record's lane is its direction's row, which only byte tallies kept by direction place.</summary>
+    public abstract bool Directed { get; }
+
     public TransportByteTally MachineBytes { get; }
 
     public TransportByteTally LaneBytes { get; }
 
     /// <summary>Adds one record's measure: the bytes it measured, or -1 for a size it declared and did not record.</summary>
-    public void Add(uint owner, int side, int column, int laneColumn, long value)
+    public void Add(uint owner, int direction, int side, int column, int laneColumn, long value)
     {
         if (value < 0)
         {
-            Add(owner, side, column, laneColumn, 0, 0, 1);
+            Add(owner, direction, side, column, laneColumn, 0, 0, 1);
         }
         else
         {
-            Add(owner, side, column, laneColumn, value, 1, 0);
+            Add(owner, direction, side, column, laneColumn, value, 1, 0);
         }
     }
 
     /// <summary>
-    /// Adds what the records of one owner key and accounting side measured in one machine column and one lane column: their
-    /// bytes, how many measured them and how many declared a size they did not record.
+    /// Adds what the records of one owner key, direction code and accounting side measured in one machine column and one
+    /// lane column: their bytes, how many measured them and how many declared a size they did not record.
     /// </summary>
-    public void Add(uint owner, int side, int column, int laneColumn, long total, long measured, long unmeasured)
+    public void Add(uint owner, int direction, int side, int column, int laneColumn, long total, long measured, long unmeasured)
     {
         MachineBytes.Add(column, side, total, measured, unmeasured);
-        if (owner != 0 && admitted[owner & 7] && laneOf[(int)(owner >> 3) - 1] is >= 0 and int lane)
+        if (LaneOf(owner, direction) is >= 0 and int lane)
         {
             LaneBytes.Add((lane * laneColumns) + laneColumn, side, total, measured, unmeasured);
         }
     }
+
+    /// <summary>The lane of the records of one owner key and direction code, -1 for none.</summary>
+    protected abstract int LaneOf(uint owner, int direction);
+}
+
+/// <summary>
+/// A group's byte lanes (minor 6): the bytes of each record whose owner binds to an instance with a lane, under a strength
+/// the policy admits, in that lane.
+/// </summary>
+internal sealed class GroupByteLanes : ByteColumns
+{
+    private readonly int[] laneOf;
+    private readonly bool[] admitted;
+
+    /// <param name="laneOf">Each instance's lane, -1 for one with none.</param>
+    /// <param name="admitted">Whether the policy admits an owner bound with each strength an owner key can hold.</param>
+    public GroupByteLanes(
+        TimelineColumns machine,
+        TimelineColumns lanes,
+        int[] laneOf,
+        bool[] admitted,
+        TransportByteTally machineBytes,
+        TransportByteTally laneBytes)
+        : base(machine, lanes, machineBytes, laneBytes)
+    {
+        ArgumentNullException.ThrowIfNull(laneOf);
+        ArgumentNullException.ThrowIfNull(admitted);
+        this.laneOf = laneOf;
+        this.admitted = admitted;
+    }
+
+    public override bool Directed => false;
+
+    protected override int LaneOf(uint owner, int direction) =>
+        owner != 0 && admitted[owner & 7] ? laneOf[(int)(owner >> 3) - 1] : -1;
+}
+
+/// <summary>
+/// A process's byte direction rows (minor 7), in the machine row's columns: the bytes of each record whose owner binds to
+/// the process, under a strength the policy admits, in the row of the direction its source states. A direction code no
+/// direction is refuses the index, as reading the row refuses it.
+/// </summary>
+internal sealed class DirectionByteRows : ByteColumns
+{
+    private readonly int instance;
+    private readonly bool[] admitted;
+
+    /// <param name="instance">The process's place among the derivation's instances.</param>
+    /// <param name="admitted">Whether the policy admits an owner bound with each strength an owner key can hold.</param>
+    /// <param name="rowBytes">A slot for each direction row's every column, row by row, then one nothing is added to.</param>
+    public DirectionByteRows(
+        TimelineColumns machine, int instance, bool[] admitted, TransportByteTally machineBytes, TransportByteTally rowBytes)
+        : base(machine, machine, machineBytes, rowBytes)
+    {
+        ArgumentNullException.ThrowIfNull(admitted);
+        this.instance = instance;
+        this.admitted = admitted;
+    }
+
+    public override bool Directed => true;
+
+    protected override int LaneOf(uint owner, int direction) =>
+        owner != 0 && admitted[owner & 7] && (int)(owner >> 3) - 1 == instance ? TileReading.DirectionRow(direction) : -1;
 }
 
 /// <summary>

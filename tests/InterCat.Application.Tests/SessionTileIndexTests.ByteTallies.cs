@@ -279,15 +279,17 @@ public sealed partial class SessionTileIndexTests
                 why = $"the byte tallies of tile 0 of level {top} of the section of '{name}' are not the tile's.";
                 break;
             case 4:
-                // Its second entry, its first's owner and channel received rather than sent, says sent: its first's key again.
+                // Its second entry, its first's owner and channel received inbound rather than sent outbound, says sent
+                // outbound as its first does: its first's key again.
                 int second = first + 1;
                 for (int field = 0; field < 5; field++)
                 {
                     second = Skip(second);
                 }
 
-                Assert.Equal((0, 1), (kept[second], kept[second + 1]));
-                kept[second + 1] = 0;
+                Assert.Equal(0, kept[second]);
+                Assert.NotEqual(kept[first + 2] & 31, kept[second + 1]);
+                kept[second + 1] = (byte)(kept[first + 2] & 31);
                 Seal(first, block.ByteTalliesEnd - block.ByteLinks[0] + 4);
                 why = $"the byte tallies of tile 0 of level {top} of the section of '{name}' are not the tile's.";
                 break;

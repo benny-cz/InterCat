@@ -103,7 +103,7 @@ public sealed partial class SessionTileIndexTests
             var into = new GroupByteLanes(machine, lanes, laneOf, admitted, new(65), new((3 * 16) + 1));
             foreach (string name in SessionSegments.Names(manifest))
             {
-                Assert.True(reading.MeasureGroup(reading.Section(name), interval, into, CancellationToken.None));
+                Assert.True(reading.MeasureColumns(reading.Section(name), interval, into, CancellationToken.None));
             }
 
             // The records of the tiles its 65 boundaries fall among, and of their neighbours too narrow to keep byte
@@ -118,13 +118,13 @@ public sealed partial class SessionTileIndexTests
         {
             Assert.True(reading.Spanning().KeepsByteTallies);
             var into = new GroupByteLanes(machine, lanes, laneOf, admitted, new(65), new((3 * 16) + 1));
-            TileRemainders left = reading.SpanMeasureGroup(into, CancellationToken.None);
+            TileRemainders left = reading.SpanMeasureColumns(into, CancellationToken.None);
             Assert.InRange(left.Ranges.Count, 1, 66);
             foreach ((TileSection section, List<TimeRange> ranges) in reading.Beneath(left))
             {
                 foreach (TimeRange range in ranges)
                 {
-                    Assert.True(reading.MeasureGroup(section, range, into, CancellationToken.None));
+                    Assert.True(reading.MeasureColumns(section, range, into, CancellationToken.None));
                 }
             }
 
