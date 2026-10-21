@@ -473,8 +473,12 @@ public static class GraphLayout
         var positions = new Dictionary<string, GraphPoint>(count, StringComparer.Ordinal);
         for (int i = 0; i < count; i++)
         {
-            // Back to window-independent graph coordinates, kept inside [0,1] against rounding.
-            positions[ordered[i].Key] = new(Math.Clamp(x[i] / Width, 0, 1), Math.Clamp(y[i], 0, 1));
+            // A pinned node is where it was pinned, exactly: through drawn units and back, 0.95 of the pane comes back
+            // 0.9499999999999998. Every other node goes back to window-independent graph coordinates, kept inside [0,1]
+            // against rounding.
+            positions[ordered[i].Key] = pins?.TryGetValue(ordered[i].Key, out GraphPoint pin) == true
+                ? pin
+                : new(Math.Clamp(x[i] / Width, 0, 1), Math.Clamp(y[i], 0, 1));
         }
 
         return (new ReadOnlyDictionary<string, GraphPoint>(positions), Energy(x, y, links, repelling, ideal));

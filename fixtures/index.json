@@ -1365,6 +1365,7 @@
       ],
       "R12": [
         "R12: a pinned node is a hard constraint, while an existing node starts at its prior position",
+        "R12: a pinned node is laid out exactly where it was pinned, whatever fraction of the pane that is",
         "R12: desktop graph reads stable layout coordinates instead of evidence-model positions",
         "R12: graph layout is identical after node, group and edge enumeration is reversed",
         "R12: related processes are drawn together, separate components apart, and none is omitted"

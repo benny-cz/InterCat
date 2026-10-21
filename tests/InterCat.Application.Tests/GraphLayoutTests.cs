@@ -58,6 +58,31 @@ public sealed class GraphLayoutTests
         Assert.All(Nodes, node => Assert.InRange(Distance(first.Positions[node.Id], again.Positions[node.Id]), 0, 0.03));
     }
 
+    [Fact(DisplayName = "R12: a pinned node is laid out exactly where it was pinned, whatever fraction of the pane that is")]
+    public void APinComesBackExactly()
+    {
+        // Through the layout's drawn units and back, 0.95 of the pane would come back 0.9499999999999998, and 0.9 as
+        // 0.9000000000000001: the window would draw a node pinned there a hair from its place, and only once the layout
+        // landed.
+        var random = new Random(20_261_021);
+        GraphPoint[] pins =
+        [
+            new(0.95, 0.05), new(0.9, 0.95), new(1.0 / 3, 2.0 / 3), new(0, 1), new(1, 0),
+            .. Enumerable.Range(0, 200).Select(_ => new GraphPoint(random.NextDouble(), random.NextDouble())),
+        ];
+        GraphDisplay display = Dense(20, ring: 20);
+        foreach (GraphPoint pin in pins)
+        {
+            GraphLayoutResult result = GraphLayout.Compute("graph-v1", Groups, Nodes, Edges,
+                pins: new Dictionary<ProcessInstanceId, GraphPoint> { [Nodes[0].Id] = pin });
+            Assert.Equal(pin, result.Positions[Nodes[0].Id]);
+
+            GraphDisplayLayout drawn = GraphLayout.ComputeDisplay("dense", display,
+                pins: new Dictionary<string, GraphPoint> { [display.Nodes[0].Key] = pin });
+            Assert.Equal(pin, drawn.Positions[display.Nodes[0].Key]);
+        }
+    }
+
     [Fact(DisplayName = "R12: related processes are drawn together, separate components apart, and none is omitted")]
     public void RelationshipsDecidePlacement()
     {
