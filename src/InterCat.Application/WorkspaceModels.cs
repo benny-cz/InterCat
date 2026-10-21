@@ -189,6 +189,12 @@ public sealed record ProcessNode(
 
     /// <summary>The TCP connections the process accepted over the whole session, counted as <see cref="ConnectionsMade"/> are.</summary>
     public long ConnectionsAccepted { get; init; }
+
+    /// <summary>
+    /// The process's own ports the connections it accepted arrived at, each once, the lowest first: the ports it listened
+    /// at, counted as <see cref="ConnectionsAccepted"/> are (<see cref="ConnectionOpens.AcceptedPorts"/>).
+    /// </summary>
+    public IReadOnlyList<ushort> AcceptedPorts { get; init; } = [];
 }
 
 /// <summary>How many records of one mechanism a process, or a group of them, was observed making.</summary>

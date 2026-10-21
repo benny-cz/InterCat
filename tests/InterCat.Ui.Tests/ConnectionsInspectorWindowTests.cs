@@ -37,7 +37,8 @@ public sealed class ConnectionsInspectorWindowTests
         TextBlock connections = window.GetControl<TextBlock>("ConnectionsText");
         Assert.False(connections.IsEffectivelyVisible);
 
-        // The client connected to the server and to another host; the server accepted the client's and the helper's.
+        // The client connected to the server and to another host; the server accepted the client's and the helper's, at its
+        // own port 8080, which a screen reader hears too.
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 100).Id);
         Dispatch();
         Assert.True(connections.IsEffectivelyVisible);
@@ -45,7 +46,8 @@ public sealed class ConnectionsInspectorWindowTests
         Assert.Equal("Connections: 2 made · 0 accepted, as the capture saw them open", AutomationProperties.GetName(connections));
         workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 200).Id);
         Dispatch();
-        Assert.Equal("0 made · 2 accepted, as the capture saw them open", connections.Text);
+        Assert.Equal("0 made · 2 accepted at port 8080, as the capture saw them open", connections.Text);
+        Assert.Equal("Connections: 0 made · 2 accepted at port 8080, as the capture saw them open", AutomationProperties.GetName(connections));
 
         // Beneath them, the processes it talked with: each on a line of its own, marked from its side, over what it carried,
         // and who connected said in words for a screen reader as the keyboard reaches its row.

@@ -217,6 +217,7 @@ public static class SessionOverviewProjector
         // Each process's TCP connections made and accepted, as the capture saw each open at either end: what its card says,
         // and what a connection ranking of the whole session reads.
         Dictionary<ProcessInstanceId, (long Made, long Accepted)> opens = ConnectionOpens.Count(relations, policy, null);
+        Dictionary<ProcessInstanceId, IReadOnlyList<ushort>> listened = ConnectionOpens.AcceptedPorts(relations, policy);
         ProcessNode[] nodes = [.. ordered.Select((instance, index) => new ProcessNode(
             instance.Id,
             instance.ProcessId,
@@ -239,6 +240,7 @@ public static class SessionOverviewProjector
             Collector = collectors.RoleOf(instance.Id),
             ConnectionsMade = opens.GetValueOrDefault(instance.Id).Made,
             ConnectionsAccepted = opens.GetValueOrDefault(instance.Id).Accepted,
+            AcceptedPorts = listened.GetValueOrDefault(instance.Id) ?? [],
         })];
 
         // Every row is held by at most one instance, so what no instance holds is the rest: rows naming no owner, naming

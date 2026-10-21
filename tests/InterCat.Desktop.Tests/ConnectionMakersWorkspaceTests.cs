@@ -131,14 +131,14 @@ public sealed class ConnectionMakersWorkspaceTests
         string Key(int pid) => workspace.GraphDisplay.NodeOf(workspace.Snapshot.Processes.Single(process => process.ProcessId == pid).Id)!.Key;
         IReadOnlyList<string> Card(int pid) => workspace.DescribeGraphHover(Key(pid))!.Lines;
 
-        // The client made two of its connections to the server and accepted the one the server made, and the capture saw one
-        // open neither way, which counts for neither end. The updater connected out to another host, to a port of this
-        // machine no process of the capture held, and to itself, which it accepted too: its card counts every one, though
-        // the graph draws only the first.
-        const string ClientMade = "Connections: 2 made · 1 accepted, as the capture saw them open";
+        // The client made two of its connections to the server and accepted the one the server made, at its own port 9000, and
+        // the capture saw one open neither way, which counts for neither end. The updater connected out to another host, to
+        // a port of this machine no process of the capture held, and to itself, which it accepted too, at 53002: its card
+        // counts every one, though the graph draws only the first.
+        const string ClientMade = "Connections: 2 made · 1 accepted at port 9000, as the capture saw them open";
         Assert.Equal(ClientMade, Card(100)[1]);
-        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open", Card(200)[1]);
-        Assert.Equal(["Other hosts: 1 TCP connection to 1 host", "Connections: 3 made · 1 accepted, as the capture saw them open"],
+        Assert.Equal("Connections: 1 made · 2 accepted at port 8080, as the capture saw them open", Card(200)[1]);
+        Assert.Equal(["Other hosts: 1 TCP connection to 1 host", "Connections: 3 made · 1 accepted at port 53002, as the capture saw them open"],
             Card(300).Skip(1).Take(2));
 
         // At the client's rung the updater is the rest of the machine, whose connections are left to its own rung.
@@ -173,26 +173,26 @@ public sealed class ConnectionMakersWorkspaceTests
         // Nothing selected, nothing said; a process says what its card does, beneath its own heading.
         Assert.False(workspace.ShowsConnections);
         workspace.SelectProcess(Id(100));
-        Assert.Equal("2 made · 1 accepted, as the capture saw them open", workspace.SelectionConnections);
+        Assert.Equal("2 made · 1 accepted at port 9000, as the capture saw them open", workspace.SelectionConnections);
         Assert.True(workspace.ShowsConnections);
         Assert.Equal(workspace.SelectionConnections, heard[^1]);
         workspace.SelectProcess(Id(600));
         Assert.Equal("None the capture saw open", workspace.SelectionConnections);
         Assert.Equal(workspace.SelectionConnections, heard[^1]);
 
-        // A group's are its members' together.
+        // A group's are its members' together, at each port its members accepted at.
         workspace.ClearSelection();
         Assert.False(workspace.ShowsConnections);
         workspace.SelectedRung = workspace.RungRows.Single(row => row.Label == "worker.exe");
         Assert.NotNull(workspace.SelectedGroup);
-        Assert.Equal("0 made · 2 accepted, as the capture saw them open", workspace.SelectionConnections);
+        Assert.Equal("0 made · 2 accepted at ports 9000 and 9001, as the capture saw them open", workspace.SelectionConnections);
         Assert.Equal(workspace.SelectionConnections, heard[^1]);
 
         // Under a brush they are still the whole session's, and say so.
         workspace.SelectProcess(Id(100));
         workspace.SelectInterval(new TimeRange(workspace.Snapshot.Extent.StartTicks, workspace.Snapshot.Extent.StartTicks + 5));
         await workspace.IntervalReady;
-        Assert.Equal("2 made · 1 accepted, as the capture saw them open · whole session", workspace.SelectionConnections);
+        Assert.Equal("2 made · 1 accepted at port 9000, as the capture saw them open · whole session", workspace.SelectionConnections);
         Assert.Equal(workspace.SelectionConnections, heard[^1]);
 
         // A session that records no connection's open cannot say how many were made or accepted.

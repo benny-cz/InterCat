@@ -81,6 +81,33 @@ public sealed class DirectionTextTests
         Assert.Null(DirectionText.OpenedLine(0, 0));
     }
 
+    [Fact(DisplayName = "§6.8: the connections a set accepted are said at the ports of its own they arrived at, its members' together, each once, the lowest first")]
+    public void AcceptedConnectionsAreSaidAtTheirPorts()
+    {
+        ProcessNode Node(int pid, long accepted, params ushort[] ports) => new(
+            new ProcessInstanceId(Guid.Parse($"00000000-0000-0000-0000-{pid:D12}")), pid, $"p{pid}.exe", "Created", $"p{pid}", 0, 0,
+            CoverageState.Covered) { ConnectionsMade = 1, ConnectionsAccepted = accepted, AcceptedPorts = ports };
+        ProcessNode a = Node(1, 2, 3389, 445);
+        ProcessNode b = Node(2, 2, 445, 80);
+        ProcessNode c = Node(3, 0);
+        WorkspaceSnapshot snapshot = new("Ports", new TimeRange(0, 10), [], [a, b, c], [], [], [], [], []);
+
+        // Its members' ports together, each once, the lowest first; none for a set that accepted none.
+        Assert.Equal([80, 445, 3389], DirectionText.AcceptedPorts(snapshot, new HashSet<ProcessInstanceId> { a.Id, b.Id, c.Id })
+            .Select(port => (int)port));
+        Assert.Equal([80, 445], DirectionText.AcceptedPorts(snapshot, new HashSet<ProcessInstanceId> { b.Id }).Select(port => (int)port));
+        Assert.Empty(DirectionText.AcceptedPorts(snapshot, new HashSet<ProcessInstanceId> { c.Id }));
+
+        // The accepted ones are said at them, past three the rest counted; where no port is known, at none.
+        Assert.Equal("Connections: 1 made · 3 accepted at ports 445 and 3389, as the capture saw them open",
+            DirectionText.OpenedLine(1, 3, [445, 3389]));
+        Assert.Equal("2 made · 1 accepted at port 8080, as the capture saw them open", DirectionText.OpenedCounts(2, 1, [8080]));
+        Assert.Equal("0 made · 9 accepted at ports 21, 22, 80 and 2 more, as the capture saw them open",
+            DirectionText.OpenedCounts(0, 9, [21, 22, 80, 443, 8080]));
+        Assert.Equal("2 made · 1 accepted, as the capture saw them open", DirectionText.OpenedCounts(2, 1, []));
+        Assert.Null(DirectionText.OpenedLine(0, 0, []));
+    }
+
     [Fact(DisplayName = "§6.6: a table's mark between a relationship's ends points as its connections ran, both ways where each end made some, and none where none was seen, as its name read aloud says")]
     public void TheMarkAndTheSpokenWordsFollowTheCounts()
     {

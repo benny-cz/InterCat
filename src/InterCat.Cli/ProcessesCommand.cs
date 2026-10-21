@@ -79,6 +79,13 @@ internal sealed record ProcessActivityDocument
     public required long? ConnectionsAccepted { get; init; }
 
     /// <summary>
+    /// Its own ports the connections it accepted arrived at, each once, the lowest first: the ports it listened at, as its
+    /// card in the window names them; null where the session records no connection's open, as <see cref="ConnectionsAccepted"/>
+    /// is.
+    /// </summary>
+    public IReadOnlyList<ushort>? AcceptedPorts { get; init; }
+
+    /// <summary>
     /// Who the instance exchanged data with, through proven relations, when one PID was asked about; null otherwise,
     /// because deriving every instance's peers is a query per instance.
     /// </summary>
@@ -428,6 +435,7 @@ internal static class ProcessesCommand
                     Receives = Records(receivedBy.GetValueOrDefault(group.Process!.Id)),
                     ConnectionsMade = opensRecorded ? nodes[group.Process!.Id].ConnectionsMade : null,
                     ConnectionsAccepted = opensRecorded ? nodes[group.Process!.Id].ConnectionsAccepted : null,
+                    AcceptedPorts = opensRecorded ? nodes[group.Process!.Id].AcceptedPorts : null,
                     PidHolders = nodes[group.Process!.Id].PidHolders,
                     CandidateRecords = nodes[group.Process!.Id].CandidateRecords,
                     WithheldRecords = nodes[group.Process!.Id].WithheldRecords,
@@ -810,11 +818,13 @@ internal static class ProcessesCommand
             ConsoleUi.Field("Evidence gaps", string.Join(", ", process.Gaps.Select(Words)));
         }
 
-        // Who opened its connections, as its card in the window counts them.
+        // Who opened its connections, as its card in the window counts them, and the ports of its own it accepted them at.
         ConsoleUi.Field("Connections", (item.ConnectionsMade, item.ConnectionsAccepted) switch
         {
             (null, _) or (_, null) => "not recorded: this session records no connection's open",
             (0, 0) => "none the capture saw open",
+            (_, > 0) when item.AcceptedPorts is { Count: > 0 } ports =>
+                Connections(item, string.Empty) + " at " + HostLinkText.Ports(ports) + ", as the capture saw them open",
             _ => Connections(item, string.Empty) + ", as the capture saw them open",
         });
 

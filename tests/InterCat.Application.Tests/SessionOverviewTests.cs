@@ -34,6 +34,37 @@ public sealed class SessionOverviewTests
         Assert.Equal(1, overview.UnresolvedTcpRows);
     }
 
+    [Fact(DisplayName = "§7.4: a process's accepted connections are at the ports of its own they arrived at, an IPv6 endpoint's as an IPv4 one's, whoever connected, and those it made at none")]
+    public void AProcessListensAtThePortsItsAcceptedConnectionsArrivedAt()
+    {
+        // The client connects to the server's [::1]:8080, which accepts it; the server accepts a connection from another host
+        // at its own 3389, connects out to another host itself, and holds one connection the capture saw open neither way.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 1)
+                .Between("[::1]:50000", "[::1]:8080") with { SessionRelativeTicks = 1_000 },
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 2)
+                .Between("[::1]:8080", "[::1]:50000") with { SessionRelativeTicks = 1_100 },
+            Transfer(20, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 3)
+                .Between("192.168.1.10:3389", "10.0.0.5:50123") with { SessionRelativeTicks = 1_200 },
+            Transfer(30, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 200, 4)
+                .Between("192.168.1.10:52000", "203.0.113.1:443") with { SessionRelativeTicks = 1_300 },
+            Transfer(40, ObservationKind.Send, AccountingSide.SendSide, 1, 200, 5)
+                .Between("127.0.0.1:7070", "127.0.0.1:50001") with { SessionRelativeTicks = 1_400 },
+            Transfer(41, ObservationKind.Receive, AccountingSide.ReceiveSide, 1, 100, 6)
+                .Between("127.0.0.1:50001", "127.0.0.1:7070") with { SessionRelativeTicks = 1_500 },
+        ]);
+
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);
+        ProcessNode server = overview.Nodes.Single(node => node.ProcessId == 200);
+        ProcessNode client = overview.Nodes.Single(node => node.ProcessId == 100);
+        Assert.Equal((1L, 2L), (server.ConnectionsMade, server.ConnectionsAccepted));
+        Assert.Equal([3389, 8080], server.AcceptedPorts.Select(port => (int)port));
+        Assert.Equal((1L, 0L), (client.ConnectionsMade, client.ConnectionsAccepted));
+        Assert.Empty(client.AcceptedPorts);
+    }
+
     [Fact]
     public void ChannelBoundKeepsGraphAndTimelineAvailableWithoutOmittingSilently()
     {

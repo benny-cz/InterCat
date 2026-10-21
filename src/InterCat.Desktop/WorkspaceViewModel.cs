@@ -4408,7 +4408,7 @@ public sealed partial class WorkspaceViewModel : INotifyPropertyChanged, IDispos
 
             if (node.Kind != GraphNodeKind.Context
                 && DirectionText.Opened(wholeSnapshot, members) is var (madeBy, acceptedBy)
-                && DirectionText.OpenedLine(madeBy, acceptedBy) is { } opened)
+                && DirectionText.OpenedLine(madeBy, acceptedBy, DirectionText.AcceptedPorts(wholeSnapshot, members)) is { } opened)
             {
                 nodeLines.Insert(reachAt, opened + wholeOnly);
             }

@@ -1,3 +1,4 @@
+using System.Globalization;
 using InterCat.Analysis;
 using InterCat.Domain;
 
@@ -43,6 +44,49 @@ public static class ConnectionOpens
         }
 
         return counts;
+    }
+
+    /// <summary>
+    /// Each instance's own ports the connections it accepted under <paramref name="policy"/> arrived at, as <see cref="Count"/>
+    /// counts them over the whole session, each once, the lowest first: the ports it listened at, whoever connected - a
+    /// process of the capture, at a paired connection's accepting end, or another host. An instance that accepted none is
+    /// absent.
+    /// </summary>
+    public static Dictionary<ProcessInstanceId, IReadOnlyList<ushort>> AcceptedPorts(TransportRelationIndex relations,
+        EvidencePolicy policy)
+    {
+        ArgumentNullException.ThrowIfNull(relations);
+        var ports = new Dictionary<ProcessInstanceId, SortedSet<ushort>>();
+        foreach (TransportRelation relation in relations.Relations.Where(relation => Counted(relation, policy, null)))
+        {
+            (ProcessInstance accepting, string endpoint) = relation.Opening == RelationOpening.FirstConnected
+                ? (relation.Second, relation.SecondEndpoint)
+                : (relation.First, relation.FirstEndpoint);
+            AddPort(accepting.Id, endpoint);
+        }
+
+        foreach (TransportConnection connection in relations.OneSided.Where(connection =>
+            connection.Opening == ConnectionOpening.Accepted && Counted(connection, policy, null)))
+        {
+            AddPort(connection.Holder.Id, connection.LocalEndpoint);
+        }
+
+        return ports.ToDictionary(entry => entry.Key, entry => (IReadOnlyList<ushort>)[.. entry.Value]);
+
+        void AddPort(ProcessInstanceId instance, string endpoint)
+        {
+            // An endpoint as the source names it: an address, then a colon and the port - "[::1]:8080" for IPv6.
+            if (endpoint.LastIndexOf(':') is > 0 and var colon
+                && ushort.TryParse(endpoint.AsSpan(colon + 1), NumberStyles.None, CultureInfo.InvariantCulture, out ushort port))
+            {
+                if (!ports.TryGetValue(instance, out SortedSet<ushort>? held))
+                {
+                    ports[instance] = held = [];
+                }
+
+                _ = held.Add(port);
+            }
+        }
     }
 
     /// <summary>

@@ -122,18 +122,34 @@ public static class DirectionText
     }
 
     /// <summary>
-    /// What a node's card says of them: "Connections: 3 made · 12 accepted, as the capture saw them open"; null where it saw
-    /// none of theirs open.
+    /// The processes' own ports the connections a set of them accepted arrived at, each once, the lowest first: the ports
+    /// they listened at, as each process's <see cref="ProcessNode.AcceptedPorts"/> holds them.
     /// </summary>
-    public static string? OpenedLine(long made, long accepted) => OpenedCounts(made, accepted) is { } counts ? "Connections: " + counts : null;
+    public static IReadOnlyList<ushort> AcceptedPorts(WorkspaceSnapshot snapshot, IReadOnlySet<ProcessInstanceId> members)
+    {
+        ArgumentNullException.ThrowIfNull(snapshot);
+        ArgumentNullException.ThrowIfNull(members);
+        return [.. snapshot.Processes.Where(process => members.Contains(process.Id))
+            .SelectMany(process => process.AcceptedPorts).Distinct().Order()];
+    }
 
     /// <summary>
-    /// The same counts as the inspector states them beneath its own heading: "3 made · 12 accepted, as the capture saw them
-    /// open"; null where it saw none of theirs open.
+    /// What a node's card says of them: "Connections: 3 made · 12 accepted at port 443, as the capture saw them open"; null
+    /// where it saw none of theirs open.
     /// </summary>
-    public static string? OpenedCounts(long made, long accepted) => made + accepted == 0
+    public static string? OpenedLine(long made, long accepted, IReadOnlyList<ushort>? acceptedPorts = null) =>
+        OpenedCounts(made, accepted, acceptedPorts) is { } counts ? "Connections: " + counts : null;
+
+    /// <summary>
+    /// The same counts as the inspector states them beneath its own heading, the accepted ones at the ports they arrived
+    /// at, which the processes listened at: "3 made · 12 accepted at ports 443 and 8443, as the capture saw them open";
+    /// null where it saw none of theirs open.
+    /// </summary>
+    public static string? OpenedCounts(long made, long accepted, IReadOnlyList<ushort>? acceptedPorts = null) => made + accepted == 0
         ? null
-        : string.Create(CultureInfo.CurrentCulture, $"{made:N0} made · {accepted:N0} accepted, as the capture saw them open");
+        : string.Create(CultureInfo.CurrentCulture, $"{made:N0} made · {accepted:N0} accepted")
+            + (acceptedPorts is { Count: > 0 } ports ? " at " + HostLinkText.Ports(ports) : string.Empty)
+            + ", as the capture saw them open";
 
     /// <summary>
     /// The same as a screen reader says it within a row's name: "client.exe · PID 100 connected to server.exe · PID 200",

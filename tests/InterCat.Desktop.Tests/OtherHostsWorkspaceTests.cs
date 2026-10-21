@@ -955,10 +955,11 @@ public sealed class OtherHostsWorkspaceTests
         await workspace.LayoutReady;
         const string Service = "svchost.exe · PID 300";
 
-        // svchost.exe connected to one host and accepted from two: its own card counts them, beneath its other hosts.
+        // svchost.exe connected to one host and accepted from two, at its ports 445 and 3389: its own card counts them, beneath
+        // its other hosts.
         HoverCard card = workspace.DescribeGraphHover(workspace.GraphDisplay.NodeOf(
             workspace.Snapshot.Processes.Single(process => process.ProcessId == 300).Id)!.Key)!;
-        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open", card.Lines[2]);
+        Assert.Equal("Connections: 1 made · 2 accepted at ports 445 and 3389, as the capture saw them open", card.Lines[2]);
         Assert.StartsWith("Other hosts: ", card.Lines[1], StringComparison.Ordinal);
 
         // And its edge to Other hosts says so.
@@ -982,7 +983,7 @@ public sealed class OtherHostsWorkspaceTests
         await workspace.IntervalReady;
         IReadOnlyList<string> brushed = workspace.DescribeGraphHover(workspace.GraphDisplay.NodeOf(Process(workspace, 300).Id)!.Key)!.Lines;
         Assert.Equal("Other hosts: 3 TCP connections to 2 hosts · whole session", brushed[1]);
-        Assert.Equal("Connections: 1 made · 2 accepted, as the capture saw them open · whole session", brushed[2]);
+        Assert.Equal("Connections: 1 made · 2 accepted at ports 445 and 3389, as the capture saw them open · whole session", brushed[2]);
         Assert.EndsWith(" · brushed interval", brushed[3], StringComparison.Ordinal);
     });
 

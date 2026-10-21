@@ -450,7 +450,7 @@ public sealed class CommandLineTests : IDisposable
         Assert.Matches(@"(?m)^  300 +resolver\.exe .* +none +32 B +no receives\r?$", table);
         Assert.Contains("Connections made and accepted are each instance's TCP connections as the capture saw them open",
             table, StringComparison.Ordinal);
-        Assert.Matches(@"(?m)^  Connections +0 made · 1 accepted, as the capture saw them open\r?$",
+        Assert.Matches(@"(?m)^  Connections +0 made · 1 accepted at port 8080, as the capture saw them open\r?$",
             (await Run("processes", opened.Path, "--pid", "200")).Output);
         Assert.Matches(@"(?m)^  Connections +none the capture saw open\r?$",
             (await Run("processes", opened.Path, "--pid", "300")).Output);
@@ -465,7 +465,12 @@ public sealed class CommandLineTests : IDisposable
                     == item.GetProperty("process").GetProperty("instanceId").GetString());
                 Assert.Equal((node.ConnectionsMade, node.ConnectionsAccepted),
                     (item.GetProperty("connectionsMade").GetInt64(), item.GetProperty("connectionsAccepted").GetInt64()));
+                Assert.Equal(node.AcceptedPorts.Select(port => (int)port),
+                    item.GetProperty("acceptedPorts").EnumerateArray().Select(port => port.GetInt32()));
             }
+
+            // The server listened at 8080, where the client's connection arrived.
+            Assert.Equal([8080], overview.Nodes.Single(node => node.ProcessId == 200).AcceptedPorts.Select(port => (int)port));
         }
 
         // A session that records no connection's open cannot say how many any instance made or accepted.
@@ -485,8 +490,9 @@ public sealed class CommandLineTests : IDisposable
         using (JsonDocument json = JsonDocument.Parse((await Run("processes", unopened.Path, "--json")).Output))
         {
             JsonElement only = Assert.Single(json.RootElement.GetProperty("instances").EnumerateArray());
-            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null),
-                (only.GetProperty("connectionsMade").ValueKind, only.GetProperty("connectionsAccepted").ValueKind));
+            Assert.Equal((JsonValueKind.Null, JsonValueKind.Null, JsonValueKind.Null),
+                (only.GetProperty("connectionsMade").ValueKind, only.GetProperty("connectionsAccepted").ValueKind,
+                    only.GetProperty("acceptedPorts").ValueKind));
         }
 
         // Nor how many it made to or accepted from any end it exchanged data with.
@@ -509,7 +515,7 @@ public sealed class CommandLineTests : IDisposable
         // The server accepted both connections made to it, one carrying data and one none, each its own row.
         (InterCatExitCode code, string server, string said) = await Run("processes", session.Path, "--pid", "200");
         Assert.True(code == InterCatExitCode.Success, said);
-        Assert.Matches(@"(?m)^  Connections +0 made · 2 accepted, as the capture saw them open\r?$", server);
+        Assert.Matches(@"(?m)^  Connections +0 made · 2 accepted at port 8080, as the capture saw them open\r?$", server);
         Assert.Matches(@"(?m)^  Other end +Connections +Sent to +Received from\r?$", server);
         Assert.Matches(@"(?m)^  PID 100 client\.exe +1 accepted +none +8 B\r?$", server);
         Assert.Matches(@"(?m)^  PID 500 probe\.exe +1 accepted +none +none\r?$", server);

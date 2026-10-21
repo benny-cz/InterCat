@@ -83,7 +83,8 @@ public sealed partial class WorkspaceViewModel
             }
 
             (long made, long accepted) = DirectionText.Opened(wholeSnapshot, members);
-            return (DirectionText.OpenedCounts(made, accepted) ?? "None the capture saw open")
+            return (DirectionText.OpenedCounts(made, accepted, DirectionText.AcceptedPorts(wholeSnapshot, members))
+                    ?? "None the capture saw open")
                 + (appliedInterval is null ? string.Empty : " · whole session");
         }
     }

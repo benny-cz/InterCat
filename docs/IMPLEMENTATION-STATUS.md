@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 676 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 677 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,20 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 677 — a process says at which of its own ports it accepted connections (§6.8, §7.4, R18):**
+  - From the same openings its counts read, whoever connected: the card, the inspector and `icat processes --pid` say
+    "19 accepted at port 9223", a program its processes' ports together, and the JSON `acceptedPorts`. A port search
+    finding a process by the ports it accepted its own machine's connections at is next.
+  - Debug and Release each ran 2,678 tests with revision 473's 93 failures and 4 skips, and nothing else failed; a
+    new projector test accepts a connection at an IPv6 port and another host's at an IPv4 one, beside one made and
+    one seen opening neither way, a new text test says a set's ports together, and the card, inspector and icat
+    processes tests now name the ports. All eighteen mutations were caught, one after its test gave a set's second
+    member a port of its own: the accepting end or its endpoint swapped, a connection seen opening neither way
+    counted, another host's accepted connections left out, its connects counted or its remote port taken, an IPv6
+    port lost to the first colon, the projector's ports dropped, a set's ports one member's, unordered or repeated,
+    the counts or the card's line without them, the inspector or card left without them, and icat's field, its
+    JSON's ports, or their null where no open is recorded.
 
 - **Revision 676 — paired channels are paged busiest first (§7.1, R18):**
   - `icat channels` and the window's channel browser list the busiest first by the records at a channel's two ends,
