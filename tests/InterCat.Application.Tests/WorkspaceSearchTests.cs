@@ -1,7 +1,10 @@
 using InterCat.Analysis;
+using InterCat.Analysis.Tests;
 using InterCat.Application;
 using InterCat.Domain;
+using InterCat.Storage;
 using Xunit;
+using static InterCat.Analysis.Tests.TestSessions;
 
 namespace InterCat.Application.Tests;
 
@@ -27,10 +30,10 @@ public sealed class WorkspaceSearchTests
         SearchResult cache = WorkspaceSearch.Find(snapshot, "CACHE");
         Assert.Equal((SearchHitKind.Process, Cache.ToString()), (cache.Hits[0].Kind, cache.Hits[0].Key));
         SearchHit pipe = Assert.Single(cache.Hits, hit => hit.Kind == SearchHitKind.Channel);
-        Assert.Equal("Channel", pipe.Label);
-        Assert.DoesNotContain("intercat-cache", pipe.Detail, StringComparison.Ordinal);
+        Assert.Equal("API host · PID 5120 and Cache · PID 4056", pipe.Label);
+        Assert.Equal("Named pipe channel whose endpoint the search names", pipe.Detail);
+        Assert.DoesNotContain("intercat-cache", pipe.Label + pipe.Detail, StringComparison.Ordinal);
         Assert.Equal(["group.app", Api.ToString(), "chan.cachepipe"], pipe.Path);
-        Assert.StartsWith("Channel between API host · PID 5120 and Cache · PID 4056", pipe.Detail, StringComparison.Ordinal);
 
         // A group is found by name and descends one rung.
         SearchHit group = Assert.Single(WorkspaceSearch.Find(snapshot, "platform").Hits);
@@ -406,6 +409,33 @@ public sealed class WorkspaceSearchTests
                 snapshot.Processes.Where(process => WorkspaceSearch.Finds(process, links.Where(link => link.Process == process.Id), query))
                     .Select(process => process.Id.ToString()).Order(StringComparer.Ordinal));
         }
+    }
+
+    [Fact(DisplayName = "§6.7: a channel found by its endpoint is named by the processes at its ends, who connected to whom, never by the endpoint")]
+    public void AChannelHitIsNamedByWhoConnectedToWhom()
+    {
+        // The client connected to the server's 8080, and sent to its 9090 over a connection the capture saw open neither way.
+        using var session = new TemporarySession();
+        Publish(session.Store,
+        [
+            Lifecycle(1, ObservationKind.Create, 100, 1) with { ResourceName = @"C:\Tools\client.exe", SessionRelativeTicks = 100 },
+            Lifecycle(2, ObservationKind.Create, 200, 2) with { ResourceName = @"C:\Tools\server.exe", SessionRelativeTicks = 110 },
+            Transfer(10, ObservationKind.Connect, AccountingSide.EndpointActivity, 0, 100, 3)
+                .Between("127.0.0.1:50000", "127.0.0.1:8080") with { SessionRelativeTicks = 200 },
+            Transfer(11, ObservationKind.Accept, AccountingSide.EndpointActivity, 0, 200, 4)
+                .Between("127.0.0.1:8080", "127.0.0.1:50000") with { SessionRelativeTicks = 210 },
+            Transfer(20, ObservationKind.Send, AccountingSide.SendSide, 4, 100, 5)
+                .Between("127.0.0.1:53100", "127.0.0.1:9090") with { SessionRelativeTicks = 300 },
+            Transfer(21, ObservationKind.Receive, AccountingSide.ReceiveSide, 4, 200, 6)
+                .Between("127.0.0.1:9090", "127.0.0.1:53100") with { SessionRelativeTicks = 310 },
+        ]);
+        WorkspaceSnapshot snapshot = OverviewWorkspace.From(SessionOverviewProjector.Project(session.Store));
+
+        SearchHit tcp = Assert.Single(WorkspaceSearch.Find(snapshot, "50000").Hits, hit => hit.Kind == SearchHitKind.Channel);
+        Assert.Equal(("client.exe · PID 100 → server.exe · PID 200", "TCP channel whose endpoint the search names"), (tcp.Label, tcp.Detail));
+        SearchHit unseen = Assert.Single(WorkspaceSearch.Find(snapshot, "53100").Hits, hit => hit.Kind == SearchHitKind.Channel);
+        Assert.Matches("^(client|server)\\.exe · PID [12]00 and (client|server)\\.exe · PID [12]00$", unseen.Label);
+        Assert.DoesNotContain("53100", unseen.Label + unseen.Detail, StringComparison.Ordinal);
     }
 
     [Fact(DisplayName = "§6.7: a bare number of at most five digits up to 65535 names the port it would be typed after a colon, and nothing else does")]

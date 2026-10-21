@@ -133,13 +133,18 @@ public static class WorkspaceSearch
                 continue;
             }
 
-            // The channel is reached through its relationship's source process, as a double click on its edge reaches it.
-            string between = processes.TryGetValue(edge.TargetId, out ProcessNode? target)
-                ? $"{source.NameWithPid} and {target.NameWithPid}"
-                : source.NameWithPid;
+            // The channel is reached through its relationship's source process, as a double click on its edge reaches it,
+            // and named by the processes at its ends, who connected to whom, as the channel list names it - where it holds
+            // them - else by its relationship's.
+            string ends = channel.FirstHolder is not null && channel.SecondHolder is not null
+                ? ChannelNames.Processes(channel, id => processes.GetValueOrDefault(id)?.NameWithPid)
+                : processes.TryGetValue(edge.TargetId, out ProcessNode? target)
+                    ? $"{source.NameWithPid} and {target.NameWithPid}"
+                    : source.NameWithPid;
             // Endpoint strings can be matched, but never copied into a search snippet (P16). The channel view
             // reveals the endpoint in context after the person opens this hit.
-            candidates.Add((rank, new(SearchHitKind.Channel, channel.Key, "Channel", "Channel between " + between,
+            candidates.Add((rank, new(SearchHitKind.Channel, channel.Key, ends,
+                MechanismText.Name(channel.Mechanism) + " channel whose endpoint the search names",
                 channel.ObservationCount, [source.GroupKey, source.Id.ToString(), channel.Key])));
         }
 

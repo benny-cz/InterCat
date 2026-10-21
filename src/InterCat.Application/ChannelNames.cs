@@ -34,18 +34,37 @@ public static class ChannelNames
     {
         ArgumentNullException.ThrowIfNull(channel);
         ArgumentNullException.ThrowIfNull(nameOf);
-
-        // The end the connection was made from leads: its endpoint, which its maker held, is one of the name's two.
-        int split = channel.Name.IndexOf(Separator, StringComparison.Ordinal);
-        bool made = channel.ConnectedFrom is not null && split > 0;
-        bool swap = made && string.Equals(channel.Name[(split + Separator.Length)..], channel.ConnectedFrom, StringComparison.Ordinal);
-        string first = Named(swap ? channel.SecondHolder : channel.FirstHolder);
-        string second = Named(swap ? channel.FirstHolder : channel.SecondHolder);
+        (bool made, bool swap) = Orientation(channel);
         string endpoints = Compact(channel.Name, swap);
-        return first + (made ? Made : " and ") + second + " · " + MechanismText.Name(channel.Mechanism) + " · "
+        return Processes(channel, nameOf) + " · " + MechanismText.Name(channel.Mechanism) + " · "
             + (made ? endpoints.Replace(Separator, Made, StringComparison.Ordinal) : endpoints);
+    }
+
+    /// <summary>
+    /// A paired channel's two processes as <see cref="Ends"/> names them, without its transport or endpoints: "client.exe ·
+    /// PID 100 → server.exe · PID 200", or the two joined by "and" where the capture saw neither open it - so a search's hit
+    /// names a channel it found by an endpoint, which its snippet never repeats (P16).
+    /// </summary>
+    public static string Processes(Channel channel, Func<ProcessInstanceId, string?> nameOf)
+    {
+        ArgumentNullException.ThrowIfNull(channel);
+        ArgumentNullException.ThrowIfNull(nameOf);
+        (bool made, bool swap) = Orientation(channel);
+        return Named(swap ? channel.SecondHolder : channel.FirstHolder) + (made ? Made : " and ")
+            + Named(swap ? channel.FirstHolder : channel.SecondHolder);
 
         string Named(ProcessInstanceId? holder) => holder is { } id ? nameOf(id) ?? "an unlisted process" : "an unknown process";
+    }
+
+    /// <summary>
+    /// Whether the capture saw which end made a channel's connection, and whether that end is the second its name holds:
+    /// the end the connection was made from leads, and its endpoint, which its maker held, is one of the name's two.
+    /// </summary>
+    private static (bool Made, bool Swap) Orientation(Channel channel)
+    {
+        int split = channel.Name.IndexOf(Separator, StringComparison.Ordinal);
+        bool made = channel.ConnectedFrom is not null && split > 0;
+        return (made, made && string.Equals(channel.Name[(split + Separator.Length)..], channel.ConnectedFrom, StringComparison.Ordinal));
     }
 
     /// <summary>

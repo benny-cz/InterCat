@@ -215,7 +215,8 @@
               <DataTemplate x:DataType="pres:SearchRow">
                 <StackPanel Margin="2,5" Spacing="2" MinHeight="44">
                   <TextBlock Text="{Binding Kind}" Classes="eyebrow" />
-                  <TextBlock Text="{Binding Label}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis" />
+                  <!-- A hit's name wraps rather than being cut: a channel's names both its processes. -->
+                  <TextBlock x:Name="SearchHitLabel" Text="{Binding Label}" FontWeight="SemiBold" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding Detail}" Classes="muted" FontSize="11" TextWrapping="Wrap" />
                   <TextBlock Text="{Binding Observations}" Classes="muted" FontSize="10"
                              IsVisible="{Binding Observations, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />

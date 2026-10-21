@@ -47,7 +47,11 @@ public sealed class PortSearchTests
         // server that accepted another host's connection at it. A PID it only begins is the less likely meaning, so the
         // port comes first.
         workspace.SearchText = "8080";
-        Assert.Equal([(SearchHitKind.Port, ":8080"), (SearchHitKind.Process, "agent.exe · PID 80800"), (SearchHitKind.Channel, "Channel")],
+        Assert.Equal(
+            [
+                (SearchHitKind.Port, ":8080"), (SearchHitKind.Process, "agent.exe · PID 80800"),
+                (SearchHitKind.Channel, "server.exe · PID 200 and client.exe · PID 100"),
+            ],
             workspace.SearchResults.Select(row => (row.Hit.Kind, row.Label)));
         Assert.Equal("Search the port instead: 2 matches", workspace.SearchResults[0].Detail);
         Assert.Equal("2 matches · Enter opens the selected one, Esc clears", workspace.SearchSummary);

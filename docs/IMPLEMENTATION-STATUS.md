@@ -1,6 +1,6 @@
 # InterCat implementation status
 
-Updated: 2026-10-21 · Plan revision: 680 · Branch: `main`
+Updated: 2026-10-21 · Plan revision: 681 · Branch: `main`
 
 This is the **current resume point**, not a running transcript. Update the backlog and open-work tables in place after
 each slice, then add only a short latest-change note. The complete pre-revision-104 chronology, measurements, and old
@@ -98,6 +98,18 @@ Ordinary detailed `intercat-export-v1` retains sensitive names and raw locators 
 | M5 release | Open; since revision 391 `icat support` writes §20.6's support bundle, with nothing a record holds (`support-bundle-v1`, P16), and since revision 392 the window saves it for the session it shows. Since revision 393 a session's size, bytes per record and §12.1 tier, and a recording's time left under its limits, are stated in the window, `icat session` and `icat capture` (S5), and since revision 450 for a capture keeping a window from what the window holds, with when it begins releasing - the eviction point S5 asks for - and when a pin stops it. Since revision 395 `icat demo` writes the gate's demo investigation of two hosts, generated and saying so wherever it is read (`demo-investigation-v1`), and since revision 396 the window's Explore the demo makes it once beside the sessions folder and opens it. Since revisions 456 and 457 a finished session's zooms and brushes count from its persisted tiles, opening no segment, and a brushed ranking of 10M rows meets §12's 250 ms with room, at 9.5 ms, and at 15 ms since revision 460 counts a channel's ends from the same tallies (S3, S4) | Full scale/reliability/accessibility/installer/build matrix and release gates. |
 
 ## Recent slices
+
+- **Revision 681 — live pass over listening ports and the port search; a channel's hit names who connected to whom (§6.7, §6.3):**
+  - The ports and the port search held on the heavy machine; a channel's hit, titled "Channel", is now titled by the
+    processes at its ends, the maker first - "chrome.exe · PID 3028 → chrome.exe · PID 3000" - with its transport,
+    never its endpoint, and a hit's name wraps within the rail rather than being cut.
+  - Debug and Release each ran 2,683 tests with revision 473's 93 failures and 4 skips, and nothing else failed; a
+    new search test names a connection's hit by its maker and the process it connected to, and one seen opening
+    neither way by its two joined by "and", neither repeating the endpoint searched, and a new window test reads the
+    hit's whole name wrapping within the rail at the smallest window. All seven mutations were caught: the ends
+    named in their name's order, never by an arrow or never swapped to the maker, the hit titled "Channel" again, a
+    held channel named by its relationship, its transport left out of its detail, and its name cut at the rail's
+    edge.
 
 - **Revision 680 — `icat processes --port` lists the instances that accepted connections at a port of their own (§5.2, §6.7, R18):**
   - Whoever connected, as the window's port search finds them, ranked by connections accepted unless `--rank-by` names
