@@ -160,8 +160,9 @@ public sealed class CandidateHostsWorkspaceTests : IDisposable
         Assert.Equal((demo.WorkspacePath, EvidencePolicy.DirectOnly), (reread.Investigation, reread.Policy));
 
         // The demo's connections bind to their processes by correlation, so direct evidence alone holds none of them,
-        // and none has a candidate other end.
-        Assert.Empty(await reread.Hosts);
+        // and none has a candidate other end, nor any listening port.
+        Assert.Empty((await reread.Reading).Hosts);
+        Assert.Empty((await reread.Reading).Listeners);
         Assert.True(done.Cancelled);
         done.Dispose();
 

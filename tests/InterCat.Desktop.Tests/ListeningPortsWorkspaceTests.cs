@@ -232,6 +232,78 @@ public sealed class ListeningPortsWorkspaceTests
         }
     });
 
+    [Fact(DisplayName = "§8.3: a session read with its investigation names each listening port's candidate other ends, never as an established join, and a later publication takes the read over")]
+    public void ASessionReadWithItsInvestigationNamesItsPortsCandidateOtherEnds() => SingleThreadedContext.Run(async () =>
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "InterCat.Desktop.Tests.ListeningPorts", Guid.NewGuid().ToString("N"));
+        try
+        {
+            DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
+            using WorkspaceViewModel workspace = OpenViewing(demo.ServerSession);
+            await workspace.LayoutReady;
+            Assert.DoesNotContain(workspace.ListenerRows, row => row.Detail.Contains("candidate", StringComparison.Ordinal));
+            Assert.False(workspace.ShowsListenersNote);
+
+            // Read with its investigation, the ports the client's connections arrived at name the client's processes whose
+            // connections mirror them; the database's, which only the server's own api.exe reached, names none.
+            var changed = new List<string?>();
+            workspace.PropertyChanged += (_, eventArgs) => changed.Add(eventArgs.PropertyName);
+            workspace.ReadCandidateHosts(demo.WorkspacePath);
+            await workspace.CandidateHostsReady;
+            Assert.Contains(nameof(WorkspaceViewModel.ListenerRows), changed);
+            Assert.Equal(
+                [
+                    "443 | api.exe · PID\u00A05100 | 1 connection accepted from 10.0.0.10 · candidate other ends: demo client: "
+                        + "browser.exe · PID 4100",
+                    "5432 | db.exe · PID\u00A05200 | 1 connection accepted from api.exe · PID 5100",
+                    "8443 | files.exe · PID\u00A05300 | 1 connection accepted from 10.0.0.10 · candidate other ends: demo client: "
+                        + "sync.exe · PID 4200",
+                ],
+                workspace.ListenerRows.Select(Said));
+            Assert.Equal("api.exe · PID 5100 accepted 1 connection at port 443, from 10.0.0.10, candidate other ends: demo "
+                + "client: browser.exe · PID 4100. Press Enter to choose that process.", workspace.ListenerRows[0].AccessibleName);
+
+            // Beneath the rows, the list says once what they are.
+            Assert.Contains(nameof(WorkspaceViewModel.ListenersNote), changed);
+            Assert.True(workspace.ShowsListenersNote);
+            Assert.Equal("The candidate other ends named here are processes of the investigation's other sessions whose "
+                + "connections mirror those the ports accepted, never an established join.", workspace.ListenersNote);
+
+            // A later publication takes the read over, its ports naming them too.
+            using (WorkspaceViewModel next = OpenViewing(demo.ServerSession))
+            {
+                await next.LayoutReady;
+                next.AdoptCandidateHosts(workspace.CarryCandidateHosts()!);
+                await next.CandidateHostsReady;
+                Assert.Equal(workspace.ListenerRows.Select(Said), next.ListenerRows.Select(Said));
+
+                // An investigation that cannot be read proposes none, and the note goes with them.
+                next.ReadCandidateHosts(Path.Combine(folder, "missing.icat-workspace"));
+                await next.CandidateHostsReady;
+                Assert.DoesNotContain(next.ListenerRows, row => row.Detail.Contains("candidate", StringComparison.Ordinal));
+                Assert.False(next.ShowsListenersNote);
+            }
+
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+    });
+
+    private static WorkspaceViewModel OpenViewing(string session)
+    {
+        SessionOverviewBundle overview = SessionOverviewProjector.Project(SessionStore.OpenForViewing(LocalOwnedDirectory.Open(session)));
+        return new(OverviewWorkspace.From(overview), overview.GraphIdentity,
+            new SessionEvidenceSource(session, overview.SessionId, overview.Generation, overview.Policy));
+    }
+
     private static WorkspaceViewModel Open(TemporarySession session, int generation)
     {
         SessionOverviewBundle overview = SessionOverviewProjector.Project(session.Store);

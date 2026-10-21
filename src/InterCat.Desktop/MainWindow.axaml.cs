@@ -5017,6 +5017,13 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
             KeepRailKeyboard();
         }
 
+        if (eventArgs.PropertyName == nameof(WorkspaceViewModel.ListenerRows))
+        {
+            // The listening ports restated in place - their candidate other ends read - take the row the keyboard was on out
+            // of the window: it goes back to the same port's row.
+            KeepKeyboard();
+        }
+
         if (eventArgs.PropertyName == nameof(WorkspaceViewModel.MembersAsked))
         {
             FocusMemberList();

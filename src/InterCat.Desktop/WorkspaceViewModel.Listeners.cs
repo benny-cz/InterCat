@@ -65,6 +65,18 @@ public sealed partial class WorkspaceViewModel
     /// <summary>Whether the list says what it leaves out with every port asked for.</summary>
     public bool ShowsListenersMore => ListenersMore.Length > 0;
 
+    /// <summary>
+    /// What the candidate other ends its rows name are, beneath them, for a session opened from its investigation: never an
+    /// established join; empty where none is named. The rows say which ports they are named for.
+    /// </summary>
+    public string ListenersNote => wholeSnapshot.Listeners.Any(listener => CandidatesFor(listener) is not null)
+        ? "The candidate other ends named here are processes of the investigation's other sessions whose connections mirror "
+            + "those the ports accepted, never an established join."
+        : string.Empty;
+
+    /// <summary>Whether the list says what the candidate other ends it names are.</summary>
+    public bool ShowsListenersNote => ListenersNote.Length > 0;
+
     /// <summary>Whether the inspector offers every listening port, or the busiest again: there are more than it names.</summary>
     public bool OffersListenersToggle => wholeSnapshot.Listeners.Count > ListenersNamed;
 
@@ -143,7 +155,9 @@ public sealed partial class WorkspaceViewModel
     /// <summary>
     /// One listening port as the inspector lists it: where and whose, then how many it accepted and from whom - one kind of
     /// end said with the count, "1 connection accepted from 10.0.0.10", several each with their own, "5 connections
-    /// accepted · 4 from 4 processes of 4 programs · 1 from 10.0.0.6".
+    /// accepted · 4 from 4 processes of 4 programs · 1 from 10.0.0.6" - and, in a session opened from its investigation,
+    /// the candidate other ends its connections from other hosts mirror: "candidate other ends: demo client: browser.exe ·
+    /// PID 4100".
     /// </summary>
     private ListenerRow ListenerRowOf(PortListener listener)
     {
@@ -153,10 +167,13 @@ public sealed partial class WorkspaceViewModel
         IReadOnlyList<(long Connections, string Who)> from = ListenerText.From(listener, ProcessNamed, ProgramOf);
         string[] parts = from is [var only] ? ["from " + only.Who]
             : [.. from.Select(part => string.Create(CultureInfo.CurrentCulture, $"{part.Connections:N0} from {part.Who}"))];
+        string candidates = CandidatesFor(listener) is { } ends ? "candidate other ends: " + CandidateEnd.Listed(ends) : string.Empty;
         // The row shows the process with its PID kept to its number, so a narrow inspector never breaks "PID" from it.
         return new ListenerRow(process.Replace("PID ", "PID\u00A0", StringComparison.Ordinal),
-            from.Count == 1 ? $"{accepted} accepted {parts[0]}" : string.Join(" · ", [accepted + " accepted", .. parts]),
-            $"{process} accepted {accepted} at port {port}" + string.Concat(parts.Select(part => ", " + part)))
+            (from.Count == 1 ? $"{accepted} accepted {parts[0]}" : string.Join(" · ", [accepted + " accepted", .. parts]))
+                + (candidates.Length > 0 ? " · " + candidates : string.Empty),
+            $"{process} accepted {accepted} at port {port}" + string.Concat(parts.Select(part => ", " + part))
+                + (candidates.Length > 0 ? ", " + candidates : string.Empty))
         {
             Port = listener.Port,
             Process = listener.Process.Id,
@@ -183,6 +200,8 @@ public sealed partial class WorkspaceViewModel
         OnPropertyChanged(nameof(ListsAllListeners));
         OnPropertyChanged(nameof(ListenersMore));
         OnPropertyChanged(nameof(ShowsListenersMore));
+        OnPropertyChanged(nameof(ListenersNote));
+        OnPropertyChanged(nameof(ShowsListenersNote));
         OnPropertyChanged(nameof(OffersListenersToggle));
         OnPropertyChanged(nameof(ListenersToggleLabel));
     }

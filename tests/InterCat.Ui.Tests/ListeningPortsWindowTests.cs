@@ -167,6 +167,55 @@ public sealed class ListeningPortsWindowTests
         static ListenerRow? Focused(Window window) => (window.FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ListenerRow;
     }
 
+    [AvaloniaFact(DisplayName = "§8.3/R15: a session read with its investigation names its ports' candidate other ends beneath their rows, the keyboard staying on the port it was on")]
+    public async Task CandidateOtherEndsKeepTheKeyboardOnItsPort()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "InterCat.Ui.Tests.ListeningPorts", Guid.NewGuid().ToString("N"));
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            DemoInvestigationResult demo = DemoInvestigation.Create(Path.Combine(folder, "demo"));
+            SessionOverviewBundle overview = SessionOverviewProjector.Project(
+                SessionStore.OpenForViewing(LocalOwnedDirectory.Open(demo.ServerSession)));
+            window.ApplyCaptureUpdate(new(CaptureUiPhase.Complete, "Saved session open", "Saved.", SessionPath: demo.ServerSession,
+                Overview: overview), forceOverview: true);
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox ports = window.GetControl<ListBox>("ListenersList");
+            TextBlock note = window.GetControl<TextBlock>("ListenersNoteText");
+            Assert.False(note.IsEffectivelyVisible);
+            Assert.True(ports.ContainerFromIndex(2)!.Focus());
+            Dispatch();
+            Assert.Equal((ushort)8443, Focused(window)?.Port);
+
+            // The candidates read restate the rows: files.exe's 8443 names the client's sync.exe, the keyboard still on it, and
+            // the note beneath says what they are.
+            workspace.ReadCandidateHosts(demo.WorkspacePath);
+            await workspace.CandidateHostsReady;
+            Dispatch();
+            Assert.Same(ports.ContainerFromIndex(2), window.FocusManager?.GetFocusedElement());
+            Assert.EndsWith(" · candidate other ends: demo client: sync.exe · PID 4200", Focused(window)?.Detail, StringComparison.Ordinal);
+            Assert.True(note.IsEffectivelyVisible);
+            Assert.StartsWith("The candidate other ends named here are processes of the investigation's other sessions",
+                note.Text, StringComparison.Ordinal);
+        }
+        finally
+        {
+            window.Close();
+            try
+            {
+                Directory.Delete(folder, recursive: true);
+            }
+            catch (IOException)
+            {
+            }
+        }
+
+        static ListenerRow? Focused(Window window) => (window.FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as ListenerRow;
+    }
+
     /// <summary>
     /// The client and the helper connect to the server's 8080; other hosts connect to the server's 8443, 9001, 9002 and
     /// 9003 and to files.exe's 445.

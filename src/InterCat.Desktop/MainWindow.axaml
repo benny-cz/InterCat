@@ -1090,6 +1090,9 @@
                       </DataTemplate>
                     </ListBox.ItemTemplate>
                   </ListBox>
+                  <!-- In a session opened from its investigation, what the candidate other ends its rows name are. -->
+                  <TextBlock x:Name="ListenersNoteText" Text="{Binding ListenersNote}" Classes="muted" FontSize="12"
+                             TextWrapping="Wrap" IsVisible="{Binding ShowsListenersNote}" />
                   <TextBlock x:Name="ListenersMoreText" Text="{Binding ListenersMore}" Classes="muted" FontSize="12"
                              TextWrapping="Wrap" IsVisible="{Binding ShowsListenersMore}" />
                   <!-- Every port on request, the busiest first, and the busiest few again. -->

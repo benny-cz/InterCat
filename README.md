@@ -59,7 +59,8 @@ and a chosen record opens its original journal entry.
 
 **Investigations** hold sessions captured on several machines, aligned by their wall clocks, with the connections one
 machine's capture can join to another's; a session opened from its investigation names, beside each other host it
-reached, the processes another member's capture proposes at its other end, never as an established join.
+reached, the processes another member's capture proposes at its other end, never as an established join, and beside
+each of its listening ports those whose connections mirror the ones it accepted.
 *Investigation → Explore the demo* opens InterCat's generated demo, which needs no capture.
 
 **Sharing.** A view exports as JSON or CSV. A session shares as a redacted metadata report, as a redacted session package
