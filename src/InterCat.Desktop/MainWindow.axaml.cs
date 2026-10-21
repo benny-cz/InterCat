@@ -161,6 +161,9 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     // The list whose row that was, if it was a row: a newer generation's rows take the old row out of the window, so the row
     // alone no longer says which list to give the keyboard back to.
     private ListBox? lastKeyboardList;
+
+    // And what that row stood for, which a newer generation's list holds again as a row of its own, restated.
+    private object? lastKeyboardRow;
     private bool closingPrompt;
 
     /// <summary>
@@ -989,18 +992,32 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
     /// table counting a lane chosen, the inspector's records as a newer generation arrives - hides each row's container and
     /// gives it to whichever row it lays out next, so the keyboard went to a row other than the chosen one. A list given a
     /// newer generation's rows takes the row out of the window, which then finds no list of its own: the list it was in
-    /// gets the keyboard back, on the process or host still chosen in it, not the ranked table.
+    /// gets the keyboard back, on the process or host still chosen in it, not the ranked table, or on the relationship or
+    /// pair of programs it was on, which no choice holds, wherever the newer counts list it.
     /// </summary>
     private bool GiveBackLastKeyboard()
     {
         if (lastKeyboard is ListBoxItem row && (row.FindAncestorOfType<ListBox>() ?? lastKeyboardList) is { } list)
         {
-            return this.IsVisualAncestorOf(list) && FocusRow(list);
+            return this.IsVisualAncestorOf(list) && FocusRow(list, SameRow(list, lastKeyboardRow));
         }
 
         return lastKeyboard is Control { IsEffectivelyVisible: true, IsEffectivelyEnabled: true } last
             && this.IsVisualAncestorOf(last) && last.Focus(NavigationMethod.Tab);
     }
+
+    /// <summary>
+    /// The row of <paramref name="list"/> that stands for what <paramref name="row"/>, a row of an earlier generation's list,
+    /// stood for: the relationship with the same process, or the pair with the same program, whatever counts it now says.
+    /// Null for any other row, which its list's chosen row stands for, if any.
+    /// </summary>
+    private static object? SameRow(ListBox list, object? row) => row switch
+    {
+        PeerRow peer => list.Items.OfType<PeerRow>().FirstOrDefault(listed => listed.PeerId == peer.PeerId),
+        ProgramPairRow pair => list.Items.OfType<ProgramPairRow>()
+            .FirstOrDefault(listed => string.Equals(listed.OtherKey, pair.OtherKey, StringComparison.Ordinal)),
+        _ => null,
+    };
 
     /// <summary>
     /// Follows who owns the keyboard as far as the user is concerned: the ranked table does once focus moves into it, and
@@ -1012,6 +1029,7 @@ public sealed partial class MainWindow : Window, IDisposable, IChoosingWindow
         if (focus.Source is not Visual target || ReferenceEquals(target, this)) return;
         lastKeyboard = target as InputElement;
         lastKeyboardList = target is ListBoxItem ? target.FindAncestorOfType<ListBox>() : null;
+        lastKeyboardRow = (target as ListBoxItem)?.DataContext;
         railOwnsKeyboard = ReferenceEquals(target, RungList) || RungList.IsVisualAncestorOf(target)
             || ReferenceEquals(target, EmptyEvidenceButton) || ReferenceEquals(target, EmptyReasonCard);
 

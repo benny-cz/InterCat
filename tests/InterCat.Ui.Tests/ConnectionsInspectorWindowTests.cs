@@ -260,6 +260,76 @@ public sealed class ConnectionsInspectorWindowTests
         }
     }
 
+    [AvaloniaFact(DisplayName = "R7/R15: a newer generation published while recording keeps the keyboard on the relationship or pair of programs it was on, wherever the newer counts list it")]
+    public async Task ANewerGenerationKeepsTheKeyboardOnItsRelationship()
+    {
+        using var session = new TemporarySession();
+        Publish(session.Store, Hub());
+        var window = new MainWindow { Width = 1456, Height = 939 };
+        window.Show();
+        try
+        {
+            window.ApplyCaptureUpdate(Recording(session));
+            var workspace = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await workspace.LayoutReady;
+            Dispatch();
+            ListBox peers = window.GetControl<ListBox>("PeersList");
+            workspace.SelectProcess(workspace.Snapshot.Processes.Single(node => node.ProcessId == 1000).Id);
+            Assert.True(workspace.TogglePeers());
+            Dispatch();
+            Assert.True(peers.ContainerFromIndex(5)!.Focus());
+            Dispatch();
+            Assert.Equal("→ peer5.exe · PID 2005", Focused(window)?.Peer);
+
+            // The hub sends to peer0 twice and to peer5 once: the next generation lists peer0's first and peer5's second, and
+            // the keyboard stays on peer5's, not on the row that now comes where it was, nor on the first.
+            Publish(session.Store, MoreSends(1));
+            window.ApplyCaptureUpdate(Recording(session));
+            var next = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await next.LayoutReady;
+            Dispatch();
+            Assert.Equal(["→ peer0.exe · PID 2000", "→ peer5.exe · PID 2005"], next.SelectionPeers.Take(2).Select(row => row.Peer));
+            Assert.Same(peers.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+            Assert.Equal("1 made · TCP · 3 records", Focused(window)?.Detail);
+
+            // So does a program's pair: peer6's, last, listed second once the hub sent it twice more.
+            ListBox programs = window.GetControl<ListBox>("ProgramsList");
+            next.SelectedRung = next.RungRows.Single(row => row.Label == "hub.exe");
+            Assert.True(next.TogglePrograms());
+            Dispatch();
+            Assert.Equal("hub.exe → peer6.exe", Assert.IsType<ProgramPairRow>(programs.Items[6]).Pair);
+            Assert.True(programs.ContainerFromIndex(6)!.Focus());
+            Dispatch();
+            Publish(session.Store, MoreSends(2));
+            window.ApplyCaptureUpdate(Recording(session));
+            var last = Assert.IsType<WorkspaceViewModel>(window.DataContext);
+            await last.LayoutReady;
+            Dispatch();
+            Assert.Equal("hub.exe → peer6.exe", Assert.IsType<ProgramPairRow>(programs.Items[1]).Pair);
+            Assert.Same(programs.ContainerFromIndex(1), window.FocusManager?.GetFocusedElement());
+        }
+        finally
+        {
+            window.Close();
+        }
+
+        static PeerRow? Focused(Window window) => (window.FocusManager?.GetFocusedElement() as ListBoxItem)?.DataContext as PeerRow;
+
+        // Round one: the hub sends to peer0 twice and to peer5 once. Round two: to peer6 twice.
+        static ObservationRowV1[] MoreSends(int round) => round == 1
+            ?
+            [
+                Timed(Transfer(60, ObservationKind.Send, AccountingSide.SendSide, 8, 1000, 300).Between("127.0.0.1:50000", "127.0.0.1:8000")),
+                Timed(Transfer(61, ObservationKind.Send, AccountingSide.SendSide, 8, 1000, 301).Between("127.0.0.1:50000", "127.0.0.1:8000")),
+                Timed(Transfer(62, ObservationKind.Send, AccountingSide.SendSide, 8, 1000, 302).Between("127.0.0.1:50005", "127.0.0.1:8005")),
+            ]
+            :
+            [
+                Timed(Transfer(70, ObservationKind.Send, AccountingSide.SendSide, 8, 1000, 310).Between("127.0.0.1:50006", "127.0.0.1:8006")),
+                Timed(Transfer(71, ObservationKind.Send, AccountingSide.SendSide, 8, 1000, 311).Between("127.0.0.1:50006", "127.0.0.1:8006")),
+            ];
+    }
+
     /// <summary>hub.exe's PID 1000 connects to the one process of each of seven programs.</summary>
     private static ObservationRowV1[] Hub() =>
     [
